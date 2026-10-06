@@ -2191,7 +2191,7 @@ async fn feed_labels_handler(
     )
     .await
     .map_err(AppError::Internal)?;
-    // A pick past THINNING_CAP posts leaves the lists unthinned (Curtis: a glad emoji picked
+    // A pick past THINNING_CAP posts leaves the lists unthinned (Curtis: a positive emoji picked
     // could be a bastard of an expensive time) - the pick's size read off the whole counts
     // before any work: a tag's count, the smallest among tags picked together, the sum among
     // either-of buckets or kinds. The posts themselves still narrow.

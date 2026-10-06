@@ -673,16 +673,16 @@ const Line = ({
         .join(' ');
     const [revealed, setRevealed] = useState(false);
     const veiled = veil && !revealed;
-    // The line's lean (pure/lean.js): bigger for every glad reaction on it, smaller for every sour.
-    let glad = 0;
-    let sour = 0;
+    // The line's lean (pure/lean.js): bigger for every positive reaction on it, smaller for every negative.
+    let positive = 0;
+    let negative = 0;
     for (const r of m.reactions || []) {
         if (stickerSrc(r.emoji)) continue; // a sticker has no tone
         const tone = toneOf(glyphOf(r.emoji));
-        if (tone === 'good') glad += r.count;
-        if (tone === 'bad') sour += r.count;
+        if (tone === 'good') positive += r.count;
+        if (tone === 'bad') negative += r.count;
     }
-    const lean = leanScale(glad, sour);
+    const lean = leanScale(positive, negative);
     return html`<li
         class=${found ? `${cls} chat-line-found` : cls}
         style=${lean === 1 ? undefined : `--lean: ${lean}`}

@@ -73,9 +73,9 @@ lightly federated, unapologetically Old Internet.
 - [`COMMODITIES.md`](plans/COMMODITIES.md) — seven horse commodities in
   hrseBank's Market: a price walk derived from the date, the same on every
   computer, drifting a little faster than bonds pay, and nudged at most 5% by
-  what the node sees the network doing - drawings, words, reactions glad and
-  sour, follows, chat, posts. Horse Financial's second instrument. A design
-  draft (2026-10-06); nothing built.
+  what the node sees the network doing - drawings, words, reactions positive and
+  negative, follows, chat, posts. Horse Financial's second instrument. Built
+  2026-10-06.
 - [`DRAWING.md`](plans/DRAWING.md) — the horse-drawing app: a drawing is a
   versioned document whose body is its strokes, undo is a recorded removal, and
   two histories merge by putting both sets of strokes together (on the node,

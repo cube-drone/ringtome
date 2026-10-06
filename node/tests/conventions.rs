@@ -69,6 +69,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("front_door", vec!["frontdoor.rs"]),
         ("super_pins", vec!["frontdoor.rs"]),
         ("bank_lines", vec!["bank.rs"]),
+        ("commodity_days", vec!["commodities.rs"]),
         ("node_shelf", vec!["nodeshelf.rs"]),
         ("node_listing", vec!["nodeshelf.rs"]),
         ("node_slugs", vec!["slugs.rs"]),
@@ -427,9 +428,9 @@ fn the_client_and_the_node_keep_as_many_tags_a_person() {
     assert_eq!(said, ringtome_node::annotations::MAX_TAGS_PER_LABELLER);
 }
 
-/// The score's lexicon, spelled twice (2026-09-27): the picker's glad and sour rows colour a
+/// The score's lexicon, spelled twice (2026-09-27): the picker's positive and negative rows colour a
 /// reaction on screen (js/emoji.js `POLE_ROWS`), and the node's score counts the same glyphs
-/// (score.rs `GLAD`, `SOUR`). If they drift, a green chip stops counting - or a plain one
+/// (score.rs `POSITIVE`, `NEGATIVE`). If they drift, a green chip stops counting - or a plain one
 /// starts - and nothing on screen says so.
 #[test]
 fn the_picker_and_the_score_lean_the_same_way() {
@@ -459,8 +460,16 @@ fn the_picker_and_the_score_lean_the_same_way() {
             .collect()
     };
     let rust = |list: &[&str]| list.iter().map(|g| g.to_string()).collect::<Vec<_>>();
-    assert_eq!(row("good"), rust(&ringtome_node::score::GLAD), "the glad row and score.rs GLAD");
-    assert_eq!(row("bad"), rust(&ringtome_node::score::SOUR), "the sour row and score.rs SOUR");
+    assert_eq!(
+        row("good"),
+        rust(&ringtome_node::score::POSITIVE),
+        "the positive row and score.rs POSITIVE"
+    );
+    assert_eq!(
+        row("bad"),
+        rust(&ringtome_node::score::NEGATIVE),
+        "the negative row and score.rs NEGATIVE"
+    );
 }
 
 /// The binary stays thin (DESKTOP.md, Stage 1). There is one node, assembled in one place: the

@@ -346,6 +346,42 @@ pub async fn recent_posters(node_db: &Db, want: usize, scan: i64) -> Result<Vec<
     Ok(out)
 }
 
+/// The public feed's own posts - open originals by listed personas, not shares - with their
+/// format and when they were published, from `from_ms` up to `to_ms`: what hrseCommodities' weather
+/// counts (commodities.rs, 2026-10-06). A range on the shelf's time index.
+pub async fn feed_between(
+    node_db: &Db,
+    from_ms: i64,
+    to_ms: i64,
+) -> Result<Vec<(String, String, Option<String>, i64)>> {
+    node_db
+        .fetch_all(
+            &format!(
+                "SELECT author_root, doc_id, format, published_ms FROM node_shelf s
+                 WHERE via_root = '' AND trusted_only = 0 AND {LISTED}
+                   AND published_ms >= ?1 AND published_ms < ?2"
+            ),
+            (from_ms, to_ms),
+        )
+        .await
+        .context("reading the public feed's posts in a window")
+}
+
+/// Every post on the public feed, whenever it was published - `(author, doc, format)` - for the
+/// weather's reactions and rooms, which arrive long after the posts they're about.
+pub async fn feed_posts(node_db: &Db) -> Result<Vec<(String, String, Option<String>)>> {
+    node_db
+        .fetch_all(
+            &format!(
+                "SELECT author_root, doc_id, format FROM node_shelf s
+                 WHERE via_root = '' AND trusted_only = 0 AND {LISTED}"
+            ),
+            (),
+        )
+        .await
+        .context("reading the public feed's posts")
+}
+
 /// The hosted personas a stranger may see: hosted here and listed.
 pub async fn listed_roots(node_db: &Db) -> Result<Vec<String>> {
     let hosted =

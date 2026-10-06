@@ -20,6 +20,7 @@ import {
     unlockWarning,
 } from '../unlocks.js';
 import { COLORWAY_CLASS, colorwayOf } from '../colorway.js';
+import { commodityName, weatherWords } from '../commodities.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { groupLedger } from '../pure/ledger.js';
 import { formatWhen } from '../pure/when.js';
@@ -48,6 +49,8 @@ const KINDS = {
     magic_words: () => t('apps.bank.kind-magic-words', 'the magic words'),
     contract: () => t('apps.bank.kind-contract', 'contracts completed'),
     unlock: () => t('apps.bank.kind-unlock', 'unlocks bought'),
+    commodity: () => t('apps.bank.kind-commodity', 'commodities bought'),
+    commodity_sale: () => t('apps.bank.kind-commodity-sale', 'commodities sold'),
 };
 
 /// The Contracts column (Curtis, 2026-10-04): goals that pay once - the ones still open, then the
@@ -199,6 +202,24 @@ const RowWords = ({ row, current }) => {
         // A day's contracts, or unlocks, fold into one row (pure/ledger.js): every one is named.
         case 'contract':
             return html`${many ? t('apps.bank.completed-the-contracts', 'completed the contracts') : t('apps.bank.completed-the-contract', 'completed the contract')} ${namesOf(row, contractName)}`;
+        case 'commodity':
+        case 'commodity_sale': {
+            const d = (row.lines[0] && row.lines[0].detail) || {};
+            const one = { units: d.units, name: commodityName(d.commodity) };
+            if (row.kind === 'commodity')
+                return many
+                    ? t(
+                          'apps.bank.bought-commodities-n-times',
+                          'bought commodities {count} times',
+                          { count: row.count },
+                      )
+                    : t('apps.bank.bought-units-of', 'bought {units} {name}', one);
+            return many
+                ? t('apps.bank.sold-commodities-n-times', 'sold commodities {count} times', {
+                      count: row.count,
+                  })
+                : t('apps.bank.sold-units-of', 'sold {units} {name}', one);
+        }
         case 'unlock':
             return html`${t('apps.bank.unlocked', 'unlocked')} ${namesOf(row, unlockName)}`;
         default:
@@ -295,7 +316,77 @@ const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
     </section>`;
 };
 
-const Market = ({ root, balance, unlocks, everything, onBought }) => {
+/// A commodity's month, drawn small (2026-10-06): the walk's last thirty days as one line, each day
+/// a hover target that says its date and price. One series, so no legend - the row names it.
+const Sparkline = ({ history }) => {
+    if (!history || history.length < 2) return null;
+    const W = 120;
+    const H = 28;
+    const values = history.map((h) => Number(BigInt(h.price)));
+    const lo = Math.min(...values);
+    const hi = Math.max(...values);
+    const x = (i) => (i * W) / (history.length - 1);
+    const y = (v) => (hi === lo ? H / 2 : H - 2 - ((v - lo) * (H - 4)) / (hi - lo));
+    const points = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const step = W / (history.length - 1);
+    return html`<svg class="bank-spark" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label=${t('apps.bank.thirty-days', 'the last thirty days')}>
+        <polyline points=${points} />
+        ${history.map(
+            (
+                h,
+                i,
+            ) => html`<rect key=${h.day} x=${Math.max(0, x(i) - step / 2)} y="0" width=${step} height=${H}>
+                <title>${formatWhen(h.day * 86_400_000, undefined, { time: false })}: ${formatHorseBucks(h.price)}</title>
+            </rect>`,
+        )}
+    </svg>`;
+};
+
+/// One commodity for sale (plans/COMMODITIES.md): today's price, its weather - the network's nudge,
+/// at most 5% - the walk's month, and a buy box. Nothing is bought past the balance.
+const CommodityCard = ({ root, commodity: c, balance, onBought }) => {
+    const [units, setUnits] = useState('1');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const whole = /^[0-9]+$/.test(units.trim()) && BigInt(units.trim()) > 0n;
+    const cost = whole ? BigInt(units.trim()) * BigInt(c.price) : 0n;
+    const affordable = whole && BigInt(balance || '0') >= cost;
+    const buy = async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await api(`/api/identity/${root}/bank/commodities`, {
+                method: 'POST',
+                body: JSON.stringify({ commodity: c.id, units: units.trim() }),
+            });
+            onBought();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<section class="bank-commodity">
+        <h3 class="bank-commodity-name">${commodityName(c.id)}</h3>
+        <span class="bank-commodity-price">${formatHorseBucks(c.price)}</span>
+        <p class="bank-commodity-weather">${weatherWords(c.signal, c.nudge_permille)}</p>
+        <${Sparkline} history=${c.history} />
+        <div class="bank-commodity-buy">
+            <input
+                class="bank-commodity-units jag-field"
+                inputmode="numeric"
+                value=${units}
+                aria-label=${t('apps.bank.units', 'units')}
+                onInput=${(e) => setUnits(e.currentTarget.value)}
+            />
+            <button class="bank-buy" type="button" disabled=${busy || !affordable} onClick=${buy}>${busy ? '…' : t('apps.bank.buy', 'buy')}</button>
+            ${whole && html`<span class="bank-commodity-cost">${formatHorseBucks(cost)}</span>`}
+        </div>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </section>`;
+};
+
+const Market = ({ root, balance, unlocks, everything, goods, onBought }) => {
     const owned = new Set(unlocks.filter((u) => u.bought_ms).map((u) => u.id));
     // The test rig owns everything already, so it sells nothing (bank.rs `everything_unlocked`).
     const forSale = everything ? [] : unlocks.filter((u) => !u.bought_ms);
@@ -322,7 +413,21 @@ const Market = ({ root, balance, unlocks, everything, onBought }) => {
         ${
             financial &&
             html`${features.length > 0 && html`<hr class="bank-rule" />`}
-            <${Bond} root=${root} balance=${balance} onBought=${onBought} />`
+            <${Bond} root=${root} balance=${balance} onBought=${onBought} />
+            ${
+                /* The commodities (2026-10-06), Horse Financial's second instrument, under the
+                bond: a walk the same everywhere, nudged by the network. */ ''
+            }
+            ${
+                goods &&
+                goods.commodities.length > 0 &&
+                html`<hr class="bank-rule" />
+                <p class="bank-contracts-head">${t('apps.bank.commodities-heading', 'Commodities')}</p>
+                <div class="bank-commodities">${goods.commodities.map(
+                    (c) =>
+                        html`<${CommodityCard} key=${c.id} root=${root} commodity=${c} balance=${balance} onBought=${onBought} />`,
+                )}</div>`
+            }`
         }
         ${
             colorways.length > 0 &&
@@ -404,7 +509,48 @@ const Bond = ({ root, balance, onBought }) => {
 /// The portfolio column (Curtis, 2026-09-29: "tuck our purchased HorseBonds in a new column"):
 /// every instrument held, newest first, with how far along each is. In debt, a bond still paying
 /// can be sold for its price (2026-09-30: "If you're in debt you should be allowed to sell bonds").
-const Portfolio = ({ root, instruments, inDebt, onSold }) => {
+/// A commodity lot held (2026-10-06): its units, what it cost, what it would sell for today, and -
+/// two days after it was bought - a sale of some or all of it at today's price.
+const LotRow = ({ root, lot, onSold }) => {
+    const [units, setUnits] = useState(lot.units);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const whole = /^[0-9]+$/.test(units.trim()) && BigInt(units.trim()) > 0n;
+    const sell = async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await api(`/api/identity/${root}/bank/commodities/${lot.id}/sell`, {
+                method: 'POST',
+                body: JSON.stringify({ units: units.trim() }),
+            });
+            onSold();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+    const paid = BigInt(lot.units) * BigInt(lot.price);
+    const gain = lot.worth === null ? null : BigInt(lot.worth) - paid;
+    return html`<li class="bank-holding">
+        <span class="bank-holding-kind">${lot.units} ${commodityName(lot.commodity)}</span>
+        <span class="bank-holding-progress">${t('apps.bank.at-each', 'at {price} each', { price: formatHorseBucks(lot.price) })}</span>
+        ${lot.worth !== null && html`<span class="bank-holding-price">${formatHorseBucks(lot.worth)}</span>`}
+        ${gain !== null && html`<span class="bank-holding-paid">${t('apps.bank.gain-so-far', '{gain} so far', { gain: signed(gain) })}</span>`}
+        ${
+            lot.sellable
+                ? html`<span class="bank-commodity-buy">
+                <input class="bank-commodity-units jag-field" inputmode="numeric" value=${units} aria-label=${t('apps.bank.units', 'units')} onInput=${(e) => setUnits(e.currentTarget.value)} />
+                <button class="bank-sell" type="button" disabled=${busy || !whole} onClick=${sell}>${busy ? '…' : t('apps.bank.sell', 'sell')}</button>
+            </span>`
+                : html`<span class="bank-holding-progress">${t('apps.bank.sells-from', 'sells from {when}', { when: formatWhen(lot.sellable_from_ms) })}</span>`
+        }
+        ${error && html`<p class="form-error">${error}</p>`}
+    </li>`;
+};
+
+const Portfolio = ({ root, instruments, lots, inDebt, onSold }) => {
     const [busy, setBusy] = useState(null);
     const [error, setError] = useState(null);
     const sell = async (id) => {
@@ -424,7 +570,7 @@ const Portfolio = ({ root, instruments, inDebt, onSold }) => {
         if (b.matured) return t('apps.bank.matured', 'matured');
         return t('apps.bank.day-of', 'day {days} of {of}', { days: b.days, of: b.of_days });
     };
-    if (instruments.length === 0)
+    if (instruments.length === 0 && lots.length === 0)
         return html`<p class="null-sub bank-portfolio-empty">${t('apps.bank.nothing-held-yet', 'nothing held yet - the market is to the left.')}</p>`;
     return html`<ul class="bank-holdings">
         ${instruments.map(
@@ -444,6 +590,7 @@ const Portfolio = ({ root, instruments, inDebt, onSold }) => {
                 }
             </li>`,
         )}
+        ${lots.map((l) => html`<${LotRow} key=${l.id} root=${root} lot=${l} onSold=${onSold} />`)}
         ${error && html`<p class="form-error">${error}</p>`}
     </ul>`;
 };
@@ -462,6 +609,18 @@ export const BankApp = ({ current }) => {
         contracts: 200,
     });
     const [asked, setAsked] = useState(0); // bumped after a purchase or a sale: ask the ledger again
+    // The commodities' quotes and the persona's lots (2026-10-06), asked beside the ledger.
+    const [goods, setGoods] = useState(null);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/bank/commodities`)
+            .then((g) => live && setGoods(g))
+            .catch(() => live && setGoods(null));
+        return () => {
+            live = false;
+        };
+    }, [root, asked]);
     useEffect(() => {
         if (!root) return undefined;
         let live = true;
@@ -505,7 +664,7 @@ export const BankApp = ({ current }) => {
                 ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`
                 : html`${tab('market', Icons.bond, t('apps.bank.market', 'market'))}<aside class="bank-market">
                   <${PaneHead} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onTuck=${() => toggleTuck('market')} />
-                  <${Market} root=${root} balance=${bank.balance} unlocks=${bank.unlocks || []} everything=${bank.everything} onBought=${() => {
+                  <${Market} root=${root} balance=${bank.balance} unlocks=${bank.unlocks || []} everything=${bank.everything} goods=${goods} onBought=${() => {
                       setAsked((n) => n + 1);
                       // Bought: on a phone the market closes onto the balance it moved. On success
                       // only - a refusal is said in the market column.
@@ -521,6 +680,7 @@ export const BankApp = ({ current }) => {
                   <${Portfolio}
                       root=${root}
                       instruments=${bank.instruments || []}
+                      lots=${(goods && goods.lots) || []}
                       inDebt=${String(bank.balance).startsWith('-')}
                       onSold=${() => setAsked((n) => n + 1)}
                   />

@@ -1,4 +1,4 @@
-// A chat line's lean (2026-09-28): 2.5% a reaction, glad up and sour down, between half and double.
+// A chat line's lean (2026-09-28): 2.5% a reaction, positive up and negative down, between half and double.
 const assert = require('node:assert');
 
 let leanScale, LEAN_MIN, LEAN_MAX;
@@ -7,7 +7,7 @@ before(async () => {
 });
 
 describe('a chat line leans with its reactions', () => {
-    it('grows 2.5% for each glad reaction and shrinks 2.5% for each sour one', () => {
+    it('grows 2.5% for each positive reaction and shrinks 2.5% for each negative one', () => {
         assert.equal(leanScale(0, 0), 1);
         assert.equal(leanScale(4, 0), 1.1);
         assert.equal(leanScale(0, 4), 0.9);

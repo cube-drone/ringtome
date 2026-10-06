@@ -7,7 +7,7 @@
 //! hold two scores. That is also why the breakdown is served only to its reader - it is a
 //! readout of their dials.
 //!
-//! **What counts.** Reaction tags from the picker's glad row (+1) and sour row (-1), each tag
+//! **What counts.** Reaction tags from the picker's positive row (+1) and negative row (-1), each tag
 //! counting, so a person may double-like or double-dislike (two tags to a person is the cap,
 //! annotations.rs `bounded`). Weighed by the reader's dial on whoever said it: trust ramps
 //! linearly (low 0.25 ... max 1), a follow without trust counts less, the reader themself counts
@@ -22,9 +22,9 @@ use std::collections::HashMap;
 use crate::selectivity::{band_ordinal, Facts};
 use crate::AppState;
 
-/// The picker's glad row (js/emoji.js `POLE_ROWS`, tone 'good'), bare of variation selectors.
+/// The picker's positive row (js/emoji.js `POLE_ROWS`, tone 'good'), bare of variation selectors.
 /// tests/conventions.rs pins these to the client's rows.
-pub const GLAD: [&str; 10] = [
+pub const POSITIVE: [&str; 10] = [
     "\u{2764}",
     "\u{1F44D}",
     "\u{1F923}",
@@ -36,8 +36,8 @@ pub const GLAD: [&str; 10] = [
     "\u{1F60E}",
     "\u{1F446}",
 ];
-/// ...and its sour row (tone 'bad').
-pub const SOUR: [&str; 10] = [
+/// ...and its negative row (tone 'bad').
+pub const NEGATIVE: [&str; 10] = [
     "\u{1F44E}",
     "\u{1F4A9}",
     "\u{1F644}",
@@ -53,13 +53,13 @@ pub const SOUR: [&str; 10] = [
 /// What one followed-but-untrusted person's reaction weighs: counted, but under the lowest trust.
 pub const FOLLOW_WEIGHT: f64 = 0.1;
 
-/// A reaction's lean: +1 glad, -1 sour, 0 for any other tag. Matched without the variation
+/// A reaction's lean: +1 positive, -1 negative, 0 for any other tag. Matched without the variation
 /// selector, so a heart said as a bare U+2764 leans like the palette's.
 pub fn tone(value: &str) -> i32 {
     let bare: String = value.chars().filter(|c| *c != '\u{FE0F}').collect();
-    if GLAD.contains(&bare.as_str()) {
+    if POSITIVE.contains(&bare.as_str()) {
         1
-    } else if SOUR.contains(&bare.as_str()) {
+    } else if NEGATIVE.contains(&bare.as_str()) {
         -1
     } else {
         0

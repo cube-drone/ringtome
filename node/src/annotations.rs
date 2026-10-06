@@ -551,6 +551,26 @@ pub async fn emoji_received(
         .context("listing emoji reactions received")
 }
 
+/// Emoji labels this node noted from `from_ms` up to `to_ms`, by anyone but the post's own author,
+/// unsealed - `(target author, target doc, emoji, noted_ms)` - for hrseCommodities' carrots and
+/// apples (commodities.rs, 2026-10-06), which keep the ones on the public feed's posts. Once a
+/// day, over a month at most: a scan, and a small one.
+pub async fn emoji_noted_between(
+    node_db: &Db,
+    from_ms: i64,
+    to_ms: i64,
+) -> Result<Vec<(String, String, String, i64)>> {
+    node_db
+        .fetch_all(
+            "SELECT target_author, target_doc, value, noted_ms FROM doc_annotations
+             WHERE key = 'tag' AND emoji = 1 AND sealed = 0 AND annotator <> target_author
+               AND noted_ms >= ?1 AND noted_ms < ?2",
+            (from_ms, to_ms),
+        )
+        .await
+        .context("listing emoji labels noted in a window")
+}
+
 pub async fn published_from(
     node_db: &Db,
     author_hex: &str,

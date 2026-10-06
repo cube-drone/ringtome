@@ -1,12 +1,16 @@
 # hrseCommodities™
 
-A design draft (2026-10-06). Nothing built.
+A design draft (2026-10-06), **built the same day** (HISTORY has the details).
+_As built:_ the walk begins a month before day zero, so the first day's chart
+has a past (the drift still counts from day zero); "words" are distinct words
+per post, as the search index keeps them; reactions are dated by when the node
+noted them.
 
 Hay, oats, carrots, apples, horseshoes, bridles and saddles, bought and sold in
 hrseBank's Market. Each price is a random walk that comes out the same on every
 computer, drifting softly upward, and nudged a little by what the network is
-doing: a week of heavy drawing lifts hay, a week of sour reactions lifts apples.
-It is Horse Financial's second instrument, after the hrseBond
+doing: a week of heavy drawing lifts hay, a week of negative reactions lifts
+apples. It is Horse Financial's second instrument, after the hrseBond
 (plans/UNLOCKS.md), and it stands where the tag stock market was parked
 ([`STOCK.md`](STOCK.md)).
 
@@ -33,6 +37,18 @@ to correct, and the open questions at the end are his.
 3. **A soft upward drift,** so that commodities are a little more profitable
    than bonds in the long run - "maybe 1.5%".
 
+And as the build began (2026-10-06):
+
+4. **The drift is 0.4% a day, compounding** - about x4.3 a year, a doubling
+   every 174 days; patient holders out-earn a chain of bonds.
+5. **Prices are bigints** like every HorseBuck, so the drift never overflows
+   (HORSE_BASED_CURRENCIES.md, _Stinkingly broken numbers_, as built).
+6. **The signals come from the node's public feed** - its front page, every
+   public post and share by the personas it hosts (`node_shelf`) - which the
+   node certainly keeps, and keeps indexed by time.
+7. **Proposed defaults stand** until Curtis says otherwise: the starting prices
+   and volatilities below, the ±5% cap, and day zero 2026-10-06.
+
 ## Arbitrage, bounded
 
 A price computed from what one node holds differs by node, so a player with two
@@ -52,10 +68,7 @@ keeps it small; doubling it would double the game.
   climbs every day (ruling 3), and is pulled back toward it a little every day -
   it swings, but never runs off to zero or to infinity, and over months it
   rises.
-- **The drift, proposed:** a holder gains, on average, 1.5% a day of what they
-  paid, over a bond's hundred days - where a hrseBond pays 1%. That is a target
-  compounding about 0.92% a day (1.0092^100 = 2.5). See _Open questions_ for the
-  other readings of "1.5%".
+- **The drift:** the target compounds 0.4% a day (ruling 4).
 - **A starting price and a daily volatility per commodity,** so they feel
   different: hay steady and cheap, horseshoes and saddles dear and wild.
 
@@ -66,28 +79,30 @@ paid.
 
 ## The nudge
 
-Each commodity reads one signal from the node's own public holdings, as this
+Each commodity reads one signal off the node's public feed (ruling 6), as this
 week against the past month:
 
-| Commodity  | Reads                                         |
-| ---------- | --------------------------------------------- |
-| hay        | drawings published                            |
-| oats       | words published                               |
-| carrots    | positive reactions (pure/lean.js's glad ones) |
-| apples     | negative reactions (its sour ones)            |
-| horseshoes | new follows                                   |
-| bridles    | chat messages, every room the node holds      |
-| saddles    | posts published, any kind                     |
+| Commodity  | Reads, over the feed                                                   |
+| ---------- | ---------------------------------------------------------------------- |
+| hay        | its drawings                                                           |
+| oats       | its words: distinct words per post, from the search index's tokens     |
+| carrots    | positive emoji labels on its posts (`score::tone`)                     |
+| apples     | negative emoji labels on its posts                                     |
+| horseshoes | follows of its personas: a daily snapshot of the count, and its growth |
+| bridles    | chat messages in its rooms                                             |
+| saddles    | its posts, of any kind                                                 |
 
 - **The signal is a ratio,** this week's daily rate over the month's, minus one,
   clamped to ±1 and scaled to the cap: a week twice as busy as the month is +5%,
   a dead week -5%.
-- **Too little data is no nudge.** Below a floor (say 10 events in the month)
-  the nudge is zero, and the walk carries the market alone - an empty network is
-  a calm market, not a broken one.
-- **Counted once a day per node,** a memo, cheap: seven counts over data the
-  node already keeps (public posts and their formats, public annotations, chat
-  lines, published edges).
+- **Too little data is no nudge.** Below a floor (10 events in the month) the
+  nudge is zero, and the walk carries the market alone - an empty network is a
+  calm market, not a broken one. A desktop node, hosting one person, mostly
+  trades the plain walk; a busy server has weather.
+- **Counted once a day, kept in a small table** (`commodity_days`: a day, a
+  signal, a count), and only ever read a month at a time. Posts, drawings,
+  words, reactions and chat carry their own dates, so the first day fills the
+  past month in; follows, a snapshot, build up from the day they start.
 - **Shown as the weather:** "apples ↑ 4% - the network is in a mood", so the
   player can see the network moving their prices, and play it.
 
@@ -124,18 +139,9 @@ they cost, what they'd sell for today, and a sell button once the hold is over.
 
 ## Open questions
 
-- **Which "1.5%".** Proposed above: 1.5% a day of the price paid, over a hundred
-  days - a target compounding about 0.92% a day, 2.5x per hundred days against a
-  bond's 2x. Read as 1.5% a day compounding, it's 4.4x per hundred days and 229x
-  a year - far past bonds. Read as 1.5% of the _starting_ price a day, simple,
-  the return shrinks as the price grows, and after a year falls below bonds.
-  Compounding at 0.92% outgrows a 64-bit horsepenny in about ten years - the
-  ledger's bigint day, if the game lasts.
-- **Starting prices and volatility.** Proposed: hay H$ 50 at 3% a day, oats H$
-  80 at 4%, carrots and apples H$ 120 at 6%, bridles H$ 150 at 5%, horseshoes H$
-  400 at 8%, saddles H$ 600 at 7%.
+- **Starting prices and volatility.** Proposed, and built with: hay H$ 50 at 3%
+  a day, oats H$ 80 at 4%, carrots and apples H$ 120 at 6%, bridles H$ 150 at
+  5%, horseshoes H$ 400 at 8%, saddles H$ 600 at 7%.
 - **The cap.** ±5% keeps the arbitrage between a player's own computers to about
   10.5%, two days at risk; a bigger cap makes the network matter more and the
   arbitrage bigger.
-- **Day zero.** One day for every node - the day commodities open - so the walk
-  is the same everywhere.

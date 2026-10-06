@@ -1,7 +1,7 @@
 /*
     Scores and sort orders, slice 1 (PROJECT_PLAN's Scores and sort orders, 2026-09-27): the feed's
-    "best" orders rank the posts inside a window by the reader's own score - glad reactions up,
-    sour ones down, each weighed by the reader's dial on whoever said it: trust ramps to 1, a
+    "best" orders rank the posts inside a window by the reader's own score - positive reactions up,
+    negative ones down, each weighed by the reader's dial on whoever said it: trust ramps to 1, a
     follow counts a tenth, a stranger counts nothing at all. And the post's "history &
     popularity" shows the whole reckoning - to its reader, and to nobody else.
 

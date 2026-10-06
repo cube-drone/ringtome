@@ -139,13 +139,18 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
             // honestly among what is held. The claim is about the full window, so it asks
             // the ledger how many it holds: nineteen of the window plus the pin is a page of
             // exactly twenty with the deep post on it (2026-09-17's CI red), not the window.
+            // Counted FIRST, then the page read again (2026-10-06's CI red): ada's posts keep
+            // landing by sync, so a page read before the count could be a short window's while
+            // the count, read after, had grown past twenty. What's held only grows here, so a
+            // page read after a count past twenty is a full window's.
             const { rows } = await sql(
                 `SELECT COUNT(*) AS n FROM fragments WHERE author_root = '${adaRoot}'`,
                 HOST_C,
             );
             if (Number(rows[0].n) > 20) {
+                const page = await (await cal(`api/id/${adaRoot}/profile`)).json();
                 assert.ok(
-                    !(prof.posts || []).some((p) => p.doc_id === deep),
+                    !(page.posts || []).some((p) => p.doc_id === deep),
                     'which the full window itself never reaches',
                 );
             }

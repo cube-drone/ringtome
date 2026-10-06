@@ -54,11 +54,11 @@ const BUCKET_STYLES = ['default'];
 /// catches - one draw in nine, from anyone who tags.
 const LABELS = ['goopy', 'mighty', 'saucy', 'gentle', 'loud', 'nice', 'odd', 'sharp', 'nsfw'];
 
-/// The reaction picker's glad and sour rows (js/emoji.js `POLE_ROWS`; node/src/score.rs `GLAD`,
-/// `SOUR`) - what the "best" orders score by (2026-09-28). Literals, like BUCKET_STYLES, so this
+/// The reaction picker's positive and negative rows (js/emoji.js `POLE_ROWS`; node/src/score.rs `POSITIVE`,
+/// `NEGATIVE`) - what the "best" orders score by (2026-09-28). Literals, like BUCKET_STYLES, so this
 /// harness stays out of the UI's module graph; a glyph that drifted from the rows would only be a
 /// reaction that scores nothing.
-const GLAD = [
+const POSITIVE = [
     '\u2764\uFE0F',
     '\u{1F44D}',
     '\u{1F923}',
@@ -70,7 +70,7 @@ const GLAD = [
     '\u{1F60E}',
     '\u{1F446}',
 ];
-const SOUR = [
+const NEGATIVE = [
     '\u{1F44E}',
     '\u{1F4A9}',
     '\u{1F644}',
@@ -668,17 +668,17 @@ const ACTIONS = [
         },
     },
     {
-        // A glad reaction (2026-09-28): what gives the "best" orders something to rank, and the
-        // chips their green. Commoner than a sour one - people like more than they dislike.
-        name: 'react-gladly',
+        // A positive reaction (2026-09-28): what gives the "best" orders something to rank, and the
+        // chips their green. Commoner than a negative one - people like more than they dislike.
+        name: 'react-positively',
         weight: 8,
-        run: (ctx, p, rng) => react(ctx, p, rng, GLAD),
+        run: (ctx, p, rng) => react(ctx, p, rng, POSITIVE),
     },
     {
-        // ...and a sour one: the red chips, and posts that sink.
-        name: 'react-sourly',
+        // ...and a negative one: the red chips, and posts that sink.
+        name: 'react-negatively',
         weight: 4,
-        run: (ctx, p, rng) => react(ctx, p, rng, SOUR),
+        run: (ctx, p, rng) => react(ctx, p, rng, NEGATIVE),
     },
     {
         // Standing behind a post is a claim in the present tense, so somebody has to stop

@@ -1361,8 +1361,8 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         });
                     const soleAuthor =
                         g.contributors.length === 1 && g.contributors[0].annotator === item.author;
-                    // A reaction wears its lean (Curtis, 2026-09-27): the glad on green, the
-                    // sour on red - the picker's own rows (emoji.js POLE_ROWS).
+                    // A reaction wears its lean (Curtis, 2026-09-27): the positive on green, the
+                    // negative on red - the picker's own rows (emoji.js POLE_ROWS).
                     const tone = g.key === 'tag' && isEmojiTag(g.value) ? toneOf(g.value) : null;
                     return html`<span
                         class=${[

@@ -1139,7 +1139,7 @@
     background: color-mix(in srgb, var(--surface) 84%, var(--ink) 16%);
     border-style: solid;
 }
-/* A reaction wears its lean (2026-09-27): the picker's glad row on green, its sour row on red -
+/* A reaction wears its lean (2026-09-27): the picker's positive row on green, its negative row on red -
    over whichever fill the chip would otherwise wear, and a shade deeper when it is yours. */
 .label-chip.label-chip-good {
     background: var(--react-good);
@@ -1246,8 +1246,8 @@ article:has(.label-emoji-strip) {
 .label-emoji:hover {
     background: var(--surface-2);
 }
-/* The pole's rows (2026-09-27): ten to a row, each a full line of the strip, the glad on green
-   and the sour on red, so a reaction's lean shows before its face is read. */
+/* The pole's rows (2026-09-27): ten to a row, each a full line of the strip, the positive on green
+   and the negative on red, so a reaction's lean shows before its face is read. */
 .label-emoji-row {
     flex-basis: 100%;
     display: grid;

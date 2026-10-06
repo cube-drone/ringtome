@@ -768,7 +768,7 @@
 .chat-line-body {
     color: var(--ink);
     padding-left: 2.4rem;
-    /* The line's lean (2026-09-28): its reactions, glad and sour, make it bigger or smaller. */
+    /* The line's lean (2026-09-28): its reactions, positive and negative, make it bigger or smaller. */
     font-size: calc(1em * var(--lean, 1));
 }
 
@@ -915,7 +915,7 @@
 }
 
 /* A picture said in a room sits in its line, bounded - a floor is for many lines. The bounds lean
-   with the line (2026-09-28): bigger for its glad reactions, smaller for its sour ones. */
+   with the line (2026-09-28): bigger for its positive reactions, smaller for its negative ones. */
 .chat-line-body img,
 .chat-line-body video {
     max-width: min(100%, calc(28rem * var(--lean, 1)));

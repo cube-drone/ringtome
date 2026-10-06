@@ -508,3 +508,79 @@
     flex-direction: column;
     gap: 0.8rem;
 }
+
+/* The commodities (2026-10-06): a lighter square than the bond's, a name and today's price, the
+   weather, the month as one line, and a buy box. */
+.bank-commodities {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.bank-commodity {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 0.35rem 0.6rem;
+    padding: 0.7rem 0.9rem;
+    background: var(--surface);
+    border: 3px solid var(--ink);
+}
+
+.bank-commodity-name {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--ink);
+}
+
+.bank-commodity-price {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    color: var(--ink);
+}
+
+.bank-commodity-weather {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+/* The month, drawn small: one 2px line in the accent; each day a hover target, invisible. */
+.bank-spark {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 1.8rem;
+}
+
+.bank-spark polyline {
+    fill: none;
+    stroke: var(--teal);
+    stroke-width: 2px;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+}
+
+.bank-spark rect {
+    fill: transparent;
+}
+
+.bank-commodity-buy {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.bank-commodity-units {
+    width: 4.5rem;
+    min-width: 0;
+    font: inherit;
+}
+
+.bank-commodity-cost {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.85rem;
+    color: var(--muted);
+    white-space: nowrap;
+}

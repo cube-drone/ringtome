@@ -53,6 +53,20 @@ pub fn tokens_of(title: &str, body: &str) -> String {
     out.into_iter().collect::<Vec<_>>().join(" ")
 }
 
+/// How many distinct words a post's index entry holds - 0 for a post not indexed (yet): the oats'
+/// signal, hrseCommodities (commodities.rs, 2026-10-06). Distinct, as the index keeps them: a post
+/// that says one word fifty times is one word, as the bank's own shingles would have it.
+pub async fn distinct_words(node_db: &Db, author_root: &str, doc_id: &str) -> Result<i64> {
+    let row: Option<(String,)> = node_db
+        .fetch_optional(
+            "SELECT tokens FROM post_search WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_id),
+        )
+        .await
+        .context("reading a post's indexed words")?;
+    Ok(row.map_or(0, |(t,)| t.split(' ').filter(|w| !w.is_empty()).count() as i64))
+}
+
 /// Every term must prefix some token.
 pub fn hits(tokens: &str, terms: &[String]) -> bool {
     terms.iter().all(|t| tokens.split(' ').any(|tok| tok.starts_with(t.as_str())))

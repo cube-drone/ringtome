@@ -244,6 +244,29 @@ pub async fn credit(
 }
 
 #[derive(serde::Deserialize)]
+pub struct AgeLotRequest {
+    pub root: String,
+    pub lot: String,
+    pub days: i64,
+}
+
+/// Move a commodity lot's purchase back some days (commodities.rs `age_lot_for_test`), so a test
+/// can sell past the two-day hold without waiting for it.
+pub async fn age_lot(
+    State(state): State<AppState>,
+    Json(req): Json<AgeLotRequest>,
+) -> Result<Json<Value>, AppError> {
+    let data = crate::record::store::open_agented(&state, &req.root).await?;
+    let aged = crate::commodities::age_lot_for_test(&data, &req.lot, req.days)
+        .await
+        .map_err(AppError::Internal)?;
+    if !aged {
+        return Err(AppError::NotFound(crate::msg!("test_endpoints.no-such-lot", "no such lot")));
+    }
+    Ok(Json(serde_json::json!({ "aged": req.days })))
+}
+
+#[derive(serde::Deserialize)]
 pub struct HeartbeatRequest {
     pub root: String,
     /// `YYYY-MM-DD`: the day the persona "used the app".

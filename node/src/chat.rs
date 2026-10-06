@@ -2249,6 +2249,28 @@ pub async fn participants(node_db: &Db, author_hex: &str, doc_hex: &str) -> Resu
     Ok(rows.into_iter().map(|(r,)| r).collect())
 }
 
+/// When each line in one room was said, from `from_ms` up to `to_ms`: the room's own lines, never
+/// a notice or a deleted one - hrseCommodities' bridles (commodities.rs, 2026-10-06), counted over
+/// the public feed's rooms. A range on the room's own index.
+pub async fn said_between(
+    node_db: &Db,
+    room_author: &str,
+    room_doc: &str,
+    from_ms: i64,
+    to_ms: i64,
+) -> Result<Vec<i64>> {
+    let rows: Vec<(i64,)> = node_db
+        .fetch_all(
+            "SELECT said_ms FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND said_ms >= ?3 AND said_ms < ?4
+               AND deleted = 0 AND notice_kind IS NULL",
+            (room_author, room_doc, from_ms, to_ms),
+        )
+        .await
+        .context("reading when a room's lines were said")?;
+    Ok(rows.into_iter().map(|(ms,)| ms).collect())
+}
+
 /// What a persona has said and been answered with in rooms, for their HorseBucks (bank.rs,
 /// 2026-09-29): their own lines (never a moderation notice) as `(entry hash hex, said_ms)`.
 pub async fn lines_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>> {

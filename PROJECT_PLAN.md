@@ -4860,11 +4860,11 @@ downvoting.
 labels through the reader's own dials - nothing on the wire changes, nothing
 merges, and two readers of one post hold two scores. Per post:
 
-- **What counts:** reaction tags from the picker's glad row (+1) and sour row
-  (-1) - one lexicon, spelled once in each language and pinned together like
-  `MAX_TAGS_PER_LABELLER`. Words and neutral emoji count 0. Each tag counts: two
-  tags to a person means a person may **double-like or double-dislike**
-  (Curtis) - a person contributes -2..+2.
+- **What counts:** reaction tags from the picker's positive row (+1) and
+  negative row (-1) - one lexicon, spelled once in each language and pinned
+  together like `MAX_TAGS_PER_LABELLER`. Words and neutral emoji count 0. Each
+  tag counts: two tags to a person means a person may **double-like or
+  double-dislike** (Curtis) - a person contributes -2..+2.
 - **Whose counts, and how much** - the tag's weight is the reader's dial on its
   annotator:
   - trusted: linear in the band - low 0.25, medium 0.5, high 0.75, max 1
@@ -4975,12 +4975,13 @@ million-row journal:
   journal and label write bumps, and the reader's own store's mtime (a dial). A
   missed signal is a cloud up to an hour stale, never a count wrong for good.
   The year is said under the cloud. A pick narrows the other rows to what shares
-  a post with it - **unless the pick is larger than 1000 posts** (Curtis: a glad
-  emoji picked could be a bastard of an expensive time): then the lists stay as
-  if nothing were picked, while the posts themselves still narrow. The pick's
-  size is read off the unpicked counts - a tag's count, the smallest among tags
-  picked together, the sum among buckets. Measured (debug build, 131,072 posts,
-  a year of them): the window 159 ms, its labels 427 ms - a cache miss.
+  a post with it - **unless the pick is larger than 1000 posts** (Curtis: a
+  positive emoji picked could be a bastard of an expensive time): then the lists
+  stay as if nothing were picked, while the posts themselves still narrow. The
+  pick's size is read off the unpicked counts - a tag's count, the smallest
+  among tags picked together, the sum among buckets. Measured (debug build,
+  131,072 posts, a year of them): the window 159 ms, its labels 427 ms - a cache
+  miss.
 - **Search is an inverted index** (node rung 0059): a row per (term, post) -
   `post_terms`, kept with each post's word bag - so a query's word is a prefix
   range scan of the index. A post is indexed by its title the moment it is met

@@ -32,6 +32,7 @@ pub mod builtin;
 pub mod census;
 pub mod chat;
 pub mod clock;
+pub mod commodities;
 pub mod config;
 pub mod db;
 pub mod downloads;
@@ -799,6 +800,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             axum::routing::post(bank::sell_handler),
         )
         .route(
+            "/api/identity/{root}/bank/commodities",
+            get(commodities::quotes_handler).post(commodities::buy_handler),
+        )
+        .route(
+            "/api/identity/{root}/bank/commodities/{lot}/sell",
+            axum::routing::post(commodities::sell_handler),
+        )
+        .route(
             "/api/identity/{root}/bank/unlocks",
             get(bank::unlocks_handler).post(bank::unlock_handler),
         )
@@ -846,6 +855,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route("/test/beat", axum::routing::post(test_endpoints::beat))
             .route("/test/heartbeat", axum::routing::post(test_endpoints::heartbeat))
             .route("/test/credit", axum::routing::post(test_endpoints::credit))
+            .route("/test/age-lot", axum::routing::post(test_endpoints::age_lot))
             .route("/test/revalidation", axum::routing::post(test_endpoints::revalidation_mode))
             .route(
                 "/test/resolve-serving/{leaf}",

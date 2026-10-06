@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1527 phrases across 91 files.
+// 1569 phrases across 93 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -33,6 +33,8 @@ export default {
     'apps.bank.kind-magic-words': 'the magic words',
     'apps.bank.kind-contract': 'contracts completed',
     'apps.bank.kind-unlock': 'unlocks bought',
+    'apps.bank.kind-commodity': 'commodities bought',
+    'apps.bank.kind-commodity-sale': 'commodities sold',
     'apps.bank.fine-print': 'fine print',
     'apps.bank.active-contracts': 'Active Contracts',
     'apps.bank.every-contract-done': 'every contract is done - more to come.',
@@ -69,22 +71,32 @@ export default {
     'apps.bank.used-the-magic-words': 'used the magic words',
     'apps.bank.completed-the-contracts': 'completed the contracts',
     'apps.bank.completed-the-contract': 'completed the contract',
+    'apps.bank.bought-commodities-n-times': 'bought commodities {count} times',
+    'apps.bank.bought-units-of': 'bought {units} {name}',
+    'apps.bank.sold-commodities-n-times': 'sold commodities {count} times',
+    'apps.bank.sold-units-of': 'sold {units} {name}',
     'apps.bank.unlocked': 'unlocked',
     'apps.bank.n-lines': '{n} lines',
     'apps.bank.counting': 'counting…',
     'apps.bank.unlock-first': 'first: {unlocks}',
     'apps.bank.unlock': 'unlock',
+    'apps.bank.thirty-days': 'the last thirty days',
+    'apps.bank.units': 'units',
+    'apps.bank.buy': 'buy',
+    'apps.bank.commodities-heading': 'Commodities',
     'apps.bank.colorways-heading': 'Colorways',
     'apps.bank.unlocked-heading': 'Unlocked',
     'apps.bank.hrsebond-terms': 'pays 1% interest every day for 100 days',
     'apps.bank.hrsebond': 'hrseBond',
-    'apps.bank.buy': 'buy',
+    'apps.bank.at-each': 'at {price} each',
+    'apps.bank.gain-so-far': '{gain} so far',
+    'apps.bank.sell': 'sell',
+    'apps.bank.sells-from': 'sells from {when}',
     'apps.bank.sold': 'sold',
     'apps.bank.matured': 'matured',
     'apps.bank.day-of': 'day {days} of {of}',
     'apps.bank.nothing-held-yet': 'nothing held yet - the market is to the left.',
     'apps.bank.paid-so-far': 'paid {amount}',
-    'apps.bank.sell': 'sell',
     'apps.bank.market': 'market',
     'apps.bank.portfolio': 'portfolio',
     'apps.bank.contracts': 'contracts',
@@ -451,6 +463,30 @@ export default {
     'persona.colorway-terminal-cyan': 'terminal-cyan',
     'persona.colorway-terminal-orange': 'terminal-orange',
     'persona.colorway-terminal-gold': 'terminal-gold',
+
+    // --- node/js/commodities.js ---
+    'commodities.hay': 'hay',
+    'commodities.oats': 'oats',
+    'commodities.carrots': 'carrots',
+    'commodities.apples': 'apples',
+    'commodities.bridles': 'bridles',
+    'commodities.horseshoes': 'horseshoes',
+    'commodities.saddles': 'saddles',
+    'commodities.more-drawings': 'more drawing than usual',
+    'commodities.fewer-drawings': 'less drawing than usual',
+    'commodities.more-words': 'more words than usual',
+    'commodities.fewer-words': 'fewer words than usual',
+    'commodities.more-positive': 'more positive reactions than usual',
+    'commodities.fewer-positive': 'fewer positive reactions than usual',
+    'commodities.more-negative': 'more negative reactions than usual',
+    'commodities.fewer-negative': 'fewer negative reactions than usual',
+    'commodities.more-chat': 'more chatter than usual',
+    'commodities.fewer-chat': 'less chatter than usual',
+    'commodities.more-follows': 'more new follows than usual',
+    'commodities.fewer-follows': 'fewer new follows than usual',
+    'commodities.more-posts': 'more posting than usual',
+    'commodities.fewer-posts': 'less posting than usual',
+    'commodities.calm': 'calm',
 
     // --- node/js/computers.js ---
     'computers.this-computers-key': "this computer's key: {p0}",
@@ -1457,6 +1493,15 @@ export default {
     'chat.that-media-is-still-being-prepared': 'that media is still being prepared - say it again in a moment',
     'chat.that-picture-isnt-here-any-more': "that picture isn't here any more",
 
+    // --- node/src/commodities.rs ---
+    'commodities.no-such-commodity': 'no such commodity',
+    'commodities.a-whole-number-of-units': 'buy a whole number of units, one or more',
+    'commodities.you-cant-afford-that': "you can't afford that",
+    'commodities.a-whole-number-of-units-2': 'sell a whole number of units, one or more',
+    'commodities.no-such-lot': 'no such lot',
+    'commodities.held-two-days': 'a lot sells two days after it was bought, at the earliest',
+    'commodities.not-that-many': "that lot doesn't hold that many",
+
     // --- node/src/frontdoor.rs ---
     'frontdoor.name-too-long': 'that name is longer than a header can hold',
     'frontdoor.too-many-taglines': 'at most a hundred taglines, each under 500 characters',
@@ -1703,6 +1748,7 @@ export default {
     // --- node/src/test_endpoints.rs ---
     'test.beat.unknown-pass': 'unknown pass: {other}',
     'test_endpoints.pennies-is-a-whole-number': 'pennies is a whole number',
+    'test_endpoints.no-such-lot': 'no such lot',
     'test_endpoints.not-a-date': 'not a date',
     'test_endpoints.sql-error-e': 'sql error: {e}',
     'test_endpoints.unplug-unknown-alpn': 'no such protocol {name}; this node speaks {known}',

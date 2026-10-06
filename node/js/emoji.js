@@ -9,7 +9,7 @@ import { nameToEmoji } from 'gemoji';
 
 const html = htm.bind(h);
 
-// The pole, in three rows (Curtis, 2026-09-27): the glad answers on green, the sour ones on
+// The pole, in three rows (Curtis, 2026-09-27): the positive answers on green, the negative ones on
 // red, and a row of the merely useful - so which way a reaction leans is seen before it is read.
 export const POLE_ROWS = [
     {

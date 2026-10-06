@@ -980,3 +980,79 @@ describe('HorseBucks: the safety contracts, and sealing, sharing and chats for t
         },
     );
 });
+
+/*
+    hrseCommodities (plans/COMMODITIES.md, 2026-10-06): seven commodities whose prices walk the same
+    on every computer, nudged at most 5% by the node's public feed. A purchase is a lot at today's
+    price, never on credit; it sells two UTC days later at the earliest, in part or whole, at the
+    day's price; the ledger pays exactly what the lot and the sale recorded. The rig moves a lot's
+    purchase back (`/test/age-lot`) - nobody waits two days for a test.
+*/
+describe('HorseBucks: commodities', function () {
+    this.timeout(60000);
+
+    const rig = makeFetch();
+
+    it('quotes seven, buys on the balance, holds two days, and sells in part', async () => {
+        const who = await makeUserFetch({ prefix: 'hayhal' });
+        const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const market = async () => (await who(`api/identity/${root}/bank/commodities`)).json();
+        const bank = async () => (await who(`api/identity/${root}/bank`)).json();
+
+        const first = await market();
+        assert.deepEqual(
+            first.commodities.map((c) => c.id),
+            ['hay', 'oats', 'carrots', 'apples', 'bridles', 'horseshoes', 'saddles'],
+        );
+        for (const c of first.commodities) {
+            assert.ok(BigInt(c.price) >= 100n, `${c.id} costs at least a HorseBuck`);
+            assert.ok(Math.abs(c.nudge_permille) <= 50, `${c.id}'s weather is capped`);
+            assert.ok(c.history.length >= 1 && c.history.length <= 30);
+        }
+        const { rows } = await sql(
+            "SELECT COUNT(*) AS n FROM commodity_days WHERE signal = 'posts'",
+        );
+        assert.ok(Number(rows[0].n) >= 30, 'the weather counted the month in');
+
+        const hay = BigInt(first.commodities[0].price);
+        const buy = (units) =>
+            j(who, `api/identity/${root}/bank/commodities`, { commodity: 'hay', units });
+        assert.equal((await buy('3')).status, 400, 'no overdraft: H$ 10 buys no hay');
+        assert.equal((await buy('0')).status, 400, 'a whole number, one or more');
+        assert.equal(
+            (
+                await j(who, `api/identity/${root}/bank/commodities`, {
+                    commodity: 'glue',
+                    units: '1',
+                })
+            ).status,
+            400,
+            'no such commodity',
+        );
+
+        await j(rig, 'test/credit', { root, pennies: (hay * 10n).toString() });
+        const bought = await buy('3');
+        assert.equal(bought.status, 200, await bought.text());
+        const lotId = (await market()).lots[0].id;
+        const cost = (await bank()).lines.find((l) => l.kind === 'commodity');
+        assert.equal(cost.source, lotId);
+        assert.equal(BigInt(cost.pennies), -3n * hay, "three at the day's price, out");
+
+        const sell = (units) =>
+            j(who, `api/identity/${root}/bank/commodities/${lotId}/sell`, { units });
+        assert.equal((await sell('1')).status, 400, 'held two days');
+        await j(rig, 'test/age-lot', { root, lot: lotId, days: 2 });
+        assert.equal((await sell('4')).status, 400, "a lot doesn't hold more than it bought");
+        const sold = await sell('2');
+        const said = await sold.text();
+        assert.equal(sold.status, 200, said);
+        const takings = (await bank()).lines.find((l) => l.kind === 'commodity_sale');
+        assert.equal(BigInt(takings.pennies), 2n * BigInt(JSON.parse(said).price));
+        const lots = (await market()).lots;
+        assert.deepEqual(
+            lots.map((l) => [l.id, l.units, l.sellable]),
+            [[lotId, '1', true]],
+            'one unit left, and sellable',
+        );
+    });
+});

@@ -1261,6 +1261,32 @@ async fn instruments(data: &Store) -> Result<()> {
             });
         }
     }
+    // Commodities (2026-10-06): each lot's cost out when bought, each sale's takings in when sold,
+    // at the prices the lot and the sale recorded - the same lines on every computer.
+    let (lots, sales) = crate::commodities::holdings(data).await?;
+    for lot in &lots {
+        if is_new("commodity", &lot.id) {
+            lines.push(Line {
+                kind: "commodity",
+                source: lot.id.clone(),
+                pennies: -(&lot.units * &lot.price),
+                at_ms: lot.bought_ms,
+                detail: json!({ "commodity": lot.commodity, "units": lot.units.to_string(), "price": lot.price.to_string() }),
+            });
+        }
+    }
+    for sale in &sales {
+        if is_new("commodity_sale", &sale.id) {
+            let commodity = lots.iter().find(|l| l.id == sale.lot).map(|l| l.commodity.clone());
+            lines.push(Line {
+                kind: "commodity_sale",
+                source: sale.id.clone(),
+                pennies: &sale.units * &sale.price,
+                at_ms: sale.sold_ms,
+                detail: json!({ "commodity": commodity, "units": sale.units.to_string(), "price": sale.price.to_string() }),
+            });
+        }
+    }
     for bond in bonds(data).await? {
         if is_new("bond", &bond.id) {
             lines.push(Line {

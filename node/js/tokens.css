@@ -95,8 +95,8 @@
     --pink: #d97a97;         /* tags: shell pink */
     --peach: #e8a06b;        /* scheduled: the sunset before the post - warm, not alarming */
     --coral: #db6a63;        /* danger / conflict / logout-hover: sunset coral */
-    --react-good: #cde9d6;   /* the emoji picker's glad row: sea-green, washed pale */
-    --react-bad: #f3d0cb;    /* ...and its sour row: coral, washed pale */
+    --react-good: #cde9d6;   /* the emoji picker's positive row: sea-green, washed pale */
+    --react-bad: #f3d0cb;    /* ...and its negative row: coral, washed pale */
 
     --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */
     --dock-text: #fbf6ec;    /* light text that sits on the teal dock */

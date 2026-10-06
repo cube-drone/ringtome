@@ -17238,3 +17238,64 @@ round-tripping exactly, and the rung keeping rows and widening the column (turso
 0.7 handles the rename). `bank.cjs` claims a balance of 10^30 horsepennies reads
 back to the penny, and a debt past the ceiling charges no interest. `just ci`
 green.
+
+**2026-10-06 - de-flaking the public pins peek claim.** CI went red on main
+("arbitrary precision horsebucks") on `pins.cjs`'s "which the full window itself
+never reaches" - unrelated to the change, and green three times running locally
+on the same tree. Its third red (after 2026-09-09 and 2026-09-17). The claim
+read the stranger's page, then counted how many of ada's posts node C held, and
+judged the page by the count; but ada's posts keep landing by sync between the
+two reads, so a short window's page (the deep post honestly on it) met a count
+that had grown past twenty. Now the count is taken first and the page read again
+after it: held posts only grow there, so a page read after a count past twenty
+is a full window's. (The page lists held posts newest by publication,
+`fragments::shelf_of`, so the deep post can't be on a full window's.) Green
+twice locally; the true test is the next loaded CI run.
+
+**2026-10-06 - hrseCommodities.** Horse Financial's second instrument
+(plans/COMMODITIES.md): hay, oats, carrots, apples, bridles, horseshoes and
+saddles in the Market, under the hrseBond. **The price** (`commodities.rs`) is a
+walk the same on every computer - each day's step a blake3 hash of the commodity
+and the day, read as a near-normal shock, the deviation keeping 95% of
+yesterday's - around a target compounding 0.4% a day from the commodity's
+starting price (hay H$ 50 ... saddles H$ 600) from day zero, 2026-10-06; the
+walk begins a month earlier so the first day's chart has a past; never below
+H$ 1. **The weather** nudges it at most ±5%: each commodity reads one signal off
+the node's public feed, as Curtis suggested in place of node-wide tables that
+don't exist - posts, drawings, distinct words per post (the search index's
+tokens), positive and negative emoji labels on its posts (`score::tone`), chat
+lines in its rooms, and follows of its personas (a daily snapshot, whose growth
+is the signal) - this week's daily rate over the month's, less one, clamped;
+under 10 events in the month, no weather. Counted once a day into
+`commodity_days` (node rung 0068), the first count filling the month in; the
+counting reads sit in their owning modules
+(`nodeshelf::feed_between`/`feed_posts`, `search::distinct_words`,
+`annotations::emoji_noted_between`, `chat::said_between`,
+`edgegraph::edges_naming`). **Trading:** a lot and each sale are entries in the
+persona's `horse_instruments` register beside its bonds, bigint units and
+prices; bank.rs folds them into `commodity` and `commodity_sale` lines at the
+recorded prices, so every computer agrees whatever its weather. No overdraft, no
+markup, a whole number of units, and a lot sells from the first moment of the
+second UTC day after it was bought, in part or whole. The Market's cards show
+today's price, the weather in words ("↑ 4% · more drawing than usual", or
+"calm"), the walk's month as a 2px accent line with a hover title per day, and a
+buy box; the portfolio lists lots with their price, worth today, gain, and a
+sell box or when they sell. Unit tests: the walk is deterministic, reverts to
+its rising target, its shocks are roughly standard, the weather is a capped
+ratio and quiet on little data, the floor, the hold. `bank.cjs` claims seven
+quotes, the month counted in, no overdraft, the hold, partial sales and the
+ledger's exact lines (the rig's `/test/age-lot` moves a purchase back);
+`harness/commodities-probe.mjs` claims the cards, their charts, a buy from a
+card and the lot waiting in the portfolio. Looked at in headless Chrome, beige
+and terminal-gold. `just ci` green.
+
+**2026-10-06 - "positive" and "negative", not "glad" and "sour".** The reaction
+picker's two rows had been called glad and sour since 2026-09-27 - Claude's
+words, which never sat right with Curtis. Renamed wherever they were the coined
+term: score.rs's lexicon (`POSITIVE`, `NEGATIVE`) and its conventions pin, the
+chat line's lean (pure/lean.js, apps/chat.js), the commodities' signals and
+weather words (`positive`/`negative`, `commodities.more-positive` and kin), the
+test-data actions (`react-positively`, `react-negatively`), comments and CSS
+notes, PROJECT_PLAN, README and the commodities plan. Left alone where the word
+is just a word: the speakable word list, the sourdough search tests, a bread tag
+in test data, and HISTORY's past entries.
