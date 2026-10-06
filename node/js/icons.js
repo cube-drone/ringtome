@@ -123,6 +123,8 @@ import {
     ArrowCounterClockwise,
     EyeSlash,
     BookOpen,
+    Robot,
+    TerminalWindow,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -145,6 +147,10 @@ export const Icons = {
     plus: Plus,
     close: X,
     tag: Tag,
+    // What a post was made with (made_with.rs, plans/MCP.md _Provenance_, 2026-10-06): the author's
+    // own `ai-agent` and `api-key` tags wear these on the feed's label chips.
+    aiAgent: Robot,
+    apiKey: TerminalWindow,
     trash: Trash,
     lock: Lock,
     key: Key,

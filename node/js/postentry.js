@@ -420,6 +420,19 @@ const ShareButton = ({ item, current }) => {
 const PIN_KEY = 'pin';
 const PIN_VALUE = 'yes';
 
+// The reserved tags that say what a post was made with (made_with.rs, plans/MCP.md _Provenance_),
+// by their protocol values - which never change - with the icon and the words each wears.
+const MADE_WITH = {
+    'ai-agent': {
+        icon: Icons.aiAgent,
+        title: () => t('postentry.made-with-ai-agent', 'made by an AI agent'),
+    },
+    'api-key': {
+        icon: Icons.apiKey,
+        title: () => t('postentry.made-with-api-key', 'made with an API key'),
+    },
+};
+
 export const MiniPost = ({ author, doc_id, title, published_ms }) => {
     const person = usePerson(author);
     const [words, setWords] = useState('');
@@ -1361,6 +1374,12 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                         });
                     const soleAuthor =
                         g.contributors.length === 1 && g.contributors[0].annotator === item.author;
+                    // What the post was made with (made_with.rs): only the AUTHOR's own tag says
+                    // so - anybody else's "ai-agent" is a word, not a provenance.
+                    const madeWith =
+                        g.key === 'tag' && g.contributors.some((c) => c.annotator === item.author)
+                            ? MADE_WITH[g.value]
+                            : null;
                     // A reaction wears its lean (Curtis, 2026-09-27): the positive on green, the
                     // negative on red - the picker's own rows (emoji.js POLE_ROWS).
                     const tone = g.key === 'tag' && isEmojiTag(g.value) ? toneOf(g.value) : null;
@@ -1372,6 +1391,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                                 : 'label-chip-theirs',
                             canAgree ? 'label-chip-agree' : '',
                             mine ? 'label-chip-mine' : '',
+                            madeWith ? 'label-chip-made' : '',
                             tone === 'good'
                                 ? 'label-chip-good'
                                 : tone === 'bad'
@@ -1386,14 +1406,17 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
                                 ? t('postentry.click-to-agree', '{names} - click to agree', {
                                       names: names.join(', '),
                                   })
-                                : soleAuthor
-                                  ? t('postentry.the-authors-label', "the author's label")
-                                  : t('postentry.label-by-name', 'label by {name}', {
-                                        name: names.join(', '),
-                                    })
+                                : madeWith && soleAuthor
+                                  ? madeWith.title()
+                                  : soleAuthor
+                                    ? t('postentry.the-authors-label', "the author's label")
+                                    : t('postentry.label-by-name', 'label by {name}', {
+                                          name: names.join(', '),
+                                      })
                         }
                         onClick=${canAgree ? () => addTag(g.value) : undefined}
                     >
+                        ${madeWith ? html`<${madeWith.icon} />` : ''}
                         ${g.key === 'bucket' ? html`<span class="label-kind">${t('postentry.in', 'in')}</span>` : ''}
                         ${g.key === 'description' ? html`<span class="label-kind">${t('postentry.about', 'about')}</span>` : ''}
                         ${

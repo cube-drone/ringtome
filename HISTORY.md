@@ -17447,3 +17447,16 @@ not another's. Planting a dispatcher that doesn't mark and removal doors that
 don't refuse turned three red. Residual (NEXT_STEPS): the tags show raw in the
 app, and the tag editor that vouches one away is behind Reactions, tags &
 filters.
+
+**2026-10-06 - the made-with tags wear icons.** Curtis: "When we display an
+ai-agent tag in the feed, can we display it with the "robot" phosphor icon? Same
+with api-key and "terminal-window"?" `Icons.aiAgent` (Robot) and `Icons.apiKey`
+(TerminalWindow) join icons.js, and the feed's label chip (postentry.js
+`MADE_WITH`) puts the icon before the tag - only when the post's AUTHOR said it,
+since anybody else's "ai-agent" is a word, not a provenance - with "made by an
+AI agent" / "made with an API key" on hover. `.label-chip-made` centres the
+glyph and sizes it as the flag chips size theirs. Seen in headless Chrome on a
+scratch node holding one post of each kind and one by hand: the robot, the
+terminal, and nothing on the hand-made one. `just strings-check` and
+`just ui-check` green. The filter row above the feed still shows the two tags
+bare (NEXT_STEPS).

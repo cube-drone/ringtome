@@ -1126,6 +1126,14 @@
 .label-chip-flag svg {
     font-size: 1.15em;
 }
+/* What the post was made with (made_with.rs): the robot or the terminal before the tag, centred
+ * and sized as the flags' icons are. */
+.label-chip-made {
+    align-items: center;
+}
+.label-chip-made svg {
+    font-size: 1.15em;
+}
 /* A chip you have not said yet is the agree button (2026-08-31): the hand says so. */
 .label-chip-agree {
     cursor: pointer;

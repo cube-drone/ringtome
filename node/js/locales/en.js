@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1573 phrases across 96 files.
+// 1575 phrases across 96 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1212,6 +1212,8 @@ export default {
     'postentry.count-more-not-listed': 'and {count} more, not listed here',
     'postentry.stop-sharing-this-with-your': 'stop sharing this with your network',
     'postentry.pass-this-along-to-your': 'pass this along to your network',
+    'postentry.made-with-ai-agent': 'made by an AI agent',
+    'postentry.made-with-api-key': 'made with an API key',
     'postentry.link': 'link',
     'postentry.untitled-page': 'untitled page',
     'postentry.a-book-this-node-cannot-read': 'a book this computer cannot read yet',
