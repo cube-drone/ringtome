@@ -59,9 +59,13 @@ are driving towards.
 
 ### AI agents (MCP)
 
-- Slices 2-6 of [plans/MCP.md](plans/MCP.md): writing with provenance, drawing,
-  chat and the bank, OAuth, and the "Use with an AI assistant" door in settings.
-  Slices 0-1 (`/mcp`, the reading tools, the guide) are built.
+- Slices 3-6 of [plans/MCP.md](plans/MCP.md): drawing, chat and the bank, OAuth,
+  and the "Use with an AI assistant" door in settings. Slices 0-2 (`/mcp`,
+  reading, writing, provenance) are built.
+- The provenance tags (`ai-agent`, `api-key`) show raw in the app, and vouching
+  one away needs the tag editor, which is behind Reactions, tags & filters: give
+  them words of their own, and a remove control everyone has (plans/MCP.md,
+  _Provenance_).
 
 ### Chat
 

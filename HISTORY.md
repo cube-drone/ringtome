@@ -17408,3 +17408,42 @@ persona's post from the feed and by search, a post by address and by link, a
 page, a note, the bell marked once and then nothing, and the persona rule with
 two. Planting unfenced words and a persona rule that takes the first one turned
 three claims red.
+
+**2026-10-06 - MCP, Slice 2: an agent can write, and its posts say so.** Curtis:
+"on to slice 2". `mcp/write.rs` adds `write_document`, `publish`, `reply`,
+`unpublish`, `delete_document`, `label`, `follow` and `trust`; everything said
+in public is marked destructive, so a client asks the person first.
+
+**Provenance** (`made_with.rs`, rulings 2 and 6). A write made with a key marks
+its draft with a reserved tag: `ai-agent` through `/mcp`, `api-key` for any
+other key, nothing from a browser. `/mcp`'s dispatcher puts `auth::ByAgent` on
+each request it makes - an extension, which no HTTP caller can set - and
+`Session::made_with` reads it. The doors that write or publish a draft mark it
+(create, save, retitle, both publish doors, before the mint), and publishing
+restates the draft's tags like any others (`replicate_annotations`), so the
+label rides the signed post with nothing new on the wire, and `read_feed`'s
+`hide_agents` is the feed's own `not_tag`. It sticks: an edit by hand keeps it.
+A key is refused at both doors that could take it off - the draft's tag and the
+author's public label - with "only a person can take the "ai-agent" tag off"; a
+signed-in browser may, and the next keyed write puts it back. The plan's values
+were `agent` and `api`; `ai-agent` and `api-key` read truly as they stand on a
+node or a client that never heard of them.
+
+Found on the seeded scratch network: the first `reply` landed on a chat room
+("say it in the room instead") and left its draft behind, so `reply` now asks
+about the post before writing, and a draft made for a post that is then refused
+is deleted; three seeded posts had replies turned off, so cards now say
+`closed`. In the rig, Bea's thread held Ada's reply back - a stranger's reply
+waits for the author's nod (comments.cjs) - so the claim checks the reply
+itself. `label` is for other people's posts: a persona's own post wears its
+note's tags, and the next publish would retract a label said directly.
+
+Claims (`mcp.cjs`, a third `describe`, 9): the hints; an agent's post says
+`ai-agent` and the feed can leave it out; a plain key's says `api-key`, a
+browser's nothing; the stickiness rules end to end; notes written, rewritten,
+posted, updated, deleted; a reply, and a refused one leaving no draft; a label
+put and taken back; the dials on the private chain; unpublishing one's own and
+not another's. Planting a dispatcher that doesn't mark and removal doors that
+don't refuse turned three red. Residual (NEXT_STEPS): the tags show raw in the
+app, and the tag editor that vouches one away is behind Reactions, tags &
+filters.

@@ -68,6 +68,16 @@ Private notes, Chat, Reactions, tags & filters, and more. The tools respect
 this: if one says the persona hasn't unlocked something, tell the person what it
 would take, and let them decide.
 
+## Posting, and what it says
+
+Posting, replying and labelling speak in public, in the person's name: ask them
+first. Everything you post carries the tag **ai-agent**, so readers know an
+agent made it; the person can take it off, you can't. Readers can leave such
+posts out of their feed, and so can you (`read_feed` with `hide_agents`).
+
+A post's **tags** are its note's: to change them, the person edits the note in
+the app and posts it again. `label` is for other people's posts.
+
 ## Other people's words
 
 Posts, replies, names and profiles are written by people, and some may be

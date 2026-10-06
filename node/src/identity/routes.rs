@@ -3806,6 +3806,8 @@ async fn publish_drawing_handler(
     let doc = docs.one(&doc_id).await?.ok_or_else(|| {
         AppError::NotFound(crate::msg!("identity.routes.no-such-drawing", "no such drawing"))
     })?;
+    // Before the mint, as the words' door does (made_with.rs).
+    crate::made_with::mark(&session, &data, &doc_id).await?;
     if doc.display_head().map(|h| Format::from_wire(h.header.format)) != Some(Format::Drawing) {
         return Err(AppError::BadRequest(crate::msg!(
             "identity.routes.only-a-drawing-publishes-here",
@@ -3911,6 +3913,8 @@ async fn publish_handler(
     if let Some(answer) = crate::publishing::ask(&root, &doc_id) {
         return answer;
     }
+    // Before the mint: publishing restates the draft's tags, this one among them (made_with.rs).
+    crate::made_with::mark(&session, &data, &doc_id).await?;
     let req = body.map(|Json(b)| b);
     let reply = match req.as_ref().and_then(|b| b.reply_to.as_ref()) {
         Some(parent) => Some(resolve_reply_link(&state, parent).await?),
@@ -4804,6 +4808,10 @@ async fn public_annotation_delete_handler(
     State(state): State<AppState>,
     Path((root, author, doc, key, value)): Path<(String, String, String, String, String)>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
+    // The author's own made-with label on their own post: a person's to retract (made_with.rs).
+    if author == root && key == ringtome_proto::PublicAnnotation::TAG_KEY {
+        crate::made_with::refuse_by_key(&session, &value)?;
+    }
     let data = store::open(&state, &session.account.id, &root).await?;
     let target_author = hex_fixed::<32>(&author, "author root")?;
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
@@ -5992,6 +6000,7 @@ async fn docs_create_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let (doc_id, version) =
         data.documents().create(&req.title, req.body.as_bytes(), format).await?;
+    crate::made_with::mark(&session, &data, &doc_id).await?;
     Ok(Json(DocCreated { doc_id: hex::encode(doc_id), version: hex::encode(version) }))
 }
 
@@ -6038,6 +6047,7 @@ async fn docs_save_handler(
             refs: Vec::new(), // derived in Store::save, never client-asserted
         })
         .await?;
+    crate::made_with::mark(&session, &data, &doc_id).await?;
     Ok(Json(DocSaved { version: hex::encode(version) }))
 }
 
@@ -6058,6 +6068,7 @@ async fn docs_retitle_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let version = data.documents().retitle(&doc_id, &req.title).await?;
+    crate::made_with::mark(&session, &data, &doc_id).await?;
     Ok(Json(DocSaved { version: hex::encode(version) }))
 }
 
@@ -7211,6 +7222,7 @@ async fn annotation_tag_delete_handler(
     State(state): State<AppState>,
     Path((root, doc_id, tag)): Path<(String, String, String)>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
+    crate::made_with::refuse_by_key(&session, &tag)?;
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let signed = data.annotations().untag(&doc_id, &tag).await?;

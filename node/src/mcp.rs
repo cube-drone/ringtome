@@ -16,7 +16,8 @@
 //!   every rule the first one checks - who may write to a persona, what a key may not do, the body
 //!   caps - and the two would drift. Through the router, a rule added to a door covers the agent
 //!   the day it lands. The router `/mcp` dispatches to is the one built WITHOUT `/mcp` ([`mount`]),
-//!   so a tool can't call the protocol back into itself.
+//!   so a tool can't call the protocol back into itself. Each request carries the `ByAgent` mark,
+//!   which is how a post an agent makes comes to say so (made_with.rs).
 //! - **Stateless.** No sessions are kept (`NeverSessionManager`) and answers are plain JSON, not
 //!   event streams: every request carries its key and stands alone, which is what the protocol's
 //!   2026-07-28 revision made the only way, and what lets any of a persona's nodes answer.
@@ -38,6 +39,7 @@
 //! metadata and added required headers, and the SDK answers both lifecycles.
 
 mod read;
+mod write;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -138,7 +140,7 @@ async fn by_key(
 }
 
 /// The tools, one per thing a person asks an agent to do (plans/MCP.md, _The tools_): the
-/// account's here, the reading ones in read.rs.
+/// account's here, the reading ones in read.rs, the writing ones in write.rs.
 #[derive(Clone)]
 pub struct Tools {
     /// The node's router, without `/mcp` (module doc).
@@ -313,6 +315,8 @@ impl Tools {
         if let Some(address) = parts.extensions.get::<ConnectInfo<SocketAddr>>() {
             request.extensions_mut().insert(*address);
         }
+        // What the write is made with: an agent (made_with.rs), which only this can say.
+        request.extensions_mut().insert(crate::auth::ByAgent);
         let response = self
             .api
             .clone()
@@ -495,9 +499,9 @@ impl Tools {
 }
 
 impl Tools {
-    /// Every tool there is: the account's, and read.rs's.
+    /// Every tool there is: the account's, read.rs's and write.rs's.
     fn every_tool() -> rmcp::handler::server::router::tool::ToolRouter<Self> {
-        Self::account_tools() + Self::read_tools()
+        Self::account_tools() + Self::read_tools() + Self::write_tools()
     }
 }
 

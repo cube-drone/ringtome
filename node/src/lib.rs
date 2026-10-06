@@ -55,6 +55,7 @@ pub mod inspect;
 pub mod keyprefetch;
 pub mod keystore;
 pub mod loops;
+pub mod made_with;
 pub mod mcp;
 pub mod media;
 pub mod message;

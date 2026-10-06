@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1572 phrases across 95 files.
+// 1573 phrases across 96 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1659,6 +1659,9 @@ export default {
 
     // --- node/src/lib.rs ---
     'lib.the-nodes-unfurl-budget-is': 'link previews are paused for now',
+
+    // --- node/src/made_with.rs ---
+    'made-with.only-a-person-removes-it': 'only a person can take the "{tag}" tag off, from a signed-in browser',
 
     // --- node/src/mcp.rs ---
     'mcp.needs-an-api-key': 'connect with an API key: Authorization: Bearer rtk_...',

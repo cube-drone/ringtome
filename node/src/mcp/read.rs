@@ -58,6 +58,9 @@ pub struct FeedArgs {
     kind: Option<String>,
     /// Leave out the persona's own posts.
     hide_mine: Option<bool>,
+    /// Leave out posts made with an AI agent or an API key - they carry the tag "ai-agent" or
+    /// "api-key".
+    hide_agents: Option<bool>,
     /// How many posts, newest first: 20 if left out, at most 50.
     limit: Option<usize>,
     /// To read further back: the `next` the previous page answered.
@@ -104,7 +107,7 @@ pub struct DocumentArgs {
 
 /// What kind of thing a document is, by its format (record/documents.rs `Format::parse`), and the
 /// unlock that opens its app (UNLOCKS.md, _Apps_) - None for one anyone may read.
-fn kind_of(format: &str) -> (&'static str, Option<&'static str>) {
+pub(super) fn kind_of(format: &str) -> (&'static str, Option<&'static str>) {
     match format {
         "plaintext" | "marquee" => ("note", Some("private-notes")),
         "drawing" => ("drawing", None),
@@ -130,7 +133,7 @@ fn clip(text: &str, max: usize) -> String {
 
 /// A post's address from what an agent was handed: `author/doc`, or any link holding a 64-hex
 /// root and, after it, a 32-hex document id - which every post link this node makes does.
-fn post_address(given: &str) -> Option<(String, String)> {
+pub(super) fn post_address(given: &str) -> Option<(String, String)> {
     let hex_run = |len: usize, from: usize| {
         let bytes = given.as_bytes();
         let mut start = from;
@@ -189,6 +192,11 @@ fn card(post: &Value, author: &str, author_name: Option<&str>, words: Option<Str
     if post.get("mine").and_then(Value::as_bool) == Some(true) {
         card["mine"] = json!(true);
     }
+    // The author's no-shares-no-replies wish (PROJECT_PLAN's Post visibility): said on the card,
+    // so an agent asked to reply learns it before the door refuses.
+    if post.get("settled").and_then(Value::as_bool) == Some(true) {
+        card["closed"] = json!("the author asked for no replies and no shares");
+    }
     if let Some(text) = words {
         card["words"] = json!({ "author": author_name, "text": text });
     }
@@ -242,6 +250,13 @@ impl Tools {
         }
         if args.hide_mine == Some(true) {
             query.push("me=0".into());
+        }
+        // The feed's own exclusion over the author's tags (search.rs `Narrow`): never gated,
+        // like the protection from other people it is (UNLOCKS.md, _Never gated_).
+        if args.hide_agents == Some(true) {
+            for tag in [crate::made_with::AI_AGENT, crate::made_with::API_KEY] {
+                query.push(format!("not_tag={tag}"));
+            }
         }
         if let Some((ms, doc)) = args.next.as_deref().and_then(|next| next.split_once(':')) {
             query.push(format!("before_ms={}&before_doc={}", escape(ms), escape(doc)));
@@ -339,9 +354,11 @@ impl Tools {
         profile_fields(&profile).get("name").and_then(Value::as_str).map(str::to_string)
     }
 
-    async fn profile(&self, parts: &Parts, args: ProfileArgs) -> Answer {
-        let who = args.who.trim();
-        // An @slug names someone on this node; a root or a speakable address is the door's own.
+    /// Someone's root from what an agent was given: a root, a speakable address, or an @slug on
+    /// this node. The `/api/id` doors read the first two alike (idface.rs `id_profile`); the
+    /// cards and the dials need the root itself, from the same parser.
+    pub(super) async fn root_of(&self, parts: &Parts, who: &str) -> Result<String, CallToolResult> {
+        let who = who.trim();
         let seg = match who.strip_prefix('@') {
             Some(slug) => {
                 let found = self
@@ -351,15 +368,17 @@ impl Tools {
             }
             None => who.to_string(),
         };
-        // The door reads a root or a speakable address alike (idface.rs `id_profile`); the cards
-        // need the root itself, from the same parser.
-        let Some(crate::speakable::Parsed::Ok(root)) = crate::speakable::parse(&seg) else {
-            return Err(stop(format!(
+        match crate::speakable::parse(&seg) {
+            Some(crate::speakable::Parsed::Ok(root)) => Ok(hex::encode(root)),
+            _ => Err(stop(format!(
                 "\"{who}\" isn't someone this node can find: give their root, their speakable \
                  address, or an @slug"
-            )));
-        };
-        let root = hex::encode(root);
+            ))),
+        }
+    }
+
+    async fn profile(&self, parts: &Parts, args: ProfileArgs) -> Answer {
+        let root = self.root_of(parts, &args.who).await?;
         let profile =
             self.call(parts, Method::GET, &format!("/api/id/{root}/profile"), None).await?;
         let fields = profile_fields(&profile);

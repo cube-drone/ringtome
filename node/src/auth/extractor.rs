@@ -34,6 +34,27 @@ pub struct Session {
     pub account: Account,
     /// The API key that signed this request in, by id - None for a browser's session (keys.rs).
     pub key: Option<String>,
+    /// The request came from an AI agent's tool, through `/mcp` ([`ByAgent`]) - with a key, then,
+    /// always. What a post it makes says it was made with (made_with.rs).
+    pub by_agent: bool,
+}
+
+/// The mark `/mcp` puts on each request a tool makes of the node's own router (mcp.rs
+/// `Tools::send`). A request extension, which nothing outside the process can set: an HTTP
+/// caller can't claim to be an agent, nor a tool's request to be anything else.
+#[derive(Debug, Clone, Copy)]
+pub struct ByAgent;
+
+impl Session {
+    /// The reserved tag a post this request writes is to carry (plans/MCP.md, _Provenance_):
+    /// "ai-agent" through `/mcp`, "api-key" for any other key, nothing from a browser.
+    pub fn made_with(&self) -> Option<&'static str> {
+        match (&self.key, self.by_agent) {
+            (None, _) => None,
+            (Some(_), true) => Some(crate::made_with::AI_AGENT),
+            (Some(_), false) => Some(crate::made_with::API_KEY),
+        }
+    }
 }
 
 /// The API key a request carries, if it carries one: `Authorization: Bearer rtk_...`.
@@ -85,7 +106,11 @@ impl FromRequestParts<AppState> for Session {
         // human at the keyboard.
         if let Some(key) = bearer_key(&parts.headers) {
             return match super::keys::account_for_key(&state.node_db, &key).await? {
-                Some((account, key_id)) => Ok(Session { account, key: Some(key_id) }),
+                Some((account, key_id)) => Ok(Session {
+                    account,
+                    key: Some(key_id),
+                    by_agent: parts.extensions.get::<ByAgent>().is_some(),
+                }),
                 None => Err(AppError::Unauthorized(crate::msg!(
                     "auth.extractor.key-not-valid",
                     "that API key isn't valid here"
@@ -135,7 +160,7 @@ impl FromRequestParts<AppState> for Session {
         // follow-refresh sweep spends its budget on present humans first.
         state.activity.stamp(&account.id.to_string());
 
-        Ok(Session { account, key: None })
+        Ok(Session { account, key: None, by_agent: false })
     }
 }
 

@@ -1,7 +1,7 @@
 # MCP - Horse Drawing Tycoon 2 for AI agents
 
-A design draft (2026-10-06). Slices 0 and 1 built (2026-10-06): `/mcp` answers,
-with the reading tools and the guide.
+A design draft (2026-10-06). Slices 0-2 built (2026-10-06): `/mcp` answers, with
+the reading and writing tools, the guide, and provenance.
 
 Anyone with an API key can already drive their account from an AI agent: Curtis
 has done it, from inside this repository. This plan is about making that work
@@ -229,6 +229,30 @@ _As built (Slice 1, `mcp/read.rs`):_
   public too.
 - `follow`, `trust`: setting a dial on someone.
 
+_As built (Slice 2, `mcp/write.rs`):_
+
+- **`publish` takes a note or words.** Words make a draft filed in the feed
+  bucket, as the composer files its own, and post it. A draft made for a post or
+  a reply that is then refused is deleted, so an agent's failed attempt doesn't
+  linger as a note nobody wrote. Posting a note that was posted before updates
+  its post, which needs Public post editing. Drawings and files are posted from
+  the app until Slice 3.
+- **`reply` asks about the post first.** A chat room is refused before anything
+  is written. Cards say `closed` when the author asked for no replies or shares,
+  so an agent learns that before the door refuses. Whether the thread shows the
+  reply is the parent's author's choice: a stranger's reply waits for their nod
+  (comments.cjs).
+- **`react` and `tag` are one tool, `label`**: a reaction is an emoji label. It
+  labels somebody else's posts only. A persona's own post wears its note's tags,
+  which publishing restates, so a label said directly would be retracted by the
+  next post.
+- **`write_document` edits from every head**, so a note two computers had split
+  is joined again by the agent's words rather than left in two. The old versions
+  are kept, which is why it isn't marked destructive.
+- **`follow` and `trust`** write the `interest` and `trust` registers on
+  `contact:<root>`, as the person card does. They need Friends, whose app is
+  where people are followed.
+
 **Drawing**, the one this game is named for:
 
 - `draw`: create a drawing, or add strokes to one. The argument is **absolute
@@ -303,7 +327,8 @@ A post made with a key says so, as a tag the reader can see and filter by:
   key** for one made with a key over plain HTTP (a crossposter, a script). A
   write from a signed-in browser carries neither. The node knows which is which:
   `Session.key` says a key was used, and the MCP dispatch marks its own
-  requests.
+  requests. _As built:_ the mark is a request extension, `auth::ByAgent`, which
+  nothing outside the process can set, read into `Session::made_with`.
 - **It's a tag, so filtering comes almost free.** The feed already counts tags
   as facets and narrows by them, so "hide AI agent posts" uses the filter that
   already exists rather than a new one. The likeliest home is the author's own
@@ -311,7 +336,13 @@ A post made with a key says so, as a tag the reader can see and filter by:
   rides the signed entry and every node that syncs the post sees it. Slice 2
   checks this against `search.rs` before committing to it. Ringtome's own tag
   values (`agent`, `api`) never change; the app shows them in Horse Drawing
-  Tycoon 2's words.
+  Tycoon 2's words. _As built (`made_with.rs`):_ the values are `ai-agent` and
+  `api-key`, which read truly as they stand in a client or on a node that has
+  never heard of them; the app shows them raw for now. The mark is an ordinary
+  private tag on the draft, put there by every door that writes or publishes it
+  (create, save, retitle, and both publish doors), so publishing restates it
+  like any other tag (`replicate_annotations`): nothing new on the wire.
+  `read_feed`'s `hide_agents` is the feed's own `not_tag`.
 - **It sticks** (ruling 6). Publishing a new version carries forward every label
   an earlier version had, so a person who edits an agent's post doesn't wash the
   label off. A post with both kinds of history carries both labels.
@@ -358,7 +389,10 @@ A post made with a key says so, as a tag the reader can see and filter by:
    with a key over HTTP carry **API key**, and the feed's facets can filter
    either one out (a claim covers each). The label survives a later edit by
    hand; a signed-in browser can remove it and a key can't; the next keyed
-   version puts it back.
+   version puts it back. _Built 2026-10-06_ (_As built_ under _Writing_ and
+   _Provenance_). One residual: the app's tag editor sits behind Reactions, tags
+   & filters, so a person without that unlock has no way to vouch a label away
+   yet.
 3. **Drawing.** `draw` with absolute points, `view_drawing` returning an image,
    `publish_drawing`. The point conversion is pure and gets its own unit test
    against the shared drawing vectors.

@@ -638,6 +638,7 @@ async fn picture_bytes(state: &AppState, root: &str, picture: &str) -> Option<ax
         .find(|(r, _)| r == root)?;
     let session = Some(crate::auth::Session {
         key: None,
+        by_agent: false,
         account: crate::auth::Account { id: account, username: String::new() },
     });
     let response =

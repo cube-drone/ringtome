@@ -94,8 +94,9 @@ lightly federated, unapologetically Old Internet.
   points and `view_drawing` returning the picture; unlocks bind the agent; posts
   made with a key tagged "AI agent" or "API key" so readers can filter them;
   other people's words fenced and attributed; OAuth last, its token an ordinary
-  `rtk_` key. A design draft with rulings (2026-10-06); Slices 0-1 built: `/mcp`
-  answers, with the reading tools and the guide.
+  `rtk_` key. A design draft with rulings (2026-10-06); Slices 0-2 built: `/mcp`
+  answers, with the reading and writing tools, the guide, and the provenance
+  tags.
 - [`RSS.md`](plans/RSS.md) — hrseRSS, a feed reader: subscriptions on the
   private chain, items fetched once per node into a shared cache and translated
   to Marquee (never rendered as HTML), images through the node, a merged

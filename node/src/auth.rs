@@ -12,7 +12,9 @@ mod extractor;
 pub mod keys;
 mod routes;
 
-pub use extractor::{renew_cookie, window_offered, NodeAdminSession, Session, WINDOW_HEADER};
+pub use extractor::{
+    renew_cookie, window_offered, ByAgent, NodeAdminSession, Session, WINDOW_HEADER,
+};
 pub use routes::router;
 
 use anyhow::{anyhow, Context, Result};

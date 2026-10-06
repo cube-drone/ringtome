@@ -316,3 +316,254 @@ describe('MCP: reading, as a persona', function () {
         );
     });
 });
+
+describe('MCP: writing, and what it was made with', function () {
+    this.timeout(120000);
+
+    // Ada writes through her agent, and by hand; Bea is somebody else, on the same node.
+    let ada, adaRoot, adaKey, agent, bea, beaRoot, beaPost, beaClosed;
+
+    // The tags a post wears in public: the author's own statements about it.
+    const postTags = async (root, doc) => {
+        const post = await (await makeFetch()(`api/id/${root}/posts/${doc}`)).json();
+        return post.annotations
+            .filter((a) => a.key === 'tag' && a.annotator === root)
+            .map((a) => a.value)
+            .sort();
+    };
+    const draftTags = async (doc) =>
+        (await (await ada(`api/identity/${adaRoot}/docs/${doc}/annotations`)).json()).tags.sort();
+    const headOf = async (doc) =>
+        (await (await ada(`api/identity/${adaRoot}/docs/${doc}`)).json()).heads[0].version;
+    const docCount = async () =>
+        (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.length;
+
+    before(async () => {
+        ({ me: ada, root: adaRoot, key: adaKey, agent } = await keyed('mcpwriter'));
+        bea = await makeUserFetch({ prefix: 'mcpbea' });
+        beaRoot = (await (await bea('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const post = async (body, wishes) => {
+            const d = await (
+                await j(bea, `api/identity/${beaRoot}/docs`, { title: '', body, format: 'marquee' })
+            ).json();
+            const p = await j(bea, `api/identity/${beaRoot}/docs/${d.doc_id}/publish`, wishes);
+            assert.equal(p.status, 200, await p.clone().text());
+            return (await p.json()).post_id;
+        };
+        beaPost = await post('hay is for horses', {});
+        beaClosed = await post('no replies, please', { settled: true });
+    });
+
+    it('lists the writers, everything said in public marked destructive', async () => {
+        const { tools } = await request(agent, 'tools/list');
+        const hints = Object.fromEntries(tools.map((t) => [t.name, t.annotations]));
+        for (const name of ['publish', 'reply', 'unpublish', 'delete_document', 'label']) {
+            assert.equal(hints[name].destructiveHint, true, `${name} asks first`);
+        }
+        assert.equal(hints.write_document.destructiveHint, false, 'a note is private');
+        for (const name of ['follow', 'trust']) {
+            assert.equal(hints[name].idempotentHint, true, name);
+            assert.equal(hints[name].destructiveHint, false, name);
+        }
+    });
+
+    it('a post through the agent says "ai-agent", and the feed can leave it out', async () => {
+        const made = await tool(agent, 'publish', { words: 'four legs, one mane', title: 'horse' });
+        assert.ok(!made.stopped, made.stopped);
+        const [root, doc] = made.post.split('/');
+        assert.equal(root, adaRoot);
+        assert.deepEqual(
+            (await postTags(root, doc)).filter((t) => t !== 'micro'),
+            ['ai-agent'],
+        );
+
+        let seen = false;
+        for (let i = 0; i < 30 && !seen; i++) {
+            seen = (await tool(agent, 'read_feed', { limit: 50 })).posts.some(
+                (p) => p.post === made.post,
+            );
+            if (!seen) await wait(300);
+        }
+        assert.ok(seen, 'in the feed');
+        const hidden = await tool(agent, 'read_feed', { limit: 50, hide_agents: true });
+        assert.ok(!hidden.posts.some((p) => p.post === made.post), 'and out of it, when asked');
+    });
+
+    it('a key without the agent says "api-key"; a browser says nothing', async () => {
+        const script = program(adaKey);
+        const d = await (
+            await j(script, `api/identity/${adaRoot}/docs`, {
+                title: 's',
+                body: 'a script',
+                format: 'marquee',
+            })
+        ).json();
+        const p = await (
+            await j(script, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {})
+        ).json();
+        assert.deepEqual(
+            (await postTags(adaRoot, p.post_id)).filter((t) => t !== 'micro'),
+            ['api-key'],
+        );
+
+        const h = await (
+            await j(ada, `api/identity/${adaRoot}/docs`, {
+                title: 'h',
+                body: 'by hand',
+                format: 'marquee',
+            })
+        ).json();
+        const hp = await (
+            await j(ada, `api/identity/${adaRoot}/docs/${h.doc_id}/publish`, {})
+        ).json();
+        assert.deepEqual(
+            (await postTags(adaRoot, hp.post_id)).filter((t) => t !== 'micro'),
+            [],
+        );
+    });
+
+    it('sticks through an edit by hand; only a person takes it off; the next keyed write puts it back', async () => {
+        const made = await tool(agent, 'publish', { words: 'drafted by the agent' });
+        const doc = made.document;
+        const [, post] = made.post.split('/');
+        const tags = async () => (await postTags(adaRoot, post)).filter((t) => t !== 'micro');
+
+        // A person edits the words and posts again: the label stays (ruling 6).
+        const saved = await j(
+            ada,
+            `api/identity/${adaRoot}/docs/${doc}`,
+            { title: '', body: 'fixed by hand', parents: [await headOf(doc)], format: 'marquee' },
+            'PUT',
+        );
+        assert.equal(saved.status, 200, await saved.clone().text());
+        await j(ada, `api/identity/${adaRoot}/docs/${doc}/publish`, {});
+        assert.deepEqual(await tags(), ['ai-agent'], 'an edit by hand keeps it');
+
+        // A key may take it off neither the draft nor the post.
+        const script = program(adaKey);
+        const off = await script(`api/identity/${adaRoot}/docs/${doc}/annotations/tags/ai-agent`, {
+            method: 'DELETE',
+        });
+        assert.equal(off.status, 403, await off.text());
+        const retract = await script(
+            `api/identity/${adaRoot}/public-annotations/${adaRoot}/${post}/tag/ai-agent`,
+            { method: 'DELETE' },
+        );
+        assert.equal(retract.status, 403, await retract.text());
+        assert.deepEqual(await draftTags(doc), ['ai-agent']);
+
+        // The person can: the next post says so.
+        const vouched = await ada(`api/identity/${adaRoot}/docs/${doc}/annotations/tags/ai-agent`, {
+            method: 'DELETE',
+        });
+        assert.equal(vouched.status, 200);
+        await j(ada, `api/identity/${adaRoot}/docs/${doc}/publish`, {});
+        assert.deepEqual(await tags(), [], 'vouched for');
+
+        // And new work by the agent brings it back.
+        assert.ok(
+            !(await tool(agent, 'write_document', { document: doc, words: 'the agent again' }))
+                .stopped,
+        );
+        await tool(agent, 'publish', { document: doc });
+        assert.deepEqual(await tags(), ['ai-agent'], 'the next keyed write');
+    });
+
+    it('notes: written, rewritten, posted, posted again as an update, deleted', async () => {
+        const made = await tool(agent, 'write_document', {
+            title: 'stable',
+            words: 'hay: 2 bales',
+        });
+        const doc = made.document;
+        await tool(agent, 'write_document', { document: doc, words: 'hay: 3 bales' });
+        const read = await tool(agent, 'read_document', { document: doc });
+        assert.equal(read.title, 'stable', 'the title kept');
+        assert.equal(read.words.text, 'hay: 3 bales');
+
+        const first = await tool(agent, 'publish', { document: doc });
+        const again = await tool(agent, 'publish', { document: doc });
+        assert.equal(again.post, first.post, 'posting a note again updates its post');
+
+        const gone = await tool(agent, 'delete_document', { document: doc });
+        assert.equal(gone.deleted, doc);
+        assert.match((await tool(agent, 'publish', {})).stopped, /document.*words/);
+    });
+
+    it("replies to somebody else's post, and not where they asked for none", async () => {
+        const replied = await tool(agent, 'reply', {
+            post: `${beaRoot}/${beaPost}`,
+            words: 'neigh, agreed',
+        });
+        assert.ok(!replied.stopped, replied.stopped);
+        // The reply itself. Whether Bea's thread shows it is Bea's to say: a stranger's reply waits
+        // for the author's nod (comments.cjs, slice 6), and Ada is a stranger to her.
+        const reply = await tool(agent, 'read_post', { post: replied.post });
+        assert.equal(reply.post.reply_to, `${beaRoot}/${beaPost}`, 'it answers her post');
+        assert.equal(reply.post.words.text, 'neigh, agreed');
+        const [, replyDoc] = replied.post.split('/');
+        assert.ok((await postTags(adaRoot, replyDoc)).includes('ai-agent'), 'a reply says it too');
+
+        const closed = await tool(agent, 'read_post', { post: `${beaRoot}/${beaClosed}` });
+        assert.ok(closed.post, JSON.stringify(closed));
+        assert.ok(closed.post.closed, 'the card says replies are closed');
+        const before = await docCount();
+        assert.ok(
+            (await tool(agent, 'reply', { post: `${beaRoot}/${beaClosed}`, words: 'hi' })).stopped,
+        );
+        assert.equal(await docCount(), before, 'and a refused reply leaves no draft behind');
+    });
+
+    it("labels somebody else's post and takes it back; its own post's tags are its note's", async () => {
+        const on = await tool(agent, 'label', { post: `${beaRoot}/${beaPost}`, tag: '🐴' });
+        assert.equal(on.labelled, '🐴');
+        const said = async () =>
+            await (
+                await ada(`api/identity/${adaRoot}/public-annotations/${beaRoot}/${beaPost}`)
+            ).json();
+        assert.ok(JSON.stringify(await said()).includes('🐴'), JSON.stringify(await said()));
+        await tool(agent, 'label', { post: `${beaRoot}/${beaPost}`, tag: '🐴', remove: true });
+        assert.ok(!JSON.stringify(await said()).includes('🐴'), 'taken back');
+
+        const mine = await tool(agent, 'publish', { words: 'mine' });
+        assert.match(
+            (await tool(agent, 'label', { post: mine.post, tag: 'x' })).stopped,
+            /own post/,
+        );
+    });
+
+    it("follows and trusts: the dials on the persona's private chain", async () => {
+        assert.equal(
+            (await tool(agent, 'follow', { who: beaRoot, level: 'high' })).interest,
+            'high',
+        );
+        assert.equal(
+            (await tool(agent, 'trust', { who: beaRoot, level: 'medium' })).trust,
+            'medium',
+        );
+        const facts = await (
+            await ada(
+                `api/identity/${adaRoot}/private/kv/${encodeURIComponent(`contact:${beaRoot}`)}`,
+            )
+        ).json();
+        const value = (k) => facts.values.find((v) => v.key === k)?.value;
+        assert.equal(value('interest'), 'high');
+        assert.equal(value('trust'), 'medium');
+        assert.match(
+            (await tool(agent, 'trust', { who: beaRoot, level: 'lots' })).stopped,
+            /level/,
+        );
+        assert.match(
+            (await tool(agent, 'follow', { who: adaRoot, level: 'max' })).stopped,
+            /itself/,
+        );
+    });
+
+    it("takes its own post down, and nobody else's", async () => {
+        const mine = await tool(agent, 'publish', { words: 'short-lived' });
+        assert.equal((await tool(agent, 'unpublish', { post: mine.post })).unpublished, mine.post);
+        assert.match(
+            (await tool(agent, 'unpublish', { post: `${beaRoot}/${beaPost}` })).stopped,
+            /isn't this persona's/,
+        );
+    });
+});
