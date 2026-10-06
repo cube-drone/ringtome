@@ -1,7 +1,7 @@
 # MCP - Horse Drawing Tycoon 2 for AI agents
 
-A design draft (2026-10-06). Slice 0 built (2026-10-06): `/mcp` answers, with
-one tool.
+A design draft (2026-10-06). Slices 0 and 1 built (2026-10-06): `/mcp` answers,
+with the reading tools and the guide.
 
 Anyone with an API key can already drive their account from an AI agent: Curtis
 has done it, from inside this repository. This plan is about making that work
@@ -140,7 +140,9 @@ An account can hold several personas, and almost every door is
 a root, a slug or a display name, and when it is left out the call goes to the
 account's only persona. An account with several personas gets an error that
 lists them by name, so the agent can ask the person which one they mean.
-`whoami` returns the account's personas and the unlocks each one holds.
+`whoami` returns the account's personas and the unlocks each one holds. _As
+built (Slice 1):_ a name matches in any case, a slug with or without its `@`, a
+root exactly; `mcp::Tools::persona`.
 
 A connection bound to one persona (`/mcp/{root}`) was the other way. It is ruled
 out: a key belongs to the account, so the connection does too.
@@ -189,6 +191,29 @@ so a well-behaved client asks the person before running it.
 - `list_documents`, `read_document`: the persona's own documents, by bucket or
   tag; a document's title, format and body.
 
+_As built (Slice 1, `mcp/read.rs`):_
+
+- **A post is a card.** Its address is `author/doc`, the two ids every door
+  takes, and every card hands it back, so what an agent reads goes straight into
+  the next tool. The author is named once; tags are split into the author's own
+  and other people's labels; dates are RFC 3339, not milliseconds; the words are
+  fenced. `read_post` also takes a link, finding the 64-hex root and the 32-hex
+  id inside it.
+- **The feed shows the start of each post's words** (1,200 characters), so an
+  agent doesn't need a `read_post` per card. Its `next` is the journal's own
+  cursor: published time, then id (fanout.rs `page_sql`). Search, tag and kind
+  filters, and leaving out the persona's own posts, are offered. The best and
+  hot orders aren't.
+- **Notifications are shaped per kind**, because each kind's `doc_id` names
+  something different: the reader's own post for a reply, a label or a share;
+  the author's post for a mention; the room for a room mention; the contract for
+  a contract, given by name and reward.
+- **Which reads are gated:** the feed (Social), its tag filter and tagged
+  document lists (Reactions, tags & filters), notes (Private notes) and files
+  (File upload). A post by its link, someone's page and the bell are never
+  gated. `list_documents` with no kind leaves out the kinds that are locked, and
+  says which.
+
 **Writing**
 
 - `write_document`: create a Writer document, or save a new version of one.
@@ -234,7 +259,7 @@ the only door to something.
 
 ### Resources
 
-- **`guide`**: one Markdown page, `node/mcp/guide.md`, compiled in with
+- **`guide`**: one Markdown page, `node/src/mcp/guide.md`, compiled in with
   `include_str!`. It explains what Horse Drawing Tycoon 2 is to an agent that
   has never heard of it: personas, the feed, posts and replies, trust and
   interest, documents and drawings, the Bank, unlocks, and what is public versus
@@ -323,7 +348,10 @@ A post made with a key says so, as a tag the reader can see and filter by:
    around_, the `guide` resource, the persona rule, and the unlock check every
    later tool goes through. Claims in a new `mcp.cjs`: a key lists tools; no key
    and a revoked key are refused; a cookie is ignored; `whoami` and `read_feed`
-   return what their doors return.
+   return what their doors return. _Built 2026-10-06_ (_As built_ under _The
+   tools_). The rig owns every unlock, so the gate's decision is a unit test
+   (`mcp::locked`), and the gates were watched refusing on a scratch node
+   started with `RINGTOME_TEST_LOCKS=1`.
 2. **Writing and provenance.** Documents, publish, reply, delete, annotations,
    dials; each destructive tool carries its hint (a claim reads them from
    `tools/list`). Posts made through `/mcp` carry **AI agent** and posts made

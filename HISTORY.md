@@ -17371,3 +17371,40 @@ with `layer`, which also wraps a router's fallback, so every unknown path asked
 for a key instead of answering 404 (config.cjs); it is a `route_layer` now. To
 connect a real Claude Code to a dev node:
 `claude mcp add --transport http horses http://localhost:<port>/mcp --header "Authorization: Bearer rtk_..."`.
+
+**2026-10-06 - MCP, Slice 1: an agent can read.** Curtis: "on to the next
+slice." `mcp/read.rs` adds seven tools - `read_feed`, `read_post`,
+`read_profile`, `read_notifications`, `mark_notifications_seen`,
+`list_documents`, `read_document` - and `whoami` grows each persona's name,
+balance and unlocks. Beside them, the plan's three rules:
+
+- **The persona rule** (`Tools::persona`): every tool takes an optional
+  `persona` - a name in any case, an @slug, a root - and the account's only one
+  when it's left out; two personas and none named stops with both listed, so the
+  agent asks.
+- **The unlock check** (`Tools::require`, `mcp::locked`): the feed needs Social,
+  its tag filter Reactions, tags & filters, notes Private notes, files File
+  upload; a post by its link, someone's page and the bell are never gated. A
+  refusal says what to buy, its price, and what it needs first ("...for H$
+  2,500, after Private notes"). The rig owns everything, so the decision is a
+  unit test, and the gates were watched refusing on a scratch node booted with
+  `RINGTOME_TEST_LOCKS=1`.
+- **The guide**: `src/mcp/guide.md`, the protocol's one resource and a public
+  page at `/mcp/guide.md` - personas, the feed, kinds of post, tags and labels,
+  trust, documents, HorseBucks and unlocks, and the rule about other people's
+  words, which the server's instructions now say too.
+
+Answers are cards, not passed-through JSON: `author/doc` addresses that go
+straight back into the next tool, the author named once, tags split from other
+people's labels, RFC 3339 dates (the `time` crate's `formatting`, rather than a
+third hand-rolled calendar beside rss.rs's and heartbeat.rs's), and words fenced
+as `{"author", "text"}`. Three things the seeded scratch network showed: a
+contract notification's `doc_id` is the contract, not a post, so notifications
+are shaped per kind (each kind's doc names a different thing -
+notifications.rs); the feed pages by publication, not arrival, so the first
+cursor repeated a post; and a post's words are text, not JSON, so the dispatcher
+reads both. Claims in `mcp.cjs` (14 with the 404): a second `describe` reads a
+persona's post from the feed and by search, a post by address and by link, a
+page, a note, the bell marked once and then nothing, and the persona rule with
+two. Planting unfenced words and a persona rule that takes the first one turned
+three claims red.

@@ -59,10 +59,9 @@ are driving towards.
 
 ### AI agents (MCP)
 
-- Slices 1-6 of [plans/MCP.md](plans/MCP.md): read tools and the guide with the
-  unlock check, then writing with provenance, drawing, chat and the bank, OAuth,
-  and the "Use with an AI assistant" door in settings. Slice 0 (`/mcp`
-  answering, with `whoami`) is built.
+- Slices 2-6 of [plans/MCP.md](plans/MCP.md): writing with provenance, drawing,
+  chat and the bank, OAuth, and the "Use with an AI assistant" door in settings.
+  Slices 0-1 (`/mcp`, the reading tools, the guide) are built.
 
 ### Chat
 
