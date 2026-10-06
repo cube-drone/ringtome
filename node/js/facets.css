@@ -46,6 +46,12 @@
     padding: 0.15rem 0.6rem;
     cursor: pointer;
 }
+/* A value whose meaning is fixed wears its icon before its word (pure/tagicons.js). */
+.facet-chip svg {
+    font-size: 1.15em;
+    margin-right: 0.25em;
+    vertical-align: -0.2em;
+}
 .facet-chip-on {
     background: var(--chip-on);
     border-style: solid;

@@ -17460,3 +17460,21 @@ scratch node holding one post of each kind and one by hand: the robot, the
 terminal, and nothing on the hand-made one. `just strings-check` and
 `just ui-check` green. The filter row above the feed still shows the two tags
 bare (NEXT_STEPS).
+
+**2026-10-06 - icons on the tags whose meaning is fixed.** Curtis: "we should
+add those to the feed, along with all kinds of extra symbols - there are certain
+tags that are implicit, so we could always display them with icons", naming a
+glyph for each. `pure/tagicons.js` maps value to an icons.js ROLE, never to a
+glyph: the kinds (posts megaphone, replies arrow-elbow-right, rebroadcasts
+cell-tower, books Books, rooms chats-circle), the sizes (micro resize, short
+arrows-in, medium arrows-in-simple, long arrows-out - his "small" and "large"
+are the node's `short` and `long`), the media (waveform, image, video), the
+default content warnings (nsfw, porn and 18+ detective; assault, death, gore and
+sexual assault shield-slash) and the two made-with tags; "me" wears user-circle.
+`FacetRow` takes an `icons` lookup, so every row of the feed's filter strip
+wears them, and the feed's label chips read the same table (`.label-chip-icon`,
+renamed from `-made`) - a made-with tag still only in its author's mouth, a
+warning from anyone. `pure/tagicons.cjs` pins it from both ends: every kind,
+size, medium and default warning has a role, and every role is one icons.js
+draws (a planted typo went red). Seen in headless Chrome over a seeded scratch
+network. `just strings-check` and `just ui-check` green.

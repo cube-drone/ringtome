@@ -62,11 +62,9 @@ are driving towards.
 - Slices 3-6 of [plans/MCP.md](plans/MCP.md): drawing, chat and the bank, OAuth,
   and the "Use with an AI assistant" door in settings. Slices 0-2 (`/mcp`,
   reading, writing, provenance) are built.
-- The provenance tags (`ai-agent`, `api-key`) wear their icons on the feed's
-  label chips, but the filter row above the feed shows them bare, and vouching
-  one away needs the tag editor, which is behind Reactions, tags & filters:
-  icons in the filter row too, and a remove control everyone has (plans/MCP.md,
-  _Provenance_).
+- Vouching a provenance tag (`ai-agent`, `api-key`) away needs the tag editor,
+  which is behind Reactions, tags & filters: a remove control everyone has
+  (plans/MCP.md, _Provenance_).
 
 ### Chat
 

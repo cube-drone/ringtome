@@ -11,6 +11,8 @@ import htm from 'htm';
 import { api } from './net.js';
 import { t } from './i18n.js';
 import { useOwns } from './unlocks.js';
+import { Icons } from './icons.js';
+import { KIND_ICON, tagIconRole } from './pure/tagicons.js';
 import {
     cycleMe,
     cyclePick,
@@ -87,7 +89,8 @@ const chipTitle = (state) =>
 /// blog and its toots imported came to some 250 tags); past that it opens a search box over them
 /// instead, its matches in a box that scrolls rather than a wall that takes the page. The picked
 /// values stay on the row either way. `titleOf(state)` words a chip's hover where the row is not
-/// three-state (the files browser's tags only narrow).
+/// three-state (the files browser's tags only narrow). `icons(value)` names the icon role a value
+/// wears before its word, if any (pure/tagicons.js).
 export const FacetRow = ({
     label,
     items: counted,
@@ -97,6 +100,7 @@ export const FacetRow = ({
     names,
     extra = null,
     titleOf = chipTitle,
+    icons = null,
 }) => {
     const [mode, setMode] = useState('line'); // 'line' | 'open' | 'search'
     const expanded = mode === 'open';
@@ -114,6 +118,10 @@ export const FacetRow = ({
         ...chosen.filter((v) => !have.has(v)).map((value) => ({ value, count: 0 })),
     ];
     const word = (v) => (names && names[v] ? names[v]() : v);
+    const glyph = (v) => {
+        const role = icons && icons(v);
+        return role && Icons[role] ? html`<${Icons[role]} />` : null;
+    };
     const stateIn = (v) =>
         (picked || []).includes(v) ? 'only' : (out || []).includes(v) ? 'out' : null;
     const sig = `${extra ? 'x' : ''}|${items.map((f) => `${f.value}:${f.count}`).join('|')}|${(picked || []).join('|')}|${(out || []).join('|')}`;
@@ -165,7 +173,7 @@ export const FacetRow = ({
         class=${chipClass(stateIn(f.value))}
         title=${titleOf(stateIn(f.value))}
         onClick=${() => onToggle(f.value)}
-    >${word(f.value)} <span class="facet-count">${f.count}</span></button>`;
+    >${glyph(f.value)}${word(f.value)} <span class="facet-count">${f.count}</span></button>`;
     if (searching) {
         const q = query.trim().toLowerCase();
         const matches = items.filter(
@@ -246,7 +254,7 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = nul
               class=${chipClass(meState)}
               title=${chipTitle(meState)}
               onClick=${() => onPicks({ ...picks, me: cycleMe(picks.me) })}
-          >${t('facets.me', 'me')}</button>`
+          ><${Icons.me} />${t('facets.me', 'me')}</button>`
         : null;
     return html`<div class="facets">
         ${
@@ -254,7 +262,7 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = nul
             same semantics as the rows below it: nothing picked shows everything, a pick
             narrows to just those. "posts" is what is none of the other kinds. */ ''
         }
-        <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} out=${picks[LEFT_OUT.kinds]} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} />
+        <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} out=${picks[LEFT_OUT.kinds]} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} icons=${(v) => KIND_ICON[v]} />
         <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} out=${picks[LEFT_OUT.buckets]} onToggle=${toggle('buckets')} />
         ${
             /* The tag row split three ways (Curtis, 2026-10-02): a post's size, its media, and every
@@ -266,7 +274,7 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = nul
             const picked = (picks.tags || []).filter((v) => tagFamily(v) === family);
             const out = (picks[LEFT_OUT.tags] || []).filter((v) => tagFamily(v) === family);
             if (!items.length && !picked.length && !out.length) return null;
-            return html`<${FacetRow} key=${family} label=${TAG_ROW_LABELS[family]()} items=${items} picked=${picked} out=${out} onToggle=${toggle('tags')} />`;
+            return html`<${FacetRow} key=${family} label=${TAG_ROW_LABELS[family]()} items=${items} picked=${picked} out=${out} onToggle=${toggle('tags')} icons=${tagIconRole} />`;
         })}
         ${note && html`<p class="facets-note">${note}</p>`}
     </div>`;

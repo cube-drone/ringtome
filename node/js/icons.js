@@ -125,6 +125,15 @@ import {
     BookOpen,
     Robot,
     TerminalWindow,
+    ArrowElbowRight,
+    Waveform,
+    Image as ImageGlyph,
+    Video,
+    Resize,
+    ArrowsIn,
+    ArrowsInSimple,
+    ArrowsOut,
+    ShieldSlash,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -151,6 +160,24 @@ export const Icons = {
     // own `ai-agent` and `api-key` tags wear these on the feed's label chips.
     aiAgent: Robot,
     apiKey: TerminalWindow,
+    // Tags and kinds whose meaning is fixed wear these, in the facet rows and on the label chips
+    // (pure/tagicons.js; Curtis, 2026-10-06). "me" is the reader's own posts.
+    me: UserCircle,
+    kindPost: Megaphone,
+    kindReply: ArrowElbowRight,
+    kindRebroadcast: CellTower,
+    kindBook: Books,
+    kindRoom: ChatsCircle,
+    mediaAudio: Waveform,
+    mediaImage: ImageGlyph,
+    mediaVideo: Video,
+    sizeMicro: Resize,
+    sizeShort: ArrowsIn,
+    sizeMedium: ArrowsInSimple,
+    sizeLong: ArrowsOut,
+    // The content warnings (pure/warnings.js `DEFAULT_BLUR`): the explicit ones, and the harmful.
+    warnExplicit: Detective,
+    warnHarm: ShieldSlash,
     trash: Trash,
     lock: Lock,
     key: Key,

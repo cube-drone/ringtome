@@ -1126,12 +1126,12 @@
 .label-chip-flag svg {
     font-size: 1.15em;
 }
-/* What the post was made with (made_with.rs): the robot or the terminal before the tag, centred
- * and sized as the flags' icons are. */
-.label-chip-made {
+/* A tag whose meaning is fixed (pure/tagicons.js): its icon before the word, centred and sized as
+ * the flags' icons are. */
+.label-chip-icon {
     align-items: center;
 }
-.label-chip-made svg {
+.label-chip-icon svg {
     font-size: 1.15em;
 }
 /* A chip you have not said yet is the agree button (2026-08-31): the hand says so. */
