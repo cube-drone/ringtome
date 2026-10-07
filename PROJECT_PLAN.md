@@ -3170,8 +3170,8 @@ by construction rather than assumed:
   by the User-1 rule, STYLE.md: until an install base exists there is no data to
   protect, and a Turso bump today may simply wipe and rebuild from the journal -
   which is what recovery actually rides anyway). Turso's version is pinned
-  (`=0.7.0`) for reproducibility, not safety; the tool lands with Tier 6, before
-  User 1's data exists to lose.
+  (`=0.8.2` since 2026-10-07) for reproducibility, not safety; the tool lands
+  with Tier 6, before User 1's data exists to lose.
 - **Migrations are a ladder (settled 2026-09-23).** Once 0.1.x put a node on a
   real machine, the squash-and-rebuild policy ended. Each database kind has a
   ladder of numbered SQL rungs (`node/src/migrations.rs`, how-to in

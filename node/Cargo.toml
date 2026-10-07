@@ -78,7 +78,7 @@ rand = "0.8"
 
 # local database: Turso (SQLite-compatible rewrite) with native at-rest encryption. Exact pin -
 # the crate is pre-1.0 and the encryption surface is experimental; upgrades are deliberate acts.
-turso = "=0.7.0"
+turso = "=0.8.2"
 
 # bounded cache of open per-user database handles
 moka = { version = "0.12", features = ["future"] }

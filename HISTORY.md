@@ -17588,3 +17588,46 @@ section then tells the person web assistants can't use - three claims in
 (`localhost`, the red note) and one told `https://horsedrawingtycoon.example`
 (the https address, no note). `just strings-check` and `just ui-check` green.
 That closes the MCP arc but for drawing, struck.
+
+**2026-10-07 - The fold read seeks from the watermark.** Curtis asked what was
+interesting in scratch's logs: a bank burst where every balance poll logged a
+slow statement, and background loops waiting seconds on the lock. 155 of 190
+slow statements in half an hour were `entries_past_watermarks`, the
+catch-up-on-read under every document, private, inbox and public-feed read, at a
+steady 251-294ms - a fixed cost, not contention - once a minute from the balance
+poll's recheck alone. Its one statement compared each row to its author's
+watermark, so it walked every entry of the type ever held to find, nearly
+always, none. `fold_read_at_scale` (ignored, run by name) measured it on an
+encrypted on-disk Turso database: linear, 2ms at 1,024 headers, 161ms at 65,536,
+debug build. The surprise: a per-author `seq > ?` seek was linear too, because
+with `instance` unpinned Turso chose the primary key, which cannot bound `seq`,
+and read the whole chain; with `instance = X''` the plan seeks
+`entries_by_service_type` from `seq>?`. Now it is a loop of seeks - the next
+author (`author_pubkey > ?`, LIMIT 1), their watermark, their entries past it -
+holding at 0.1-0.25ms across the same sizes. `instance = X''` is safe because
+CHAT is the only per-instance service. The plan test now requires each seek to
+start at its bound (`author_pubkey>?`, `seq>?`), since "uses the index" passed
+the walk. Not done: `balance()` still sums every bank line on each poll (17 slow
+reads in the same half hour), and a single-row `identities` lookup logged as
+slow once, which only lock or machine waits explain - unplaced.
+
+**2026-10-07 - Turso 0.7.0 → 0.8.2.** Curtis: "is there a newer turso dep we
+should be using?" - 0.8.0 and 0.8.1 shipped 2026-09-29, 0.8.2 the day before
+this. No API change: it built as it stood. Proved both ways on real encrypted
+data before trusting it: two scratch nodes seeded by `just test-data` under 0.7
+(33 databases, write-ahead logs unflushed) opened under 0.8 with all 708
+per-table counts identical and every `integrity_check` ok; the same nodes
+rebooted onto that data under 0.8 and seeded further, then read back by 0.7 -
+978 counts identical, 48 databases ok - so a supervisor rollback to an older
+binary still reads what the newer one wrote. The plan audit's 608 statements
+re-planned: none worse, the `author_root <> reader_root` quirk fixed (search's
+"not mine" journal lookup seeks all three key columns again), the rest of the
+four quirks unchanged (row-value cursors, the eviction delete's index pick, the
+unpinned middle column). The replaced fold read's walk ran 1.9x faster per row
+(176 → 94 ms at 65,536 headers, debug). Not taken: `pure-rust-crypto`. aegis
+picks its hardware AES paths at compile time, from the target's features, so
+x86_64 release builds (Linux, Windows, Intel macOS) would fall to software AES,
+where the C libaegis detects AES-NI at run time; macOS already gets the
+pure-Rust build from turso_core itself. Which leaves the Substrate's "one
+toolchain" premise true on Apple Silicon only: on Linux the database's crypto is
+C.

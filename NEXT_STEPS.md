@@ -206,6 +206,74 @@ of deployments, and then an easy path for people who want one.
   stays up and stops answering `/health`; a liveness watchdog is the missing
   half, if a wedge is ever seen.
 
+### Query plans (the 2026-10-07 audit)
+
+Every production statement in `node/src` was run through `EXPLAIN QUERY PLAN`
+against freshly migrated node and user databases, and the scans, sorters and
+correlated subqueries traced to their callers; HISTORY's Turso 0.8.2 entry
+re-planned them all. Plans on an empty database are taken to be production's:
+Turso keeps no statistics. Each fix goes the way the fold read's did: a timing
+test, the change, then a plan assertion so it cannot come back. Worst first:
+
+- **Reply counts scan `post_replies` on every feed page** - `replies.rs:258`
+  (`known_counts`) asks `root_doc IN (…)` and `parent_doc IN (…)`, and both
+  indexes lead with the author: two full scans of the node-wide table per call,
+  under the feed, post pages, `nodeface` and three `idface` paths.
+- **Annotations scan `doc_annotations` on every feed page** -
+  `annotations.rs:175` (`fetch_rows`) asks `target_doc IN (…)` of an index that
+  leads with `target_author`: a full scan and a sort, under `for_posts` (feed,
+  post pages, search, chat, and `score.rs` in chunks over a reader's journal).
+- **The bank catch-up scans all chat** - `chat.rs:2313`, `:2326`, `:2339`
+  (`lines_by`, `reactions_by`, `reactions_to`) filter on `speaker_root`, which
+  nothing indexes: the node's whole `room_messages` and `room_reactions` on
+  every catch-up.
+- **Three more fold reads walk history** - `imaol.rs:333`, `:461`, `:707` (the
+  published-edges, rebroadcasts and annotations catch-ups) LEFT JOIN the
+  watermark, the shape `entries_past_watermarks` had until 2026-10-07; the bank
+  catch-up calls two of them, and `published_edges` runs per ledger refresh and
+  per frontier move.
+- **The room-sync loop scans two tables a pass** - `chat.rs:3258` (`pulse`): all
+  of `feed_journal` for rooms (`fanout.rs:1677`) and all of `room_messages` for
+  each room's latest (`chat.rs:2249`). Fits scratch's 1.2 s idle room-sync
+  passes with 4-8 ms of lock wait.
+- **The key-prefetch loop scans and sorts the journal** - `fanout.rs:1663`
+  (`sealed_rows`), every pass. Fits scratch's slow key-prefetch passes.
+- **Chat edits, deletes and reactions scan for one row** - `chat.rs:2467` to
+  `:2592` look a message or reaction up by `speaker_root` and `entry_hash`; one
+  index on `entry_hash` serves all five.
+- **Row-value cursors never seek** - `(a, b, c, d) > (?, ?, ?, ?)` walks from
+  the start on Turso, so paging a whole log is quadratic: `imaol.rs:1482`
+  (journal backfill), `:1577` (the `/entries` route), `:1350` (POSTS log pages).
+  Still so on 0.8.2.
+- **Sync's whole-log reads** - `sync.rs:173` (`chain_ranges`, the fallback when
+  the frontier memo is absent) and `sync.rs:412` (`missing_plan`) walk every
+  entry the persona holds; how often `missing_plan` runs is untraced.
+- **The eviction delete picks the wrong index** - `sync.rs:1248` pins all four
+  primary-key columns and Turso still plans `(service=?)`, walking the service.
+  Rare path. Still so on 0.8.2.
+- **Smaller ones** - the market's emoji window walks every tag annotation
+  (`annotations.rs:565`, under `/bank/commodities`); a room's author is found by
+  scan (`chat.rs:701`, `nodeshelf.rs:195`); the notifications refresh scans by
+  author (`notifications.rs:405`, `:435`, `:478`); public post listings scan and
+  sort the persona's heads (`documents.rs:1294` and siblings, one row per post);
+  `storage::all` (`storage.rs:254`, 761 ms once on scratch) for the admin People
+  list.
+- **The balance poll sums every bank line** - `bank::balance` reads all of
+  `bank_lines` and adds them in Rust on each ten-second poll, catch-up skipped
+  or not; it logged slow 17 times in half an hour on scratch (2026-10-06). A
+  kept running total would make it one row.
+- **A slow single-row lookup on scratch** -
+  `SELECT 1 FROM identities WHERE root_pubkey = ?1 AND account_id = ?2`, a
+  primary-key read, logged over 250ms once; the timer starts after the statement
+  lock, so only a file-lock wait or a machine stall explains it. Unplaced: if it
+  recurs, its neighbours in the log say which.
+- **Keep the audit as a standing test** - a test that pins the plan of every hot
+  statement, so a planner surprise (or a Turso bump) fails CI instead of
+  surfacing in a server's logs. Turso's known quirks, for whoever writes it: a
+  range on a column after an unpinned one is not seeked (pin `instance`); it can
+  pick a worse index over a fully pinned primary key; row values never seek;
+  `IN (…)` on a non-leading column scans.
+
 ### Marquee Promises
 
 - Marquee provides fixtures for drop-in functionality: do we still have a use

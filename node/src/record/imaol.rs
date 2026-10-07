@@ -1171,35 +1171,69 @@ pub async fn entries_of_type(
         .collect()
 }
 
+/// The fold read's two statements, named so the plan test pins the statements that run.
+///
+/// The next author holding entries of a `(service, entry_type)`, after `?3` - one index seek
+/// per author, so finding a type's handful of authors never walks their history.
+const FOLD_NEXT_AUTHOR: &str = "SELECT author_pubkey FROM entries
+     WHERE service = ?1 AND entry_type = ?2 AND author_pubkey > ?3
+     ORDER BY author_pubkey LIMIT 1";
+/// One author's entries past a seq, in seq order. `instance = X''` is load-bearing, not a filter:
+/// with the instance unpinned Turso chose the primary key `(author, service, instance, seq)`, which
+/// cannot bound `seq`, and read the author's whole chain to return nothing (2026-10-06). Every
+/// service folded this way has one chain per key; CHAT is the only per-instance service.
+const FOLD_PAST_SEQ: &str = "SELECT bytes FROM entries
+     WHERE service = ?1 AND entry_type = ?2 AND author_pubkey = ?3 AND instance = X'' AND seq > ?4
+     ORDER BY seq";
+
 /// Every stored entry of one `(service, entry_type)` that each author's view watermark has not
 /// yet folded, decoded, in `(author, seq)` order - the catch-up-on-read fetch for the persisted
 /// views (`documents::materialize`, `private::materialize_service`). A chain with no watermark row is
 /// unfolded from seq 0.
+///
+/// Seeks, author by author, from each watermark: the cost is the authors plus what is new, never
+/// the history. The single statement this replaced compared each row against its author's
+/// watermark, so it walked every entry of the type ever held to find, nearly always, none - 280ms
+/// a read on a long-drawing persona, once a minute from the balance poll alone (2026-10-06;
+/// `fold_read_at_scale` measures both). Separate statements see separate snapshots, which the
+/// folds already tolerate: a racing catch-up re-folds idempotently, and the watermark only rises.
 pub(crate) async fn entries_past_watermarks(
     db: &Db,
     service_id: u32,
     type_id: u32,
 ) -> Result<Vec<SignedEntry>, AppError> {
-    let rows: Vec<(Vec<u8>,)> = db
-        .fetch_all(
-            "SELECT bytes FROM entries e
-         WHERE service = ?1 AND entry_type = ?2
-           AND seq > COALESCE((SELECT folded_seq FROM view_watermarks w
-                               WHERE w.author_pubkey = e.author_pubkey
-                                 AND w.service = e.service), -1)
-         ORDER BY author_pubkey, seq",
-            (i64::from(service_id), i64::from(type_id)),
-        )
-        .await
-        .context("reading entries past view watermarks")
-        .map_err(AppError::Internal)?;
-
-    rows.into_iter()
-        .map(|(bytes,)| {
-            SignedEntry::decode(&bytes)
-                .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))
-        })
-        .collect()
+    let (svc, ty) = (i64::from(service_id), i64::from(type_id));
+    let mut out = Vec::new();
+    let mut after = String::new();
+    loop {
+        let author: Option<(String,)> = db
+            .fetch_optional(FOLD_NEXT_AUTHOR, (svc, ty, after.as_str()))
+            .await
+            .context("finding the next author past view watermarks")
+            .map_err(AppError::Internal)?;
+        let Some((author,)) = author else { break };
+        let folded: Option<(i64,)> = db
+            .fetch_optional(
+                "SELECT folded_seq FROM view_watermarks WHERE author_pubkey = ?1 AND service = ?2",
+                (author.as_str(), svc),
+            )
+            .await
+            .context("reading a view watermark")
+            .map_err(AppError::Internal)?;
+        let rows: Vec<(Vec<u8>,)> = db
+            .fetch_all(FOLD_PAST_SEQ, (svc, ty, author.as_str(), folded.map_or(-1, |(seq,)| seq)))
+            .await
+            .context("reading entries past view watermarks")
+            .map_err(AppError::Internal)?;
+        for (bytes,) in rows {
+            out.push(
+                SignedEntry::decode(&bytes)
+                    .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))?,
+            );
+        }
+        after = author;
+    }
+    Ok(out)
 }
 
 /// Advance one chain's view watermark, monotonically. The comparison lives inside the upsert's
@@ -2255,29 +2289,37 @@ mod tests {
         assert!(rebuild_views(&db).await.is_err());
     }
 
-    /// The fold path's two reads SEEK, never scan. Both ask "(service, entry_type), in
-    /// (author, seq) order" - `entries_of_type` on every store open (epoch keys) and
-    /// `entries_past_watermarks` on every private or document read - against a table that
-    /// grows with everything the identity ever writes. Before `entries_by_service_type`
-    /// (2026-08-08) the plan was a raw `SCAN entries`, blobs and all, plus a sorter; a
-    /// dropped index would put it back, and nothing else in the suite would notice, because
-    /// a scan over test-sized data is fast. Hence a plan assertion rather than a timing one:
-    /// it fails on the shape, not on how slow the machine felt today.
+    /// The fold path's reads SEEK, never scan. `entries_of_type` (every store open, epoch keys)
+    /// asks "(service, entry_type), in (author, seq) order"; `entries_past_watermarks` (every
+    /// private or document read) asks for the next author, then that author's entries past a
+    /// seq - against a table that grows with everything the identity ever writes. Before
+    /// `entries_by_service_type` (2026-08-08) the plan was a raw `SCAN entries`, blobs and all,
+    /// plus a sorter. And using the index is not enough: until 2026-10-06 the watermark read
+    /// used it from the top of the type and walked every row to the end, so the seeks must
+    /// START at their bound - `author_pubkey>?` and `seq>?` in the plan. A scan over test-sized
+    /// data is fast, so nothing else in the suite would notice either regression. Hence plan
+    /// assertions rather than timing ones: they fail on the shape, not on how slow the machine
+    /// felt today (`fold_read_at_scale` is the timing, by name).
     #[tokio::test]
     async fn the_fold_path_reads_seek_and_never_scan() {
         let db = crate::db::test_user_db().await;
-        for sql in [
-            "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
-             ORDER BY author_pubkey, seq",
-            "SELECT bytes FROM entries e
-             WHERE service = ?1 AND entry_type = ?2
-               AND seq > COALESCE((SELECT folded_seq FROM view_watermarks w
-                                   WHERE w.author_pubkey = e.author_pubkey
-                                     AND w.service = e.service), -1)
-             ORDER BY author_pubkey, seq",
+        let author = "aa".repeat(32);
+        for (sql, bound) in [
+            (
+                "SELECT bytes FROM entries WHERE service = ?1 AND entry_type = ?2
+                 ORDER BY author_pubkey, seq",
+                None,
+            ),
+            (FOLD_NEXT_AUTHOR, Some("author_pubkey>?")),
+            (FOLD_PAST_SEQ, Some("seq>?")),
         ] {
-            let rows: Vec<(i64, i64, i64, String)> =
-                db.fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), (5i64, 6i64)).await.unwrap();
+            let explain = format!("EXPLAIN QUERY PLAN {sql}");
+            let rows: Vec<(i64, i64, i64, String)> = match bound {
+                None => db.fetch_all(&explain, (5i64, 6i64)).await,
+                Some("seq>?") => db.fetch_all(&explain, (5i64, 6i64, author.as_str(), 9i64)).await,
+                Some(_) => db.fetch_all(&explain, (5i64, 6i64, author.as_str())).await,
+            }
+            .unwrap();
             let plan: String =
                 rows.iter().map(|(_, _, _, d)| d.as_str()).collect::<Vec<_>>().join(" | ");
             assert!(
@@ -2292,6 +2334,101 @@ mod tests {
                 !plan.contains("USE TEMP B-TREE FOR ORDER BY") && !plan.contains("USE SORTER"),
                 "the index supplies (author, seq) order, so no sorter should appear: {plan}"
             );
+            if let Some(bound) = bound {
+                assert!(
+                    plan.contains(bound),
+                    "the seek must start at its bound ({bound}), not walk to it, got: {plan}"
+                );
+            }
         }
+    }
+
+    /// The timing check behind the scratch node's 280ms catch-up reads (2026-10-06): one
+    /// persona's notes chain grown by doubling to 65,536 headers, ALL folded (watermark at the
+    /// tip), on an encrypted on-disk database like production's - so every read returns
+    /// nothing, and its cost is pure walk. Per size: the single-statement fold read this
+    /// replaced (which grew linearly - 2ms at 1,024, 161ms at 65,536, debug build) beside
+    /// `entries_past_watermarks` as it is now, which should hold flat. Ignored in the suite -
+    /// it measures, it does not judge; run it by name.
+    #[tokio::test]
+    #[ignore]
+    async fn fold_read_at_scale() {
+        let dir = std::env::temp_dir().join(format!("ringtome-foldread-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::remove_var("RINGTOME_ENVELOPE_KEY");
+        let keystore = crate::keystore::Keystore::load(&dir).unwrap();
+        let db = crate::db::open_database(&dir.join("foldread.db"), &keystore).await.unwrap();
+        crate::migrations::climb(&db, crate::migrations::USER, "user").await.unwrap();
+
+        let author = "aa".repeat(32);
+        let svc = i64::from(service::DOCUMENTS_PRIVATE);
+        let ty = i64::from(entry_type::DOC_HEADER);
+        // A header envelope's rough size; the bytes are never decoded, nothing is returned.
+        db.execute(
+            "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash, prev_hash,
+                                  entry_type, timestamp_ms, received_at_ms, bytes)
+             VALUES (?1, ?2, X'', 0, randomblob(32), zeroblob(32), ?3, 0, 0, randomblob(400))",
+            (author.as_str(), svc, ty),
+        )
+        .await
+        .unwrap();
+        let replaced = "SELECT bytes FROM entries e
+         WHERE service = ?1 AND entry_type = ?2
+           AND seq > COALESCE((SELECT folded_seq FROM view_watermarks w
+                               WHERE w.author_pubkey = e.author_pubkey
+                                 AND w.service = e.service), -1)
+         ORDER BY author_pubkey, seq";
+
+        fn median(mut times: Vec<f64>) -> f64 {
+            times.sort_by(f64::total_cmp);
+            times[times.len() / 2]
+        }
+        for k in 0..16 {
+            db.execute(
+                &format!(
+                    "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash,
+                                          prev_hash, entry_type, timestamp_ms, received_at_ms, bytes)
+                     SELECT author_pubkey, service, instance, seq + {}, randomblob(32), prev_hash,
+                            entry_type, timestamp_ms, received_at_ms, randomblob(400)
+                     FROM entries",
+                    1_i64 << k
+                ),
+                (),
+            )
+            .await
+            .unwrap();
+            let held = 1_i64 << (k + 1);
+            if held < 1024 {
+                continue;
+            }
+            advance_watermark(&db, &author, service::DOCUMENTS_PRIVATE, (held - 1) as u64)
+                .await
+                .unwrap();
+            db.checkpoint().await.unwrap();
+            let (mut before, mut after) = (Vec::new(), Vec::new());
+            for _ in 0..7 {
+                let t = std::time::Instant::now();
+                let rows: Vec<(Vec<u8>,)> = db.fetch_all(replaced, (svc, ty)).await.unwrap();
+                before.push(t.elapsed().as_secs_f64() * 1000.0);
+                assert!(rows.is_empty(), "sanity: everything is folded");
+                let t = std::time::Instant::now();
+                let fresh = entries_past_watermarks(
+                    &db,
+                    service::DOCUMENTS_PRIVATE,
+                    entry_type::DOC_HEADER,
+                )
+                .await
+                .unwrap();
+                after.push(t.elapsed().as_secs_f64() * 1000.0);
+                assert!(fresh.is_empty(), "sanity: everything is folded");
+            }
+            eprintln!(
+                "held {held:>6}: replaced read {:>8.2}ms | entries_past_watermarks {:>6.2}ms",
+                median(before),
+                median(after),
+            );
+        }
+        drop(db);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
