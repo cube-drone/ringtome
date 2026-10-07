@@ -215,32 +215,11 @@ re-planned them all. Plans on an empty database are taken to be production's:
 Turso keeps no statistics. Each fix goes the way the fold read's did: a timing
 test, the change, then a plan assertion so it cannot come back. Worst first:
 
-- **Reply counts scan `post_replies` on every feed page** - `replies.rs:258`
-  (`known_counts`) asks `root_doc IN (…)` and `parent_doc IN (…)`, and both
-  indexes lead with the author: two full scans of the node-wide table per call,
-  under the feed, post pages, `nodeface` and three `idface` paths.
-- **Annotations scan `doc_annotations` on every feed page** -
-  `annotations.rs:175` (`fetch_rows`) asks `target_doc IN (…)` of an index that
-  leads with `target_author`: a full scan and a sort, under `for_posts` (feed,
-  post pages, search, chat, and `score.rs` in chunks over a reader's journal).
-- **The bank catch-up scans all chat** - `chat.rs:2313`, `:2326`, `:2339`
-  (`lines_by`, `reactions_by`, `reactions_to`) filter on `speaker_root`, which
-  nothing indexes: the node's whole `room_messages` and `room_reactions` on
-  every catch-up.
-- **Three more fold reads walk history** - `imaol.rs:333`, `:461`, `:707` (the
-  published-edges, rebroadcasts and annotations catch-ups) LEFT JOIN the
-  watermark, the shape `entries_past_watermarks` had until 2026-10-07; the bank
-  catch-up calls two of them, and `published_edges` runs per ledger refresh and
-  per frontier move.
-- **The room-sync loop scans two tables a pass** - `chat.rs:3258` (`pulse`): all
-  of `feed_journal` for rooms (`fanout.rs:1677`) and all of `room_messages` for
-  each room's latest (`chat.rs:2249`). Fits scratch's 1.2 s idle room-sync
-  passes with 4-8 ms of lock wait.
-- **The key-prefetch loop scans and sorts the journal** - `fanout.rs:1663`
-  (`sealed_rows`), every pass. Fits scratch's slow key-prefetch passes.
-- **Chat edits, deletes and reactions scan for one row** - `chat.rs:2467` to
-  `:2592` look a message or reaction up by `speaker_root` and `entry_hash`; one
-  index on `entry_hash` serves all five.
+- **Scratch's slow idle room-sync passes** - about 1.2 s with 4-8 ms of lock
+  wait. "room-sync" is `chat::sync_pass` (`lib.rs:649`), not the pulse the audit
+  first blamed: it reads the small `rooms_open` table, then pulls each open room
+  over the network, so the time is probably the network's. The full log line's
+  `db_exec_ms` says which.
 - **Row-value cursors never seek** - `(a, b, c, d) > (?, ?, ?, ?)` walks from
   the start on Turso, so paging a whole log is quadratic: `imaol.rs:1482`
   (journal backfill), `:1577` (the `/entries` route), `:1350` (POSTS log pages).

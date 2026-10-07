@@ -229,48 +229,40 @@ pub struct ReplyLinks {
     pub root: (String, String),
 }
 
+/// One post's two counts, each a seek on an index that LEADS with the post's own key: rows
+/// whose thread root is the post (`post_replies_by_root`), rows whose parent is (the primary
+/// key). Named so the plan test pins the statement that runs.
+const KNOWN_COUNT: &str = "SELECT
+       (SELECT COUNT(*) FROM post_replies WHERE root_author = ?1 AND root_doc = ?2),
+       (SELECT COUNT(*) FROM post_replies WHERE parent_author = ?1 AND parent_doc = ?2)";
+
 /// How many replies this node THINKS each of these posts has - the honest-partial count
-/// for the foot line ("3 replies"), page-scoped like `links_for`. Two indexed GROUP BYs,
+/// for the foot line ("3 replies"), page-scoped like `links_for`. Two counts per post,
 /// merged by max: rows whose thread ROOT is the post count its whole known tree (a
-/// top-level post - `post_replies_by_root`), rows whose PARENT is the post count direct
-/// children (all a mid-thread reply can claim without walking, since its descendants'
-/// root is the thread's top, not it - undercounting nested grandchildren is the honest
-/// cheap answer, and the thread page shows the real shape). Max is exact for both cases:
-/// a root's direct children are a subset of its tree, and nobody's root is a mid-thread
-/// reply.
+/// top-level post), rows whose PARENT is the post count direct children (all a mid-thread
+/// reply can claim without walking, since its descendants' root is the thread's top, not
+/// it - undercounting nested grandchildren is the honest cheap answer, and the thread page
+/// shows the real shape). Max is exact for both cases: a root's direct children are a
+/// subset of its tree, and nobody's root is a mid-thread reply.
+///
+/// One statement per post, by its full key. The two GROUP BYs this replaced asked by doc
+/// alone (`root_doc IN (…)`), and both indexes lead with the author, so every feed page
+/// scanned the node's whole `post_replies` twice (the 2026-10-07 plan audit).
 pub async fn known_counts(
     node_db: &Db,
     posts: &[(String, String)],
 ) -> Result<std::collections::HashMap<(String, String), i64>> {
-    let docs: Vec<String> = posts
-        .iter()
-        .map(|(_, d)| d)
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_hexdigit()))
-        .map(|d| format!("'{d}'"))
-        .collect();
-    if docs.is_empty() {
-        return Ok(Default::default());
-    }
     let mut out: std::collections::HashMap<(String, String), i64> = Default::default();
-    for (a_col, d_col) in [("root_author", "root_doc"), ("parent_author", "parent_doc")] {
-        let rows: Vec<(String, String, i64)> = node_db
-            .fetch_all(
-                &format!(
-                    "SELECT {a_col}, {d_col}, COUNT(*) FROM post_replies
-                     WHERE {d_col} IN ({}) GROUP BY {a_col}, {d_col}",
-                    docs.join(",")
-                ),
-                (),
-            )
+    let unique: std::collections::BTreeSet<&(String, String)> =
+        posts.iter().filter(|(_, d)| !d.is_empty()).collect();
+    for (author, doc) in unique {
+        let (tree, direct): (i64, i64) = node_db
+            .fetch_one(KNOWN_COUNT, (author.as_str(), doc.as_str()))
             .await
             .context("counting known replies")?;
-        for (a, d, n) in rows {
-            if posts.contains(&(a.clone(), d.clone())) {
-                let e = out.entry((a, d)).or_insert(0);
-                *e = (*e).max(n);
-            }
+        let n = tree.max(direct);
+        if n > 0 {
+            out.insert((author.clone(), doc.clone()), n);
         }
     }
     Ok(out)
@@ -836,5 +828,104 @@ mod tests {
         assert_eq!(counts.get(&root), Some(&2), "the root counts its whole known tree");
         assert_eq!(counts.get(&mid), Some(&1), "a mid-thread reply counts its direct children");
         assert_eq!(counts.get(&posts[2]), None, "no replies, no entry - the foot stays quiet");
+    }
+
+    /// The foot-line count SEEKS, by the post's full key, on both sides. Asked by doc alone it
+    /// scanned the node's whole reply memo, twice per feed page, and a scan over test-sized
+    /// data is fast - so the shape is asserted, not the time (`known_counts_at_scale` is the
+    /// timing, by name).
+    #[tokio::test]
+    async fn known_counts_seeks_both_indexes() {
+        let db = crate::db::test_node_db().await;
+        let rows: Vec<(i64, i64, i64, String)> =
+            db.fetch_all(&format!("EXPLAIN QUERY PLAN {KNOWN_COUNT}"), ("a", "d")).await.unwrap();
+        let plan: String =
+            rows.iter().map(|(_, _, _, d)| d.as_str()).collect::<Vec<_>>().join(" | ");
+        assert!(!plan.contains("SCAN post_replies"), "the counts must not scan, got: {plan}");
+        assert!(
+            plan.contains("post_replies_by_root (root_author=? AND root_doc=?)"),
+            "the tree count seeks the root index by the full key, got: {plan}"
+        );
+        assert!(
+            plan.contains("(parent_author=? AND parent_doc=?)"),
+            "the direct count seeks the primary key by the full key, got: {plan}"
+        );
+    }
+
+    /// The timing behind the fix (2026-10-07): a node memo of 2^17 replies spread over 4,096
+    /// threads, and a 20-post feed page counted - the replaced doc-only GROUP BYs beside
+    /// `known_counts` as it is now. Encrypted on disk, like production. Ignored in the suite -
+    /// it measures, it does not judge; run it by name.
+    #[tokio::test]
+    #[ignore]
+    async fn known_counts_at_scale() {
+        let dir = std::env::temp_dir().join(format!("ringtome-replycount-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::remove_var("RINGTOME_ENVELOPE_KEY");
+        let keystore = crate::keystore::Keystore::load(&dir).unwrap();
+        let db = crate::db::open_database(&dir.join("node.db"), &keystore).await.unwrap();
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        // One reply, then doubled: each copy a new replier, threads cycling over 4,096 roots.
+        db.execute(
+            "INSERT INTO post_replies (parent_author, parent_doc, reply_author, reply_doc,
+                                       root_author, root_doc, claimed_ms, noted_ms)
+             VALUES (printf('%064x', 0), printf('%032x', 0), printf('%064x', 1),
+                     printf('%032x', 1), printf('%064x', 0), printf('%032x', 0), 0, 0)",
+            (),
+        )
+        .await
+        .unwrap();
+        for k in 0..17 {
+            db.execute(
+                &format!(
+                    "INSERT INTO post_replies (parent_author, parent_doc, reply_author, reply_doc,
+                                               root_author, root_doc, claimed_ms, noted_ms)
+                     SELECT printf('%064x', (rowid + {n}) % 4096), printf('%032x', (rowid + {n}) % 4096),
+                            printf('%064x', rowid + {n}), printf('%032x', rowid + {n}),
+                            printf('%064x', (rowid + {n}) % 4096), printf('%032x', (rowid + {n}) % 4096),
+                            0, 0
+                     FROM post_replies",
+                    n = 1_i64 << k
+                ),
+                (),
+            )
+            .await
+            .unwrap();
+        }
+        db.checkpoint().await.unwrap();
+        let (held,): (i64,) = db.fetch_one("SELECT COUNT(*) FROM post_replies", ()).await.unwrap();
+        let posts: Vec<(String, String)> =
+            (0..20).map(|i| (format!("{:064x}", i * 7), format!("{:032x}", i * 7))).collect();
+        let quoted: Vec<String> = posts.iter().map(|(_, d)| format!("'{d}'")).collect();
+        let (mut before, mut after) = (Vec::new(), Vec::new());
+        for _ in 0..7 {
+            let t = std::time::Instant::now();
+            for (a, d) in [("root_author", "root_doc"), ("parent_author", "parent_doc")] {
+                let _: Vec<(String, String, i64)> = db
+                    .fetch_all(
+                        &format!(
+                            "SELECT {a}, {d}, COUNT(*) FROM post_replies
+                             WHERE {d} IN ({}) GROUP BY {a}, {d}",
+                            quoted.join(",")
+                        ),
+                        (),
+                    )
+                    .await
+                    .unwrap();
+            }
+            before.push(t.elapsed().as_secs_f64() * 1000.0);
+            let t = std::time::Instant::now();
+            let counts = known_counts(&db, &posts).await.unwrap();
+            after.push(t.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(counts.len(), 20, "sanity: every post on the page has replies");
+        }
+        before.sort_by(f64::total_cmp);
+        after.sort_by(f64::total_cmp);
+        eprintln!(
+            "held {held}: replaced GROUP BYs {:.2}ms | known_counts {:.2}ms (20 posts)",
+            before[3], after[3]
+        );
+        drop(db);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

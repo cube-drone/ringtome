@@ -174,6 +174,24 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0070_oauth.sql"),
         refold: &[],
     },
+    Rung {
+        version: 71,
+        name: "0071_chat_by_speaker.sql",
+        sql: include_str!("../migrations/node/0071_chat_by_speaker.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 72,
+        name: "0072_feed_journal_rooms.sql",
+        sql: include_str!("../migrations/node/0072_feed_journal_rooms.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 73,
+        name: "0073_feed_journal_sealed.sql",
+        sql: include_str!("../migrations/node/0073_feed_journal_sealed.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).

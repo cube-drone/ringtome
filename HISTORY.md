@@ -17631,3 +17631,42 @@ where the C libaegis detects AES-NI at run time; macOS already gets the
 pure-Rust build from turso_core itself. Which leaves the Substrate's "one
 toolchain" premise true on Apple Silicon only: on Linux the database's crypto is
 C.
+
+**2026-10-07 - The query-plan stack, top six.** Curtis: "let's start addressing
+that query plan stack." Each fix pinned by a plan assertion on the statement
+that runs (now a named const beside its function), timed where the fix was a
+rewrite rather than an index.
+
+- **Reply counts** (`replies.rs`, `known_counts`): one statement per post by its
+  full key, two scalar counts, values bound - where two `doc IN (…)` GROUP BYs
+  scanned the node's `post_replies`, both indexes leading with the author. 63.6
+  → 1.1 ms for a 20-post page over 131,072 replies (`known_counts_at_scale`).
+- **Annotations** (`annotations.rs`, `fetch_rows`): per post by its full key,
+  the author's own first within each post, which is all `bounded` and the
+  readers lean on. 35.8 → 3.3 ms for 20 posts over 131,072 labels
+  (`post_rows_at_scale`). `rows_of` in the tests takes the author now.
+- **Chat by speaker** (node rung 71): `room_messages_by_speaker` and
+  `room_reactions_by_speaker` on `(speaker_root, entry_hash)` serve the bank's
+  three reads and the fold's five take-back, edit and still-there lookups, each
+  of which scanned the node's room lanes. `reactions_to` joins on `room_author`
+  as well, so the reaction side seeks `room_reactions_by_target` instead of
+  building a throwaway index per call (Turso's `ephemeral_` in the plan). A
+  climb test carries lines and reactions over the rung.
+- **The keyless folds** (`imaol.rs`): published edges, rebroadcasts and
+  annotations read through `rows_past_watermarks`, the morning's seek loop
+  widened to return rows raw - the LEFT JOIN on the watermark they each had was
+  the same full-history walk.
+- **The room pulse** (node rung 72): `feed_journal_rooms`, a PARTIAL index -
+  Turso 0.8.2 supports them, a probe showed, and plans with them - of the room
+  rows alone, so `rooms_in_feeds` stops scanning the journal and a post's
+  fan-out pays nothing. `latest_by_room`, which grouped every message the node
+  holds, became `latest_for_rooms(rooms)`, a seek per room named, for the pulse
+  and the chats column both.
+- **The key prefetch** (node rung 73): `feed_journal_sealed`, a partial index of
+  trusted-only rows in arrival order; `sealed_rows` reads its first 200 and
+  stops, no sort.
+
+Corrected on the way: the audit tied scratch's 1.2 s idle "room-sync" passes to
+the pulse's scans, but room-sync is `chat::sync_pass`, a separate loop that
+pulls open rooms over the network; that residual stays in NEXT_STEPS, unplaced.
+`cargo test -p ringtome-node` green (490).

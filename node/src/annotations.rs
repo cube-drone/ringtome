@@ -167,20 +167,29 @@ async fn admitted(state: &AppState, rows: Vec<MemoRow>, viewer: Option<&str>) ->
     out
 }
 
-/// The memo's rows for these documents (hex, quoted for SQL), the author's own first.
-async fn fetch_rows(node_db: &Db, docs: &[String]) -> Result<Vec<MemoRow>> {
-    let rows: Vec<MemoTuple> = node_db
-        .fetch_all(
-            &format!(
-                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc FROM doc_annotations
-                 WHERE target_doc IN ({}) ORDER BY (annotator = target_author) DESC, noted_ms",
-                docs.join(",")
-            ),
-            (),
-        )
-        .await
-        .context("reading known annotations")?;
-    Ok(rows.into_iter().map(memo_row).collect())
+/// One post's memo rows, the author's own first: a seek on `doc_annotations_sealed_as`, whose
+/// lead is the post's full key. Named so the plan test pins the statement that runs.
+const POST_ROWS: &str =
+    "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc
+     FROM doc_annotations WHERE target_author = ?1 AND target_doc = ?2
+     ORDER BY (annotator = target_author) DESC, noted_ms";
+
+/// The memo's rows for these posts, post by post, each post's author's own first. One
+/// statement per post, by its full key: the single `target_doc IN (…)` read this replaced
+/// asked an index that leads with the author, so every feed page scanned the node's whole
+/// annotation memo and sorted it (the 2026-10-07 plan audit).
+async fn fetch_rows(node_db: &Db, posts: &[(String, String)]) -> Result<Vec<MemoRow>> {
+    let unique: std::collections::BTreeSet<&(String, String)> =
+        posts.iter().filter(|(_, d)| !d.is_empty()).collect();
+    let mut out = Vec::new();
+    for (author, doc) in unique {
+        let rows: Vec<MemoTuple> = node_db
+            .fetch_all(POST_ROWS, (author.as_str(), doc.as_str()))
+            .await
+            .context("reading known annotations")?;
+        out.extend(rows.into_iter().map(memo_row));
+    }
+    Ok(out)
 }
 
 /// A memo row as the readers fetch it.
@@ -641,18 +650,7 @@ async fn for_posts_inner(
     posts: &[(String, String)],
     viewer: Option<Option<&str>>,
 ) -> Result<std::collections::HashMap<(String, String), Vec<KnownAnnotation>>> {
-    let docs: Vec<String> = posts
-        .iter()
-        .map(|(_, d)| d)
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_hexdigit()))
-        .map(|d| format!("'{d}'"))
-        .collect();
-    if docs.is_empty() {
-        return Ok(Default::default());
-    }
-    let rows = fetch_rows(&state.node_db, &docs).await?;
+    let rows = fetch_rows(&state.node_db, posts).await?;
     let rows = bounded(match viewer {
         Some(v) => admitted(state, rows, v).await,
         None => rows.into_iter().filter(|r| r.key != SEALED_KEY).collect(),
@@ -660,9 +658,7 @@ async fn for_posts_inner(
     let mut out: std::collections::HashMap<(String, String), Vec<KnownAnnotation>> =
         Default::default();
     for MemoRow { target_author: ta, target_doc: td, annotator, key, value, .. } in rows {
-        if posts.contains(&(ta.clone(), td.clone())) {
-            out.entry((ta, td)).or_default().push(KnownAnnotation { annotator, key, value });
-        }
+        out.entry((ta, td)).or_default().push(KnownAnnotation { annotator, key, value });
     }
     Ok(out)
 }
@@ -1008,8 +1004,8 @@ mod tests {
 
     /// Noted, re-noted (idempotent), read page-scoped with the author's own first, and
     /// forgotten on retraction.
-    async fn rows_of(db: &Db, d: &str) -> Vec<MemoRow> {
-        fetch_rows(db, &[format!("'{d}'")]).await.unwrap()
+    async fn rows_of(db: &Db, a: &str, d: &str) -> Vec<MemoRow> {
+        fetch_rows(db, &[(a.to_string(), d.to_string())]).await.unwrap()
     }
 
     /// Node rung 56 on a node with labels in it (2026-09-27): the rows keep, flagged 0.
@@ -1169,11 +1165,11 @@ mod tests {
         note(&db, &a, &d, &"bb".repeat(32), "tag", "goopy", "chain").await.unwrap();
         note(&db, &a, &d, &a, "tag", "saucy", "chain").await.unwrap();
         note(&db, &a, &d, &a, "tag", "saucy", "chain").await.unwrap();
-        let labels = rows_of(&db, &d).await;
+        let labels = rows_of(&db, &a, &d).await;
         assert_eq!(labels.len(), 2, "idempotent: one row per statement");
         assert_eq!(labels[0].annotator, a, "the author's own label comes first");
         forget(&db, &a, &d, &"bb".repeat(32), "tag", "goopy").await.unwrap();
-        assert_eq!(rows_of(&db, &d).await.len(), 1, "a retraction takes its row");
+        assert_eq!(rows_of(&db, &a, &d).await.len(), 1, "a retraction takes its row");
     }
 
     /// The sealed road (ruling 7): a statement rides as ciphertext, folds raw where the key
@@ -1188,14 +1184,14 @@ mod tests {
         assert_eq!(open_statement(&sealed, &key), Some(("tag".into(), "divorce".into())));
         assert_eq!(open_statement(&sealed, &[8u8; 32]), None, "the wrong key opens nothing");
         note_sealed(&db, &a, &d, &a, &sealed, "chain").await.unwrap();
-        let raw = rows_of(&db, &d).await;
+        let raw = rows_of(&db, &a, &d).await;
         assert_eq!(
             (raw[0].key.as_str(), raw[0].sealed, raw[0].holder.is_none()),
             (SEALED_KEY, true, true),
             "folded raw"
         );
         open_sealed(&db, &a, &d, &a, &d, &key).await.unwrap();
-        let opened = rows_of(&db, &d).await;
+        let opened = rows_of(&db, &a, &d).await;
         assert_eq!(opened.len(), 1, "the raw row retired as it opened");
         assert_eq!(
             (
@@ -1208,17 +1204,113 @@ mod tests {
         );
         forget(&db, &a, &d, &a, SEALED_KEY, &sealed).await.unwrap();
         assert!(
-            rows_of(&db, &d).await.is_empty(),
+            rows_of(&db, &a, &d).await.is_empty(),
             "retracting the ciphertext takes the opened row"
         );
         // Held key at fold time: opened on the spot.
         crate::postkeys::remember(&db, &a, &d, &key).await.unwrap();
         note_sealed(&db, &a, &d, &"bb".repeat(32), &sealed, "chain").await.unwrap();
-        let now = rows_of(&db, &d).await;
+        let now = rows_of(&db, &a, &d).await;
         assert_eq!(
             (now[0].key.as_str(), now[0].value.as_str()),
             ("tag", "divorce"),
             "opened as it folded"
         );
+    }
+
+    /// A post's memo rows SEEK by its full key. Asked by doc alone they scanned the node's
+    /// whole memo and sorted it, on every feed page - and a scan over test-sized data is
+    /// fast, so the shape is asserted, not the time (`post_rows_at_scale` is the timing).
+    #[tokio::test]
+    async fn post_rows_seek_by_the_full_key() {
+        let db = crate::db::test_node_db().await;
+        let rows: Vec<(i64, i64, i64, String)> =
+            db.fetch_all(&format!("EXPLAIN QUERY PLAN {POST_ROWS}"), ("a", "d")).await.unwrap();
+        let plan: String =
+            rows.iter().map(|(_, _, _, d)| d.as_str()).collect::<Vec<_>>().join(" | ");
+        assert!(!plan.contains("SCAN doc_annotations"), "must not scan, got: {plan}");
+        assert!(
+            plan.contains("(target_author=? AND target_doc=?)"),
+            "must seek by the post's full key, got: {plan}"
+        );
+    }
+
+    /// The timing behind the fix (2026-10-07): a memo of 2^17 labels over 4,096 posts and a
+    /// 20-post feed page read - the replaced doc-only `IN` read beside `fetch_rows` as it is
+    /// now. Encrypted on disk, like production. Ignored in the suite - it measures, it does not
+    /// judge; run it by name.
+    #[tokio::test]
+    #[ignore]
+    async fn post_rows_at_scale() {
+        let dir = std::env::temp_dir().join(format!("ringtome-labelrows-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::remove_var("RINGTOME_ENVELOPE_KEY");
+        let keystore = crate::keystore::Keystore::load(&dir).unwrap();
+        let db = crate::db::open_database(&dir.join("node.db"), &keystore).await.unwrap();
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        note(
+            &db,
+            &format!("{:064x}", 0),
+            &format!("{:032x}", 0),
+            &format!("{:064x}", 1),
+            "tag",
+            "t",
+            "chain",
+        )
+        .await
+        .unwrap();
+        // Doubled: each copy a new labeller, posts cycling over 4,096.
+        for k in 0..17 {
+            db.execute(
+                &format!(
+                    "INSERT INTO doc_annotations (target_author, target_doc, annotator, key, value,
+                                                  noted_ms, learned_via, sealed, emoji)
+                     SELECT printf('%064x', (rowid + {n}) % 4096), printf('%032x', (rowid + {n}) % 4096),
+                            printf('%064x', rowid + {n}), key, value, noted_ms + {n}, learned_via,
+                            sealed, emoji
+                     FROM doc_annotations",
+                    n = 1_i64 << k
+                ),
+                (),
+            )
+            .await
+            .unwrap();
+        }
+        db.checkpoint().await.unwrap();
+        let (held,): (i64,) =
+            db.fetch_one("SELECT COUNT(*) FROM doc_annotations", ()).await.unwrap();
+        let posts: Vec<(String, String)> =
+            (0..20).map(|i| (format!("{:064x}", i * 7), format!("{:032x}", i * 7))).collect();
+        let quoted: Vec<String> = posts.iter().map(|(_, d)| format!("'{d}'")).collect();
+        let (mut before, mut after) = (Vec::new(), Vec::new());
+        for _ in 0..7 {
+            let t = std::time::Instant::now();
+            let old: Vec<MemoTuple> = db
+                .fetch_all(
+                    &format!(
+                        "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc
+                         FROM doc_annotations WHERE target_doc IN ({})
+                         ORDER BY (annotator = target_author) DESC, noted_ms",
+                        quoted.join(",")
+                    ),
+                    (),
+                )
+                .await
+                .unwrap();
+            before.push(t.elapsed().as_secs_f64() * 1000.0);
+            let t = std::time::Instant::now();
+            let rows = fetch_rows(&db, &posts).await.unwrap();
+            after.push(t.elapsed().as_secs_f64() * 1000.0);
+            assert!(rows.len() >= 20 * 31, "sanity: about 32 labels on each post of the page");
+            assert_eq!(rows.len(), old.len(), "the same rows the replaced read found");
+        }
+        before.sort_by(f64::total_cmp);
+        after.sort_by(f64::total_cmp);
+        eprintln!(
+            "held {held}: replaced IN read {:.2}ms | fetch_rows {:.2}ms (20 posts)",
+            before[3], after[3]
+        );
+        drop(db);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

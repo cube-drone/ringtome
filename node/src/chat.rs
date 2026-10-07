@@ -2241,17 +2241,31 @@ pub async fn unseen_lines(
         .collect())
 }
 
-/// When each room this node holds last heard a message: `(room_author, room_doc) ->
-/// said_ms` - what the chats column sorts and bolds by (Curtis, 2026-09-18).
-pub async fn latest_by_room(node_db: &Db) -> Result<HashMap<(String, String), i64>> {
-    let rows: Vec<(String, String, i64)> = node_db
-        .fetch_all(
-            "SELECT room_author, room_doc, MAX(said_ms) FROM room_messages WHERE deleted = 0 GROUP BY room_author, room_doc",
-            (),
-        )
-        .await
-        .context("reading each room's latest message")?;
-    Ok(rows.into_iter().map(|(a, d, ms)| ((a, d), ms)).collect())
+/// One room's newest live word: a seek on `room_messages_by_room`, read backwards from the
+/// newest. Named so the plan test pins it.
+const LATEST_IN_ROOM: &str = "SELECT MAX(said_ms) FROM room_messages
+     WHERE room_author = ?1 AND room_doc = ?2 AND deleted = 0";
+
+/// When each of these rooms last heard a message: `(room_author, room_doc) -> said_ms`, rooms
+/// that have heard nothing absent - what the chats column sorts and bolds by (Curtis,
+/// 2026-09-18), and the pulse's bar. One seek per room named: the GROUP BY this replaced read
+/// every message the node holds, in every room, to answer for the few asked about (the
+/// 2026-10-07 plan audit).
+pub async fn latest_for_rooms(
+    node_db: &Db,
+    rooms: &[(String, String)],
+) -> Result<HashMap<(String, String), i64>> {
+    let mut out = HashMap::new();
+    for (author, doc) in rooms {
+        let (latest,): (Option<i64>,) = node_db
+            .fetch_one(LATEST_IN_ROOM, (author.as_str(), doc.as_str()))
+            .await
+            .context("reading a room's latest message")?;
+        if let Some(ms) = latest {
+            out.insert((author.clone(), doc.clone()), ms);
+        }
+    }
+    Ok(out)
 }
 
 /// The chatters (Curtis, 2026-09-18): everyone who has visibly spoken in a room as this
@@ -2305,16 +2319,24 @@ pub async fn said_between(
     Ok(rows.into_iter().map(|(ms,)| ms).collect())
 }
 
+/// The bank's three chat reads (`lines_by`, `reactions_by`, `reactions_to`), named so the plan
+/// test pins them: each seeks a `_by_speaker` index (node rung 71). Before it, nothing led with
+/// `speaker_root`, and every bank catch-up scanned the node's whole room lanes (the 2026-10-07
+/// plan audit). The join names `room_author` too, so the reaction side seeks
+/// `room_reactions_by_target` rather than building a throwaway index per call.
+const LINES_BY: &str =
+    "SELECT entry_hash, said_ms FROM room_messages WHERE speaker_root = ?1 AND notice_kind IS NULL";
+const REACTIONS_BY: &str = "SELECT entry_hash, said_ms FROM room_reactions WHERE speaker_root = ?1";
+const REACTIONS_TO: &str = "SELECT r.entry_hash, r.said_ms, r.speaker_root FROM room_reactions r
+     JOIN room_messages m ON m.entry_hash = r.target_hash
+         AND m.room_author = r.room_author AND m.room_doc = r.room_doc
+     WHERE m.speaker_root = ?1 AND r.speaker_root <> ?1";
+
 /// What a persona has said and been answered with in rooms, for their HorseBucks (bank.rs,
 /// 2026-09-29): their own lines (never a moderation notice) as `(entry hash hex, said_ms)`.
 pub async fn lines_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>> {
-    let rows: Vec<(Vec<u8>, i64)> = node_db
-        .fetch_all(
-            "SELECT entry_hash, said_ms FROM room_messages WHERE speaker_root = ?1 AND notice_kind IS NULL",
-            (root_hex,),
-        )
-        .await
-        .context("listing a persona's chat lines")?;
+    let rows: Vec<(Vec<u8>, i64)> =
+        node_db.fetch_all(LINES_BY, (root_hex,)).await.context("listing a persona's chat lines")?;
     Ok(rows.into_iter().map(|(h, ms)| (hex::encode(h), ms)).collect())
 }
 
@@ -2322,10 +2344,7 @@ pub async fn lines_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>
 /// saying earned it.
 pub async fn reactions_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64)>> {
     let rows: Vec<(Vec<u8>, i64)> = node_db
-        .fetch_all(
-            "SELECT entry_hash, said_ms FROM room_reactions WHERE speaker_root = ?1",
-            (root_hex,),
-        )
+        .fetch_all(REACTIONS_BY, (root_hex,))
         .await
         .context("listing a persona's chat reactions")?;
     Ok(rows.into_iter().map(|(h, ms)| (hex::encode(h), ms)).collect())
@@ -2335,12 +2354,7 @@ pub async fn reactions_by(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i
 /// the reactor's root)`.
 pub async fn reactions_to(node_db: &Db, root_hex: &str) -> Result<Vec<(String, i64, String)>> {
     let rows: Vec<(Vec<u8>, i64, String)> = node_db
-        .fetch_all(
-            "SELECT r.entry_hash, r.said_ms, r.speaker_root FROM room_reactions r
-             JOIN room_messages m ON m.entry_hash = r.target_hash AND m.room_doc = r.room_doc
-             WHERE m.speaker_root = ?1 AND r.speaker_root <> ?1",
-            (root_hex,),
-        )
+        .fetch_all(REACTIONS_TO, (root_hex,))
         .await
         .context("listing reactions to a persona's lines")?;
     Ok(rows.into_iter().map(|(h, ms, who)| (hex::encode(h), ms, who)).collect())
@@ -3260,7 +3274,6 @@ async fn pulse(state: AppState, pacing: Pacing) -> Result<()> {
     if rows.is_empty() {
         return Ok(());
     }
-    let local = latest_by_room(&state.node_db).await?;
     let now = crate::clock::now_ms();
     // One question per room, whoever's feed it sits in: the newest row's time is the bar.
     let mut rooms: HashMap<(String, String), (String, i64)> = HashMap::new();
@@ -3270,6 +3283,8 @@ async fn pulse(state: AppState, pacing: Pacing) -> Result<()> {
             *slot = (reader, published_ms);
         }
     }
+    let keys: Vec<(String, String)> = rooms.keys().cloned().collect();
+    let local = latest_for_rooms(&state.node_db, &keys).await?;
     let mut asked = 0usize;
     for ((author, doc_hex), (reader, published_ms)) in rooms {
         let latest = match local.get(&(author.clone(), doc_hex.clone())) {
@@ -3452,5 +3467,89 @@ mod tests {
             crate::record::private::open_post_body(&back.body, &[8u8; 32]).is_none(),
             "the wrong key opens nothing"
         );
+    }
+
+    /// Everything that names a speaker SEEKS (node rung 71): the bank's three reads, and the
+    /// fold's lookups of one speaker's entry by hash (take-back, edit, still-there). Before the
+    /// `_by_speaker` indexes each scanned the node's whole room lanes; a scan over test-sized
+    /// data is fast, so the shape is asserted, not the time.
+    #[tokio::test]
+    async fn speaker_reads_seek() {
+        let db = crate::db::test_node_db().await;
+        for (sql, n) in [
+            (LINES_BY, 1),
+            (REACTIONS_BY, 1),
+            (REACTIONS_TO, 1),
+
+            ("SELECT 1 FROM room_messages WHERE speaker_root = ?1 AND entry_hash = ?2", 2),
+            ("UPDATE room_reactions SET withdrawn = 1 WHERE speaker_root = ?1 AND entry_hash = ?2", 2),
+        ] {
+            let explain = format!("EXPLAIN QUERY PLAN {sql}");
+            let rows: Vec<(i64, i64, i64, String)> = if n == 1 {
+                db.fetch_all(&explain, ("s",)).await.unwrap()
+            } else {
+                db.fetch_all(&explain, ("s", vec![0u8])).await.unwrap()
+            };
+            let plan: String =
+                rows.iter().map(|(_, _, _, d)| d.as_str()).collect::<Vec<_>>().join(" | ");
+            assert!(!plan.contains("SCAN "), "a speaker's read must not scan, got: {plan}");
+            assert!(!plan.contains("ephemeral"), "nor build a throwaway index, got: {plan}");
+            assert!(plan.contains("_by_speaker"), "it seeks by the speaker, got: {plan}");
+        }
+    }
+
+    /// Node rung 71 on a node with chat in it: the lanes keep their rows, and the bank's three
+    /// reads find them through the new indexes - a reaction counted to the line it answers, in
+    /// its own room, and never the speaker's own.
+    #[tokio::test]
+    async fn node_rung_71_climbs_onto_a_room_with_lines_and_reactions() {
+        let db = crate::db::test_memory_db().await;
+        let at = crate::migrations::NODE
+            .iter()
+            .position(|r| r.version == 71)
+            .expect("rung 71 is on the ladder");
+        crate::migrations::climb(&db, &crate::migrations::NODE[..at], "node").await.unwrap();
+        db.execute(
+            "INSERT INTO room_messages (room_author, room_doc, speaker_root, speaker_leaf, seq,
+                                        said_ms, entry_hash, body, noted_ms)
+             VALUES ('ra', 'rd', 'aa', 'aa', 0, 10, X'01', X'', 10)",
+            (),
+        )
+        .await
+        .unwrap();
+        for (speaker, seq, hash) in [("bb", 0, vec![2u8]), ("aa", 1, vec![3u8])] {
+            db.execute(
+                "INSERT INTO room_reactions (room_author, room_doc, target_hash, speaker_root,
+                                             speaker_leaf, seq, said_ms, entry_hash, body, noted_ms)
+                 VALUES ('ra', 'rd', X'01', ?1, ?1, ?2, 20, ?3, X'', 20)",
+                (speaker, seq, hash),
+            )
+            .await
+            .unwrap();
+        }
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        assert_eq!(lines_by(&db, "aa").await.unwrap(), [("01".to_string(), 10)]);
+        assert_eq!(reactions_by(&db, "bb").await.unwrap(), [("02".to_string(), 20)]);
+        assert_eq!(
+            reactions_to(&db, "aa").await.unwrap(),
+            [("02".to_string(), 20, "bb".to_string())],
+            "bb's reaction to aa's line, and not aa's own"
+        );
+    }
+
+    /// A room's latest word is one seek on its room index, never the node's every message.
+    #[tokio::test]
+    async fn a_rooms_latest_word_seeks_its_room() {
+        let db = crate::db::test_node_db().await;
+        let plan: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(&format!("EXPLAIN QUERY PLAN {LATEST_IN_ROOM}"), ("a", "d"))
+            .await
+            .unwrap();
+        let plan = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(
+            plan.contains("room_messages_by_room (room_author=? AND room_doc=?)"),
+            "the room's own index, got: {plan}"
+        );
+        assert!(!plan.contains("SCAN room_messages"), "never every message, got: {plan}");
     }
 }

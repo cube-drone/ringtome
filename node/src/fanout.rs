@@ -1658,27 +1658,25 @@ pub async fn sealed_rows(
     node_db: &crate::db::Db,
     limit: i64,
 ) -> Result<Vec<(String, String, String, Option<String>)>> {
-    node_db
-        .fetch_all(
-            "SELECT reader_root, author_root, doc_id, via_root FROM feed_journal
-             WHERE trusted_only = 1 AND reader_root != author_root
-             ORDER BY arrived_ms DESC LIMIT ?1",
-            (limit,),
-        )
-        .await
-        .context("reading the feeds' sealed posts")
+    node_db.fetch_all(SEALED_ROWS, (limit,)).await.context("reading the feeds' sealed posts")
 }
+
+/// The sealed-posts read: it walks `feed_journal_sealed` (node rung 73), a partial index of the
+/// trusted-only rows in arrival order, and stops at the limit - where it used to scan and sort
+/// the whole journal every pass. Named so the plan test pins it.
+const SEALED_ROWS: &str = "SELECT reader_root, author_root, doc_id, via_root FROM feed_journal
+     WHERE trusted_only = 1 AND reader_root != author_root
+     ORDER BY arrived_ms DESC LIMIT ?1";
+
+/// The rooms read: it walks `feed_journal_rooms` (node rung 72), a partial index of the room
+/// rows alone, where it used to scan the whole journal. Named so the plan test pins it.
+const ROOMS_IN_FEEDS: &str =
+    "SELECT reader_root, author_root, doc_id, published_ms FROM feed_journal WHERE format = 'room'";
 
 /// Every room in any reader's feed here (CHAT.md; Curtis, 2026-09-18): `(reader, author,
 /// doc, published_ms)` - what the room pulse walks to keep busy rooms cycling.
 pub async fn rooms_in_feeds(node_db: &crate::db::Db) -> Result<Vec<(String, String, String, i64)>> {
-    node_db
-        .fetch_all(
-            "SELECT reader_root, author_root, doc_id, published_ms FROM feed_journal WHERE format = 'room'",
-            (),
-        )
-        .await
-        .context("listing the rooms in feeds")
+    node_db.fetch_all(ROOMS_IN_FEEDS, ()).await.context("listing the rooms in feeds")
 }
 
 /// A room's feed time is its last word's (Curtis, 2026-09-18): every reader's row for the
@@ -3054,5 +3052,58 @@ mod tests {
             sharers_of_doc(&db, &alice, &hex::encode([9u8; 16])).await.unwrap().is_empty(),
             "a document nobody local was journaled a share of yields nothing to dial"
         );
+    }
+
+    /// The room pulse's read walks the partial index of room rows (node rung 72), never the
+    /// whole journal - and rung 72 climbs onto a journal with rows in it, posts and rooms
+    /// alike, and the read finds the rooms alone.
+    #[tokio::test]
+    async fn node_rung_72_indexes_only_the_rooms_and_the_pulse_reads_them() {
+        let db = crate::db::test_memory_db().await;
+        let at = crate::migrations::NODE
+            .iter()
+            .position(|r| r.version == 72)
+            .expect("rung 72 is on the ladder");
+        crate::migrations::climb(&db, &crate::migrations::NODE[..at], "node").await.unwrap();
+        db.execute(
+            "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms, updated_ms, arrived_ms)
+             VALUES ('r', 'a', 'd-room', 't', 'room', 5, 5, 5), ('r', 'a', 'd-post', 't', 'marquee', 6, 6, 6)",
+            (),
+        )
+        .await
+        .unwrap();
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        let plan: Vec<(i64, i64, i64, String)> =
+            db.fetch_all(&format!("EXPLAIN QUERY PLAN {ROOMS_IN_FEEDS}"), ()).await.unwrap();
+        let plan = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(plan.contains("feed_journal_rooms"), "the room rows' own index, got: {plan}");
+        assert_eq!(
+            rooms_in_feeds(&db).await.unwrap(),
+            [("r".to_string(), "a".to_string(), "d-room".to_string(), 5)]
+        );
+    }
+
+    /// The key prefetch's read walks the trusted-only rows' own index in arrival order and stops
+    /// at its limit: no scan of the journal, no sort (node rung 73).
+    #[tokio::test]
+    async fn the_sealed_rows_read_walks_its_partial_index() {
+        let db = crate::db::test_node_db().await;
+        let plan: Vec<(i64, i64, i64, String)> =
+            db.fetch_all(&format!("EXPLAIN QUERY PLAN {SEALED_ROWS}"), (200i64,)).await.unwrap();
+        let plan = plan.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(plan.contains("feed_journal_sealed"), "the sealed rows' own index, got: {plan}");
+        assert!(!plan.contains("SORTER") && !plan.contains("TEMP B-TREE"), "no sort, got: {plan}");
+        db.execute(
+            "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format, published_ms,
+                                       updated_ms, arrived_ms, trusted_only)
+             VALUES ('r', 'a', 'old', 't', 'marquee', 1, 1, 1, 1), ('r', 'a', 'new', 't', 'marquee', 2, 2, 2, 1),
+                    ('r', 'a', 'open', 't', 'marquee', 3, 3, 3, 0), ('r', 'r', 'mine', 't', 'marquee', 4, 4, 4, 1)",
+            (),
+        )
+        .await
+        .unwrap();
+        let docs: Vec<String> =
+            sealed_rows(&db, 200).await.unwrap().into_iter().map(|r| r.2).collect();
+        assert_eq!(docs, ["new", "old"], "sealed, not the reader's own, newest arrival first");
     }
 }

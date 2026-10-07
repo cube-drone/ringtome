@@ -1315,7 +1315,10 @@ async fn rooms_handler(
     }
     // What each room last heard, and what this persona last read of it (Curtis, 2026-09-18):
     // the column sorts by the newest word and bolds what was said since the last look.
-    let latest = crate::chat::latest_by_room(&state.node_db).await.map_err(AppError::Internal)?;
+    let listed: Vec<(String, String)> =
+        items.iter().map(|i| (i.author.clone(), i.doc_id.clone())).collect();
+    let latest =
+        crate::chat::latest_for_rooms(&state.node_db, &listed).await.map_err(AppError::Internal)?;
     let (seen_rows, _) = data.private_registers(ROOMS_SEEN).all().await?;
     let seen: std::collections::HashMap<String, i64> = seen_rows
         .into_iter()

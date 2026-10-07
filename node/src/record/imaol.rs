@@ -327,27 +327,13 @@ pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, 
 /// tombstone that keeps a resurrected older statement from winning, and readers already treat
 /// an empty edge as "nothing published".
 async fn catch_up_published_edges(db: &Db) -> Result<(), AppError> {
-    type Row = (String, Vec<u8>, i64, i64);
-    let rows: Vec<Row> = db
-        .fetch_all(
-            "SELECT e.author_pubkey, e.bytes, e.received_at_ms, e.seq
-             FROM entries e
-             LEFT JOIN view_watermarks w
-               ON w.author_pubkey = e.author_pubkey AND w.service = e.service
-             WHERE e.service = ?1 AND e.entry_type = ?2
-               AND e.seq > COALESCE(w.folded_seq, -1)
-             ORDER BY e.author_pubkey, e.seq",
-            (i64::from(service::FOLLOWS_PUBLIC), i64::from(entry_type::PUBLIC_EDGE)),
-        )
-        .await
-        .context("reading public-edge entries past the watermark")
-        .map_err(AppError::Internal)?;
+    let rows = rows_past_watermarks(db, service::FOLLOWS_PUBLIC, entry_type::PUBLIC_EDGE).await?;
     if rows.is_empty() {
         return Ok(());
     }
 
     let mut advance: BTreeMap<String, u64> = BTreeMap::new();
-    for (author_hex, bytes, received_at_ms, seq) in rows {
+    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in rows {
         advance.insert(author_hex, seq as u64);
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;
@@ -455,27 +441,13 @@ pub async fn rebroadcasts(db: &Db) -> Result<Vec<RebroadcastRow>, AppError> {
 /// A retraction folds to a row with `version_seen` NULL rather than a delete, so a resurrected
 /// older pointer cannot win by arriving late.
 async fn catch_up_rebroadcasts(db: &Db) -> Result<(), AppError> {
-    type Row = (String, Vec<u8>, i64, i64);
-    let rows: Vec<Row> = db
-        .fetch_all(
-            "SELECT e.author_pubkey, e.bytes, e.received_at_ms, e.seq
-             FROM entries e
-             LEFT JOIN view_watermarks w
-               ON w.author_pubkey = e.author_pubkey AND w.service = e.service
-             WHERE e.service = ?1 AND e.entry_type = ?2
-               AND e.seq > COALESCE(w.folded_seq, -1)
-             ORDER BY e.author_pubkey, e.seq",
-            (i64::from(service::REBROADCASTS), i64::from(entry_type::REBROADCAST)),
-        )
-        .await
-        .context("reading rebroadcast entries past the watermark")
-        .map_err(AppError::Internal)?;
+    let rows = rows_past_watermarks(db, service::REBROADCASTS, entry_type::REBROADCAST).await?;
     if rows.is_empty() {
         return Ok(());
     }
 
     let mut advance: BTreeMap<String, u64> = BTreeMap::new();
-    for (author_hex, bytes, received_at_ms, seq) in rows {
+    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in rows {
         advance.insert(author_hex, seq as u64);
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;
@@ -701,26 +673,13 @@ async fn annotation_rows(
 /// Fold annotation statements past the watermark - `catch_up_rebroadcasts`' twin, keyed
 /// four ways instead of two.
 async fn catch_up_annotations(db: &Db) -> Result<(), AppError> {
-    type Row = (String, Vec<u8>, i64, i64);
-    let rows: Vec<Row> = db
-        .fetch_all(
-            "SELECT e.author_pubkey, e.bytes, e.received_at_ms, e.seq
-             FROM entries e
-             LEFT JOIN view_watermarks w
-               ON w.author_pubkey = e.author_pubkey AND w.service = e.service
-             WHERE e.service = ?1 AND e.entry_type = ?2
-               AND e.seq > COALESCE(w.folded_seq, -1)
-             ORDER BY e.author_pubkey, e.seq",
-            (i64::from(service::ANNOTATIONS_PUBLIC), i64::from(entry_type::PUBLIC_ANNOTATION)),
-        )
-        .await
-        .context("reading annotation entries past the watermark")
-        .map_err(AppError::Internal)?;
+    let rows = rows_past_watermarks(db, service::ANNOTATIONS_PUBLIC, entry_type::PUBLIC_ANNOTATION)
+        .await?;
     if rows.is_empty() {
         return Ok(());
     }
     let mut advance: BTreeMap<String, u64> = BTreeMap::new();
-    for (author_hex, bytes, received_at_ms, seq) in rows {
+    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in rows {
         advance.insert(author_hex, seq as u64);
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;
@@ -1182,7 +1141,7 @@ const FOLD_NEXT_AUTHOR: &str = "SELECT author_pubkey FROM entries
 /// with the instance unpinned Turso chose the primary key `(author, service, instance, seq)`, which
 /// cannot bound `seq`, and read the author's whole chain to return nothing (2026-10-06). Every
 /// service folded this way has one chain per key; CHAT is the only per-instance service.
-const FOLD_PAST_SEQ: &str = "SELECT bytes FROM entries
+const FOLD_PAST_SEQ: &str = "SELECT bytes, received_at_ms, seq FROM entries
      WHERE service = ?1 AND entry_type = ?2 AND author_pubkey = ?3 AND instance = X'' AND seq > ?4
      ORDER BY seq";
 
@@ -1202,6 +1161,33 @@ pub(crate) async fn entries_past_watermarks(
     service_id: u32,
     type_id: u32,
 ) -> Result<Vec<SignedEntry>, AppError> {
+    rows_past_watermarks(db, service_id, type_id)
+        .await?
+        .into_iter()
+        .map(|row| {
+            SignedEntry::decode(&row.bytes)
+                .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))
+        })
+        .collect()
+}
+
+/// One stored entry past its chain's watermark, undecoded - for the keyless folds, which skip
+/// what will not decode rather than fail on it.
+pub(crate) struct PastWatermark {
+    pub author: String,
+    pub bytes: Vec<u8>,
+    pub received_at_ms: i64,
+    pub seq: i64,
+}
+
+/// `entries_past_watermarks`' seeks, the rows raw: every fold read goes through here (the
+/// published-edges, rebroadcasts and annotations folds walked their whole history by a
+/// LEFT JOIN on the watermark until the 2026-10-07 plan audit).
+pub(crate) async fn rows_past_watermarks(
+    db: &Db,
+    service_id: u32,
+    type_id: u32,
+) -> Result<Vec<PastWatermark>, AppError> {
     let (svc, ty) = (i64::from(service_id), i64::from(type_id));
     let mut out = Vec::new();
     let mut after = String::new();
@@ -1220,17 +1206,17 @@ pub(crate) async fn entries_past_watermarks(
             .await
             .context("reading a view watermark")
             .map_err(AppError::Internal)?;
-        let rows: Vec<(Vec<u8>,)> = db
+        let rows: Vec<(Vec<u8>, i64, i64)> = db
             .fetch_all(FOLD_PAST_SEQ, (svc, ty, author.as_str(), folded.map_or(-1, |(seq,)| seq)))
             .await
             .context("reading entries past view watermarks")
             .map_err(AppError::Internal)?;
-        for (bytes,) in rows {
-            out.push(
-                SignedEntry::decode(&bytes)
-                    .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))?,
-            );
-        }
+        out.extend(rows.into_iter().map(|(bytes, received_at_ms, seq)| PastWatermark {
+            author: author.clone(),
+            bytes,
+            received_at_ms,
+            seq,
+        }));
         after = author;
     }
     Ok(out)
@@ -2290,8 +2276,8 @@ mod tests {
     }
 
     /// The fold path's reads SEEK, never scan. `entries_of_type` (every store open, epoch keys)
-    /// asks "(service, entry_type), in (author, seq) order"; `entries_past_watermarks` (every
-    /// private or document read) asks for the next author, then that author's entries past a
+    /// asks "(service, entry_type), in (author, seq) order"; `rows_past_watermarks` (every
+    /// fold: private, document, inbox, edges, shares, annotations) asks for the next author, then that author's entries past a
     /// seq - against a table that grows with everything the identity ever writes. Before
     /// `entries_by_service_type` (2026-08-08) the plan was a raw `SCAN entries`, blobs and all,
     /// plus a sorter. And using the index is not enough: until 2026-10-06 the watermark read
