@@ -17539,3 +17539,52 @@ Chrome: a script's two lines with the terminal, the agent's with the robot after
 a hand edit, the hand lines bare. Claim in mcp.cjs: each kind's mark, a hand
 edit keeping one and a script's edit adding one; a planted edit that clears the
 mark turned it red.
+
+**2026-10-06 - MCP, Slice 5: OAuth.** Curtis: "Next: MCP Oauth". The node is its
+own authorization server and the token it issues is an ordinary API key, so keys
+stay made from a signed-in browser, revoked in one place, and `/mcp`'s door
+unchanged. Built to the 2026-07-28 revision as rmcp 3.5's own client applies it:
+`/mcp`'s 401 names the protected-resource metadata (RFC 9728), that names this
+node, whose metadata (RFC 8414) names the doors, S256-only PKCE and Client ID
+Metadata Document support. `oauth.rs`: clients by metadata document (fetched
+with the unfurler's SSRF posture, naming itself by its own URL) or by dynamic
+registration (node rung 70, `oauth_clients`, `rtc_` ids, capped); redirects
+exact or loopback-any-port, nothing that runs on arrival; codes kept by hash,
+five minutes, gone before they are checked. `auth::keys::mint` came out of the
+settings door so the token door mints the same key, named "<client>
+(assistant)". The consent page (js/oauthconsent.js) is the app's, at
+`/oauth/authorize` - signed out, the front door first at the same address - and
+its two doors refuse a key. `nodeface::public_base` moved out of rss.rs to be
+the issuer too; SERVER.md says assistants need `RINGTOME_PUBLIC_URL`.
+
+Found on the way: the token request is a form, and the rig's fetch helper calls
+every body JSON unless told (`file: true`); the consent route went in with a
+comment as a child of the router, which reads `path` off every child, and the
+whole signed-in app drew blank until headless Chrome's console said so. Seen
+there after: the consent card, its teal yes and dashed no, and the front door
+for a visitor signed out.
+
+Claims (`mcp.cjs`, a fifth `describe`, 4): the 401's challenge and both metadata
+documents; register, consent, a wrong verifier refused, a fresh code traded for
+a key that opens /mcp and is listed, the code refused a second time; a client
+known only by a metadata document (served from the claim's own loopback server)
+connecting without registering; and no, an unregistered redirect, a key at the
+consent door, and redirects that run or leave the machine over plain HTTP, all
+refused. Unit tests: RFC 7636's own PKCE example, the redirect rules. A planted
+PKCE check that passes anything turned the trade claim red.
+
+**2026-10-06 - MCP, Slice 6: "Use with an AI assistant".** Curtis: "Let's handle
+slice 6 before we deploy", and two rulings on the way: vouching an `ai-agent`
+label away staying behind the tag editor's unlock is "Fine" (plans/MCP.md,
+ruling 8), and OAuth pruning waits. A section in application settings, above API
+keys (persona.js `AiAssistants`): the node's `/mcp` address with a copy button;
+Claude or ChatGPT by custom connector, which sends the person to the consent
+page and gets a key of its own; Claude Code's one line, copyable; anything else
+by the address and a key; and that what an assistant posts says "ai-agent".
+`pure/assistants.js` builds the address from the node's public URL (else this
+page's origin) and says when it is one only this computer can reach, which the
+section then tells the person web assistants can't use - three claims in
+`pure/assistants.cjs`. Seen in headless Chrome twice: a node with no public URL
+(`localhost`, the red note) and one told `https://horsedrawingtycoon.example`
+(the https address, no note). `just strings-check` and `just ui-check` green.
+That closes the MCP arc but for drawing, struck.

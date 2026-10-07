@@ -60,18 +60,6 @@ fn rfc822(ms: i64) -> String {
     )
 }
 
-/// Where links point: the node's public address, else the host the reader asked (a dev node, or
-/// a server not told its own name).
-fn base(state: &AppState, headers: &HeaderMap) -> String {
-    if let Some(url) = state.config.public_url.clone().filter(|u| !u.is_empty()) {
-        return url.trim_end_matches('/').to_string();
-    }
-    match headers.get(header::HOST).and_then(|h| h.to_str().ok()) {
-        Some(host) => format!("http://{host}"),
-        None => String::new(),
-    }
-}
-
 /// GET `/ringtome/user/{seg}/rss.xml`.
 pub async fn rss_handler(
     State(state): State<AppState>,
@@ -96,7 +84,7 @@ pub async fn rss_handler(
     let fields = crate::idface::public_profile(&state, &root_hex).await.unwrap_or_default();
     let name = crate::idface::profile_value(&fields, "name").unwrap_or(&words_of_name).to_string();
     let bio = crate::idface::profile_value(&fields, "bio").unwrap_or("").to_string();
-    let base = base(&state, &headers);
+    let base = crate::nodeface::public_base(&state, &headers);
     let page = format!("{base}/ringtome/user/{short}");
 
     let posts =

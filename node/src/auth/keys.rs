@@ -75,7 +75,7 @@ pub async fn account_for_key(db: &Db, key: &str) -> Result<Option<(Account, Stri
 }
 
 /// Keys are managed from a signed-in browser only (module doc).
-fn by_browser(session: &Session) -> Result<(), AppError> {
+pub fn by_browser(session: &Session) -> Result<(), AppError> {
     if session.key.is_some() {
         return Err(AppError::Forbidden(crate::msg!(
             "auth.keys.manage-keys-from-a-browser",
@@ -131,17 +131,37 @@ pub async fn create_handler(
     Json(req): Json<NewKey>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     by_browser(&session)?;
-    let name = req.name.trim().to_string();
+    let made = mint(&state.node_db, &session.account.id.to_string(), &req.name).await?;
+    Ok(Json(serde_json::json!({
+        "id": made.id,
+        "name": made.name,
+        "created_ms": made.created_ms,
+        "key": made.key,
+    })))
+}
+
+/// A key just made: the only moment anyone holds `key` itself.
+pub struct Minted {
+    pub id: String,
+    pub name: String,
+    pub created_ms: i64,
+    pub key: String,
+}
+
+/// Make a key for an account, named `name`. The settings page's door makes them, and so does an
+/// AI assistant's connection, consented to from a signed-in browser (oauth.rs) - either way an
+/// ordinary key, listed and revoked with the rest. Whoever calls this has already established
+/// that a signed-in browser asked.
+pub async fn mint(db: &Db, account: &str, name: &str) -> Result<Minted, AppError> {
+    let name = name.trim().to_string();
     if name.is_empty() || name.chars().count() > NAME_MAX {
         return Err(AppError::BadRequest(crate::msg!(
             "auth.keys.name-the-key",
             "give the key a name, up to 80 characters"
         )));
     }
-    let account = session.account.id.to_string();
-    let (held,): (i64,) = state
-        .node_db
-        .fetch_one("SELECT COUNT(*) FROM api_keys WHERE account_id = ?1", (account.as_str(),))
+    let (held,): (i64,) = db
+        .fetch_one("SELECT COUNT(*) FROM api_keys WHERE account_id = ?1", (account,))
         .await
         .context("counting api keys")
         .map_err(AppError::Internal)?;
@@ -154,17 +174,15 @@ pub async fn create_handler(
     let key = new_key();
     let id = hex::encode(&blake3::hash(key.as_bytes()).as_bytes()[..8]);
     let created_ms = now_ms();
-    state
-        .node_db
-        .execute(
-            "INSERT INTO api_keys (id, account_id, name, key_hash, created_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
-            (id.as_str(), account.as_str(), name.as_str(), hash(&key), created_ms),
-        )
-        .await
-        .context("making an api key")
-        .map_err(AppError::Internal)?;
+    db.execute(
+        "INSERT INTO api_keys (id, account_id, name, key_hash, created_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+        (id.as_str(), account, name.as_str(), hash(&key), created_ms),
+    )
+    .await
+    .context("making an api key")
+    .map_err(AppError::Internal)?;
     tracing::info!(account = %account, key = %id, "made an api key");
-    Ok(Json(serde_json::json!({ "id": id, "name": name, "created_ms": created_ms, "key": key })))
+    Ok(Minted { id, name, created_ms, key })
 }
 
 /// DELETE `/api/auth/keys/{id}`: revoke it - it stops working at once.

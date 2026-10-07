@@ -184,3 +184,48 @@
     white-space: nowrap;
     color: var(--ink);
 }
+
+/* The consent page (oauthconsent.js): an AI assistant asking to connect - one card, its answers. */
+.oauth-consent {
+    flex-direction: column;
+    align-items: flex-start;
+    max-width: 34rem;
+    margin: 0 auto;
+    gap: 0.25rem;
+}
+.oauth-consent h2 svg {
+    vertical-align: -0.15em;
+}
+.oauth-consent-small {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+.oauth-consent-answers {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+.oauth-consent-yes,
+.oauth-consent-no {
+    --j: 3px;
+    clip-path: var(--jag-1);
+    padding: 0.45rem 1rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.oauth-consent-yes {
+    background: var(--teal);
+    border: none;
+    color: var(--on-accent);
+}
+.oauth-consent-no {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--ink-soft);
+}
+.oauth-consent-yes:disabled,
+.oauth-consent-no:disabled {
+    opacity: 0.6;
+    cursor: default;
+}

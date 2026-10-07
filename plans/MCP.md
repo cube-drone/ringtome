@@ -1,8 +1,8 @@
 # MCP - Horse Drawing Tycoon 2 for AI agents
 
-A design draft (2026-10-06). Slices 0-2 and 4 built (2026-10-06), Slice 3
-struck: `/mcp` answers, with the reading and writing tools, chat and the bank,
-the guide, and provenance.
+A design draft (2026-10-06). Every slice built (2026-10-06) but Slice 3, struck:
+`/mcp` answers, with the reading and writing tools, chat and the bank, the
+guide, and provenance.
 
 Anyone with an API key can already drive their account from an AI agent: Curtis
 has done it, from inside this repository. This plan is about making that work
@@ -51,6 +51,10 @@ and what they keep private, not their balance.
    I'm not sure if I'm interested in even supporting. Let's... scratch 'draw'
    from the set of MCP capabilities entirely." An agent reads that a drawing
    exists; drawing, viewing and posting one stay the app's.
+8. **Vouching a label away stays behind the tag editor** (2026-10-06). The app's
+   tag editor is the Reactions, tags & filters unlock's, so a player without it
+   can't take `ai-agent` off a post; asked whether everyone should get a remove
+   control, Curtis: "Fine." It stays as it is.
 
 ## What MCP is, and why not just a spec
 
@@ -407,9 +411,9 @@ A post made with a key says so, as a tag the reader can see and filter by:
    either one out (a claim covers each). The label survives a later edit by
    hand; a signed-in browser can remove it and a key can't; the next keyed
    version puts it back. _Built 2026-10-06_ (_As built_ under _Writing_ and
-   _Provenance_). One residual: the app's tag editor sits behind Reactions, tags
-   & filters, so a person without that unlock has no way to vouch a label away
-   yet.
+   _Provenance_). The app's tag editor sits behind Reactions, tags & filters, so
+   a person without that unlock can't vouch a label away - which stands (ruling
+   8).
 3. **Drawing.** Struck (ruling 7): it needed a renderer on the node, a second
    copy of the browser's painter, for a capability Curtis isn't sure he wants.
 4. **Chat, Bank and Market.** _Built 2026-10-06_ (_As built_ under _Chat_ and
@@ -422,12 +426,45 @@ A post made with a key says so, as a tag the reader can see and filter by:
    ordinary `rtk_` key, minted by the consent**, named after the client and
    listed under API keys with the rest. This keeps keys managed from a signed-in
    browser (the consent is that browser), keeps revocation in one place, and
-   leaves `/mcp`'s auth untouched.
+   leaves `/mcp`'s auth untouched. _Built 2026-10-06_ (`oauth.rs`,
+   `oauth/routes.rs`, `js/oauthconsent.js`), to the spec's 2026-07-28 revision
+   as rmcp 3.5's client applies it:
+   - **Discovery.** `/mcp`'s 401 says
+     `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp"`
+     (RFC 9728), which names the node as the authorization server; its metadata
+     (RFC 8414) names the doors, S256 only, public clients only, and
+     `client_id_metadata_document_supported`.
+   - **Clients**, in the spec's order of preference: a Client ID Metadata
+     Document - the client's id is an HTTPS URL describing it, fetched with the
+     unfurler's SSRF posture (`fetch_media_bytes`), and it must name itself by
+     that URL - or Dynamic Client Registration (RFC 7591) into `oauth_clients`,
+     `rtc_` ids, at most 5,000 a node. A redirect must be one the client named,
+     or its loopback on any port (RFC 8252); one that runs something on arrival
+     never registers.
+   - **Consent** is the app's page at `/oauth/authorize`: signed out, the front
+     door at the same address first. It says who is asking, what the assistant
+     could do, that its posts say "ai-agent", and where to revoke it. Its two
+     doors (`/api/oauth/request`, `/api/oauth/consent`) refuse a key.
+   - **The token door** redeems a code once (gone before it is checked),
+     unexpired (five minutes), for exactly its client, redirect and PKCE
+     verifier, and answers a new `rtk_` key named "<client> (assistant)",
+     `no-store`. No refresh tokens and no expiry: a key lives until revoked.
+   - The programs' doors answer any origin (CORS, never a cookie);
+     `RINGTOME_PUBLIC_URL` is the issuer, which is why SERVER.md now says
+     assistants need it.
 6. **The door for people.** In application settings, under API keys: "Use with
    an AI assistant", with this node's `/mcp` address and copyable setup for the
    common clients. A localhost node says in plain words that web assistants
    can't reach it. The copy names Horse Drawing Tycoon 2; the address and
-   protocol strings stay Ringtome's.
+   protocol strings stay Ringtome's. _Built 2026-10-06_ (persona.js
+   `AiAssistants`, pure/assistants.js), above API keys rather than under them,
+   since with OAuth most people need the address and no key: the address with a
+   copy button; Claude or ChatGPT by custom connector; Claude Code's one line
+   (`claude mcp add --transport http horse-drawing-tycoon <address>`); anything
+   else by the address and a key from below; and that what an assistant posts
+   says "ai-agent". The address is the node's public URL, else this page's
+   origin, and an address only this computer can reach says web assistants can't
+   use it.
 
 Slices 1 to 4 are worth shipping even if Slice 5 waits: Claude Code and Cursor
 take a URL with a header today, and clients that don't can usually reach one

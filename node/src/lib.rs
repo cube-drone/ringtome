@@ -64,6 +64,7 @@ pub mod net;
 pub mod nodeface;
 pub mod nodeshelf;
 pub mod notifications;
+pub mod oauth;
 pub mod outbox;
 pub mod postkeys;
 pub mod profiles;
@@ -828,6 +829,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/identity/{root}/listed", get(nodeface::listed_get).put(nodeface::listed_put))
         .route("/api/unfurl", get(unfurl_handler))
         .merge(auth::router())
+        // OAuth for AI assistants (oauth.rs): how a client connects to /mcp without a pasted key.
+        .merge(oauth::routes::router())
         .merge(registration::routes::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))

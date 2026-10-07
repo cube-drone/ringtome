@@ -123,22 +123,34 @@ async fn guide() -> impl IntoResponse {
 
 /// The door: a request without an API key never reaches the protocol. The cookie is removed
 /// first, so neither this check nor any tool's request can fall back to a browser's session.
-async fn by_key(
-    State(state): State<AppState>,
-    request: Request,
-    next: Next,
-) -> Result<Response, AppError> {
+/// Every refusal names where to get a key (RFC 9728 §5.1): the resource's metadata, which names this
+/// node as the authorization server (oauth.rs) - how an assistant that was handed only the address
+/// finds its way to the consent page.
+async fn by_key(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let (mut parts, body) = request.into_parts();
     parts.headers.remove(header::COOKIE);
-    if !parts.headers.contains_key(header::AUTHORIZATION) {
-        return Err(AppError::Unauthorized(crate::msg!(
+    let refused = if !parts.headers.contains_key(header::AUTHORIZATION) {
+        AppError::Unauthorized(crate::msg!(
             "mcp.needs-an-api-key",
             "connect with an API key: Authorization: Bearer rtk_..."
-        )));
+        ))
+    } else {
+        // A key that doesn't open is refused here, in the node's own words (auth/extractor.rs).
+        match Session::from_request_parts(&mut parts, &state).await {
+            Ok(_) => return next.run(Request::from_parts(parts, body)).await,
+            Err(e) => e,
+        }
+    };
+    let base = crate::nodeface::public_base(&state, &parts.headers);
+    let mut response = refused.into_response();
+    let challenge = format!(
+        "Bearer resource_metadata=\"{}\"",
+        crate::oauth::routes::resource_metadata_url(&base)
+    );
+    if let Ok(value) = axum::http::HeaderValue::from_str(&challenge) {
+        response.headers_mut().insert(header::WWW_AUTHENTICATE, value);
     }
-    // A key that doesn't open is refused here, in the node's own words (auth/extractor.rs).
-    Session::from_request_parts(&mut parts, &state).await?;
-    Ok(next.run(Request::from_parts(parts, body)).await)
+    response
 }
 
 /// The tools, one per thing a person asks an agent to do (plans/MCP.md, _The tools_): the

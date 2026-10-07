@@ -696,3 +696,205 @@ describe('MCP: chat, the Bank and the Market', function () {
         assert.match((await tool(agent, 'buy', {})).stopped, /one thing at a time/);
     });
 });
+
+describe('MCP: connecting an assistant with OAuth', function () {
+    this.timeout(120000);
+
+    const http = require('node:http');
+    const crypto = require('node:crypto');
+    const { HOST } = require('./fetch.cjs');
+    const base = `http://${HOST}`;
+    const REDIRECT = 'http://127.0.0.1:33418/callback';
+
+    let me, docServer, docUrl;
+
+    // PKCE (RFC 7636): a verifier, and its S256 challenge.
+    const pkce = () => {
+        const verifier = crypto.randomBytes(48).toString('base64url');
+        const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+        return { verifier, challenge };
+    };
+    // The consent page's answer, as the signed-in browser sends it.
+    const consent = async (client_id, challenge, approve = true, redirect_uri = REDIRECT) => {
+        const r = await j(me, 'api/oauth/consent', {
+            response_type: 'code',
+            client_id,
+            redirect_uri,
+            code_challenge: challenge,
+            code_challenge_method: 'S256',
+            state: 'xyz',
+            approve,
+        });
+        assert.equal(r.status, 200, await r.clone().text());
+        return new URL((await r.json()).redirect);
+    };
+    // Form-encoded, as RFC 6749 asks - `file` tells the helper not to call the body JSON (fetch.cjs).
+    const token = (fields) =>
+        makeFetch()('oauth/token', {
+            method: 'POST',
+            file: true,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ grant_type: 'authorization_code', ...fields }).toString(),
+        });
+    const register = async (body) => {
+        const r = await makeFetch()('oauth/register', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        });
+        return { status: r.status, body: await r.json() };
+    };
+
+    before(async () => {
+        me = await makeUserFetch({ prefix: 'mcpoauth' });
+        await me('api/identity', { method: 'POST' });
+        // A client known by its metadata document: served here, on the rig's loopback.
+        docServer = http.createServer((req, res) => {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+                JSON.stringify({
+                    client_id: docUrl,
+                    client_name: 'Doc Assistant',
+                    redirect_uris: [REDIRECT],
+                }),
+            );
+        });
+        await new Promise((resolve) => docServer.listen(0, '127.0.0.1', resolve));
+        docUrl = `http://127.0.0.1:${docServer.address().port}/client.json`;
+    });
+    after(() => docServer && docServer.close());
+
+    it('a 401 from /mcp points at the metadata, which points at this node', async () => {
+        const r = await initialize(makeFetch());
+        assert.equal(r.status, 401);
+        const challenge = r.headers.get('www-authenticate');
+        assert.match(challenge, /^Bearer resource_metadata="(.+)"$/);
+        const resourceUrl = challenge.match(/"(.+)"/)[1];
+        assert.equal(resourceUrl, `${base}/.well-known/oauth-protected-resource/mcp`);
+
+        const resource = await (
+            await makeFetch()('.well-known/oauth-protected-resource/mcp')
+        ).json();
+        assert.equal(resource.resource, `${base}/mcp`);
+        assert.deepEqual(resource.authorization_servers, [base]);
+        const server = await (await makeFetch()('.well-known/oauth-authorization-server')).json();
+        assert.equal(server.issuer, base);
+        assert.deepEqual(server.code_challenge_methods_supported, ['S256']);
+        assert.equal(server.client_id_metadata_document_supported, true);
+        assert.equal(server.token_endpoint, `${base}/oauth/token`);
+    });
+
+    it('registers, consents, trades the code for a key that works and is listed with the rest', async () => {
+        const reg = await register({ client_name: 'Test Assistant', redirect_uris: [REDIRECT] });
+        assert.equal(reg.status, 201, JSON.stringify(reg.body));
+        const client_id = reg.body.client_id;
+        assert.match(client_id, /^rtc_/);
+
+        const { verifier, challenge } = pkce();
+        const back = await consent(client_id, challenge);
+        assert.equal(back.searchParams.get('state'), 'xyz');
+        assert.equal(back.searchParams.get('iss'), base);
+        const code = back.searchParams.get('code');
+        assert.ok(code);
+
+        const wrong = await token({
+            code,
+            redirect_uri: REDIRECT,
+            client_id,
+            code_verifier: `${verifier}x`,
+        });
+        assert.equal(wrong.status, 400);
+        assert.equal((await wrong.json()).error, 'invalid_grant');
+
+        // That try spent the code: a fresh one, with the right verifier.
+        const again = pkce();
+        const fresh = (await consent(client_id, again.challenge)).searchParams.get('code');
+        const traded = await token({
+            code: fresh,
+            redirect_uri: REDIRECT,
+            client_id,
+            code_verifier: again.verifier,
+        });
+        assert.equal(traded.status, 200, await traded.clone().text());
+        assert.equal(traded.headers.get('cache-control'), 'no-store');
+        const { access_token, token_type } = await traded.json();
+        assert.match(access_token, /^rtk_[0-9a-f]{64}$/);
+        assert.equal(token_type, 'Bearer');
+
+        const reused = await token({
+            code: fresh,
+            redirect_uri: REDIRECT,
+            client_id,
+            code_verifier: again.verifier,
+        });
+        assert.equal((await reused.json()).error, 'invalid_grant', 'a code works once');
+
+        assert.equal((await initialize(program(access_token))).status, 200, 'the key opens /mcp');
+        const keys = (await (await me('api/auth/keys')).json()).keys;
+        assert.ok(
+            keys.some((k) => k.name === 'Test Assistant (assistant)'),
+            JSON.stringify(keys),
+        );
+    });
+
+    it('a client known by its metadata document connects without registering', async () => {
+        const { verifier, challenge } = pkce();
+        const asked = await me(
+            `api/oauth/request?${new URLSearchParams({
+                response_type: 'code',
+                client_id: docUrl,
+                redirect_uri: REDIRECT,
+                code_challenge: challenge,
+                code_challenge_method: 'S256',
+            })}`,
+        );
+        assert.equal(asked.status, 200, await asked.clone().text());
+        assert.equal((await asked.json()).client.name, 'Doc Assistant');
+        const code = (await consent(docUrl, challenge)).searchParams.get('code');
+        const traded = await token({
+            code,
+            redirect_uri: REDIRECT,
+            client_id: docUrl,
+            code_verifier: verifier,
+        });
+        assert.equal(traded.status, 200, await traded.clone().text());
+    });
+
+    it('refuses: no, a redirect never registered, a key at the consent door, a registration that runs', async () => {
+        const reg = await register({ client_name: 'Picky', redirect_uris: [REDIRECT] });
+        const client_id = reg.body.client_id;
+        const { challenge } = pkce();
+
+        const no = await consent(client_id, challenge, false);
+        assert.equal(no.searchParams.get('error'), 'access_denied');
+        assert.equal(no.searchParams.get('code'), null);
+
+        const elsewhere = await j(me, 'api/oauth/consent', {
+            response_type: 'code',
+            client_id,
+            redirect_uri: 'https://evil.example/cb',
+            code_challenge: challenge,
+            code_challenge_method: 'S256',
+            approve: true,
+        });
+        assert.equal(elsewhere.status, 400);
+        assert.match((await elsewhere.json()).message, /redirect URI/);
+
+        const made = await j(me, 'api/auth/keys', { name: 'a script' });
+        const key = (await made.json()).key;
+        const byKey = await program(key)('api/oauth/consent', {
+            method: 'POST',
+            body: JSON.stringify({
+                response_type: 'code',
+                client_id,
+                redirect_uri: REDIRECT,
+                code_challenge: challenge,
+                code_challenge_method: 'S256',
+                approve: true,
+            }),
+        });
+        assert.equal(byKey.status, 403, 'keys are made from a browser');
+
+        assert.equal((await register({ redirect_uris: ['javascript:alert(1)'] })).status, 400);
+        assert.equal((await register({ redirect_uris: ['http://example.com/cb'] })).status, 400);
+    });
+});

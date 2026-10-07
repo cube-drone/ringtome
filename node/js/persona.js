@@ -37,7 +37,8 @@ import { useLedger, unlockedIn } from './unlocks.js';
 import { CrtToggle } from './crtpref.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
-import { appHref, personHref, personaPageHref, LAUNCHER } from './links.js';
+import { appHref, personHref, personaPageHref, LAUNCHER, shareUrl } from './links.js';
+import { assistantSetup } from './pure/assistants.js';
 import { formatWhen } from './pure/when.js';
 
 const html = htm.bind(h);
@@ -767,6 +768,7 @@ const AppSettingsFor = ({ root }) => {
                 ${t('persona.disable-tooltips', 'disable tooltips')}
             </label>
             <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
+            <${AiAssistants} />
             <${ApiKeys} />
             ${
                 /* The running build (Curtis, 2026-09-30: a narrow window's bar has no version, so a phone
@@ -778,6 +780,77 @@ const AppSettingsFor = ({ root }) => {
             </p>
         </div>
     `;
+};
+
+/// Using Horse Drawing Tycoon 2 from an AI assistant (plans/MCP.md, Slice 6): the node's `/mcp`
+/// address, and how each kind of assistant takes it. Claude and ChatGPT connect by the address alone
+/// - they send the person to the consent page (oauthconsent.js) and get a key of their own, listed
+/// in the section below - so most people need nothing more than the address. An address only this
+/// computer can reach says so, since web assistants connect from their own servers.
+const AiAssistants = () => {
+    const [setup, setSetup] = useState(null);
+    const [copied, setCopied] = useState(null); // which line: 'address' | 'claudeCode'
+    useEffect(() => {
+        shareUrl('')
+            .then((base) => setSetup(assistantSetup(base)))
+            .catch(() => setSetup(assistantSetup(window.location.origin)));
+    }, []);
+    if (!setup) return null;
+    const copy = async (which) => {
+        try {
+            await navigator.clipboard.writeText(setup[which]);
+            setCopied(which);
+        } catch {
+            /* select it by hand */
+        }
+    };
+    const line = (which) => html`<div class="settings-assistants-line">
+        <code class="settings-key-value">${setup[which]}</code>
+        <button class="profile-save" onClick=${() => copy(which)}>${copied === which ? t('persona.copied', 'copied') : t('persona.copy', 'copy')}</button>
+    </div>`;
+    return html`<section class="settings-keys">
+        <h2 class="settings-section-title"><${Icons.aiAgent} /> ${t('persona.use-with-an-ai-assistant', 'Use with an AI assistant')}</h2>
+        <p class="null-sub">
+            ${t(
+                'persona.assistants-explain',
+                'Claude, ChatGPT and other AI assistants can use Horse Drawing Tycoon 2 as you: read your feed, write and post, chat, and trade in the Market. Give one this address:',
+            )}
+        </p>
+        ${line('address')}
+        ${
+            setup.local &&
+            html`<p class="form-error">
+            ${t(
+                'persona.assistants-only-this-computer',
+                "This address only works on this computer, so assistants on the web - claude.ai, ChatGPT - can't reach it. One running here, like Claude Code, can.",
+            )}
+        </p>`
+        }
+        <ul class="settings-assistants-steps">
+            <li>
+                ${t(
+                    'persona.assistants-connector',
+                    'Claude or ChatGPT, on the web or in their apps: add it as a custom connector. It sends you here to say yes, and gets a key of its own, listed under API keys below.',
+                )}
+            </li>
+            <li>
+                ${t('persona.assistants-claude-code', 'Claude Code: run this, then connect it with /mcp.')}
+                ${line('claudeCode')}
+            </li>
+            <li>
+                ${t(
+                    'persona.assistants-anything-else',
+                    'Anything else that speaks MCP: the address, and a key made below, sent as "Authorization: Bearer" and the key.',
+                )}
+            </li>
+        </ul>
+        <p class="null-sub">
+            ${t(
+                'persona.assistants-posts-say-so',
+                'What an assistant posts says "ai-agent", so the people who read it know. Revoke its key below and it is disconnected at once.',
+            )}
+        </p>
+    </section>`;
 };
 
 /// API keys (Curtis, 2026-09-30: "tokens that I can use to authenticate external clients as me"):

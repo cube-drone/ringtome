@@ -21,6 +21,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("sessions", vec!["auth.rs"]),
         ("account_tags", vec!["auth.rs"]),
         ("api_keys", vec!["auth/keys.rs"]),
+        ("oauth_clients", vec!["oauth.rs"]),
+        ("oauth_codes", vec!["oauth.rs"]),
         ("blob_sizes", vec!["storage.rs"]),
         ("registration_limits", vec!["registration.rs"]),
         ("group_members", vec!["groups.rs"]),

@@ -66,6 +66,7 @@ import { parseSpeakable } from './speakable.js';
 import { api } from './net.js';
 import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement, bucketHref } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
+import { OAuthConsent } from './oauthconsent.js';
 import { isDevice } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
@@ -655,6 +656,7 @@ const Inside = ({ session }) => {
             <${AppRoute} path="/ringtome/:app" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${AppRoute} path="/ringtome/:app/notebook/:notebook" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${AppRoute} path="/ringtome/:app/:doc" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${OAuthConsent} path="/oauth/authorize" />
             <${LegacyId} path="/id/:seg" />
             <${LegacyId} path="/id/:seg/*" />
             <${LegacyHome} path="/home" current=${persona.current} />

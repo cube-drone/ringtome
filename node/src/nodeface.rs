@@ -16,6 +16,18 @@ use crate::auth::Session;
 use crate::error::AppError;
 use crate::AppState;
 
+/// Where the node's own links point (RSS, the OAuth issuer): its declared public address, else the
+/// host the reader asked for - a dev node, or a server not told its own name.
+pub fn public_base(state: &AppState, headers: &axum::http::HeaderMap) -> String {
+    if let Some(url) = state.config.public_url.clone().filter(|u| !u.is_empty()) {
+        return url.trim_end_matches('/').to_string();
+    }
+    match headers.get(axum::http::header::HOST).and_then(|h| h.to_str().ok()) {
+        Some(host) => format!("http://{host}"),
+        None => String::new(),
+    }
+}
+
 #[derive(Deserialize, Default)]
 pub struct NodeFeedQuery {
     before_ms: Option<i64>,

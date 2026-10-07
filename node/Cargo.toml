@@ -38,7 +38,7 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 # The session cookie's Max-Age (auth/routes.rs): the duration type the cookie crate takes; already in
 # the tree through it. `formatting`: the MCP tools' dates, as RFC 3339 (mcp.rs `when`).
 time = { version = "0.3", features = ["formatting"] }
-tower-http = { version = "0.6", features = ["trace"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
 tokio = { version = "1", features = ["full"] }
 
 # password hashing (node login)

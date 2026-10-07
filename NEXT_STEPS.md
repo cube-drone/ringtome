@@ -59,12 +59,11 @@ are driving towards.
 
 ### AI agents (MCP)
 
-- Slices 5-6 of [plans/MCP.md](plans/MCP.md): OAuth, and the "Use with an AI
-  assistant" door in settings. Slices 0-2 and 4 (`/mcp`, reading, writing,
-  provenance, chat and the bank) are built; 3, drawing, is struck.
-- Vouching a provenance tag (`ai-agent`, `api-key`) away needs the tag editor,
-  which is behind Reactions, tags & filters: a remove control everyone has
-  (plans/MCP.md, _Provenance_).
+- Connect real assistants (claude.ai, ChatGPT, Claude Code) to a public node
+  running the MCP build: nothing but the suite and hand-driven clients has
+  spoken to it yet (plans/MCP.md).
+- OAuth (oauth.rs): self-registered clients are capped at 5,000 a node but never
+  pruned - forget ones that never connected after a while.
 
 ### Chat
 
@@ -156,6 +155,11 @@ are driving towards.
 
 ### Sync
 
+- A flake in `follow_ceiling.cjs` (seen 2026-10-06): "scrollback backfills
+  beneath the floor" reached 260 of 300 posts once under a full `just ci`, then
+  passed three times alone and in the next full run, on the same tree. Paging
+  back stops short under load; find what it races before it turns up red on
+  `main`.
 - Peeks and budgets — PROJECT_PLAN's "Peeks, ceilings and pins" (2026-09-05):
   every exchange budgeted, a first look at a stranger held as a shape (identity,
   annotations, twenty posts as fragments) with a footprint and an expiry, the

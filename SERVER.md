@@ -147,7 +147,9 @@ nginx, Traefik, your platform's load balancer). This is not optional: browsers
 only allow notifications, service workers and the rest of what the app needs on
 a secure origin, so a node served over plain HTTP from anywhere but `localhost`
 quietly loses features. Set `RINGTOME_PUBLIC_URL` to the HTTPS address people
-use, so the links the node mints point there.
+use, so the links the node mints point there - and so AI assistants can connect:
+claude.ai, ChatGPT and the rest sign in through the node's OAuth, which names
+this address as itself, and they refuse a plain-HTTP one.
 
 ## The peer-to-peer port
 

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1577 phrases across 96 files.
+// 1593 phrases across 98 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1022,6 +1022,16 @@ export default {
     'nodepeople.posted-lately': 'posted lately',
     'nodepeople.see-more': 'see more...',
 
+    // --- node/js/oauthconsent.js ---
+    'oauthconsent.cant-connect': "This assistant can't connect",
+    'oauthconsent.asking': 'asking…',
+    'oauthconsent.connect-name': 'Connect {name}?',
+    'oauthconsent.it-would-act-as-you': '{name} would act as you, {account}: read your feed and your notes, post and reply, chat, and use the Bank, as any of your personas.',
+    'oauthconsent.its-posts-say-so': 'What it posts says "ai-agent", so the people who read it know an assistant made it.',
+    'oauthconsent.disconnect-in-settings': 'It gets a key of its own, named for it under API keys in your settings - revoke it there and it is disconnected at once. Saying yes sends you back to {where}.',
+    'oauthconsent.connect': 'connect',
+    'oauthconsent.not-now': 'not now',
+
     // --- node/js/panes.js ---
     'panes.drag-to-resize': 'drag to resize',
     'panes.tags': 'tags',
@@ -1132,12 +1142,19 @@ export default {
     'persona.settings-this-browser': 'these settings are for this browser',
     'persona.version': 'version',
     'persona.every-release': 'every release',
+    'persona.copied': 'copied',
+    'persona.copy': 'copy',
+    'persona.use-with-an-ai-assistant': 'Use with an AI assistant',
+    'persona.assistants-explain': 'Claude, ChatGPT and other AI assistants can use Horse Drawing Tycoon 2 as you: read your feed, write and post, chat, and trade in the Market. Give one this address:',
+    'persona.assistants-only-this-computer': "This address only works on this computer, so assistants on the web - claude.ai, ChatGPT - can't reach it. One running here, like Claude Code, can.",
+    'persona.assistants-connector': 'Claude or ChatGPT, on the web or in their apps: add it as a custom connector. It sends you here to say yes, and gets a key of its own, listed under API keys below.',
+    'persona.assistants-claude-code': 'Claude Code: run this, then connect it with /mcp.',
+    'persona.assistants-anything-else': 'Anything else that speaks MCP: the address, and a key made below, sent as "Authorization: Bearer" and the key.',
+    'persona.assistants-posts-say-so': 'What an assistant posts says "ai-agent", so the people who read it know. Revoke its key below and it is disconnected at once.',
     'persona.revoke-key-confirm': 'Revoke "{name}"? Anything using it stops working at once.',
     'persona.api-keys': 'API keys',
     'persona.api-keys-explain': "A key lets another program use this node as you: everything you can do here, except managing keys or the server. Anyone holding a key is you - keep it secret, and revoke one you've lost. Keys belong to your account on this server, not to this browser, and work only here.",
     'persona.new-key-copy-now': "Your new key, \"{name}\". Copy it now - it won't be shown again.",
-    'persona.copied': 'copied',
-    'persona.copy': 'copy',
     'persona.ive-kept-it': "I've kept it",
     'persona.revoke-key': 'revoke this key',
     'persona.key-made': 'made {when}',
@@ -1685,6 +1702,9 @@ export default {
     'nodeface.somebody-here-already-has-that-name': 'somebody on this node already has that name',
     'nodeface.a-name-is-three-to-thirty-two': 'a name is three to thirty-two lowercase letters, digits and hyphens',
     'nodeface.nobody-here-by-that-name': 'nobody on this node goes by that name',
+
+    // --- node/src/oauth/routes.rs ---
+    'oauth.this-assistant-cant-connect': "this assistant can't connect: {why}",
 
     // --- node/src/pubkey.rs ---
     'pubkey.bad-what': 'bad {what}',

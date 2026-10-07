@@ -87,7 +87,7 @@ struct ErrorBody {
 
 impl AppError {
     /// The user-facing sentence, for everything except an `Internal` - which has none by design.
-    fn user_message(&self) -> Option<&UserMessage> {
+    pub fn user_message(&self) -> Option<&UserMessage> {
         match self {
             AppError::BadRequest(m)
             | AppError::Unauthorized(m)
