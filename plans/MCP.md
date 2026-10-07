@@ -55,6 +55,12 @@ and what they keep private, not their balance.
    tag editor is the Reactions, tags & filters unlock's, so a player without it
    can't take `ai-agent` off a post; asked whether everyone should get a remove
    control, Curtis: "Fine." It stays as it is.
+9. **Files can be viewed, read-only** (2026-10-07). Ruling 7 kept drawings away
+   because they're composed by the browser and the node would need a second
+   painter; "Read-only viewing of files is fine." A file's picture comes back as
+   an image (PNG, from the stored AVIF); a drawing still says only that it
+   exists.
+10. **Upload still waits** (2026-10-07, ruling 5 standing).
 
 ## What MCP is, and why not just a spec
 
@@ -469,6 +475,37 @@ A post made with a key says so, as a tag the reader can see and filter by:
 Slices 1 to 4 are worth shipping even if Slice 5 waits: Claude Code and Cursor
 take a URL with a header today, and clients that don't can usually reach one
 through a bridge such as `mcp-remote`.
+
+7. **The first cut's gaps** (Curtis, 2026-10-07, from an agent's own review of
+   using the connector: "Let's build 1-7 and 9"):
+   - `list_documents` pages (`limit`, `next`), filters (`published`, a title
+     `search`) and counts (`count_only`) - 3,947 documents had come back as one
+     945,000-character answer.
+   - `write_document` sets a note's tags (Reactions, tags & filters).
+   - `pin_document` pins and unpins (Pins).
+   - `share` rebroadcasts a post and takes a share back (Sharing).
+   - `list_contacts`: who the persona follows and trusts, from its own dials;
+     `list_followers`: whose public edges name it, as far as this node knows.
+     Both need new routes - the client reads contacts off the mirror's stream.
+   - `edit_profile`: the name and the bio. The avatar and banner are pictures,
+     which wait on upload.
+   - `read_notifications` pages; `mark_notifications_seen` takes `through`, so a
+     person can say "up to here".
+   - `set_colorway`: one that's free or owned.
+   - `read_document` shows a file's picture (ruling 9).
+
+   Not taken: starting a room or a chat for two (an agent opening a private
+   conversation with a real person is a bigger step), and books.
+
+   _Built 2026-10-07._ `list_contacts` and `list_followers` stand on two new
+   routes, `GET /api/identity/{root}/contacts` (the persona's own dials, named
+   through the bylines) and `/followers/list` (the edge graph's public edges
+   naming it). A note's tags are set as a whole set, except what it was made
+   with: "ai-agent" and "api-key" stay whatever set is asked for, since only a
+   person removes them (ruling 6) - the first draft tried, and the door said no.
+   A picture comes back as a PNG at most 1,024 pixels on a side; an APNG as it
+   is. Paging is over what the doors answer whole (`next` is an offset), which
+   bounds what an agent reads, not what the node does.
 
 ## Open questions
 

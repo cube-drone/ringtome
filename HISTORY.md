@@ -17844,3 +17844,33 @@ per sender and kind, and the page replaces itself whole on each poll. The raw
 Also seen this pass: one full `just ci` failed the three peek-expiry claims
 (`peek_footprint.cjs`); they passed alone twice, and in the full runs before and
 after on the same code.
+
+**2026-10-07 - MCP: the gaps an agent found.** Curtis pasted an agent's own
+review of using the connector ("Here's some stuff obviously missing from the MCP
+connector, according to, well... you!"), and ruled: "Read-only viewing of files
+is fine: the only reasons drawings were off-limits was because they're composed
+from the JS client" (plans/MCP.md, ruling 9); upload waits (ruling 10); "Let's
+build 1-7 and 9." Slice 7, built:
+
+- `list_documents` pages (`limit`, `next`, newest change first, ties by id),
+  searches titles, keeps to the published or unpublished, and counts
+  (`count_only`) - Cube Drone's 3,947 documents had come back as one
+  945,000-character answer.
+- `write_document` sets a note's tags as a whole set, with or without new words
+  (tags alone write no new version); "ai-agent" and "api-key" stay whatever set
+  is asked for - the first draft tried to remove the note's own "ai-agent" and
+  the door refused it, as ruling 6 says it must.
+- `pin_document`, `share` (and `unshare`; never one's own post), `edit_profile`
+  (name and bio; never an empty name), `set_colorway` (free or owned).
+- `list_contacts` and `list_followers`, on two new routes:
+  `/api/identity/{root}/contacts` and `/followers/list`.
+- `read_notifications` pages and gives each line a `mark`;
+  `mark_notifications_seen` takes `through`, marking that one and everything
+  older, never a newer one.
+- `read_document` hands a picture file back as an image - the stored AVIF as a
+  PNG at most 1,024 px on a side (`media::image::avif_to_png`); drawings stay
+  the app's (ruling 7), films and sounds are described.
+
+The guide says all of it. Claims (`mcp.cjs`, "MCP: the gaps an agent found",
+nine): every tool, its refusals, and the picture's PNG signature. All 41 MCP
+claims green. Not taken: starting rooms and chats for two, and books.

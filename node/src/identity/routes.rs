@@ -92,6 +92,8 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         )
         .route("/api/identity/{root}/popularity/{author}/{doc}", get(popularity_handler))
         .route("/api/identity/{root}/followers", get(followers_handler))
+        .route("/api/identity/{root}/followers/list", get(followers_list_handler))
+        .route("/api/identity/{root}/contacts", get(contacts_handler))
         .route("/api/identity/{root}/known-followers/{subject}", get(known_followers_handler))
         .route(
             "/api/identity/{root}/avatar",
@@ -4761,6 +4763,85 @@ async fn followers_handler(
         "told_you": told_you.len(),
         "computers": computers,
     })))
+}
+
+/// GET - the persona's own dials, person by person (2026-10-07, for MCP's `list_contacts`): who it
+/// follows (`interest`) and trusts, and the nickname it gave them - its private chain's `contact:`
+/// registers, which the app reads off the mirror's stream instead. Named, through the bylines this
+/// node holds. Only people with a dial or a nickname set.
+async fn contacts_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let contacts = data.contacts().await?;
+    let set = |v: Option<&String>| v.filter(|v| !v.is_empty() && v.as_str() != "none").cloned();
+    /// Who, and the persona's follow, trust and nickname for them.
+    type Contact = (String, Option<String>, Option<String>, Option<String>);
+    let rows: Vec<Contact> = contacts
+        .into_iter()
+        .map(|(who, facts)| {
+            (who, set(facts.get("interest")), set(facts.get("trust")), set(facts.get("nickname")))
+        })
+        .filter(|(_, i, t, n)| i.is_some() || t.is_some() || n.is_some())
+        .collect();
+    let roots: Vec<String> = rows.iter().map(|r| r.0.clone()).collect();
+    let names =
+        crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
+    let people: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(who, interest, trust, nickname)| {
+            serde_json::json!({
+                "name": names.get(&who).and_then(|b| b.name.clone()),
+                "root": who,
+                "interest": interest,
+                "trust": trust,
+                "nickname": nickname,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "people": people })))
+}
+
+/// GET - who publicly follows or trusts this persona, as far as this node knows (2026-10-07, for
+/// MCP's `list_followers`): the public edges naming it in the edge graph - people whose chains this
+/// node holds - each with the bands they published. `/followers` gives the counts; this, the
+/// people.
+async fn followers_list_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Only an owner may ask: the store's open is the ownership check.
+    store::open(&state, &session.account.id, &root).await?;
+    let at_least_low = |band: &Option<String>| {
+        crate::selectivity::band_ordinal(band.as_deref()).is_some_and(|o| o >= 1)
+    };
+    let edges: Vec<(String, Option<String>, Option<String>)> =
+        crate::edgegraph::edges_naming(&state.node_db, &root)
+            .await
+            .map_err(AppError::Internal)?
+            .into_iter()
+            .filter(|(who, trust, interest)| {
+                who != &root && (at_least_low(trust) || at_least_low(interest))
+            })
+            .collect();
+    let roots: Vec<String> = edges.iter().map(|e| e.0.clone()).collect();
+    let names =
+        crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
+    let people: Vec<serde_json::Value> = edges
+        .into_iter()
+        .map(|(who, trust, interest)| {
+            serde_json::json!({
+                "name": names.get(&who).and_then(|b| b.name.clone()),
+                "root": who,
+                "interest": interest,
+                "trust": trust,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "people": people })))
 }
 
 /// GET - who among the people this reader has a dial on publicly trusts or follows `subject`: the

@@ -46,9 +46,59 @@ pub struct WriteArgs {
     document: Option<String>,
     /// The note's title. For a note being changed, leave it out to keep the title it has.
     title: Option<String>,
-    /// The note's whole words - Marquee, which reads like Markdown. Replaces what was there.
-    words: String,
+    /// The note's whole words - Marquee, which reads like Markdown. Replaces what was there. A new
+    /// note needs them; for one being changed, leave them out to change only its tags.
+    words: Option<String>,
+    /// The note's tags after this - the whole set, replacing the ones it had; `[]` takes them all
+    /// off, except "ai-agent" or "api-key", which only the person can remove. Leave it out to keep
+    /// its tags. Posting the note restates them on the post. Needs the "Reactions, tags &
+    /// filters" unlock.
+    tags: Option<Vec<String>>,
 }
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct PinArgs {
+    /// Which persona: its name, its @slug or its root. Leave it out when the account has only one.
+    persona: Option<String>,
+    /// The document's id, as list_documents gives it.
+    document: String,
+    /// Take the pin off instead of putting it on.
+    unpin: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct ShareArgs {
+    /// Which persona shares: its name, its @slug or its root. Leave it out when the account has
+    /// only one.
+    persona: Option<String>,
+    /// Somebody else's post: `author/doc` as a card gives it, or a link.
+    post: String,
+    /// Take the share back instead.
+    unshare: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct ProfileEditArgs {
+    /// Which persona: its name, its @slug or its root. Leave it out when the account has only one.
+    persona: Option<String>,
+    /// The persona's new name, as everyone sees it. Leave it out to keep it.
+    name: Option<String>,
+    /// The persona's new bio. Leave it out to keep it; "" clears it.
+    bio: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct ColorwayArgs {
+    /// Which persona: its name, its @slug or its root. Leave it out when the account has only one.
+    persona: Option<String>,
+    /// The colourway: "horse-relax" or "witchlight" (free), or one the persona has bought in the
+    /// Market.
+    colorway: String,
+}
+
+/// The colourways everyone has (js/colorway.js `FREE`); the rest are sold as `colorway-<name>`
+/// (bank.rs `UNLOCKS`).
+const FREE_COLORWAYS: [&str; 2] = ["horse-relax", "witchlight"];
 
 #[derive(Deserialize, schemars::JsonSchema)]
 pub struct PublishArgs {
@@ -179,7 +229,13 @@ impl Tools {
     async fn write(&self, parts: &Parts, args: WriteArgs) -> Answer {
         let persona = self.persona(parts, args.persona.as_deref()).await?;
         self.require(parts, &persona.root, "private-notes").await?;
+        if args.tags.is_some() {
+            self.require(parts, &persona.root, "tags").await?;
+        }
         let Some(document) = args.document.as_deref().map(str::trim) else {
+            let Some(words) = args.words else {
+                return Err(stop("a new note needs its words"));
+            };
             let made = self
                 .call(
                     parts,
@@ -187,12 +243,17 @@ impl Tools {
                     &format!("/api/identity/{}/docs", persona.root),
                     Some(json!({
                         "title": args.title.unwrap_or_default(),
-                        "body": args.words,
+                        "body": words,
                         "format": "marquee",
                     })),
                 )
                 .await?;
-            return answer(json!({ "document": made.get("doc_id"), "written": "a new note" }));
+            let id = made.get("doc_id").and_then(Value::as_str).unwrap_or_default().to_string();
+            let mut answered = json!({ "document": id, "written": "a new note" });
+            if let Some(tags) = &args.tags {
+                answered["tags"] = json!(self.retag(parts, &persona.root, &id, tags).await?);
+            }
+            return answer(answered);
         };
         let path = format!("/api/identity/{}/docs/{}", persona.root, escape(document));
         let doc = self.call(parts, Method::GET, &path, None).await?;
@@ -203,6 +264,14 @@ impl Tools {
                 kind_of(format).0
             )));
         }
+        let Some(words) = args.words else {
+            // Only the tags change: no new version.
+            let Some(tags) = &args.tags else {
+                return Err(stop("give the note's words, its tags, or both"));
+            };
+            let tags = self.retag(parts, &persona.root, document, tags).await?;
+            return answer(json!({ "document": document, "tags": tags }));
+        };
         // Edited from every head there is, so a note two computers had split is joined again by
         // these words rather than left in two.
         let parents: Vec<Value> = doc
@@ -220,13 +289,146 @@ impl Tools {
             &path,
             Some(json!({
                 "title": title.unwrap_or_default(),
-                "body": args.words,
+                "body": words,
                 "parents": parents,
                 "format": format,
             })),
         )
         .await?;
-        answer(json!({ "document": document, "written": "a new version; the old ones are kept" }))
+        let mut answered =
+            json!({ "document": document, "written": "a new version; the old ones are kept" });
+        if let Some(tags) = &args.tags {
+            answered["tags"] = json!(self.retag(parts, &persona.root, document, tags).await?);
+        }
+        answer(answered)
+    }
+
+    /// Make a note's tags exactly `want` (the app's tag editor, doc/annotations.js): the ones it
+    /// lacks put on, the ones it has beyond them taken off - all but what it was made with, which
+    /// stays. Answers the set it ends with.
+    async fn retag(
+        &self,
+        parts: &Parts,
+        root: &str,
+        document: &str,
+        want: &[String],
+    ) -> Result<Vec<String>, CallToolResult> {
+        let base = format!("/api/identity/{root}/docs/{}/annotations", escape(document));
+        let now = self.call(parts, Method::GET, &base, None).await?;
+        let have: std::collections::BTreeSet<String> = now
+            .get("tags")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.as_str().map(str::to_string))
+            .collect();
+        // What a note was made with is not a tag the agent sets or takes off (ruling 6: a person
+        // removes it, from a signed-in browser): kept whatever set is asked for, and said.
+        let made_with = |t: &str| t == crate::made_with::AI_AGENT || t == crate::made_with::API_KEY;
+        let want: std::collections::BTreeSet<String> = want
+            .iter()
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty() && !made_with(t))
+            .chain(have.iter().filter(|t| made_with(t)).cloned())
+            .collect();
+        for tag in want.difference(&have) {
+            self.call(parts, Method::PUT, &format!("{base}/tags/{}", escape(tag)), None).await?;
+        }
+        for tag in have.difference(&want) {
+            self.call(parts, Method::DELETE, &format!("{base}/tags/{}", escape(tag)), None).await?;
+        }
+        Ok(want.into_iter().collect())
+    }
+
+    async fn pin(&self, parts: &Parts, args: PinArgs) -> Answer {
+        let persona = self.persona(parts, args.persona.as_deref()).await?;
+        self.require(parts, &persona.root, "pins").await?;
+        let document = args.document.trim();
+        let unpin = args.unpin == Some(true);
+        self.call(
+            parts,
+            if unpin { Method::DELETE } else { Method::PUT },
+            &format!("/api/identity/{}/docs/{}/pin", persona.root, escape(document)),
+            None,
+        )
+        .await?;
+        answer(json!({ "document": document, "pinned": !unpin }))
+    }
+
+    async fn share_answer(&self, parts: &Parts, args: ShareArgs) -> Answer {
+        let persona = self.persona(parts, args.persona.as_deref()).await?;
+        self.require(parts, &persona.root, "sharing").await?;
+        let Some((author, doc)) = post_address(&args.post) else {
+            return Err(stop("that isn't a post's address: `author/doc`, or a link to it"));
+        };
+        if author == persona.root {
+            return Err(stop("that's this persona's own post: a share is of somebody else's"));
+        }
+        let unshare = args.unshare == Some(true);
+        let mut body = json!({ "author": author, "doc_id": doc });
+        if unshare {
+            body["retract"] = json!(true);
+        }
+        self.call(
+            parts,
+            Method::POST,
+            &format!("/api/identity/{}/rebroadcasts", persona.root),
+            Some(body),
+        )
+        .await?;
+        answer(json!({ "post": format!("{author}/{doc}"), "shared": !unshare }))
+    }
+
+    async fn edit_profile_answer(&self, parts: &Parts, args: ProfileEditArgs) -> Answer {
+        let persona = self.persona(parts, args.persona.as_deref()).await?;
+        if args.name.is_none() && args.bio.is_none() {
+            return Err(stop("give a new name, a new bio, or both"));
+        }
+        if args.name.as_deref().is_some_and(|n| n.trim().is_empty()) {
+            return Err(stop("a name can't be empty"));
+        }
+        let mut changed = serde_json::Map::new();
+        for (field, value) in [("name", args.name), ("bio", args.bio)] {
+            let Some(value) = value else { continue };
+            let value = if field == "name" { value.trim().to_string() } else { value };
+            self.call(
+                parts,
+                Method::POST,
+                &format!("/api/identity/{}/profile", persona.root),
+                Some(json!({ "field": field, "value": value })),
+            )
+            .await?;
+            changed.insert(field.to_string(), json!(value));
+        }
+        answer(json!({ "persona": persona.root, "changed": changed }))
+    }
+
+    async fn colorway_answer(&self, parts: &Parts, args: ColorwayArgs) -> Answer {
+        let persona = self.persona(parts, args.persona.as_deref()).await?;
+        let colorway = args.colorway.trim().to_ascii_lowercase();
+        let sold = format!("colorway-{colorway}");
+        let known = FREE_COLORWAYS.contains(&colorway.as_str())
+            || crate::bank::UNLOCKS.iter().any(|u| u.id == sold);
+        if !known {
+            let mut names: Vec<String> = FREE_COLORWAYS.iter().map(|c| c.to_string()).collect();
+            names.extend(
+                crate::bank::UNLOCKS
+                    .iter()
+                    .filter_map(|u| u.id.strip_prefix("colorway-").map(str::to_string)),
+            );
+            return Err(stop(format!("\"{colorway}\" isn't a colourway: {}", names.join(", "))));
+        }
+        if !FREE_COLORWAYS.contains(&colorway.as_str()) {
+            self.require(parts, &persona.root, &sold).await?;
+        }
+        self.call(
+            parts,
+            Method::POST,
+            &format!("/api/identity/{}/profile", persona.root),
+            Some(json!({ "field": "colorway", "value": colorway })),
+        )
+        .await?;
+        answer(json!({ "persona": persona.root, "colorway": colorway }))
     }
 
     async fn publish_answer(&self, parts: &Parts, args: PublishArgs) -> Answer {
@@ -425,7 +627,8 @@ impl Tools {
 impl Tools {
     #[tool(
         description = "Write a note (in Writer): a new one, or new words for one the persona has \
-            - the whole text, replacing what was there; the old version is kept. Notes are \
+            - the whole text, replacing what was there; the old version is kept - and/or set its \
+            tags (the whole set; tags need the Reactions, tags & filters unlock). Notes are \
             private until posted. Needs the Private notes unlock.",
         annotations(title = "Write a note", read_only_hint = false, destructive_hint = false)
     )]
@@ -539,5 +742,69 @@ impl Tools {
         Parameters(args): Parameters<DialArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         finish(self.dial(&parts, args, "trust").await)
+    }
+
+    #[tool(
+        description = "Pin one of the persona's documents, or take its pin off (`unpin`). A pinned \
+            post sits at the top of their page. Needs the Pins unlock.",
+        annotations(
+            title = "Pin a document",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true
+        )
+    )]
+    async fn pin_document(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(args): Parameters<PinArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        finish(self.pin(&parts, args).await)
+    }
+
+    #[tool(
+        description = "Share somebody else's post with the persona's followers - it shows in \
+            their feeds as a share - or take a share back (`unshare`). Public, and in their name \
+            - ask the person first. Needs the Sharing unlock.",
+        annotations(title = "Share a post", read_only_hint = false, destructive_hint = true)
+    )]
+    async fn share(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(args): Parameters<ShareArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        finish(self.share_answer(&parts, args).await)
+    }
+
+    #[tool(
+        description = "Change the persona's name or bio, as everyone sees them on its page. \
+            Public, and in their name - ask the person first. The picture and the banner are \
+            the app's to change.",
+        annotations(title = "Edit the profile", read_only_hint = false, destructive_hint = true)
+    )]
+    async fn edit_profile(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(args): Parameters<ProfileEditArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        finish(self.edit_profile_answer(&parts, args).await)
+    }
+
+    #[tool(
+        description = "Switch the persona's colourway - how the app looks for them: \
+            \"horse-relax\" or \"witchlight\", which are free, or one bought in the Market.",
+        annotations(
+            title = "Switch the colourway",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true
+        )
+    )]
+    async fn set_colorway(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(args): Parameters<ColorwayArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        finish(self.colorway_answer(&parts, args).await)
     }
 }

@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch } = require('./helpers.cjs');
+const { makeUserFetch, makePng } = require('./helpers.cjs');
 const { makeFetch } = require('./fetch.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
@@ -694,6 +694,273 @@ describe('MCP: chat, the Bank and the Market', function () {
         assert.match((await tool(agent, 'buy', { bond: 'lots' })).stopped, /isn't an amount/);
         assert.match((await tool(agent, 'buy', { unlock: 'unicorns' })).stopped, /no unlock/);
         assert.match((await tool(agent, 'buy', {})).stopped, /one thing at a time/);
+    });
+});
+
+/*
+    The first cut's gaps (plans/MCP.md, Slice 7; Curtis, 2026-10-07: "Let's build 1-7 and 9"), from
+    an agent's own review of using the connector: a document list that pages and searches, a
+    note's tags, pins, shares, who follows and trusts whom, the name and bio, notifications a page
+    at a time and marked up to a point, the colourway, and a file's picture.
+*/
+describe('MCP: the gaps an agent found', function () {
+    this.timeout(180000);
+
+    let me, root, agent, pal, palRoot, palPost;
+
+    before(async () => {
+        ({ me, root, agent } = await keyed('mcpgaps'));
+        pal = await makeUserFetch({ prefix: 'mcpgapspal' });
+        palRoot = (await (await pal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await j(pal, `api/identity/${palRoot}/profile`, { field: 'name', value: 'Pal' });
+        const draft = await (
+            await j(pal, `api/identity/${palRoot}/docs`, {
+                title: 'a shareable thing',
+                body: 'worth passing on',
+                format: 'marquee',
+            })
+        ).json();
+        const published = await j(pal, `api/identity/${palRoot}/docs/${draft.doc_id}/publish`, {});
+        palPost = `${palRoot}/${(await published.json()).post_id}`;
+    });
+
+    it('list_documents: pages, counts, searches titles, and keeps to the published', async () => {
+        for (let i = 1; i <= 5; i++) {
+            await j(me, `api/identity/${root}/docs`, {
+                title: `haybale ${i}`,
+                body: 'words',
+                format: 'marquee',
+            });
+        }
+        const other = await (
+            await j(me, `api/identity/${root}/docs`, {
+                title: 'oats',
+                body: 'w',
+                format: 'marquee',
+            })
+        ).json();
+        await j(me, `api/identity/${root}/docs/${other.doc_id}/publish`, {});
+
+        const counted = await tool(agent, 'list_documents', {
+            search: 'HAYBALE',
+            count_only: true,
+        });
+        assert.deepEqual([counted.count, counted.documents], [5, undefined], 'a count, no list');
+        const first = await tool(agent, 'list_documents', { search: 'haybale', limit: 2 });
+        assert.equal(first.documents.length, 2);
+        assert.equal(first.count, 5);
+        assert.ok(first.next, 'more to read');
+        const second = await tool(agent, 'list_documents', {
+            search: 'haybale',
+            limit: 2,
+            next: first.next,
+        });
+        const third = await tool(agent, 'list_documents', {
+            search: 'haybale',
+            limit: 2,
+            next: second.next,
+        });
+        assert.equal(third.next, undefined, 'the last page says so');
+        const ids = [...first.documents, ...second.documents, ...third.documents].map(
+            (d) => d.document,
+        );
+        assert.equal(new Set(ids).size, 5, 'every one once');
+        const published = await tool(agent, 'list_documents', { published: true });
+        assert.ok(published.documents.every((d) => d.published));
+        assert.ok(published.documents.some((d) => d.document === other.doc_id));
+        assert.match(
+            (await tool(agent, 'list_documents', { next: 'pony' })).stopped,
+            /isn't one list_documents gave/,
+        );
+    });
+
+    it("write_document: sets a note's tags as a whole set, with or without new words", async () => {
+        const tagsOf = async (doc) =>
+            (await (await me(`api/identity/${root}/docs/${doc}/annotations`)).json()).tags.sort();
+        const made = await tool(agent, 'write_document', {
+            title: 'tagged by an agent',
+            words: 'some words',
+            tags: ['oats', 'hay'],
+        });
+        assert.ok(!made.stopped, made.stopped);
+        // What it was made with stays, whatever set is asked for (ruling 6).
+        assert.deepEqual(made.tags, ['ai-agent', 'hay', 'oats']);
+        assert.deepEqual(await tagsOf(made.document), ['ai-agent', 'hay', 'oats']);
+        const heads = async () =>
+            (await (await me(`api/identity/${root}/docs/${made.document}`)).json()).heads[0]
+                .version;
+        const before = await heads();
+        const retagged = await tool(agent, 'write_document', {
+            document: made.document,
+            tags: ['hay', 'carrots'],
+        });
+        assert.deepEqual(retagged.tags, ['ai-agent', 'carrots', 'hay']);
+        assert.deepEqual(
+            await tagsOf(made.document),
+            ['ai-agent', 'carrots', 'hay'],
+            'oats off, carrots on',
+        );
+        const bare = await tool(agent, 'write_document', { document: made.document, tags: [] });
+        assert.deepEqual(bare.tags, ['ai-agent'], '[] clears all but what it was made with');
+        assert.equal(await heads(), before, 'tags alone write no new version');
+        assert.match(
+            (await tool(agent, 'write_document', { document: made.document })).stopped,
+            /words, its tags, or both/,
+        );
+    });
+
+    it('pin_document: pins and unpins, and the list says so', async () => {
+        const made = await tool(agent, 'write_document', { title: 'to pin', words: 'pin me' });
+        const pinnedNow = async () =>
+            (await tool(agent, 'list_documents', { search: 'to pin' })).documents.find(
+                (d) => d.document === made.document,
+            ).pinned;
+        assert.deepEqual(await tool(agent, 'pin_document', { document: made.document }), {
+            document: made.document,
+            pinned: true,
+        });
+        assert.equal(await pinnedNow(), true);
+        await tool(agent, 'pin_document', { document: made.document, unpin: true });
+        assert.ok(!(await pinnedNow()), 'and off again');
+    });
+
+    it("share: somebody else's post, and back; never one's own", async () => {
+        const shares = async () =>
+            (await (await me(`api/identity/${root}/rebroadcasts`)).json()).items.map(
+                (r) => `${r.author}/${r.doc_id}`,
+            );
+        const shared = await tool(agent, 'share', { post: palPost });
+        assert.deepEqual(shared, { post: palPost, shared: true });
+        assert.ok((await shares()).includes(palPost), 'on the chain');
+        await tool(agent, 'share', { post: palPost, unshare: true });
+        assert.ok(!(await shares()).includes(palPost), 'taken back');
+        const mine = await tool(agent, 'write_document', { title: 'mine', words: 'w' });
+        const posted = await j(me, `api/identity/${root}/docs/${mine.document}/publish`, {});
+        const own = `${root}/${(await posted.json()).post_id}`;
+        assert.match((await tool(agent, 'share', { post: own })).stopped, /own post/);
+    });
+
+    it('list_contacts and list_followers: who it follows and trusts, and who follows it', async () => {
+        await tool(agent, 'follow', { who: palRoot, level: 'high' });
+        await tool(agent, 'trust', { who: palRoot, level: 'max' });
+        const contacts = await tool(agent, 'list_contacts');
+        const palRow = contacts.people.find((p) => p.root === palRoot);
+        assert.ok(palRow, 'Pal is a contact');
+        assert.deepEqual([palRow.interest, palRow.trust], ['high', 'max']);
+        assert.deepEqual(palRow.name, { author: 'Pal', text: 'Pal' }, 'a name is fenced');
+        assert.ok(
+            (await tool(agent, 'list_contacts', { only: 'trusted' })).people.some(
+                (p) => p.root === palRoot,
+            ),
+        );
+        assert.match(
+            (await tool(agent, 'list_contacts', { only: 'enemies' })).stopped,
+            /following or trusted/,
+        );
+
+        // Pal follows back, publicly; the edge reaches this node's graph on its own beat.
+        await j(
+            pal,
+            `api/identity/${palRoot}/private/kv/${encodeURIComponent(`contact:${root}`)}/interest`,
+            { value: 'high' },
+            'PUT',
+        );
+        let follower;
+        for (let i = 0; i < 60 && !follower; i++) {
+            const followers = await tool(agent, 'list_followers');
+            assert.ok(!followers.stopped, followers.stopped);
+            follower = followers.people.find((p) => p.root === palRoot);
+            if (!follower) await wait(500);
+        }
+        assert.ok(follower, 'Pal follows, as far as this node knows');
+        assert.equal(follower.interest, 'high');
+    });
+
+    it('edit_profile: the name and the bio; never an empty name', async () => {
+        const edited = await tool(agent, 'edit_profile', {
+            name: '  Gap Filler  ',
+            bio: 'I fill gaps.',
+        });
+        assert.deepEqual(edited.changed, { name: 'Gap Filler', bio: 'I fill gaps.' });
+        const profile = await (await me(`api/identity/${root}/profile`)).json();
+        const field = (f) => (profile.find((p) => p.field === f) || {}).value;
+        assert.deepEqual([field('name'), field('bio')], ['Gap Filler', 'I fill gaps.']);
+        assert.match((await tool(agent, 'edit_profile', { name: ' ' })).stopped, /can't be empty/);
+        assert.match((await tool(agent, 'edit_profile', {})).stopped, /name, a new bio/);
+    });
+
+    it('read_notifications pages; mark_notifications_seen stops where it is told', async () => {
+        // Two notifications for this persona: Pal's follow (above) and Pal's label on its post.
+        const mine = await tool(agent, 'write_document', { title: 'label me', words: 'w' });
+        const posted = await j(me, `api/identity/${root}/docs/${mine.document}/publish`, {});
+        const postId = (await posted.json()).post_id;
+        await j(
+            pal,
+            `api/identity/${palRoot}/public-annotations/${root}/${postId}`,
+            { key: 'tag', value: 'lovely' },
+            'PUT',
+        );
+        let all;
+        for (let i = 0; i < 60; i++) {
+            all = await tool(agent, 'read_notifications', { limit: 100 });
+            if (all.notifications.length >= 2) break;
+            await wait(500);
+        }
+        assert.ok(all.notifications.length >= 2, JSON.stringify(all));
+        const page = await tool(agent, 'read_notifications', { limit: 1 });
+        assert.equal(page.notifications.length, 1);
+        assert.ok(page.next, 'more behind it');
+        const rest = await tool(agent, 'read_notifications', { limit: 100, next: page.next });
+        assert.ok(rest.notifications.length >= 1);
+        // Through the older one: it and everything before it, never the newer.
+        const [newer, older] = all.notifications;
+        assert.notEqual(newer.mark, older.mark, 'two moments');
+        await tool(agent, 'mark_notifications_seen', { through: older.mark });
+        const after = await tool(agent, 'read_notifications', { limit: 100 });
+        const seen = (mark) => after.notifications.find((n) => n.mark === mark).seen;
+        assert.equal(seen(older.mark), true);
+        assert.equal(seen(newer.mark), false, 'the newer stays unseen');
+    });
+
+    it('set_colorway: a free one, and never a name that is none', async () => {
+        assert.deepEqual(await tool(agent, 'set_colorway', { colorway: 'Witchlight' }), {
+            persona: root,
+            colorway: 'witchlight',
+        });
+        const profile = await (await me(`api/identity/${root}/profile`)).json();
+        assert.equal(profile.find((p) => p.field === 'colorway').value, 'witchlight');
+        assert.match(
+            (await tool(agent, 'set_colorway', { colorway: 'plaid' })).stopped,
+            /isn't a colourway/,
+        );
+    });
+
+    it("read_document: a file's picture, as a PNG", async () => {
+        const queued = await (
+            await me(`api/identity/${root}/docs/binary?title=penpen`, {
+                method: 'POST',
+                body: makePng(64, 48),
+                file: true,
+            })
+        ).json();
+        for (let i = 0; i < 200; i++) {
+            const jobs = await (await me(`api/identity/${root}/ingest`)).json();
+            const job = jobs.find((x) => x.job_id === queued.job_id);
+            if (job && job.status === 'done') break;
+            await wait(150);
+        }
+        const result = await callTool(agent, 'read_document', { document: queued.doc_id });
+        assert.ok(!result.isError, result.content[0].text);
+        const said = JSON.parse(result.content[0].text);
+        assert.equal(said.kind, 'file');
+        const picture = result.content[1];
+        assert.equal(picture.type, 'image');
+        assert.equal(picture.mimeType, 'image/png');
+        const png = Buffer.from(picture.data, 'base64');
+        assert.ok(
+            png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
+            'a PNG',
+        );
     });
 });
 
