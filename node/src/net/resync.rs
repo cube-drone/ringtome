@@ -76,6 +76,19 @@ fn fingerprint(frontiers: Vec<ringtome_proto::sync::Frontier>) -> Fingerprint {
     fp
 }
 
+/// Did chains this computer didn't write (`mine`, its leaf, hex) move between two frontier reads?
+/// What tells an instalment - a sync cut short after entries arrived - from an offline peer.
+fn arrived(
+    before: Vec<ringtome_proto::sync::Frontier>,
+    after: Vec<ringtome_proto::sync::Frontier>,
+    mine: &str,
+) -> bool {
+    let theirs = |frontiers: Vec<ringtome_proto::sync::Frontier>| {
+        fingerprint(frontiers.into_iter().filter(|f| hex::encode(f.author) != mine).collect())
+    };
+    theirs(before) != theirs(after)
+}
+
 /// Per-root debounce state. `last_pushed` is the frontier snapshot captured at the last push
 /// that reached at least one peer - dirty means "the world moved past what we've shared".
 #[derive(Debug, Clone)]
@@ -217,7 +230,8 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
     }
 
     let db = state.user_dbs.held(root).await?;
-    let fp = fingerprint(sync::local_frontiers(&db, true).await?);
+    let at_start = sync::local_frontiers(&db, true).await?;
+    let fp = fingerprint(at_start.clone());
     let decision = state.resync.observe(root, fp.clone(), now_ms(), state.config.sync_debounce_ms);
     if !decision.push {
         return Ok(());
@@ -244,6 +258,28 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
             let retry = sync::sync_peers(state, root, &newcomers).await?;
             any_ok = any_ok || retry.iter().any(|r| r.ok);
             results.extend(retry);
+        }
+    }
+    // An instalment, not a failure (plans/SYNC_STATUS.md, 3b): every exchange ended in an error,
+    // but entries arrived before it did - the frontier moved under the pass. The wall clock cut a
+    // large pull mid-stream (600s, `exchange_wall_clock`), and the peer, far from offline, was
+    // talking the whole time. The backoff is for computers that are off; this one is mid-way.
+    // Recorded as a push that reached its peer, so no backoff is armed - and since the frontier
+    // has moved past what this pass started from, the persona is dirty again, and the next pass
+    // continues from where this one stopped. Only the persona's own computers come here: this
+    // loop dials nobody else, and other people's chains keep their budgets and ladders.
+    if !any_ok {
+        // ARRIVED, specifically: chains this computer didn't write. Its own writes move the
+        // frontier too, and a person saving notes while their other computer is off must not
+        // turn the backoff into a redial every tick - that is exactly what it is for.
+        let mine = crate::identity::leaf_hex_of(&state.node_db, root)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .unwrap_or_else(|| root.to_string());
+        if arrived(at_start, sync::local_frontiers(&db, true).await?, &mine) {
+            tracing::info!(root = %root, peers = results.len(),
+                "a sync stopped short having brought entries in; continuing from where it stopped");
+            any_ok = true;
         }
     }
     if !any_ok && !decision.was_failing {
@@ -420,5 +456,32 @@ mod tests {
         assert!(!push, "inside the debounce");
         let (_, push) = observe(Some(st), fp(3), 6_000);
         assert!(push, "a chain moving DOWN (forgery eviction) must propagate too");
+    }
+
+    /// An instalment is told by what ARRIVED: another computer's chain moving between the reads.
+    /// This computer's own writes moving it is not one - that is a person saving while their
+    /// other computer is off, which is what the backoff is for.
+    #[test]
+    fn an_instalment_is_told_by_what_arrived_not_by_what_was_written_here() {
+        let chain = |author: u8, head: u64| ringtome_proto::sync::Frontier {
+            author: [author; 32],
+            service: 1,
+            instance: None,
+            floor: 0,
+            head,
+            head_hash: [head as u8; 32],
+        };
+        let mine = hex::encode([1u8; 32]);
+        let start = vec![chain(1, 5), chain(2, 7)];
+        assert!(!arrived(start.clone(), start.clone(), &mine), "nothing moved");
+        assert!(
+            !arrived(start.clone(), vec![chain(1, 9), chain(2, 7)], &mine),
+            "only this computer wrote"
+        );
+        assert!(arrived(start.clone(), vec![chain(1, 5), chain(2, 8)], &mine), "theirs moved");
+        assert!(
+            arrived(start, vec![chain(1, 5), chain(2, 7), chain(3, 0)], &mine),
+            "a chain of theirs arrived whole"
+        );
     }
 }

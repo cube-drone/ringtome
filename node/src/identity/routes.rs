@@ -93,6 +93,8 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/popularity/{author}/{doc}", get(popularity_handler))
         .route("/api/identity/{root}/followers", get(followers_handler))
         .route("/api/identity/{root}/followers/list", get(followers_list_handler))
+        .route("/api/identity/{root}/sync/status", get(sync_status_handler))
+        .route("/api/identity/{root}/sync/held", get(sync_held_handler))
         .route("/api/identity/{root}/contacts", get(contacts_handler))
         .route("/api/identity/{root}/known-followers/{subject}", get(known_followers_handler))
         .route(
@@ -512,8 +514,11 @@ async fn authorize_node_handler(
     // design - every failure (unreachable, timeout, refused) degrades identically to the
     // carried-code ceremony. The ack arrives only after the requester fully completed, so
     // `delivered: true` means the persona has already moved in.
+    // 30 seconds, under any proxy's timeout (plans/SYNC_STATUS.md, step 7): a new computer since
+    // 2026-10-07 acks within its own 15-second wait, and one on an older version - which synced its
+    // whole persona before acking, and gave Curtis a 504 - now gets the carried code instead.
     let delivered = match tokio::time::timeout(
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(30),
         crate::net::adopt::deliver_grant(&state, &requester_endpoint, &requester_addrs, &grant),
     )
     .await
@@ -567,18 +572,34 @@ async fn adopt_complete_handler(
 
 /// Run a full exchange with every known peer of this identity. Per-peer failures are reported,
 /// not fatal - an unreachable peer is a normal day on a p2p network.
+///
+/// In the background, waited on for `SYNC_WAIT` at most (plans/SYNC_STATUS.md, piece 1): done
+/// inside it, the answer is every peer's result as before; still going, `202` and an empty list -
+/// the exchanges carry on, and a large one is not a request a proxy will wait out.
 async fn sync_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
-) -> Result<Json<Vec<crate::net::sync::PeerSyncResult>>, AppError> {
+) -> Result<Response, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     let peers =
         crate::net::sync::peers_for(&state.node_db, &root).await.map_err(AppError::Internal)?;
-    let results =
-        crate::net::sync::sync_peers(&state, &root, &peers).await.map_err(AppError::Internal)?;
-    Ok(Json(results))
+    let task_state = state.clone();
+    let task_root = root.clone();
+    let exchanges =
+        tokio::spawn(
+            async move { crate::net::sync::sync_peers(&task_state, &task_root, &peers).await },
+        );
+    match tokio::time::timeout(SYNC_WAIT, exchanges).await {
+        Ok(Ok(results)) => Ok(Json(results.map_err(AppError::Internal)?).into_response()),
+        Ok(Err(e)) => Err(AppError::Internal(anyhow::anyhow!("the sync task stopped: {e}"))),
+        Err(_) => Ok((StatusCode::ACCEPTED, Json(Vec::<crate::net::sync::PeerSyncResult>::new()))
+            .into_response()),
+    }
 }
+
+/// How long `POST …/sync` waits for its exchanges before answering that they continue.
+const SYNC_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
 
 #[derive(Serialize)]
 struct ServeResponse {
@@ -4765,6 +4786,108 @@ async fn followers_handler(
     })))
 }
 
+/// GET - the sync ledger for this persona (plans/SYNC_STATUS.md, pieces 2 and 4): its exchanges
+/// running now, each of its other computers - by its key, which the page names, with what the ledger
+/// last saw of it - the bodies still to come, and the node's network work, in counts.
+async fn sync_status_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    super::require_owned(&state.node_db, &session.account.id, &root).await?;
+    let mut status = state.sync_ledger.status(&root);
+    let known =
+        crate::net::sync::peer_leaves(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    let ledger = status["computers"].as_object().cloned().unwrap_or_default();
+    let computers: Vec<serde_json::Value> = known
+        .into_iter()
+        .map(|(endpoint, leaf, last_synced_ms)| {
+            let mut row = ledger.get(&endpoint).cloned().unwrap_or_else(|| serde_json::json!({}));
+            row["endpoint"] = serde_json::json!(endpoint);
+            row["leaf"] = serde_json::json!(leaf);
+            row["last_synced_ms"] = serde_json::json!(last_synced_ms);
+            row
+        })
+        .collect();
+    status["computers"] = serde_json::json!(computers);
+    status["bodies_waiting"] =
+        serde_json::json!(crate::net::bodies::remaining(&state.node_db, &root)
+            .await
+            .map_err(AppError::Internal)?);
+    status["face"] = serde_json::json!(state
+        .sync_ledger
+        .face(&root, status["bodies_waiting"].as_u64().unwrap_or(0)));
+    Ok(Json(status))
+}
+
+/// GET - what this computer holds of the persona (plans/SYNC_STATUS.md, piece 5, the This computer
+/// tab): counts a person can read off two devices and compare, and the sync code, which says
+/// whether the chains themselves agree - counts differ for innocent reasons (a body still on its
+/// way, a view not yet caught up), the code says where to look.
+async fn sync_held_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    use crate::record::documents::Format;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let db = data.db();
+    let frontiers =
+        crate::net::sync::local_frontiers(db, true).await.map_err(AppError::Internal)?;
+    let (docs, _) = data.documents().summaries().await?;
+    let (mut notes, mut drawings, mut files, mut books) = (0u64, 0u64, 0u64, 0u64);
+    for d in &docs {
+        match Format::from_wire(d.format) {
+            Format::Plaintext | Format::Marquee => notes += 1,
+            Format::Drawing => drawings += 1,
+            Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => files += 1,
+            Format::Book => books += 1,
+            _ => {}
+        }
+    }
+    let public = crate::record::documents::public_doc_count(db).await?.max(0) as u64;
+    let (replies, _) = crate::record::documents::public_replies_fingerprint(db).await?;
+    let replies = replies.max(0) as u64;
+    let shares = data.rebroadcasts().all().await?.iter().filter(|r| !r.is_retracted()).count();
+    let rooms = crate::record::documents::public_docs(db, None, 500)
+        .await?
+        .iter()
+        .filter(|p| Format::from_wire(p.format) == Format::Room)
+        .count();
+    let lines =
+        crate::chat::lines_by(&state.node_db, &root).await.map_err(AppError::Internal)?.len();
+    let contacts = data.contacts().await?;
+    let dialled = |band: &str| {
+        contacts
+            .iter()
+            .filter(|(_, f)| f.get(band).is_some_and(|v| !v.is_empty() && v != "none"))
+            .count()
+    };
+    let followers = crate::edgegraph::edges_naming(&state.node_db, &root)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .filter(|(who, _, interest)| {
+            who != &root
+                && crate::selectivity::band_ordinal(interest.as_deref()).is_some_and(|o| o >= 1)
+        })
+        .count();
+    let unlocks = crate::bank::unlocks_owned(&data).await.map_err(AppError::Internal)?.len();
+    let ledger = crate::bank::line_count(&data).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({
+        "sync_code": crate::syncstatus::sync_code(&frontiers),
+        "chains": frontiers.len(),
+        "entries": crate::record::imaol::entry_count(db).await?,
+        "disk_bytes": state.user_dbs.disk_bytes(&root),
+        "documents": { "notes": notes, "drawings": drawings, "files": files, "books": books },
+        "bodies_waiting": crate::net::bodies::remaining(&state.node_db, &root).await.map_err(AppError::Internal)?,
+        "posts": { "published": public.saturating_sub(replies), "replies": replies, "shares": shares },
+        "chat": { "rooms": rooms, "lines": lines },
+        "people": { "following": dialled("interest"), "trusting": dialled("trust"), "followers": followers },
+        "bank": { "unlocks": unlocks, "lines": ledger },
+    })))
+}
+
 /// GET - the persona's own dials, person by person (2026-10-07, for MCP's `list_contacts`): who it
 /// follows (`interest`) and trusts, and the nickname it gave them - its private chain's `contact:`
 /// registers, which the app reads off the mirror's stream instead. Named, through the bylines this
@@ -8044,6 +8167,10 @@ struct StreamMessage {
     /// unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     unread_chat: Option<u64>,
+    /// The corner cloud's face (plans/SYNC_STATUS.md, piece 3), when it changed - on every frame
+    /// kind, like the badges.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync: Option<crate::syncstatus::FaceNow>,
 }
 
 impl StreamMessage {
@@ -8066,6 +8193,7 @@ impl StreamMessage {
             search_removed: None,
             unread: None,
             unread_chat: None,
+            sync: None,
         }
     }
 }
@@ -8540,6 +8668,12 @@ async fn serve_stream(
     let mut last_chat =
         unseen_chat_count(&state, &data, &root).await.map_err(anyhow::Error::new)?;
     first.unread_chat = Some(last_chat);
+    // The corner cloud's face, on every first frame; then whenever it changes (the tick below).
+    let mut bodies_waiting =
+        crate::net::bodies::remaining(&state.node_db, &root).await.unwrap_or(0);
+    let mut last_face = state.sync_ledger.face(&root, bodies_waiting);
+    first.sync = Some(last_face);
+    let mut ticks: u64 = 0;
     socket.send(Message::Text(serde_json::to_string(&first)?.into())).await?;
 
     // A local write pings the write-nudge bus (Db::nudge_sync), so a save reflects in every
@@ -8557,6 +8691,20 @@ async fn serve_stream(
     loop {
         tokio::select! {
             _ = tick.tick() => {
+                // The cloud moves on its own clock, not the database's: looked at every tick,
+                // sent only when its face changes. The bodies count is a seek, taken every fifth.
+                ticks += 1;
+                if ticks.is_multiple_of(5) {
+                    bodies_waiting =
+                        crate::net::bodies::remaining(&state.node_db, &root).await.unwrap_or(0);
+                }
+                let face = state.sync_ledger.face(&root, bodies_waiting);
+                if face.face != last_face.face || (face.face != crate::syncstatus::Face::Idle && face != last_face) {
+                    last_face = face;
+                    let mut quiet = StreamMessage::quiet("live", stamp.token());
+                    quiet.sync = Some(face);
+                    socket.send(Message::Text(serde_json::to_string(&quiet)?.into())).await?;
+                }
                 let now_guard = (state.user_dbs.db_mtime_ms(&root), state.view_epochs.get(&root), crate::profiles::epoch());
                 if guard == Some(now_guard) { continue; }
                 guard = Some(now_guard);

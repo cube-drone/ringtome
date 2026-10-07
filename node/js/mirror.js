@@ -208,6 +208,11 @@ export function startLiveCache(root) {
                 if (typeof msg.unread_chat === 'number') {
                     await db.kv.put({ key: 'unread_chat', value: msg.unread_chat });
                 }
+                // The corner cloud's face (plans/SYNC_STATUS.md, piece 3), the same way: absent
+                // means unchanged.
+                if (msg.sync && typeof msg.sync.face === 'string') {
+                    await db.kv.put({ key: 'sync_face', value: msg.sync });
+                }
                 state.retryMs = 1000; // a healthy message resets the backoff
             } catch (e) {
                 console.warn('live cache: bad frame', e);

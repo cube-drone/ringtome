@@ -242,6 +242,21 @@ private body door, 2026-10-07). Left:
   (which re-verifies its proof per request; not measured) shows a cost that
   earns it.
 
+### Sync status (plans/SYNC_STATUS.md)
+
+- **horsedrawingtycoon.com's discovery records** - its DHT publishing times out
+  ("Publish query timed out with no responses", "All relays responded with
+  unexpected responses"); the address memory (step 7) works around it between
+  computers that have talked, but a stranger still can't find the server by id.
+  Worth a look at outbound UDP from that machine, and at iroh's own relay and
+  discovery lines in its log.
+- **Tune the cloud's thresholds on a real large sync** - the starting numbers (5
+  s or 50 entries, 10 bodies, 10 s of network work, 3 s hold, 5 s linger) were
+  agreed, not measured.
+- **The busy faces, seen** - the debounce and the precedence are unit-tested and
+  the idle cloud was seen in a page; an arrow or the sun hasn't been watched on
+  a real screen yet.
+
 ### Query plans (the 2026-10-07 audit)
 
 Every production statement in `node/src` was run through `EXPLAIN QUERY PLAN`

@@ -357,8 +357,9 @@ pub async fn sweep(state: AppState) -> Result<()> {
     Ok(())
 }
 
-/// How many rows one persona still has on the ledger.
-async fn remaining(node_db: &Db, root_hex: &str) -> Result<u64> {
+/// How many rows one persona still has on the ledger - the bodies still to come (also the sync
+/// ledger's "bodies waiting", crate::syncstatus).
+pub async fn remaining(node_db: &Db, root_hex: &str) -> Result<u64> {
     let row: Vec<(i64,)> = node_db
         .fetch_all("SELECT COUNT(*) FROM missing_bodies WHERE root_pubkey = ?1", (root_hex,))
         .await

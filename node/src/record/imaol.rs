@@ -1438,6 +1438,18 @@ pub const BACKFILL_BATCH: u32 = 256;
 ///
 /// Ephemeral chains are excluded: "the journal never holds inbox cargo" has to be true on
 /// every path, and the backfill is the one that would otherwise quietly re-import it.
+/// How many entries this database holds, every chain together - the This computer tab's count
+/// (plans/SYNC_STATUS.md, piece 5). A walk of the primary key: a page asked for by a person, never
+/// a loop's.
+pub(crate) async fn entry_count(db: &Db) -> Result<u64, AppError> {
+    let (n,): (i64,) = db
+        .fetch_one("SELECT COUNT(*) FROM entries", ())
+        .await
+        .context("counting entries")
+        .map_err(AppError::Internal)?;
+    Ok(n as u64)
+}
+
 /// One stored entry by its hash - the identity every entry has, globally unique because the hash
 /// covers the chain id and seq (`entries_by_hash`).
 ///

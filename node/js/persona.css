@@ -438,6 +438,73 @@
     font-size: 0.75rem;
 }
 
+/* The This computer tab (js/syncpage.js; plans/SYNC_STATUS.md, piece 5): the sync code large enough
+   to read off one screen and compare with another, the counts beneath it. */
+.held-code-label {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.held-code {
+    margin: 0.1rem 0 0.5rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 2rem;
+    letter-spacing: 0.15em;
+}
+
+.held-list {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+}
+
+.held-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.25rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.held-count {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* The sync section (js/syncpage.js; plans/SYNC_STATUS.md, piece 4): each other computer on a line
+   of its own - its name, what's happening with it, and how far apart the two were. */
+.sync-computers {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+}
+
+.sync-computer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.75rem;
+    align-items: baseline;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.sync-computer-name {
+    font-weight: 600;
+}
+
+.sync-computer-state {
+    color: var(--ink-soft);
+}
+
+.sync-computer-state.sync-failing {
+    color: var(--coral);
+}
+
+.sync-computer-gap {
+    flex-basis: 100%;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
 .computer-status {
     color: var(--coral);
 }

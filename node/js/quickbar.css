@@ -72,6 +72,57 @@
     margin-top: 6px;
 }
 
+/* The corner cloud (js/synccloud.js; plans/SYNC_STATUS.md, piece 3): always there, after the clock,
+   centred in the band like it. Its arrows wobble softly while the persona's own things move; the
+   sun and the plain cloud stand still; nothing moves under reduced motion. */
+.quickbar-sync {
+    align-self: center;
+    margin: 6px 0 0 0.5rem;
+    padding: 0.15em 0.25em;
+    display: inline-flex;
+    align-items: center;
+    font-size: 1.35rem;
+    color: var(--dock-text);
+    background: none;
+    border: none;
+    opacity: 0.85;
+    cursor: pointer;
+}
+
+.quickbar-sync:hover,
+.quickbar-sync:focus-visible {
+    opacity: 1;
+}
+
+.quickbar-sync-narrow {
+    margin-left: auto;
+}
+
+.quickbar-sync-down svg,
+.quickbar-sync-up svg {
+    animation: quickbar-sync-wobble 1.6s ease-in-out infinite;
+}
+
+@keyframes quickbar-sync-wobble {
+    0%,
+    100% {
+        transform: translate(0, 0) rotate(0deg);
+    }
+    25% {
+        transform: translate(-0.5px, 0.5px) rotate(-3deg);
+    }
+    75% {
+        transform: translate(0.5px, -0.5px) rotate(3deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .quickbar-sync-down svg,
+    .quickbar-sync-up svg {
+        animation: none;
+    }
+}
+
 /* The running build, just left of the clock (js/version.js): quieter than the clock, a link to the
    release's notes. The bar spreads its items apart (space-between); an auto left margin takes that
    free space instead, so the version sits beside the clock rather than floating mid-bar. The same

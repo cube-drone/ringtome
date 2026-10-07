@@ -108,6 +108,13 @@ lightly federated, unapologetically Old Internet.
   computer trades on the same numbers; lots on the private chain like hrseBonds,
   a two-day hold, and exchanges of your own for H$ 100,000,000. Parked
   (2026-10-06): sparse networks, centralisation, a protocol change.
+- [`SYNC_STATUS.md`](plans/SYNC_STATUS.md) — making a sync visible: adoption
+  that answers at once and syncs in the background, instalments instead of
+  timeouts, a cloud always in the task bar's corner (an arrow down or up for the
+  persona's own sync, a sun when the node is busy for others, debounced to the
+  chunky), each computer's sync state and a Sync now button on _Your computers_,
+  and a _This computer_ tab of counts and a sync code to compare between
+  devices. A design draft (2026-10-07); nothing built.
 - [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
   starts with Drawing, the Bank and hrseMsg and buys the rest from the Market
   with HorseBucks; unlocks on the private chain as ledger spends, gates in the

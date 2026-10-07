@@ -604,6 +604,7 @@ mod tests {
             files: files_a.clone(),
             ingest: crate::ingest::Ingest::new(dir.join("quarantine")),
             resync: crate::net::resync::ResyncTracker::default(),
+            sync_ledger: crate::syncstatus::Ledger::default(),
             unfurl: crate::net::unfurl::Unfurler::new(30.0),
             view_epochs: crate::ViewEpochs::default(),
             refreshing: Default::default(),

@@ -17894,3 +17894,111 @@ another persona of this account already owns it" beside the full price. Claim
 why, never A; B pays H$ 50 and the line says -5000; another account's persona is
 offered the list price. Seen in jsdom on a scratch node keeping the locks: "H$
 50.00 95% discount", and the title.
+
+**2026-10-07 - Sync status, steps 1 and 2: adoption answers, instalments
+continue.** plans/SYNC_STATUS.md, from Curtis's migration of his main persona on
+0.2.10: a 504 with no spinner, and no way on either computer to tell how far the
+sync had got.
+
+- **Adoption answers within 15 seconds** (`identity::adoption::complete`). The
+  bootstrap pass - the one that has to finish before the key tree can say this
+  computer's key is authorized - is scoped to the identity chain
+  (`BOOTSTRAP_SCOPE`), where it had pulled every public chain. The member-proven
+  pass that brings everything else, and the device name after it, run in a task
+  the request waits on for `ADOPTION_WAIT` (15 s): a small persona is done
+  inside it, so the answer is what it always was and the 24 adoption calls
+  across 17 acceptance files needed nothing; a large one answers anyway and
+  keeps arriving. `POST /api/identity/{root}/sync` the same: its results when
+  done inside 15 s, else `202` and the exchanges carry on.
+- **Instalments, not failures** (`net::resync` `eager_root`). The eager loop
+  only dials the persona's own computers, and its 30-second backoff is for
+  computers that are off. An exchange the 600-second wall clock cut short, after
+  entries had arrived, used to arm that backoff and log a warning - so a large
+  persona moved in ten-minute instalments with half a minute of nothing between.
+  Now a pass where every exchange failed but chains this computer didn't write
+  moved anyway (`arrived`) counts as reaching its peer: no backoff, an info
+  line, and the persona is dirty again, so the next pass carries on. This
+  computer's own writes don't count - a person saving while their other computer
+  is off is exactly what the backoff is for (Curtis: other people's chains keep
+  their bounds too). Unit test: own writes are not an arrival, another
+  computer's chain moving or arriving whole is.
+
+`just ci` green, 1,448.
+
+**2026-10-07 - Sync status, steps 3 to 6: the ledger, the cloud, the page, this
+computer.** plans/SYNC_STATUS.md, with Curtis's rulings: an arrow up for the
+serving end, a sun for the node's network work ("syncing for 3 people" is fine),
+and a cloud always in the corner, debounced to the chunky (thresholds agreed: 5
+s or 50 entries, 10 bodies, 10 s of network work, a 3 s hold, a 5 s linger).
+
+- **The sync ledger** (`src/syncstatus.rs`, on `AppState`): every exchange
+  registers where it begins - `sync_with_peer_asking` for a pull, `serve_on`
+  once `peer_proven` is known - and holds a guard that takes it off the books
+  however it ends. It's the persona's own when this node hosts the persona and
+  the peer is one of its computers (pull) or proved membership (serve); the
+  network's otherwise, counted and never named. Entries moved so far come from
+  the morning's write counts, so nothing inside an exchange reports progress.
+  Each whole exchange's hellos give how far apart the two computers are, both
+  ways (`gap`). A personal pull's end records its peer: reached, moved, error.
+- **The face** (`Ledger::face`, `FaceState::step`): down, up, sun or idle,
+  decided and debounced on the node so every tab agrees; it rides the stream
+  like the badges (`StreamMessage.sync`), checked every tick on its own clock,
+  sent only when it changes. Unit tests: held before shown, a blip never shows,
+  a change of busy face waits its own hold, the precedence, what's chunky.
+- **The corner cloud** (`js/synccloud.js`): always last in the wide bar after
+  the clock, last in the phone bar, always a way to _Your computers_; the arrows
+  wobble, nothing moves under reduced motion; its hover says what it can ("This
+  server is busy syncing the network for 3 people"). Seen in jsdom: last in the
+  bar, its words, a click to `/ringtome/persona/computers`.
+- **The sync section** (`js/syncpage.js` on computers.js, judgements in
+  `pure/syncstatus.js` with four pure claims): each other computer by its device
+  name - syncing now, reached when, or why not ("is it on, and online?") - and
+  how far apart; the bodies still to come; Sync now; and this server and the
+  network, in counts. Route: `GET …/sync/status`. Seen on two scratch nodes:
+  "suscat-9.local reached just now".
+- **This computer** (a tab on the page; `GET …/sync/held`): notes, drawings,
+  files, books, what's still coming, posts, replies, shares, rooms, chat lines,
+  people followed and trusted, followers known, unlocks, ledger lines, chains,
+  entries, disk - and the **sync code**, six letters a person can read aloud (no
+  0/O, 1/I/L) made from every chain's head and hash, leaving out the inbox and
+  chat chains each computer prunes on its own (`syncstatus::sync_code`,
+  unit-tested: any order, a moved head, a pruned floor, a per-computer chain).
+
+Claims (`syncstatus.cjs`, two): each computer names the other, reached, with the
+gap both ways, the face and the network's counts, and a stranger is refused;
+after a sync both computers show the same code and the same notes, and the code
+moves the moment one writes. Step 7, the body provider, waits on the other
+computer's log (NEXT_STEPS).
+
+**2026-10-07 - Sync status, step 7: the body provider.** Curtis's logs from both
+ends of the migration, and two corrections of mine on the way: my `journalctl`
+window read UTC times as the server's local time, and I had the two computers
+backwards - the code was pasted into horsedrawingtycoon.com, so the server was
+the giver and the desktop the new computer. Found: the server reached the
+desktop all afternoon (23 exchanges cut at the wall clock in one hour), so
+entries flowed; but bodies are fetched by the computer that needs them, dialling
+the holder by id alone, and in `mainline` that leans on iroh's discovery - and
+the server's records weren't reliably there (its DHT republish times out, or the
+relays answer oddly). "No addressing information available", no bodies.
+
+- **The address memory** (`net::p2p::remember`, `remembered`): every
+  connection's paths, either way - addresses and relay - kept a day in memory;
+  `p2p::dial` adds them to a dial that has nothing but an id.
+- **One exchange per persona, computer, scope and direction**
+  (`syncstatus::Ledger::begin_pull` and `try_begin`, replacing `begin`): a
+  second pull waits its turn behind the running one, a third finds it waiting
+  and returns at once (nothing moved, no failure), a second serve closes "busy";
+  the wait's place is given up however it ends. The scope is
+  `net::sync::ledger_scope` - chains, rooms and depth from the Hello, so both
+  ends name it alike. The first cut keyed on persona and computer alone, either
+  way, and dropped the second pull: `just ci` went 13 red (attention, chat_lane,
+  share tree, cohort, idface, peek, public annotations) - a pull already running
+  had read the heads before the write that asked for the next, mutual eager
+  pushes refused each other "busy", and a room's pull took a waiting
+  whole-persona pull for cover. Unit tests: one serve per pair and scope; a
+  second pull waits and a third rides it; a cancelled wait gives up its place.
+- **The invite's wait** (`authorize_node_handler`): 60 s down to 30, under a
+  proxy's timeout - a new computer on 0.2.10 synced its whole persona before
+  acking, which is the 504 Curtis saw; it now gets the carried code instead.
+
+Still open (NEXT_STEPS): the server's discovery records themselves.

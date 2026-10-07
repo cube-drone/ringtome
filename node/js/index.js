@@ -47,6 +47,7 @@ import { appsFor, appById, appLabel } from './pure/apps.js';
 import { nextSearchKind } from './pure/doclist.js';
 import { BucketShelf, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
+import { SyncCloud } from './synccloud.js';
 import { CornerBank } from './cornerbank.js';
 import { LockedApp, useLedger, useLedgerPoll, unlockedIn } from './unlocks.js';
 import { Version } from './version.js';
@@ -411,6 +412,8 @@ const Inside = ({ session }) => {
                 ${owns('chat') && narrowSlot(CHAT_APP_ID, unreadChat)}`
             }
         </span>
+        ${/* The corner cloud, the phone bar's last place (plans/SYNC_STATUS.md, piece 3). */ ''}
+        ${open && html`<${SyncCloud} root=${root} narrow=${true} />`}
     </footer>`;
     const bar = narrow
         ? narrowBar
@@ -478,6 +481,8 @@ const Inside = ({ session }) => {
                 opens hrseBank. */ ''
             }
             <${Clock}><${CornerBank} root=${root} /><//>
+            ${/* The corner cloud: always here, always the way to the sync page (plans/SYNC_STATUS.md). */ ''}
+            <${SyncCloud} root=${root} />
         </footer>
     `;
 

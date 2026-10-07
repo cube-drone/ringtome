@@ -92,6 +92,7 @@ pub mod speakable;
 pub mod speculative;
 pub mod starters;
 pub mod storage;
+pub mod syncstatus;
 pub mod test_endpoints;
 pub mod ui;
 pub mod webpush;
@@ -123,6 +124,8 @@ pub struct AppState {
     /// In-memory eager-push debounce state (which identities changed, when last pushed).
     /// Rebuilt empty each boot: roots re-seed dirty and re-push once, cheaply.
     pub resync: net::resync::ResyncTracker,
+    /// What's syncing right now, and what last did (plans/SYNC_STATUS.md, piece 2).
+    pub sync_ledger: syncstatus::Ledger,
     /// The turbolink unfurl engine: outbound OpenGraph fetches, guarded and cached.
     pub unfurl: net::unfurl::Unfurler,
     /// Per-root view-freshness counter for changes chain frontiers can't see - today, body
@@ -443,6 +446,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         files,
         ingest,
         resync: net::resync::ResyncTracker::default(),
+        sync_ledger: syncstatus::Ledger::default(),
         unfurl,
         view_epochs: ViewEpochs::default(),
         refreshing: Default::default(),

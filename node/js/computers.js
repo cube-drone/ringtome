@@ -12,6 +12,7 @@ import { Modal } from './modal.js';
 import { Icons } from './icons.js';
 import { blastRadius } from './pure/removal.js';
 import { t, tNodes } from './i18n.js';
+import { SyncSection, ThisComputer } from './syncpage.js';
 
 const html = htm.bind(h);
 
@@ -175,6 +176,8 @@ export const Computers = ({ current }) => {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     const [removing, setRemoving] = useState(null); // the key whose removal flow is open
+    // The page's two tabs (plans/SYNC_STATUS.md, piece 5): every computer, or what this one holds.
+    const [tab, setTab] = useState('computers');
 
     const load = useCallback(
         () =>
@@ -212,6 +215,18 @@ export const Computers = ({ current }) => {
     return html`
         <div class="computers">
             <h2 class="computers-title">${t('computers.your-computers', 'your computers')}</h2>
+            <div class="welcome-tabs">
+                <button class=${tab === 'computers' ? 'tab active' : 'tab'} onClick=${() => setTab('computers')}>
+                    <${Icons.syncIdle} /> ${t('computers.tab-computers', 'all of them')}
+                </button>
+                <button class=${tab === 'this' ? 'tab active' : 'tab'} onClick=${() => setTab('this')}>
+                    <${Icons.computers} /> ${t('computers.tab-this', 'this computer')}
+                </button>
+            </div>
+            ${tab === 'this' && html`<${ThisComputer} root=${current.root} />`}
+            ${
+                tab === 'computers' &&
+                html`<div>
             ${!keys && !error && html`<p class="null-sub">${t('computers.looking-around', 'looking around…')}</p>`}
             ${
                 keys &&
@@ -251,6 +266,7 @@ export const Computers = ({ current }) => {
                 })}
             </ul>`
             }
+            ${keys && html`<${SyncSection} root=${current.root} keys=${keys} nameOf=${(k) => describe(k).label} />`}
 
             <h3 class="computers-subtitle">${t('computers.invite-another-computer-to-be', 'invite another computer to be you')}</h3>
             ${
@@ -301,6 +317,8 @@ export const Computers = ({ current }) => {
                       </form>`
             }
             ${error && html`<p class="form-error">${error}</p>`}
+            </div>`
+            }
             ${
                 removing &&
                 html`<${RemovalFlow}

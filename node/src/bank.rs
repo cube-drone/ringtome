@@ -1718,6 +1718,12 @@ pub fn horsebucks(pennies: &str) -> String {
     format!("{sign}{grouped}.{cents}")
 }
 
+/// How many lines the ledger holds (the This computer tab, plans/SYNC_STATUS.md piece 5).
+pub async fn line_count(data: &Store) -> Result<u64> {
+    let (n,): (i64,) = data.db().fetch_one("SELECT COUNT(*) FROM bank_lines", ()).await?;
+    Ok(n as u64)
+}
+
 /// A line's stored amount: a decimal string (0031_bank_lines_bigint.sql). Only ever written by
 /// `bank`, so a string that doesn't parse is a corrupt row - read as nothing, and said so.
 fn amount(text: &str) -> BigInt {

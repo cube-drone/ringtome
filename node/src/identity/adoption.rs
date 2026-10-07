@@ -358,6 +358,14 @@ pub async fn complete_delivered(state: &AppState, code: GrantCode) -> Result<(),
     complete(state, &account_uuid, code).await.map(|_| ())
 }
 
+/// What the bootstrap pass pulls before the key tree is checked: the identity chain alone, which is
+/// all the check reads. The whole persona follows on the member-proven pass.
+const BOOTSTRAP_SCOPE: &[u32] = &[ringtome_proto::registry::service::IDENTITY_PUBLIC];
+
+/// How long completing an adoption waits for the member-proven pull before answering anyway
+/// (plans/SYNC_STATUS.md, piece 1) - under a proxy's timeout, over a small persona's whole sync.
+const ADOPTION_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
+
 pub async fn complete(
     state: &AppState,
     account_id: &Uuid,
@@ -426,9 +434,16 @@ pub async fn complete(
     let mut boot_peer: Option<(String, iroh::EndpointAddr)> = None;
     match crate::net::sync::endpoint_addr(&code.endpoint_id, &code.addrs) {
         Ok(addr) => {
-            match crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr.clone()).await {
+            match crate::net::sync::sync_with_peer_scoped(
+                state,
+                &code.root_pubkey,
+                addr.clone(),
+                BOOTSTRAP_SCOPE,
+            )
+            .await
+            {
                 Ok(stats) => {
-                    tracing::info!(root = %code.root_pubkey, ?stats, "adoption sync complete");
+                    tracing::info!(root = %code.root_pubkey, ?stats, "adoption bootstrap complete");
                     boot_peer = Some((code.endpoint_id.clone(), addr));
                 }
                 Err(e) => bootstrap_err = Some(format!("granter unreachable: {e}")),
@@ -457,7 +472,12 @@ pub async fn complete(
             // hanging dial apiece - the human is standing at the new computer waiting.
             let attempt = tokio::time::timeout(
                 std::time::Duration::from_secs(8),
-                crate::net::sync::sync_with_peer(state, &code.root_pubkey, addr.clone()),
+                crate::net::sync::sync_with_peer_scoped(
+                    state,
+                    &code.root_pubkey,
+                    addr.clone(),
+                    BOOTSTRAP_SCOPE,
+                ),
             )
             .await;
             match attempt {
@@ -526,29 +546,46 @@ pub async fn complete(
         .await
         .map_err(AppError::Internal)?;
 
-    // Second pass, now that we agent the identity: the first sync ran proof-less (no identities
-    // row yet), so the peer rightly withheld the private chains. This one carries our member
-    // proof and pulls them - adoption ends with the private state here, not eventually. Same
-    // peer as the first pass: when the ladder completed through a sibling, "the granter" is
-    // exactly who this used to dial, and exactly who isn't answering.
-    let stats = crate::net::sync::sync_with_peer(state, &code.root_pubkey, boot_addr)
-        .await
-        .map_err(|e| AppError::Internal(anyhow!("private-chain sync failed: {e}")))?;
-    tracing::info!(root = %code.root_pubkey, ?stats, "adoption private sync complete");
-
-    // The new key's device name - this node labeling itself, as its first authored write on
-    // the identity (PROJECT_PLAN, Device Names). Best-effort by design: the epoch keys just
-    // arrived on the private sync above, but if anything about that is still settling, a
-    // missing label is a rename away - it must never fail an otherwise-complete adoption.
-    match crate::record::store::open(state, account_id, &code.root_pubkey).await {
-        Ok(data) => {
-            if let Err(e) = data.devices().set_name(&leaf, &state.config.node_name).await {
-                tracing::warn!(root = %code.root_pubkey, "could not write device name: {e}");
+    // Second pass, now that we agent the identity: the first ran proof-less (no identities row
+    // yet), so the peer rightly withheld the private chains. This one carries our member proof
+    // and pulls everything - same peer as the first pass: when the ladder completed through a
+    // sibling, "the granter" is exactly who isn't answering.
+    //
+    // In the background, waited on for `ADOPTION_WAIT` at most (plans/SYNC_STATUS.md, piece 1;
+    // 2026-10-07): a persona of hundreds of megabytes outlasts any proxy's timeout, and the
+    // person got a 504 and no word while the node kept going. A small persona is done inside
+    // the wait, so its adoption still ends with the private state here; a large one answers now
+    // and keeps arriving - instalment by instalment, the loops carrying on from the frontier.
+    let task_state = state.clone();
+    let task_account = *account_id;
+    let task_root = code.root_pubkey.clone();
+    let pull = tokio::spawn(async move {
+        match crate::net::sync::sync_with_peer(&task_state, &task_root, boot_addr).await {
+            Ok(stats) => {
+                tracing::info!(root = %task_root, ?stats, "adoption private sync complete")
+            }
+            Err(e) => tracing::warn!(
+                root = %task_root,
+                "adoption private sync stopped short (the sync loops carry on): {e:#}"
+            ),
+        }
+        // The new key's device name - this node labeling itself, as its first authored write on
+        // the identity (PROJECT_PLAN, Device Names). Best-effort by design: if the epoch keys are
+        // still arriving, a missing label is a rename away - it never fails the adoption.
+        match crate::record::store::open(&task_state, &task_account, &task_root).await {
+            Ok(data) => {
+                if let Err(e) = data.devices().set_name(&leaf, &task_state.config.node_name).await {
+                    tracing::warn!(root = %task_root, "could not write device name: {e}");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(root = %task_root, "could not open store for device name: {e}");
             }
         }
-        Err(e) => {
-            tracing::warn!(root = %code.root_pubkey, "could not open store for device name: {e}");
-        }
+    });
+    if tokio::time::timeout(ADOPTION_WAIT, pull).await.is_err() {
+        tracing::info!(root = %code.root_pubkey,
+            "adoption answered before its private sync finished; it continues in the background");
     }
 
     Ok(super::Identity { root_pubkey: code.root_pubkey, created_at_ms })

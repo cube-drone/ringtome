@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1602 phrases across 98 files.
+// 1648 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -510,6 +510,8 @@ export default {
     'computers.locked-out-with-it': 'locked out with it:',
     'computers.lock-it-out': 'lock it out',
     'computers.your-computers': 'your computers',
+    'computers.tab-computers': 'all of them',
+    'computers.tab-this': 'this computer',
     'computers.looking-around': 'looking around…',
     'computers.leave-this-persona-2': 'leave this persona',
     'computers.remove-this-computer': 'remove this computer',
@@ -1364,6 +1366,54 @@ export default {
     'slugpage.looking': 'looking…',
     'slugpage.nobody-here-by-that-name': 'nobody on this node goes by that name',
     'slugpage.a-name-is-this-nodes': 'short names only work on this site. A real address starts with /ringtome/user/.',
+
+    // --- node/js/synccloud.js ---
+    'sync.cloud-down-moved': 'Bringing your things from your other computer - {n} so far',
+    'sync.cloud-down': 'Bringing your things from your other computer',
+    'sync.cloud-up': 'Sending your things to your other computer',
+    'sync.cloud-sun-one': 'This server is busy syncing the network for 1 person',
+    'sync.cloud-sun': 'This server is busy syncing the network for {n} people',
+    'sync.cloud-idle': 'Nothing syncing right now - see your computers',
+
+    // --- node/js/syncpage.js ---
+    'syncpage.just-now': 'just now',
+    'syncpage.pulling': 'syncing now - {n} brought in so far',
+    'syncpage.serving': 'syncing now - sending it your things',
+    'syncpage.failing-since': "can't be reached right now ({error}) - last reached {when}",
+    'syncpage.failing': "can't be reached ({error}) - is it on, and online?",
+    'syncpage.reached': 'reached {when}',
+    'syncpage.never': 'not reached since this server started',
+    'syncpage.theirs-ahead': 'it had {n} entries this computer didn’t',
+    'syncpage.ours-ahead': 'this computer had {n} entries it didn’t',
+    'syncpage.title': 'syncing',
+    'syncpage.only-this-one': 'This is the only computer this persona is on.',
+    'syncpage.another-computer': 'another computer',
+    'syncpage.bodies-waiting': '{n} files and notes still on their way here',
+    'syncpage.sync-now': 'sync now',
+    'syncpage.network-title': 'this server and the network',
+    'syncpage.network-busy': 'Syncing the network for {people} people right now: {pulling} bringing in, {serving} sending out.',
+    'syncpage.network-quiet': 'Not syncing the network for anyone right now.',
+    'syncpage.counting': 'counting…',
+    'syncpage.sync-code': 'sync code',
+    'syncpage.sync-code-about': 'Your other computers show the same code when they hold the same things. Counts can differ for a while - something still on its way - but the code is what has to match.',
+    'syncpage.notes': 'notes',
+    'syncpage.drawings': 'drawings',
+    'syncpage.files': 'files',
+    'syncpage.books': 'books',
+    'syncpage.still-coming': 'still on their way here',
+    'syncpage.posts': 'posts published',
+    'syncpage.replies': 'replies',
+    'syncpage.shares': 'shares',
+    'syncpage.rooms': 'chat rooms started',
+    'syncpage.lines': 'things said in chats',
+    'syncpage.following': 'people followed',
+    'syncpage.trusting': 'people trusted',
+    'syncpage.followers': 'followers this server knows of',
+    'syncpage.unlocks': 'unlocks owned',
+    'syncpage.ledger': 'ledger lines',
+    'syncpage.chains': 'chains',
+    'syncpage.entries': 'entries',
+    'syncpage.disk': 'space on this computer',
 
     // --- node/js/unlocks.js ---
     'unlocks.everything': 'Unlock everything',

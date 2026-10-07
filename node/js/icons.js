@@ -134,11 +134,20 @@ import {
     ArrowsInSimple,
     ArrowsOut,
     ShieldSlash,
+    Cloud,
+    CloudArrowDown,
+    CloudArrowUp,
+    CloudSun,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
 
 export const Icons = {
+    // The corner cloud's faces (plans/SYNC_STATUS.md, piece 3; synccloud.js).
+    syncIdle: Cloud,
+    syncDown: CloudArrowDown,
+    syncUp: CloudArrowUp,
+    syncSun: CloudSun,
     // apps (the console tiles + each app's own header)
     persona: UserCircle,
     // Your own reach, on your own page (2026-09-28): public follows and fetches.

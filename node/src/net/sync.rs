@@ -1632,6 +1632,13 @@ pub async fn sync_room_with_peer(
     sync_with_peer_asking(state, root_hex, addr, ROOM_SCOPE, &[room], Ask::default()).await
 }
 
+/// What an exchange asks for, as the sync ledger tells one from another (step 7): the chains, the
+/// rooms and the depth, from the Hello the asker sends - so both ends name it alike.
+fn ledger_scope(wanted: &[u32], instances: &[[u8; 16]], ask: Ask) -> String {
+    let rooms: Vec<String> = instances.iter().map(hex::encode).collect();
+    format!("{wanted:?} {rooms:?} {}/{}", ask.ceiling, ask.below)
+}
+
 /// What a peer's Hello says about the build it runs (the version slot, 2026-09-23). A fact,
 /// never a switch: nothing branches on it. It is logged so that the first time two releases
 /// disagree about an exchange, the log says which two - and loudly when the peer is AHEAD,
@@ -1669,6 +1676,46 @@ pub async fn sync_with_peer_asking(
     ask: Ask,
 ) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
+    // On the sync ledger (crate::syncstatus) for as long as it runs: the persona's own when this
+    // node hosts it and the peer is one of its computers, the network's otherwise.
+    let peer = addr.id.to_string();
+    let personal = crate::identity::is_agented(&state.node_db, root_hex).await.unwrap_or(false)
+        && peers_for(&state.node_db, root_hex).await.unwrap_or_default().contains(&peer);
+    // One pull per persona and computer at a time (step 7): behind one already running, this
+    // one waits its turn; behind one already waiting, it has nothing to add - that one will carry
+    // whatever asked for this - so nothing moved, and no failure either, so no loop backs off.
+    let Some(_on_the_books) = state
+        .sync_ledger
+        .begin_pull(root_hex, &peer, &ledger_scope(wanted, instances, ask), personal)
+        .await
+    else {
+        tracing::debug!(root = %root_hex, %peer, "a pull from that computer is already waiting");
+        return Ok(ExchangeStats::default());
+    };
+    let entries_at_start = crate::db::writes_to(root_hex, "entries");
+    let result = sync_with_peer_dialled(state, root_hex, root, addr, wanted, instances, ask).await;
+    if personal {
+        let moved = crate::db::writes_to(root_hex, "entries").saturating_sub(entries_at_start);
+        state.sync_ledger.ended(
+            root_hex,
+            &peer,
+            moved,
+            result.as_ref().err().map(|e| format!("{e:#}")),
+        );
+    }
+    result
+}
+
+/// `sync_with_peer_asking`'s dial and exchange, under its wall clock.
+async fn sync_with_peer_dialled(
+    state: &AppState,
+    root_hex: &str,
+    root: [u8; 32],
+    addr: EndpointAddr,
+    wanted: &[u32],
+    instances: &[[u8; 16]],
+    ask: Ask,
+) -> Result<ExchangeStats> {
     let conn = crate::net::p2p::dial(
         &state.unplugged,
         &state.endpoint,
@@ -1771,6 +1818,17 @@ async fn exchange_on(
     // said, which must not be coloured by what we did with it.
     let claimed = crate::net::frontier::claimed_fingerprint(&peer_frontiers);
     let peer_hex = hex::encode(peer_id);
+    // How far apart the two are, chain by chain, before anything moves (the sync ledger's
+    // "Laptop has 8,560 entries this computer doesn't", plans/SYNC_STATUS.md piece 4). Whole
+    // exchanges only: a scoped one's frontiers are a deliberate partial view.
+    if wanted.is_empty() {
+        if let Some(db) = &held {
+            if let Ok(ours) = local_frontiers(db, true).await {
+                let (theirs_ahead, ours_ahead) = crate::syncstatus::gap(&peer_frontiers, &ours);
+                state.sync_ledger.gap(root_hex, &peer_hex, theirs_ahead, ours_ahead);
+            }
+        }
+    }
     // A scoped exchange records no claim and (below) no verdict: the peer's scoped
     // frontier list is a deliberate partial view, and fingerprints only compare whole.
     if wanted.is_empty() {
@@ -2135,6 +2193,26 @@ async fn serve_on(
     // an identity, the node fronts it." A local human asked; this is the asking arriving.
     let db = state.user_dbs.create(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
+    // On the sync ledger (crate::syncstatus) until this exchange ends: serving one of the
+    // persona's own computers, or the network.
+    // Named as the peer table names it (`add_peer_with_leaf` below), so its record matches.
+    let peer_name = iroh::PublicKey::from_bytes(&peer_id)
+        .map(|ep| ep.to_string())
+        .unwrap_or_else(|_| hex::encode(peer_id));
+    // One serve per persona and computer at a time (step 7): asked for a second while one runs,
+    // say busy, as the admission ceiling does. Our own pull from that computer is no reason - eager
+    // push has both ends dial at once.
+    let Some(_on_the_books) = state.sync_ledger.try_begin(
+        &root_hex,
+        &peer_name,
+        &ledger_scope(&scope, &instances, ask),
+        crate::syncstatus::Way::Serve,
+        agented && peer_proven,
+    ) else {
+        tracing::debug!(root = %root_hex, peer = %peer_name, "already serving that computer; declining a second");
+        conn.close(1u8.into(), b"busy");
+        return Ok(());
+    };
     // The dialer proved membership: remember it as a peer, leaf-bound (healing on any
     // contact - a sibling that found US, by whatever path, is one we can find again).
     // Hosted personas only - same conflation guard as the initiator side: a follower node
@@ -2533,6 +2611,21 @@ pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {
         .await
         .context("listing peers")?;
     Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// One persona's computers as the peer table knows them: `(endpoint, leaf, last synced)` - the leaf
+/// is how a page names it (its device name rides the persona's key tree), when known.
+pub async fn peer_leaves(
+    node_db: &Db,
+    root_hex: &str,
+) -> Result<Vec<(String, Option<String>, Option<i64>)>> {
+    node_db
+        .fetch_all(
+            "SELECT endpoint_id, leaf_pubkey, last_synced_ms FROM identity_peers WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("listing a persona's computers")
 }
 
 /// The same peers ordered by how recently a sync actually reached them - the "biased toward

@@ -149,8 +149,20 @@ pub async fn dial(
             alpn_name(alpn).unwrap_or("unknown")
         ));
     }
+    // Nothing to dial by but the id, and discovery may come back empty (scratch's DHT publishing
+    // timing out, 2026-10-07): add where this computer last reached it, if anywhere.
+    let addr = if addr.is_empty() {
+        let known = remembered(&addr.id);
+        if known.is_empty() {
+            addr
+        } else {
+            addr.with_addrs(known)
+        }
+    } else {
+        addr
+    };
     let connect = endpoint.connect(addr, alpn);
-    match dial_ceiling() {
+    let conn = match dial_ceiling() {
         Some(limit) => match tokio::time::timeout(limit, connect).await {
             Ok(conn) => conn.map_err(|e| anyhow!("{e}")),
             Err(_) => Err(anyhow!(
@@ -160,7 +172,52 @@ pub async fn dial(
             )),
         },
         None => connect.await.map_err(|e| anyhow!("{e}")),
+    }?;
+    remember(&conn);
+    Ok(conn)
+}
+
+/// Where each computer was last reached, either way (plans/SYNC_STATUS.md, step 7): the paths of
+/// every connection made to it or from it - its addresses, and the relay it sat behind. A dial
+/// with nothing but an id adds them (`dial`), so a computer this one has talked to stays
+/// reachable when discovery can't find it: the 2026-10-07 migration's bodies never came because
+/// the new computer could only ask discovery for the server, and the server's records weren't
+/// there - though the two had been talking all afternoon. Kept a day, in memory: addresses are
+/// still discovery's business, and this is only what recently worked.
+/// Each computer's paths at its last connection, and when.
+type AddressBook =
+    std::collections::HashMap<iroh::PublicKey, (Vec<iroh::TransportAddr>, std::time::Instant)>;
+static REACHED_AT: std::sync::LazyLock<std::sync::Mutex<AddressBook>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// How long a remembered address is offered.
+const REMEMBER_FOR: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Note where this connection's other side was reached.
+pub fn remember(conn: &Connection) {
+    let addrs: Vec<iroh::TransportAddr> = conn
+        .paths()
+        .iter()
+        .map(|path| path.remote_addr().clone())
+        .filter(|a| matches!(a, iroh::TransportAddr::Ip(_) | iroh::TransportAddr::Relay(_)))
+        .collect();
+    if addrs.is_empty() {
+        return;
     }
+    if let Ok(mut book) = REACHED_AT.lock() {
+        book.insert(conn.remote_id(), (addrs, std::time::Instant::now()));
+    }
+}
+
+/// Where `id` was last reached, while that is recent enough to offer.
+pub fn remembered(id: &iroh::PublicKey) -> Vec<iroh::TransportAddr> {
+    REACHED_AT
+        .lock()
+        .ok()
+        .and_then(|book| {
+            book.get(id).filter(|(_, at)| at.elapsed() < REMEMBER_FOR).map(|(a, _)| a.clone())
+        })
+        .unwrap_or_default()
 }
 
 /// Test-mode ceiling on CONNECT alone, exchange ceilings untouched. On a test rig the other
@@ -297,6 +354,9 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                 match incoming.await {
                     Ok(conn) => {
                         let remote = conn.remote_id();
+                        // Where it came from: this computer can then reach it back, even when
+                        // discovery can't (`remember`).
+                        remember(&conn);
                         // Admission (PROJECT_PLAN's Peeks, ruling 14), before any dispatch so it covers every
                         // ALPN: over a ceiling the connection is closed now, never parked. The
                         // blob ALPN is proven at birth - hash-capability over public bytes; the
