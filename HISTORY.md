@@ -17759,3 +17759,22 @@ asked for the stranger's profile once and kept it and the room's page; the
 second visit asked for it zero times. A feed visit kept its first page, the post
 in it. Not seen: the paint-before-answer itself, which jsdom against a local
 node can't separate from the answer.
+
+**2026-10-07 - Private bodies by version.** Curtis asked how the ETags are made
+and whether each check hits SQL. They are the content hash of the head's blob -
+but answering one means finding the head: a private body's 304 opened the whole
+store first (the `identities` ownership read, two keystore files decrypted,
+every epoch key unsealed, the documents fold's catch-up - this morning's
+`entries_past_watermarks`, so before its fix every drawing's revalidation paid
+the walk - and the head row), and a public one checks the shelf, re-verifies a
+fragment's proof or catches the public lane up. "Yeah, let's" to addresses that
+name their version. The private body door (`docs_body_impl`, both spellings)
+reads `?v=`: when it is the hex of the head actually served, the answer is
+`private, max-age=31536000, immutable`, and a `v` the node doesn't hold yet gets
+the plain `private, no-cache` - so a version never caches older bytes under its
+name. `mirror/doccache.js` `versionedBodyUrl` builds the address from the
+mirror's doc row; Drawing's pictures use it. Private thumbnails already did this
+(`?v=<head>`). Claim (`docs.cjs`, the upload's): the head pinned is immutable,
+by either spelling; another `v` is not. Not done, in NEXT_STEPS: embeds in notes
+(the marquee renderer has no image hook) and public post words (feed rows carry
+no checkable version), and keeping the unlocked keys in memory.

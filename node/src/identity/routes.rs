@@ -6531,9 +6531,17 @@ async fn docs_body_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id)): Path<(String, String)>,
+    Query(q): Query<BodyVersion>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response, AppError> {
-    docs_body_impl(session, state, root, doc_id, if_none_match(&headers)).await
+    docs_body_impl(session, state, root, doc_id, q.v, if_none_match(&headers)).await
+}
+
+/// `?v=<head>` on a body's address (2026-10-07): the version the asker means, as the hex of its head
+/// entry - from the mirror's doc row, which carries it.
+#[derive(serde::Deserialize)]
+struct BodyVersion {
+    v: Option<String>,
 }
 
 /// The decorative-filename twin (`…/body/{filename}`): the name is ignored entirely - it exists
@@ -6543,9 +6551,10 @@ async fn docs_body_named_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, doc_id, _filename)): Path<(String, String, String)>,
+    Query(q): Query<BodyVersion>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response, AppError> {
-    docs_body_impl(session, state, root, doc_id, if_none_match(&headers)).await
+    docs_body_impl(session, state, root, doc_id, q.v, if_none_match(&headers)).await
 }
 
 fn if_none_match(headers: &axum::http::HeaderMap) -> Option<String> {
@@ -6560,11 +6569,19 @@ fn if_none_match(headers: &axum::http::HeaderMap) -> Option<String> {
 /// (`no-cache`): an unchanged file costs a 304 - no blob read, no decryption, no bytes.
 const PRIVATE_BODY_CACHE: &str = "private, no-cache";
 
+/// How a private body asked for BY VERSION may be kept (2026-10-07): `?v=` named the head this
+/// answer is, so the address is one version's forever and a browser never asks again - the
+/// revalidation the plain address pays costs the whole store open (ownership, keys, epochs, the
+/// fold's catch-up) before its ETag can be compared. Only when `v` is the head actually served:
+/// a `v` this node doesn't hold yet gets the plain answer, never an old body kept under a new name.
+const PRIVATE_VERSION_CACHE: &str = "private, max-age=31536000, immutable";
+
 async fn docs_body_impl(
     session: Session,
     state: AppState,
     root: String,
     doc_id: String,
+    version: Option<String>,
     if_none_match: Option<String>,
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
@@ -6580,11 +6597,13 @@ async fn docs_body_impl(
     };
     let format = crate::record::documents::Format::from_wire(head.format);
     let etag = format!("\"{}\"", hex::encode(head.file_hash));
+    let cache = if version.as_deref() == Some(hex::encode(head.head).as_str()) {
+        PRIVATE_VERSION_CACHE
+    } else {
+        PRIVATE_BODY_CACHE
+    };
     if if_none_match.as_deref().is_some_and(|inm| crate::idface::etag_matches(inm, &etag)) {
-        return Ok((
-            StatusCode::NOT_MODIFIED,
-            [(ETAG, etag.as_str()), (CACHE_CONTROL, PRIVATE_BODY_CACHE)],
-        )
+        return Ok((StatusCode::NOT_MODIFIED, [(ETAG, etag.as_str()), (CACHE_CONTROL, cache)])
             .into_response());
     }
     let bytes = data.documents().blob(head.file_hash).await?.ok_or_else(|| {
@@ -6598,7 +6617,7 @@ async fn docs_body_impl(
             (CONTENT_TYPE, format.mime()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff"),
             (CONTENT_SECURITY_POLICY, "sandbox"),
-            (CACHE_CONTROL, PRIVATE_BODY_CACHE),
+            (CACHE_CONTROL, cache),
             (ETAG, etag.as_str()),
         ],
         bytes,

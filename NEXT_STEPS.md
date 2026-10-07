@@ -206,6 +206,34 @@ of deployments, and then an easy path for people who want one.
   stays up and stops answering `/health`; a liveness watchdog is the missing
   half, if a wedge is ever seen.
 
+### Revalidation (2026-10-07)
+
+A body or thumbnail asked at a bare address is revalidated at every use, and the
+node can only say 304 after the work it would do to serve it: a private body
+opens the whole store (ownership, two keystore files, every epoch key unsealed,
+the fold's catch-up, the head row); a public one checks the shelf and the peek,
+re-verifies a fragment's proof or catches the public lane up. An address that
+names its version is answered `immutable` and never asked again - done for
+private thumbnails (`?v=<head>`, 2026-09) and Drawing's pictures (`?v=`, the
+private body door, 2026-10-07). Left:
+
+- **Images embedded in notes** - a note's text carries
+  `/api/identity/…/docs/<doc>/body/<name>.<ext>`, bare, and the marquee renderer
+  has no image hook to add the doc's head (its hooks are `turbolink`,
+  `directive` and `span`). One `image` (or `src`) hook in
+  `@cube-drone/marquee-react-renderer`, and `doccache.js`'s `versionedBodyUrl`
+  does the rest.
+- **Public post words on every card** (`/id/…/docs/<doc>/body`) - feed rows
+  carry no version the node can check. `updated_ms` is the head's time, but a
+  fragment's header has no time of its own and two edits can share a
+  millisecond, so the safe version is the content hash: a `feed_journal` column
+  for it (a node rung, and the fan-out writes), and the public door answering
+  `immutable` when `?v=` is the hash it serves.
+- **Keep the unlocked keys in memory** - `store::open`'s ownership read, signing
+  key, encryption keypair and unsealed epoch keys, per account and persona,
+  dropped when keys or epochs change: every authenticated request pays them
+  today, a 304 included.
+
 ### Query plans (the 2026-10-07 audit)
 
 Every production statement in `node/src` was run through `EXPLAIN QUERY PLAN`

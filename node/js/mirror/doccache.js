@@ -76,3 +76,18 @@ export async function rememberTree(root, taxonomyId, fingerprint, tree) {
         /* miss later */
     }
 }
+
+/// A private body's address, by VERSION when the mirror holds the doc's row (2026-10-07): `?v=` the
+/// row's head, which the node answers `immutable` when it is the head it serves - so the browser
+/// keeps the bytes and never asks again, where the bare address is revalidated at every use, and a
+/// revalidation costs the node a whole store open before it can say 304. No row (not synced here
+/// yet, or not this persona's), and it is the bare address, as before.
+export async function versionedBodyUrl(root, docId) {
+    const base = `/api/identity/${root}/docs/${docId}/body`;
+    try {
+        const row = await openMirror(root).docs.get(docId);
+        return row && row.head ? `${base}?v=${row.head}` : base;
+    } catch {
+        return base;
+    }
+}

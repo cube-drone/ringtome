@@ -23,7 +23,7 @@ import { useLocation } from 'preact-iso';
 import { useDocSession } from './session.js';
 import { Chip, NavChips } from './chips.js';
 import { Annotations } from './annotations.js';
-import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
+import { cachedDoc, rememberDoc, versionedBodyUrl } from '../mirror/doccache.js';
 import { api, xhrUpload, saveFile } from '../net.js';
 import { docHref } from '../links.js';
 import { CopyIntoModal } from '../copyinto.js';
@@ -158,7 +158,7 @@ function fetchPicture(root, doc) {
         const img = new Image();
         held = { img, ready: false };
         held.promise = (async () => {
-            img.src = `/api/identity/${root}/docs/${doc}/body`;
+            img.src = await versionedBodyUrl(root, doc);
             await img.decode();
             held.ready = true;
         })().catch(() => {

@@ -230,6 +230,30 @@ describe('versioned documents (notes)', function () {
             assert.equal((await again.arrayBuffer()).byteLength, 0);
         }
 
+        // Asked BY VERSION (2026-10-07): `?v=` the head the mirror's row carries names one version
+        // forever, so the answer is kept for good and never asked about again. A `v` that is not the
+        // head served - a version this node doesn't hold yet - gets the plain answer.
+        const head = list.docs[0].head;
+        assert.ok(/^[0-9a-f]{64}$/.test(head || ''), `the doc row carries its head: ${head}`);
+        const pinned = await user(`api/identity/${root}/docs/${queued.doc_id}/body?v=${head}`);
+        assert.equal(pinned.status, 200);
+        assert.equal(pinned.headers.get('cache-control'), 'private, max-age=31536000, immutable');
+        await pinned.arrayBuffer();
+        const named = await user(
+            `api/identity/${root}/docs/${queued.doc_id}/body/sunset.avif?v=${head}`,
+        );
+        assert.equal(named.headers.get('cache-control'), 'private, max-age=31536000, immutable');
+        await named.arrayBuffer();
+        const other = await user(
+            `api/identity/${root}/docs/${queued.doc_id}/body?v=${'0'.repeat(64)}`,
+        );
+        assert.equal(
+            other.headers.get('cache-control'),
+            'private, no-cache',
+            'not this head: asked again',
+        );
+        await other.arrayBuffer();
+
         // Thumbnail: its own sibling blob, also a real AVIF.
         const thumb = await user(`api/identity/${root}/docs/${queued.doc_id}/thumb`);
         assert.equal(thumb.status, 200);
