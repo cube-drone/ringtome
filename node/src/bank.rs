@@ -1643,6 +1643,24 @@ async fn corner_balance(state: &AppState, data: &Store, root_hex: &str) -> Resul
     Ok(total)
 }
 
+/// A balance in pennies - a decimal string of any length, since balances are exact bigints
+/// (bank.rs) - as HorseBucks: `-1,234.05`.
+pub fn horsebucks(pennies: &str) -> String {
+    let (sign, digits) = pennies.strip_prefix('-').map_or(("", pennies), |d| ("-", d));
+    let digits = format!("{digits:0>3}");
+    let (whole, cents) = digits.split_at(digits.len() - 2);
+    let whole = whole.trim_start_matches('0');
+    let whole = if whole.is_empty() { "0" } else { whole };
+    let mut grouped = String::with_capacity(whole.len() + whole.len() / 3);
+    for (i, digit) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    format!("{sign}{grouped}.{cents}")
+}
+
 /// A line's stored amount: a decimal string (0031_bank_lines_bigint.sql). Only ever written by
 /// `bank`, so a string that doesn't parse is a corrupt row - read as nothing, and said so.
 fn amount(text: &str) -> BigInt {

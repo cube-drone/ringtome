@@ -138,6 +138,11 @@ const sentence = (r) => {
             ? t('apps.notifications.shared', 'shared')
             : t('apps.notifications.shared-something-of-yours', 'shared something of yours');
     }
+    // The band ladder below is the public edge's alone: a kind this function doesn't know says
+    // only that something happened, never another kind's news (2026-10-07: a contract read as
+    // trust on the alert road - the same miscopy as the share's above).
+    if (r.kind !== 'public-edge')
+        return t('apps.notifications.has-news-for-you', 'has news for you');
     const follows = !!r.interest;
     const vouches = r.trust === 'max';
     if (follows && vouches)

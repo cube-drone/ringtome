@@ -251,6 +251,11 @@ re-planned them all. Plans on an empty database are taken to be production's:
 Turso keeps no statistics. Each fix goes the way the fold read's did: a timing
 test, the change, then a plan assertion so it cannot come back. Worst first:
 
+- **The peek-expiry claims flaked once under the full suite** (2026-10-07) -
+  `peek_footprint.cjs`'s three ("the shelf came again" 0 vs 20) failed in one
+  `just ci` of four on the same code, passed alone twice. Timing under load,
+  most likely (the evict beat and the look's refetch); unproven - if it comes
+  back, its node logs say whether the refetch ran.
 - **Scratch's slow idle room-sync passes** - about 1.2 s with 4-8 ms of lock
   wait. "room-sync" is `chat::sync_pass` (`lib.rs:649`), not the pulse the audit
   first blamed: it reads the small `rooms_open` table, then pulls each open room

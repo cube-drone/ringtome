@@ -17816,3 +17816,31 @@ sync folds what it brings in - so it guards the outcome, not a single mechanism,
 and is named for that. On the way: my parser test's SQL named real tables and
 the conventions scan said so (made-up names now); the write-count test shared
 the in-memory databases' `memory` key with a parallel suite (its own key now).
+
+**2026-10-07 - A contract alerted as trust in yourself.** Curtis, on
+horsedrawingtycoon.com: eighteen rows of "Cube Drone publishes their trust in
+you", from his own persona, fourteen hours old - "I'm guessing some other
+message might be getting misconstrued as a trust update?" Found, and fixed, one
+road that did exactly that: a completed contract is the bank's own news, a
+`contract` notification whose author is the reader and whose doc is the
+contract's id, and the alert road (`attention.rs` `bell_alert`, windows and
+push) had no `contract` arm - its last arm was the public edge's band ladder,
+which for a row with no bands reads "publishes their trust in you". Now
+`contract_alert` says it as the bell does, "You completed the {name} contract!
+Have H$ {money}!", under hrseBank™'s name rather than the reader's own
+(`bank::horsebucks`, moved out of mcp.rs, formats the money). And the hole is
+closed on both roads: the band ladder answers only for `public-edge`, and a kind
+neither road knows says "has news for you" - the second time a kind fell into
+the trust sentence (a share did on 2026-08-25). Delivered notices store the same
+kind names (`notice_kind::name`), so a stranger's edge still reads as one. Unit
+test: a contract alerts as the bank's news, and never mentions trust.
+
+NOT yet explained: the eighteen rows in hrseMsg's list itself. That list renders
+a `contract` row through `contractWords`, with no subject line, so rows wearing
+a subject and the trust sentence are `public-edge` rows (a trust band, no
+follow) - and the derived memo holds one per reader and author, the inbox one
+per sender and kind, and the page replaces itself whole on each poll. The raw
+`/notifications` JSON from the live node is the falsifying evidence, asked for.
+Also seen this pass: one full `just ci` failed the three peek-expiry claims
+(`peek_footprint.cjs`); they passed alone twice, and in the full runs before and
+after on the same code.

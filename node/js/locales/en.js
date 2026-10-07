@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1596 phrases across 98 files.
+// 1600 phrases across 98 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -370,6 +370,7 @@ export default {
     'apps.notifications.replied-to-one-of-your': 'replied to one of your posts',
     'apps.notifications.shared': 'shared',
     'apps.notifications.shared-something-of-yours': 'shared something of yours',
+    'apps.notifications.has-news-for-you': 'has news for you',
     'apps.notifications.follows-you-publicly-and-vouches': 'follows and trusts you',
     'apps.notifications.follows-you-publicly-and-publishes': 'follows you publicly, and publishes their trust in you',
     'apps.notifications.follows-you-publicly': 'follows you, publicly',
@@ -1431,11 +1432,14 @@ export default {
     'attention.mentioned-you-in-a-post': 'mentioned you in a post',
     'attention.mentioned-you-in-room': 'mentioned you in {room}',
     'attention.mentioned-you-in-a-room': 'mentioned you in a room',
+    'attention.has-news-for-you': 'has news for you',
     'attention.follows-and-vouches': 'follows and trusts you',
     'attention.follows-and-trusts': 'follows you publicly, and publishes their trust in you',
     'attention.follows-you': 'follows you, publicly',
     'attention.vouches-for-you': 'trusts you, publicly',
     'attention.trusts-you': 'publishes their trust in you',
+    'attention.hrsebank': 'hrseBank™',
+    'attention.you-completed-the-contract': 'You completed the {name} contract! Have H$ {money}!',
     'attention.a-picture': '(picture)',
     'attention.a-video': '(video)',
     'attention.a-sound': '(sound)',

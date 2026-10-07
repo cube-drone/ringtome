@@ -248,26 +248,10 @@ fn when(ms: Option<i64>) -> Value {
 }
 
 /// A query string's value, escaped.
+use crate::bank::horsebucks;
+
 fn escape(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
-}
-
-/// A balance in pennies - a decimal string of any length, since balances are exact bigints
-/// (bank.rs) - as HorseBucks: `-1,234.05`.
-fn horsebucks(pennies: &str) -> String {
-    let (sign, digits) = pennies.strip_prefix('-').map_or(("", pennies), |d| ("-", d));
-    let digits = format!("{digits:0>3}");
-    let (whole, cents) = digits.split_at(digits.len() - 2);
-    let whole = whole.trim_start_matches('0');
-    let whole = if whole.is_empty() { "0" } else { whole };
-    let mut grouped = String::with_capacity(whole.len() + whole.len() / 3);
-    for (i, digit) in whole.chars().enumerate() {
-        if i > 0 && (whole.len() - i) % 3 == 0 {
-            grouped.push(',');
-        }
-        grouped.push(digit);
-    }
-    format!("{sign}{grouped}.{cents}")
 }
 
 /// Is `unlock` open to a persona that owns `owned`? None if so; if not, the agent's words: what

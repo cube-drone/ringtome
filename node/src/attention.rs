@@ -478,6 +478,14 @@ async fn bell_alert(
         }
     };
     use crate::notifications as k;
+    // A contract is the bank's own news, about the reader themselves (notifications.rs
+    // `KIND_CONTRACT`): its own sentence, under the bank's name rather than the reader's. Without
+    // this arm a contract fell through to the band ladder below and, carrying no bands, said
+    // "publishes their trust in you" - from the reader, to the reader, once per contract (Curtis,
+    // 2026-10-07: eighteen of them, after a migration completed eighteen contracts at once).
+    if item.kind == k::KIND_CONTRACT {
+        return contract_alert(root, item);
+    }
     let body = match (item.kind.as_str(), title) {
         (k::KIND_REBROADCAST, Some(t)) => {
             crate::msg!("attention.shared-your-post", "shared your post \"{t}\"", t = t).english
@@ -528,6 +536,12 @@ async fn bell_alert(
         (k::KIND_ROOM_MENTION, None) => {
             crate::msg!("attention.mentioned-you-in-a-room", "mentioned you in a room").english
         }
+        // The band ladder is the public edge's alone. Any kind this match doesn't know says only
+        // that something happened - never another kind's news (the miscopy that made a contract
+        // read as trust, 2026-10-07, and a share before it, 2026-08-25).
+        (kind, _) if kind != k::KIND_PUBLIC_EDGE => {
+            crate::msg!("attention.has-news-for-you", "has news for you").english
+        }
         _ => {
             let follows = item.interest.is_some();
             let vouches = item.trust.as_deref() == Some("max");
@@ -561,6 +575,35 @@ async fn bell_alert(
         BELL_ROUTE.to_string()
     };
     Alert { root: root.to_string(), title: who, body, route, picture: None, picture_png: None }
+}
+
+/// A completed contract as an alert, in the bell's words (js/apps/notifications.js
+/// `contractWords`): its name - the registry's, else what the row carries - and its reward.
+fn contract_alert(root: &str, item: &crate::identity::routes::NotificationItem) -> Alert {
+    let said: serde_json::Value =
+        item.detail.as_deref().and_then(|d| serde_json::from_str(d).ok()).unwrap_or_default();
+    let name = crate::bank::CONTRACTS
+        .iter()
+        .find(|c| c.id == item.doc_id)
+        .map(|c| c.name.to_string())
+        .or_else(|| said.get("name").and_then(|n| n.as_str()).map(str::to_string))
+        .unwrap_or_else(|| item.doc_id.clone());
+    let money =
+        crate::bank::horsebucks(said.get("pennies").and_then(|p| p.as_str()).unwrap_or("0"));
+    Alert {
+        root: root.to_string(),
+        title: crate::msg!("attention.hrsebank", "hrseBank™").english,
+        body: crate::msg!(
+            "attention.you-completed-the-contract",
+            "You completed the {name} contract! Have H$ {money}!",
+            name = name,
+            money = money
+        )
+        .english,
+        route: BELL_ROUTE.to_string(),
+        picture: None,
+        picture_png: None,
+    }
 }
 
 /// A room line as a notification says it: its words plain, each embed named for what it is -
@@ -748,5 +791,34 @@ mod tests {
             out.iter().any(|a| a.route == "/ringtome/user/z/room/w" && a.body == "lone"),
             "a lone line stays itself"
         );
+    }
+
+    /// A completed contract alerts as the bank's news, in the bell's words - never as the
+    /// reader's trust in themselves (2026-10-07: a migration's eighteen contracts read
+    /// "publishes their trust in you", from the reader, to the reader).
+    #[test]
+    fn a_contract_alerts_as_the_banks_news() {
+        let me = "ab".repeat(32);
+        let item = crate::identity::routes::NotificationItem {
+            author: me.clone(),
+            kind: crate::notifications::KIND_CONTRACT.to_string(),
+            trust: None,
+            interest: None,
+            detail: Some(r#"{"name":"Draw a horse","pennies":"500000"}"#.to_string()),
+            doc_title: None,
+            doc_published_ms: None,
+            updated_ms: 0,
+            seen: false,
+            stranger: false,
+            doc_id: "draw-a-horse".to_string(),
+            author_name: Some("Cube Drone".to_string()),
+            author_avatar: None,
+            claimed_name: None,
+        };
+        let alert = contract_alert(&me, &item);
+        assert_eq!(alert.title, "hrseBank™");
+        assert!(alert.body.starts_with("You completed the "), "{}", alert.body);
+        assert!(alert.body.ends_with("contract! Have H$ 5,000.00!"), "{}", alert.body);
+        assert!(!alert.body.contains("trust"), "{}", alert.body);
     }
 }
