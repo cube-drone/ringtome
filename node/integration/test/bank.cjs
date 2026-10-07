@@ -864,6 +864,45 @@ describe('HorseBucks: unlocks', function () {
         const corner = await (await who(`api/identity/${root}/bank?lines=0`)).json();
         assert.deepEqual(corner.unlocked, ['friends'], 'the corner poll carries the gates');
     });
+
+    // "Unlock everything" (Curtis, 2026-10-07): a node administrator's way out of the tutorial, at
+    // H$ 0, offered to nobody else. The rig answers `everything` either way, so the claim is the
+    // sale: who is offered it, what it costs, and that it is recorded like any unlock.
+    it('a node administrator alone is offered "Unlock everything", for nothing, once', async () => {
+        const persona = async (prefix) => {
+            const who = await makeUserFetch({ prefix });
+            const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+            return { who, root, account: who.account.id };
+        };
+        const bank = async ({ who, root }) => (await who(`api/identity/${root}/bank`)).json();
+        const buy = ({ who, root }) =>
+            j(who, `api/identity/${root}/bank/unlocks`, { id: 'everything' });
+
+        const plain = await persona('unlockplain');
+        assert.notEqual((await bank(plain)).unlocks[0].id, 'everything', 'not offered');
+        assert.equal((await buy(plain)).status, 403, 'and not sold');
+
+        const admin = await persona('unlockadmin');
+        await sql(
+            `INSERT INTO account_tags (account_id, tag) VALUES ('${admin.account}', 'node_admin')`,
+        );
+        const before = await bank(admin);
+        assert.deepEqual(
+            [before.unlocks[0].id, before.unlocks[0].pennies, before.unlocks[0].bought_ms],
+            ['everything', '0', null],
+            'first in the Market, at H$ 0',
+        );
+        const bought = await buy(admin);
+        assert.equal(bought.status, 200, await bought.text());
+        assert.equal((await buy(admin)).status, 400, 'and once only');
+        const after = await bank(admin);
+        assert.equal(after.balance, before.balance, 'it costs nothing');
+        assert.ok(!after.lines.some((l) => l.source === 'everything'), 'and pays no line');
+        assert.ok(after.unlocks[0].bought_ms, 'owned, with when');
+        const corner = await (await admin.who(`api/identity/${admin.root}/bank?lines=0`)).json();
+        assert.ok(corner.unlocked.includes('everything'), 'the corner poll carries it');
+        assert.equal(corner.everything, true);
+    });
 });
 
 /*

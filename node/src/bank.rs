@@ -192,6 +192,26 @@ fn everything_unlocked(state: &AppState) -> bool {
     state.config.local_test && std::env::var("RINGTOME_TEST_LOCKS").is_err()
 }
 
+/// "Unlock everything" (Curtis, 2026-10-07): a node administrator's way out of the tutorial, H$ 0,
+/// in their Market alone - they run the place, but the tutorial is still theirs to play, so it is a
+/// purchase rather than a gift. Bought, it is a fact on the private chain like any unlock, and the
+/// bank's answers say `everything`, which every gate already reads (the client's, and MCP's). It is
+/// no entry of `UNLOCKS`: nobody else is ever offered it, and it pays no ledger line.
+const EVERYTHING: &str = "everything";
+
+/// The bank's `everything`: the test rig's answer, or a persona that bought "Unlock everything".
+fn owns_everything(state: &AppState, owned: &HashMap<String, i64>) -> bool {
+    everything_unlocked(state) || owned.contains_key(EVERYTHING)
+}
+
+/// Is this account a node administrator - the one "Unlock everything" is offered to?
+async fn node_admin(
+    state: &AppState,
+    account: &uuid::Uuid,
+) -> Result<bool, crate::error::AppError> {
+    crate::auth::has_tag(&state.node_db, account, crate::auth::TAG_NODE_ADMIN).await
+}
+
 /// Has this persona uploaded an image? A private document whose current head is a picture - a
 /// still (AVIF, APNG) or a silent loop - that isn't a drawing's flattened copy (the image picker
 /// makes those itself; `FLAT_FROM`). Avatars and banners are public, so never in view here; a
@@ -1491,7 +1511,7 @@ pub async fn unlocks_handler(
     let owned = unlocks_owned(&data).await.map_err(crate::error::AppError::Internal)?;
     Ok(axum::Json(json!({
         "unlocked": owned.keys().collect::<Vec<_>>(),
-        "everything": everything_unlocked(&state),
+        "everything": owns_everything(&state, &owned),
     })))
 }
 
@@ -1510,6 +1530,9 @@ pub async fn unlock_handler(
     axum::Json(req): axum::Json<UnlockRequest>,
 ) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
     use crate::error::AppError;
+    if req.id == EVERYTHING {
+        return unlock_everything(&state, &session, &root).await;
+    }
     let Some(u) = UNLOCKS.iter().find(|u| u.id == req.id) else {
         return Err(AppError::BadRequest(crate::msg!("bank.no-such-unlock", "no such unlock")));
     };
@@ -1538,6 +1561,33 @@ pub async fn unlock_handler(
     data.private_registers(UNLOCKS_KV).set(u.id, &at.to_string()).await?;
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
     Ok(axum::Json(json!({ "id": u.id, "bought_ms": at })))
+}
+
+/// The buy door's "Unlock everything": a node administrator's, once, for nothing - no balance to
+/// check and no ledger line to pay.
+async fn unlock_everything(
+    state: &AppState,
+    session: &crate::auth::Session,
+    root: &str,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    use crate::error::AppError;
+    if !node_admin(state, &session.account.id).await? {
+        return Err(AppError::Forbidden(crate::msg!(
+            "bank.only-node-admins-unlock-everything",
+            "only a node administrator can unlock everything"
+        )));
+    }
+    let data = crate::record::store::open(state, &session.account.id, root).await?;
+    let owned = unlocks_owned(&data).await.map_err(AppError::Internal)?;
+    if owned.contains_key(EVERYTHING) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "bank.you-own-that-already",
+            "that's yours already"
+        )));
+    }
+    let at = crate::clock::now_ms();
+    data.private_registers(UNLOCKS_KV).set(EVERYTHING, &at.to_string()).await?;
+    Ok(axum::Json(json!({ "id": EVERYTHING, "bought_ms": at })))
 }
 
 /// A line put straight into the ledger, for the test rig only (`/test/credit`): funding a persona,
@@ -1646,7 +1696,7 @@ pub async fn bank_handler(
         return Ok(axum::Json(json!({
             "balance": total.to_string(),
             "unlocked": owned.keys().collect::<Vec<_>>(),
-            "everything": everything_unlocked(&state),
+            "everything": owns_everything(&state, &owned),
         })));
     }
     catch_up(&state, &data, &root).await.map_err(crate::error::AppError::Internal)?;
@@ -1731,10 +1781,13 @@ pub async fn bank_handler(
         .collect();
     // The Market's unlocks (2026-10-05): every one, with when it was bought, if it was.
     let owned = unlocks_owned(&data).await.map_err(crate::error::AppError::Internal)?;
-    let unlocks: Vec<serde_json::Value> = UNLOCKS
-        .iter()
-        .map(|u| json!({ "id": u.id, "name": u.name, "pennies": u.pennies.to_string(), "requires": u.requires, "bought_ms": owned.get(u.id) }))
-        .collect();
+    let mut unlocks: Vec<serde_json::Value> = Vec::new();
+    // "Unlock everything" first, for a node administrator - or for a persona that bought it while
+    // its account was one, so the Unlocked list still says when.
+    if owned.contains_key(EVERYTHING) || node_admin(&state, &session.account.id).await? {
+        unlocks.push(json!({ "id": EVERYTHING, "name": "Unlock everything", "pennies": "0", "requires": [], "bought_ms": owned.get(EVERYTHING) }));
+    }
+    unlocks.extend(UNLOCKS.iter().map(|u| json!({ "id": u.id, "name": u.name, "pennies": u.pennies.to_string(), "requires": u.requires, "bought_ms": owned.get(u.id) })));
     Ok(axum::Json(json!({
         "balance": total.to_string(),
         "by_kind": by_kind,
@@ -1744,7 +1797,7 @@ pub async fn bank_handler(
         "lines": lines,
         "contracts": contracts,
         "unlocks": unlocks,
-        "everything": everything_unlocked(&state),
+        "everything": owns_everything(&state, &owned),
     })))
 }
 

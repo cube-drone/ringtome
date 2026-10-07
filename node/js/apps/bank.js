@@ -388,7 +388,8 @@ const CommodityCard = ({ root, commodity: c, balance, onBought }) => {
 
 const Market = ({ root, balance, unlocks, everything, goods, onBought }) => {
     const owned = new Set(unlocks.filter((u) => u.bought_ms).map((u) => u.id));
-    // The test rig owns everything already, so it sells nothing (bank.rs `everything_unlocked`).
+    // Owning everything - the test rig, or an administrator who bought "Unlock everything" - the
+    // Market sells nothing (bank.rs `owns_everything`).
     const forSale = everything ? [] : unlocks.filter((u) => !u.bought_ms);
     const financial = everything || owned.has('horse-financial');
     // The colourways (2026-10-05) have a section of their own, after the instruments: cosmetic,

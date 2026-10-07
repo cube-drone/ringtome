@@ -17711,3 +17711,23 @@ public lane's per-persona listing sort, the admin People list's storage sum, and
 does. Also there still: the standing plan test. On the way, one `pkill -f` on a
 hung test binary of my own, against the house rule - scoped to that binary's
 name, but PIDs only from there.
+
+**2026-10-07 - "Unlock everything", for node administrators.** Curtis: "Node
+admins should have access to an 'unlock everything' (H$ 0) in their Market." -
+which answers UNLOCKS.md's open question about admins (now its Ruling 7). A
+purchase, not a gift: first in a node administrator's Market at H$ 0, offered to
+nobody else, and an administrator who would rather play leaves it there.
+`bank.rs`: id `everything` (`EVERYTHING`), deliberately not in `UNLOCKS`;
+`unlock_everything` behind the buy door checks `node_admin` (403 otherwise),
+records it in the `unlocks` register like any unlock, and pays no line;
+`owns_everything` folds it into the bank's `everything` - the flag the test rig
+already set - on all three answers, so the client's every gate (apps, Market,
+contracts, colourway picker) and MCP's open without a gate of their own. The
+bank page lists it first for an administrator, or for a persona that bought it
+while its account was one. MCP's identity summary says "everything" rather than
+"everything (a test node)". `js/unlocks.js`: its name, explanation and key icon
+(+3 phrases). Claim (`bank.cjs`, unlocks): a plain account is neither offered
+nor sold it; an administrator sees it first at H$ 0, buys it once, pays nothing
+and no line, and the corner poll carries it. Seen in jsdom on a scratch node
+keeping the locks: the card first, buyable; bought, the Market sells nothing,
+Unlocked names it, and the dock holds every app.

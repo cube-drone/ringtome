@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1593 phrases across 98 files.
+// 1596 phrases across 98 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1363,6 +1363,7 @@ export default {
     'slugpage.a-name-is-this-nodes': 'short names only work on this site. A real address starts with /ringtome/user/.',
 
     // --- node/js/unlocks.js ---
+    'unlocks.everything': 'Unlock everything',
     'unlocks.friends': 'Friends',
     'unlocks.social': 'Social',
     'unlocks.private-notes': 'Private notes',
@@ -1378,6 +1379,7 @@ export default {
     'unlocks.chats-for-two': 'Chats for two',
     'unlocks.sealing': 'Trusted only posts & post audiences',
     'unlocks.horse-financial': 'Horse Financial',
+    'unlocks.everything-about': "For the people who run this server: every app and every feature at once, without the tutorial. Free, and only offered to node administrators. Skip it if you'd rather play.",
     'unlocks.horse-financial-about': "Unlocks hrseBank™'s market to financial instruments like hrseBonds.",
     'unlocks.friends-about': 'Unlocks hrsePeople™: look people up by their address, follow them, and keep track of everyone you know.',
     'unlocks.social-about': 'Unlocks hrseFeed™, and publishing everywhere: post your drawings and your writing for the people who follow you.',
@@ -1493,6 +1495,7 @@ export default {
     'bank.you-own-that-already': "that's yours already",
     'bank.unlock-the-others-first': 'that one needs another unlock first',
     'bank.you-cant-afford-that-2': "you can't afford that",
+    'bank.only-node-admins-unlock-everything': 'only a node administrator can unlock everything',
 
     // --- node/src/builtin.rs ---
     'builtin.not-in-this-build': 'that picture no longer comes with the app',

@@ -488,7 +488,7 @@ impl Tools {
                 )
                 .await?;
             let unlocks: Value = if bank.get("everything").and_then(Value::as_bool) == Some(true) {
-                json!("everything (a test node)")
+                json!("everything")
             } else {
                 let owned: Vec<&str> =
                     bank.get("unlocked").and_then(Value::as_array).map_or_else(Vec::new, |ids| {

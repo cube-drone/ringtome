@@ -27,7 +27,8 @@ const html = htm.bind(h);
 // ---- what's owned ----
 
 /// The persona the answer is for, its balance (BigInt horsepennies), the ids it owns, and whether
-/// this node hands everyone everything (the test rig). `known` is false until the node answers.
+/// it owns everything - the test rig's answer, or an administrator's "Unlock everything". `known`
+/// is false until the node answers.
 let state = { root: null, balance: null, owned: new Set(), everything: false, known: false };
 const listeners = new Set();
 
@@ -162,6 +163,7 @@ export const useLedgerPoll = (root) => {
 // ---- the Market's words ----
 
 const NAMES = {
+    everything: () => t('unlocks.everything', 'Unlock everything'),
     friends: () => t('unlocks.friends', 'Friends'),
     social: () => t('unlocks.social', 'Social'),
     'private-notes': () => t('unlocks.private-notes', 'Private notes'),
@@ -180,6 +182,12 @@ const NAMES = {
 };
 
 const ABOUT = {
+    // A node administrator's alone (Curtis, 2026-10-07; bank.rs `EVERYTHING`).
+    everything: () =>
+        t(
+            'unlocks.everything-about',
+            "For the people who run this server: every app and every feature at once, without the tutorial. Free, and only offered to node administrators. Skip it if you'd rather play.",
+        ),
     'horse-financial': () =>
         t(
             'unlocks.horse-financial-about',
@@ -261,6 +269,7 @@ const WARNINGS = {
 };
 
 const ICONS = {
+    everything: Icons.key,
     friends: Icons.people,
     social: Icons.feed,
     'private-notes': Icons.notes,

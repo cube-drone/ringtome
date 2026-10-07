@@ -83,6 +83,11 @@ and the one worn - a colourway chosen before it was for sale stays on.
    it is where a contract's payment is announced, and where everything else that
    happens to a person arrives. A new player starts with their persona,
    hrseDrawing, hrseBank and hrseMsg.
+7. **Node administrators can unlock everything** (2026-10-07, answering the open
+   question below): "Node admins should have access to an 'unlock everything'
+   (H$ 0) in their Market." A purchase, not a gift: it sits first in an
+   administrator's Market, costs nothing, and is offered to nobody else. An
+   administrator who would rather play the tutorial just leaves it there.
 
 ## What an unlock is
 
@@ -96,6 +101,10 @@ and the one worn - a colourway chosen before it was for sale stays on.
 - **Never sold back,** never lapses. Once bought, owned.
 - **Per persona.** Each persona is its own player; a second persona starts
   locked.
+- **"Unlock everything" is the one exception** (Ruling 7): id `everything`, not
+  in `UNLOCKS` - nobody but a node administrator is offered it - recorded in the
+  same register, paying no line. Owned, the bank answers `everything`, the flag
+  the test rig already set, so every gate opens without a gate of its own.
 - **A registry in `bank.rs`,** `UNLOCKS`: id, price, and what it opens (for the
   server's own use - which contracts it reveals). The words a player reads - its
   name, its explanation, the video warning - live in `js/unlocks.js`, one
@@ -370,9 +379,6 @@ contracts, the second batch's three, and an "Unlocked" list under the Market
 
 ## Open questions
 
-- **Admins.** A node administrator gets hrseServer from the start; should they
-  also get everything (they run the place), or play the tutorial like anyone?
-  Proposed: they play it, with hrseServer.
 - **Still unplaced, from the first list of candidates** (sealing, sharing, chats
   for two and links were taken up; safety, search and format conversion were
   ruled open):
