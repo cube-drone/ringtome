@@ -47,6 +47,7 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::{LazyLock, Mutex};
 
 use crate::db::Db;
 use ringtome_proto::registry::{entry_type, service};
@@ -124,20 +125,83 @@ pub struct PublicView {
     db: Db,
 }
 
+/// What `open` assembles that costs more than a lookup - the ownership read, the signing key and
+/// encryption keypair off the keystore's disk, every epoch box unsealed - kept per account and
+/// persona (2026-10-07: every authenticated request paid all of it, a 304 included). Kept with
+/// the write counts it was assembled under (`db::writes_to`): node.db's `identities`, which says
+/// who owns the persona and with which leaf, and the persona's `entries`, where key epochs land.
+/// Trusted only while both stand where they were - a leaf key file never changes under its name,
+/// so those two are everything that can make it wrong.
+struct Opened {
+    signer: ed25519_dalek::SigningKey,
+    epoch_keys: private::EpochKeys,
+    identities_at: u64,
+    entries_at: u64,
+}
+
+static OPENED: LazyLock<Mutex<HashMap<(Uuid, String), Opened>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The most (account, persona) pairs kept - far past any node's real count; past it the map is
+/// simply emptied and refilled by use.
+const OPENED_MAX: usize = 10_000;
+
+/// Does this account own this persona, as `open` last found it and nothing since has moved?
+/// A no means "not known", never "not owned" - the caller takes the long way.
+pub fn known_owner(state: &AppState, account_id: &Uuid, root_hex: &str) -> bool {
+    let identities_at = crate::db::writes_to(state.node_db.writes_key(), "identities");
+    OPENED
+        .lock()
+        .expect("opened stores poisoned")
+        .get(&(*account_id, root_hex.to_string()))
+        .is_some_and(|o| o.identities_at == identities_at)
+}
+
 /// Open an identity's data for a logged-in owner: ownership check, signing key, epoch keys, and
-/// the per-identity database, assembled once.
+/// the per-identity database, assembled once - and kept (`Opened`) for the next request.
 pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result<Store, AppError> {
     let root = crate::pubkey::decode(root_hex).ok_or_else(|| {
         AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey", "bad root pubkey"))
     })?;
-    let signer =
-        crate::identity::load_signing_key(&state.node_db, &state.keystore, account_id, root_hex)
-            .await?;
-    let leaf = signer.verifying_key().to_bytes();
-    let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
-        .map_err(AppError::Internal)?;
+    // Stamped BEFORE anything is read, so a write racing the assembly leaves the stamp behind.
+    let identities_at = crate::db::writes_to(state.node_db.writes_key(), "identities");
+    let entries_at = crate::db::writes_to(root_hex, "entries");
+    let key = (*account_id, root_hex.to_string());
+    let kept = OPENED.lock().expect("opened stores poisoned").get(&key).and_then(|o| {
+        (o.identities_at == identities_at && o.entries_at == entries_at)
+            .then(|| (o.signer.clone(), o.epoch_keys.clone()))
+    });
     let db = state.user_dbs.held(root_hex).await.map_err(AppError::Internal)?;
-    let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
+    let (signer, epoch_keys) = match kept {
+        Some(kept) => kept,
+        None => {
+            let signer = crate::identity::load_signing_key(
+                &state.node_db,
+                &state.keystore,
+                account_id,
+                root_hex,
+            )
+            .await?;
+            let leaf = signer.verifying_key().to_bytes();
+            let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
+                .map_err(AppError::Internal)?;
+            let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
+            let mut opened = OPENED.lock().expect("opened stores poisoned");
+            if opened.len() >= OPENED_MAX {
+                opened.clear();
+            }
+            opened.insert(
+                key,
+                Opened {
+                    signer: signer.clone(),
+                    epoch_keys: epoch_keys.clone(),
+                    identities_at,
+                    entries_at,
+                },
+            );
+            (signer, epoch_keys)
+        }
+    };
     // The persona did something here, signed in: today's heartbeat, once (heartbeat.rs).
     crate::heartbeat::note(state, root_hex);
     Ok(Store {

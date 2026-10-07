@@ -17778,3 +17778,41 @@ mirror's doc row; Drawing's pictures use it. Private thumbnails already did this
 by either spelling; another `v` is not. Not done, in NEXT_STEPS: embeds in notes
 (the marquee renderer has no image hook) and public post words (feed rows carry
 no checkable version), and keeping the unlocked keys in memory.
+
+**2026-10-07 - Kept stores and kept body tags.** Curtis, on how ETags are
+answered: "a server-side in-memory key-value ... keeping track of dirty flags
+for etags: if there's no evidence an etag has changed, we can skip the SQL
+interaction entirely" - and, on my first sketch's per-database counter, "that
+feels... insufficiently granular to be useful". It was. Built at the grains the
+inputs really have:
+
+- **Write counts per table, in `Db`** (`db::written_table`, `writes_to`): every
+  statement method counts a write against the table it names, keyed by the
+  persona's root (or the handle's name), before it runs - in the one door every
+  statement passes, so no write path (a save, sync's ingest, a fold, a
+  migration) can forget. A write it can't name (a script, a `WITH`, DDL) moves
+  the database's `*`. Unit tests name the spellings the codebase uses and prove
+  every door counts.
+- **Kept stores** (`record::store::open`): the signing key and the unsealed
+  epoch keys per account and persona, trusted while node.db's `identities` and
+  the persona's `entries` counts stand - a leaf's key file never changes under
+  its name, so those two are all that can make it wrong. Every authenticated
+  request had read two keystore files and unsealed every epoch box.
+- **Kept body tags** (`src/revalidate.rs`): per persona, the `entries` count a
+  fold last completed at; per document, a tag and a version.
+  `documents::refresh_doc_heads` - the one writer of head rows - reports exactly
+  the documents it rewrote, after writing them, and a tag computed across a
+  rewrite is refused; `clear_view` drops a persona's lot. The private body door
+  answers a revalidation from here - no store, no SQL, no keys - when the owner
+  is known, nothing is unfolded and the document hasn't been rewritten.
+
+Claims (`docs.cjs`, documents across two nodes): a local save is new under the
+old tag; a fold run for document X drops exactly Y's tag, which it rewrote (two
+documents, one save); a version arriving by sync on B is never hidden. Planted
+faults proved the first two: ignoring unfolded entries served a stale 304 on the
+local save; dropping `changed` served Y's stale 304 - which also shows the short
+way is the one answering. The third passed under the first plant, because B's
+sync folds what it brings in - so it guards the outcome, not a single mechanism,
+and is named for that. On the way: my parser test's SQL named real tables and
+the conventions scan said so (made-up names now); the write-count test shared
+the in-memory databases' `memory` key with a parallel suite (its own key now).

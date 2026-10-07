@@ -20,7 +20,9 @@
 //! place) and refuses to open - minting a fresh key over it would either fail confusingly or
 //! destroy the tell that the keystore is gone.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 use anyhow::{anyhow, bail, Context, Result};
 use turso::{Builder, EncryptionOpts, IntoParams, Value};
@@ -319,7 +321,86 @@ pub async fn await_write_nudge(
     std::future::pending::<Option<String>>().await
 }
 
+/// How many write statements each table of each database has seen since this process started -
+/// the dirty marks the read caches stand on (`record::store`'s opened stores, `revalidate`'s body
+/// tags; 2026-10-07). Keyed by the database (a persona's root, or `node`) and the table a
+/// statement writes, so a cache can ask exactly what it depends on: "has `entries` moved for
+/// this persona since I computed this?". Counted HERE, in the one door every statement passes,
+/// rather than at the call sites, so no write path - local, sync's ingest, a fold, a migration -
+/// can forget to say it moved. A statement that writes something this can't name (a script, a
+/// `WITH`, DDL) moves the database's `*`, which every table's count includes. Bumped before the
+/// statement runs: a reader stamps the count it saw BEFORE computing, so a write racing the
+/// computation always leaves the stamp behind. Only ever rises, and only within this process -
+/// a cache is in memory, so it never outlives the counts it was stamped with.
+static TABLE_WRITES: LazyLock<Mutex<HashMap<String, u64>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The table a write statement writes, lowercased - `None` for a read. A statement that writes
+/// but names no single table this can read (a script, a `WITH`, DDL) is `Some("*")`.
+pub(crate) fn written_table(sql: &str) -> Option<String> {
+    let mut words = sql.split_whitespace().map(|w| w.to_ascii_lowercase());
+    let first = words.next()?;
+    let table = match first.as_str() {
+        "insert" | "replace" => {
+            // INSERT [OR <conflict>] INTO <table>, REPLACE INTO <table>
+            let mut w = words.next()?;
+            if w == "or" {
+                words.next()?;
+                w = words.next()?;
+            }
+            if w != "into" {
+                return Some("*".into());
+            }
+            words.next()?
+        }
+        "update" => {
+            // UPDATE [OR <conflict>] <table>
+            let w = words.next()?;
+            if w == "or" {
+                words.next()?;
+                words.next()?
+            } else {
+                w
+            }
+        }
+        "delete" => {
+            if words.next()? != "from" {
+                return Some("*".into());
+            }
+            words.next()?
+        }
+        "select" | "pragma" | "explain" | "begin" | "commit" | "rollback" | "savepoint"
+        | "release" => return None,
+        // WITH (which may end in a write), DDL, VACUUM, and anything unforeseen.
+        _ => return Some("*".into()),
+    };
+    let table = table.split(['(', ';']).next().unwrap_or("").trim_matches(['"', '`', '[', ']']);
+    Some(if table.is_empty() { "*".into() } else { table.to_string() })
+}
+
+/// How many writes `table` of database `db` (a persona's root, or a handle's `writes_key`) has
+/// seen, its database's unnamed writes included. A cache stamps this before computing and trusts
+/// what it kept only while it is unchanged.
+pub fn writes_to(db: &str, table: &str) -> u64 {
+    let counts = TABLE_WRITES.lock().expect("table write counts poisoned");
+    counts.get(&format!("{db}/{table}")).copied().unwrap_or(0)
+        + counts.get(&format!("{db}/*")).copied().unwrap_or(0)
+}
+
 impl Db {
+    /// The database's name in the write counts: a persona's root, or this handle's own name.
+    pub fn writes_key(&self) -> &str {
+        self.root().unwrap_or(&self.name)
+    }
+
+    /// Count a statement's write, if it is one (`TABLE_WRITES`).
+    fn note_write(&self, sql: &str) {
+        if let Some(table) = written_table(sql) {
+            let mut counts = TABLE_WRITES.lock().expect("table write counts poisoned");
+            *counts.entry(format!("{}/{table}", self.writes_key())).or_default() += 1;
+        }
+    }
+
     /// Take the statement lock, noting how long the wait was.
     async fn statement_lock(
         &self,
@@ -357,6 +438,7 @@ impl Db {
 
     /// Execute one statement to completion; returns rows affected.
     pub async fn execute(&self, sql: &str, params: impl IntoParams) -> Result<u64> {
+        self.note_write(sql);
         let n = {
             let (_guard, wait, locked) = self.statement_lock().await;
             let n = self.conn.execute(sql, params).await;
@@ -379,6 +461,11 @@ impl Db {
 
     /// Run a script of semicolon-separated statements.
     pub async fn execute_batch(&self, sql: &str) -> Result<()> {
+        // A script may write anything: the whole database moved.
+        {
+            let mut counts = TABLE_WRITES.lock().expect("table write counts poisoned");
+            *counts.entry(format!("{}/*", self.writes_key())).or_default() += 1;
+        }
         let (_guard, wait, locked) = self.statement_lock().await;
         let done = self.conn.execute_batch(sql).await;
         self.timed(sql, wait, locked);
@@ -397,6 +484,7 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<(Vec<String>, Vec<Vec<Value>>)> {
+        self.note_write(sql);
         let (_guard, wait, locked) = self.statement_lock().await;
         let drained = async {
             let mut rows = self.conn.query(sql, params).await?;
@@ -422,6 +510,7 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Vec<T>> {
+        self.note_write(sql); // a `… RETURNING` write reads its rows back through here
         let (_guard, wait, locked) = self.statement_lock().await;
         let all = self.fetch_all_locked(sql, params).await;
         self.timed(sql, wait, locked);
@@ -463,6 +552,7 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Option<T>> {
+        self.note_write(sql);
         let (_guard, wait, locked) = self.statement_lock().await;
         let first = self.fetch_optional_locked(sql, params).await;
         self.timed(sql, wait, locked);
@@ -1678,5 +1768,50 @@ mod tests {
         }
         assert_eq!(count(db.clone()).await, after + 6);
         tokio::fs::remove_dir_all(&dir).await.ok();
+    }
+
+    /// The write counts name the table a statement writes, in every spelling this codebase uses -
+    /// and count a write they can't name as the whole database's, never as nothing.
+    #[test]
+    fn a_write_names_its_table() {
+        for (sql, table) in [
+            ("INSERT INTO chain_rows (a) VALUES (1)", Some("chain_rows")),
+            ("  insert or ignore into bank_lines (kind) VALUES (?1)", Some("bank_lines")),
+            ("INSERT OR REPLACE INTO head_rows(doc_id) VALUES (?1)", Some("head_rows")),
+            ("REPLACE INTO kv (k) VALUES (?1)", Some("kv")),
+            ("UPDATE marks SET folded_seq = ?3", Some("marks")),
+            ("UPDATE OR IGNORE identities SET leaf_pubkey = ?1", Some("identities")),
+            (
+                "DELETE FROM chain_rows INDEXED BY sqlite_autoindex_chain_rows_1 WHERE seq > ?4",
+                Some("chain_rows"),
+            ),
+            ("WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x", Some("*")),
+            ("CREATE INDEX i ON t (a)", Some("*")),
+            ("SELECT * FROM chain_rows", None),
+            ("PRAGMA wal_checkpoint(TRUNCATE)", None),
+            ("EXPLAIN QUERY PLAN DELETE FROM chain_rows", None),
+        ] {
+            assert_eq!(written_table(sql).as_deref(), table, "{sql}");
+        }
+    }
+
+    /// Every door counts: `execute`, a `RETURNING` write through `fetch_*`, a script - and a read
+    /// counts nothing.
+    #[tokio::test]
+    async fn every_write_door_moves_its_tables_count() {
+        // Its own key: every in-memory database is named `memory`, and the suite runs in parallel.
+        let db = test_memory_db().await.with_root("counting-doors".to_string());
+        db.execute("CREATE TABLE counted_t (a INTEGER)", ()).await.unwrap();
+        let key = db.writes_key().to_string();
+        let at = writes_to(&key, "counted_t");
+        db.execute("INSERT INTO counted_t (a) VALUES (1)", ()).await.unwrap();
+        assert_eq!(writes_to(&key, "counted_t"), at + 1, "execute");
+        let _: Vec<(i64,)> =
+            db.fetch_all("UPDATE counted_t SET a = 2 RETURNING a", ()).await.unwrap();
+        assert_eq!(writes_to(&key, "counted_t"), at + 2, "a RETURNING write");
+        let _: Vec<(i64,)> = db.fetch_all("SELECT a FROM counted_t", ()).await.unwrap();
+        assert_eq!(writes_to(&key, "counted_t"), at + 2, "a read moves nothing");
+        db.execute_batch("UPDATE counted_t SET a = 3;").await.unwrap();
+        assert_eq!(writes_to(&key, "counted_t"), at + 3, "a script moves every table");
     }
 }

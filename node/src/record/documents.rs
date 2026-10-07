@@ -2277,6 +2277,18 @@ async fn refresh_doc_heads(
     changed: &BTreeSet<[u8; 16]>,
     fresh: &BTreeMap<[u8; 16], Vec<Version>>,
 ) -> Result<(), AppError> {
+    let rewritten = rewrite_doc_heads(db, changed, fresh).await;
+    // The kept body tags of exactly these documents (crate::revalidate) - after the rows are
+    // written, and whether or not every one was: a failure partway may have written some.
+    crate::revalidate::changed(db.root(), changed);
+    rewritten
+}
+
+async fn rewrite_doc_heads(
+    db: &Db,
+    changed: &BTreeSet<[u8; 16]>,
+    fresh: &BTreeMap<[u8; 16], Vec<Version>>,
+) -> Result<(), AppError> {
     for doc_id in changed {
         // The save fast-forward (2026-10-03): one new version, on exactly the document's true
         // heads, while it showed one logical head - an ordinary save. The new version is then
@@ -2470,10 +2482,16 @@ async fn memoize_doc(
 /// folded facts AND the memoized resolutions. The next keyed materialize refolds both from the
 /// log (a refold re-derives every doc's `doc_heads` row, since every doc changes in that pass).
 pub(crate) async fn clear_view(db: &Db) -> Result<(), AppError> {
+    let mut cleared = Ok(());
     for sql in ["DELETE FROM doc_versions", "DELETE FROM doc_heads", "DELETE FROM doc_search"] {
-        db.execute(sql, ()).await.context("clearing document views").map_err(AppError::Internal)?;
+        if let Err(e) = db.execute(sql, ()).await {
+            cleared = Err(AppError::Internal(e.context("clearing document views")));
+            break;
+        }
     }
-    Ok(())
+    // Every kept body tag of the persona's goes with the view (crate::revalidate).
+    crate::revalidate::cleared(db.root());
+    cleared
 }
 
 /// A 16-byte id off a memo column (a document id, e.g. `part_of`).

@@ -504,6 +504,100 @@ describe('versioned documents (notes)', function () {
         assert.equal(after.heads[0].body, 'pack the good hat, and the spare');
     });
 
+    // Kept body tags (src/revalidate.rs, 2026-10-07): a revalidation with nothing new under it
+    // is answered from memory - and the moment something IS new, it isn't. Two roads to new: a
+    // save here, which the fold rewrites; and a version arriving by sync, which nobody has folded
+    // yet when the browser next asks.
+    it('a kept body tag answers 304 until a save here changes the body', async function () {
+        const user = await makeUserFetch({ prefix: 'docstag' });
+        const root = (await (await user('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const doc = await createDoc(user, root, 'tagged', 'first words');
+        const body = (etag) =>
+            user(`api/identity/${root}/docs/${doc.doc_id}/body`, {
+                headers: etag ? { 'If-None-Match': etag } : {},
+            });
+        const first = await body();
+        const etag = first.headers.get('etag');
+        assert.equal(await first.text(), 'first words');
+        for (let i = 0; i < 3; i++) {
+            assert.equal((await body(etag)).status, 304, `unchanged, asked again (${i})`);
+        }
+        await saveDoc(user, root, doc.doc_id, 'tagged', 'second words', [doc.version]);
+        const after = await body(etag);
+        assert.equal(after.status, 200, 'a save here is new under the old tag');
+        assert.equal(await after.text(), 'second words');
+        assert.notEqual(after.headers.get('etag'), etag);
+    });
+
+    it("a fold run for one document drops exactly the other documents' tags it rewrote", async function () {
+        const user = await makeUserFetch({ prefix: 'docstagx' });
+        const root = (await (await user('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const x = await createDoc(user, root, 'x', 'x words');
+        const y = await createDoc(user, root, 'y', 'y words');
+        const body = (doc, etag) =>
+            user(`api/identity/${root}/docs/${doc.doc_id}/body`, {
+                headers: etag ? { 'If-None-Match': etag } : {},
+            });
+        const tagOf = async (doc) => {
+            const r = await body(doc);
+            await r.text();
+            return r.headers.get('etag');
+        };
+        const [xTag, yTag] = [await tagOf(x), await tagOf(y)];
+        assert.equal((await body(x, xTag)).status, 304);
+        assert.equal((await body(y, yTag)).status, 304);
+        // Y changes; X's request is the one that folds it - and the fold mark moves past the save.
+        await saveDoc(user, root, y.doc_id, 'y', 'newer y words', [y.version]);
+        assert.equal((await body(x, xTag)).status, 304, 'X did not change');
+        const after = await body(y, yTag);
+        assert.equal(after.status, 200, "Y's old tag went when the fold rewrote it");
+        assert.equal(await after.text(), 'newer y words');
+    });
+
+    it('a kept body tag never hides a version that arrived by sync', async function () {
+        const alice = await makeUserFetch({ prefix: 'docstaga' });
+        const root = (await (await alice('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const doc = await createDoc(alice, root, 'carried', 'words from A');
+        const aliceOnB = await makeUserFetch({ prefix: 'docstagb', host: HOST_B });
+        const request = await (
+            await aliceOnB('api/identity/adopt/begin', { method: 'POST' })
+        ).json();
+        const grant = await (
+            await alice(`api/identity/${root}/nodes`, {
+                method: 'POST',
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        await aliceOnB('api/identity/adopt/complete', {
+            method: 'POST',
+            body: JSON.stringify({ code: grant.code }),
+        });
+        const bodyOnB = (etag) =>
+            aliceOnB(`api/identity/${root}/docs/${doc.doc_id}/body`, {
+                headers: etag ? { 'If-None-Match': etag } : {},
+            });
+        const first = await bodyOnB();
+        assert.equal(first.status, 200, 'B holds the words');
+        const etag = first.headers.get('etag');
+        assert.equal(await first.text(), 'words from A');
+        assert.equal((await bodyOnB(etag)).status, 304, "B's tag is kept");
+
+        // A saves; B pulls it. (B's sync may fold what it brought in, or leave it for the next
+        // read - either way the old tag must not stand.)
+        await saveDoc(alice, root, doc.doc_id, 'carried', 'newer words from A', [doc.version]);
+        const pulled = await (
+            await aliceOnB(`api/identity/${root}/sync`, { method: 'POST' })
+        ).json();
+        assert.ok(
+            pulled.some((r) => r.ok),
+            'B reached A',
+        );
+
+        const after = await bodyOnB(etag);
+        assert.equal(after.status, 200, 'the old tag is not good any more');
+        assert.equal(await after.text(), 'newer words from A');
+    });
+
     it('transcodes an image on A and syncs the AVIF to B', async function () {
         // --- Act 1: identity on A, one image uploaded and transcoded before B exists.
         const alice = await makeUserFetch({ prefix: 'imgtwo' });

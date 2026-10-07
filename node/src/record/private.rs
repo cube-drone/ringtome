@@ -101,7 +101,7 @@ pub fn load_enc_keypair(keystore: &Keystore, leaf_hex: &str) -> Result<EncKeyPai
 /// keys: two nodes racing a rotation both mint "epoch N" on their own chains (single-writer means
 /// that is not a fork). Writers use one; readers try all - the AEAD tag says which one a record
 /// was really under. Convergence, not coordination.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct EpochKeys {
     keys: BTreeMap<u64, Vec<[u8; 32]>>,
 }

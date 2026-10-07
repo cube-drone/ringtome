@@ -229,10 +229,18 @@ private body door, 2026-10-07). Left:
   millisecond, so the safe version is the content hash: a `feed_journal` column
   for it (a node rung, and the fan-out writes), and the public door answering
   `immutable` when `?v=` is the hash it serves.
-- **Keep the unlocked keys in memory** - `store::open`'s ownership read, signing
-  key, encryption keypair and unsealed epoch keys, per account and persona,
-  dropped when keys or epochs change: every authenticated request pays them
-  today, a 304 included.
+- **Kept tags for public words: measured, not built** (2026-10-07). With the
+  kept stores and kept private body tags in (HISTORY), a private body's
+  revalidation answered from memory costs the node about 0.2 ms; a public post's
+  words, from a held chain, about 1-2 ms (debug build, the node's own
+  `time.busy`). The public answer depends on far more than the private one -
+  speculative, peek and hosted state, the posts floor, the fragment shelf
+  (rewritten constantly by `checked_ms`), takedowns, `?via=`, the reader - and
+  can fetch over the network mid-request, so a cache there costs a dozen
+  invalidation inputs, one of them a takedown that must never answer 304, to
+  save a millisecond or two a card. Not unless a fragment-served stranger's post
+  (which re-verifies its proof per request; not measured) shows a cost that
+  earns it.
 
 ### Query plans (the 2026-10-07 audit)
 

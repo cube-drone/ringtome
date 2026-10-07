@@ -6585,6 +6585,29 @@ async fn docs_body_impl(
     if_none_match: Option<String>,
 ) -> Result<Response, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    // The short way (crate::revalidate, 2026-10-07): a browser asking whether its copy is still
+    // good, about a document whose tag is kept and that nothing has moved under, for an owner
+    // already known - answered from memory, before the store is opened at all.
+    if let Some(inm) = if_none_match.as_deref() {
+        if store::known_owner(&state, &session.account.id, &root) {
+            if let Some(tag) = crate::revalidate::kept(&root, &doc_id) {
+                let etag = format!("\"{}\"", hex::encode(tag.file_hash));
+                if crate::idface::etag_matches(inm, &etag) {
+                    let cache = if version.as_deref() == Some(hex::encode(tag.head).as_str()) {
+                        PRIVATE_VERSION_CACHE
+                    } else {
+                        PRIVATE_BODY_CACHE
+                    };
+                    return Ok((
+                        StatusCode::NOT_MODIFIED,
+                        [(ETAG, etag.as_str()), (CACHE_CONTROL, cache)],
+                    )
+                        .into_response());
+                }
+            }
+        }
+    }
+    let stamp = crate::revalidate::stamp(&root, &doc_id);
     let data = store::open(&state, &session.account.id, &root).await?;
     if let Some(b) = crate::builtin::get(&doc_id) {
         return Ok(builtin_bytes(b));
@@ -6596,6 +6619,13 @@ async fn docs_body_impl(
         return version_less_body_status(&state, &session.account.id.to_string(), doc_id).await;
     };
     let format = crate::record::documents::Format::from_wire(head.format);
+    // Folded and read: kept for the next revalidation, unless a fold rewrote it meanwhile.
+    crate::revalidate::keep(
+        &root,
+        &doc_id,
+        stamp,
+        crate::revalidate::BodyTag { head: head.head, file_hash: head.file_hash },
+    );
     let etag = format!("\"{}\"", hex::encode(head.file_hash));
     let cache = if version.as_deref() == Some(hex::encode(head.head).as_str()) {
         PRIVATE_VERSION_CACHE

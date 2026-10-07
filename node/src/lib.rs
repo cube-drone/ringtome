@@ -78,6 +78,7 @@ pub mod record;
 pub mod registration;
 pub mod replies;
 pub mod request_context;
+pub mod revalidate;
 pub mod rss;
 pub mod scheduled;
 pub mod score;
