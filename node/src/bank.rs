@@ -125,6 +125,52 @@ pub const CONTRACTS: [Contract; 21] = [
 /// The private register purchases are recorded in.
 const UNLOCKS_KV: &str = "unlocks";
 
+/// What a purchase cost, when it wasn't the list price (2026-10-07): id -> pennies paid. The ledger's
+/// `unlock` line reads it, so every computer charges what was paid - a purchase only says WHEN.
+/// Written before the purchase itself, so no computer ever sees the purchase without its price.
+const UNLOCKS_PAID_KV: &str = "unlock_paid";
+
+/// What one persona pays for an unlock another persona of the same account already owns on this
+/// node (Curtis, 2026-10-07: "a 95% discount ... you already own this somewhere else"), in
+/// hundredths of the list price.
+const ELSEWHERE_PERCENT: i64 = 5;
+
+/// An unlock's price for a persona whose account owns it elsewhere: 5% of the list price.
+pub fn elsewhere_price(pennies: i64) -> i64 {
+    pennies * ELSEWHERE_PERCENT / 100
+}
+
+/// The unlocks this account's OTHER personas on this node own - each one's own private register,
+/// read through its store. One that bought "Unlock everything" owns every unlock.
+async fn owned_elsewhere(
+    state: &AppState,
+    account: &uuid::Uuid,
+    root_hex: &str,
+) -> Result<HashSet<String>, crate::error::AppError> {
+    let mut out = HashSet::new();
+    for persona in crate::identity::list_for_account(&state.node_db, account).await? {
+        if persona.root_pubkey == root_hex {
+            continue;
+        }
+        let other = crate::record::store::open(state, account, &persona.root_pubkey).await?;
+        let owned = unlocks_owned(&other).await.map_err(crate::error::AppError::Internal)?;
+        if owned.contains_key(EVERYTHING) {
+            out.extend(UNLOCKS.iter().map(|u| u.id.to_string()));
+        }
+        out.extend(owned.into_keys());
+    }
+    Ok(out)
+}
+
+/// What each discounted purchase cost: id -> pennies.
+async fn unlocks_paid(data: &Store) -> Result<HashMap<String, i64>> {
+    let (recorded, _) = data.private_registers(UNLOCKS_PAID_KV).all().await?;
+    Ok(recorded
+        .into_iter()
+        .filter_map(|r| r.value.trim().parse::<i64>().ok().map(|p| (r.key, p)))
+        .collect())
+}
+
 /// One unlock: its id (stable - the client's gates name it), its name, its price, and the unlocks
 /// it needs first.
 pub struct Unlock {
@@ -1270,12 +1316,14 @@ async fn instruments(data: &Store) -> Result<()> {
     let mut lines: Vec<Line> = Vec::new();
     // Unlocks: each purchase's price out, once, at the moment it was bought.
     let owned = unlocks_owned(data).await?;
+    let paid = unlocks_paid(data).await?;
     for u in &UNLOCKS {
         if let Some(at) = owned.get(u.id).filter(|_| is_new("unlock", u.id)) {
             lines.push(Line {
                 kind: "unlock",
                 source: u.id.to_string(),
-                pennies: BigInt::from(-u.pennies),
+                // What was paid, when the purchase recorded it (a discount); the list price else.
+                pennies: BigInt::from(-paid.get(u.id).copied().unwrap_or(u.pennies)),
                 at_ms: *at,
                 detail: json!({ "title": u.name }),
             });
@@ -1550,17 +1598,26 @@ pub async fn unlock_handler(
             "that one needs another unlock first"
         )));
     }
+    // Owned by another persona of this account here: 5% of the price (`ELSEWHERE_PERCENT`).
+    let price = if owned_elsewhere(&state, &session.account.id, &root).await?.contains(u.id) {
+        elsewhere_price(u.pennies)
+    } else {
+        u.pennies
+    };
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
-    if balance(&data).await.map_err(AppError::Internal)? < BigInt::from(u.pennies) {
+    if balance(&data).await.map_err(AppError::Internal)? < BigInt::from(price) {
         return Err(AppError::BadRequest(crate::msg!(
             "bank.you-cant-afford-that-2",
             "you can't afford that"
         )));
     }
     let at = crate::clock::now_ms();
+    if price != u.pennies {
+        data.private_registers(UNLOCKS_PAID_KV).set(u.id, &price.to_string()).await?;
+    }
     data.private_registers(UNLOCKS_KV).set(u.id, &at.to_string()).await?;
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
-    Ok(axum::Json(json!({ "id": u.id, "bought_ms": at })))
+    Ok(axum::Json(json!({ "id": u.id, "bought_ms": at, "pennies": price.to_string() })))
 }
 
 /// The buy door's "Unlock everything": a node administrator's, once, for nothing - no balance to
@@ -1805,7 +1862,18 @@ pub async fn bank_handler(
     if owned.contains_key(EVERYTHING) || node_admin(&state, &session.account.id).await? {
         unlocks.push(json!({ "id": EVERYTHING, "name": "Unlock everything", "pennies": "0", "requires": [], "bought_ms": owned.get(EVERYTHING) }));
     }
-    unlocks.extend(UNLOCKS.iter().map(|u| json!({ "id": u.id, "name": u.name, "pennies": u.pennies.to_string(), "requires": u.requires, "bought_ms": owned.get(u.id) })));
+    // One another persona of this account owns sells for 5% (`owned_elsewhere`), and says so.
+    let elsewhere = owned_elsewhere(&state, &session.account.id, &root).await?;
+    unlocks.extend(UNLOCKS.iter().map(|u| {
+        let discounted = !owned.contains_key(u.id) && elsewhere.contains(u.id);
+        let price = if discounted { elsewhere_price(u.pennies) } else { u.pennies };
+        let mut row = json!({ "id": u.id, "name": u.name, "pennies": price.to_string(), "requires": u.requires, "bought_ms": owned.get(u.id) });
+        if discounted {
+            row["full_pennies"] = json!(u.pennies.to_string());
+            row["elsewhere"] = json!(true);
+        }
+        row
+    }));
     Ok(axum::Json(json!({
         "balance": total.to_string(),
         "by_kind": by_kind,

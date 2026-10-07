@@ -88,6 +88,13 @@ and the one worn - a colourway chosen before it was for sale stays on.
    (H$ 0) in their Market." A purchase, not a gift: it sits first in an
    administrator's Market, costs nothing, and is offered to nobody else. An
    administrator who would rather play the tutorial just leaves it there.
+8. **Owned elsewhere, 95% off** (2026-10-07): "If a user has another persona on
+   the same account that has already unlocked a hrseBank feature, can we offer
+   that same feature at a 95% discount ... with a '95% discount' (roll-over:
+   'you already own this somewhere else') badge". Per node: the account's other
+   personas here, read from their own private registers; one that bought "Unlock
+   everything" owns every unlock. The price paid is recorded (`unlock_paid`),
+   since a purchase on its own only says when.
 
 ## What an unlock is
 

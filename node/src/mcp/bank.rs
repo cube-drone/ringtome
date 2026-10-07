@@ -209,7 +209,13 @@ impl Tools {
             if owned.require(id).is_ok() {
                 continue; // the test rig's every-unlock answer
             }
-            let row = json!({ "id": id, "name": u.get("name"), "price": money(u.get("pennies")), "needs_first": u.get("requires") });
+            let mut row = json!({ "id": id, "name": u.get("name"), "price": money(u.get("pennies")), "needs_first": u.get("requires") });
+            // Another persona of this account owns it here: 5% of the price (bank.rs
+            // `owned_elsewhere`), and why.
+            if u.get("elsewhere").and_then(Value::as_bool) == Some(true) {
+                row["full_price"] = money(u.get("full_pennies"));
+                row["discount"] = json!("95% off: another persona of this account already owns it");
+            }
             if id.starts_with("colorway-") {
                 colourways.push(row);
             } else {

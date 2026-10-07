@@ -452,6 +452,17 @@
     text-align: center;
 }
 
+/* "95% discount": an unlock another persona of this account already owns (bank.rs `owned_elsewhere`). */
+.bank-unlock-discount {
+    display: inline-block;
+    margin-left: 0.3em;
+    padding: 0 0.35em;
+    font-size: 0.75em;
+    color: var(--surface);
+    background: var(--ink);
+    cursor: help;
+}
+
 /* An app's address while the app isn't owned (unlocks.js LockedApp): the Market's card, centred. */
 .unlock-locked {
     display: flex;

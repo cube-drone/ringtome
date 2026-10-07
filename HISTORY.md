@@ -17874,3 +17874,23 @@ build 1-7 and 9." Slice 7, built:
 The guide says all of it. Claims (`mcp.cjs`, "MCP: the gaps an agent found",
 nine): every tool, its refusals, and the picture's PNG signature. All 41 MCP
 claims green. Not taken: starting rooms and chats for two, and books.
+
+**2026-10-07 - Owned elsewhere, 95% off.** Curtis: an unlock another persona of
+the same account already owns, offered "at a 95% discount ... with a '95%
+discount' (roll-over: 'you already own this somewhere else') badge" (UNLOCKS.md,
+ruling 8). `bank.rs` `owned_elsewhere` reads the account's other personas on
+this node through their own stores (one that bought "Unlock everything" owns
+every unlock); the bank's answer prices such an unlock at 5% (`elsewhere_price`)
+with `full_pennies` and `elsewhere`, and the buy door charges the same. The
+catch: a purchase on the private chain only ever said WHEN, and every computer's
+ledger charged an owned unlock its list price - so a discount would have been
+taken back by the next catch-up. The price paid now rides in a register of its
+own, `unlock_paid`, written before the purchase, and the `unlock` line charges
+it when it's there. A computer still running an older version charges the list
+price until it updates. The Market card wears the badge with the hover text
+(`.bank-unlock-discount`, ink with surface type); MCP's `market` says "95% off:
+another persona of this account already owns it" beside the full price. Claim
+(`bank.cjs`, unlocks): A buys Friends; B is offered it at H$ 50 of H$ 1,000 and
+why, never A; B pays H$ 50 and the line says -5000; another account's persona is
+offered the list price. Seen in jsdom on a scratch node keeping the locks: "H$
+50.00 95% discount", and the title.

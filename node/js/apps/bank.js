@@ -310,7 +310,13 @@ const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
                 unlocks: needs.map((id) => unlockName(id, id)).join(', '),
             })}</p>`
         }
-        <span class="bank-unlock-price">${formatHorseBucks(unlock.pennies)}</span>
+        <span class="bank-unlock-price">${formatHorseBucks(unlock.pennies)}${
+            /* Another persona of this account owns it here (bank.rs `owned_elsewhere`, 2026-10-07):
+            5% of the price, and the badge says why on hover. */ ''
+        }${
+            unlock.elsewhere &&
+            html` <span class="bank-unlock-discount" title=${t('apps.bank.owned-elsewhere', 'you already own this somewhere else')}>${t('apps.bank.discount-95', '95% discount')}</span>`
+        }</span>
         <button class="bank-buy" type="button" disabled=${busy || !affordable || needs.length > 0} onClick=${buy}>${busy ? '…' : t('apps.bank.unlock', 'unlock')}</button>
         ${error && html`<p class="form-error">${error}</p>`}
     </section>`;

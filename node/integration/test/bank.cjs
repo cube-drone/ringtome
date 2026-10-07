@@ -865,6 +865,61 @@ describe('HorseBucks: unlocks', function () {
         assert.deepEqual(corner.unlocked, ['friends'], 'the corner poll carries the gates');
     });
 
+    // An unlock another persona of the same account owns here sells for 5% (Curtis, 2026-10-07: "a
+    // 95% discount ... you already own this somewhere else") - and the ledger charges what was
+    // paid, on every computer, because the purchase records it. Another ACCOUNT's purchase counts
+    // for nothing.
+    it('an unlock another persona of the account owns sells for 5%, and is charged so', async () => {
+        const who = await makeUserFetch({ prefix: 'unlockelse' });
+        const persona = async () =>
+            (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const [a, b] = [await persona(), await persona()];
+        const bank = async (root) => (await who(`api/identity/${root}/bank`)).json();
+        const friendsOf = async (root) =>
+            (await bank(root)).unlocks.find((u) => u.id === 'friends');
+
+        assert.deepEqual(
+            [(await friendsOf(b)).pennies, (await friendsOf(b)).elsewhere],
+            ['100000', undefined],
+            'nothing owned anywhere: the list price',
+        );
+        await j(rig, 'test/credit', { root: a, pennies: 100000 });
+        assert.equal(
+            (await j(who, `api/identity/${a}/bank/unlocks`, { id: 'friends' })).status,
+            200,
+        );
+
+        const offered = await friendsOf(b);
+        assert.deepEqual(
+            [offered.pennies, offered.full_pennies, offered.elsewhere],
+            ['5000', '100000', true],
+            'H$ 50 of H$ 1,000, and why',
+        );
+        const ownRow = await friendsOf(a);
+        assert.equal(ownRow.elsewhere, undefined, 'never on the persona that owns it');
+
+        const start = BigInt((await bank(b)).balance);
+        await j(rig, 'test/credit', { root: b, pennies: 5000 });
+        const bought = await j(who, `api/identity/${b}/bank/unlocks`, { id: 'friends' });
+        assert.equal(bought.status, 200, await bought.text());
+        const after = await bank(b);
+        assert.equal(after.balance, String(start), 'H$ 50 in, H$ 50 spent');
+        const line = after.lines.find((l) => l.kind === 'unlock');
+        assert.deepEqual([line.source, line.pennies], ['friends', '-5000']);
+
+        const stranger = await makeUserFetch({ prefix: 'unlockelsex' });
+        const theirs = (await (await stranger('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        const theirFriends = (
+            await (await stranger(`api/identity/${theirs}/bank`)).json()
+        ).unlocks.find((u) => u.id === 'friends');
+        assert.deepEqual(
+            [theirFriends.pennies, theirFriends.elsewhere],
+            ['100000', undefined],
+            "another account's purchase counts for nothing",
+        );
+    });
+
     // "Unlock everything" (Curtis, 2026-10-07): a node administrator's way out of the tutorial, at
     // H$ 0, offered to nobody else. The rig answers `everything` either way, so the claim is the
     // sale: who is offered it, what it costs, and that it is recorded like any unlock.
