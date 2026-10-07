@@ -30,6 +30,7 @@ import { useUnlocked } from '../unlocks.js';
 import { tagCounts as roomTagCounts } from '../pure/doclist.js';
 import { Modal } from '../modal.js';
 import { usePref, OPEN_ROOM_KEY } from '../mirror/prefs.js';
+import { keptFloor, keepFloor } from '../mirror/keep.js';
 
 /// Whether a trust dial says anything: absent or "none" is a stranger, whatever else a
 /// person this reader has placed (Curtis, 2026-09-19: untrusted speakers read small and
@@ -97,7 +98,9 @@ const HISTORY_POLL_MS = 15000;
 
 /// The last floor each room showed, this page-load (Curtis, 2026-09-29: coming back to a room
 /// from the feed began empty and waited on a round trip for the history this computer already
-/// had). A room comes back as it was left, and the fresh read replaces it a moment later.
+/// had). A room comes back as it was left, and the fresh read replaces it a moment later. Since
+/// 2026-10-07 each newest page is also kept in the mirror (mirror/keep.js), so a reload or a new
+/// tab opens a room the same way.
 const floorsSeen = new Map();
 
 /// How close to the end counts as "at the end" - the pin that keeps a reader at the bottom
@@ -1028,7 +1031,18 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         if (!root) return undefined;
         let live = true;
         setRoom(undefined);
-        setHistory(floorsSeen.get(`${root}/${author}/${doc}`) || null);
+        const floorKey = `${root}/${author}/${doc}`;
+        setHistory(floorsSeen.get(floorKey) || null);
+        // Not seen on this page yet: the newest page this browser kept last visit (mirror/keep.js,
+        // 2026-10-07), at once - unless the node's read lands first, or the address asks for a
+        // line's own page, which the kept newest page is not.
+        if (!floorsSeen.has(floorKey) && !at) {
+            keptFloor(root, floorKey).then((kept) => {
+                if (live && kept && !floorsSeen.has(floorKey) && floorOf.current === floorKey) {
+                    setHistory(kept);
+                }
+            });
+        }
         // Another room's stand-ins are not this one's (a send in flight still lands where it was typed).
         setPendingLines([]);
         atEnd.current = true;
@@ -1042,6 +1056,9 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         return () => {
             live = false;
         };
+        // `at` is read only to keep the kept newest page off a line's own address; moving to another
+        // line of the same room is readHistory's business, not a reason to ask for the room again.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, author, doc]);
     const words = useRoomWords({ author, doc_id: doc, title: (room && room.title) || '' });
 
@@ -1057,7 +1074,10 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 if (asked < readShown.current) return; // a newer read is already on the floor
                 if (floorKey !== floorOf.current) return; // the page has moved to another room
                 readShown.current = asked;
-                if (!at) floorsSeen.set(floorKey, h);
+                if (!at) {
+                    floorsSeen.set(floorKey, h);
+                    keepFloor(root, floorKey, h);
+                }
                 setHistory(h);
             })
             .catch(() => {});

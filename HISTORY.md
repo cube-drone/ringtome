@@ -17731,3 +17731,31 @@ nor sold it; an administrator sees it first at H$ 0, buys it once, pays nothing
 and no line, and the corner poll carries it. Seen in jsdom on a scratch node
 keeping the locks: the card first, buyable; bought, the Market sells nothing,
 Unlocked names it, and the dock holds every app.
+
+**2026-10-07 - Kept answers: strangers, feed pages, room floors.** Curtis asked
+where the browser should keep things for long periods and doesn't; of the
+candidates, "Let's do those strong candidates now. I'm unconcerned about a
+proliferation of unencrypted private data, here." The persona's own world was
+already kept (the mirror, and doccache.js's fingerprinted bodies and trees);
+what wasn't was everything the stream doesn't carry. Three local-only tables in
+the mirror, owned by `mirror/keep.js`, each bounded by least-recent use:
+
+- **`strangers`** (2,000): a profile of someone with no ledger row - a sharer, a
+  replier, a voice in a room - kept by `person.js`'s `strangerProfile` as the
+  node answers, shown at once by `usePerson`, and asked again only past an hour
+  (`pure/keep.js` `profileFresh`, two claims in `pure/keep.cjs`); a failed ask
+  leaves the kept profile standing.
+- **`feedpages`** (40): each feed road's first page, keyed by the exact address
+  asked, so an order, a window or a "me" choice is its own entry. Shown at once,
+  replaced whole by the node's answer; first-page asks are numbered so a slow
+  disk read never lands over a newer answer.
+- **`floors`** (200): each room's newest page of chat, the in-page `floorsSeen`
+  made durable. Always asked again - an "only what's newer" question would miss
+  edits and deletes of older lines - and never painted onto a line's own address
+  (`?at=`).
+
+Seen in jsdom on a scratch node: a reader's first visit to a stranger's room
+asked for the stranger's profile once and kept it and the room's page; the
+second visit asked for it zero times. A feed visit kept its first page, the post
+in it. Not seen: the paint-before-answer itself, which jsdom against a local
+node can't separate from the answer.

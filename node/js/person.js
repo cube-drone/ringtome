@@ -26,6 +26,8 @@ import { useLocation } from 'preact-iso';
 import { api } from './net.js';
 import { openIm } from './ims.js';
 import { openMirror, useLive } from './mirror.js';
+import { keptStranger, keepStranger } from './mirror/keep.js';
+import { profileFresh } from './pure/keep.js';
 import { speakable, toBase58 } from './speakable.js';
 import { identityAddress, viaHints } from './pure/portable.js';
 import { personaHue, displayNames, signalLevel } from './pure/person.js';
@@ -59,15 +61,20 @@ const html = htm.bind(h);
  * @param profile  their already-fetched profile response, when the caller has one
  */
 /// One stranger's profile asked once per page per minute, however many rows name them (2026-10-03:
-/// a feed of nameless rows would otherwise ask for the same author's face once per row).
+/// a feed of nameless rows would otherwise ask for the same author's face once per row) - and,
+/// answered, kept in the reader's mirror for the next visit (mirror/keep.js, 2026-10-07), by
+/// whichever ask went to the node, so a page of rows naming one author keeps it once.
 const strangerProfiles = new Map(); // root -> { at, asked }
 const STRANGER_PROFILE_MS = 60_000;
-function strangerProfile(root) {
+function strangerProfile(root, myRoot) {
     const kept = strangerProfiles.get(root);
     if (kept && Date.now() - kept.at < STRANGER_PROFILE_MS) return kept.asked;
     const asked = api(`/api/id/${root}/profile`);
     strangerProfiles.set(root, { at: Date.now(), asked });
-    asked.catch(() => strangerProfiles.delete(root)); // a failure is asked again, not remembered
+    asked.then(
+        (profile) => myRoot && keepStranger(myRoot, root, profile),
+        () => strangerProfiles.delete(root), // a failure is asked again, not remembered
+    );
     return asked;
 }
 
@@ -102,19 +109,29 @@ export function usePerson(root, { current, profile: given } = {}) {
         [isYou, myRoot],
     );
 
-    // The last resort: a stranger, no ledger row, no profile handed down. One fetch.
+    // The last resort: a stranger, no ledger row, no profile handed down. What this browser kept
+    // last time is shown at once (mirror/keep.js); the node is asked only when that is over an
+    // hour old, or there is none - and a failed ask leaves the kept one standing.
     const [fetched, setFetched] = useState(null);
     const needsFetch = !!root && !isYou && !given && !contactRow;
     useEffect(() => {
         if (!needsFetch) return;
         let live = true;
-        strangerProfile(root)
-            .then((p) => live && setFetched(p))
-            .catch(() => live && setFetched(null));
+        (async () => {
+            const kept = myRoot ? await keptStranger(myRoot, root) : null;
+            if (kept && live) setFetched(kept.profile);
+            if (profileFresh(kept, Date.now())) return;
+            try {
+                const p = await strangerProfile(root, myRoot);
+                if (live) setFetched(p);
+            } catch {
+                if (live && !kept) setFetched(null);
+            }
+        })();
         return () => {
             live = false;
         };
-    }, [needsFetch, root]);
+    }, [needsFetch, root, myRoot]);
 
     const fromProfile = (fields, key) => {
         const f = (fields || []).find((x) => x.field === key);

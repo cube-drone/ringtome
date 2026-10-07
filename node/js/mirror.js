@@ -9,10 +9,12 @@
 // wins: an overlay the stream never confirms is withdrawn.
 //
 // This file owns the handle and the stream; `mirror/` holds the tables the stream does NOT feed.
-// Four are exceptions that way, all local-only: `prefs` (UI preferences - mirror/prefs.js owns
+// Seven are exceptions that way, all local-only: `prefs` (UI preferences - mirror/prefs.js owns
 // its key vocabulary and is the only module that touches the table), the two fingerprinted
-// fetch caches, `docdetails` and `trees` (mirror/doccache.js), and `drawthumbs`, the painted
-// drawing thumbnails (mirror/thumbcache.js). A refresh never clears these.
+// fetch caches, `docdetails` and `trees` (mirror/doccache.js), `drawthumbs`, the painted
+// drawing thumbnails (mirror/thumbcache.js), and the three kept answers of mirror/keep.js -
+// `strangers` (profiles of people with no ledger row), `feedpages` (each feed road's first
+// page) and `floors` (each room's newest page of chat). A refresh never clears these.
 // Still disposable - they share the mirror's lifetime, so "forget this browser" forgets them too,
 // which is the right privacy posture for tables that record which documents you touch.
 import Dexie, { liveQuery } from 'dexie';
@@ -49,6 +51,12 @@ export function openMirror(root) {
             // Drawing thumbnails (mirror/thumbcache.js): painted once per drawing version and
             // kept, so a reload repaints nothing unchanged. Local-only, bounded.
             drawthumbs: 'key, doc_id, used',
+            // Kept answers (mirror/keep.js, 2026-10-07): shown at once on the next visit, then
+            // replaced by the node's - a stranger's profile, a feed road's first page, a room's
+            // newest page. Local-only, bounded.
+            strangers: 'root, at',
+            feedpages: 'key, used',
+            floors: 'key, used',
         });
         mirrors.set(root, db);
     }

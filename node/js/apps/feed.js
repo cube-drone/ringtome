@@ -33,6 +33,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { openMirror, useLive } from '../mirror.js';
+import { keptFeedPage, keepFeedPage } from '../mirror/keep.js';
 import { Icons } from '../icons.js';
 import { useUnlocked } from '../unlocks.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
@@ -326,28 +327,56 @@ export const FeedStream = ({
     const bestStop =
         ranked && stopKey && stopKey !== 'explorer' ? `&stop=${encodeURIComponent(stopKey)}` : '';
 
+    // Each first page asked is numbered, so a kept page read off the disk (mirror/keep.js) lands
+    // only if the node's answer to the same ask hasn't already.
+    const firstAsked = useRef(0);
     const loadPage = async (cursor) => {
         setLoading(true);
         setPageError(false);
+        // The address this page is asked at - for a first page, also the key it is kept under.
+        const qs = ranked
+            ? // The node ranks the feed (hot) or the window (best) at the dial's stop, and pages it.
+              withOwn(
+                  `?${sortParams(sort)}${bestStop}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`,
+              )
+            : withOwn(
+                  cursor ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}` : '',
+              );
+        const address = `${feedDoor}${qs}`;
+        const show = (page, have) => {
+            setItems(
+                ranked ? mergeRanked(have, page.items || []) : mergeFeed(have, page.items || []),
+            );
+            if (ranked) setAfter(page.after || null);
+            setMore(!!page.more);
+        };
+        // A first page: what this browser kept of it last time, at once (2026-10-07), while the
+        // node is asked - whose answer then replaces it whole.
+        const asked = cursor ? 0 : ++firstAsked.current;
+        let answered = false;
+        if (!cursor && root) {
+            keptFeedPage(root, address).then((kept) => {
+                if (kept && !answered && asked === firstAsked.current) {
+                    show(kept, []);
+                    setLoading(false);
+                }
+            });
+        }
         try {
-            if (ranked) {
-                // The node ranks the feed (hot) or the window (best) at the dial's stop, and pages it.
-                const qs = withOwn(
-                    `?${sortParams(sort)}${bestStop}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`,
+            const page = await api(address);
+            answered = true;
+            if (cursor) {
+                setItems((have) =>
+                    ranked ? mergeRanked(have, page.items) : mergeFeed(have, page.items),
                 );
-                const page = await api(`${feedDoor}${qs}`);
-                setItems((have) => mergeRanked(cursor ? have : [], page.items));
-                setAfter(page.after || null);
+                if (ranked) setAfter(page.after || null);
                 setMore(!!page.more);
-            } else {
-                const qs = withOwn(
-                    cursor ? `?before_ms=${cursor.before_ms}&before_doc=${cursor.before_doc}` : '',
-                );
-                const page = await api(`${feedDoor}${qs}`);
-                setItems((have) => mergeFeed(cursor ? have : [], page.items));
-                setMore(!!page.more);
+            } else if (asked === firstAsked.current) {
+                show(page, []);
+                if (root) keepFeedPage(root, address, page);
             }
         } catch {
+            answered = true;
             // A failed page leaves what's shown - but says so. The silent version of this
             // catch hid a server 500 behind a button that "did nothing" (2026-08-06).
             setPageError(true);
