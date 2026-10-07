@@ -17670,3 +17670,43 @@ Corrected on the way: the audit tied scratch's 1.2 s idle "room-sync" passes to
 the pulse's scans, but room-sync is `chat::sync_pass`, a separate loop that
 pulls open rooms over the network; that residual stays in NEXT_STEPS, unplaced.
 `cargo test -p ringtome-node` green (490).
+
+**2026-10-07 - The query-plan stack, the rest.** Curtis: "Yeah, let's" - on down
+the list after the top six.
+
+- **The raw log's cursor** (`imaol.rs`): `entry_bytes_page` (journal backfill)
+  and `list_entries` (`/entries`) page by `rows_after_cursor`, four seeks in key
+  order - later in the chain, later instances, later services, later authors -
+  each a pinned prefix and one range, `INDEXED BY` the primary key; the
+  row-value `(author_pubkey, service, instance, seq) > (…)` they replace never
+  seeks on Turso, 0.7 or 0.8.2. One chain walked in pages of 256, debug: 4,096
+  entries 9.6 → 3.6 ms, 16,384 81 → 16, 32,768 275 → 38, and at 65,536 the
+  row-value walk was stopped after nine minutes - once the table outgrew the
+  page cache every page re-read and re-decrypted everything before its cursor
+  (`raw_log_paging_at_scale`, `RAW_LOG_DOUBLINGS` sizes it). A boundary test
+  pages 18 rows in pages of 1, 2, 4, 5 and 17 across chains, rooms, services and
+  authors against one ordered read; its first draft looped forever on one-byte
+  instances, which `db::instance_of` rightly reads as none - real room ids are
+  sixteen bytes.
+- **Sync's chain reads**: `imaol::chain_keys` finds the chains a seek apiece
+  (`FIRST_CHAIN`, `NEXT_CHAIN`); `sync::chain_ranges` - every database's first
+  open - takes each chain's floor and head by a seek from each end, and
+  `missing_plan`'s memo-less fallback lists chains the same way, where both read
+  every entry held.
+- **The eviction delete** (`sync.rs`, `EVICT_PAST_SEQ`): `INDEXED BY` the
+  primary key, which it pins whole; Turso had chosen `(service=?)`.
+- **Node rung 74**: `notifications_by_author` (the refresh's standing rows),
+  `room_messages_by_doc` (`room_author_of`, which the sync serve gate asks per
+  room instance), and `node_shelf_rooms`, partial, for the shelf's room-author
+  lookup. Climb test with rows; plans asserted.
+- **The corner balance** (`bank.rs`, `corner_balance`): the last sum while the
+  persona's files sit still, `CORNER_SEEN`'s discipline - the mtime taken before
+  summing, so a write mid-sum reads as a change. Buying, selling and unlocking
+  still read `balance` exactly.
+
+Left, with reasons, in NEXT_STEPS: the market's once-a-day emoji window, the
+public lane's per-persona listing sort, the admin People list's storage sum, and
+`entries_page`, which nothing routes yet and which owes an index when something
+does. Also there still: the standing plan test. On the way, one `pkill -f` on a
+hung test binary of my own, against the house rule - scoped to that binary's
+name, but PIDs only from there.

@@ -186,15 +186,18 @@ pub async fn listed(node_db: &Db, root: &str) -> Result<bool> {
     Ok(row.map(|(l,)| l != 0).unwrap_or(true))
 }
 
+/// A hosted room's author by its doc: a seek on `node_shelf_rooms` (node rung 74), a partial
+/// index of the shelf's own rooms whose predicate this read names. Named so the plan test pins
+/// it.
+const SHELF_ROOM_AUTHOR: &str = "SELECT author_root FROM node_shelf
+     WHERE doc_id = ?1 AND format = 'room' AND via_root = '' LIMIT 1";
+
 /// The author of a room a hosted persona posted (CHAT.md, slice 2): the memo already
 /// holds every hosted persona's shelf, listed or not, so a room instance resolves to its
 /// author without opening a database.
 pub async fn room_author(node_db: &Db, doc_hex: &str) -> Result<Option<String>> {
     let row: Option<(String,)> = node_db
-        .fetch_optional(
-            "SELECT author_root FROM node_shelf WHERE doc_id = ?1 AND format = 'room' AND via_root = '' LIMIT 1",
-            (doc_hex,),
-        )
+        .fetch_optional(SHELF_ROOM_AUTHOR, (doc_hex,))
         .await
         .context("finding a room's author on the node shelf")?;
     Ok(row.map(|(a,)| a))
@@ -393,4 +396,44 @@ pub async fn listed_roots(node_db: &Db) -> Result<Vec<String>> {
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Node rung 74 on rows already here: node_shelf_rooms serves this module's lookup.
+    #[tokio::test]
+    async fn node_rung_74_node_shelf_rooms_seeks_and_finds_its_rows() {
+        let db = crate::db::test_memory_db().await;
+        let at = crate::migrations::NODE
+            .iter()
+            .position(|r| r.version == 74)
+            .expect("rung 74 is on the ladder");
+        crate::migrations::climb(&db, &crate::migrations::NODE[..at], "node").await.unwrap();
+        db.execute(
+            "INSERT INTO node_shelf (author_root, doc_id, via_root, title, format, published_ms,
+                                     updated_ms)
+             VALUES ('sa', 'sd', '', 't', 'room', 1, 1), ('sa', 'pd', '', 't', 'marquee', 1, 1)",
+            (),
+        )
+        .await
+        .unwrap();
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        let n = if SHELF_ROOM_AUTHOR.contains("?2") { 2 } else { 1 };
+        let rows: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(
+                &format!("EXPLAIN QUERY PLAN {}", SHELF_ROOM_AUTHOR),
+                vec![turso::Value::Text("x".into()); n],
+            )
+            .await
+            .unwrap();
+        let plan = rows.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(
+            plan.contains("node_shelf_rooms (doc_id=?)"),
+            "seeks node_shelf_rooms (doc_id=?), got: {plan}"
+        );
+        assert_eq!(room_author(&db, "sd").await.unwrap(), Some("sa".to_string()));
+        assert_eq!(room_author(&db, "pd").await.unwrap(), None, "a post, not a room");
+    }
 }

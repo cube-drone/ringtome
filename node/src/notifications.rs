@@ -91,6 +91,12 @@ pub struct NotificationRow {
     pub updated_ms: i64,
 }
 
+/// One author's standing rows of one kind, every reader's: a seek on `notifications_by_author`
+/// (node rung 74), where the primary key leads with the reader and the read was a scan. Named
+/// so the plan test pins it.
+pub(crate) const STANDING_ROWS: &str =
+    "SELECT reader_root, doc_id FROM notifications WHERE author_root = ?1 AND kind = ?2";
+
 /// Re-fold one author's published edges into notification rows for the local personas that
 /// follow them. Best-effort at every call site (a missed pass is caught by the next frontier
 /// move or sweep, the memo way) - so this logs instead of erroring.
@@ -401,11 +407,7 @@ async fn refresh_from_inner(
         }
         let standing: Vec<(String, String)> = state
             .node_db
-            .fetch_all(
-                "SELECT reader_root, doc_id FROM notifications
-                 WHERE author_root = ?1 AND kind = ?2",
-                (author_root, KIND_TAGGED),
-            )
+            .fetch_all(STANDING_ROWS, (author_root, KIND_TAGGED))
             .await
             .context("reading standing tagged rows")?;
         for (reader, doc) in standing {
@@ -431,11 +433,7 @@ async fn refresh_from_inner(
         }
         let standing: Vec<(String, String)> = state
             .node_db
-            .fetch_all(
-                "SELECT reader_root, doc_id FROM notifications
-                 WHERE author_root = ?1 AND kind = ?2",
-                (author_root, KIND_MENTIONED),
-            )
+            .fetch_all(STANDING_ROWS, (author_root, KIND_MENTIONED))
             .await
             .context("reading standing mention rows")?;
         for (reader, doc) in standing {
@@ -474,11 +472,7 @@ async fn refresh_from_inner(
     }
     let standing: Vec<(String, String)> = state
         .node_db
-        .fetch_all(
-            "SELECT reader_root, doc_id FROM notifications
-             WHERE author_root = ?1 AND kind = ?2",
-            (author_root, KIND_COMMENT),
-        )
+        .fetch_all(STANDING_ROWS, (author_root, KIND_COMMENT))
         .await
         .context("reading standing comment rows")?;
     for (reader, doc) in standing {
@@ -805,5 +799,40 @@ mod tests {
             vec![300, 100],
             "newest first, and the housemate's rows are not mine"
         );
+    }
+
+    /// Node rung 74 on rows already here: notifications_by_author serves this module's lookup.
+    #[tokio::test]
+    async fn node_rung_74_notifications_by_author_seeks_and_finds_its_rows() {
+        let db = crate::db::test_memory_db().await;
+        let at = crate::migrations::NODE
+            .iter()
+            .position(|r| r.version == 74)
+            .expect("rung 74 is on the ladder");
+        crate::migrations::climb(&db, &crate::migrations::NODE[..at], "node").await.unwrap();
+        db.execute(
+            "INSERT INTO notifications (reader_root, author_root, kind, doc_id, updated_ms)
+             VALUES ('r', 'a', 'tagged', 'd', 1), ('r', 'a', 'comment', 'e', 1)",
+            (),
+        )
+        .await
+        .unwrap();
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        let n = if STANDING_ROWS.contains("?2") { 2 } else { 1 };
+        let rows: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(
+                &format!("EXPLAIN QUERY PLAN {}", STANDING_ROWS),
+                vec![turso::Value::Text("x".into()); n],
+            )
+            .await
+            .unwrap();
+        let plan = rows.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(
+            plan.contains("notifications_by_author (author_root=? AND kind=?)"),
+            "seeks notifications_by_author (author_root=? AND kind=?), got: {plan}"
+        );
+        let standing: Vec<(String, String)> =
+            db.fetch_all(STANDING_ROWS, ("a", "tagged")).await.unwrap();
+        assert_eq!(standing, [("r".to_string(), "d".to_string())]);
     }
 }

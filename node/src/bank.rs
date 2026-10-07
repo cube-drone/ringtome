@@ -1563,6 +1563,36 @@ pub async fn balance(data: &Store) -> Result<BigInt> {
     Ok(rows.iter().map(|(p,)| amount(p)).sum())
 }
 
+/// Per persona: the corner's last balance, and the database files' mtime just BEFORE it was
+/// summed - `CORNER_SEEN`'s discipline, so a write landing mid-sum reads as a change.
+static CORNER_BALANCE: LazyLock<Mutex<HashMap<String, (i64, BigInt)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The corner's balance: the last sum while the persona's files sit still, summed afresh when
+/// they move. `balance` reads every line the ledger holds, and after years that is tens of
+/// thousands, on a poll every ten seconds - it logged slow 17 times in half an hour on scratch
+/// (2026-10-06). A line only lands by a write, and a write moves the files. Buying, selling and
+/// unlocking read `balance` itself: they must see the exact figure, and they are rare.
+async fn corner_balance(state: &AppState, data: &Store, root_hex: &str) -> Result<BigInt> {
+    let files = state.user_dbs.db_mtime_ms(root_hex);
+    if let Some(files) = files {
+        let seen = CORNER_BALANCE.lock().expect("corner balances poisoned").get(root_hex).cloned();
+        if let Some((mtime, total)) = seen {
+            if mtime == files {
+                return Ok(total);
+            }
+        }
+    }
+    let total = balance(data).await?;
+    if let Some(files) = files {
+        CORNER_BALANCE
+            .lock()
+            .expect("corner balances poisoned")
+            .insert(root_hex.to_string(), (files, total.clone()));
+    }
+    Ok(total)
+}
+
 /// A line's stored amount: a decimal string (0031_bank_lines_bigint.sql). Only ever written by
 /// `bank`, so a string that doesn't parse is a corrupt row - read as nothing, and said so.
 fn amount(text: &str) -> BigInt {
@@ -1609,7 +1639,8 @@ pub async fn bank_handler(
         catch_up_for_corner(&state, &data, &root)
             .await
             .map_err(crate::error::AppError::Internal)?;
-        let total = balance(&data).await.map_err(crate::error::AppError::Internal)?;
+        let total =
+            corner_balance(&state, &data, &root).await.map_err(crate::error::AppError::Internal)?;
         // The client's gates ride this poll (UNLOCKS.md, "The gate"): one register read.
         let owned = unlocks_owned(&data).await.map_err(crate::error::AppError::Internal)?;
         return Ok(axum::Json(json!({

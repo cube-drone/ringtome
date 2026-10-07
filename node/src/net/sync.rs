@@ -161,30 +161,23 @@ pub async fn local_frontiers(db: &Db, include_private: bool) -> Result<Vec<Front
 /// table; the memo is fed at write time and this is the recovery path that re-derives it
 /// after a crash between the dual writes.
 pub async fn chain_ranges(db: &Db) -> Result<Vec<crate::net::frontier::MemoChain>> {
-    // Two reads, never the correlated subquery: `(SELECT entry_hash ... ORDER BY seq DESC LIMIT
-    // 1)` inside the GROUP BY ran once per ENTRY rather than once per chain - quadratic in the
-    // log, 1.9 s for 7 chains on a 700-post persona and the whole of an 86-second first load
-    // after a reboot, since this runs at every database's first open (2026-10-01; the same
-    // query as the 2026-08-10 profile above). The ranges are one scan; each head's hash is a
-    // primary-key read, and a persona has a handful of chains.
-    type Range = (String, i64, Vec<u8>, i64, i64);
-    let ranges: Vec<Range> = db
-        .fetch_all(
-            "SELECT author_pubkey, service, instance, MIN(seq), MAX(seq)
-             FROM entries GROUP BY author_pubkey, service, instance",
-            (),
-        )
-        .await
-        .context("reading chain ranges")?;
-    let mut out = Vec::with_capacity(ranges.len());
-    for (author_hex, svc, instance, floor, head) in ranges {
-        let (hash,): (Vec<u8>,) = db
-            .fetch_one(
-                "SELECT entry_hash FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
-                (author_hex.as_str(), svc, instance.clone(), head),
-            )
+    // A seek per chain, never a pass over the log. The correlated head-hash subquery inside a
+    // GROUP BY ran once per ENTRY rather than once per chain - quadratic, 1.9 s for 7 chains on
+    // a 700-post persona and the whole of an 86-second first load after a reboot, since this
+    // runs at every database's first open (2026-10-01); its replacement, one GROUP BY scan, was
+    // still a read of every entry held (the 2026-10-07 plan audit). Now the chains are found a
+    // seek apiece (`imaol::chain_keys`), and each one's floor and head are a seek from each end.
+    let mut out = Vec::new();
+    for (author_hex, svc, instance) in crate::record::imaol::chain_keys(db).await? {
+        let key = (author_hex.as_str(), svc, instance.clone());
+        let (floor,): (i64,) = db
+            .fetch_one(crate::record::imaol::CHAIN_FLOOR, key.clone())
             .await
-            .context("reading a chain's head hash")?;
+            .context("reading a chain's floor")?;
+        let (head, hash): (i64, Vec<u8>) = db
+            .fetch_one(crate::record::imaol::CHAIN_HEAD, key)
+            .await
+            .context("reading a chain's head")?;
         let hash: [u8; 32] =
             hash.try_into().map_err(|_| anyhow!("corrupt entry_hash in entries table"))?;
         out.push((
@@ -407,11 +400,7 @@ async fn missing_plan(
                 (author_hex, i64::from(svc), instance, Some(head))
             })
             .collect(),
-        _ => db
-            .fetch_all::<(String, i64, Vec<u8>)>(
-                "SELECT DISTINCT author_pubkey, service, instance FROM entries",
-                (),
-            )
+        _ => crate::record::imaol::chain_keys(db)
             .await
             .context("listing chains")?
             .into_iter()
@@ -1148,6 +1137,13 @@ async fn clear_adjudicated_equivocations(db: &Db, tree: &Crown) -> Result<()> {
     Ok(())
 }
 
+/// The eviction's delete: one chain's entries past a seq, but the head kept. `INDEXED BY` holds it
+/// to the primary key - every column of which it pins - because Turso, left alone, planned it on
+/// `entries_by_service_type (service=?)` and walked the whole service (0.7 and 0.8.2 alike, the
+/// 2026-10-07 plan audit). Named so the plan test pins it.
+const EVICT_PAST_SEQ: &str = "DELETE FROM entries INDEXED BY sqlite_autoindex_entries_1
+     WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq > ?4 AND entry_hash != ?5";
+
 /// Proven-forgery eviction (PROJECT_PLAN, Anchored Revocations). For every ceiling the resolved
 /// tree knows, check the *stored* chain against the anchor: a stored entry at `final_seq` whose
 /// hash is not `head_hash` proves the stored chain is a fabrication - the attacker delivered a
@@ -1245,9 +1241,14 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             let origin: Vec<u8> = tree.revocation_of(key).map(|h| h.to_vec()).unwrap_or_default();
             let rows_affected = db
                 .execute(
-                    "DELETE FROM entries
-                     WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq > ?4 AND entry_hash != ?5",
-                    (author_hex.as_str(), i64::from(*svc), instance_blob.clone(), final_seq, origin),
+                    EVICT_PAST_SEQ,
+                    (
+                        author_hex.as_str(),
+                        i64::from(*svc),
+                        instance_blob.clone(),
+                        final_seq,
+                        origin,
+                    ),
                 )
                 .await
                 .context("evicting rows beyond a revocation ceiling")?;
@@ -3956,5 +3957,25 @@ mod tests {
             (0..2u8).map(|n| stranger_chain.append(entry_type::INBOX_NOTICE, vec![n])).collect();
         let (received, rejected) = ingest_proven(&db, root, &orphan[1..]).await;
         assert_eq!((received, rejected), (0, 1), "unknown keys stay unknown");
+    }
+
+    /// The eviction's delete seeks the primary key to its `seq>?` bound, never the service.
+    #[tokio::test]
+    async fn the_eviction_delete_seeks_its_chain() {
+        let db = test_db().await;
+        let rows: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(
+                &format!("EXPLAIN QUERY PLAN {EVICT_PAST_SEQ}"),
+                ("a", 1i64, Vec::<u8>::new(), 0i64, vec![0u8]),
+            )
+            .await
+            .unwrap();
+        let plan = rows.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(
+            plan.contains(
+                "sqlite_autoindex_entries_1 (author_pubkey=? AND service=? AND instance=? AND seq>?)"
+            ),
+            "the chain's own key, from its bound, got: {plan}"
+        );
     }
 }

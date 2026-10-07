@@ -697,14 +697,15 @@ async fn room_author_of(node_db: &Db, instance: &[u8; 16]) -> Result<Option<Stri
     // this, the first word of a chat somebody said and then closed the window on would be
     // served to nobody - not even to the room's own creator, coming to ask for it.
     let row: Option<(String,)> = node_db
-        .fetch_optional(
-            "SELECT room_author FROM room_messages WHERE room_doc = ?1 LIMIT 1",
-            (doc_hex,),
-        )
+        .fetch_optional(HELD_ROOM_AUTHOR, (doc_hex,))
         .await
         .context("reading a held room's author")?;
     Ok(row.map(|(a,)| a))
 }
+
+/// A held room's author by its doc: a seek on `room_messages_by_doc` (node rung 74). Named so
+/// the plan test pins it.
+const HELD_ROOM_AUTHOR: &str = "SELECT room_author FROM room_messages WHERE room_doc = ?1 LIMIT 1";
 
 /// Is ANY of these instances a room this node is in - a hosted persona's own, or one a
 /// hosted persona opened? The sync serve side's lane gate (CHAT.md, ruling 4).
@@ -3551,5 +3552,40 @@ mod tests {
             "the room's own index, got: {plan}"
         );
         assert!(!plan.contains("SCAN room_messages"), "never every message, got: {plan}");
+    }
+
+    /// Node rung 74 on rows already here: room_messages_by_doc serves this module's lookup.
+    #[tokio::test]
+    async fn node_rung_74_room_messages_by_doc_seeks_and_finds_its_rows() {
+        let db = crate::db::test_memory_db().await;
+        let at = crate::migrations::NODE
+            .iter()
+            .position(|r| r.version == 74)
+            .expect("rung 74 is on the ladder");
+        crate::migrations::climb(&db, &crate::migrations::NODE[..at], "node").await.unwrap();
+        db.execute(
+            "INSERT INTO room_messages (room_author, room_doc, speaker_root, speaker_leaf, seq,
+                                        said_ms, entry_hash, body, noted_ms)
+             VALUES ('ra', '07070707070707070707070707070707', 's', 's', 0, 1, X'01', X'', 1)",
+            (),
+        )
+        .await
+        .unwrap();
+        crate::migrations::climb(&db, crate::migrations::NODE, "node").await.unwrap();
+        let n = if HELD_ROOM_AUTHOR.contains("?2") { 2 } else { 1 };
+        let rows: Vec<(i64, i64, i64, String)> = db
+            .fetch_all(
+                &format!("EXPLAIN QUERY PLAN {}", HELD_ROOM_AUTHOR),
+                vec![turso::Value::Text("x".into()); n],
+            )
+            .await
+            .unwrap();
+        let plan = rows.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+        assert!(
+            plan.contains("room_messages_by_doc (room_doc=?)"),
+            "seeks room_messages_by_doc (room_doc=?), got: {plan}"
+        );
+        assert_eq!(room_author_of(&db, &[7u8; 16]).await.unwrap(), Some("ra".into()));
+        assert_eq!(room_author_of(&db, &[0u8; 16]).await.unwrap(), None);
     }
 }

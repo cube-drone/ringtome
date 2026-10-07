@@ -1456,6 +1456,122 @@ pub async fn entry_by_hash(db: &Db, hash: &[u8; 32]) -> Result<Option<SignedEntr
     .transpose()
 }
 
+/// The four seeks that continue a primary-key walk past `cursor`, in key order: later in the
+/// same chain, then later chains of the same author and service, of the same author, then later
+/// authors. Each pins a prefix of the key and ranges one column, which Turso seeks; the single
+/// row-value comparison they replace - `(author_pubkey, service, instance, seq) > (…)` - it does
+/// not (0.7 and 0.8.2 alike), so every page walked the table from its first row and paging a
+/// whole log was quadratic (the 2026-10-07 plan audit). `INDEXED BY` holds each to the primary
+/// key, whose order is the walk's. `{cols}` is the caller's select list.
+fn pk_continuations(cols: &str) -> [(String, usize); 4] {
+    let tier = |cond: &str, n: usize| {
+        (
+            format!(
+                "SELECT {cols} FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE {cond}
+                 ORDER BY author_pubkey, service, instance, seq LIMIT ?{}",
+                n + 1
+            ),
+            n,
+        )
+    };
+    [
+        tier("author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq > ?4", 4),
+        tier("author_pubkey = ?1 AND service = ?2 AND instance > ?3", 3),
+        tier("author_pubkey = ?1 AND service > ?2", 2),
+        tier("author_pubkey > ?1", 1),
+    ]
+}
+
+/// The first chain key, then the next chain key after `(?1, ?2, ?3)` - same author and service,
+/// same author, later author - each one seek on the primary key, `LIMIT 1`. Walking chains this
+/// way costs a seek per chain, where `SELECT DISTINCT … FROM entries` or a `GROUP BY` over it read
+/// every entry the database holds (the 2026-10-07 plan audit).
+const FIRST_CHAIN: &str = "SELECT author_pubkey, service, instance FROM entries
+     INDEXED BY sqlite_autoindex_entries_1
+     ORDER BY author_pubkey, service, instance, seq LIMIT 1";
+const NEXT_CHAIN: [(&str, usize); 3] = [
+    (
+        "SELECT author_pubkey, service, instance FROM entries INDEXED BY sqlite_autoindex_entries_1
+         WHERE author_pubkey = ?1 AND service = ?2 AND instance > ?3
+         ORDER BY author_pubkey, service, instance, seq LIMIT 1",
+        3,
+    ),
+    (
+        "SELECT author_pubkey, service, instance FROM entries INDEXED BY sqlite_autoindex_entries_1
+         WHERE author_pubkey = ?1 AND service > ?2
+         ORDER BY author_pubkey, service, instance, seq LIMIT 1",
+        2,
+    ),
+    (
+        "SELECT author_pubkey, service, instance FROM entries INDEXED BY sqlite_autoindex_entries_1
+         WHERE author_pubkey > ?1
+         ORDER BY author_pubkey, service, instance, seq LIMIT 1",
+        1,
+    ),
+];
+
+/// Every chain this database holds, `(author, service, instance blob)`, in key order: a seek per
+/// chain.
+pub(crate) async fn chain_keys(db: &Db) -> anyhow::Result<Vec<(String, i64, Vec<u8>)>> {
+    use turso::Value;
+    let mut out: Vec<(String, i64, Vec<u8>)> = Vec::new();
+    let mut next: Option<(String, i64, Vec<u8>)> =
+        db.fetch_optional(FIRST_CHAIN, ()).await.context("finding the first chain")?;
+    while let Some(chain) = next.take() {
+        let key =
+            [Value::Text(chain.0.clone()), Value::Integer(chain.1), Value::Blob(chain.2.clone())];
+        for (sql, n) in NEXT_CHAIN {
+            next = db
+                .fetch_optional(sql, key[..n].to_vec())
+                .await
+                .context("finding the next chain")?;
+            if next.is_some() {
+                break;
+            }
+        }
+        out.push(chain);
+    }
+    Ok(out)
+}
+
+/// One chain's floor seq, and its head's seq and hash: two seeks on the primary key, from each
+/// end. Named so the plan test pins them.
+pub(crate) const CHAIN_FLOOR: &str = "SELECT seq FROM entries
+     WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq LIMIT 1";
+pub(crate) const CHAIN_HEAD: &str = "SELECT seq, entry_hash FROM entries
+     WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq DESC LIMIT 1";
+
+/// Up to `limit` rows of `entries` strictly after `cursor` in primary-key order, `cols` selected:
+/// the continuations in turn, until the page is full.
+async fn rows_after_cursor<T: crate::db::FromRow>(
+    db: &Db,
+    cols: &str,
+    cursor: &EntryCursor,
+    limit: i64,
+) -> anyhow::Result<Vec<T>> {
+    use turso::Value;
+    let key = [
+        Value::Text(cursor.author.clone()),
+        Value::Integer(i64::from(cursor.service)),
+        Value::Blob(cursor.instance_blob()),
+        Value::Integer(cursor.seq as i64),
+    ];
+    let mut out: Vec<T> = Vec::new();
+    for (sql, n) in pk_continuations(cols) {
+        let left = limit - out.len() as i64;
+        if left <= 0 {
+            break;
+        }
+        let mut params: Vec<Value> = key[..n].to_vec();
+        params.push(Value::Integer(left));
+        out.extend(db.fetch_all::<T>(&sql, params).await?);
+    }
+    Ok(out)
+}
+
+/// `entry_bytes_page`'s select list.
+const BYTES_PAGE_COLS: &str = "author_pubkey, service, instance, seq, bytes";
+
 pub async fn entry_bytes_page(
     db: &Db,
     limit: u32,
@@ -1463,21 +1579,7 @@ pub async fn entry_bytes_page(
 ) -> Result<(Vec<Vec<u8>>, Option<EntryCursor>), AppError> {
     type Row = (String, i64, Vec<u8>, i64, Vec<u8>);
     let rows: Vec<Row> = match after {
-        Some(cursor) => {
-            db.fetch_all(
-                "SELECT author_pubkey, service, instance, seq, bytes FROM entries
-                 WHERE (author_pubkey, service, instance, seq) > (?1, ?2, ?3, ?4)
-                 ORDER BY author_pubkey, service, instance, seq LIMIT ?5",
-                (
-                    cursor.author.as_str(),
-                    i64::from(cursor.service),
-                    cursor.instance_blob(),
-                    cursor.seq as i64,
-                    i64::from(limit),
-                ),
-            )
-            .await
-        }
+        Some(cursor) => rows_after_cursor(db, BYTES_PAGE_COLS, cursor, i64::from(limit)).await,
         None => {
             db.fetch_all(
                 "SELECT author_pubkey, service, instance, seq, bytes FROM entries
@@ -1514,6 +1616,10 @@ pub async fn entry_bytes_page(
 /// Row shape of the raw-log query:
 /// (author_pubkey, service, instance, seq, entry_type, timestamp_ms, received_at_ms, entry_hash, bytes).
 type EntryRow = (String, i64, Vec<u8>, i64, i64, i64, i64, Vec<u8>, Vec<u8>);
+
+/// `list_entries`' select list, `EntryRow`'s shape.
+const LIST_COLS: &str = "author_pubkey, service, instance, seq, entry_type, timestamp_ms, \
+                         received_at_ms, entry_hash, bytes";
 
 /// The raw log, hex-encoded - the debug/inspect surface (pipe an entry into `ringtome inspect`).
 /// Where a page of the raw log stopped: the `entries` primary key, which is also the order
@@ -1558,23 +1664,7 @@ pub async fn list_entries(
     let want = limit.clamp(1, ENTRIES_PAGE_MAX);
     let fetch = i64::from(want) + 1; // the lookahead
     let rows: Vec<EntryRow> = match after {
-        Some(cursor) => {
-            db.fetch_all(
-                "SELECT author_pubkey, service, instance, seq, entry_type, timestamp_ms, received_at_ms,
-                        entry_hash, bytes
-                 FROM entries
-                 WHERE (author_pubkey, service, instance, seq) > (?1, ?2, ?3, ?4)
-                 ORDER BY author_pubkey, service, instance, seq LIMIT ?5",
-                (
-                    cursor.author.as_str(),
-                    i64::from(cursor.service),
-                    cursor.instance_blob(),
-                    cursor.seq as i64,
-                    fetch,
-                ),
-            )
-            .await
-        }
+        Some(cursor) => rows_after_cursor(db, LIST_COLS, cursor, fetch).await,
         None => {
             db.fetch_all(
                 "SELECT author_pubkey, service, instance, seq, entry_type, timestamp_ms, received_at_ms,
@@ -2416,5 +2506,246 @@ mod tests {
         }
         drop(db);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The raw log's continuations SEEK: each pins a prefix of the primary key and starts at
+    /// its range. The row-value cursor they replaced planned as a walk from the table's first
+    /// row on every page (2026-10-07) - and a scan over test-sized data is fast, so the shape
+    /// is asserted, not the time (`raw_log_paging_at_scale` is the timing, by name).
+    #[tokio::test]
+    async fn the_raw_log_continuations_seek() {
+        let db = test_db().await;
+        for ((sql, n), bound) in pk_continuations(BYTES_PAGE_COLS).into_iter().zip([
+            "author_pubkey=? AND service=? AND instance=? AND seq>?",
+            "author_pubkey=? AND service=? AND instance>?",
+            "author_pubkey=? AND service>?",
+            "author_pubkey>?",
+        ]) {
+            let mut params: Vec<turso::Value> = vec![
+                turso::Value::Text("a".into()),
+                turso::Value::Integer(1),
+                turso::Value::Blob(vec![]),
+                turso::Value::Integer(0),
+            ][..n]
+                .to_vec();
+            params.push(turso::Value::Integer(10));
+            let rows: Vec<(i64, i64, i64, String)> =
+                db.fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), params).await.unwrap();
+            let plan: String =
+                rows.iter().map(|(_, _, _, d)| d.as_str()).collect::<Vec<_>>().join(" | ");
+            assert!(
+                plan.contains(&format!("sqlite_autoindex_entries_1 ({bound})")),
+                "the continuation must seek from its bound ({bound}), got: {plan}"
+            );
+            assert!(!plan.contains("SORTER"), "the key supplies the order, got: {plan}");
+        }
+    }
+
+    /// Paging the raw log by the continuations visits every row once, in primary-key order,
+    /// across every kind of boundary a page can end on: within a chain, between instances,
+    /// between services, between authors.
+    #[tokio::test]
+    async fn the_raw_log_pages_across_every_boundary() {
+        let db = test_db().await;
+        let mut n = 0u8;
+        for author in ["aa", "bb"] {
+            // A per-instance chain's instance is a room id: sixteen bytes (`db::instance_of`).
+            for (svc, instances) in [(1i64, vec![vec![]]), (13, vec![vec![1u8; 16], vec![2u8; 16]])]
+            {
+                for instance in instances {
+                    for seq in 0..3i64 {
+                        n += 1;
+                        db.execute(
+                            "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash,
+                                                  prev_hash, entry_type, timestamp_ms, received_at_ms, bytes)
+                             VALUES (?1, ?2, ?3, ?4, ?5, X'', 0, 0, 0, X'00')",
+                            (author, svc, instance.clone(), seq, vec![n]),
+                        )
+                        .await
+                        .unwrap();
+                    }
+                }
+            }
+        }
+        let whole: Vec<(String, i64, Vec<u8>, i64)> = db
+            .fetch_all(
+                "SELECT author_pubkey, service, instance, seq FROM entries
+                 ORDER BY author_pubkey, service, instance, seq",
+                (),
+            )
+            .await
+            .unwrap();
+        assert_eq!(whole.len(), 18);
+        for page in [1u32, 2, 4, 5, 17] {
+            let mut seen = Vec::new();
+            let mut after: Option<EntryCursor> = None;
+            loop {
+                let (items, more) = list_entries(&db, page, after.as_ref()).await.unwrap();
+                seen.extend(items.iter().map(|e| {
+                    (
+                        e.author.clone(),
+                        i64::from(e.service),
+                        e.instance.as_deref().map(|h| hex::decode(h).unwrap()).unwrap_or_default(),
+                        e.seq as i64,
+                    )
+                }));
+                if !more {
+                    break;
+                }
+                let last = items.last().unwrap();
+                after = Some(EntryCursor {
+                    author: last.author.clone(),
+                    service: last.service,
+                    instance: last.instance.clone(),
+                    seq: last.seq,
+                });
+            }
+            assert_eq!(seen, whole, "pages of {page} walk the whole log once, in key order");
+        }
+    }
+
+    /// The timing behind the fix (2026-10-07): one chain walked to its end in pages of
+    /// `BACKFILL_BATCH` - the row-value cursor this replaced beside the continuations. Encrypted on
+    /// disk, like production; `RAW_LOG_DOUBLINGS` sizes it (2^n entries, default 15). Debug build,
+    /// that day: 4,096 entries 9.6 ms against 3.6; 16,384, 81 against 16; 32,768, 275 against 38;
+    /// and at 65,536 the row-value walk was stopped after nine minutes - once the table outgrew
+    /// the page cache, every page re-read and re-decrypted everything before its cursor. Ignored
+    /// in the suite - it measures, it does not judge; run it by name.
+    #[tokio::test]
+    #[ignore]
+    async fn raw_log_paging_at_scale() {
+        let dir = std::env::temp_dir().join(format!("ringtome-rawlog-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::remove_var("RINGTOME_ENVELOPE_KEY");
+        let keystore = crate::keystore::Keystore::load(&dir).unwrap();
+        let db = crate::db::open_database(&dir.join("rawlog.db"), &keystore).await.unwrap();
+        crate::migrations::climb(&db, crate::migrations::USER, "user").await.unwrap();
+        db.execute(
+            "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash, prev_hash,
+                                  entry_type, timestamp_ms, received_at_ms, bytes)
+             VALUES (?1, 1, X'', 0, randomblob(32), zeroblob(32), 1, 0, 0, randomblob(400))",
+            ("aa".repeat(32),),
+        )
+        .await
+        .unwrap();
+        let doublings: u32 =
+            std::env::var("RAW_LOG_DOUBLINGS").ok().and_then(|v| v.parse().ok()).unwrap_or(15);
+        for k in 0..doublings {
+            db.execute(
+                &format!(
+                    "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash,
+                                          prev_hash, entry_type, timestamp_ms, received_at_ms, bytes)
+                     SELECT author_pubkey, service, instance, seq + {}, randomblob(32), prev_hash,
+                            entry_type, timestamp_ms, received_at_ms, randomblob(400)
+                     FROM entries",
+                    1_i64 << k
+                ),
+                (),
+            )
+            .await
+            .unwrap();
+        }
+        db.checkpoint().await.unwrap();
+        let replaced = "SELECT author_pubkey, service, instance, seq, bytes FROM entries
+             WHERE (author_pubkey, service, instance, seq) > (?1, ?2, ?3, ?4)
+             ORDER BY author_pubkey, service, instance, seq LIMIT ?5";
+        type Row = (String, i64, Vec<u8>, i64, Vec<u8>);
+        let start = EntryCursor { author: "aa".repeat(32), service: 1, instance: None, seq: 0 };
+        let t = std::time::Instant::now();
+        let mut cursor = start.clone();
+        let mut walked = 0;
+        loop {
+            let rows: Vec<Row> = db
+                .fetch_all(
+                    replaced,
+                    (
+                        cursor.author.as_str(),
+                        i64::from(cursor.service),
+                        cursor.instance_blob(),
+                        cursor.seq as i64,
+                        i64::from(BACKFILL_BATCH),
+                    ),
+                )
+                .await
+                .unwrap();
+            walked += rows.len();
+            let Some(last) = rows.last() else { break };
+            assert!(last.3 as u64 > cursor.seq, "the row-value cursor must move forward");
+            cursor.seq = last.3 as u64;
+        }
+        let before = t.elapsed();
+        let t = std::time::Instant::now();
+        let mut after = Some(start);
+        let mut walked_now = 0;
+        while let Some(c) = after.take() {
+            let (batch, next) = entry_bytes_page(&db, BACKFILL_BATCH, Some(&c)).await.unwrap();
+            walked_now += batch.len();
+            after = next;
+        }
+        let now = t.elapsed();
+        assert_eq!(walked, walked_now, "sanity: both walks read the same rows");
+        eprintln!(
+            "walked {walked} entries in pages of {BACKFILL_BATCH}: row-value cursor {before:?} | continuations {now:?}"
+        );
+        drop(db);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Finding chains is a seek apiece, and a chain's ends are a seek from each end: none of the
+    /// reads behind `sync::chain_ranges` and the missing-entries plan walks the log any more.
+    #[tokio::test]
+    async fn the_chain_reads_seek() {
+        let db = test_db().await;
+        let key: [turso::Value; 3] =
+            [turso::Value::Text("a".into()), turso::Value::Integer(1), turso::Value::Blob(vec![])];
+        let mut checks: Vec<(String, Vec<turso::Value>, &str)> =
+            vec![(FIRST_CHAIN.into(), vec![], "")];
+        for ((sql, n), bound) in NEXT_CHAIN.into_iter().zip([
+            "author_pubkey=? AND service=? AND instance>?",
+            "author_pubkey=? AND service>?",
+            "author_pubkey>?",
+        ]) {
+            checks.push((sql.into(), key[..n].to_vec(), bound));
+        }
+        for sql in [CHAIN_FLOOR, CHAIN_HEAD] {
+            checks.push((sql.into(), key.to_vec(), "author_pubkey=? AND service=? AND instance=?"));
+        }
+        for (sql, params, bound) in checks {
+            let rows: Vec<(i64, i64, i64, String)> =
+                db.fetch_all(&format!("EXPLAIN QUERY PLAN {sql}"), params).await.unwrap();
+            let plan = rows.into_iter().map(|r| r.3).collect::<Vec<_>>().join(" | ");
+            assert!(plan.contains("sqlite_autoindex_entries_1"), "the primary key, got: {plan}");
+            assert!(plan.contains(bound), "seeking from {bound}, got: {plan}");
+            assert!(!plan.contains("SORTER"), "the key supplies the order, got: {plan}");
+        }
+    }
+
+    /// `chain_keys` finds every chain once, in key order: authors, services, a per-instance
+    /// service's rooms.
+    #[tokio::test]
+    async fn chain_keys_finds_every_chain() {
+        let db = test_db().await;
+        let mut n = 0u8;
+        let mut want = Vec::new();
+        for author in ["aa", "bb"] {
+            for (svc, instance) in
+                [(1i64, vec![]), (2, vec![]), (13, vec![1u8; 16]), (13, vec![2u8; 16])]
+            {
+                want.push((author.to_string(), svc, instance.clone()));
+                for seq in 0..3i64 {
+                    n += 1;
+                    db.execute(
+                        "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash,
+                                              prev_hash, entry_type, timestamp_ms, received_at_ms, bytes)
+                         VALUES (?1, ?2, ?3, ?4, ?5, X'', 0, 0, 0, X'00')",
+                        (author, svc, instance.clone(), seq, vec![n]),
+                    )
+                    .await
+                    .unwrap();
+                }
+            }
+        }
+        assert_eq!(chain_keys(&db).await.unwrap(), want);
+        assert!(chain_keys(&test_db().await).await.unwrap().is_empty(), "an empty log, no chains");
     }
 }

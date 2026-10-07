@@ -220,27 +220,20 @@ test, the change, then a plan assertion so it cannot come back. Worst first:
   first blamed: it reads the small `rooms_open` table, then pulls each open room
   over the network, so the time is probably the network's. The full log line's
   `db_exec_ms` says which.
-- **Row-value cursors never seek** - `(a, b, c, d) > (?, ?, ?, ?)` walks from
-  the start on Turso, so paging a whole log is quadratic: `imaol.rs:1482`
-  (journal backfill), `:1577` (the `/entries` route), `:1350` (POSTS log pages).
-  Still so on 0.8.2.
-- **Sync's whole-log reads** - `sync.rs:173` (`chain_ranges`, the fallback when
-  the frontier memo is absent) and `sync.rs:412` (`missing_plan`) walk every
-  entry the persona holds; how often `missing_plan` runs is untraced.
-- **The eviction delete picks the wrong index** - `sync.rs:1248` pins all four
-  primary-key columns and Turso still plans `(service=?)`, walking the service.
-  Rare path. Still so on 0.8.2.
-- **Smaller ones** - the market's emoji window walks every tag annotation
-  (`annotations.rs:565`, under `/bank/commodities`); a room's author is found by
-  scan (`chat.rs:701`, `nodeshelf.rs:195`); the notifications refresh scans by
-  author (`notifications.rs:405`, `:435`, `:478`); public post listings scan and
-  sort the persona's heads (`documents.rs:1294` and siblings, one row per post);
-  `storage::all` (`storage.rs:254`, 761 ms once on scratch) for the admin People
-  list.
-- **The balance poll sums every bank line** - `bank::balance` reads all of
-  `bank_lines` and adds them in Rust on each ten-second poll, catch-up skipped
-  or not; it logged slow 17 times in half an hour on scratch (2026-10-06). A
-  kept running total would make it one row.
+- **Left as they are, with the reason** - the market's emoji window walks every
+  tag annotation (`annotations.rs`, `emoji_noted_between`), once a day over a
+  month at most, as its own comment accepts; public post listings scan and sort
+  the persona's heads (`documents.rs`, the public lane's pages), one row per
+  post, cheap until somebody posts thousands; `storage::all` (`storage.rs`, 761
+  ms once on scratch) serves only the admin People list. Each is a partial index
+  or a per-persona memo away if it starts to show.
+- **`entries_page` needs an index before it is routed** - the POSTS log pages
+  (`imaol.rs`, `entries_page`) sort every POSTS entry by
+  `(timestamp_ms, seq, entry_hash)` per page, and its row-value cursor cannot
+  seek. Nothing but its own tests calls it yet (`store.rs`'s `AppendLog::page`,
+  Tier 4S); whoever routes it owes it a user-ladder index on
+  `(service, timestamp_ms, seq, entry_hash)` and the continuation shape
+  `rows_after_cursor` uses.
 - **A slow single-row lookup on scratch** -
   `SELECT 1 FROM identities WHERE root_pubkey = ?1 AND account_id = ?2`, a
   primary-key read, logged over 250ms once; the timer starts after the statement
