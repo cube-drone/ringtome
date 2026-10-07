@@ -17680,14 +17680,15 @@ the list after the top six.
   each a pinned prefix and one range, `INDEXED BY` the primary key; the
   row-value `(author_pubkey, service, instance, seq) > (…)` they replace never
   seeks on Turso, 0.7 or 0.8.2. One chain walked in pages of 256, debug: 4,096
-  entries 9.6 → 3.6 ms, 16,384 81 → 16, 32,768 275 → 38, and at 65,536 the
-  row-value walk was stopped after nine minutes - once the table outgrew the
-  page cache every page re-read and re-decrypted everything before its cursor
-  (`raw_log_paging_at_scale`, `RAW_LOG_DOUBLINGS` sizes it). A boundary test
-  pages 18 rows in pages of 1, 2, 4, 5 and 17 across chains, rooms, services and
-  authors against one ordered read; its first draft looped forever on one-byte
-  instances, which `db::instance_of` rightly reads as none - real room ids are
-  sixteen bytes.
+  entries 9.6 → 3.6 ms, 16,384 81 → 16, 32,768 275 → 38, 65,536 993 → 81 -
+  quadratic against linear (`raw_log_paging_at_scale`, `RAW_LOG_DOUBLINGS` sizes
+  it). A first 65,536 run hung for nine minutes and was first put down to a
+  page-cache cliff in the row-value walk; it was the boundary test below,
+  looping in the same binary - measured alone, the walk took under a second. A
+  boundary test pages 18 rows in pages of 1, 2, 4, 5 and 17 across chains,
+  rooms, services and authors against one ordered read; its first draft looped
+  forever on one-byte instances, which `db::instance_of` rightly reads as none -
+  real room ids are sixteen bytes.
 - **Sync's chain reads**: `imaol::chain_keys` finds the chains a seek apiece
   (`FIRST_CHAIN`, `NEXT_CHAIN`); `sync::chain_ranges` - every database's first
   open - takes each chain's floor and head by a seek from each end, and

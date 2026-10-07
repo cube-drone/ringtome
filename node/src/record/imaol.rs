@@ -2606,11 +2606,10 @@ mod tests {
 
     /// The timing behind the fix (2026-10-07): one chain walked to its end in pages of
     /// `BACKFILL_BATCH` - the row-value cursor this replaced beside the continuations. Encrypted on
-    /// disk, like production; `RAW_LOG_DOUBLINGS` sizes it (2^n entries, default 15). Debug build,
+    /// disk, like production; `RAW_LOG_DOUBLINGS` sizes it (2^n entries, default 16). Debug build,
     /// that day: 4,096 entries 9.6 ms against 3.6; 16,384, 81 against 16; 32,768, 275 against 38;
-    /// and at 65,536 the row-value walk was stopped after nine minutes - once the table outgrew
-    /// the page cache, every page re-read and re-decrypted everything before its cursor. Ignored
-    /// in the suite - it measures, it does not judge; run it by name.
+    /// 65,536, 993 against 81 - quadratic against linear. Ignored in the suite - it measures, it
+    /// does not judge; run it by name.
     #[tokio::test]
     #[ignore]
     async fn raw_log_paging_at_scale() {
@@ -2629,7 +2628,7 @@ mod tests {
         .await
         .unwrap();
         let doublings: u32 =
-            std::env::var("RAW_LOG_DOUBLINGS").ok().and_then(|v| v.parse().ok()).unwrap_or(15);
+            std::env::var("RAW_LOG_DOUBLINGS").ok().and_then(|v| v.parse().ok()).unwrap_or(16);
         for k in 0..doublings {
             db.execute(
                 &format!(
