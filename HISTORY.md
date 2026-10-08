@@ -18621,3 +18621,22 @@ Then nine to a row (Curtis: "one-too-many emoji for each of the three lists - on
 mobile, we might need to pull sunglasses, zipper-mouth and full-moon-face"): the
 phone's strip leaves those three out (`PHONE_DROPS`, emoji.js) and lays each row
 on a fixed nine-column grid, one line apiece. A desktop keeps all thirty.
+
+**2026-10-08 - A thumb's floor for every control.** Curtis: "a kind of generic
+'select, checkbox, button' mobile pass - any UI element the user might need to
+click on should be a little bigger, with a little more padding, on mobile".
+Under 900px (tokens.css) every button, select and field is at least 2.25rem each
+way, every checkbox and radio 1.3rem, every slider 2rem tall, and a label
+holding a checkbox or radio takes 0.35rem of padding above and below. All of it
+under `:where`, so it weighs nothing and sets only minimums - which no house
+rule chooses - leaving every control's own padding, type and look as they were.
+Left out, by name: what sits inside a line of text or a chip (the tag x's, the
+clock's HorseBucks, a computer row's trash, a column header's tuck arrow, the
+phone's nine-to-a-row emoji). The squares that a minimum would stretch out of
+square got sizes of their own: the header's search and its funnel at 2.3rem,
+back/close's height (`--search-h`), and a modal's close box at 2.4rem.
+
+**2026-10-08 - The colourway picker at 1.3x on a phone.** Curtis: "Can the
+colorway selectors be 1.3x bigger on mobile?" Under 900px each option's type,
+padding and three swatches, and the gaps between options, are 1.3x
+(`.colorway-option`, `.colorway-swatch`); the CRT switch beside them matches.

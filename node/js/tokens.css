@@ -986,3 +986,35 @@
 :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset'], [type='image']), textarea, select) {
     background-color: var(--field);
 }
+
+/* A thumb's floor (Curtis, 2026-10-08: "any UI element the user might need to click on should be a
+   little bigger, with a little more padding, on mobile"). Under 900px every button, select and
+   field is at least 2.25rem each way, every checkbox and radio 1.3rem, every slider 2rem tall, and
+   a label holding a checkbox or radio is padded to a fingertip. All under `:where`, so it weighs
+   nothing: it only sets sizes the house rules never do (a minimum), and a rule that chose
+   anything for itself still has it. Left out: what sits INSIDE a line of text or a chip - the
+   tag x's, the clock's HorseBucks, a computer row's trash, a column header's tuck arrow (the
+   whole header is its target), and the phone's emoji, nine to a row. */
+@media (max-width: 900px) {
+    :where(
+            button:not(.label-x, .annot-tag-x, .warn-chip-x, .device-follow-x, .computer-remove, .quickbar-bank, .pane-min, .label-emoji, .skip-link),
+            select,
+            input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='hidden'])
+        ) {
+        min-height: 2.25rem;
+        min-width: 2.25rem;
+    }
+
+    :where(input[type='checkbox'], input[type='radio']) {
+        width: 1.3rem;
+        height: 1.3rem;
+    }
+
+    :where(input[type='range']) {
+        min-height: 2rem;
+    }
+
+    :where(label:has(> input[type='checkbox'], > input[type='radio'])) {
+        padding-block: 0.35rem;
+    }
+}

@@ -81,3 +81,11 @@
     clip-path: var(--panel-clip);
     color: var(--ink);
 }
+
+/* The close box at a thumb's size on a phone (tokens.css, a thumb's floor): still square. */
+@media (max-width: 900px) {
+    .modal-close {
+        width: 2.4rem;
+        height: 2.4rem;
+    }
+}

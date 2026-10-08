@@ -2416,6 +2416,26 @@ article:has(.label-emoji-strip) {
     background: var(--s3);
 }
 
+/* The picker at 1.3x on a phone (Curtis, 2026-10-08): type, padding, gaps and swatches together,
+   and the CRT switch beside them to match. */
+@media (max-width: 900px) {
+    .colorway-options {
+        gap: 0.65rem;
+    }
+
+    .colorway-option,
+    .crt-toggle {
+        gap: 0.65rem;
+        padding: 0.45rem 0.9rem;
+        font-size: 1.17rem;
+    }
+
+    .colorway-swatch span {
+        width: 1.04rem;
+        height: 1.3rem;
+    }
+}
+
 .colorway-horse-relax {
     --s1: var(--swatch-horse-relax-1);
     --s2: var(--swatch-horse-relax-2);

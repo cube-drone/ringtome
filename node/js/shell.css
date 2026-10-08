@@ -437,8 +437,9 @@ body {
 /* A phone's band is the search and the buttons (Curtis, 2026-10-08: "always hide the title in the
    title bar, and move the search bar to the leftmost position"): the title's column goes, the
    search leads where it stood, and the buttons keep the right. Where there is no search - a post,
-   a drawing - the title keeps the left after all (the same day: the band "looks a little empty"). The fade that let the title slip
-   under the search has nothing left to fade. */
+   a drawing - the title keeps the left after all (the same day: the band "looks a little empty").
+   The fade that let the title slip under the search has nothing left to fade. The search and its
+   funnel stand as tall as back/close (2.3rem), a thumb's height (tokens.css, a thumb's floor). */
 @media (max-width: 900px) {
     .app-header {
         grid-template-columns: minmax(0, 1fr) auto;
@@ -449,6 +450,7 @@ body {
     }
 
     .app-header-search-box {
+        --search-h: 2.3rem;
         grid-column: 1;
         justify-self: start;
     }
