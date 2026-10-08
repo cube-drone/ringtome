@@ -1907,8 +1907,12 @@ mechanism has two independent layers, and both are load-bearing:
   Unproven peers get neither private entries nor private _frontiers_ - the count
   and cadence of private activity is itself private. Both directions enforce it
   (verify-then-reveal: a requester's first Hello advertises public frontiers
-  only, since the responder's membership isn't known yet; a proven responder
-  re-offers and the duplicate-skip absorbs it).
+  only, since the responder's membership isn't known yet - unless the responder
+  is a computer this persona has already proven its own, a peer row bound to a
+  leaf, which gets the private frontiers too. Until 2026-10-07 nobody did, and a
+  proven responder re-offered every private chain from its first entry; once
+  exchanges had a budget, the re-offer filled it and the tail never came -
+  plans/SYNC_STATUS.md, piece 7).
 
 **Membership transitions are key events:**
 

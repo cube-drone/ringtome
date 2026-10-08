@@ -29,6 +29,13 @@ describe("a computer's sync state", () => {
         assert.equal(computerState({ endpoint: 'e', reached_ms: 9, moved: 3 }).kind, 'reached');
     });
 
+    it('stuck wins even over syncing now: busy and getting nowhere is the thing to say', () => {
+        const c = { endpoint: 'e', reached_ms: 5, stuck: true, exchanges: [{}, {}, {}, {}] };
+        const running = [{ peer: 'e', way: 'pull', moved: 0, since_ms: 1 }];
+        assert.deepEqual(computerState(c, running), { kind: 'stuck', tries: 4 });
+        assert.equal(computerState({ ...c, stuck: false }, running).kind, 'pulling');
+    });
+
     it('a computer this one has never reached says so; a sync before this run counts as reached', () => {
         assert.deepEqual(computerState({ endpoint: 'e' }), { kind: 'never' });
         assert.equal(computerState({ endpoint: 'e', last_synced_ms: 4 }).kind, 'reached');

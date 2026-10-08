@@ -237,7 +237,12 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let peers = sync::peers_for(&state.node_db, root).await?;
+    let peers = unheld(state, root, sync::peers_for(&state.node_db, root).await?);
+    if peers.is_empty() {
+        // Every computer is a stuck pair waiting out its retry (`Ledger::held`): nothing to dial,
+        // and nothing failed - the write stays dirty for the next tick.
+        return Ok(());
+    }
     let mut results = sync::sync_peers(state, root, &peers).await?;
     let mut any_ok = results.iter().any(|r| r.ok);
     for r in results.iter().filter(|r| !r.ok) {
@@ -295,6 +300,12 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The computers worth dialling now: all but a stuck pair inside its retry (plans/SYNC_STATUS.md,
+/// piece 7) - an exchange a minute that moves nothing is the cost a stuck pair is held off to save.
+fn unheld(state: &AppState, root: &str, peers: Vec<String>) -> Vec<String> {
+    peers.into_iter().filter(|p| !state.sync_ledger.held(root, p)).collect()
+}
+
 /// One anti-entropy pass: for every agented identity with peers, a full exchange with up to
 /// [`ANTI_ENTROPY_PEERS`] random peers - dirtiness is irrelevant, redundancy is the point.
 /// Does not touch the tracker: entries it pulls re-dirty the frontier and the eager loop
@@ -307,7 +318,7 @@ pub async fn anti_entropy_pass(state: AppState) -> anyhow::Result<()> {
             continue;
         }
 
-        let peers = sync::peers_for(&state.node_db, &root).await?;
+        let peers = unheld(&state, &root, sync::peers_for(&state.node_db, &root).await?);
         let sample: Vec<String> = {
             use rand::seq::SliceRandom;
             peers.choose_multiple(&mut rand::thread_rng(), ANTI_ENTROPY_PEERS).cloned().collect()

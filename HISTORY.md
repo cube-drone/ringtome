@@ -18002,3 +18002,41 @@ relays answer oddly). "No addressing information available", no bodies.
   acking, which is the 504 Curtis saw; it now gets the carried code instead.
 
 Still open (NEXT_STEPS): the server's discovery records themselves.
+
+**2026-10-07 - Sync status, piece 7: a sync that moves and gets nowhere.** Both
+ends' logs, still on 0.2.10: once a minute each way,
+`sent=5000 received=0 rejected=0`, and the desktop's `DOC_META_PRIVATE` chain
+parked at 3,601 of the server's 11,926. `received` counts what is stored and
+`rejected` what fails, so both ends were sending each other entries the other
+already held. My first theory - the chain-heads memo left behind by a cut
+exchange - was a restart test away from proven and the restart didn't settle it;
+the code did. The dialler's Hello claimed public chains only
+(verify-then-reveal), so a proven responder resent every private chain from seq
+0, and since the Peeks budget (2026-09-05) that resend filled the exchange: a
+persona with more private history than one budget could never sync its tail. The
+cost was written down in August as "absorbed at this scale"; the budget changed
+the scale.
+
+- **Private frontiers to proven siblings** (`net::sync::proven_sibling`): a dial
+  reveals them to a computer this persona already proved its own - a peer row
+  bound to a leaf. Backward compatible. PROJECT_PLAN's sync gate says so.
+- **Counts** - `duplicates` beside `received` and `rejected` in stats and the
+  served line; "sent by chain" at debug.
+- **Claims heal** (`heal_memo`): a resend above the memo's head reconciles the
+  memo from the entries. **Batches finish** (`ingest_whole`, spawned past the
+  wall clock). **The named sweep** no longer marks a file checked unchecked.
+- **Stuck** (`syncstatus::is_stuck`, `ExchangeNote`,
+  `Ledger::{note, held, forgive}`): four whole exchanges no closer and nothing
+  stored; said on the page ahead of "syncing now", held off the loops to one try
+  per ten minutes, forgiven by Sync now. **The sync report**
+  (`GET …/sync/report`, "copy a sync report") and **the records check**
+  (`POST …/sync/repair`, on _This computer_).
+
+Claims (`syncstatus.cjs`, three more): between agreeing computers a pull moves
+nothing - it moved 5 resends with the reveal taken out, which is the claim
+falsifying itself as it should; a memo that forgets its private chains heals at
+the first resend and the next pull is quiet; the report names a memo out of
+step, the repair mends exactly it, and a stranger gets 404. Unit: stuck's rule,
+the hold and its forgiveness, the report's lines; pure: stuck beats "syncing
+now". Not found yet (NEXT_STEPS): why the server's pushes also arrived as
+resends - the desktop's next report will say.

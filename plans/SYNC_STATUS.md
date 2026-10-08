@@ -1,7 +1,6 @@
 # Sync status
 
-A design draft (2026-10-07). Steps 1-6 built the same day (HISTORY); step 7
-waits on a log.
+A design draft (2026-10-07). Steps 1-8 built the same day (HISTORY).
 
 Moving a large persona to a new computer works, eventually, and tells the person
 nothing while it does. This plan makes a sync visible: a sign in the corner
@@ -244,10 +243,11 @@ computer. The server reached the desktop - the adoption code carries the
 desktop's addresses, and it dialled 23 times in an hour - so entries flowed, in
 exchanges the server started. But bodies are fetched by the computer that needs
 them, dialling the one that has them by its id alone, which in `mainline` mode
-leans wholly on iroh's discovery - and the server's records weren't reliably
-there (its DHT publishing logs "Publish query timed out with no responses" and
-"All relays responded with unexpected responses"; a republish pass takes 16-20
-s). So: "No addressing information available", and no bodies.
+leans wholly on iroh's discovery, and the dial found nothing: "No addressing
+information available", and no bodies. Why iroh's endpoint records didn't answer
+is still open (NEXT_STEPS). It isn't the DHT errors in the server's log - those
+are Ringtome's serving records, a different system, and counted over a day they
+were 3 failures in about 96 passes.
 
 - **Where a computer was last reached is remembered** (`net::p2p::remember`,
   `remembered`): every connection's paths - its addresses and relay - either
@@ -270,6 +270,79 @@ s). So: "No addressing information available", and no bodies.
   `POST …/nodes` waited 60 for the handed-over adoption to finish, and on 0.2.10
   the new computer synced everything before answering.
 
+### 7. A sync that moves and gets nowhere - found, fixed, and made visible
+
+Read from both computers' logs that evening, still both on 0.2.10: once a
+minute, each way, an exchange logged `sent=5000 received=0 rejected=0` - a whole
+budget of entries sent, and the other end storing none of them and refusing
+none. The desktop's chain 7 (`DOC_META_PRIVATE`) sat at 3,601 entries while the
+server's held 11,926, and it never moved.
+
+**The cause, in the code.** `received` counts only what is stored and `rejected`
+only what fails its checks; an entry at or below a head already held is skipped
+and counted as neither. So both ends were sending each other entries the other
+already had. And the dialler's Hello claimed public chains only
+(verify-then-reveal, PROJECT_PLAN's sync gate), so a proven responder took every
+private chain the Hello left out as "lacks it entirely" and sent it from seq 0.
+The trade-off was written down - "a proven responder re-offers private entries
+we already hold; ingest's duplicate-skip absorbs that at this scale" - and held
+until exchanges got a budget (Peeks, 2026-09-05). Then the re-offer filled the
+budget: chains 1, 5, 6 and the start of 7 resent from zero, and the tail the
+desktop lacked never came.
+
+**The fixes**, in four layers - the first is this bug, the rest are the holes
+next to it and the alarm for whatever comes next:
+
+1. **The dialler reveals private frontiers to a computer already proven its
+   own** (`net::sync::proven_sibling`): a peer row bound to a leaf - by a member
+   proof, a signed serving record or the adoption ceremony - which the derive
+   sweep deletes when the crown stops crediting the leaf. iroh authenticates
+   endpoint ids, so the computer answering is the one proven before. Anyone else
+   still gets public frontiers only. Backward compatible: an old responder just
+   sees more claims and sends less. A claim: two computers that agree, and a
+   pull between them moves nothing at all (it moved 5 resends with this layer
+   taken out).
+2. **Diagnostics.** Ingest counts `duplicates` beside `received` and `rejected`,
+   in the exchange's stats and its log line; a send logs, at debug, one line of
+   which chains it was, from which seq and how many (`send_missing`'s "sent by
+   chain").
+3. **Claims heal themselves, and the memo stays honest.** A claim is read from
+   the chain-heads memo, a second write beside each stored entry. A resend above
+   what the memo claims is the peer saying the memo is behind, so ingest
+   reconciles the memo from the entries there and then (`heal_memo`): one wasted
+   exchange, not a loop. Two ways a memo fell behind are closed: a batch's
+   writes now finish even when the wall clock drops the exchange that read them
+   (`ingest_whole`, spawned), and a sweep named for one persona no longer marks
+   its file as checked without checking it (`frontier::sweep`). A claim: a memo
+   that forgets the private chains heals at the first resend, and the next pull
+   is quiet.
+4. **Stuck, said out loud.** Each of the persona's other computers keeps its
+   last eight exchanges on the ledger (`ExchangeNote`: sent, received, already
+   held, rejected, how far apart at the start, how long, how it ended - a serve
+   cut by the wall clock included). Four whole exchanges in a row that found the
+   two apart, left them no closer and stored nothing here: the pair is **stuck**
+   (`syncstatus::is_stuck`). Whatever the cause, that is the symptom. A stuck
+   pair
+   - says so on _Your computers_, ahead of "syncing now", since a stuck pair is
+     usually busy;
+   - is held off the eager and anti-entropy loops to one try every ten minutes
+     (`Ledger::held`), and Sync now forgives it and tries at once;
+   - is written up by **the sync report** (`GET …/sync/report`, a "copy a sync
+     report" button): this computer, its version and sync code, whether its memo
+     agrees with its entries, every chain beside what each other computer last
+     claimed of it, and each one's version, reach, gap and last exchanges.
+     Counts, heads and keys - nothing anyone wrote, though the counts do say how
+     busy each private chain is, and the person sees the text before sending it.
+
+   And _This computer_ gets **check this computer's records**
+   (`POST …/sync/repair`): the memo checked against the entries and rebuilt -
+   what a restart does when it opens the persona, without the restart.
+
+Not found yet: why the server's pushes to the desktop also arrived as resends.
+The server sent against the desktop's full claim, so either the desktop's memo
+was behind (layer 3 heals that) or something else is; the desktop's next report,
+with layer 2's counts, will say which.
+
 ## Building it
 
 1. Adoption and `…/sync` answer at once and sync in the background. A claim: the
@@ -287,8 +360,13 @@ s). So: "No addressing information available", and no bodies.
    same code, whatever order they're read in).
 7. The body provider (piece 6): the address memory, one exchange per pair, the
    invite's 30-second wait.
+8. A sync that gets nowhere (piece 7): private frontiers to proven siblings, the
+   duplicate and per-chain counts, self-healing claims, the uncancellable batch
+   and the honest sweep, stuck pairs on the page and held off the loops, the
+   sync report and the records check.
 
 ## Open questions
 
 - **The thresholds** for "chunky" have starting values (piece 3); whether they
-  hold is for a real large sync to say.
+  hold is for a real large sync to say. So do stuck's (piece 7): four exchanges,
+  eight kept, ten minutes between tries.

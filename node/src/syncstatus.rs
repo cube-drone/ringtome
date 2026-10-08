@@ -16,7 +16,13 @@
 //!
 //! The corner cloud's face is computed here, debounced here (`FaceState::step`), so every open
 //! tab of a persona agrees on it.
-use std::collections::{HashMap, HashSet};
+//!
+//! And each of a persona's other computers keeps its last few exchanges (`note`, piece 7), which is
+//! what tells a pair that is getting closer from one that is only busy: four whole exchanges in a
+//! row that left the two as far apart as they were, having stored nothing here, and the pair is
+//! **stuck** - shown on the page, held off the background loops to one try per
+//! `STUCK_RETRY_MS`, and written up whole by the sync report.
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 /// The corner cloud's four faces (piece 3), in order of precedence.
@@ -34,9 +40,10 @@ pub enum Face {
 }
 
 /// Which way an exchange runs, seen from this node.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Way {
+    #[default]
     Pull,
     Serve,
 }
@@ -49,6 +56,13 @@ pub const CHUNKY_BODIES: u64 = 10;
 pub const CHUNKY_NETWORK_MS: i64 = 10_000;
 pub const FACE_HOLD_MS: i64 = 3_000;
 pub const FACE_LINGER_MS: i64 = 5_000;
+
+/// Piece 8's starting numbers, agreed rather than measured: how many whole exchanges in a row may
+/// leave a pair no closer before it is stuck, how many exchanges a computer's record keeps, and how
+/// often the background loops try a stuck pair again.
+pub const STUCK_AFTER: usize = 4;
+pub const NOTES_KEPT: usize = 8;
+pub const STUCK_RETRY_MS: i64 = 10 * 60 * 1000;
 
 struct Running {
     root: String,
@@ -83,6 +97,9 @@ impl Running {
     }
 }
 
+/// One chain as a peer's Hello claimed it: `(service, author, instance, head)`.
+pub type ClaimedChain = (u32, [u8; 32], Option<[u8; 16]>, u64);
+
 /// What last happened with one of a persona's other computers.
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct PeerRecord {
@@ -98,6 +115,59 @@ pub struct PeerRecord {
     /// other way round (`gap`).
     pub theirs_ahead: Option<u64>,
     pub ours_ahead: Option<u64>,
+    /// The last few exchanges with it, oldest first (`note`, piece 7).
+    pub exchanges: VecDeque<ExchangeNote>,
+    /// Whole exchanges keep leaving the two as far apart as they were (`is_stuck`).
+    pub stuck: bool,
+    /// The build it said it runs, at its last Hello.
+    pub version: Option<String>,
+    /// Sync now forgives what came before: only exchanges after this count towards stuck.
+    #[serde(skip)]
+    pub forgiven_ms: i64,
+}
+
+/// One exchange with one of the persona's own computers, as the page and the sync report tell it.
+#[derive(Clone, Debug, Default, serde::Serialize)]
+pub struct ExchangeNote {
+    /// When it ended.
+    pub at_ms: i64,
+    pub way: Way,
+    pub took_ms: i64,
+    pub sent: u64,
+    pub received: u64,
+    /// Entries that arrived already held (`net::sync::IngestOutcome::duplicates`).
+    pub duplicates: u64,
+    pub rejected: u64,
+    /// How far apart the two were when it began, both ways - a whole exchange only.
+    pub theirs_ahead: Option<u64>,
+    pub ours_ahead: Option<u64>,
+    pub error: Option<String>,
+}
+
+impl ExchangeNote {
+    fn gap(&self) -> Option<u64> {
+        Some(self.theirs_ahead? + self.ours_ahead?)
+    }
+}
+
+/// Whether these exchanges, oldest first, say the pair is stuck (piece 7): the last `STUCK_AFTER`
+/// that measured how far apart the two were all found them apart, none was closer than the one
+/// before it, and none stored anything here. Whatever the cause - a claim that understates what is
+/// held, a chain neither side will take - the symptom is the same, and this is it.
+pub fn is_stuck<'a>(notes: impl IntoIterator<Item = &'a ExchangeNote>) -> bool {
+    let measured: Vec<&ExchangeNote> = notes.into_iter().filter(|n| n.gap().is_some()).collect();
+    if measured.len() < STUCK_AFTER {
+        return false;
+    }
+    let mut before: Option<u64> = None;
+    for note in &measured[measured.len() - STUCK_AFTER..] {
+        let gap = note.gap().unwrap_or(0);
+        if gap == 0 || note.received > 0 || before.is_some_and(|b| gap < b) {
+            return false;
+        }
+        before = Some(gap);
+    }
+    true
 }
 
 #[derive(Default)]
@@ -110,6 +180,11 @@ struct Books {
     /// whole exchange's start.
     gaps: HashMap<(String, String), (u64, u64)>,
     faces: HashMap<String, FaceState>,
+    /// (persona root, peer endpoint) -> the chains it last claimed: `(service, author, instance,
+    /// head)`, for the sync report.
+    claims: HashMap<(String, String), Vec<ClaimedChain>>,
+    /// peer endpoint -> the build it last said it runs.
+    versions: HashMap<String, String>,
     /// (persona root, peer endpoint, scope) -> a pull waiting for the one running to end
     /// (`begin_pull`).
     waiting: HashSet<(String, String, String)>,
@@ -259,6 +334,66 @@ impl Ledger {
         record.error = error;
     }
 
+    /// One exchange with one of the persona's own computers has ended (piece 7): kept, at most
+    /// `NOTES_KEPT` of them, and the pair's stuck verdict taken again.
+    pub fn note(&self, root: &str, peer: &str, note: ExchangeNote) {
+        let mut books = self.books();
+        let record = books.peers.entry((root.to_string(), peer.to_string())).or_default();
+        record.exchanges.push_back(note);
+        while record.exchanges.len() > NOTES_KEPT {
+            record.exchanges.pop_front();
+        }
+        let forgiven = record.forgiven_ms;
+        let was = record.stuck;
+        record.stuck = is_stuck(record.exchanges.iter().filter(|n| n.at_ms > forgiven));
+        if record.stuck && !was {
+            tracing::warn!(root, peer, "sync with this computer is not making progress");
+        }
+    }
+
+    /// Whether the background loops should leave this pair alone for now: stuck, and tried within
+    /// `STUCK_RETRY_MS` - so a stuck pair costs one exchange every ten minutes, not one a minute.
+    pub fn held(&self, root: &str, peer: &str) -> bool {
+        let books = self.books();
+        books.peers.get(&(root.to_string(), peer.to_string())).is_some_and(|r| {
+            r.stuck && r.exchanges.back().is_some_and(|n| now_ms() - n.at_ms < STUCK_RETRY_MS)
+        })
+    }
+
+    /// Sync now: every pair of this persona starts afresh - unheld, and judged only on what follows.
+    pub fn forgive(&self, root: &str) {
+        let now = now_ms();
+        let mut books = self.books();
+        for ((r, _), record) in books.peers.iter_mut() {
+            if r == root {
+                record.stuck = false;
+                record.forgiven_ms = now;
+            }
+        }
+    }
+
+    /// What a peer's Hello claimed, chain by chain, kept for the sync report.
+    pub fn claimed(&self, root: &str, peer: &str, chains: Vec<ClaimedChain>) {
+        self.books().claims.insert((root.to_string(), peer.to_string()), chains);
+    }
+
+    /// The chains each of this persona's computers last claimed.
+    pub fn claims_for(&self, root: &str) -> Vec<(String, Vec<ClaimedChain>)> {
+        self.books()
+            .claims
+            .iter()
+            .filter(|((r, _), _)| r == root)
+            .map(|((_, peer), chains)| (peer.clone(), chains.clone()))
+            .collect()
+    }
+
+    /// The build a peer said it runs.
+    pub fn saw_version(&self, peer: &str, version: &str) {
+        if !version.is_empty() {
+            self.books().versions.insert(peer.to_string(), version.to_string());
+        }
+    }
+
     /// The corner's face for `root` now, debounced, and what the hover can say about it.
     pub fn face(&self, root: &str, bodies_waiting: u64) -> FaceNow {
         let now = now_ms();
@@ -301,6 +436,7 @@ impl Ledger {
             .filter(|((r, _), _)| r == root)
             .map(|((r, peer), record)| {
                 let mut record = record.clone();
+                record.version = books.versions.get(peer).cloned();
                 if let Some((theirs, ours)) = books.gaps.get(&(r.clone(), peer.clone())) {
                     record.theirs_ahead = Some(*theirs);
                     record.ours_ahead = Some(*ours);
@@ -321,6 +457,161 @@ impl Ledger {
                 "longest_ms": network.iter().map(|r| now - r.started_ms).max().unwrap_or(0),
             },
         })
+    }
+}
+
+/// What the sync report says about this computer, gathered by the route (`…/sync/report`).
+pub struct ThisComputer {
+    pub endpoint: String,
+    pub version: String,
+    pub sync_code: String,
+    /// Every chain held, from the entries: `(author_hex, service, instance, head)`.
+    pub chains: Vec<(String, u32, Option<[u8; 16]>, u64)>,
+    /// Where the memo and the entries disagree (`net::frontier::memo_drift`).
+    pub drift: Vec<crate::net::frontier::Drift>,
+}
+
+/// A chain by `(author_hex, service, instance)`, as the report lines claims up against holdings.
+type ChainName = (String, u32, Option<[u8; 16]>);
+
+/// A chain as the report names it: its service by name, its author and room shortened.
+fn chain_label(service: u32, author_hex: &str, instance: Option<[u8; 16]>) -> String {
+    let name = match service {
+        0 => "identity",
+        1 => "identity-private",
+        2 => "profile",
+        3 => "posts",
+        4 => "follows",
+        5 => "general-private",
+        6 => "documents-private",
+        7 => "doc-meta-private",
+        8 => "inbox-trusted",
+        9 => "inbox-stranger",
+        10 => "rebroadcasts",
+        11 => "inbox-murmurs",
+        12 => "annotations",
+        13 => "chat",
+        _ => "service",
+    };
+    let room = instance.map(|i| format!(" room {}", &hex::encode(i)[..8])).unwrap_or_default();
+    format!("{service:>2} {name} by {}{room}", &author_hex[..author_hex.len().min(8)])
+}
+
+fn when(ms: Option<i64>, now: i64) -> String {
+    match ms {
+        Some(t) => format!("{}s ago", (now - t).max(0) / 1000),
+        None => "never".into(),
+    }
+}
+
+impl Ledger {
+    /// The sync report (plans/SYNC_STATUS.md, piece 7): everything this computer knows about how
+    /// its persona's sync is going, as plain text a person can paste into a bug report. Counts,
+    /// heads and keys - no content, nothing signed, nothing secret; the counts do say how busy
+    /// each private chain is, which the person sees before they send it anywhere.
+    pub fn report(&self, root: &str, this: &ThisComputer) -> String {
+        use std::fmt::Write;
+        let now = now_ms();
+        let books = self.books();
+        let mut out = String::new();
+        let _ = writeln!(out, "Horse Drawing Tycoon 2 - sync report");
+        let _ = writeln!(out, "persona     {root}");
+        let _ = writeln!(out, "computer    {} (this one), version {}", this.endpoint, this.version);
+        let _ = writeln!(out, "sync code   {}", this.sync_code);
+        let _ = writeln!(out, "taken at    {now} ms");
+        let _ = writeln!(out);
+        if this.drift.is_empty() {
+            let _ = writeln!(out, "records     the memo agrees with the entries");
+        } else {
+            let _ = writeln!(
+                out,
+                "records     the memo DISAGREES with the entries on {} chains:",
+                this.drift.len()
+            );
+            for (author, svc, inst, memo, held) in &this.drift {
+                let show = |h: &Option<u64>| h.map_or("-".to_string(), |h| h.to_string());
+                let _ = writeln!(
+                    out,
+                    "  {}  memo {}  entries {}",
+                    chain_label(*svc, author, *inst),
+                    show(memo),
+                    show(held)
+                );
+            }
+        }
+        let _ = writeln!(out);
+        let peers: Vec<(&String, &PeerRecord)> = books
+            .peers
+            .iter()
+            .filter(|((r, _), _)| r == root)
+            .map(|((_, peer), record)| (peer, record))
+            .collect();
+        // Chains, with what each computer last claimed of them.
+        let claims: Vec<(&String, HashMap<ChainName, u64>)> = peers
+            .iter()
+            .map(|(peer, _)| {
+                let chains = books
+                    .claims
+                    .get(&(root.to_string(), (*peer).clone()))
+                    .map(|c| c.iter().map(|(s, a, i, h)| ((hex::encode(a), *s, *i), *h)).collect())
+                    .unwrap_or_default();
+                (*peer, chains)
+            })
+            .collect();
+        let _ = writeln!(
+            out,
+            "chains      here{}",
+            claims.iter().map(|(p, _)| format!(" | {}", &p[..p.len().min(8)])).collect::<String>()
+        );
+        for (author, svc, inst, head) in &this.chains {
+            let theirs: String = claims
+                .iter()
+                .map(|(_, c)| {
+                    let h = c.get(&(author.clone(), *svc, *inst));
+                    format!(" | {}", h.map_or("-".into(), |h| h.to_string()))
+                })
+                .collect();
+            let _ = writeln!(out, "  {}  {head}{theirs}", chain_label(*svc, author, *inst));
+        }
+        for (peer, record) in &peers {
+            let _ = writeln!(out);
+            let _ = writeln!(
+                out,
+                "computer    {peer}, version {}",
+                books.versions.get(*peer).map_or("unknown", |v| v.as_str())
+            );
+            let _ = writeln!(
+                out,
+                "  reached {}, tried {}{}",
+                when(record.reached_ms, now),
+                when(record.tried_ms, now),
+                if record.stuck { ", STUCK - not making progress" } else { "" }
+            );
+            if let Some((theirs, ours)) = books.gaps.get(&(root.to_string(), (*peer).clone())) {
+                let _ = writeln!(
+                    out,
+                    "  apart: it has {theirs} entries this one lacks, this one has {ours} it lacks"
+                );
+            }
+            if let Some(e) = &record.error {
+                let _ = writeln!(out, "  last error: {e}");
+            }
+            for n in &record.exchanges {
+                let apart = match (n.theirs_ahead, n.ours_ahead) {
+                    (Some(t), Some(o)) => format!(" apart {t}/{o}"),
+                    _ => String::new(),
+                };
+                let _ = writeln!(out, "  {:>6}s ago {:<5} {:>6}ms sent {} received {} already-held {} rejected {}{apart}{}",
+                    (now - n.at_ms).max(0) / 1000,
+                    match n.way { Way::Pull => "pull", Way::Serve => "serve" },
+                    n.took_ms, n.sent, n.received, n.duplicates, n.rejected,
+                    n.error.as_ref().map(|e| format!(" - {e}")).unwrap_or_default());
+            }
+        }
+        if peers.is_empty() {
+            let _ = writeln!(out, "computers   none heard from since this one started");
+        }
+        out
     }
 }
 
@@ -648,5 +939,81 @@ mod tests {
         assert!(ledger.books().waiting.is_empty(), "and its place is free");
         drop(first);
         assert!(ledger.begin_pull("r1", "p1", "all", true).await.is_some());
+    }
+
+    fn exchange(apart: u64, received: u64) -> ExchangeNote {
+        ExchangeNote {
+            at_ms: now_ms(),
+            sent: 5000,
+            received,
+            duplicates: 5000,
+            theirs_ahead: Some(apart),
+            ours_ahead: Some(0),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn stuck_is_whole_exchanges_that_leave_the_two_no_closer() {
+        let same = vec![exchange(8000, 0); STUCK_AFTER];
+        assert!(is_stuck(&same), "four exchanges, as far apart, nothing stored");
+        assert!(!is_stuck(&same[1..]), "three are not enough");
+        let mut closing = same.clone();
+        closing[3].theirs_ahead = Some(7000);
+        assert!(!is_stuck(&closing), "the last one got closer");
+        let mut stored = same.clone();
+        stored[2].received = 10;
+        assert!(!is_stuck(&stored), "something arrived");
+        let agreed = vec![exchange(0, 0); STUCK_AFTER];
+        assert!(!is_stuck(&agreed), "nothing to close");
+        let mut unmeasured = same.clone();
+        unmeasured.push(ExchangeNote { received: 0, ..Default::default() });
+        assert!(is_stuck(&unmeasured), "a scoped exchange measures nothing and changes nothing");
+    }
+
+    #[test]
+    fn a_stuck_pair_is_held_off_until_forgiven() {
+        let ledger = Ledger::default();
+        for _ in 0..STUCK_AFTER {
+            assert!(!ledger.held("r", "p"));
+            ledger.note("r", "p", exchange(8000, 0));
+        }
+        assert!(ledger.held("r", "p"), "stuck, and tried just now");
+        assert!(!ledger.held("r", "q"), "another computer");
+        let status = ledger.status("r");
+        assert_eq!(status["computers"]["p"]["stuck"], true);
+        assert_eq!(status["computers"]["p"]["exchanges"].as_array().unwrap().len(), STUCK_AFTER);
+        ledger.forgive("r");
+        assert!(!ledger.held("r", "p"), "Sync now");
+        ledger.note("r", "p", exchange(8000, 0));
+        assert!(!ledger.held("r", "p"), "judged afresh: one exchange since");
+        for _ in 0..NOTES_KEPT * 2 {
+            ledger.note("r", "p", exchange(8000, 0));
+        }
+        let kept = ledger.status("r")["computers"]["p"]["exchanges"].as_array().unwrap().len();
+        assert_eq!(kept, NOTES_KEPT, "the record keeps the last few");
+    }
+
+    #[test]
+    fn the_report_names_what_disagrees_and_what_each_computer_claimed() {
+        let ledger = Ledger::default();
+        let author = [7u8; 32];
+        ledger.claimed("r", "peer-endpoint", vec![(7, author, None, 11_926)]);
+        ledger.saw_version("peer-endpoint", "0.2.10");
+        ledger.note("r", "peer-endpoint", exchange(8000, 0));
+        let this = ThisComputer {
+            endpoint: "this-endpoint".into(),
+            version: "0.2.11".into(),
+            sync_code: "ABCDEF".into(),
+            chains: vec![(hex::encode(author), 7, None, 3_601)],
+            drift: vec![(hex::encode(author), 7, None, Some(3_601), Some(9_000))],
+        };
+        let text = ledger.report("r", &this);
+        assert!(text.contains("sync code   ABCDEF"), "{text}");
+        assert!(text.contains("DISAGREES with the entries on 1 chains"), "{text}");
+        assert!(text.contains("doc-meta-private by 07070707  memo 3601  entries 9000"), "{text}");
+        assert!(text.contains("3601 | 11926"), "here beside what the other claimed: {text}");
+        assert!(text.contains("version 0.2.10"), "{text}");
+        assert!(text.contains("already-held 5000"), "{text}");
     }
 }

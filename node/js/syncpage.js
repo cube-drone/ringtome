@@ -1,14 +1,16 @@
 // The sync section of "Your computers" (plans/SYNC_STATUS.md, piece 4): where the corner cloud leads.
 // Each of the persona's other computers - reached when, or why not; syncing right now; how far
 // apart the two were at the last exchange - the bodies still to come, a Sync now button, and, for
-// the curious, what this server is doing for everyone (rulings 2 and 5: how many, never who).
+// the curious, what this server is doing for everyone (rulings 2 and 5: how many, never who). A
+// pair that keeps exchanging without getting closer says so, and a sync report goes on the
+// clipboard for a bug report (piece 7).
 // Read from the node's sync ledger every few seconds while the page is open; the words are decided
 // in pure/syncstatus.js.
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from './net.js';
+import { api, apiTextTitled } from './net.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import { agoUnit } from './pure/ago.js';
@@ -34,7 +36,13 @@ const ComputerLine = ({ computer, running, name }) => {
     const state = computerState(computer, running);
     const gap = gapOf(computer);
     let said;
-    if (state.kind === 'pulling')
+    if (state.kind === 'stuck')
+        said = t(
+            'syncpage.stuck',
+            'not making progress - the last {n} syncs left the two of them no closer. Sync now tries again; a sync report says why.',
+            { n: count(state.tries) },
+        );
+    else if (state.kind === 'pulling')
         said = t('syncpage.pulling', 'syncing now - {n} brought in so far', {
             n: count(state.moved),
         });
@@ -58,7 +66,7 @@ const ComputerLine = ({ computer, running, name }) => {
     else said = t('syncpage.never', 'not reached since this server started');
     return html`<li class="sync-computer">
         <span class="sync-computer-name">${name}</span>
-        <span class=${state.kind === 'failing' ? 'sync-computer-state sync-failing' : 'sync-computer-state'}>${said}</span>
+        <span class=${['failing', 'stuck'].includes(state.kind) ? 'sync-computer-state sync-failing' : 'sync-computer-state'}>${said}</span>
         ${
             gap &&
             html`<span class="sync-computer-gap">${
@@ -83,6 +91,7 @@ export const SyncSection = ({ root, keys, nameOf }) => {
     const [status, setStatus] = useState(null);
     const [asked, setAsked] = useState(false);
     const [error, setError] = useState(null);
+    const [copied, setCopied] = useState(false);
 
     const look = useCallback(
         () =>
@@ -111,6 +120,19 @@ export const SyncSection = ({ root, keys, nameOf }) => {
         }
         setAsked(false);
         look();
+    };
+
+    // The sync report (piece 7): plain text for a bug report - counts, heads and keys, nothing
+    // anyone wrote - onto the clipboard.
+    const copyReport = async () => {
+        try {
+            const { text } = await apiTextTitled(`/api/identity/${root}/sync/report`);
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 3000);
+        } catch (e) {
+            setError(e.message);
+        }
     };
 
     if (!status) return error ? html`<p class="form-error">${error}</p>` : null;
@@ -155,6 +177,22 @@ export const SyncSection = ({ root, keys, nameOf }) => {
                 ${asked ? '…' : t('syncpage.sync-now', 'sync now')}
             </button>`
         }
+        ${
+            computers.length > 0 &&
+            html`<p class="null-sub">
+                <button class="sync-quiet-act" type="button" onClick=${copyReport}>
+                    ${
+                        copied
+                            ? t('syncpage.report-copied', 'copied - paste it into your bug report')
+                            : t('syncpage.copy-report', 'copy a sync report')
+                    }
+                </button>
+                ${' '}${t(
+                    'syncpage.report-about',
+                    'for a bug report: how this computer and the others have been syncing, in numbers - nothing you wrote.',
+                )}
+            </p>`
+        }
         <h3 class="computers-subtitle"><${Icons.syncSun} /> ${t('syncpage.network-title', 'this server and the network')}</h3>
         <p class="null-sub">${
             network.exchanges > 0
@@ -179,6 +217,29 @@ export const SyncSection = ({ root, keys, nameOf }) => {
 export const ThisComputer = ({ root }) => {
     const [held, setHeld] = useState(null);
     const [error, setError] = useState(null);
+    const [checked, setChecked] = useState(null);
+    // Check and mend this computer's records of what it holds (piece 7): what a restart does when
+    // it opens the persona, without the restart.
+    const check = async () => {
+        setChecked('…');
+        try {
+            const { differed } = await api(`/api/identity/${root}/sync/repair`, { method: 'POST' });
+            setChecked(
+                differed > 0
+                    ? t(
+                          'syncpage.repaired',
+                          '{n} of its records were out of step with what it holds, and are mended.',
+                          {
+                              n: count(differed),
+                          },
+                      )
+                    : t('syncpage.records-agree', 'Its records agree with what it holds.'),
+            );
+        } catch (e) {
+            setChecked(null);
+            setError(e.message);
+        }
+    };
     useEffect(() => {
         let live = true;
         api(`/api/identity/${root}/sync/held`)
@@ -224,5 +285,11 @@ export const ThisComputer = ({ root }) => {
             ${row(t('syncpage.entries', 'entries'), count(held.entries))}
             ${row(t('syncpage.disk', 'space on this computer'), sizeLabel(held.disk_bytes || 0))}
         </ul>
+        <p class="null-sub">
+            <button class="sync-quiet-act" type="button" disabled=${checked === '…'} onClick=${check}>
+                ${t('syncpage.check-records', 'check this computer’s records')}
+            </button>
+            ${' '}${checked && checked !== '…' ? checked : ''}
+        </p>
     </section>`;
 };

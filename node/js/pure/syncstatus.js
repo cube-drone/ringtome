@@ -2,11 +2,15 @@
 // 4), decided from the node's sync ledger (`GET /api/identity/{root}/sync/status`). Pure, so the
 // cases are tested: the words themselves are the page's.
 
-/// One computer's state, in the order a person asks about it: is it syncing now, did the last try
-/// reach it, did it fail, or has this computer never reached it at all.
-/// `computer`: the status route's row (`reached_ms`, `tried_ms`, `error`, `last_synced_ms`);
+/// One computer's state, in the order a person asks about it: is it stuck, is it syncing now, did
+/// the last try reach it, did it fail, or has this computer never reached it at all. Stuck comes
+/// first (piece 7): a stuck pair is usually busy - exchanging, and getting nowhere - and "syncing
+/// now" would hide exactly what the person needs to know.
+/// `computer`: the status route's row (`stuck`, `exchanges`, `reached_ms`, `tried_ms`, `error`,
+/// `last_synced_ms`);
 /// `running`: the route's running exchanges with this computer.
 export function computerState(computer, running = []) {
+    if (computer.stuck) return { kind: 'stuck', tries: (computer.exchanges || []).length };
     const mine = running.filter((r) => r.peer === computer.endpoint);
     if (mine.length) {
         const pulling = mine.some((r) => r.way === 'pull');

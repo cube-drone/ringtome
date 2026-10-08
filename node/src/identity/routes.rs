@@ -95,6 +95,8 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/followers/list", get(followers_list_handler))
         .route("/api/identity/{root}/sync/status", get(sync_status_handler))
         .route("/api/identity/{root}/sync/held", get(sync_held_handler))
+        .route("/api/identity/{root}/sync/report", get(sync_report_handler))
+        .route("/api/identity/{root}/sync/repair", post(sync_repair_handler))
         .route("/api/identity/{root}/contacts", get(contacts_handler))
         .route("/api/identity/{root}/known-followers/{subject}", get(known_followers_handler))
         .route(
@@ -582,6 +584,8 @@ async fn sync_handler(
     Path(root): Path<String>,
 ) -> Result<Response, AppError> {
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
+    // Asked for by a person: every pair starts afresh, a stuck one included (piece 7).
+    state.sync_ledger.forgive(&root);
     let peers =
         crate::net::sync::peers_for(&state.node_db, &root).await.map_err(AppError::Internal)?;
     let task_state = state.clone();
@@ -4886,6 +4890,60 @@ async fn sync_held_handler(
         "people": { "following": dialled("interest"), "trusting": dialled("trust"), "followers": followers },
         "bank": { "unlocks": unlocks, "lines": ledger },
     })))
+}
+
+/// GET - the sync report (plans/SYNC_STATUS.md, piece 7), as plain text for a bug report: this
+/// computer, whether its memo agrees with its entries, every chain it holds beside what each of its
+/// other computers last claimed, and each one's last exchanges.
+async fn sync_report_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Response, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let db = data.db();
+    let frontiers =
+        crate::net::sync::local_frontiers(db, true).await.map_err(AppError::Internal)?;
+    let chains = crate::net::sync::chain_ranges(db)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .map(|(author, svc, instance, _, head, _)| (author, svc, instance, head))
+        .collect();
+    let drift = crate::net::frontier::memo_drift(&state.node_db, db, &root)
+        .await
+        .map_err(AppError::Internal)?;
+    let this = crate::syncstatus::ThisComputer {
+        endpoint: state.endpoint.id().to_string(),
+        version: state.config.app_version.clone(),
+        sync_code: crate::syncstatus::sync_code(&frontiers),
+        chains,
+        drift,
+    };
+    let text = state.sync_ledger.report(&root, &this);
+    Ok(([(CONTENT_TYPE, "text/plain; charset=utf-8")], text).into_response())
+}
+
+/// POST - check this computer's records of the persona and mend them (piece 7): the memo the
+/// sync claims are read from, rebuilt from the entries - what a restart does at database open,
+/// without the restart. Answers how many chains it found out of step.
+async fn sync_repair_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let db = data.db();
+    let drift = crate::net::frontier::memo_drift(&state.node_db, db, &root)
+        .await
+        .map_err(AppError::Internal)?;
+    if !drift.is_empty() {
+        tracing::info!(root = %root, chains = drift.len(), "repairing the memo from the entries, as asked");
+        crate::net::frontier::reconcile_rows(&state.node_db, db, &root)
+            .await
+            .map_err(AppError::Internal)?;
+    }
+    Ok(Json(serde_json::json!({ "differed": drift.len() })))
 }
 
 /// GET - the persona's own dials, person by person (2026-10-07, for MCP's `list_contacts`): who it

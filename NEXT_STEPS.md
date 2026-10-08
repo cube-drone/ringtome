@@ -244,12 +244,27 @@ private body door, 2026-10-07). Left:
 
 ### Sync status (plans/SYNC_STATUS.md)
 
-- **horsedrawingtycoon.com's discovery records** - its DHT publishing times out
-  ("Publish query timed out with no responses", "All relays responded with
-  unexpected responses"); the address memory (step 7) works around it between
-  computers that have talked, but a stranger still can't find the server by id.
-  Worth a look at outbound UDP from that machine, and at iroh's own relay and
-  discovery lines in its log.
+- **Why the desktop's dial by id found nothing** (2026-10-07's migration: "No
+  addressing information available"). Discovery itself checks out: both the
+  server's and the desktop's endpoint ids resolve at dns.iroh.link (checked
+  2026-10-07, a home relay each, as iroh 1.0 publishes), and a packaged desktop
+  runs `mainline`. iroh puts the cause under that message - "No address lookup
+  configured", or "All address lookup services failed or produced no results"
+  and each service's error - so the full desktop log line says which; without
+  it, a transient miss is the likely story, and the address memory (step 7)
+  covers a computer the server has dialled either way. Not the serving records:
+  their republish failures were 3 in about 96 passes over 24 hours, and pkarr
+  reports the slower of the DHT and the relays, so a warn there need not mean
+  the record is missing.
+- **The desktop's next sync report** (piece 7) - once both computers run the
+  build with it: whether the server's pushes still arrive as resends (the one
+  half of the `sent=5000 received=0` loop the private-frontier fix doesn't
+  explain - a desktop memo behind its entries would, and now heals), and whether
+  chain 7 climbs past 3,601. Also blob `40ec7044…`, refused with iroh-blobs'
+  internal-error code every minute: which document it is, and whether the server
+  holds it whole.
+- **Stuck's numbers on a real pair** - four exchanges no closer, eight kept, a
+  try every ten minutes while stuck: agreed, not measured, like the cloud's.
 - **Tune the cloud's thresholds on a real large sync** - the starting numbers (5
   s or 50 entries, 10 bodies, 10 s of network work, 3 s hold, 5 s linger) were
   agreed, not measured.

@@ -499,6 +499,22 @@
     color: var(--coral);
 }
 
+/* A quiet act beside the sync section's words (piece 7): copy a sync report, check the records. */
+.sync-quiet-act {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--teal);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.sync-quiet-act:disabled {
+    color: var(--muted);
+    cursor: default;
+}
+
 .sync-computer-gap {
     flex-basis: 100%;
     color: var(--muted);

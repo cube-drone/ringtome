@@ -260,6 +260,35 @@ pub async fn reconcile_rows(node_db: &Db, user_db: &Db, root_hex: &str) -> Resul
     Ok(())
 }
 
+/// One chain the memo and the entries table disagree about: `(author_hex, service, instance, the
+/// memo's head, the entries' head)` - `None` where one side has no such chain at all.
+pub type Drift = (String, u32, Option<[u8; 16]>, Option<u64>, Option<u64>);
+
+/// Where this persona's memo and its entries disagree (plans/SYNC_STATUS.md, piece 7: the sync
+/// report's check, and what `…/sync/repair` mends). Heads only: a floor that differs is a backfill
+/// the memo hasn't heard of, which the reconcile mends the same way and no claim depends on.
+pub async fn memo_drift(node_db: &Db, user_db: &Db, root_hex: &str) -> Result<Vec<Drift>> {
+    type Key = (String, u32, Option<[u8; 16]>);
+    let memo: std::collections::BTreeMap<Key, u64> = memo_chains(node_db, root_hex)
+        .await?
+        .into_iter()
+        .map(|(a, s, i, _, head, _)| ((a, s, i), head))
+        .collect();
+    let held: std::collections::BTreeMap<Key, u64> = crate::net::sync::chain_ranges(user_db)
+        .await?
+        .into_iter()
+        .map(|(a, s, i, _, head, _)| ((a, s, i), head))
+        .collect();
+    let keys: std::collections::BTreeSet<&Key> = memo.keys().chain(held.keys()).collect();
+    Ok(keys
+        .into_iter()
+        .filter_map(|k| {
+            let (m, h) = (memo.get(k).copied(), held.get(k).copied());
+            (m != h).then(|| (k.0.clone(), k.1, k.2, m, h))
+        })
+        .collect())
+}
+
 /// Every chain this persona holds, from the MEMO: `(author_hex, service, floor, head, hash)`.
 ///
 /// This is what `sync::local_frontiers` puts on the wire, so the trust argument matters and is
@@ -556,9 +585,12 @@ pub async fn sweep(state: AppState, who: Option<String>) -> Result<()> {
                 Some(_) => continue,
                 None => continue, // no files: nothing to fold
             }
-        } else if let Some(mt) = state.user_dbs.db_mtime_ms(&root) {
-            state.sweep_marks.record("frontier", &root, mt);
         }
+        // A named pass records no mark (plans/SYNC_STATUS.md, piece 7): it reconciles nothing, so
+        // marking the file seen would tell the next full sweep a memo left behind by a cut write
+        // was already checked, and nothing would ever check it. Unmarked, the tick's sweep
+        // reconciles each persona that wrote since it last looked - a seek per chain, every ten
+        // minutes, for a persona that is open anyway.
         // The chain itself is the fold lane's (fold.rs) - the sweep's job ends at
         // detecting that this root's files moved and nudging. `refresh` runs inside the
         // lane's chain, serialized, so its verdict cannot be raced into silence here.

@@ -36,6 +36,8 @@ use crate::AppState;
 pub struct ExchangeStats {
     pub received: u64,
     pub rejected: u64,
+    /// Entries that arrived already held (`IngestOutcome::duplicates`).
+    pub duplicates: u64,
     pub sent: u64,
     /// Document bodies fetched from this peer after the entry exchange (headers ride sync;
     /// bodies ride iroh-blobs - see `documents::fetch_missing_bodies`).
@@ -44,6 +46,9 @@ pub struct ExchangeStats {
     /// the peer simply held more than one pass carries. A mark, never a fault: the next
     /// pass continues from the frontier (PROJECT_PLAN's Peeks, ruling 2).
     pub behind: bool,
+    /// How far apart the two were when it began, both ways (`syncstatus::gap`) - whole exchanges.
+    #[serde(skip)]
+    pub gap: Option<(u64, u64)>,
 }
 
 /// Services that never cross the identity boundary: synced only between an identity's own
@@ -216,16 +221,45 @@ async fn send_missing(
     let mut sent = 0u64;
     let mut missing =
         MissingEntries::plan(db, peer_frontiers, include_private, wanted, instances, ask).await?;
+    // Which chains this send was, from where and how many (plans/SYNC_STATUS.md, piece 7): an
+    // exchange that sends a full budget the peer then drops says, in one debug line, what it was.
+    let mut by_chain: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    let summarise = tracing::enabled!(tracing::Level::DEBUG);
+    let mut cut = false;
     while let Some(bytes) = missing.next().await? {
         // The send budget (PROJECT_PLAN's Peeks, ruling 2): short of the peer's need is a pass, not a
         // failure - they will see they are still behind and come back.
         if !budget.take(bytes.len()) {
-            return Ok((sent, true));
+            cut = true;
+            break;
+        }
+        if summarise {
+            if let Ok(e) = SignedEntry::decode(&bytes) {
+                let chain = e.entry().chain;
+                let key = format!(
+                    "{}:{}{}",
+                    chain.service,
+                    &hex::encode(chain.author)[..8],
+                    chain
+                        .instance
+                        .map(|i| format!(":{}", &hex::encode(i)[..8]))
+                        .unwrap_or_default()
+                );
+                let (from, count) = by_chain.entry(key).or_insert((e.entry().seq, 0));
+                *from = (*from).min(e.entry().seq);
+                *count += 1;
+            }
         }
         write_frame(send, &SyncMessage::Entry(bytes)).await?;
         sent += 1;
     }
-    Ok((sent, false))
+    if summarise && !by_chain.is_empty() {
+        let chains: Vec<String> =
+            by_chain.iter().map(|(k, (from, n))| format!("{k} from {from} x{n}")).collect();
+        tracing::debug!(root = db.root().unwrap_or("?"), sent, cut, chains = %chains.join(", "),
+            "sent by chain");
+    }
+    Ok((sent, cut))
 }
 
 /// One chain a peer is behind on: where its ordinary entries resume, plus the fork proof to
@@ -607,6 +641,9 @@ pub(crate) async fn missing_for_peer(
 pub(crate) struct IngestOutcome {
     pub received: u64,
     pub rejected: u64,
+    /// Entries at or below a head this computer already holds: resends, stored by nobody and
+    /// counted here so an exchange that moves only these says so (plans/SYNC_STATUS.md, piece 7).
+    pub duplicates: u64,
     pub ledger_moved: bool,
     /// The read budget ran out before the peer's Done: what follows was never read.
     pub cut: bool,
@@ -620,6 +657,7 @@ impl IngestOutcome {
     fn absorb(&mut self, batch: IngestOutcome) {
         self.received += batch.received;
         self.rejected += batch.rejected;
+        self.duplicates += batch.duplicates;
         self.ledger_moved |= batch.ledger_moved;
         self.cut |= batch.cut;
         self.over_ceiling |= batch.over_ceiling;
@@ -668,7 +706,7 @@ async fn ingest_stream(
                 if batch.len() >= INGEST_BATCH_ENTRIES {
                     let full = std::mem::take(&mut batch);
                     total.absorb(
-                        ingest_batch(db, root, full, peer_proven, identity_ceiling, allowed)
+                        ingest_whole(db, root, full, peer_proven, identity_ceiling, allowed)
                             .await?,
                     );
                     if total.over_ceiling {
@@ -682,9 +720,31 @@ async fn ingest_stream(
         }
     }
     if !batch.is_empty() {
-        total.absorb(ingest_batch(db, root, batch, peer_proven, identity_ceiling, allowed).await?);
+        total.absorb(ingest_whole(db, root, batch, peer_proven, identity_ceiling, allowed).await?);
     }
     Ok(total)
+}
+
+/// One batch through the gate, run to its end whatever becomes of the exchange that read it. An
+/// entry's row and its chain-heads memo note are two writes in two databases (`store_entry`), and
+/// the wall clock cancels an exchange wherever it stands: a cut between them left the memo
+/// claiming less than the entries held, and the next peer resent what this computer already had
+/// (plans/SYNC_STATUS.md, piece 7). Spawned, the batch finishes even when the exchange is dropped.
+async fn ingest_whole(
+    db: &Db,
+    root: [u8; 32],
+    raw: Vec<Vec<u8>>,
+    peer_proven: bool,
+    identity_ceiling: Option<usize>,
+    allowed: Option<&[u32]>,
+) -> Result<IngestOutcome> {
+    let db = db.clone();
+    let allowed = allowed.map(<[u32]>::to_vec);
+    tokio::spawn(async move {
+        ingest_batch(&db, root, raw, peer_proven, identity_ceiling, allowed.as_deref()).await
+    })
+    .await
+    .map_err(|e| anyhow!("an ingest batch stopped: {e}"))?
 }
 
 pub(crate) async fn ingest_batch(
@@ -702,6 +762,10 @@ pub(crate) async fn ingest_batch(
 
     let mut rejected = 0u64;
     let mut received = 0u64;
+    let mut duplicates = 0u64;
+    // Each chain's highest resent seq: a resend above what the memo says this computer holds is
+    // the memo behind its own entries (`heal_memo`).
+    let mut resent_tops: HashMap<ChainKey, u64> = HashMap::new();
     let mut evicted_rows = 0u64;
     // Which SERVICES lost rows: the view-drop below is scoped to the lanes an eviction
     // actually invalidated, so a forged posts chain no longer forces the private registers to
@@ -802,9 +866,11 @@ pub(crate) async fn ingest_batch(
                 let mut prev =
                     stored_chain_head(db, &author, service::IDENTITY_PUBLIC, None).await?;
                 for e in entries {
-                    // Already held? (Peer resent below our head.) Skip silently.
+                    // Already held? (Peer resent below our head.) Counted, not stored.
                     if let Some(p) = &prev {
                         if e.entry().seq <= p.entry().seq {
+                            duplicates += 1;
+                            note_resend(&mut resent_tops, &e);
                             continue;
                         }
                     }
@@ -927,6 +993,8 @@ pub(crate) async fn ingest_batch(
                             // and displacing stored history on a live fork would let the
                             // equivocator steer every replica it dials).
                             note_if_equivocation(db, &e).await?;
+                            duplicates += 1;
+                            note_resend(&mut resent_tops, &e);
                             continue;
                         }
                     }
@@ -1038,7 +1106,44 @@ pub(crate) async fn ingest_batch(
     // machinery decides what is honored history, and the quarantine has nothing left to hold.
     clear_adjudicated_equivocations(db, &tree).await?;
 
-    Ok(IngestOutcome { received, rejected, ledger_moved, ..Default::default() })
+    if !resent_tops.is_empty() {
+        heal_memo(db, &resent_tops).await;
+    }
+
+    Ok(IngestOutcome { received, rejected, duplicates, ledger_moved, ..Default::default() })
+}
+
+fn note_resend(tops: &mut HashMap<ChainKey, u64>, e: &SignedEntry) {
+    let chain = e.entry().chain;
+    let top = tops.entry((chain.author, chain.service, chain.instance)).or_default();
+    *top = (*top).max(e.entry().seq);
+}
+
+/// A resend is the peer telling this computer something about itself: it was sent that entry
+/// because this computer claimed less (plans/SYNC_STATUS.md, piece 7). When the claim came from a
+/// memo behind the entries table - a cut between `store_entry`'s two writes, or any other way -
+/// the same claim would bring the same resend every exchange, forever, since an entry already
+/// held never notes the memo again. So a resend above the memo's head reconciles the memo from
+/// the entries, there and then: one wasted exchange, not a loop.
+async fn heal_memo(db: &Db, resent_tops: &HashMap<ChainKey, u64>) {
+    let (Some(memo), Some(root)) = (db.memo(), db.root()) else { return };
+    let Ok(chains) = crate::net::frontier::memo_chains(memo, root).await else { return };
+    let heads: HashMap<ChainKey, u64> = chains
+        .into_iter()
+        .filter_map(|(author, svc, instance, _, head, _)| {
+            pubkey::decode(&author).map(|a| ((a, svc, instance), head))
+        })
+        .collect();
+    let behind =
+        resent_tops.iter().filter(|(k, top)| heads.get(*k).is_none_or(|h| h < *top)).count();
+    if behind == 0 {
+        return;
+    }
+    tracing::info!(root = %root, chains = behind,
+        "a peer resent entries above what the memo claims - reconciling it from the entries");
+    if let Err(e) = crate::net::frontier::reconcile_rows(memo, db, root).await {
+        tracing::warn!(root = %root, error = ?e, "reconciling the memo after a resend failed");
+    }
 }
 
 /// Record proof that a single-writer key signed two different entries at one (service, seq),
@@ -1589,11 +1694,16 @@ async fn peer_is_member(
 
 /// Requester role: connect to a peer and run the full symmetric exchange for one identity.
 ///
-/// Verify-then-reveal: our first Hello carries our proof but only *public* frontiers - we cannot
-/// know the responder is a member until its Hello arrives, and frontier metadata (which private
-/// chains exist, how active they are) is itself private. The cost is that a proven responder
-/// re-offers private entries we already hold; ingest's duplicate-skip absorbs that at this
-/// scale.
+/// Verify-then-reveal: our first Hello carries our proof, and private frontiers only for a
+/// computer this persona has ALREADY proven its own - a peer row bound to a leaf
+/// (`proven_sibling`) - since frontier metadata (which private chains exist, how active they
+/// are) is itself private, and anyone else is unverified until its Hello arrives. To anyone
+/// else, public frontiers only. Before 2026-10-07 it was public frontiers to everyone, and the
+/// cost was written off as "a proven responder re-offers private entries we already hold;
+/// ingest's duplicate-skip absorbs that at this scale" - until the per-exchange budget (Peeks,
+/// 2026-09-05) met a persona with more private history than one budget: every exchange
+/// between its two computers resent the private chains from seq 0, the budget ran out on
+/// entries the dialler held, and the tail it lacked never came (plans/SYNC_STATUS.md, piece 7).
 pub async fn sync_with_peer(
     state: &AppState,
     root_hex: &str,
@@ -1646,6 +1756,9 @@ fn ledger_scope(wanted: &[u32], instances: &[[u8; 16]], ask: Ask) -> String {
 /// DESKTOP.md Stage 6). A peer that predates the slot says nothing, and is noted as such.
 fn note_peer_version(state: &AppState, peer_id: &[u8; 32], theirs: &str) {
     let ours = state.config.app_version.as_str();
+    if let Ok(ep) = iroh::PublicKey::from_bytes(peer_id) {
+        state.sync_ledger.saw_version(&ep.to_string(), theirs);
+    }
     let peer = hex::encode(peer_id);
     if theirs.is_empty() {
         tracing::debug!(%peer, %ours, "peer's build predates the version slot");
@@ -1693,14 +1806,31 @@ pub async fn sync_with_peer_asking(
         return Ok(ExchangeStats::default());
     };
     let entries_at_start = crate::db::writes_to(root_hex, "entries");
+    let started_ms = now_ms();
     let result = sync_with_peer_dialled(state, root_hex, root, addr, wanted, instances, ask).await;
     if personal {
         let moved = crate::db::writes_to(root_hex, "entries").saturating_sub(entries_at_start);
-        state.sync_ledger.ended(
+        let error = result.as_ref().err().map(|e| format!("{e:#}"));
+        state.sync_ledger.ended(root_hex, &peer, moved, error.clone());
+        let stats = result.as_ref().ok();
+        let gap = stats.and_then(|s| s.gap);
+        state.sync_ledger.note(
             root_hex,
             &peer,
-            moved,
-            result.as_ref().err().map(|e| format!("{e:#}")),
+            crate::syncstatus::ExchangeNote {
+                at_ms: now_ms(),
+                way: crate::syncstatus::Way::Pull,
+                took_ms: now_ms() - started_ms,
+                sent: stats.map_or(0, |s| s.sent),
+                // What arrived, by the entries this persona stored meanwhile: a cut exchange's
+                // stats are lost with it, and this count is not.
+                received: stats.map_or(moved, |s| s.received),
+                duplicates: stats.map_or(0, |s| s.duplicates),
+                rejected: stats.map_or(0, |s| s.rejected),
+                theirs_ahead: gap.map(|g| g.0),
+                ours_ahead: gap.map(|g| g.1),
+                error,
+            },
         );
     }
     result
@@ -1768,11 +1898,15 @@ async fn exchange_on(
     let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
     let peer_id: [u8; 32] = *conn.remote_id().as_bytes();
 
+    // Private frontiers, rooms included, for a computer already proven this persona's own (see
+    // `sync_with_peer`); public ones for anyone else.
+    let reveal =
+        held.is_some() && proven_sibling(&state.node_db, root_hex, &addr.id.to_string()).await;
     let frontiers = match &held {
-        Some(db) => local_frontiers(db, false).await?,
+        Some(db) => local_frontiers(db, reveal).await?,
         None => Vec::new(),
     };
-    let frontiers = scoped_frontiers(frontiers, wanted, instances, false);
+    let frontiers = scoped_frontiers(frontiers, wanted, instances, reveal);
     write_frame(
         &mut send,
         &SyncMessage::Hello {
@@ -1821,12 +1955,21 @@ async fn exchange_on(
     // How far apart the two are, chain by chain, before anything moves (the sync ledger's
     // "Laptop has 8,560 entries this computer doesn't", plans/SYNC_STATUS.md piece 4). Whole
     // exchanges only: a scoped one's frontiers are a deliberate partial view.
+    let mut gap = None;
     if wanted.is_empty() {
         if let Some(db) = &held {
             if let Ok(ours) = local_frontiers(db, true).await {
                 let (theirs_ahead, ours_ahead) = crate::syncstatus::gap(&peer_frontiers, &ours);
                 state.sync_ledger.gap(root_hex, &peer_hex, theirs_ahead, ours_ahead);
+                gap = Some((theirs_ahead, ours_ahead));
             }
+        }
+        if reveal {
+            state.sync_ledger.claimed(
+                root_hex,
+                &addr.id.to_string(),
+                claimed_chains(&peer_frontiers),
+            );
         }
     }
     // A scoped exchange records no claim and (below) no verdict: the peer's scoped
@@ -1849,13 +1992,7 @@ async fn exchange_on(
             write_frame(&mut send, &SyncMessage::Done).await?;
             send.finish().ok();
             conn.closed().await;
-            return Ok(ExchangeStats {
-                received: 0,
-                rejected: 0,
-                sent: 0,
-                bodies_fetched: 0,
-                behind: false,
-            });
+            return Ok(ExchangeStats::default());
         }
         None => state.user_dbs.create(root_hex).await?,
     };
@@ -2004,7 +2141,54 @@ async fn exchange_on(
         crate::fold::nudge(state, root_hex);
     }
 
-    Ok(ExchangeStats { received, rejected, sent, bodies_fetched, behind })
+    Ok(ExchangeStats {
+        received,
+        rejected,
+        duplicates: outcome.duplicates,
+        sent,
+        bodies_fetched,
+        behind,
+        gap,
+    })
+}
+
+/// A Hello's frontiers as the sync ledger keeps them for the report.
+fn claimed_chains(frontiers: &[Frontier]) -> Vec<crate::syncstatus::ClaimedChain> {
+    frontiers.iter().map(|f| (f.service, f.author, f.instance, f.head)).collect()
+}
+
+/// A serve's note on the sync ledger (piece 7), filled in as the serve goes and recorded when it
+/// is dropped - which the wall clock's cancellation does too, leaving the "cut" it starts with.
+struct NoteOnDrop {
+    ledger: Option<(crate::syncstatus::Ledger, String, String)>,
+    started_ms: i64,
+    note: crate::syncstatus::ExchangeNote,
+}
+
+impl NoteOnDrop {
+    fn new(state: &AppState, root: &str, peer: &str, personal: bool) -> Self {
+        NoteOnDrop {
+            ledger: personal
+                .then(|| (state.sync_ledger.clone(), root.to_string(), peer.to_string())),
+            started_ms: now_ms(),
+            note: crate::syncstatus::ExchangeNote {
+                way: crate::syncstatus::Way::Serve,
+                error: Some("cut before it finished".into()),
+                ..Default::default()
+            },
+        }
+    }
+}
+
+impl Drop for NoteOnDrop {
+    fn drop(&mut self) {
+        if let Some((ledger, root, peer)) = self.ledger.take() {
+            let mut note = std::mem::take(&mut self.note);
+            note.at_ms = now_ms();
+            note.took_ms = note.at_ms - self.started_ms;
+            ledger.note(&root, &peer, note);
+        }
+    }
 }
 
 /// Responder role: called from the accept loop with an established connection.
@@ -2213,6 +2397,10 @@ async fn serve_on(
         conn.close(1u8.into(), b"busy");
         return Ok(());
     };
+    // Noted on the ledger however it ends (piece 7): the wall clock drops this future mid-way,
+    // and a serve cut that way is exactly the one the page most needs to hear about.
+    let personal = agented && peer_proven;
+    let mut noted = NoteOnDrop::new(&state, &root_hex, &peer_name, personal);
     // The dialer proved membership: remember it as a peer, leaf-bound (healing on any
     // contact - a sibling that found US, by whatever path, is one we can find again).
     // Hosted personas only - same conflation guard as the initiator side: a follower node
@@ -2256,6 +2444,14 @@ async fn serve_on(
         },
     )
     .await?;
+    if personal && scope.is_empty() {
+        if let Ok(ours) = local_frontiers(&db, true).await {
+            let (theirs_ahead, ours_ahead) = crate::syncstatus::gap(&peer_frontiers, &ours);
+            noted.note.theirs_ahead = Some(theirs_ahead);
+            noted.note.ours_ahead = Some(ours_ahead);
+        }
+        state.sync_ledger.claimed(&root_hex, &peer_name, claimed_chains(&peer_frontiers));
+    }
     let mut send_budget = state.admission.budget();
     let (sent, _cut_send) = send_missing(
         &db,
@@ -2268,6 +2464,7 @@ async fn serve_on(
         &mut send_budget,
     )
     .await?;
+    noted.note.sent = sent;
     // The stale-serve instrument (2026-08-24, REFACTOR's storage dig): when this node sends
     // NOTHING for a persona, record what its own read of the entries table held - the next
     // occurrence of "a host served sent=0 for minutes after a 200-OK write" then shows
@@ -2303,12 +2500,16 @@ async fn serve_on(
         // continues from the frontier (PROJECT_PLAN's Peeks, ruling 2).
         state.behind.mark(&root_hex);
     }
-    let (received, rejected) = (outcome.received, outcome.rejected);
+    let (received, rejected, duplicates) = (outcome.received, outcome.rejected, outcome.duplicates);
+    noted.note.received = received;
+    noted.note.rejected = rejected;
+    noted.note.duplicates = duplicates;
+    noted.note.error = None;
     tracing::info!(
         root = %root_hex,
         remote = %conn.remote_id(),
         peer_proven,
-        sent, received, rejected,
+        sent, received, duplicates, rejected,
         "served sync exchange"
     );
     // A push just landed something. The frontier map's edge is what fan-out hangs off, and the
@@ -2603,6 +2804,26 @@ pub async fn recently_synced_endpoints(node_db: &Db, since_ms: i64) -> Result<Ve
         .await
         .context("listing recently touched endpoints")?;
     Ok(rows.into_iter().map(|(e,)| e).collect())
+}
+
+/// Whether this endpoint is one of this persona's own computers, proven so: a peer row bound to a
+/// leaf - by a member proof, a signed serving record or the adoption ceremony - which the derive
+/// sweep deletes once the crown stops crediting the leaf. What a dial may reveal private
+/// frontiers to (`sync_with_peer`). A persona this node only mirrors has no siblings here.
+pub async fn proven_sibling(node_db: &Db, root_hex: &str, endpoint_id: &str) -> bool {
+    if !crate::identity::is_agented(node_db, root_hex).await.unwrap_or(false) {
+        return false;
+    }
+    node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT 1 FROM identity_peers
+             WHERE root_pubkey = ?1 AND endpoint_id = ?2 AND leaf_pubkey IS NOT NULL",
+            (root_hex, endpoint_id),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some()
 }
 
 pub async fn peers_for(node_db: &Db, root_hex: &str) -> Result<Vec<String>> {

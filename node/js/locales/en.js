@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1648 phrases across 100 files.
+// 1655 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1377,6 +1377,7 @@ export default {
 
     // --- node/js/syncpage.js ---
     'syncpage.just-now': 'just now',
+    'syncpage.stuck': 'not making progress - the last {n} syncs left the two of them no closer. Sync now tries again; a sync report says why.',
     'syncpage.pulling': 'syncing now - {n} brought in so far',
     'syncpage.serving': 'syncing now - sending it your things',
     'syncpage.failing-since': "can't be reached right now ({error}) - last reached {when}",
@@ -1390,9 +1391,14 @@ export default {
     'syncpage.another-computer': 'another computer',
     'syncpage.bodies-waiting': '{n} files and notes still on their way here',
     'syncpage.sync-now': 'sync now',
+    'syncpage.report-copied': 'copied - paste it into your bug report',
+    'syncpage.copy-report': 'copy a sync report',
+    'syncpage.report-about': 'for a bug report: how this computer and the others have been syncing, in numbers - nothing you wrote.',
     'syncpage.network-title': 'this server and the network',
     'syncpage.network-busy': 'Syncing the network for {people} people right now: {pulling} bringing in, {serving} sending out.',
     'syncpage.network-quiet': 'Not syncing the network for anyone right now.',
+    'syncpage.repaired': '{n} of its records were out of step with what it holds, and are mended.',
+    'syncpage.records-agree': 'Its records agree with what it holds.',
     'syncpage.counting': 'counting…',
     'syncpage.sync-code': 'sync code',
     'syncpage.sync-code-about': 'Your other computers show the same code when they hold the same things. Counts can differ for a while - something still on its way - but the code is what has to match.',
@@ -1414,6 +1420,7 @@ export default {
     'syncpage.chains': 'chains',
     'syncpage.entries': 'entries',
     'syncpage.disk': 'space on this computer',
+    'syncpage.check-records': 'check this computer’s records',
 
     // --- node/js/unlocks.js ---
     'unlocks.everything': 'Unlock everything',
