@@ -2314,7 +2314,7 @@ article:has(.label-emoji-strip) {
 }
 
 .settings-version-line a {
-    color: var(--teal-deep);
+    color: var(--accent-ink);
 }
 
 /* The colourway picker (persona.js, 2026-09-30): each option its three colours and its name; the

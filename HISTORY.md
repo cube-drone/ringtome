@@ -18335,3 +18335,24 @@ paints each from a colour every colourway names: the triangle `--coral`, the
 zigzag `--peach`, the ring the accent `--teal`, the squares `--sea` and
 `--pink` - a near rainbow in pride, shades of phosphor in the terminals. The
 README's recipe reproduces both SVGs byte for byte (checked).
+
+**2026-10-08 - The drawing editor's eyedropper.** Curtis: "a new tool, an
+eyedropper, to pick up a color from somewhere on the visible canvas (it works on
+all layers)". It reads the composited canvas - every visible layer, at its
+opacity - so it picks what the eye sees, whichever layer is current (a hidden or
+a text layer included: it paints nothing). A press picks, dragging keeps picking
+under the pointer, and letting go hands you back to the colour tool it was taken
+up from (`dropperFrom`; the brush if none). Where the layers leave nothing, the
+floor's checks are no colour, and the colour stays as it was. Beside the paint
+bucket, Phosphor's `Eyedropper`, the crosshair cursor; the palette shows while
+it is in hand. Not yet tried in a browser.
+
+**2026-10-08 - The accent you read, in dark colourways.** Curtis: in witchlight
+the drawing editor's selected tool is "a little low contrast". It drew its icon
+in `--teal-deep` - the dock band's colour - on `--paper`: dark plum on a dark
+page, 1.28:1, and 1.0-1.5:1 in every dark colourway (the terminals, pride,
+trans, bi, ace). Five more places read the same token as words: the welcome and
+front-door links (auth.css) and the settings' "every release" link. A new token,
+`--accent-ink` - the accent as words and marks on the page - is `--teal-deep`
+where the page is light (4.9-11:1, as before) and `--teal` in each of the ten
+dark colourways (6-19:1); all six use it now.

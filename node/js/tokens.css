@@ -91,6 +91,7 @@
 
     --teal: #1f9e90;         /* primary accent: water - focus, selection, hover, highlight */
     --teal-deep: #227d71;    /* the bottom dock band */
+    --accent-ink: var(--teal-deep); /* the accent as words and marks on the page: the deep one where the page is light */
     --sea: #4bab7f;          /* good / merged / friendly sea-green */
     --pink: #d97a97;         /* tags: shell pink */
     --peach: #e8a06b;        /* scheduled: the sunset before the post - warm, not alarming */
@@ -214,6 +215,7 @@
 
     --teal: #f2c14e;          /* the accent: witchlight yellow */
     --teal-deep: #3b2654;     /* the bottom dock band: plum */
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #b48cf2;           /* good / friendly: lavender */
     --pink: #e489d8;          /* tags */
     --peach: #f0a45c;         /* scheduled */
@@ -394,6 +396,7 @@
 
     --teal: #39ff14;
     --teal-deep: #0d3a0d;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #39ff14;
     --pink: #b8ff5c;
     --peach: #ffc53d;
@@ -439,6 +442,7 @@
 
     --teal: #ffffff;
     --teal-deep: #333333;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ffffff;
     --pink: #e0e0e0;
     --peach: #ffc53d;
@@ -484,6 +488,7 @@
 
     --teal: #14e1ff;
     --teal-deep: #0a333a;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #14e1ff;
     --pink: #5cffe4;
     --peach: #ffc53d;
@@ -529,6 +534,7 @@
 
     --teal: #ff8c1a;
     --teal-deep: #3a2008;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ff8c1a;
     --pink: #ffd27a;
     --peach: #ffe14d;
@@ -574,6 +580,7 @@
 
     --teal: #ffd700;
     --teal-deep: #3a3008;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ffd700;
     --pink: #fff1a8;
     --peach: #ffb347;
@@ -632,6 +639,7 @@
 
     --teal: #3da5ff;
     --teal-deep: #1a0f33;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #2ee66b;
     --pink: #ff6ec7;
     --peach: #ff9a1f;
@@ -687,6 +695,7 @@
 
     --teal: #5bcefa;
     --teal-deep: #0b2230;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #4fe0b0;
     --pink: #f5a9b8;
     --peach: #ffb057;
@@ -739,6 +748,7 @@
 
     --teal: #4d8bff;
     --teal-deep: #120a2a;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #3fdc7a;
     --pink: #ff5fae;
     --peach: #ff9a1f;
@@ -793,6 +803,7 @@
 
     --teal: #c060e0;
     --teal-deep: #1a0a1f;
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #3fdc7a;
     --pink: #d9a3ec;
     --peach: #ff9a1f;

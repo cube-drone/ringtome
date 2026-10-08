@@ -18,7 +18,7 @@
 }
 
 .welcome-notice a {
-    color: var(--teal-deep);
+    color: var(--accent-ink);
 }
 
 /* The desktop app's address, as a hero above the sign-in (2026-09-28). */
@@ -52,7 +52,7 @@
 .welcome-local-address {
     font-family: "Press Start 2P", monospace;
     font-size: 0.85rem;
-    color: var(--teal-deep);
+    color: var(--accent-ink);
 }
 
 /* The rest of the front door - the tabs, the note, the form - in a box of its own. */
@@ -314,7 +314,7 @@
 }
 
 .hit-counter-dot {
-    fill: var(--teal-deep);
+    fill: var(--accent-ink);
 }
 
 .hit-counter-day.pointed .hit-counter-dot {
@@ -453,7 +453,7 @@ a.download-version:focus-visible {
     width: fit-content;
     margin: 1rem auto 0;
     align-self: center;
-    color: var(--teal-deep);
+    color: var(--accent-ink);
     font-size: 1.1rem;
 }
 

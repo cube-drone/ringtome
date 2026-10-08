@@ -31,6 +31,7 @@ import {
     PaintBrush,
     Hand,
     PaintBucket,
+    Eyedropper,
     MagnifyingGlassPlus,
     MagnifyingGlassMinus,
     ImageSquare,
@@ -320,8 +321,9 @@ export const Icons = {
     // ...and its layers column: a stack of sheets; and the grab tool, which moves a whole layer.
     layers: Stack,
     grab: Hand,
-    // ...and the paint bucket, which pours.
+    // ...and the paint bucket, which pours; and the eyedropper, which picks a colour up.
     bucket: PaintBucket,
+    eyedropper: Eyedropper,
     // ...and the navigator's zoom.
     zoomIn: MagnifyingGlassPlus,
     zoomOut: MagnifyingGlassMinus,

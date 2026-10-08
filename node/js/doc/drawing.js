@@ -589,7 +589,7 @@ let rememberedTools = {
 /// What a text layer takes (Curtis, 2026-09-27): its words, and moving it about - the rest of the
 /// tools are greyed out while one is current. Crop cuts every layer, so it stays, and the framing
 /// tools touch no layer at all.
-const TEXT_LAYER_TOOLS = ['text', 'transform', 'grab', 'crop', 'profile', 'banner'];
+const TEXT_LAYER_TOOLS = ['text', 'transform', 'grab', 'crop', 'profile', 'banner', 'eyedropper'];
 
 /// The framing tools (Curtis, 2026-09-28): a crop whose shape is fixed, and whose button sets what
 /// the box holds as your profile picture or your banner rather than cutting the canvas. Nothing is
@@ -612,7 +612,21 @@ const SHAPE_TOOLS = ['line', 'rect', 'ellipse'];
 /// The tools that take a size, and those that take a colour (Curtis, 2026-09-27: "tool options
 /// are contextual and live with their associated tool").
 const SIZED_TOOLS = ['brush', 'eraser', ...SHAPE_TOOLS];
-const COLOURED_TOOLS = ['brush', ...SHAPE_TOOLS, 'bucket', 'text'];
+const COLOURED_TOOLS = ['brush', ...SHAPE_TOOLS, 'bucket', 'text', 'eyedropper'];
+
+/// The colour under a point of the canvas as the eye sees it (Curtis, 2026-10-08: "pick up a color
+/// from somewhere on the visible canvas - it works on all layers"): read off the composited canvas,
+/// which holds every visible layer at its opacity. `#rrggbb`, or null where the layers leave nothing -
+/// the floor's checks are no colour.
+function colourAt(canvas, x, y) {
+    if (!canvas) return null;
+    const px = Math.floor(x);
+    const py = Math.floor(y);
+    if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return null;
+    const [r, g, b, a] = canvas.getContext('2d').getImageData(px, py, 1, 1).data;
+    if (a === 0) return null;
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
 
 /// The paint bucket's pour speed (1..10) as canvas units a second: each step half again faster, from
 /// a slow creep to a rush across the canvas in about a second.
@@ -1123,6 +1137,16 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ];
     };
 
+    /// The eyedropper's pick: the colour under the pointer on the composited canvas, into the tools.
+    /// Nothing where the layers leave nothing.
+    const pickUp = (e) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const [x, y] = toDrawing(e);
+        const colour = colourAt(canvas, (x * canvas.width) / W, (y * canvas.height) / H);
+        if (colour) setTools({ color: colour });
+    };
+
     // The size circle: follows the pointer, as big on screen as the tool is on the drawing.
     const moveCursor = (e) => {
         const cursor = cursorRef.current;
@@ -1182,6 +1206,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const sr = stage.getBoundingClientRect();
         if (e.clientX - sr.left >= stage.clientWidth || e.clientY - sr.top >= stage.clientHeight)
             return;
+        // The eyedropper reads what's seen, whichever layer is current - a hidden one too.
+        if (tools.tool === 'eyedropper') {
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            live.current = { dropper: true };
+            pickUp(e);
+            return;
+        }
         // A hidden layer takes no strokes: they would land where nobody can see them. A text layer
         // takes only its own tools.
         if (current.hidden || !toolAllowed(tools.tool)) return;
@@ -1589,6 +1621,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const onPointerMove = (e) => {
         moveCursor(e);
         const l = live.current;
+        // Dragging the eyedropper keeps picking: the colour follows the pointer until it lets go.
+        if (l && l.dropper) {
+            pickUp(e);
+            return;
+        }
         if (!l && transformTool && frame) {
             const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
             setGripCursor(gripCursor(gripAt(frame, toDrawing(e), reach)));
@@ -1657,6 +1694,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         const l = live.current;
         live.current = null;
         if (!l) return;
+        // A colour picked up: back to the tool it was picked up for.
+        if (l.dropper) {
+            setTools({ tool: tools.dropperFrom || 'brush' });
+            return;
+        }
         if (l.crop) {
             if (l.to) {
                 setCropBox(boxAfter(l));
@@ -1746,6 +1788,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ['rect', Icons.rectangle, t('doc.drawing.rectangle', 'rectangle')],
         ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
         ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket')],
+        [
+            'eyedropper',
+            Icons.eyedropper,
+            t('doc.drawing.eyedropper', 'eyedropper: pick up a colour'),
+        ],
         ['text', Icons.text, t('doc.drawing.text-tool', 'text')],
         ['sticker', Icons.sticker, t('doc.drawing.sticker-tool', 'stickers')],
         ['transform', Icons.transform, t('doc.drawing.transform', 'transform')],
@@ -1777,7 +1824,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ? grabbing
             ? 'drawing-paper drawing-floor grabbing'
             : 'drawing-paper drawing-floor grab'
-        : pourTool || shapeTool
+        : pourTool || shapeTool || tools.tool === 'eyedropper'
           ? 'drawing-paper drawing-floor aim'
           : textTool
             ? 'drawing-paper drawing-floor type'
@@ -1799,7 +1846,21 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                           aria-label=${name}
                           disabled=${!toolAllowed(tool)}
                           data-settles=${tool === 'sticker' ? undefined : ''}
-                          onClick=${() => setTools({ tool })}
+                          onClick=${() =>
+                              setTools(
+                                  // The eyedropper remembers the colour tool it was taken up from,
+                                  // and hands you back to it once a colour is picked.
+                                  tool === 'eyedropper'
+                                      ? {
+                                            tool,
+                                            dropperFrom:
+                                                tools.tool !== 'eyedropper' &&
+                                                COLOURED_TOOLS.includes(tools.tool)
+                                                    ? tools.tool
+                                                    : tools.dropperFrom || 'brush',
+                                        }
+                                      : { tool },
+                              )}
                       ><${icon} /></button>`,
                   )}
                   ${/* With the tools: what works whatever the tool (Curtis, 2026-09-27). */ ''}
