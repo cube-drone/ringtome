@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1657 phrases across 100 files.
+// 1668 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -676,6 +676,16 @@ export default {
     'doc.colourpicker.hex': 'colour as hex',
 
     // --- node/js/doc/completions.js ---
+    'completions.rainbow-by-letter': 'a rainbow running through the letters',
+    'completions.wave-by-letter': 'the letters ripple',
+    'completions.bounce-by-letter': 'the letters bounce in turn',
+    'completions.jitter-by-letter': 'every letter shivers on its own',
+    'completions.rubber-by-letter': 'the letters squash and stretch in turn',
+    'completions.blink-chase': 'chase lights, like a theatre marquee',
+    'completions.blink-twinkle': 'the letters twinkle',
+    'completions.typewriter-by-word': 'typed out a word at a time',
+    'completions.fadein-scatter': 'the letters drift in, out of order',
+    'completions.marquee-right': 'scrolls the other way',
     'completions.block-center': 'centre what it holds',
     'completions.block-right': 'align what it holds to the right',
     'completions.block-left': 'back to the left, inside a centre or a right',
@@ -683,6 +693,7 @@ export default {
     'completions.block-table': 'a table: a row per line, a cell per [c]…[/c], the first row as headings',
     'completions.block-media': 'size the picture it holds: small, medium, large, full, or pixels',
     'completions.block-scheme': 'a passage in the {scheme} colours',
+    'completions.block-color': 'a passage in one colour (colours that read on light and dark are offered as you type)',
     'completions.block-font': 'a passage in one font (the fonts are offered as you type)',
     'completions.block-layout': 'a page laid out in regions: {slots}',
 

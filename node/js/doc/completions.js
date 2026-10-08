@@ -20,6 +20,7 @@ import { OWN_MEDIA_KINDS, loopSuffix } from '../pure/mediakind.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 import { placeholderAt } from '../pure/placeholder.js';
 import { t } from '../i18n.js';
+import { COLORS } from '../pure/markcolors.js';
 
 /// Plain membership - the app rule (`bucketHolds`) mirrored for the pickers, ONE copy for
 /// both (the link and media pickers each carried their own and one drifted - the second copy
@@ -100,6 +101,64 @@ const FONT_OPTIONS = Object.entries(FONTS).map(([token, family]) => ({
     },
 }));
 
+/// One whole span pair from the `[` picker: `[open]text[/close]` from the opening bracket, "text"
+/// selected so the next keystroke replaces it - the fill every option below shares.
+const pairFill = (open, close) => (view, _completion, from, to) => {
+    const start = from - 1;
+    const tag = `[${open}]`;
+    view.dispatch({
+        changes: { from: start, to, insert: `${tag}text[/${close}]` },
+        selection: { anchor: start + tag.length, head: start + tag.length + 'text'.length },
+    });
+};
+
+const COLOR_OPTIONS = COLORS.map(([name, hex]) => ({
+    label: `color=${name}`,
+    detail: hex,
+    swatch: hex,
+    apply: pairFill(`color=${name}`, 'color'),
+}));
+
+// The size dial, every step of it - the font element's seven, 3 the normal size.
+const SIZE_OPTIONS = [1, 2, 3, 4, 5, 6, 7].map((n) => ({
+    label: `size=${n}`,
+    detail: n === 3 ? 'normal' : n < 3 ? 'smaller' : 'bigger',
+    apply: pairFill(`size=${n}`, 'size'),
+}));
+
+/// The effects' options, as recipes (the span's attributes - `by`, `phase`, `direction` - say
+/// little until you've seen them): the ones worth knowing about, each filled whole. Built per pop
+/// so the words follow the reader's language.
+const effectRecipes = () =>
+    [
+        [
+            'rainbow by=letter',
+            t('completions.rainbow-by-letter', 'a rainbow running through the letters'),
+        ],
+        ['wave by=letter', t('completions.wave-by-letter', 'the letters ripple')],
+        ['bounce by=letter', t('completions.bounce-by-letter', 'the letters bounce in turn')],
+        ['jitter by=letter', t('completions.jitter-by-letter', 'every letter shivers on its own')],
+        [
+            'rubber by=letter',
+            t('completions.rubber-by-letter', 'the letters squash and stretch in turn'),
+        ],
+        [
+            'blink by=letter phase=ramp',
+            t('completions.blink-chase', 'chase lights, like a theatre marquee'),
+        ],
+        ['blink by=letter phase=scatter', t('completions.blink-twinkle', 'the letters twinkle')],
+        ['typewriter by=word', t('completions.typewriter-by-word', 'typed out a word at a time')],
+        [
+            'fadein by=letter phase=scatter',
+            t('completions.fadein-scatter', 'the letters drift in, out of order'),
+        ],
+        ['marquee direction=right', t('completions.marquee-right', 'scrolls the other way')],
+    ].map(([open, detail]) => ({
+        label: open,
+        detail,
+        apply: pairFill(open, open.split(' ')[0]),
+    }));
+
 // Built once: every gemoji as a completion - the label is the marquee source form (`:smile:`,
 // what filling inserts; marquee renders it via the profile's emoji table), the detail shows
 // the glyph itself so picking is visual.
@@ -171,7 +230,14 @@ export function linkCompletions(root, bucket) {
             });
         return {
             from: word.from + 1,
-            options: [...options, ...TAG_OPTIONS, ...FONT_OPTIONS],
+            options: [
+                ...options,
+                ...TAG_OPTIONS,
+                ...FONT_OPTIONS,
+                ...COLOR_OPTIONS,
+                ...SIZE_OPTIONS,
+                ...effectRecipes(),
+            ],
             validFor: /^[^[\]\n]*$/,
         };
     };
@@ -382,6 +448,16 @@ const blockDirectives = () => [
         body: 'text',
     })),
     {
+        label: ':::section color=',
+        detail: t(
+            'completions.block-color',
+            'a passage in one colour (colours that read on light and dark are offered as you type)',
+        ),
+        head: ':::section color=teal',
+        body: 'text',
+        pick: 'teal',
+    },
+    {
         label: ':::section font=',
         detail: t(
             'completions.block-font',
@@ -404,7 +480,7 @@ const blockDirectives = () => [
 
 /// The `:::` picker, at the start of a line (leading whitespace allowed) - a directive opens
 /// only there. Picking writes the whole container and selects its placeholder. On a directive's
-/// own line, after `font=`, it offers the fonts instead.
+/// own line, after `font=`, it offers the fonts instead, and after `color=` the colours.
 export function blockCompletions(context) {
     const line = context.state.doc.lineAt(context.pos);
     const before = context.state.sliceDoc(line.from, context.pos);
@@ -416,6 +492,14 @@ export function blockCompletions(context) {
                 label: token,
                 detail: family,
             })),
+            validFor: /^[\w-]*$/,
+        };
+    }
+    const color = before.match(/^\s*:::(?:page|section)\b.*\bcolor=([\w-]*)$/);
+    if (color) {
+        return {
+            from: context.pos - color[1].length,
+            options: COLORS.map(([name, hex]) => ({ label: name, detail: hex, swatch: hex })),
             validFor: /^[\w-]*$/,
         };
     }

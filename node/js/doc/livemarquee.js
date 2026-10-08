@@ -29,6 +29,15 @@ import { smallestChange } from '../pure/caret.js';
 
 const html = htm.bind(h);
 
+/// A completion's colour swatch, when it carries one (`swatch`, a hex), else nothing.
+const swatchOf = (completion) => {
+    if (!completion.swatch) return null;
+    const dot = document.createElement('span');
+    dot.className = 'completion-swatch';
+    dot.style.background = completion.swatch;
+    return dot;
+};
+
 // Vim keys, whole (Curtis, 2026-10-07). Vim hides the browser's own selection and draws nothing
 // in its place: CodeMirror's `drawSelection` must, or a visual selection doesn't show at all (the
 // vim package's README: "make sure you include drawSelection... to correctly render the selection
@@ -175,7 +184,15 @@ export const LiveMarquee = ({
                     // The pickers ride CodeMirror's own autocompletion: filter-as-you-type,
                     // arrows + Enter to pick, Escape (or just typing past) to wave it off.
                     ...(completions && completions.length
-                        ? [autocompletion({ override: completions, icons: false })]
+                        ? [
+                              autocompletion({
+                                  override: completions,
+                                  icons: false,
+                                  // A colour option's swatch (doc/completions.js COLORS), ahead of
+                                  // its name - the colour itself, so picking is by eye.
+                                  addToOptions: [{ render: swatchOf, position: 20 }],
+                              }),
+                          ]
                         : []),
                     // The pickers live at the page's root, not inside the editor (Curtis,
                     // 2026-09-25: the feed composer's edges cut the emoji and people pickers

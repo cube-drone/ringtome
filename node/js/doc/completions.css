@@ -45,3 +45,16 @@
     font-style: normal;
     font-size: 1.1em;
 }
+
+/* A colour option's swatch (doc/completions.js COLORS; doc/livemarquee.js swatchOf): the colour
+   itself, ahead of its name, ringed so a dark one shows on a dark picker and a light one on light. */
+.completion-swatch {
+    display: inline-block;
+    width: 0.8em;
+    height: 0.8em;
+    margin-right: 0.4em;
+    vertical-align: middle;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+}
+

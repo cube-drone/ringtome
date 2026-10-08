@@ -18153,3 +18153,25 @@ to slow down"; the rest wait).
 - **Hold your horses** is the rate limiter's refusal (`rate_limit.rs`). The
   unfurl budget's "link previews are paused" stays: that is the node slowing
   down, not the player.
+
+**2026-10-08 - The `[` picker learns the tags' options.** Curtis: "Could we do
+the same [as `font=`] with [color color= and a handful of useful colors?
+Preferably, colors that are visible against both dark and light backgrounds...
+Same with any of the other [tags] that have options."
+
+- **Colours** (`pure/markcolors.js`): thirteen of CSS's own names round the hue
+  wheel - any lowercase name passes Marquee's colour gate and lands in CSS as is
+  - each at least 3.25:1 against white AND against black (relative luminance
+    about 0.1-0.3; 4.6:1 is the most any colour gets on both). `color=teal`
+    fills `[color=teal]text[/color]`, with a swatch beside the name
+    (LiveMarquee's `addToOptions`, `.completion-swatch`); a
+    `:::page`/`:::section` line offers them after `color=`, and the `:::` picker
+    has `:::section color=`. Pure claims: every colour's contrast both ways, the
+    WCAG ratio itself, no name twice.
+- **The size dial**, `size=1` to `size=7`, 3 the normal.
+- **Effect recipes**: `rainbow`, `wave`, `bounce`, `jitter` and `rubber`
+  `by=letter`, chase lights (`blink by=letter phase=ramp`), twinkle
+  (`phase=scatter`), `typewriter by=word`, `fadein by=letter phase=scatter`,
+  `marquee direction=right` - each filled whole, with words for what it does.
+  Background colours are not offered: a text colour that reads on both is no
+  promise about text over it.
