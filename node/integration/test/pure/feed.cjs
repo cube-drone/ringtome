@@ -368,6 +368,43 @@ describe('feed emphasis and truncation', () => {
         );
     });
 
+    // Curtis, 2026-10-08: a post cut to its opening sentence "could be a little more generous...
+    // maybe going so far as the first full image".
+    it('normal interest: whole paragraphs while they fit, on through the first picture', () => {
+        const para = (n) => `paragraph ${n} ` + 'word '.repeat(60).trim(); // ~310 read characters
+        const post = [
+            'I have heard of it.',
+            pic(1),
+            '## A heading',
+            para(1),
+            para(2),
+            para(3),
+            para(4),
+        ].join('\n\n');
+        const { lead, cut } = leadOf(post, 'normal');
+        assert.ok(cut);
+        assert.ok(lead.startsWith('I have heard of it.'), 'the opening line');
+        assert.ok(lead.includes(pic(1)), 'through the first picture');
+        assert.ok(
+            lead.includes('## A heading') && lead.includes('paragraph 2'),
+            'and on, while it fits',
+        );
+        assert.ok(!lead.includes('paragraph 3'), 'but not past the budget');
+        assert.ok(!lead.endsWith('\u2026'), 'whole paragraphs, no mid-sentence cut');
+    });
+
+    it('normal interest: a picture far past the budget is not dragged into the lead', () => {
+        const para = 'word '.repeat(150).trim(); // ~750
+        const post = [para, para, para, pic(1), 'after'].join('\n\n');
+        const { lead } = leadOf(post, 'normal');
+        assert.equal(lead, para, 'just what fits');
+    });
+
+    it('low interest keeps the first paragraph alone', () => {
+        const post = ['the lead.', pic(1), 'more words'].join('\n\n');
+        assert.equal(leadOf(post + '\n\n' + 'x '.repeat(400), 'low').lead, 'the lead.');
+    });
+
     it('never cuts a picture or a link in half, and counts neither address as words', () => {
         // 880 characters of words, then a link whose text would carry the reading past 900: the
         // budget runs out INSIDE the link, which must end the lead before it rather than split it.

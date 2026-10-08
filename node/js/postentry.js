@@ -818,8 +818,10 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
     const bodyFormat = item.format === 'room' ? 'marquee' : item.format;
     const tlProfile = useTurbolinks(shownBody || '', bodyFormat);
     const { lead, cut: leadCut } = leadOf(shownBody || '', emphasis);
-    // A book's card always draws its whole table (below), so nothing is ever held back from it.
-    const cut = item.format !== 'book' && leadCut;
+    // A book's card always draws its whole table (below), so nothing is ever held back from it -
+    // nor from a post on its own page (Curtis, 2026-10-08: "if someone has bothered to click on
+    // the link to get here, show them the whole post").
+    const cut = item.format !== 'book' && !standalone && leadCut;
     // Held back, the card draws a little past its lead and fades it away (Curtis, 2026-10-02:
     // "there's more but you just can't see it"). A room draws its floor, not its words.
     const fading = cut && !wholeThing && item.format !== 'room';

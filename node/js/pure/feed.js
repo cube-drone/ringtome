@@ -265,8 +265,11 @@ function budgetEnd(text, spans, budget) {
 /**
  * The lead of a body, per the item's emphasis. A SECOND picture always ends it, whatever the
  * interest (Curtis, 2026-09-27): `[picture] words [picture]` shows as `[picture] words`, and the
- * rest is a click away. Within that, by the budget: the first paragraph when there are several,
- * else a word-boundary slice - never inside a picture or a link. `cut` says whether anything was
+ * rest is a click away. Within that, by the budget: at low interest the first paragraph when there
+ * are several; at normal interest whole paragraphs while the reading fits the budget - the first
+ * always, and on through the first picture when the words before it fit (Curtis, 2026-10-08: a
+ * post cut to its opening sentence "could be a little more generous... maybe going so far as the
+ * first full image"); else a word-boundary slice - never inside a picture or a link. `cut` says whether anything was
  * held back - the item's "see more" appears exactly when it is true.
  */
 export function leadOf(body, emphasis) {
@@ -287,8 +290,12 @@ function leadAt(body, emphasis) {
     const spans = spansOf(text);
     const over = readLength(text, spans) > budget;
     const paras = text.split(/\n[ \t]*\n/);
-    if (paras.length > 1 && (emphasis === 'low' || over)) {
+    if (paras.length > 1 && emphasis === 'low') {
         return { lead: paras[0], cut: true, end: paras[0].length };
+    }
+    if (paras.length > 1 && over) {
+        const end = paragraphsWithin(text, budget, pictures[0]);
+        return { lead: text.slice(0, end).replace(/\s+$/, ''), cut: true, end };
     }
     if (over) {
         const end = budgetEnd(text, spans, budget);
@@ -300,6 +307,26 @@ function leadAt(body, emphasis) {
         return { lead: text.slice(0, at).replace(/\s+$/, '') + '\u2026', cut: true, end: at };
     }
     return { lead: text, cut: atSecond, end: text.length };
+}
+
+/// Where a normal-interest lead of whole paragraphs ends in `text`: the first paragraph always, then
+/// each next one while the words read so far fit `budget` - and on through `picture` (the body's
+/// first, a regex match) whatever it costs, when the words before it fit. A picture costs nothing,
+/// so a short line, a picture and a heading still leave the budget for the paragraphs after them.
+function paragraphsWithin(text, budget, picture) {
+    const ends = [...text.matchAll(/\n[ \t]*\n/g)].map((m) => m.index);
+    ends.push(text.length);
+    const read = (at) => readLength(text.slice(0, at), spansOf(text.slice(0, at)));
+    const through =
+        picture && picture.index < text.length && read(picture.index) <= budget
+            ? picture.index + picture[0].length
+            : -1;
+    let end = ends[0];
+    for (const next of ends.slice(1)) {
+        if (end < through || read(next) <= budget) end = next;
+        else break;
+    }
+    return end;
 }
 
 /// How far past the lead a held-back card draws, in read characters: a few lines for the fade

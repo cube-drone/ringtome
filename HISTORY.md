@@ -18276,3 +18276,17 @@ serializer already writes a literal `+` as `%2B`, so its remaining `+`s are all
 spaces), which reads right in a path and a query alike. A unit test pins the
 encoding; the MCP tags claim now sets "indie web" and "c++" and reads them back
 as written.
+
+**2026-10-08 - A post's own page shows all of it; a card's lead is more
+generous.** Curtis: on a post's page, "if someone has bothered to click on the
+link to get here, should show them the whole post" - `PostEntry` held its lead
+back there too; `standalone` now means nothing is held back. And a card's cut
+"appears to stop after the first sentence... we could be a little more
+generous - maybe going so far as the first full image": over its budget with
+several paragraphs, a normal-interest lead was the first paragraph alone - his
+Mork Borg post's opening line. Now it takes whole paragraphs while the reading
+fits the budget (900), the first always, and on through the first picture when
+the words before it fit (`paragraphsWithin`; a picture costs nothing). That
+post's card now shows its opening line, the picture, the heading and three
+paragraphs. Low interest keeps the first paragraph; the second picture still
+ends every lead. Three pure claims.
