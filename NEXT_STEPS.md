@@ -317,6 +317,49 @@ test, the change, then a plan assertion so it cannot come back. Worst first:
   pick a worse index over a fully pinned primary key; row values never seek;
   `IN (…)` on a non-leading column scans.
 
+### Frontend performance (the 2026-10-08 audit)
+
+From a Firefox profile of slow typing in Writer, then a read of the whole client
+for re-render scope and per-render work. The ledger-poll freeze, the date
+formatters, `t()`'s fast path, the memoized notes rows, and the audit's first
+round - the shell's whole-table reads, memoized chat lines, feed cards and
+Marquee bodies, the name/picture/relative-time caches - are done (HISTORY). Two
+facts sit under most of what's left: Dexie's `liveQuery` wakes a `toArray()` or
+`count()` on ANY change to its table and hands back fresh rows, and Preact
+re-renders on any fresh object. An autosave writes `docs` every few seconds
+while anyone types. Worst first:
+
+- **The bundle** (1.74 MB): Phosphor 347 KB - every icon ships all six weights
+  and the app draws duotone (and a few bold/fill), so a duotone-only set is ~280
+  KB off; vim 122 KB (`codemirror-vim-core` 95 + 27 - not the 35 the vim entry
+  said) loaded for everyone, lazily loadable when the pref is on; gemoji 51 KB
+  for the `:` picker, lazily loadable too.
+- **What the first round left standing**: a chat keystroke still re-renders
+  `Room` itself - the floor's per-line `veilsMedia`, `trustOf`, and the draft's
+  own turbolink and user-card parses - since the lines skip but the room doesn't
+  (moving `draft` into the composer is the rest of it); the feed page still
+  reads every doc on each save (`feed.js:755`) and rebuilds its stream, though
+  its cards now skip; and the cards' and lines' comparators stringify their rows
+  (cheap next to a render, not free).
+- **The editor parses each keystroke three times** - marquee-codemirror's field,
+  `useTurbolinks`, `useUserCards` (five in side-by-side). Debounce or share the
+  two effects. Upstream (Marquee): its block cache keys on `span.start`, so
+  every block below the caret misses on each keystroke.
+- **Polls that set fresh state when nothing changed**: Nags' list (30 s,
+  `notifications.js:183`), chat's floor (15 s, `chat.js:1105`) and room list (30
+  s, `chat.js:2221`). Compare before `setState`.
+- **Lists**: `orderDocs` twice per notes render, unmemoized, `parseClaimed` in
+  its comparator (`notes.js:552,585`); the people sort over every contact per
+  keystroke (`people.js:175`); `matchDocs` splitting every token bag per query
+  (`search.js:37`); `NoteRow`'s comparator stringifies two docs per row per
+  render (cheaper once the shell stops re-rendering per save; a field compare
+  would be cheaper still).
+- **Paint**: the CRT's two full-screen overlays and, in light-on-dark
+  colourways, a `text-shadow` glow on every glyph. A profile with the CRT off
+  says whether it's the paint cost the typing profile saw (4-5 ms a frame).
+- **Drawing**: each stroke re-sorts, re-validates and re-serializes the whole
+  history and repaints every layer - only felt on large drawings.
+
 ### Marquee Promises
 
 - Marquee provides fixtures for drop-in functionality: do we still have a use

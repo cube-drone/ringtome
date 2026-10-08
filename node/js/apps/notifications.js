@@ -21,7 +21,7 @@ import { Icons } from '../icons.js';
 import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
 import { MiniPost } from '../postentry.js';
 import { PushToggle } from '../push.js';
-import { agoUnit } from '../pure/ago.js';
+import { agoUnit, agoWords } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
 import { roomHref } from '../links.js';
 
@@ -163,9 +163,7 @@ const sentence = (r) => {
 
 const whenWords = (ms) => {
     const ago = agoUnit(ms, Date.now());
-    return ago
-        ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit)
-        : t('apps.notifications.just-now', 'just now');
+    return ago ? agoWords(ago.value, ago.unit) : t('apps.notifications.just-now', 'just now');
 };
 
 export const NotificationsApp = ({ current }) => {

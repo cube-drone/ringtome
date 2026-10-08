@@ -14,7 +14,7 @@ import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { parseSpeakable, speakable } from './speakable.js';
 import { personaHue } from './pure/person.js';
-import { agoUnit } from './pure/ago.js';
+import { agoUnit, agoWords } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { PersonCard, PersonChip } from './person.js';
 import { usePageColorway } from './colorway.js';
@@ -43,11 +43,7 @@ const SyncLine = ({ syncedMs, refreshing, peek }) => {
 
     const ago = agoUnit(syncedMs, Date.now());
     // The reader's machine turns the count into their language; we only chose the unit.
-    const when = !syncedMs
-        ? null
-        : ago
-          ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit)
-          : 'just now';
+    const when = !syncedMs ? null : ago ? agoWords(ago.value, ago.unit) : 'just now';
     if (!when && !refreshing) return null;
     return html`<p class="id-sync">
         ${when && html`<span title=${new Date(syncedMs).toLocaleString()}>${t('idpage.synced', 'synced {when}', { when })}</span>`}

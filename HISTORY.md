@@ -18238,3 +18238,31 @@ formatter or fresh; `t()` with and without holes. Not done, from the same
 analysis: a selector so only the corner re-renders when the balance moves;
 `setBody` per keystroke (about 3 ms); the CRT overlays' paint (an A/B profile
 first). Not yet re-profiled.
+
+**2026-10-08 - The frontend audit's first round.** Two read-only agents swept
+the client - re-render scope, and work done per render - and their ranking went
+to NEXT_STEPS; Curtis took items 1-4 and 6.
+
+- **The shell stops re-rendering on every save.** `useBucketChoice` read the
+  whole docs table for one deep-linked row: it reads that row now, and only
+  until the link is judged. `DocRoute` and the own-colourway read hand back
+  primitives (present / absent / loading; the colourway's name), so a write that
+  doesn't move them re-renders nothing. The ledger poll lives in a leaf that
+  renders nothing (`LedgerPoll`), and a save asks the bank once, three seconds
+  after the documents settle, rather than on every save while restarting the
+  beat.
+- **Chat lines are memoized** (`Line`, `sameLine`): stable handlers that call
+  the room's newest, a stable `room`, and the line compared by content (a
+  history poll hands back fresh objects).
+- **Feed cards are memoized** (`PostEntry`, `samePost`), the item and editing
+  handle by content; one contacts subscription per persona shared by every card
+  (`useContactFacts`) instead of one per card; `editingFor` indexes your docs
+  once a render instead of searching them per post.
+- **`MarqueeBody` is memoized**, and its parse gate's verdict kept per source
+  (500, oldest out).
+- **Caches**: `speakable`/`wordsFor` (blake3 + BigInt) and `identiconUri` kept
+  per root (2,000 each), and one shared `Intl.RelativeTimeFormat` (`agoWords`)
+  for the five surfaces that built one per row.
+
+Pure claims (`kept.cjs`): the same name, picture and relative words the second
+time, and `wordsFor` a fresh copy each call. Not yet profiled.

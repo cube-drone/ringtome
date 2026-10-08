@@ -234,7 +234,7 @@ const Inside = ({ session }) => {
     const root = persona.current && persona.current.root;
     // What's unlocked (plans/UNLOCKS.md): the shell's one poll of the ledger feeds the corner's
     // balance and every gate, and the dock, launcher and app routes ask `owns` here.
-    useLedgerPoll(root);
+    // The poll lives in a leaf of its own (`LedgerPoll` below) - every save wakes it.
     const ledger = useLedger(root);
     const owns = (id) => unlockedIn(ledger, id);
     // The house tooltips follow this persona's "disable tooltips" (the profile's application
@@ -300,14 +300,18 @@ const Inside = ({ session }) => {
     // the last persona's): the colourway chosen; none chosen - the profile has arrived, holding
     // other fields (every active persona's daily heartbeat is one) but no colourway, so the
     // default; or not known yet - no profile here at all - which keeps what's worn (colorway.js).
+    // A primitive, so a profile write that doesn't move it re-renders nothing (2026-10-08): the
+    // colourway's name, '' for none chosen, '?' for no profile here yet.
     const ownColorway = useLive(() => {
-        if (!root) return null;
+        if (!root) return '?';
         const profile = openMirror(root).profile;
         return Promise.all([profile.get('colorway'), profile.count()]).then(([row, held]) =>
-            row && row.value ? { value: row.value } : { value: held > 0 ? null : undefined },
+            row && row.value ? row.value : held > 0 ? '' : '?',
         );
     }, [root]);
-    useOwnColorway(ownColorway ? ownColorway.value : undefined);
+    useOwnColorway(
+        ownColorway === undefined || ownColorway === '?' ? undefined : ownColorway || null,
+    );
     // The CRT screen (crt.css), on unless the persona turned it off - on any of its computers.
     useWornCrt(root);
 
@@ -480,7 +484,7 @@ const Inside = ({ session }) => {
                 /* HorseBucks in the clock's own box, after the time (Curtis, 2026-09-29): a click
                 opens hrseBank. */ ''
             }
-            <${Clock}><${CornerBank} root=${root} /><//>
+            <${Clock}><${CornerBank} root=${root} /><//><${LedgerPoll} root=${root} />
             ${/* The corner cloud: always here, always the way to the sync page (plans/SYNC_STATUS.md). */ ''}
             <${SyncCloud} root=${root} />
         </footer>
@@ -775,6 +779,13 @@ const AppRoute = ({ app: appId, doc, current, searchQuery, searchKind, bucket })
     />`;
 };
 
+/// The ledger's poll (unlocks.js `useLedgerPoll`), in a component that renders nothing: it wakes on
+/// every save of the persona's documents, and in the shell that woke the whole app (2026-10-08).
+const LedgerPoll = ({ root }) => {
+    useLedgerPoll(root);
+    return null;
+};
+
 /// Where this page last opened one of your documents - the app and the notebook - so an address whose
 /// document isn't there says so in that notebook, beside its list (2026-10-03), not on a bare page.
 let lastPlace = null; // { root, app, bucket }
@@ -787,11 +798,14 @@ const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket 
     // The row, null once the mirror holds documents and this isn't among them (deleted, or not on
     // this computer yet) - a missing row used to read as still loading, forever (2026-10-01).
     // An empty mirror is still filling, so there it keeps looking.
+    // Here, as a primitive (2026-10-08, the frontend audit): `true`, null or undefined. The row
+    // itself is a fresh object on every save of the open document, which re-rendered this route and
+    // the whole app under it every few seconds while you typed; presence is all this route asks.
     const row = useLive(() => {
         if (!mine) return null;
         const docs = openMirror(current.root).docs;
-        return Promise.all([docs.get(doc), docs.count()]).then(
-            ([r, held]) => r || (held > 0 ? null : undefined),
+        return Promise.all([docs.get(doc), docs.count()]).then(([r, held]) =>
+            r ? true : held > 0 ? null : undefined,
         );
     }, [mine, current && current.root, doc]);
     // The mirror not holding it is not the document not existing (Curtis, 2026-10-03: a flash of

@@ -8,6 +8,7 @@
 // bottom at full width. The room's own post is the first line, said by its creator.
 import { h } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { memo } from 'preact/compat';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -15,7 +16,7 @@ import { api, apiTextTitled } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, PersonHex, PersonInline, usePerson } from '../person.js';
-import { agoUnit } from '../pure/ago.js';
+import { agoUnit, agoWords } from '../pure/ago.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { openMirror, useLive } from '../mirror.js';
@@ -132,9 +133,7 @@ const useRoomWords = (room) => {
 
 const whenWords = (ms) => {
     const ago = agoUnit(ms, Date.now());
-    return ago
-        ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit)
-        : t('apps.chat.just-now', 'just now');
+    return ago ? agoWords(ago.value, ago.unit) : t('apps.chat.just-now', 'just now');
 };
 
 const roomName = (words, room) =>
@@ -637,7 +636,7 @@ const MADE_WITH_SAID = {
     'api-key': () => t('apps.chat.said-with-an-api-key', 'said with an API key'),
 };
 
-const Line = ({
+const LineBody = ({
     m,
     current,
     cont,
@@ -834,6 +833,18 @@ const Line = ({
     }
     </li>`;
 };
+
+/// A line re-renders only when something it shows moved (2026-10-08, the frontend audit). Every
+/// prop by identity - the room hands stable handlers and a stable `room` - but `m`, which a history
+/// poll hands back as a fresh object whatever changed: by content.
+const sameLine = (a, b) => {
+    for (const k of Object.keys(b)) {
+        if (k === 'm') continue;
+        if (a[k] !== b[k]) return false;
+    }
+    return a.m === b.m || JSON.stringify(a.m) === JSON.stringify(b.m);
+};
+const Line = memo(LineBody, sameLine);
 
 const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     const root = current && current.root;
@@ -1567,6 +1578,24 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         }
     };
 
+    // The floor's lines are memoized (`Line` below; 2026-10-08, the frontend audit): typing a line
+    // re-rendered every line on the floor, each parsing its words again. Their handlers are this
+    // room's closures, fresh each render, so the lines get stable ones that call the newest.
+    const latest = useRef({});
+    latest.current = { react, beginEdit, setDeletingLine, retryLine, discardLine, setMuted };
+    const steady = useMemo(
+        () => ({
+            react: (...a) => latest.current.react(...a),
+            beginEdit: (...a) => latest.current.beginEdit(...a),
+            deleteLine: (...a) => latest.current.setDeletingLine(...a),
+            retryLine: (...a) => latest.current.retryLine(...a),
+            discardLine: (...a) => latest.current.discardLine(...a),
+            mute: (who) => latest.current.setMuted(who, true),
+        }),
+        [],
+    );
+    const roomRef = useMemo(() => ({ author, doc }), [author, doc]);
+
     if (!root) return null;
     if (room === undefined)
         return html`<p class="chat-empty">${t('apps.chat.knocking', 'knocking…')}</p>`;
@@ -1916,19 +1945,19 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                                       trusted: hasTrust(trustOf.get(m.speaker)),
                                   })
                               }
-                              onReact=${m.post || m.pending || room.left || (history && history.closed) ? null : react}
-                              onEdit=${m.post || m.pending || room.left || (history && history.closed) ? null : beginEdit}
-                              onDelete=${m.post || m.pending || room.left || (history && history.closed) ? null : setDeletingLine}
-                              onMute=${iModerate && !m.post && !m.pending && !room.left ? (who) => setMuted(who, true) : null}
-                              onRetry=${m.pending ? retryLine : null}
-                              onDiscard=${m.pending ? discardLine : null}
+                              onReact=${m.post || m.pending || room.left || (history && history.closed) ? null : steady.react}
+                              onEdit=${m.post || m.pending || room.left || (history && history.closed) ? null : steady.beginEdit}
+                              onDelete=${m.post || m.pending || room.left || (history && history.closed) ? null : steady.deleteLine}
+                              onMute=${iModerate && !m.post && !m.pending && !room.left ? steady.mute : null}
+                              onRetry=${m.pending ? steady.retryLine : null}
+                              onDiscard=${m.pending ? steady.discardLine : null}
                               ${
                                   /* A muted reader's react, edit and delete would be seen by
                                   nobody: the menu stands down with the composer. */ ''
                               }
                               hushed=${iAmMuted}
                               found=${at === m.hash}
-                              room=${{ author, doc }}
+                              room=${roomRef}
                           />`,
                 )}
             </ul>

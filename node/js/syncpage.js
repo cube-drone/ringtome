@@ -13,7 +13,7 @@ import htm from 'htm';
 import { api, apiTextTitled } from './net.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
-import { agoUnit } from './pure/ago.js';
+import { agoUnit, agoWords } from './pure/ago.js';
 import { computerState, gapOf } from './pure/syncstatus.js';
 import { sizeLabel } from './pure/backups.js';
 
@@ -24,9 +24,7 @@ const LOOK_MS = 3000;
 
 const ago = (ms) => {
     const unit = agoUnit(ms, Date.now());
-    return unit
-        ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(unit.value, unit.unit)
-        : t('syncpage.just-now', 'just now');
+    return unit ? agoWords(unit.value, unit.unit) : t('syncpage.just-now', 'just now');
 };
 
 const count = (n) => Number(n || 0).toLocaleString();

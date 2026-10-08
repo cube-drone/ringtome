@@ -33,6 +33,24 @@ const hexToBytes = (hex) => {
 /// reduced mod the list. (32-bit windows so the mod bias over 1296 is a rounding error;
 /// byte-pair windows would visibly favor the list's front.)
 export function wordsFor(rootHex) {
+    const kept = wordsKept.get(rootHex);
+    if (kept) return [...kept];
+    const words = wordsOf(rootHex);
+    keep(wordsKept, rootHex, words);
+    return [...words];
+}
+
+/// A root's names, kept (2026-10-08, the frontend audit): a blake3 hash and a 256-bit base58 per
+/// call, and every face, card and chat line asks again each render. Bounded - the oldest go first.
+const wordsKept = new Map();
+const namesKept = new Map();
+const KEPT = 2000;
+const keep = (map, key, value) => {
+    map.set(key, value);
+    if (map.size > KEPT) map.delete(map.keys().next().value);
+};
+
+function wordsOf(rootHex) {
     const h = blake3(hexToBytes(rootHex));
     const pick = (o) =>
         WORDS[
@@ -77,8 +95,12 @@ export function fromBase58(s) {
 
 /// The canonical mint: `word-word-<base58>`.
 export function speakable(rootHex) {
+    const kept = namesKept.get(rootHex);
+    if (kept) return kept;
     const [a, b] = wordsFor(rootHex);
-    return `${a}-${b}-${toBase58(rootHex)}`;
+    const name = `${a}-${b}-${toBase58(rootHex)}`;
+    keep(namesKept, rootHex, name);
+    return name;
 }
 
 /// A pasted reference in ANY dress - a full shared URL, a `/ringtome/user/` or old `/id/` path, or

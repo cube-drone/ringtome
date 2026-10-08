@@ -12,7 +12,7 @@
 // The names and explanations a player reads are here, one literal `t()` apiece, by the unlock's id
 // (as contracts.js names contracts); an unlock this table doesn't know wears the node's English.
 import { h } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
@@ -161,23 +161,36 @@ export const useLedgerPoll = (root) => {
             live = false;
         };
     }, [root]);
+    // The beat: every ten seconds while the tab is visible.
+    const ask = useRef(() => {});
     useEffect(() => {
         if (!root) return undefined;
         let live = true;
-        const ask = () => {
+        ask.current = () => {
             if (document.hidden) return;
             api(`/api/identity/${root}/bank?lines=0`)
                 .then((b) => live && noteBank(root, b))
                 .catch(() => {});
         };
-        ask();
-        const timer = setInterval(ask, ASK_MS);
+        ask.current();
+        const timer = setInterval(() => ask.current(), ASK_MS);
         return () => {
             live = false;
             clearInterval(timer);
         };
+    }, [root]);
+    // And a moment after the documents move (2026-10-08): an autosave lands every few seconds while
+    // anyone types, and asking on each one - restarting the beat each time - was a bank request
+    // per save. The earning shows a few seconds late, which a rolling corner hides anyway.
+    useEffect(() => {
+        if (!root || !docsMoved) return undefined;
+        const later = setTimeout(() => ask.current(), SETTLE_MS);
+        return () => clearTimeout(later);
     }, [root, docsMoved]);
 };
+
+/// How long the documents stay still before the poll asks about them.
+const SETTLE_MS = 3000;
 
 // ---- the Market's words ----
 

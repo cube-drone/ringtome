@@ -15,6 +15,8 @@
 // when the affordance lived on the old stack card.
 import { h } from 'preact';
 import { useState, useEffect, useRef, useContext } from 'preact/hooks';
+import { memo } from 'preact/compat';
+import { liveQuery } from 'dexie';
 import { createContext } from 'preact';
 import htm from 'htm';
 
@@ -59,7 +61,7 @@ import { useTurbolinks, turbolinkReader } from './doc/turbolinks.js';
 import { registerRoomCard } from './doc/usercard.js';
 import { parseRingtome } from './pure/ringtome.js';
 import { parseSpeakable } from './speakable.js';
-import { agoUnit } from './pure/ago.js';
+import { agoUnit, agoWords } from './pure/ago.js';
 import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
 import { parseBook } from './pure/books.js';
 import { useShared, markShared } from './shares.js';
@@ -157,9 +159,16 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
         }
     };
 
+    // Indexed once a render, not searched once per post (2026-10-08, the frontend audit: every one
+    // of your posts on the page mapped every document you have, each render).
+    const byPost = new Map();
+    for (const r of (rows || []).map(decorate)) {
+        const postId = publishedState(r).postId;
+        if (postId && !byPost.has(postId)) byPost.set(postId, r);
+    }
     const editingFor = (publicDocId) => {
         if (!myRoot || !rows) return null;
-        const row = rows.map(decorate).find((r) => publishedState(r).postId === publicDocId);
+        const row = byPost.get(publicDocId);
         if (!row) return null;
         return {
             root: myRoot,
@@ -541,9 +550,7 @@ const ROOM_TAIL = 3;
 const ROOM_MORE_CAP = 100;
 const sinceWords = (ms) => {
     const ago = agoUnit(ms, Date.now());
-    return ago
-        ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(ago.value, ago.unit)
-        : t('postentry.just-now', 'just now');
+    return ago ? agoWords(ago.value, ago.unit) : t('postentry.just-now', 'just now');
 };
 const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
     const profile = useTurbolinks(words || '', 'marquee');
@@ -690,7 +697,7 @@ const RoomLinkCard = ({ target }) => {
 };
 registerRoomCard(RoomLinkCard);
 
-export const PostEntry = ({ item, current, interest, editing, quote, standalone = false }) => {
+const PostEntryBody = ({ item, current, interest, editing, quote, standalone = false }) => {
     // What the Market sells on a card (plans/UNLOCKS.md): sharing, pinning, editing a published
     // post, and labels and reactions. Taking a post down, and taking your own label back, never.
     const me = current && current.root;
@@ -826,12 +833,7 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
     // Whose labels this reader sees: the register and their ledger, both live. The
     // description key is the author's alone here (one description per post); anyone
     // else's description is shown only at 'everyone', as a label.
-    const contactRows = useLive(
-        () => (current && current.root ? openMirror(current.root).contacts.toArray() : []),
-        [current && current.root],
-    );
-    const factsByRoot = current && current.root ? {} : null;
-    if (factsByRoot) for (const c of contactRows || []) factsByRoot[c.root] = c.facts || {};
+    const factsByRoot = useContactFacts(current && current.root);
     // Labels said or retracted from THIS card, this session - the overlay idiom: shown at
     // once, deduped when the dressed rows eventually agree.
     // Content warnings (2026-09-07): the reader's blur and hide lists against the tags the
@@ -1613,6 +1615,71 @@ export const PostEntry = ({ item, current, interest, editing, quote, standalone 
         </article>
     `;
 };
+
+/// A card re-renders only when what it shows moved (2026-10-08, the frontend audit: an autosave in
+/// the feed's composer re-rendered every card on the page, each parsing its words again). The page
+/// rebuilds its items and the editing handles every render, so those compare by content - the
+/// handle's `post` closes over nothing that changes (the persona and the page's own setters).
+const sameEditing = (a, b) =>
+    a === b ||
+    (!!a &&
+        !!b &&
+        a.root === b.root &&
+        a.posting === b.posting &&
+        a.baking === b.baking &&
+        JSON.stringify(a.row) === JSON.stringify(b.row));
+const samePost = (a, b) => {
+    for (const k of Object.keys(b)) {
+        if (k === 'item' || k === 'quote' || k === 'editing') continue;
+        if (a[k] !== b[k]) return false;
+    }
+    return (
+        (a.item === b.item || JSON.stringify(a.item) === JSON.stringify(b.item)) &&
+        (a.quote === b.quote || JSON.stringify(a.quote) === JSON.stringify(b.quote)) &&
+        sameEditing(a.editing, b.editing)
+    );
+};
+export const PostEntry = memo(PostEntryBody, samePost);
+
+// ---- one contacts subscription per persona, shared by every card ----
+
+/// Each card used to hold its own live query over the whole contacts table (2026-10-08, the frontend
+/// audit): N cards, N identical subscriptions, every contacts write read N times. One per persona
+/// now, kept while any card wants it: the reader's facts about each person, by root.
+const factStores = new Map(); // root -> { facts, listeners, sub }
+const NO_FACTS = {};
+
+function useContactFacts(root) {
+    const [facts, setFacts] = useState(() => (root && factStores.get(root)?.facts) || undefined);
+    useEffect(() => {
+        if (!root) return undefined;
+        let store = factStores.get(root);
+        if (!store) {
+            store = { facts: undefined, listeners: new Set(), sub: null };
+            factStores.set(root, store);
+            const kept = store;
+            kept.sub = liveQuery(() => openMirror(root).contacts.toArray()).subscribe({
+                next: (rows) => {
+                    const byRoot = {};
+                    for (const c of rows) byRoot[c.root] = c.facts || {};
+                    kept.facts = byRoot;
+                    for (const l of kept.listeners) l(byRoot);
+                },
+                error: (e) => console.warn('contacts query error', e),
+            });
+        }
+        store.listeners.add(setFacts);
+        if (store.facts !== undefined) setFacts(store.facts);
+        return () => {
+            store.listeners.delete(setFacts);
+            if (store.listeners.size === 0) {
+                store.sub.unsubscribe();
+                factStores.delete(root);
+            }
+        };
+    }, [root]);
+    return root ? facts || NO_FACTS : null;
+}
 
 // Re-exported for the drafts column's card, which stayed in the feed app.
 export { useDocDetail };

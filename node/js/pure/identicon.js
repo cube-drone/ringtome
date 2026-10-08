@@ -57,5 +57,15 @@ export function identiconSvg(rootHex) {
 /// the SVG element instead - its CSP allows no data: images, and inlining needs no
 /// permission at all.)
 export function identiconUri(rootHex) {
-    return `data:image/svg+xml,${encodeURIComponent(identiconSvg(rootHex))}`;
+    const kept = urisKept.get(rootHex);
+    if (kept) return kept;
+    const uri = `data:image/svg+xml,${encodeURIComponent(identiconSvg(rootHex))}`;
+    urisKept.set(rootHex, uri);
+    if (urisKept.size > URIS_KEPT) urisKept.delete(urisKept.keys().next().value);
+    return uri;
 }
+
+/// Each root's picture, kept (2026-10-08, the frontend audit): an SVG built and URI-encoded per face,
+/// per render. Bounded - the oldest go first.
+const urisKept = new Map();
+const URIS_KEPT = 2000;

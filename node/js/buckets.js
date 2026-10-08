@@ -75,21 +75,34 @@ export function useBucketChoice({ root, appHere, roster, cozyBucketRow, docSegme
         '';
 
     const deepDoc = (appHere && appHere.style && docSegment) || null;
-    const docsRows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
-    const correctedFor = useRef(null);
+    // The deep link's one row, and only until it has been judged (2026-10-08, the frontend audit):
+    // this hook lives in the shell, and it used to read the WHOLE docs table - which every autosave
+    // writes - re-rendering the shell and the open app every few seconds while anyone typed. A
+    // keyed read wakes only for its own row, and once the link is judged there's nothing to read:
+    // the open document is the one being saved.
+    const [judged, setJudged] = useState(null);
+    const pending = deepDoc && judged !== deepDoc ? deepDoc : null;
+    const deepRow = useLive(
+        () =>
+            root && pending
+                ? openMirror(root)
+                      .docs.get(pending)
+                      .then((r) => r || null)
+                : null,
+        [root, pending],
+    );
     useEffect(() => {
-        if (!deepDoc || correctedFor.current === deepDoc) return;
-        if (!docsRows || !roster) return; // wait for the mirror before judging membership
-        const row = docsRows.find((d) => d.doc_id === deepDoc);
+        if (!pending || !roster) return; // wait for the roster before judging membership
+        const row = deepRow && deepRow.doc_id === pending ? deepRow : null;
         if (!row) return; // not mirrored (yet) - leave the bucket alone
-        correctedFor.current = deepDoc;
+        setJudged(pending);
         const names = row.buckets || [];
         if (names.includes(bucket)) return; // the current bucket already holds it
         if (!names.length) return; // unbucketed: only the everything-view holds it; no notebook to switch to
         const target = names.find((n) => appTypeOf(n, roster) === appHere.style);
         if (target) switchBucket(target);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [deepDoc, docsRows, roster, bucket, appHere && appHere.id]);
+    }, [pending, deepRow, roster, bucket, appHere && appHere.id]);
 
     return { bucket, switchBucket };
 }

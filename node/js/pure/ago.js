@@ -37,3 +37,11 @@ export function agoUnit(then, now) {
     }
     return { value: -Math.floor(seconds), unit: 'second' };
 }
+
+/// `agoUnit`'s answer in the reader's words ("3 minutes ago", "yesterday") - through one formatter,
+/// built once (2026-10-08, the frontend audit: five surfaces built a fresh one per row, per render).
+let relative = null;
+export function agoWords(value, unit) {
+    if (!relative) relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+    return relative.format(value, unit);
+}
