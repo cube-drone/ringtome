@@ -18591,3 +18591,17 @@ Then the chip heads the stream on its own (Curtis: "swap 'feed options' to the
 left, and remove the title 'the feed'"): the title is gone - its phrase
 retired - and the chip sits at the left; a feed with no options draws no heading
 row at all.
+
+**2026-10-08 - Tags a thumb can press.** Curtis: on mobile "everywhere we see a
+tag, the tag is too small to click on. The '+tag' button is too small to click
+on. The 'X' to delete a tag? definitely too small... Tag selectors in the feed
+options? Also too small." Under 900px every pressable tag grows to about 1.3x,
+padded to a fingertip's height, with wider gaps between: a card's labels and its
+"+ tag" and input (`.label-chip`, `.label-add`, `.label-add-input` - the contact
+tags on a ledger wear the same), a document's tags and their input
+(`.annot-tag`), the feed options' chips and their "more" (`.facet-chip`,
+`.facet-more`), a note row's tags and the tag column's rows, the book reader's
+tags and the image picker's. The × that removes a tag (`.label-x`,
+`.annot-tag-x`) is a 1.3rem glyph with padding of its own, pulled into the
+chip's right edge, so it's a target and not a speck. A desktop is untouched: one
+`@media (max-width: 900px)` block at the end of each of the six stylesheets.

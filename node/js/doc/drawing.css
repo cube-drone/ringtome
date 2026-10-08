@@ -876,3 +876,18 @@
     opacity: 0.35;
     cursor: default;
 }
+
+/* A thumb's tags (Curtis, 2026-10-08: on a phone "everywhere we see a tag, the tag is too small to
+   click on" - and its "+ tag", and its ×; fine on a desktop). Under 900px every tag you can press
+   grows to about 1.3x, padded to a fingertip's height, and the × to remove one is a target of its
+   own rather than a glyph. One block per stylesheet, each after the rules it outgrows. */
+@media (max-width: 900px) {
+    .imagepick-tags {
+        gap: 0.45rem;
+    }
+
+    .imagepick-tag {
+        font-size: 1rem;
+        padding: 0.4rem 0.75rem;
+    }
+}

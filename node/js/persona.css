@@ -2604,3 +2604,39 @@ article:has(.label-emoji-strip) {
     align-items: center;
     gap: 0.8rem;
 }
+
+/* A thumb's tags (Curtis, 2026-10-08: on a phone "everywhere we see a tag, the tag is too small to
+   click on" - and its "+ tag", and its ×; fine on a desktop). Under 900px every tag you can press
+   grows to about 1.3x, padded to a fingertip's height, and the × to remove one is a target of its
+   own rather than a glyph. One block per stylesheet, each after the rules it outgrows. */
+@media (max-width: 900px) {
+    .feed-entry-labels,
+    .ledger-tags {
+        gap: 0.45rem;
+    }
+
+    .label-chip,
+    .label-add {
+        align-items: center;
+        font-size: 1rem;
+        padding: 0.4rem 0.75rem;
+    }
+
+    .label-add-input {
+        font-size: 1rem;
+        padding: 0.4rem 0.75rem;
+        width: 9rem;
+    }
+
+    .label-kind,
+    .label-count {
+        font-size: 0.85rem;
+    }
+
+    .label-x {
+        font-size: 1.3rem;
+        line-height: 1;
+        padding: 0.1rem 0.4rem;
+        margin-right: -0.5rem;
+    }
+}
