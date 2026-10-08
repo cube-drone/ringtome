@@ -113,9 +113,10 @@ export const BucketShelf = createContext(null);
 
 // The bucket switcher: a doc-app is a shelf of notebooks (buckets), and this is how you move
 // along the shelf. It heads the app's list column, above "+ new" (Curtis, 2026-09-30 - it sat in
-// the app header, not an ideal spot): a plus (bind a fresh, empty notebook of this app's type),
-// arrows that page left/right along the rail (wrapping), and the current bucket's name - click it
-// for the full list, where the current one can also be deleted.
+// the app header, not an ideal spot): one button, the open folder and the current bucket's name -
+// press it for the whole shelf: a new notebook first, then every one of them, and the current one's
+// delete last (Curtis, 2026-10-08: the plus and the paging arrows beside it were "a little
+// complicated, and even more complicated on mobile, where its buttons are too small to hit").
 // Deleting is the heavy hammer: every document inside is tombstoned, then the bucket itself is
 // undefined - hence the BIG confirm. The home bucket (the eponymous one) can't be deleted.
 export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
@@ -133,8 +134,6 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
     }, [menu]);
 
     const names = bucketsForApp(app, roster);
-    const at = Math.max(0, names.indexOf(bucket));
-    const step = (d) => onSwitch(names[(at + d + names.length) % names.length]);
     const isHome = bucket === app.style;
     const membersOf = (name) => {
         const row = (roster || []).find((b) => b.name === name);
@@ -208,29 +207,21 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
 
     return html`
         <span class="bucket-switch" ref=${boxRef}>
-            <button class="bucket-btn" title="New ${app.bucketNoun}" onClick=${create}>
-                <${Icons.plus} />
-            </button>
-            <button
-                class="bucket-btn"
-                title="the previous ${app.bucketNoun}"
-                disabled=${names.length < 2}
-                onClick=${() => step(-1)}
-            ><${Icons.back} /></button>
             <button
                 class="bucket-name"
                 title="all of your notebooks"
                 onClick=${() => setMenu((m) => !m)}
-            >${bucket}</button>
-            <button
-                class="bucket-btn"
-                title="the next ${app.bucketNoun}"
-                disabled=${names.length < 2}
-                onClick=${() => step(1)}
-            ><${Icons.forward} /></button>
+            ><${Icons.bucketOpen} /><span class="bucket-name-text">${bucket}</span></button>
             ${
                 menu &&
                 html`<div class="bucket-menu">
+                <button
+                    class="bucket-menu-item bucket-menu-new"
+                    onClick=${() => {
+                        setMenu(false);
+                        create();
+                    }}
+                ><span><${Icons.plus} /> ${t('buckets.new', 'New {bucketNoun}', { bucketNoun: app.bucketNoun })}</span></button>
                 ${names.map(
                     (name) => html`<button
                         key=${name}

@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1731 phrases across 100 files.
+// 1732 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -461,6 +461,7 @@ export default {
     'buckets.name-is-reserved': '"{name}" is kept for another app - choose another name',
     'buckets.couldnt-create-it': "couldn't create it: {message}",
     'buckets.couldnt-delete-it': "couldn't delete it: {message}",
+    'buckets.new': 'New {bucketNoun}',
     'buckets.delete-this': 'Delete this {bucketNoun}…',
 
     // --- node/js/census.js ---

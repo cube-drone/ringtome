@@ -18509,3 +18509,12 @@ pressable - and a press shakes the button (two identical animations, alternated,
 so a second press shakes again; none under reduced motion) and says "you can't
 use that on a text layer - choose another layer first" under the tools for a few
 seconds (`refuse`, `.drawing-refused`).
+
+**2026-10-08 - The bucket switcher is one button.** Curtis: the notebook picker
+was "a little complicated, and even more complicated on mobile, where its
+buttons are too small to hit". The plus and the previous/next arrows are gone;
+what's left is one button - the open folder (`Icons.bucketOpen`) and the current
+bucket's name - that opens the whole shelf: "New notebook" (or sketchbook)
+first, then every bucket, home first and the rest in plain `.sort()` order, and
+the current one's delete last. Under 900px the button and every row of its list
+take a thumb's padding.

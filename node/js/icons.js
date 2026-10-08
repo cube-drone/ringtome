@@ -225,6 +225,8 @@ export const Icons = {
     pageNew: FilePlus,
     section: FolderSimple,
     sectionOpen: FolderOpen,
+    // The notebook in view, heading its app's list (buckets.js BucketSwitcher).
+    bucketOpen: FolderOpen,
     sectionNew: FolderSimplePlus,
     rename: PencilSimple,
     // collapsible column rails
