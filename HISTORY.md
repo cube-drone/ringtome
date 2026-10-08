@@ -18518,3 +18518,9 @@ bucket's name - that opens the whole shelf: "New notebook" (or sketchbook)
 first, then every bucket, home first and the rest in plain `.sort()` order, and
 the current one's delete last. Under 900px the button and every row of its list
 take a thumb's padding.
+
+**2026-10-08 - The fullest notebook comes first.** Curtis: "first default, then
+your buckets from most-full to least-full". `bucketsForApp` kept home first and
+sorted the rest by plain `.sort()`, so capitals came before lowercase; now the
+rest go by their roster `members` count, the number the dropdown shows beside
+each, fullest first, with a tie broken by name (`localeCompare`).

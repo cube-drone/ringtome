@@ -317,12 +317,13 @@ export function appTypeOf(bucketName, roster) {
 
 /// The buckets an app can page through: its HOME bucket first (the eponymous one, named for the
 /// app's style - always present, even before anything is filed in it), then every other roster
-/// bucket that resolves to this app's type, alphabetically. This is the bucket switcher's rail.
+/// bucket that resolves to this app's type, the fullest first (Curtis, 2026-10-08), ties by name.
+/// This is the bucket switcher's list.
 export function bucketsForApp(app, roster) {
     const others = (roster || [])
-        .map((b) => b.name)
-        .filter((n) => n !== app.style && appTypeOf(n, roster) === app.style)
-        .sort();
+        .filter((b) => b.name !== app.style && appTypeOf(b.name, roster) === app.style)
+        .sort((a, b) => (b.members || 0) - (a.members || 0) || a.name.localeCompare(b.name))
+        .map((b) => b.name);
     return [app.style, ...others];
 }
 

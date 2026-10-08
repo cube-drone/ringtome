@@ -93,7 +93,22 @@ describe('app registry', () => {
     describe('bucketsForApp (the switcher rail)', () => {
         const writer = () => appForStyle(DEFAULT_STYLE);
 
-        it('puts the home bucket first, then the rest alphabetically', () => {
+        it('puts the home bucket first, then the rest fullest first', () => {
+            const roster = [
+                { name: 'thin', app: DEFAULT_STYLE, members: 2 },
+                { name: DEFAULT_STYLE, app: DEFAULT_STYLE, members: 1 },
+                { name: 'thick', app: DEFAULT_STYLE, members: 40 },
+                { name: 'empty', app: DEFAULT_STYLE },
+            ];
+            assert.deepEqual(bucketsForApp(writer(), roster), [
+                DEFAULT_STYLE,
+                'thick',
+                'thin',
+                'empty',
+            ]);
+        });
+
+        it('breaks a tie of fullness by name', () => {
             const roster = [
                 { name: 'zebra-nights', app: DEFAULT_STYLE },
                 { name: 'apple-mornings', app: DEFAULT_STYLE },
