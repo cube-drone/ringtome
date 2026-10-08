@@ -18699,3 +18699,21 @@ half by calling the Tauri CLI back the way `init` was run, and an `npx` init
 means `npm run tauri` from `desktop/`, which had no package.json (`npm` exit
 254). `desktop/package.json` now pins `@tauri-apps/cli` 2.11.5, the job installs
 it (`npm ci`), and init and build both go through `npm run tauri`.
+
+**2026-10-08 - The phone's first run, and its certificates.** Curtis installed
+the first APK: it booted, synced with another of his accounts over iroh, sat
+behind Slack a while, and picked up a post made on the other phone when he came
+back - better than the plan's open questions feared. Its log had one real fault:
+every HTTPS request the node made panicked, "Expect rustls-platform-verifier to
+be initialized" - the DHT relay republishing, fragment revalidation, the
+missing-bodies pass, a document body the reader asked for every few seconds.
+iroh's QUIC, its relays, pkarr and reqwest all check certificates with
+`rustls-platform-verifier`, which on Android goes through the JVM to the
+platform's trust manager and must be handed the JVM and a `Context` first; iroh
+peer sync never noticed, authenticating by key. `desktop/src/android_tls.rs`
+takes the JVM from `JNI_OnLoad` as Android loads the library, asks
+`ActivityThread` for the Application, and initializes the verifier in `setup`
+before the node starts (a failure is logged, not fatal); `android-project.sh`
+adds the verifier's Kotlin half to the Gradle build from the crate's own Maven
+directory, and a shrinker rule keeping it. The JNI calls were type-checked on
+the host against jni 0.22; the Android half is proven only by the next build.

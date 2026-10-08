@@ -24,6 +24,8 @@
 // tauri-build sets.
 #[cfg(desktop)]
 mod alerts;
+#[cfg(target_os = "android")]
+mod android_tls;
 mod links;
 mod port;
 #[cfg(desktop)]
@@ -80,7 +82,16 @@ pub fn run() {
             // system browser came from here. NOT the query string all the same: a URL lands in
             // history, in a log, in a screenshot.
             let token = ringtome_node::auth::mint_launch_token();
+            // Before the node, whose first HTTPS request would otherwise panic (android_tls.rs).
+            // Said once the node's logging is up, below - a failure here is a phone that can sync
+            // with peers and reach no web server, not one that can't start.
+            #[cfg(target_os = "android")]
+            let tls = android_tls::init();
             let (url, attention, requests) = start_node(&data_dir, token.clone())?;
+            #[cfg(target_os = "android")]
+            if let Err(e) = tls {
+                tracing::error!(error = %e, "could not initialize Android certificate checks: HTTPS will fail");
+            }
             // A phone has no tray, no login items and no hidden launch: the app is its window.
             #[cfg(desktop)]
             let hidden = tray::launched_hidden();

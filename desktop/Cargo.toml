@@ -90,3 +90,10 @@ tauri-plugin-single-instance = "2"
 # Desktop notifications whenever a badge would light (src/alerts.rs). Directly, not through the
 # Tauri plugin, whose desktop show() discards the handle that reports a click.
 notify-rust = "4.18"
+
+# Android's alone: certificate checks through the platform's trust manager (src/android_tls.rs).
+# The verifier is the one iroh, pkarr and reqwest already use - named here to initialize it, at
+# the version they share - and jni is the version it speaks.
+[target.'cfg(target_os = "android")'.dependencies]
+rustls-platform-verifier = "0.7"
+jni = { version = "0.22", default-features = false }
