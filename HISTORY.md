@@ -18717,3 +18717,9 @@ before the node starts (a failure is logged, not fatal); `android-project.sh`
 adds the verifier's Kotlin half to the Gradle build from the crate's own Maven
 directory, and a shrinker rule keeping it. The JNI calls were type-checked on
 the host against jni 0.22; the Android half is proven only by the next build.
+
+The second build with it failed in Gradle: as a Maven repository with
+artifact-only metadata, the verifier's crate-shipped component was looked for as
+a `.jar` and it is an `.aar`. `android-project.sh` hands Gradle the `.aar` file
+itself (`implementation(files(...))`, the crate README's other road), which has
+no dependencies of its own to lose.

@@ -41,24 +41,22 @@ grep -q 'android:networkSecurityConfig="@xml/network_security_config"' "$manifes
 }
 # The certificate verifier's Kotlin half (src/android_tls.rs): rustls-platform-verifier calls into
 # `org.rustls.platformverifier`, shipped as an .aar inside the `rustls-platform-verifier-android`
-# crate rather than on Maven - so the crate's own copy is the repository. Its path is this
-# machine's cargo registry, which is right while CI generates the project per build; a committed
-# gen/android has to find it at Gradle time instead (the crate's README has that snippet).
+# crate rather than on Maven. Handed to Gradle as the file itself - the crate's README's other
+# road - because as a Maven repository with artifact-only metadata Gradle went looking for a .jar
+# and found nothing (field-found, the second build; the .aar has no dependencies of its own to
+# lose by skipping its .pom). Its path is this machine's cargo registry, which is right while CI
+# generates the project per build; a committed gen/android has to find it at Gradle time instead.
 gradle=gen/android/app/build.gradle.kts
 if ! grep -q 'rustls-platform-verifier' "$gradle"; then
-    maven=$(cargo metadata --format-version 1 --filter-platform aarch64-linux-android --manifest-path Cargo.toml |
-        python3 -c 'import json,os,sys; d=json.load(sys.stdin); m=[p["manifest_path"] for p in d["packages"] if p["name"]=="rustls-platform-verifier-android"]; print(os.path.join(os.path.dirname(m[0]),"maven")) if m else sys.exit("rustls-platform-verifier-android is not in the Android dependency graph")')
+    crate=$(cargo metadata --format-version 1 --filter-platform aarch64-linux-android --manifest-path Cargo.toml |
+        python3 -c 'import json,os,sys; d=json.load(sys.stdin); m=[p["manifest_path"] for p in d["packages"] if p["name"]=="rustls-platform-verifier-android"]; print(os.path.dirname(m[0])) if m else sys.exit("rustls-platform-verifier-android is not in the Android dependency graph")')
+    aar=$(find "$crate/maven" -name 'rustls-platform-verifier-*.aar' | sort -V | tail -1)
+    [ -n "$aar" ] || { echo "::error::no .aar under $crate/maven"; exit 1; }
     cat >> "$gradle" <<GRADLE
 
 // desktop/tools/android-project.sh: the certificate verifier's Kotlin half (src/android_tls.rs).
-repositories {
-    maven {
-        url = uri("$maven")
-        metadataSources { artifact() }
-    }
-}
 dependencies {
-    implementation("rustls:rustls-platform-verifier:latest.release")
+    implementation(files("$aar"))
 }
 GRADLE
 fi
