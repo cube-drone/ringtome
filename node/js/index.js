@@ -484,7 +484,7 @@ const Inside = ({ session }) => {
                 /* HorseBucks in the clock's own box, after the time (Curtis, 2026-09-29): a click
                 opens hrseBank. */ ''
             }
-            <${Clock}><${CornerBank} root=${root} /><//><${LedgerPoll} root=${root} />
+            <${Clock}><${CornerBank} root=${root} /><//>
             ${/* The corner cloud: always here, always the way to the sync page (plans/SYNC_STATUS.md). */ ''}
             <${SyncCloud} root=${root} />
         </footer>
@@ -586,12 +586,15 @@ const Inside = ({ session }) => {
     // ink header band, then the surface content. `stage` is the bare desktop - the app selector
     // and pre-persona flows, which aren't apps and so get no shell. Either way the footer (`bar`)
     // renders after, and the flex column in `.app-main` stacks the region above it.
+    // The ledger's poll rides beside the bar, whichever bar it is: inside the wide one, a narrow
+    // window never mounted it, and its unlocks never loaded (2026-10-08).
     const shell = (content) =>
         html`<div class="app-frame">
             ${appHeader}
             <div class="app-frame-inner">${content}</div>
-        </div>${bar}`;
-    const stage = (content) => html`<div class="app-stage">${content}</div>${bar}`;
+        </div>${bar}<${LedgerPoll} root=${root} />`;
+    const stage = (content) =>
+        html`<div class="app-stage">${content}</div>${bar}<${LedgerPoll} root=${root} />`;
 
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
     // whatever the URL says. These onboarding flows aren't apps either, so they ride the stage.

@@ -31,6 +31,7 @@ import {
     PaintBrush,
     Hand,
     PaintBucket,
+    List,
     Eyedropper,
     MagnifyingGlassPlus,
     MagnifyingGlassMinus,
@@ -228,6 +229,8 @@ export const Icons = {
     rename: PencilSimple,
     // collapsible column rails
     list: ListBullets,
+    // A narrow window's menu of a document's chips (doc/editor.js `deck`).
+    menu: List,
     tree: TreeStructure,
     // document prev/next (the book-walk arrows in the doc menu)
     navPrev: ArrowLeft,

@@ -18356,3 +18356,98 @@ front-door links (auth.css) and the settings' "every release" link. A new token,
 `--accent-ink` - the accent as words and marks on the page - is `--teal-deep`
 where the page is light (4.9-11:1, as before) and `--teal` in each of the ten
 dark colourways (6-19:1); all six use it now.
+
+**2026-10-08 - The phone bar's tiles centred again.** Curtis: the sync cloud
+"pushed the home cluster out of the center in the app bar at the bottom, in
+mobile only". The narrow bar centres its children, and the cloud's
+`margin-left: auto` took the free space and pulled the tiles left. On a phone
+the cloud now sits out of the row, pinned to the bar's right edge
+(`.quickbar-sync-narrow`), so home and its two neighbours centre on the bar.
+
+**2026-10-08 - Chips a thumb can press, and say what they're for.** Curtis: on a
+phone "the file chips are too small for a human to press, and their hovertext is
+unreadable (phones can't hover)... Can they be 1.5x bigger and carry a single
+word describing what they're for when the site is <900px". `Chip` takes a `word`
+(doc/chips.js); under 900px a chip with one grows half again and shows it beside
+its icon, and the chip row wraps (apps/notes.css). Words for every icon chip in
+the editor, the drawing editor and the reader - delete, copy, conflict, merged,
+marquee/plain, upload, image, link/copied, saved/saving/unsaved, tags,
+pin/unpin, download, duplicate, previous, next - and `CopyLinkChip`'s, so a feed
+card's link chip says "link" too. A chip that is already words (the format, the
+size, read-only) stays its size. Wide windows are unchanged.
+
+**2026-10-08 - Unlocks on a narrow window, broken and mended.** Curtis: booting
+under 900px, "a bunch of apps don't appear... it's like my unlocks aren't
+loading", until a resize past 900px brought them back. The frontend audit's
+first round had moved the ledger's poll into a leaf of its own (`LedgerPoll`) -
+and put it beside the clock in the WIDE bar, which a narrow window never
+renders: no poll, no answer, only the starting set. It rides beside the bar in
+`shell` and `stage` now, whichever bar is drawn - every page passes through one
+of the two.
+
+Then the rest of them (Curtis: on the feed "it feels like 'link' was the only
+button to get this treatment"): `link` took it because it is `CopyLinkChip`, the
+shared `Chip`; every other icon chip is hand-written markup with
+`chip chip-button` classes, and took nothing. Each now wears `chip-worded` and
+its word: on a feed card edit, unpublish, share/unshare, pin/unpin,
+feature/unfeature (the super-pin) and copy; a feed draft's discard and edit; a
+chat room's delete, hide/show, keep/release, share/unshare, post, block, leave
+and close/closed; an upload's tags; a settings key's revoke. No hand-written
+`chip chip-button` is left without one.
+
+**2026-10-08 - Writer's chips behind one menu on a phone.** Curtis: in mobile
+mode "all of the file chips do not fit (they didn't fit before, the titles and
+1.5x aren't helping now), could we put the whole deck of file options in a
+dropdown guarded by a single chip with the phosphor 'list' icon?" The editor's
+chips are one `deck` now (doc/editor.js): a row on a wide window, and under
+900px one chip (Phosphor's `List`, `Icons.menu`, "options") that drops the deck
+in a panel below it, worded, wrapping, right-aligned (`.chip-menu`). Picking a
+chip or pressing anywhere else closes it. The copy and insert-image modals moved
+out of the deck, so a menu closing never takes an open modal with it; the tags
+panel already sat outside it.
+
+Then (Curtis: "the options drop-down flows under the column tab bar"): dropped
+from the chip as an overlay, right-aligned and up to 20rem wide, it spread left
+out of the editor's column and under a narrow window's tab strip. Open, the deck
+is now a full-width line of the header instead - the header is a wrapping flex
+row - under the title, inside the editor's own column, pushing the words down
+rather than lying over anything.
+
+And the publish bar too (Curtis: "it can sit next to the 'options' button, but
+it summons the publication options to keep them out of the way unless the user
+needs them"). Under 900px a "publish" chip sits beside "options", wearing the
+document's standing as the bar does - private, live or scheduled - and shows or
+hides the bar (a book page's bar alike), which otherwise stays out of the way.
+Offered only where there is a bar to summon: `PublishBar` draws nothing for a
+private document without Social (`hasPublishBar`).
+
+**2026-10-08 - The editor's mode tabs, gone for the whole of narrow mode.**
+Curtis: "a 20px band of width where we choose not to display the side-by-side
+and read-only text editor options... it feels like we intended that for the
+entire <900px mode". The tabs hid by a container query on the editor's own
+column (`@container (max-width: 400px)`, doc/editor.css), and the column is
+under 400px only just above 900px - the wide layout, the list squeezing the
+editor; below 900 the tabs layout gives the editor the width back, and the tabs
+returned. Now a narrow window (under 900px, `useNarrow`) edits in one mode -
+interactive, or plain for plaintext - with no tabs, so no note opens stuck in a
+remembered side-by-side or read view it can't leave; the pick is kept for a
+wider window. The container rule is gone.
+
+**2026-10-08 - The options menu, everywhere a chip row didn't fit.** Curtis: the
+"options" dropdown "could also exist in Chat windows, horse drawings, and
+individual feed items - for the same reasons". Writer's menu became
+`useChipMenu` (doc/chips.js) - `menu.narrow ? menu.chip : deck` where the row
+was, `menu.panel(deck)` on a full-width line of its own - and all four wear it:
+Writer, the drawing editor's header (its copy modal moved out of the deck), a
+chat room's header (`chat-tools`; the header already wraps), and a feed card,
+whose date and "edited" stay in the byline row while the chips fold away, the
+panel a line of the head's grid (`.feed-entry-head .chip-menu`). Closing hides
+the panel, never unmounts it: a feed card's unpublish and copy buttons own their
+modals, and modals are portals, so a press inside one reads as outside the
+panel - an unmount would have taken the open modal with it.
+
+And the drawing editor's publish bar the same way as Writer's (Curtis: "in
+drawings, the 'publish' button could use the same treatment"): under 900px it
+hides behind a chip beside "options" wearing the drawing's standing, and only
+where there is a bar to summon. Writer's chip became `PublishChip`
+(doc/chips.js), worn by both.

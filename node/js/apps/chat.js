@@ -18,6 +18,7 @@ import { Icons } from '../icons.js';
 import { PersonChip, PersonHex, PersonInline, usePerson } from '../person.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
+import { useChipMenu } from '../doc/chips.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { openMirror, useLive } from '../mirror.js';
 import { unlandedLines } from '../pure/optimistic.js';
@@ -1595,6 +1596,8 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         [],
     );
     const roomRef = useMemo(() => ({ author, doc }), [author, doc]);
+    // The header's chips behind one menu chip in a narrow window (`toolDeck`, below).
+    const toolMenu = useChipMenu();
 
     if (!root) return null;
     if (room === undefined)
@@ -1645,6 +1648,131 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     }
     // Then what this reader has sent and the room hasn't said back yet, newest last, as it was typed.
     for (const m of unlandedLines(pendingLines, history && history.items, root)) lines.push(m);
+    // The room's chips, the whole deck: a row, or in a narrow window behind one menu chip (doc/chips.js
+    // `useChipMenu`; Curtis, 2026-10-08).
+    const toolDeck = html`
+                ${/* Writer's chips (Curtis, 2026-09-27), trash leftmost. */ ''}
+                ${
+                    !room.im &&
+                    room.mine &&
+                    html`<button class="chip chip-button chip-worded chip-delete" type="button" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
+                    <${Icons.trash} /><span class="chip-word">${t('chips.delete', 'delete')}</span>
+                </button>`
+                }
+                ${
+                    !room.im &&
+                    html`<button
+                    class=${hiding ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
+                    type="button"
+                    title=${
+                        hiding
+                            ? hidden > 0
+                                ? t(
+                                      'apps.chat.hiding-n-lines-click-to-show',
+                                      "hiding {n} lines from people you don't trust - click to show them",
+                                      { n: hidden },
+                                  )
+                                : t(
+                                      'apps.chat.hiding-untrusted-click-to-show',
+                                      "hiding people you don't trust - click to show them",
+                                  )
+                            : t(
+                                  'apps.chat.hide-lines-from-people-you-dont-trust',
+                                  "hide lines from people you don't trust, in every room",
+                              )
+                    }
+                    onClick=${() => setHideUntrusted(hiding ? 'no' : 'yes')}
+                >
+                    ${hiding ? html`<${Icons.eyeClosed} />` : html`<${Icons.eye} />`}
+                    <span class="chip-word">${hiding ? t('chips.show', 'show') : t('chips.hide', 'hide')}</span>
+                </button>`
+                }
+                ${
+                    admin &&
+                    !room.archivist &&
+                    html`<button
+                    class=${room.archived ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
+                    type="button"
+                    disabled=${archiving}
+                    title=${
+                        room.archived
+                            ? t(
+                                  'apps.chat.kept-whole-here-click-to-release',
+                                  'this computer keeps the whole conversation - click to stop',
+                              )
+                            : t(
+                                  'apps.chat.pull-the-whole-room-and-keep-it',
+                                  'keep the whole conversation on this computer',
+                              )
+                    }
+                    onClick=${() => setArchive(!room.archived)}
+                >
+                    <${Icons.memory} />
+                    <span class="chip-word">${room.archived ? t('chips.release', 'release') : t('chips.keep', 'keep')}</span>
+                </button>`
+                }
+                ${
+                    mayShare &&
+                    html`<button
+                    class=${shared ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
+                    type="button"
+                    disabled=${sharing || shared === null}
+                    title=${
+                        shared
+                            ? t(
+                                  'apps.chat.stop-passing-this-room-along',
+                                  'stop passing this room along to your followers',
+                              )
+                            : t(
+                                  'apps.chat.pass-this-room-along',
+                                  'pass this room along to your followers',
+                              )
+                    }
+                    onClick=${passAlong}
+                >
+                    <${Icons.colRebroadcast} />
+                    <span class="chip-word">${shared ? t('chips.unshare', 'unshare') : t('chips.share', 'share')}</span>
+                </button>`
+                }
+                ${
+                    !room.im &&
+                    html`<a class="chip chip-button chip-worded" href=${postHref(author, doc)} title=${t('apps.chat.the-rooms-post', "the room's post")}>
+                    <${Icons.feed} /><span class="chip-word">${t('chips.post', 'post')}</span>
+                </a>`
+                }
+                ${
+                    room.im &&
+                    html`<button
+                    class="chip chip-button chip-worded chip-delete"
+                    type="button"
+                    title=${t('apps.chat.block-them', 'block them')}
+                    onClick=${() => setBlocking(true)}
+                ><${Icons.block} /><span class="chip-word">${t('chips.block', 'block')}</span></button>`
+                }
+                ${
+                    !room.im &&
+                    room.joined &&
+                    html`<button class="chip chip-button chip-worded" type="button" title=${t('apps.chat.leave', 'leave')} onClick=${leave}>
+                    <${Icons.leave} /><span class="chip-word">${t('chips.leave', 'leave')}</span>
+                </button>`
+                }
+                ${
+                    room.im
+                        ? null
+                        : room.closed
+                          ? html`<span class="chip chip-worded chip-open" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /><span class="chip-word">${t('chips.closed', 'closed')}</span></span>`
+                          : room.mine &&
+                            html`<button
+                          class="chip chip-button chip-worded"
+                          type="button"
+                          disabled=${closing || !roomDraft}
+                          title=${t('apps.chat.close-the-room-title', 'close this room for good')}
+                          onClick=${closeRoom}
+                      >
+                          <${Icons.settled} /><span class="chip-word">${t('chips.close', 'close')}</span>
+                      </button>`
+                }
+    `;
     return html`<section class="chat-room">
         <header class="chat-room-head">
             <h2 class="chat-room-name">${room.im ? name : html`<${RoomTitle}>${name}</${RoomTitle}>`}</h2>
@@ -1722,125 +1850,9 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 anyone may do to a conversation between two people (ruling 12). */ ''
             }
             <span class="chat-tools">
-                ${/* Writer's chips (Curtis, 2026-09-27), trash leftmost. */ ''}
-                ${
-                    !room.im &&
-                    room.mine &&
-                    html`<button class="chip chip-button chip-delete" type="button" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
-                    <${Icons.trash} />
-                </button>`
-                }
-                ${
-                    !room.im &&
-                    html`<button
-                    class=${hiding ? 'chip chip-button chip-open' : 'chip chip-button'}
-                    type="button"
-                    title=${
-                        hiding
-                            ? hidden > 0
-                                ? t(
-                                      'apps.chat.hiding-n-lines-click-to-show',
-                                      "hiding {n} lines from people you don't trust - click to show them",
-                                      { n: hidden },
-                                  )
-                                : t(
-                                      'apps.chat.hiding-untrusted-click-to-show',
-                                      "hiding people you don't trust - click to show them",
-                                  )
-                            : t(
-                                  'apps.chat.hide-lines-from-people-you-dont-trust',
-                                  "hide lines from people you don't trust, in every room",
-                              )
-                    }
-                    onClick=${() => setHideUntrusted(hiding ? 'no' : 'yes')}
-                >
-                    ${hiding ? html`<${Icons.eyeClosed} />` : html`<${Icons.eye} />`}
-                </button>`
-                }
-                ${
-                    admin &&
-                    !room.archivist &&
-                    html`<button
-                    class=${room.archived ? 'chip chip-button chip-open' : 'chip chip-button'}
-                    type="button"
-                    disabled=${archiving}
-                    title=${
-                        room.archived
-                            ? t(
-                                  'apps.chat.kept-whole-here-click-to-release',
-                                  'this computer keeps the whole conversation - click to stop',
-                              )
-                            : t(
-                                  'apps.chat.pull-the-whole-room-and-keep-it',
-                                  'keep the whole conversation on this computer',
-                              )
-                    }
-                    onClick=${() => setArchive(!room.archived)}
-                >
-                    <${Icons.memory} />
-                </button>`
-                }
-                ${
-                    mayShare &&
-                    html`<button
-                    class=${shared ? 'chip chip-button chip-open' : 'chip chip-button'}
-                    type="button"
-                    disabled=${sharing || shared === null}
-                    title=${
-                        shared
-                            ? t(
-                                  'apps.chat.stop-passing-this-room-along',
-                                  'stop passing this room along to your followers',
-                              )
-                            : t(
-                                  'apps.chat.pass-this-room-along',
-                                  'pass this room along to your followers',
-                              )
-                    }
-                    onClick=${passAlong}
-                >
-                    <${Icons.colRebroadcast} />
-                </button>`
-                }
-                ${
-                    !room.im &&
-                    html`<a class="chip chip-button" href=${postHref(author, doc)} title=${t('apps.chat.the-rooms-post', "the room's post")}>
-                    <${Icons.feed} />
-                </a>`
-                }
-                ${
-                    room.im &&
-                    html`<button
-                    class="chip chip-button chip-delete"
-                    type="button"
-                    title=${t('apps.chat.block-them', 'block them')}
-                    onClick=${() => setBlocking(true)}
-                ><${Icons.block} /></button>`
-                }
-                ${
-                    !room.im &&
-                    room.joined &&
-                    html`<button class="chip chip-button" type="button" title=${t('apps.chat.leave', 'leave')} onClick=${leave}>
-                    <${Icons.leave} />
-                </button>`
-                }
-                ${
-                    room.im
-                        ? null
-                        : room.closed
-                          ? html`<span class="chip chip-open" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /></span>`
-                          : room.mine &&
-                            html`<button
-                          class="chip chip-button"
-                          type="button"
-                          disabled=${closing || !roomDraft}
-                          title=${t('apps.chat.close-the-room-title', 'close this room for good')}
-                          onClick=${closeRoom}
-                      >
-                          <${Icons.settled} />
-                      </button>`
-                }
+                ${toolMenu.narrow ? toolMenu.chip : toolDeck}
             </span>
+            ${toolMenu.panel(toolDeck)}
             ${
                 blocking &&
                 html`<${Modal}

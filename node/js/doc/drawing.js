@@ -21,7 +21,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { useDocSession } from './session.js';
-import { Chip, NavChips } from './chips.js';
+import { Chip, NavChips, PublishChip, useChipMenu } from './chips.js';
 import { Annotations } from './annotations.js';
 import { cachedDoc, rememberDoc, versionedBodyUrl } from '../mirror/doccache.js';
 import { api, xhrUpload, saveFile } from '../net.js';
@@ -76,6 +76,8 @@ import {
     MAX_TEXT_BYTES,
 } from '../pure/drawing.js';
 import { PublishBar } from './publishbar.js';
+import { docStatus } from '../pure/feed.js';
+import { useUnlocked } from '../unlocks.js';
 import { FONTS } from '@cube-drone/marquee-react-renderer';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
@@ -1000,6 +1002,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // On a phone the tools column covers the canvas, so a tool whose next step is a press or the words
     // hangs that part over the canvas instead (below, `.drawing-hang`).
     const narrow = useNarrow();
+    // The header's chips behind one menu chip in a narrow window (`chipDeck`, below).
+    const chipMenu = useChipMenu();
+    // ...and the publish bar behind a chip of its own beside it, as Writer's (doc/editor.js).
+    const [publishOpen, setPublishOpen] = useState(false);
+    const social = useUnlocked(root, 'social');
     const { resizer, colStyle } = useColWidths(root, 'drawing', ['tools', 'layers'], {
         tools: 170,
         layers: 170,
@@ -2195,6 +2202,48 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // strings cop as copy.
     const saved = session.status === 'clean';
     const saveFailed = session.status === 'error';
+    // The header's chips, the whole deck: a row, or in a narrow window behind one menu chip (doc/chips.js
+    // `useChipMenu`; Curtis, 2026-10-08).
+    const chipDeck = html`
+            ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
+            ${
+                onDeleted &&
+                row &&
+                !row.fields?.published_as &&
+                html`<${Chip} icon=${Icons.trash} word=${t('chips.delete', 'delete')} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`
+            }
+            <${Chip}
+                icon=${Icons.copy} word=${t('chips.copy', 'copy')}
+                title=${t('doc.drawing.copy-a-picture-into-a-notebook', 'copy a picture of this drawing into a notebook')}
+                onClick=${() => opened && setCopying(true)}
+            />
+            <${Chip}
+                icon=${Icons.download} word=${t('chips.download', 'download')}
+                title=${t('doc.drawing.download-png', 'download as a .png')}
+                onClick=${() => opened && downloadPng(root, drawing, session.title).catch((e) => setActionError(e.message))}
+            />
+            <${Chip}
+                icon=${Icons.pageNew} word=${t('chips.duplicate', 'duplicate')}
+                title=${busy ? t('doc.drawing.duplicating', 'duplicating…') : t('doc.drawing.duplicate-this-drawing', 'duplicate - a new drawing, strokes and all')}
+                onClick=${() => opened && !busy && duplicate()}
+            />
+            <${Chip}
+                modifier=${saveFailed ? 'chip-diverged' : null}
+                word=${saved ? t('chips.saved', 'saved') : saveFailed ? t('chips.not-saved', 'unsaved') : t('chips.saving', 'saving')}
+                title=${saved ? t('doc.drawing.saved', 'saved') : saveFailed ? session.error || t('doc.drawing.not-saved', 'not saved - it will try again') : t('doc.drawing.saving', 'saving…')}
+            >
+                ${saved ? html`<${Icons.saved} />` : saveFailed ? html`<${Icons.warn} />` : html`<span class="status-spin"><${Icons.spinner} /></span>`}
+            </${Chip}>
+            <span class="editor-meta-anchor" ref=${metaChipRef}>
+                <${Chip}
+                    icon=${Icons.tag} word=${t('chips.tags', 'tags')}
+                    on=${showMeta}
+                    title=${t('doc.drawing.tags', 'tags, date & description')}
+                    onClick=${() => setShowMeta((v) => !v)}
+                />
+            </span>
+            <${NavChips} nav=${nav} />
+    `;
     const header = html`<header class="reader-head drawing-head">
         <input
             class="editor-title"
@@ -2207,54 +2256,32 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             onBlur=${() => session.save()}
         />
         <span class="reader-chips">
-            ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
             ${
-                onDeleted &&
-                row &&
-                !row.fields?.published_as &&
-                html`<${Chip} icon=${Icons.trash} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`
+                /* Only where there is a bar to summon: PublishBar draws nothing for a private
+                drawing without Social. */ ''
             }
-            <${Chip}
-                icon=${Icons.copy}
-                title=${t('doc.drawing.copy-a-picture-into-a-notebook', 'copy a picture of this drawing into a notebook')}
-                onClick=${() => opened && setCopying(true)}
-            />
             ${
-                copying &&
-                html`<${CopyIntoModal}
-                current=${{ root }}
-                source=${{ author: root, doc_id: docId, private: true }}
-                heading=${t('doc.drawing.copy-a-picture-of-it', 'copy a picture of this drawing into a notebook')}
-                copyWith=${(bucket, isNew) => copyPictureInto(root, drawing, session.title, bucket, isNew)}
-                onClose=${() => setCopying(false)}
-            />`
+                chipMenu.narrow &&
+                (docStatus(row) !== 'private' || social) &&
+                html`<${PublishChip}
+                    standing=${docStatus(row)}
+                    open=${publishOpen}
+                    onClick=${() => setPublishOpen((v) => !v)}
+                />`
             }
-            <${Chip}
-                icon=${Icons.download}
-                title=${t('doc.drawing.download-png', 'download as a .png')}
-                onClick=${() => opened && downloadPng(root, drawing, session.title).catch((e) => setActionError(e.message))}
-            />
-            <${Chip}
-                icon=${Icons.pageNew}
-                title=${busy ? t('doc.drawing.duplicating', 'duplicating…') : t('doc.drawing.duplicate-this-drawing', 'duplicate - a new drawing, strokes and all')}
-                onClick=${() => opened && !busy && duplicate()}
-            />
-            <${Chip}
-                modifier=${saveFailed ? 'chip-diverged' : null}
-                title=${saved ? t('doc.drawing.saved', 'saved') : saveFailed ? session.error || t('doc.drawing.not-saved', 'not saved - it will try again') : t('doc.drawing.saving', 'saving…')}
-            >
-                ${saved ? html`<${Icons.saved} />` : saveFailed ? html`<${Icons.warn} />` : html`<span class="status-spin"><${Icons.spinner} /></span>`}
-            </${Chip}>
-            <span class="editor-meta-anchor" ref=${metaChipRef}>
-                <${Chip}
-                    icon=${Icons.tag}
-                    on=${showMeta}
-                    title=${t('doc.drawing.tags', 'tags, date & description')}
-                    onClick=${() => setShowMeta((v) => !v)}
-                />
-            </span>
-            <${NavChips} nav=${nav} />
+            ${chipMenu.narrow ? chipMenu.chip : chipDeck}
         </span>
+        ${chipMenu.panel(chipDeck)}
+        ${
+            copying &&
+            html`<${CopyIntoModal}
+            current=${{ root }}
+            source=${{ author: root, doc_id: docId, private: true }}
+            heading=${t('doc.drawing.copy-a-picture-of-it', 'copy a picture of this drawing into a notebook')}
+            copyWith=${(bucket, isNew) => copyPictureInto(root, drawing, session.title, bucket, isNew)}
+            onClose=${() => setCopying(false)}
+        />`
+        }
         ${showMeta && html`<div class="editor-meta jag-line" ref=${metaPanelRef}><${Annotations} root=${root} docId=${docId} /></div>`}
         ${session.error && html`<p class="form-error">${session.error}</p>`}
         ${actionError && html`<p class="form-error">${actionError}</p>`}
@@ -2265,7 +2292,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         <div class="drawing">
             ${header}
             ${pickingImage && html`<${ImagePickModal} root=${root} drawings=${true} DrawingThumb=${DrawingThumb} onPick=${placePicture} onClose=${() => setPickingImage(false)} />`}
-            <${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />
+            ${(!chipMenu.narrow || publishOpen) && html`<${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />`}
             <div
                 class="drawing-stage"
                 ref=${stageRef}

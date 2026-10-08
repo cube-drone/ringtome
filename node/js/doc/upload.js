@@ -319,11 +319,11 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                             ${fmtBytes(r.outBytes != null ? r.outBytes : r.file.size)}
                         </span>
                         <button
-                            class="chip chip-button"
+                            class="chip chip-button chip-worded"
                             title="tags"
                             disabled=${!r.docId}
                             onClick=${() => patchRow(i, { tagsOpen: !r.tagsOpen })}
-                        ><${Icons.tag} /></button>
+                        ><${Icons.tag} /><span class="chip-word">${t('chips.tags', 'tags')}</span></button>
                     </div>
                     ${
                         r.phase === 'encoding' &&

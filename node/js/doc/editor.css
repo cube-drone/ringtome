@@ -322,12 +322,25 @@
     text-align: center;
 }
 
-/* The narrow editor (under 400px of its own column): the view-mode tabs disappear entirely to save
-   the space. (The title's row of its own used to be arranged here too; it is every editor's now,
-   notes.css .reader-head.) Lives HERE, after .editor-tabs' own display rule, because a container
-   query adds no specificity and an earlier block would lose the cascade. */
-@container (max-width: 400px) {
-    .editor-tabs {
-        display: none;
-    }
+/* A narrow window's chips, behind one menu chip (doc/editor.js `deck`; Curtis, 2026-10-08: the
+   row never fit a phone). Open, the deck is a full-width line of the header (a wrapping flex row),
+   under the title and in the editor's own column - dropped from the chip as an overlay, it spread
+   left under the tab strip, which lay over it. */
+.chip-menu-anchor {
+    display: inline-flex;
 }
+
+.chip-menu[hidden] {
+    display: none;
+}
+
+.chip-menu {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.6rem;
+    background: var(--paper);
+    --line: var(--border-strong);
+}
+

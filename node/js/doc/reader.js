@@ -219,7 +219,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                         onDeleted &&
                         !doc.builtin &&
                         html`<${Chip}
-                        icon=${Icons.trash}
+                        icon=${Icons.trash} word=${t('chips.delete', 'delete')}
                         modifier="chip-delete"
                         title=${t('doc.reader.delete-removes-this-document-from', 'delete')}
                         onClick=${remove}
@@ -228,7 +228,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                     ${
                         !doc.builtin &&
                         html`<${Chip}
-                        icon=${Icons.copy}
+                        icon=${Icons.copy} word=${t('chips.copy', 'copy')}
                         title=${t('doc.reader.copy-into-private-notes', 'copy this note into another bucket')}
                         onClick=${() => setCopying(true)}
                     />`
@@ -258,6 +258,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                     <${Chip}
                         icon=${Icons.link}
                         on=${linkCopied}
+                        word=${linkCopied ? t('chips.copied', 'copied') : t('chips.link', 'link')}
                         title=${
                             linkCopied
                                 ? t('doc.reader.copied', 'Copied!')
@@ -274,7 +275,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                         onClick=${copyLink}
                     />
                     <${Chip}
-                        icon=${Icons.tag}
+                        icon=${Icons.tag} word=${t('chips.tags', 'tags')}
                         on=${showMeta}
                         title=${t('doc.reader.tags-date-description', 'tags, date & description')}
                         onClick=${() => setShowMeta((v) => !v)}

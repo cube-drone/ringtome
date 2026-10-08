@@ -7,10 +7,12 @@
 // pattern for this - the one place a shared CSS primitive genuinely earned itself - so this is that
 // pattern with the markup said once.
 import { h } from 'preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
+import { useNarrow } from '../panes.js';
 
 const html = htm.bind(h);
 
@@ -27,11 +29,21 @@ const html = htm.bind(h);
  * Rendered as a <span> when there is no onClick, because a chip can also be a STATUS - the format
  * name, the save spinner - and a button you cannot press is a lie to a keyboard.
  */
-export const Chip = ({ icon, title, onClick, disabled, on, modifier, children }) => {
-    const cls = ['chip', onClick && 'chip-button', on && 'chip-open', modifier]
+export const Chip = ({ icon, title, onClick, disabled, on, modifier, children, word }) => {
+    const cls = [
+        'chip',
+        onClick && 'chip-button',
+        on && 'chip-open',
+        word && 'chip-worded',
+        modifier,
+    ]
         .filter(Boolean)
         .join(' ');
-    const inner = children || (icon && html`<${icon} />`);
+    // `word`: what the chip is for, in one word - shown under 900px only (Curtis, 2026-10-08: a phone
+    // can't hover, so a tooltip there is a secret). Chips that already say their word in their
+    // children need none.
+    const glyph = children || (icon && html`<${icon} />`);
+    const inner = word ? html`${glyph}<span class="chip-word">${word}</span>` : glyph;
     if (!onClick) return html`<span class=${cls} title=${title}>${inner}</span>`;
     return html`<button class=${cls} title=${title} disabled=${disabled} onClick=${onClick}>
         ${inner}
@@ -46,13 +58,79 @@ export const NavChips = ({ nav }) => {
     return html`<${Chip}
             icon=${Icons.navPrev}
             title=${nav.prevTip || t('doc.chips.the-previous-document', 'the previous document')}
+            word=${t('chips.previous', 'previous')}
             disabled=${!nav.prev}
             onClick=${() => nav.prev && nav.go(nav.prev)}
         />
         <${Chip}
             icon=${Icons.navNext}
             title=${nav.nextTip || t('doc.chips.the-next-document', 'the next document')}
+            word=${t('chips.next', 'next')}
             disabled=${!nav.next}
             onClick=${() => nav.next && nav.go(nav.next)}
         />`;
 };
+
+/**
+ * A row of chips that, in a narrow window (under 900px), folds behind one "options" chip (Curtis,
+ * 2026-10-08: the rows never fit a phone - in Writer, then chat rooms, drawings and feed cards).
+ *
+ *     const menu = useChipMenu();
+ *     ...where the row was:            ${menu.narrow ? menu.chip : deck}
+ *     ...on a full-width line of its own: ${menu.panel(deck)}
+ *
+ * The panel is a line of the layout, not an overlay - dropped from its chip it spread under whatever
+ * stood beside it (a narrow window's tab strip). Picking a chip or pressing elsewhere closes it -
+ * by hiding, never unmounting: a chip whose button owns a modal (a confirm, a copy) keeps it
+ * open, and a modal is a portal, so a press inside one reads as "elsewhere" too.
+ */
+export function useChipMenu() {
+    const narrow = useNarrow();
+    const [open, setOpen] = useState(false);
+    const anchor = useRef(null);
+    const panelRef = useRef(null);
+    useEffect(() => {
+        if (!open) return undefined;
+        const onDown = (e) => {
+            const inChip = anchor.current && anchor.current.contains(e.target);
+            const inPanel = panelRef.current && panelRef.current.contains(e.target);
+            if (!inChip && !inPanel) setOpen(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [open]);
+    const chip = html`<span class="chip-menu-anchor" ref=${anchor}>
+        <${Chip}
+            icon=${Icons.menu}
+            word=${t('chips.options', 'options')}
+            on=${open}
+            title=${t('doc.chips.options-title', 'options')}
+            onClick=${() => setOpen((v) => !v)}
+        />
+    </span>`;
+    const panel = (deck) =>
+        narrow
+            ? html`<div
+                  class="chip-menu jag-line"
+                  hidden=${!open}
+                  ref=${panelRef}
+                  onClick=${(e) => e.target.closest('.chip-button') && setOpen(false)}
+              >
+                  ${deck}
+              </div>`
+            : null;
+    return { narrow, open, chip, panel };
+}
+
+/// The publish bar's chip, for a narrow window where the bar hides until summoned (Curtis,
+/// 2026-10-08: "it summons the publication options to keep them out of the way"): wearing the
+/// document's standing as the bar does - private, live, scheduled. Writer's and the drawing
+/// editor's alike.
+export const PublishChip = ({ standing, open, onClick }) =>
+    html`<${Chip}
+        icon=${standing === 'scheduled' ? Icons.scheduled : standing === 'public' ? Icons.docPublic : Icons.docPrivate}
+        word=${t('chips.publish', 'publish')}
+        on=${open}
+        title=${t('doc.editor.publish-options-title', 'publishing this document')}
+        onClick=${onClick}
+    />`;

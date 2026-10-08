@@ -94,8 +94,15 @@
     opacity: 1;
 }
 
+/* On a phone the cloud is out of the row, pinned to the bar's right edge (2026-10-08): in the row,
+   its push to the right pulled the centred tiles - home and its two neighbours - off the middle. The
+   bar is `position: relative`; its edge padding is 20px. */
 .quickbar-sync-narrow {
-    margin-left: auto;
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    margin: 0;
+    transform: translateY(-50%);
 }
 
 .quickbar-sync-down svg,

@@ -93,6 +93,7 @@ export const CopyLinkChip = ({ path, title }) => {
         icon=${Icons.link}
         on=${copied}
         title=${copied ? t('links.copied', 'copied!') : title || t('links.copy-link', 'copy link')}
+        word=${copied ? t('chips.copied', 'copied') : t('chips.link', 'link')}
         onClick=${copy}
     />`;
 };

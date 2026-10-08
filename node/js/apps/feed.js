@@ -201,20 +201,20 @@ const StackItem = ({ root, row, onPost, posting }) => {
                     ${
                         !state.published &&
                         html`<button
-                        class="chip chip-button chip-delete"
+                        class="chip chip-button chip-worded chip-delete"
                         title=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
                         aria-label=${t('apps.feed.discard-this-draft-title', 'discard this draft')}
                         onClick=${discard}
-                    ><${Icons.trash} /></button>`
+                    ><${Icons.trash} /><span class="chip-word">${t('chips.discard', 'discard')}</span></button>`
                     }
                     ${
                         (!state.published || ownsEditing) &&
                         html`<button
-                        class="chip chip-button"
+                        class="chip chip-button chip-worded"
                         title=${t('apps.feed.open-this-for-editing', 'open this for editing')}
                         aria-label=${t('apps.feed.open-this-for-editing', 'open this for editing')}
                         onClick=${() => setOpen(true)}
-                    ><${Icons.rename} /></button>`
+                    ><${Icons.rename} /><span class="chip-word">${t('chips.edit', 'edit')}</span></button>`
                     }`
                 }
             </header>

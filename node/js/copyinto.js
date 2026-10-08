@@ -127,10 +127,10 @@ export const CopyIntoModal = ({ current, source, onClose, onDone, copyWith, head
 export const CopyButton = ({ item, current }) => {
     const [open, setOpen] = useState(false);
     return html`<button
-            class="chip chip-button"
+            class="chip chip-button chip-worded"
             title=${t('copyinto.copy-this-into-your-private', 'copy this into your private notes')}
             onClick=${() => setOpen(true)}
-        ><${Icons.copy} /></button>
+        ><${Icons.copy} /><span class="chip-word">${t('chips.copy', 'copy')}</span></button>
         ${
             open &&
             html`<${CopyIntoModal}

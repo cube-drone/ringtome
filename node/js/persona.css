@@ -1851,6 +1851,13 @@ article:has(.label-emoji-strip) {
     grid-column: 1 / -1;
 }
 
+/* A narrow window's card chips, opened from their menu chip (doc/chips.js `useChipMenu`): a line of
+   the head across the card, after the byline's row. */
+.feed-entry-head .chip-menu {
+    grid-column: 1 / -1;
+    order: 3;
+}
+
 @container (max-width: 760px) {
     .feed-entry-head {
         grid-template-columns: auto minmax(0, 1fr);

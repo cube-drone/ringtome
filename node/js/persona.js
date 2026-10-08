@@ -953,7 +953,7 @@ const ApiKeys = () => {
             html`<ul class="settings-keys-list">
             ${keys.map(
                 (k) => html`<li class="settings-key-row" key=${k.id}>
-                    <button class="chip chip-button chip-delete" title=${t('persona.revoke-key', 'revoke this key')} onClick=${() => revoke(k)}><${Icons.trash} /></button>
+                    <button class="chip chip-button chip-worded chip-delete" title=${t('persona.revoke-key', 'revoke this key')} onClick=${() => revoke(k)}><${Icons.trash} /><span class="chip-word">${t('chips.revoke', 'revoke')}</span></button>
                     <span class="settings-key-name">${k.name}</span>
                     <span class="settings-key-when">
                         ${t('persona.key-made', 'made {when}', { when: when(k.created_ms) })}${' · '}${k.last_used_ms ? t('persona.key-last-used', 'last used {when}', { when: when(k.last_used_ms) }) : t('persona.key-never-used', 'never used')}

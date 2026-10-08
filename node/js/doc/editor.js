@@ -22,7 +22,7 @@ import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { readPref, setPref, viewModeKey, usePrefValue, VIM_KEY } from '../mirror/prefs.js';
-import { Chip, NavChips } from './chips.js';
+import { Chip, NavChips, PublishChip, useChipMenu } from './chips.js';
 import { t } from '../i18n.js';
 import { publishWithBaking } from './publish.js';
 import { PublishBar } from './publishbar.js';
@@ -53,7 +53,7 @@ import { pickedReference } from './pickref.js';
 import { DrawingThumb } from './drawing.js';
 import { CopyLinkChip, docHref, LAUNCHER } from '../links.js';
 import { useLocation } from 'preact-iso';
-import { useGatedFeatures } from '../unlocks.js';
+import { useGatedFeatures, useUnlocked } from '../unlocks.js';
 
 const html = htm.bind(h);
 
@@ -135,6 +135,12 @@ export const Editor = ({
     // fires on the way out.
     const metaChipRef = useRef(null);
     const metaPanelRef = useRef(null);
+    // A narrow window's chips sit behind one menu chip (`deck`, below; doc/chips.js `useChipMenu`).
+    const menu = useChipMenu();
+    const narrow = menu.narrow;
+    // ...and the publish bar behind a chip of its own beside it, summoned when wanted.
+    const [publishOpen, setPublishOpen] = useState(false);
+    const social = useUnlocked(root, 'social');
     // The publish bar (doc/publishbar.js, shared with the drawing surface): Writer brings its door
     // (publishWithBaking, after a save - the door publishes what is SAVED) and its answer to "do
     // these words differ from the public ones?" - the public words, re-read after every publish.
@@ -295,12 +301,24 @@ export const Editor = ({
     // (the Feed drops the read tab); if its list leaves nothing for this format, fall back
     // to the format's full set rather than trapping the doc.
     const available = editorModes(format, feat.modes);
+    // A narrow window (under 900px) edits in one mode - the interactive surface, or plain for
+    // plaintext - with no mode tabs (Curtis, 2026-10-08: hiding side-by-side and read-only was
+    // meant for the whole narrow mode, but a 400px container query hid them only in a band of
+    // window widths). The pick is kept for a wider window.
+    const narrowMode =
+        narrow &&
+        (available.includes('interactive')
+            ? 'interactive'
+            : available.includes('plain')
+              ? 'plain'
+              : null);
     const mode =
-        chosenMode && available.includes(chosenMode)
+        narrowMode ||
+        (chosenMode && available.includes(chosenMode)
             ? chosenMode
             : available.includes(defaultMode(format))
               ? defaultMode(format)
-              : available[0];
+              : available[0]);
 
     // Caret restoration for the textarea surfaces: when one (re)appears - a mode switch, or
     // a return to this doc - put the caret back where it last sat in this document, clamped
@@ -509,6 +527,117 @@ export const Editor = ({
         return sourcePane;
     };
 
+    // Whether there is a publish bar at all (see PublishBar: nothing for a private document without
+    // Social), so a narrow window offers its chip only when it summons something.
+    const hasPublishBar = feat.publish && (!!book || standing !== 'private' || social);
+
+    // The chips, the whole deck (Curtis, 2026-10-08): a row on a wide window, and behind one
+    // menu chip on a narrow one, where the row never fit (below).
+    const deck = html`
+                    ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
+                    ${
+                        onDeleted &&
+                        standing !== 'public' &&
+                        html`<${Chip}
+                        icon=${Icons.trash} word=${t('chips.delete', 'delete')}
+                        modifier="chip-delete"
+                        title="Delete — removes this document from every list (its history is kept)"
+                        onClick=${remove}
+                    />`
+                    }
+                    <${Chip}
+                        icon=${Icons.copy} word=${t('chips.copy', 'copy')}
+                        title=${t('doc.editor.copy-into-private-notes', 'copy this note into another bucket')}
+                        onClick=${() => setCopying(true)}
+                    />
+                    ${
+                        loaded.diverged &&
+                        (loaded.resolution === 'conflict'
+                            ? html`<${Chip}
+                              icon=${Icons.conflict} word=${t('chips.conflict', 'conflict')}
+                              modifier="chip-diverged"
+                              title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"
+                          />`
+                            : html`<${Chip}
+                              icon=${Icons.merged} word=${t('chips.merged', 'merged')}
+                              modifier="chip-merged"
+                              title="Merged — changes from two computers woven together cleanly; your next save seals the weave"
+                          />`)
+                    }
+                    ${
+                        feat.format &&
+                        html`<${Chip}
+                        icon=${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain}
+                        word=${format === 'marquee' ? t('chips.marquee', 'marquee') : t('chips.plain', 'plain')}
+                        title=${
+                            format === 'marquee'
+                                ? 'Marquee — click to convert this document to plaintext'
+                                : 'Plaintext — click to convert this document to Marquee'
+                        }
+                        onClick=${() => {
+                            setFormat(format === 'plaintext' ? 'marquee' : 'plaintext');
+                            touched();
+                        }}
+                    />`
+                    }
+                    ${
+                        canUpload &&
+                        html`<${Chip}
+                        icon=${Icons.upload} word=${t('chips.upload', 'upload')}
+                        title="Upload — attach a file to this document (drop or paste works too)"
+                        onClick=${pickFiles}
+                    />`
+                    }
+                    <${Chip}
+                        icon=${Icons.addImage} word=${t('chips.image', 'image')}
+                        title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}
+                        onClick=${() => setPicking(true)}
+                    />
+                    ${
+                        /* The document's address (2026-09-28): a `/ringtome/…/doc/` link - pasted into
+                        another document it unfolds as this one for you, and says "private" to anyone
+                        else until it is published. */ ''
+                    }
+                    <${CopyLinkChip} path=${docHref(root, docId)} />
+                    <${Chip}
+                        modifier=${status === 'error' ? 'chip-diverged' : null}
+                        title=${statusTip}
+                        word=${status === 'clean' ? t('chips.saved', 'saved') : status === 'error' ? t('chips.not-saved', 'unsaved') : t('chips.saving', 'saving')}
+                    >
+                        ${
+                            status === 'clean'
+                                ? html`<${Icons.saved} />`
+                                : status === 'error'
+                                  ? html`<${Icons.warn} />`
+                                  : html`<span class="status-spin"><${Icons.spinner} /></span>`
+                        }
+                    </${Chip}>
+                    <span class="editor-meta-anchor" ref=${metaChipRef}>
+                        <${Chip}
+                            icon=${Icons.tag} word=${t('chips.tags', 'tags')}
+                            on=${showMeta}
+                            title="tags, date & description"
+                            onClick=${() => setShowMeta((v) => !v)}
+                        />
+                    </span>
+
+                    ${
+                        feat.pin &&
+                        html`<${Chip}
+                        icon=${Icons.pin}
+                        word=${row && row.pinned ? t('chips.unpin', 'unpin') : t('chips.pin', 'pin')}
+                        modifier=${row && row.pinned ? 'chip-pinned' : null}
+                        title=${
+                            row && row.pinned
+                                ? 'Pinned — click to unpin it from the top of the list'
+                                : 'Not pinned — click to pin it to the top of the list'
+                        }
+                        onClick=${() => togglePin(row && row.pinned)}
+                    />`
+                    }
+                    <${NavChips} nav=${nav} />
+    `;
+
     return html`
         <div class="reader" onDrop=${catchDrop} onDragOver=${allowFileDrag} onPaste=${catchPaste}>
             <header class="reader-head">
@@ -527,122 +656,49 @@ export const Editor = ({
                       />`
                 }
                 <span class="reader-chips">
-                    ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
                     ${
-                        onDeleted &&
-                        standing !== 'public' &&
-                        html`<${Chip}
-                        icon=${Icons.trash}
-                        modifier="chip-delete"
-                        title="Delete — removes this document from every list (its history is kept)"
-                        onClick=${remove}
-                    />`
-                    }
-                    <${Chip}
-                        icon=${Icons.copy}
-                        title=${t('doc.editor.copy-into-private-notes', 'copy this note into another bucket')}
-                        onClick=${() => setCopying(true)}
-                    />
-                    ${
-                        copying &&
-                        html`<${CopyIntoModal}
-                        current=${{ root }}
-                        source=${{ author: root, doc_id: docId, private: true }}
-                        onClose=${() => setCopying(false)}
-                    />`
+                        /* The publish bar's chip (Curtis, 2026-10-08: "it can sit next to the
+                        'options' button, but it summons the publication options"): wearing the
+                        document's standing - private, live, scheduled - as the bar does. Only
+                        where there is a bar to summon: PublishBar draws nothing for a private
+                        document without Social. */ ''
                     }
                     ${
-                        loaded.diverged &&
-                        (loaded.resolution === 'conflict'
-                            ? html`<${Chip}
-                              icon=${Icons.conflict}
-                              modifier="chip-diverged"
-                              title="Conflict — edited in the same place on two computers; tidy the versions below and save to settle it"
-                          />`
-                            : html`<${Chip}
-                              icon=${Icons.merged}
-                              modifier="chip-merged"
-                              title="Merged — changes from two computers woven together cleanly; your next save seals the weave"
-                          />`)
+                        narrow &&
+                        hasPublishBar &&
+                        html`<${PublishChip}
+                            standing=${standing}
+                            open=${publishOpen}
+                            onClick=${() => setPublishOpen((v) => !v)}
+                        />`
                     }
-                    ${
-                        feat.format &&
-                        html`<${Chip}
-                        icon=${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain}
-                        title=${
-                            format === 'marquee'
-                                ? 'Marquee — click to convert this document to plaintext'
-                                : 'Plaintext — click to convert this document to Marquee'
-                        }
-                        onClick=${() => {
-                            setFormat(format === 'plaintext' ? 'marquee' : 'plaintext');
-                            touched();
-                        }}
-                    />`
-                    }
-                    ${
-                        canUpload &&
-                        html`<${Chip}
-                        icon=${Icons.upload}
-                        title="Upload — attach a file to this document (drop or paste works too)"
-                        onClick=${pickFiles}
-                    />`
-                    }
-                    <${Chip}
-                        icon=${Icons.addImage}
-                        title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}
-                        onClick=${() => setPicking(true)}
-                    />
-                    ${
-                        picking &&
-                        html`<${ImagePickModal}
-                        root=${root}
-                        drawings=${true}
-                        DrawingThumb=${DrawingThumb}
-                        heading=${t('doc.editor.insert-an-image-heading', 'insert an image')}
-                        onPick=${insertPicked}
-                        onClose=${() => setPicking(false)}
-                    />`
-                    }
-                    ${
-                        /* The document's address (2026-09-28): a `/ringtome/…/doc/` link - pasted into
-                        another document it unfolds as this one for you, and says "private" to anyone
-                        else until it is published. */ ''
-                    }
-                    <${CopyLinkChip} path=${docHref(root, docId)} />
-                    <${Chip} modifier=${status === 'error' ? 'chip-diverged' : null} title=${statusTip}>
-                        ${
-                            status === 'clean'
-                                ? html`<${Icons.saved} />`
-                                : status === 'error'
-                                  ? html`<${Icons.warn} />`
-                                  : html`<span class="status-spin"><${Icons.spinner} /></span>`
-                        }
-                    </${Chip}>
-                    <span class="editor-meta-anchor" ref=${metaChipRef}>
-                        <${Chip}
-                            icon=${Icons.tag}
-                            on=${showMeta}
-                            title="tags, date & description"
-                            onClick=${() => setShowMeta((v) => !v)}
-                        />
-                    </span>
-
-                    ${
-                        feat.pin &&
-                        html`<${Chip}
-                        icon=${Icons.pin}
-                        modifier=${row && row.pinned ? 'chip-pinned' : null}
-                        title=${
-                            row && row.pinned
-                                ? 'Pinned — click to unpin it from the top of the list'
-                                : 'Not pinned — click to pin it to the top of the list'
-                        }
-                        onClick=${() => togglePin(row && row.pinned)}
-                    />`
-                    }
-                    <${NavChips} nav=${nav} />
+                    ${narrow ? menu.chip : deck}
                 </span>
+                ${
+                    /* Open, the deck is a full-width line of the header, under the title: within the
+                    editor's own column, so nothing beside it - a narrow window's tab strip - can lie
+                    over it (2026-10-08: dropped from the chip, it spread under the tabs). */ ''
+                }
+                ${menu.panel(deck)}
+                ${
+                    copying &&
+                    html`<${CopyIntoModal}
+                    current=${{ root }}
+                    source=${{ author: root, doc_id: docId, private: true }}
+                    onClose=${() => setCopying(false)}
+                />`
+                }
+                ${
+                    picking &&
+                    html`<${ImagePickModal}
+                    root=${root}
+                    drawings=${true}
+                    DrawingThumb=${DrawingThumb}
+                    heading=${t('doc.editor.insert-an-image-heading', 'insert an image')}
+                    onPick=${insertPicked}
+                    onClose=${() => setPicking(false)}
+                />`
+                }
                 ${
                     showMeta &&
                     html`<div class="editor-meta jag-line" ref=${metaPanelRef}>
@@ -653,6 +709,7 @@ export const Editor = ({
             ${
                 feat.publish &&
                 book &&
+                (!narrow || publishOpen) &&
                 (() => {
                     // Inside a book (PROJECT_PLAN's Books, ruling 6) the bar speaks for the page's standing
                     // against the last rollout, not its own publication.
@@ -694,6 +751,7 @@ export const Editor = ({
             ${
                 feat.publish &&
                 !book &&
+                (!narrow || publishOpen) &&
                 html`<${PublishBar}
                 root=${root}
                 docId=${docId}
@@ -706,6 +764,7 @@ export const Editor = ({
             }
             ${
                 available.length > 1 &&
+                !narrow &&
                 html`<div class="editor-tabs">
                 ${available.map(
                     (m) => html`<button

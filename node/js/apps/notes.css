@@ -747,10 +747,9 @@
     flex: 1 1 100%;
 }
 
-/* Every editor surface measures its OWN width: the composer lives in a draggable column, so
-   the squeeze is a container question, never a viewport one. (The narrow-mode rules live in
-   doc/editor.css, AFTER the tabs' own display rule - a same-specificity @container block
-   earlier in the cascade loses to it, which is how narrow mode shipped broken once.) */
+/* Every editor surface measures its OWN width: the composer lives in a draggable column. (Its
+   mode tabs used to hide by a 400px container query here and in doc/editor.css; a narrow window
+   drops them in doc/editor.js now, for the whole of narrow mode - 2026-10-08.) */
 .reader {
     container-type: inline-size;
 }
@@ -780,6 +779,32 @@
     font-size: 1rem; /* the chips are icon-only now; this sizes the glyph */
     line-height: 1;
     padding: 0.25rem 0.4rem;
+}
+
+/* A chip's word (doc/chips.js `word`): what it's for, said only where nothing can hover - under
+   900px, where those chips also grow half again, to a size a thumb can press (Curtis, 2026-10-08).
+   Only the icon chips that carry a word (`chip-worded`): a chip that is already words stays its
+   size. Two classes, so the phone size outranks `.chip-button`'s glyph size wherever the files
+   load; and the row wraps rather than run off the edge. */
+.chip-word {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .chip.chip-worded {
+        font-size: 1.5rem;
+        padding: 0.375rem 0.6rem;
+    }
+
+    .chip-word {
+        display: inline;
+        margin-left: 0.3em;
+        font-size: 0.55em;
+    }
+
+    .reader-chips {
+        flex-wrap: wrap;
+    }
 }
 
 .chip-diverged {

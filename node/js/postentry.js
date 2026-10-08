@@ -25,6 +25,7 @@ import { openMirror, useLive } from './mirror.js';
 import { Icons } from './icons.js';
 import { tagIconRole } from './pure/tagicons.js';
 import { SuperPinChip } from './frontdoor.js';
+import { useChipMenu } from './doc/chips.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
 import { descriptionOf, excerpt } from './pure/excerpt.js';
@@ -220,7 +221,7 @@ const PinButton = ({ item, current, pinned, onPinned }) => {
     const [busy, setBusy] = useState(false);
     const base = `/api/identity/${current.root}/public-annotations/${item.author}/${item.doc_id}`;
     return html`<button
-        class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
+        class=${pinned ? 'chip chip-button chip-worded chip-pinned' : 'chip chip-button chip-worded'}
         title=${
             pinned
                 ? t('postentry.unpin-this-from-your-page', 'unpin this from your page')
@@ -242,7 +243,7 @@ const PinButton = ({ item, current, pinned, onPinned }) => {
             }
             setBusy(false);
         }}
-    ><${Icons.pin} /></button>`;
+    ><${Icons.pin} /><span class="chip-word">${pinned ? t('chips.unpin', 'unpin') : t('chips.pin', 'pin')}</span></button>`;
 };
 
 const UnpublishButton = ({ item, current, onTakenDown }) => {
@@ -254,10 +255,10 @@ const UnpublishButton = ({ item, current, onTakenDown }) => {
     // reads as part of the card - the system stepping forward is exactly what the modal frame
     // is for, and a takedown is the system being asked to do something irreversible.
     return html`<button
-            class="chip chip-button chip-delete"
+            class="chip chip-button chip-worded chip-delete"
             title=${t('postentry.take-this-post-back-off', 'take this post back off the network')}
             onClick=${() => setAsking(true)}
-        ><${Icons.trash} /></button>
+        ><${Icons.trash} /><span class="chip-word">${t('chips.unpublish', 'unpublish')}</span></button>
         ${
             asking &&
             html`<${Modal}
@@ -405,7 +406,7 @@ const ShareButton = ({ item, current }) => {
     // Icon-only, a Writer chip (doc/chips.js) like every file chip (Curtis, 2026-09-27): a glyph,
     // a hover title with the words, no label. Shared, it wears the chip's lit look.
     return html`<button
-        class=${shared ? 'chip chip-button chip-open' : 'chip chip-button'}
+        class=${shared ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
         disabled=${sending || known === null}
         title=${
             shared
@@ -415,6 +416,7 @@ const ShareButton = ({ item, current }) => {
         onClick=${pass}
     >
         <${Icons.colRebroadcast} />
+        <span class="chip-word">${shared ? t('chips.unshare', 'unshare') : t('chips.share', 'share')}</span>
     </button>`;
 };
 
@@ -705,6 +707,7 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
     const ownsPins = useUnlocked(me, 'pins');
     const ownsEditing = useUnlocked(me, 'post-editing');
     const ownsTags = useUnlocked(me, 'tags');
+    const cardMenu = useChipMenu();
     const [body, setBody] = useState(undefined);
     const [sealedWords, setSealedWords] = useState('');
     const [wholeThing, setWholeThing] = useState(false);
@@ -1051,6 +1054,86 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
     if (gone) return null;
     if (warning.kind === 'hide' && !standalone) return null;
 
+    // The card's chips, the whole deck: in its banner's row, or in a narrow window behind one menu
+    // chip, opening on a line of the head below the byline (doc/chips.js `useChipMenu`; Curtis,
+    // 2026-10-08).
+    const cardDeck = html`
+                    ${
+                        /* The takedown first, after the date: trash is always the leftmost chip, on every
+                        row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''
+                    }
+                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} onTakenDown=${() => setGone(true)} />`}
+                    ${
+                        /* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
+                        never the key, and that is not what the button promises - unless the
+                        author asked for the hop (Contact tags, ruling 7). */ ''
+                    }
+                    ${ownsSharing && !item.mine && !!current && (!item.trusted_only || onward) && html`<${ShareButton} item=${item} current=${current} />`}
+                    ${
+                        /* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
+                        feed's own) is edited where it lives: "edit" with the note-pencil goes to
+                        that note in Writer - or, for a posted drawing, the brush to Drawing (Curtis,
+                        2026-09-27) - and the publish bar there says the changes again. A post
+                        composed in the feed opens for editing in place, at once: no lock, no
+                        wait, and no day after which it can't (Curtis, 2026-10-02 - the lock was
+                        confusing, and posts edit forever). */ ''
+                    }
+                    ${
+                        ownsEditing &&
+                        editing &&
+                        !open &&
+                        (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
+                            ? editing.row.format === 'drawing'
+                                ? html`<a
+                                  class="chip chip-button chip-worded"
+                                  href=${docHref(current.root, editing.row.doc_id)}
+                                  title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
+                              ><${Icons.drawing} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
+                                : html`<a
+                                  class="chip chip-button chip-worded"
+                                  href=${docHref(current.root, editing.row.doc_id)}
+                                  title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
+                              ><${Icons.notes} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
+                            : ownsEditing &&
+                              editing &&
+                              !open &&
+                              html`<button
+                              class="chip chip-button chip-worded"
+                              title=${t('postentry.open-this-for-editing', 'open this for editing')}
+                              aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
+                              onClick=${() => setOpen(true)}
+                          ><${Icons.rename} /><span class="chip-word">${t('chips.edit', 'edit')}</span></button>`
+                    }
+                    ${
+                        /* Any post of yours - a book and a room too, which have no in-place editor
+                        - and any post you pass along (2026-09-29). */ ''
+                    }
+                    ${
+                        ownsPins &&
+                        !open &&
+                        !item.private_doc &&
+                        !!current &&
+                        !!current.root &&
+                        pinner(item) === current.root &&
+                        html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`
+                    }
+                    ${/* A node administrator's super-pin (2026-09-30): onto the server's front page. */ ''}
+                    ${!open && !item.private_doc && !item.trusted_only && item.kind !== 'share' && !!current && html`<${SuperPinChip} item=${item} />`}
+                    ${
+                        /* The post's address (2026-09-28), just before the copy into notes: pasted
+                        in the app it unfolds as this card; pasted outside, it opens. */ ''
+                    }
+                    ${!open && html`<${CopyLinkChip} path=${href} />`}
+                    ${
+                        /* Copy into private notes, last on every card (Curtis, 2026-09-08: the
+                        same seat on your own posts and other people's). */ ''
+                    }
+                    ${
+                        /* A room is a conversation, not a note (Curtis, 2026-09-18): it does
+                        not copy, and it takes no replies (the page hides the thread). */ ''
+                    }
+                    ${!!current && !!current.root && !open && item.kind !== 'share' && item.format !== 'room' && html`<${CopyButton} item=${item} current=${current} />`}
+    `;
     return html`
         <article
             class=${entryClass}
@@ -1145,82 +1228,9 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                         edited &&
                         html`<a class="feed-entry-edited" href=${postHistoryHref(item.author, item.doc_id)} title=${t('postentry.see-every-version', 'see every version of this post')}>${t('postentry.edited-when', 'edited {when}', { when: formatWhen(item.updated_ms) })}</a>`
                     }
-                    ${
-                        /* The takedown first, after the date: trash is always the leftmost chip, on every
-                        row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''
-                    }
-                    ${editing && !open && html`<${UnpublishButton} item=${item} current=${current} onTakenDown=${() => setGone(true)} />`}
-                    ${
-                        /* No share on a sealed post (Curtis, 2026-09-08): a share moves the pointer,
-                        never the key, and that is not what the button promises - unless the
-                        author asked for the hop (Contact tags, ruling 7). */ ''
-                    }
-                    ${ownsSharing && !item.mine && !!current && (!item.trusted_only || onward) && html`<${ShareButton} item=${item} current=${current} />`}
-                    ${
-                        /* A post whose private analogue lives in a NOTEBOOK (any bucket beyond the
-                        feed's own) is edited where it lives: "edit" with the note-pencil goes to
-                        that note in Writer - or, for a posted drawing, the brush to Drawing (Curtis,
-                        2026-09-27) - and the publish bar there says the changes again. A post
-                        composed in the feed opens for editing in place, at once: no lock, no
-                        wait, and no day after which it can't (Curtis, 2026-10-02 - the lock was
-                        confusing, and posts edit forever). */ ''
-                    }
-                    ${
-                        ownsEditing &&
-                        editing &&
-                        !open &&
-                        (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
-                            ? editing.row.format === 'drawing'
-                                ? html`<a
-                                  class="chip chip-button"
-                                  href=${docHref(current.root, editing.row.doc_id)}
-                                  title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
-                              ><${Icons.drawing} /></a>`
-                                : html`<a
-                                  class="chip chip-button"
-                                  href=${docHref(current.root, editing.row.doc_id)}
-                                  title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
-                              ><${Icons.notes} /></a>`
-                            : ownsEditing &&
-                              editing &&
-                              !open &&
-                              html`<button
-                              class="chip chip-button"
-                              title=${t('postentry.open-this-for-editing', 'open this for editing')}
-                              aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
-                              onClick=${() => setOpen(true)}
-                          ><${Icons.rename} /></button>`
-                    }
-                    ${
-                        /* Any post of yours - a book and a room too, which have no in-place editor
-                        - and any post you pass along (2026-09-29). */ ''
-                    }
-                    ${
-                        ownsPins &&
-                        !open &&
-                        !item.private_doc &&
-                        !!current &&
-                        !!current.root &&
-                        pinner(item) === current.root &&
-                        html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`
-                    }
-                    ${/* A node administrator's super-pin (2026-09-30): onto the server's front page. */ ''}
-                    ${!open && !item.private_doc && !item.trusted_only && item.kind !== 'share' && !!current && html`<${SuperPinChip} item=${item} />`}
-                    ${
-                        /* The post's address (2026-09-28), just before the copy into notes: pasted
-                        in the app it unfolds as this card; pasted outside, it opens. */ ''
-                    }
-                    ${!open && html`<${CopyLinkChip} path=${href} />`}
-                    ${
-                        /* Copy into private notes, last on every card (Curtis, 2026-09-08: the
-                        same seat on your own posts and other people's). */ ''
-                    }
-                    ${
-                        /* A room is a conversation, not a note (Curtis, 2026-09-18): it does
-                        not copy, and it takes no replies (the page hides the thread). */ ''
-                    }
-                    ${!!current && !!current.root && !open && item.kind !== 'share' && item.format !== 'room' && html`<${CopyButton} item=${item} current=${current} />`}`}
+                    ${cardMenu.narrow ? cardMenu.chip : cardDeck}`}
             />
+            ${cardMenu.panel(cardDeck)}
             ${
                 !open &&
                 !!title &&

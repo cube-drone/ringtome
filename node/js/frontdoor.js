@@ -108,7 +108,7 @@ const SuperPinToggle = ({ item }) => {
         setBusy(false);
     };
     return html`<button
-        class=${pinned ? 'chip chip-button chip-pinned' : 'chip chip-button'}
+        class=${pinned ? 'chip chip-button chip-worded chip-pinned' : 'chip chip-button chip-worded'}
         title=${
             pinned
                 ? t(
@@ -122,7 +122,7 @@ const SuperPinToggle = ({ item }) => {
         }
         disabled=${busy}
         onClick=${flip}
-    ><${Icons.superPin} /></button>`;
+    ><${Icons.superPin} /><span class="chip-word">${pinned ? t('chips.unfeature', 'unfeature') : t('chips.feature', 'feature')}</span></button>`;
 };
 
 /// The super-pin chip, on a node administrator's cards only. The node decides what may be pinned
