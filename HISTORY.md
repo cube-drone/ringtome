@@ -18605,3 +18605,19 @@ tags and the image picker's. The × that removes a tag (`.label-x`,
 `.annot-tag-x`) is a 1.3rem glyph with padding of its own, pulled into the
 chip's right edge, so it's a target and not a speck. A desktop is untouched: one
 `@media (max-width: 900px)` block at the end of each of the six stylesheets.
+
+**2026-10-08 - A phone's reaction strip, inline.** Curtis: in the feed on
+mobile, the quick emoji under "+ tag" were "too small to click on, and the
+selector is cut off by the edge of the window: maybe it should be inline, and
+larger, only showing the positive, negative, and most popular options - but only
+on mobile". Under 900px (`useChipMenu`'s `narrow`) the card draws `EmojiStrip`
+with `poleOnly` - the green row, the red row and the useful row, no whole-gemoji
+table - as `.label-emoji-strip-inline`: in the labels row's flow on lines under
+the input rather than a dropdown over the card, each emoji 1.6rem with padding,
+as many to a line as the card holds (`auto-fill`). Typing still narrows it by
+name. A desktop keeps the dropdown and the whole table.
+
+Then nine to a row (Curtis: "one-too-many emoji for each of the three lists - on
+mobile, we might need to pull sunglasses, zipper-mouth and full-moon-face"): the
+phone's strip leaves those three out (`PHONE_DROPS`, emoji.js) and lays each row
+on a fixed nine-column grid, one line apiece. A desktop keeps all thirty.

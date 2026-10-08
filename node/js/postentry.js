@@ -1504,7 +1504,13 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                               onMouseDown=${(e) => e.preventDefault()}
                               onClick=${() => addTag(ch)}
                           >${ch}</button>`;
-                          return html`<${EmojiStrip} hit=${hit} chip=${chip} />`;
+                          // A phone's strip (Curtis, 2026-10-08: the emoji "too small to click on",
+                          // the dropdown "cut off by the edge of the window"): inline under the
+                          // input, bigger, and only the pole rows - the good, the bad and the
+                          // useful.
+                          return cardMenu.narrow
+                              ? html`<${EmojiStrip} hit=${hit} chip=${chip} poleOnly=${true} className="label-emoji-strip-inline" />`
+                              : html`<${EmojiStrip} hit=${hit} chip=${chip} />`;
                       })()}</span>`
                         : html`<button
                           class="label-add"

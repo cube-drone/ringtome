@@ -2639,4 +2639,42 @@ article:has(.label-emoji-strip) {
         padding: 0.1rem 0.4rem;
         margin-right: -0.5rem;
     }
+
+    /* The reaction strip inline (postentry.js, 2026-10-08): the open input takes a line of the
+       labels row, the strip the lines under it, in the flow rather than over the card - nothing for
+       the window's edge to cut. Only the pole rows, nine apiece (emoji.js), each row one line and
+       each emoji a fingertip wide. */
+    .label-add-anchor:has(.label-emoji-strip-inline) {
+        flex-basis: 100%;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+
+    .label-emoji-strip.label-emoji-strip-inline {
+        position: static;
+        flex-basis: 100%;
+        width: auto;
+        max-height: none;
+        overflow: visible;
+        padding: 0;
+        background: none;
+        box-shadow: none;
+        clip-path: none;
+        gap: 0.3rem;
+    }
+
+    .label-emoji-strip-inline::after {
+        display: none;
+    }
+
+    .label-emoji-strip-inline .label-emoji-row {
+        grid-template-columns: repeat(9, minmax(0, 1fr));
+        margin-bottom: 0;
+        padding: 0.2rem;
+    }
+
+    .label-emoji-strip-inline .label-emoji {
+        font-size: 1.6rem;
+        padding: 0.2rem;
+    }
 }

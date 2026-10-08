@@ -105,13 +105,21 @@ export const glyphOf = (code) => {
     return (m && nameToEmoji[m[1]]) || code;
 };
 
+// The tenth of each pole row, which a phone's inline strip leaves out (Curtis, 2026-10-08: "one-too-
+// many emoji for each of the three lists"): nine to a row is one line on a phone.
+const PHONE_DROPS = new Set(['sunglasses', 'zipper mouth', 'full moon face']);
+
 /// The picker's strip: the pole rows, each on its tone, then the whole table - every part
-/// narrowed by `hit([name, glyph])`, an emptied row left out. `chip` draws one emoji.
-export const EmojiStrip = ({ hit, chip, className = '' }) => {
-    const rows = POLE_ROWS.map((row) => ({ ...row, emoji: row.emoji.filter(hit) })).filter(
-        (row) => row.emoji.length,
-    );
-    const rest = EMOJI_PALETTE.filter(hit);
+/// narrowed by `hit([name, glyph])`, an emptied row left out. `chip` draws one emoji. `poleOnly`
+/// keeps to the pole rows, nine apiece, for a phone's inline strip (postentry.js), where the
+/// whole table would be a wall.
+export const EmojiStrip = ({ hit, chip, className = '', poleOnly = false }) => {
+    const keep = ([name]) => !poleOnly || !PHONE_DROPS.has(name);
+    const rows = POLE_ROWS.map((row) => ({
+        ...row,
+        emoji: row.emoji.filter((e) => keep(e) && hit(e)),
+    })).filter((row) => row.emoji.length);
+    const rest = poleOnly ? [] : EMOJI_PALETTE.filter(hit);
     if (!rows.length && !rest.length) return '';
     return html`<span class=${`label-emoji-strip ${className}`}>
         ${rows.map(
