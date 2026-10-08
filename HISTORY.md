@@ -18290,3 +18290,48 @@ the words before it fit (`paragraphsWithin`; a picture costs nothing). That
 post's card now shows its opening line, the picture, the heading and three
 paragraphs. Low interest keeps the first paragraph; the second picture still
 ends every lead. Three pure claims.
+
+**2026-10-08 - Marquee 0.9.1.** Every Marquee library up from 0.8.0: the six npm
+packages (`marquee-codemirror`, `-css`, `-fonts`, `-html-renderer`,
+`-react-renderer`, `-turbolink`, the shared parser following) and the two pinned
+crates (`cube-drone-marquee-parser`, `-markup`, the renderer following in
+Cargo.lock). No API moved - clippy clean, `just ci` green (1484 claims). With
+it, the live preview draws `by=letter`/`by=word` per unit from the renderer's
+own code, and carries marquee's `direction` and `speed` - the issue handed over
+earlier today. Still upstream: the editor's block cache keys on position
+(`marquee.ts`, `renderBlock`), so each keystroke re-renders every block below
+the caret; a write-up went to Marquee.
+
+**2026-10-08 - The new logo, and a tab icon in each colourway.** Curtis drew a
+new logo (`branding/hdt_logo_2.png`: five blue strokes - a triangle, a zigzag, a
+ring, two squares) and asked for it everywhere the old one showed, and for an
+SVG favicon "aligned with the user's current colorway".
+
+- **Traced** to one path (`branding/hdt_logo_2.svg`): the alpha upscaled 4×,
+  softened a little, curves fitted by potrace (potracer, pure Python - vtracer
+  segfaulted on the mask). 9 subpaths: five strokes, four holes. 16.7 KB.
+- **Every icon re-rendered from the SVG** rather than upscaled from the 300 px
+  PNG: the 1024 masters, `favicon.ico`, `apple-touch-icon.png`, and the desktop
+  set through `tauri icon`. The horse in its ring stays in branding/, unused.
+- **`/favicon.svg`** (embedded, like the `.ico`), linked ahead of it - the
+  `.ico` now says `sizes="32x32"`, since `any` made Chrome prefer it over the
+  SVG.
+- **The colourway's accent**: `colorway.js` repaints `#favicon` as a data URI of
+  the logo in `--teal` whenever a colourway is worn (`tintFavicon`;
+  `pure/logo.js` holds the path). Before the script runs, and on the static
+  stranger page (whose CSP allows no data: images), it is the logo's blue.
+
+branding/README.md says how to trace and render again; a pure test holds the
+three copies of the path together (`logo.cjs`).
+
+Then five colours (Curtis: "5 strokes in the svg, right? Which means space for
+up to 5 different colors from the colorway"). Not as traced: the ring and the
+right square touch in the drawing, and the first trace fused them into one
+outline. The trace now parts them - the mask eroded until five pieces stand
+apart, each pixel given back to the nearest, so the two split along where they
+met - and traces each stroke alone: five paths (`STROKES` in `pure/logo.js`,
+five `<path>`s in both SVGs, every icon re-rendered from them). The tab icon
+paints each from a colour every colourway names: the triangle `--coral`, the
+zigzag `--peach`, the ring the accent `--teal`, the squares `--sea` and
+`--pink` - a near rainbow in pride, shades of phosphor in the terminals. The
+README's recipe reproduces both SVGs byte for byte (checked).

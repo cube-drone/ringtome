@@ -13,6 +13,7 @@
 import { useEffect } from 'preact/hooks';
 
 import { t } from './i18n.js';
+import { logoSvg } from './pure/logo.js';
 
 export const COLORWAYS = [
     'horse-relax',
@@ -87,6 +88,26 @@ let page = null; // the person whose page this is
 const wear = (colorway) => {
     if (typeof document === 'undefined') return;
     document.documentElement.dataset.colorway = colorway;
+    tintFavicon();
+};
+
+/// The tab icon in the colourway's colours (Curtis, 2026-10-08: "use that as a favicon aligned with
+/// the user's current colorway", then "space for up to 5 different colors"): the logo's five strokes
+/// (pure/logo.js) each painted in a colour every colourway names - the triangle danger, the zigzag
+/// scheduled, the ring the accent, the squares good and tags - and put in the SVG icon's place
+/// (index.html's `#favicon`; `/favicon.svg`, in the logo's own blue, until this runs). Only when the
+/// colours moved, so wearing the same colourway again rebuilds nothing.
+const STROKE_TOKENS = ['--coral', '--peach', '--teal', '--sea', '--pink'];
+let tinted = null;
+const tintFavicon = () => {
+    const link = document.getElementById('favicon');
+    if (!link) return;
+    const style = getComputedStyle(document.documentElement);
+    const fills = STROKE_TOKENS.map((token) => style.getPropertyValue(token).trim());
+    const key = fills.join(' ');
+    if (fills.some((f) => !f) || key === tinted) return;
+    tinted = key;
+    link.href = `data:image/svg+xml,${encodeURIComponent(logoSvg(fills))}`;
 };
 
 const apply = () => wear(known(page) || known(own) || DEFAULT_COLORWAY);

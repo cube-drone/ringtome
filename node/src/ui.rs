@@ -33,9 +33,12 @@ const CSS: &str = include_str!("../js/target/css/bundle.css");
 // regardless of the process's working directory (the justfile runs cargo from the workspace
 // root, not from node/).
 const JS_DEV_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/js/target/js/bundle.js");
-/// The tab icon and the home-screen icon, from `branding/hdt_logo.png` (branding/README.md says how
-/// they were made). Served from the root, where browsers and iOS look for them unasked.
+/// The tab icon and the home-screen icon, from `branding/hdt_logo_2.svg` (branding/README.md says how
+/// they were made). Served from the root, where browsers and iOS look for them unasked. The SVG is
+/// the tab icon wherever a browser takes one - in the logo's blue; the app repaints it in the
+/// colourway's accent (colorway.js) - and the `.ico` the fallback where it doesn't.
 const FAVICON: &[u8] = include_bytes!("../html/favicon.ico");
+const FAVICON_SVG: &[u8] = include_bytes!("../html/favicon.svg");
 const APPLE_TOUCH_ICON: &[u8] = include_bytes!("../html/apple-touch-icon.png");
 
 /// The Web Push service worker (js/sw.js): its own script, never bundled.
@@ -294,7 +297,7 @@ pub async fn service_worker(State(state): State<AppState>) -> Result<impl IntoRe
     ))
 }
 
-/// `/favicon.ico` and `/apple-touch-icon.png`: embedded, unversioned, and cached for a day - an icon
+/// `/favicon.ico`, `/favicon.svg` and `/apple-touch-icon.png`: embedded, unversioned, and cached for a day - an icon
 /// changes about once a logo, and a day-stale tab icon costs nobody anything.
 pub async fn favicon() -> impl IntoResponse {
     (
@@ -303,6 +306,16 @@ pub async fn favicon() -> impl IntoResponse {
             (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
         ],
         FAVICON,
+    )
+}
+
+pub async fn favicon_svg() -> impl IntoResponse {
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "image/svg+xml"),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        FAVICON_SVG,
     )
 }
 
