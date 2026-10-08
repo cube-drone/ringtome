@@ -11,7 +11,8 @@
 // what let Recipes and Wikibook wear the same skeleton before they were folded back into
 // Writer (2026-08-08), and what lets Lost & Found wear it now without importing a line.
 import { h } from 'preact';
-import { useState, useEffect, useContext, useRef } from 'preact/hooks';
+import { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'preact/hooks';
+import { memo } from 'preact/compat';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -213,8 +214,8 @@ const StatusMark = ({ doc, book }) => {
 
 // One row in the list: title, and whatever this app has asked to show beneath it. Everything
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
-// description, no date and no tags is one line tall.
-const NoteRow = ({
+// description, no date and no tags is one line tall. Memoized below (`NoteRow`).
+const NoteRowBody = ({
     doc,
     root,
     bucket,
@@ -310,6 +311,24 @@ const NoteRow = ({
     </span>`
     }
 </button>`;
+
+/// A row re-renders only when something it shows moved (2026-10-08, from a Firefox profile of slow
+/// typing: a shell re-render re-rendered every row, half a second of a 0.9 s freeze). Every prop by
+/// identity - the list keeps them stable (`select` and `toggleTag` callbacks, `feat` and `book`
+/// memoized) - but two:
+///   - `doc`, by content: the mirror's live query hands back fresh row objects whenever the docs
+///     table moves, which an autosave does every few seconds while you type;
+///   - `selected`, the open document's id, which every row is handed: a row cares only whether
+///     it is the one selected.
+const sameRow = (a, b) => {
+    for (const k of Object.keys(b)) {
+        if (k === 'selected' || k === 'doc') continue;
+        if (a[k] !== b[k]) return false;
+    }
+    if (a.doc !== b.doc && JSON.stringify(a.doc) !== JSON.stringify(b.doc)) return false;
+    return (a.selected === a.doc.doc_id) === (b.selected === b.doc.doc_id);
+};
+const NoteRow = memo(NoteRowBody, sameRow);
 
 // hrseFiles™ laid out as the picture picker is (Curtis, 2026-09-29): the notebooks, then the tags,
 // then every file as a square tile - a picture or a drawing as itself, words as their icon and
@@ -508,14 +527,18 @@ export const DocsApp = ({
     const bookFacts = useBookFacts(root);
     const bookTree = useBookTree(root, bucket, treeReload);
     const bookOn = feat.bookColumn && isBookBucket(bookFacts.modes, bucket);
-    const book = bookOn
-        ? {
-              bucket,
-              hidden: bookFacts.hidden,
-              hiddenDocs: hiddenDocsOf(bookTree, bookFacts.hidden),
-              mark: bookFacts.mark,
-          }
-        : null;
+    const book = useMemo(
+        () =>
+            bookOn
+                ? {
+                      bucket,
+                      hidden: bookFacts.hidden,
+                      hiddenDocs: hiddenDocsOf(bookTree, bookFacts.hidden),
+                      mark: bookFacts.mark,
+                  }
+                : null,
+        [bookOn, bucket, bookFacts.hidden, bookFacts.mark, bookTree],
+    );
     // Its title page is pinned implicitly, above every pin (Curtis, 2026-10-02): the page the book is
     // named by, and whose tags, description and date it wears, heads the list.
     const titlePage = bookOn
@@ -551,8 +574,10 @@ export const DocsApp = ({
     const loc = useLocation();
     const followHome = (d) => loc.route(docHref(root, d.doc_id));
 
-    const toggleTag = (tag) =>
-        setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag]));
+    const toggleTag = useCallback(
+        (tag) => setTagFilter((f) => (f.includes(tag) ? f.filter((t) => t !== tag) : [...f, tag])),
+        [],
+    );
 
     // Counted over the SEARCH results (query + kind dial) rather than the tag-filtered list, so
     // the cloud narrows with a search but still shows every tag you could add.

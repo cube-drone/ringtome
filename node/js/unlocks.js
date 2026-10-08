@@ -12,7 +12,7 @@
 // The names and explanations a player reads are here, one literal `t()` apiece, by the unlock's id
 // (as contracts.js names contracts); an unlock this table doesn't know wears the node's English.
 import { h } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
@@ -38,23 +38,35 @@ const publish = (next) => {
 };
 
 /// Take the node's answer (`/bank?lines=0`, or the bank's own) as what `root` owns now.
+///
+/// An answer that changes nothing publishes nothing (2026-10-08, from a Firefox profile of slow
+/// typing): the poll asks every ten seconds, and every answer used to hand every listener a fresh
+/// state - a fresh Set - which re-rendered the shell, the open app and every row of its list, a
+/// 0.9 s freeze mid-sentence each time.
 export const noteBank = (root, answer) => {
     const owned = answer.unlocked
         ? new Set(answer.unlocked)
         : new Set((answer.unlocks || []).filter((u) => u.bought_ms).map((u) => u.id));
-    publish({
-        root,
-        balance:
-            answer.balance !== undefined
-                ? BigInt(answer.balance)
-                : state.root === root
-                  ? state.balance
-                  : null,
-        owned,
-        everything: !!answer.everything,
-        known: true,
-    });
+    const balance =
+        answer.balance !== undefined
+            ? BigInt(answer.balance)
+            : state.root === root
+              ? state.balance
+              : null;
+    const everything = !!answer.everything;
+    if (
+        state.known &&
+        state.root === root &&
+        state.balance === balance &&
+        state.everything === everything &&
+        sameSet(state.owned, owned)
+    ) {
+        return;
+    }
+    publish({ root, balance, owned, everything, known: true });
 };
+
+const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
 
 /// Ask the node again now - after a purchase, so the gates open on this tab at once.
 export const refreshUnlocks = (root) =>
@@ -102,17 +114,24 @@ export const useUnlocked = (root, id) => {
 /// An app's features (pure/apps.js `featuresOf`) as this persona owns them: the columns and chips
 /// the Market sells, off where they aren't bought. Idempotent - a surface handed features already
 /// gated may gate them again.
+/// The same object while nothing it's made of changes, so a memoized row handed it (apps/notes.js
+/// `NoteRow`) skips a re-render: `feat` arrives a fresh object every render (`featuresOf`), so its
+/// contents are the key, with what's owned.
 export const useGatedFeatures = (root, feat) => {
     const ledger = useLedger(root);
-    const owns = (id) => unlockedIn(ledger, id);
-    return {
-        ...feat,
-        tree: feat.tree && owns('taxonomy'),
-        bookColumn: feat.bookColumn && owns('taxonomy') && owns('social'),
-        linkColumn: feat.linkColumn && owns('links'),
-        tagColumn: feat.tagColumn && owns('tags'),
-        pin: feat.pin && owns('pins'),
-    };
+    const key = JSON.stringify(feat);
+    return useMemo(() => {
+        const owns = (id) => unlockedIn(ledger, id);
+        return {
+            ...feat,
+            tree: feat.tree && owns('taxonomy'),
+            bookColumn: feat.bookColumn && owns('taxonomy') && owns('social'),
+            linkColumn: feat.linkColumn && owns('links'),
+            tagColumn: feat.tagColumn && owns('tags'),
+            pin: feat.pin && owns('pins'),
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key, ledger.owned, ledger.everything]);
 };
 
 /// How often the shell asks the node while the tab is visible.

@@ -7,7 +7,7 @@
 // Two hooks, in that order, because the second needs what the first returns: an app computes its
 // own document ORDER out of `docs` (the list's time order, or the tree read as a book), so the
 // order cannot be an input to the spine - it is an output of the app.
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
@@ -55,7 +55,12 @@ export function useDocApp(root, app, docId, bucket, { resume = true } = {}) {
         const row = (docs || []).find((d) => d.doc_id === id) || null;
         return docHref(root, id, { row, bucket });
     };
-    const select = (id) => loc.route(hrefOf(id));
+    // Stable across renders (2026-10-08): the list's rows are memoized (apps/notes.js `NoteRow`),
+    // and a fresh `select` each render would re-render every one of them. The latest `hrefOf` rides
+    // a ref.
+    const hrefNow = useRef(hrefOf);
+    hrefNow.current = hrefOf;
+    const select = useCallback((id) => loc.route(hrefNow.current(id)), [loc]);
 
     const restored = useRef(false);
     useEffect(() => {

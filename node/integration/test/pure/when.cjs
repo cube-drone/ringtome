@@ -1,9 +1,9 @@
 const assert = require('node:assert');
 
 // Dates by the reader's day (2026-10-02): today the time, this year no year, another year the year.
-let whenOptions;
+let whenOptions, formatWhen;
 before(async () => {
-    ({ whenOptions } = await import('../../../js/pure/when.js'));
+    ({ whenOptions, formatWhen } = await import('../../../js/pure/when.js'));
 });
 
 describe('a date shows what the reader needs of it (2026-10-02)', () => {
@@ -52,5 +52,24 @@ describe('a date shows what the reader needs of it (2026-10-02)', () => {
             day: 'numeric',
             year: 'numeric',
         });
+    });
+});
+
+describe('formatWhen, with its formatters kept (2026-10-08)', () => {
+    const now = new Date(2026, 9, 2, 15, 30).getTime();
+    const moments = [
+        new Date(2026, 9, 2, 9, 5).getTime(),
+        new Date(2026, 3, 14, 12, 0).getTime(),
+        new Date(2024, 11, 31, 23, 59).getTime(),
+    ];
+
+    it('says exactly what toLocaleString said, a moment or a day, called once or again', () => {
+        for (const ms of moments) {
+            for (const opts of [{}, { time: false }]) {
+                const fresh = new Date(ms).toLocaleString(undefined, whenOptions(ms, now, opts));
+                assert.equal(formatWhen(ms, now, opts), fresh);
+                assert.equal(formatWhen(ms, now, opts), fresh, 'the kept formatter, the same');
+            }
+        }
     });
 });

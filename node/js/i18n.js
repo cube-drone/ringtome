@@ -78,7 +78,11 @@ function parts(template, params) {
  * @param params  values for those holes
  */
 export function t(key, seed, params) {
-    return parts(active[key] ?? seed, params).join('');
+    const template = active[key] ?? seed;
+    // No holes, nothing to fill: the template is the answer (most strings - and `t` runs for every
+    // string of every render, so the cut-and-join showed in a profile of typing, 2026-10-08).
+    if (!template.includes('{')) return template;
+    return parts(template, params).join('');
 }
 
 /**

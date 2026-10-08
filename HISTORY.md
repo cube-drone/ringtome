@@ -18214,3 +18214,27 @@ their own surface) - so each flag needs only its ends readable:
 
 Each with its swatch, words, first-paint entry and unlock (H$ 25,000, as pride);
 the probe counts twelve.
+
+**2026-10-08 - Typing slowness in Firefox, from a profile.** Curtis profiled
+typing in Writer, and desktop Claude mapped the minified frames back to source.
+40% of the capture was Firefox's own Inspector (DevTools open); of the rest:
+
+- **A 0.9 s freeze every ten seconds** - the ledger poll's `noteBank` handed
+  every listener a fresh state (a fresh Set) on every answer, re-rendering the
+  shell, the open app and every row of its list. It publishes only when
+  something changed now, and `useGatedFeatures` returns the same object while
+  its features and what's owned don't move.
+- **The list's own cost**: `formatWhen` built a fresh ICU formatter per call
+  (45% of a list render) - one `Intl.DateTimeFormat` per option shape is kept
+  now; `t()` cut and joined every string, holes or none - a template without `{`
+  comes back as is; and `NoteRow` is memoized, by identity for props the list
+  keeps stable (`select`, now a `useCallback` in `docapp.js`, `toggleTag`,
+  `feat`, `book`), by content for `doc` (the mirror's live query hands back
+  fresh rows on every save), and for `selected` only whether this row is the
+  one.
+
+Pure claims: `formatWhen` says exactly what `toLocaleString` said, kept
+formatter or fresh; `t()` with and without holes. Not done, from the same
+analysis: a selector so only the corner re-renders when the balance moves;
+`setBody` per keystroke (about 3 ms); the CRT overlays' paint (an A/B profile
+first). Not yet re-profiled.

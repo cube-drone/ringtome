@@ -24,7 +24,19 @@ export function whenOptions(ms, now = Date.now(), { time = true } = {}) {
     return { ...day, ...clock };
 }
 
+/// One formatter per option shape - there are about four - kept (2026-10-08, from a Firefox profile:
+/// `toLocaleString` built a fresh ICU formatter per call, and a list of dates was 45% of the list's
+/// render). The reader's locale is fixed for the page's life, as `toLocaleString(undefined)`'s was.
+const formatters = new Map();
+
 /// `ms` in the reader's words, by the rule above.
 export function formatWhen(ms, now = Date.now(), opts = {}) {
-    return new Date(ms).toLocaleString(undefined, whenOptions(ms, now, opts));
+    const options = whenOptions(ms, now, opts);
+    const key = JSON.stringify(options);
+    let format = formatters.get(key);
+    if (!format) {
+        format = new Intl.DateTimeFormat(undefined, options);
+        formatters.set(key, format);
+    }
+    return format.format(ms);
 }
