@@ -13,6 +13,13 @@
 //!   and the webview stays where it is;
 //! - **anything else** is refused: a page must not be able to make the app launch arbitrary URL
 //!   handlers on the person's machine.
+//!
+//! One exception rides inside the window: the **players a post embeds** (Marquee's turbolinks - a
+//! YouTube video, a Spotify track, an OpenStreetMap map) load in an iframe, and the webview asks
+//! the same question for a frame's navigation as for the window's - WebKit's navigation policy
+//! fires for every frame, and wry hands on only the URL, not which frame (Curtis, 2026-10-08: a
+//! YouTube post opened a browser to "Error 153" - the embed, handed out, and refused there for
+//! arriving with no page around it). Those three exact addresses load where they are.
 
 use tauri::{AppHandle, Manager, Url};
 use tauri_plugin_opener::OpenerExt;
@@ -24,10 +31,26 @@ pub fn is_ours(url: &Url, origin: &Url) -> bool {
         && url.port_or_known_default() == origin.port_or_known_default()
 }
 
-/// A navigation inside the window: allow ours (and the blank page a webview uses internally);
-/// hand everything else out.
+/// The embedded players' own addresses, as the turbolinks write them (`@cube-drone/marquee-turbolink`
+/// and the Rust renderer alike): host and path prefix, https only. Nothing navigates the window to
+/// one of these - they are an iframe's `src`, nothing a person clicks - so letting them load is
+/// letting the frame load.
+const EMBEDS: [(&str, &str); 3] = [
+    ("www.youtube-nocookie.com", "/embed/"),
+    ("open.spotify.com", "/embed/"),
+    ("www.openstreetmap.org", "/export/embed.html"),
+];
+
+/// Is `url` a player a post embeds?
+pub fn is_embed(url: &Url) -> bool {
+    url.scheme() == "https"
+        && EMBEDS.iter().any(|(host, path)| url.host_str() == Some(*host) && url.path().starts_with(path))
+}
+
+/// A navigation inside the window: allow ours (and the blank page a webview uses internally), and
+/// an embedded player loading in its frame; hand everything else out.
 pub fn navigation(app: &AppHandle, origin: &Url, url: &Url) -> bool {
-    if is_ours(url, origin) || url.scheme() == "about" {
+    if is_ours(url, origin) || url.scheme() == "about" || is_embed(url) {
         return true;
     }
     hand_out(app, url);
@@ -71,5 +94,18 @@ mod tests {
         assert!(!is_ours(&Url::parse("http://127.0.0.1:6306/home").unwrap(), &origin), "another port is another node");
         assert!(!is_ours(&Url::parse("http://localhost:6305/home").unwrap(), &origin), "another host spelling is another origin");
         assert!(!is_ours(&Url::parse("https://github.com/cube-drone/ringtome").unwrap(), &origin));
+    }
+
+    #[test]
+    fn embeds_are_the_players_exactly() {
+        let yes = |u: &str| is_embed(&Url::parse(u).unwrap());
+        assert!(yes("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"));
+        assert!(yes("https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC"));
+        assert!(yes("https://www.openstreetmap.org/export/embed.html?bbox=1,2,3,4&layer=mapnik"));
+        assert!(!yes("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "the watch page is the web: handed out");
+        assert!(!yes("https://www.youtube-nocookie.com/watch?v=dQw4w9WgXcQ"), "only the embed path");
+        assert!(!yes("http://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"), "https only");
+        assert!(!yes("https://evil.example/embed/x"));
+        assert!(!yes("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"), "a track page is the web");
     }
 }
