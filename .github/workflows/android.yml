@@ -30,6 +30,11 @@ on:
   push:
     branches: ["**"]
   workflow_dispatch:
+    inputs:
+      project:
+        description: "Only generate the Android project, untouched, and upload it (to commit as desktop/gen/android)"
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       release:
@@ -50,7 +55,7 @@ env:
 jobs:
   # Not in a release: there the APK is the whole question, and this would only repeat its compile.
   node:
-    if: ${{ !inputs.release && (github.event_name == 'workflow_dispatch' || vars.ANDROID_ON_PUSH == 'true') }}
+    if: ${{ !inputs.release && !inputs.project && (github.event_name == 'workflow_dispatch' || vars.ANDROID_ON_PUSH == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -97,7 +102,7 @@ jobs:
         run: cargo build --target aarch64-linux-android -p ringtome-node --lib
 
   apk:
-    if: inputs.release || github.event_name == 'workflow_dispatch' || vars.ANDROID_ON_PUSH == 'true'
+    if: ${{ !inputs.project && (inputs.release || github.event_name == 'workflow_dispatch' || vars.ANDROID_ON_PUSH == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -206,4 +211,46 @@ jobs:
           name: android-release
           path: out/*.apk
           retention-days: 14
+          if-no-files-found: error
+
+  # The Android project as Tauri generates it, and nothing else (Curtis, 2026-10-08: "pull the
+  # project, as generated, from CI, and we can make all changes to that from this point forward").
+  # Generating it needs the SDK, which lives only here; the result is committed as
+  # desktop/gen/android, and every change after that is an ordinary edit to it. No Rust is built.
+  project:
+    if: ${{ inputs.project }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: The Tauri CLI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      # From the template, whatever the checkout holds: a committed project is set aside first, so
+      # this is always the template's own output - what a later Tauri upgrade gets diffed against.
+      - name: Generate
+        working-directory: desktop
+        run: |
+          export NDK_HOME="${ANDROID_NDK_LATEST_HOME:?the runner image has no NDK}"
+          rm -rf gen/android
+          npm run tauri -- android init --ci
+          find gen/android -type f | sort
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-project
+          path: desktop/gen/android
+          include-hidden-files: true
+          retention-days: 7
           if-no-files-found: error
