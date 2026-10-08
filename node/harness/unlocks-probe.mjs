@@ -60,8 +60,8 @@ console.log(
             .textContent.includes('Video'),
 );
 console.log(
-    'RESULT eight colorways, apart:',
-    bdoc.querySelectorAll('.bank-colorways .bank-unlock').length === 8,
+    'RESULT twelve colorways, apart:',
+    bdoc.querySelectorAll('.bank-colorways .bank-unlock').length === 12,
 );
 console.log('RESULT no hrseBond before Horse Financial:', !bdoc.querySelector('.bank-instrument'));
 

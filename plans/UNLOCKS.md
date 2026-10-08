@@ -60,9 +60,11 @@ to be reachable on contract money - "an enticement for the user to keep engaging
 with the game's systems": horse-relax and witchlight stay free; doors-xp, bosc,
 micross, terminal and three new phosphors - terminal-white, terminal-cyan,
 terminal-orange - are H$ 25,000 each, and a fourth, terminal-gold, H$ 500,000.
-The Market shows them in a section of their own after the hrseBond (unlock ids
-`colorway-<name>`); the profile's picker offers the free ones, the owned ones,
-and the one worn - a colourway chosen before it was for sale stays on.
+Pride (2026-10-08), the whole rainbow on black, is H$ 25,000 too, and so are
+trans, bi and ace, their flags across the header band. The Market shows them in
+a section of their own after the hrseBond (unlock ids `colorway-<name>`); the
+profile's picker offers the free ones, the owned ones, and the one worn - a
+colourway chosen before it was for sale stays on.
 
 ## Rulings (Curtis, 2026-10-05)
 

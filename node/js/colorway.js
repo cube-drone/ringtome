@@ -1,6 +1,7 @@
 // The colourways (Curtis, 2026-09-30): the whole app in horse-relax, the beige and teal it was born
 // in; witchlight, black and purple with a yellow accent; doors-xp, something windowsy; bosc,
-// something mac-ossy; micross, white, royal blue and cherry red; or terminal, black and lime green. A colourway is only a `data-colorway` on
+// something mac-ossy; micross, white, royal blue and cherry red; terminal, black and lime green; or pride, the whole rainbow
+// on black, and trans, bi and ace, their flags across the header band (2026-10-08). A colourway is only a `data-colorway` on
 // the page root - tokens.css redefines every colour under it. Yours is a profile field, `colorway`,
 // public on purpose: on a person's page the app wears THEIRS, and everywhere else your own. Signed
 // out, horse-relax, but on a person's page theirs all the same.
@@ -24,6 +25,10 @@ export const COLORWAYS = [
     'terminal-cyan',
     'terminal-orange',
     'terminal-gold',
+    'pride',
+    'trans',
+    'bi',
+    'ace',
 ];
 
 /// The colourways everyone has (Curtis, 2026-10-05); every other one is sold in hrseBank's Market,
@@ -49,6 +54,10 @@ export const COLORWAY_WORDS = {
     'terminal-cyan': () => t('persona.colorway-terminal-cyan', 'terminal-cyan'),
     'terminal-orange': () => t('persona.colorway-terminal-orange', 'terminal-orange'),
     'terminal-gold': () => t('persona.colorway-terminal-gold', 'terminal-gold'),
+    pride: () => t('persona.colorway-pride', 'pride'),
+    trans: () => t('persona.colorway-trans', 'trans'),
+    bi: () => t('persona.colorway-bi', 'bi'),
+    ace: () => t('persona.colorway-ace', 'ace'),
 };
 
 /// A colourway's swatch: three stripes of its own colours (persona.css, tokens.css).
@@ -63,6 +72,10 @@ export const COLORWAY_CLASS = {
     'terminal-cyan': 'colorway-swatch colorway-terminal-cyan',
     'terminal-orange': 'colorway-swatch colorway-terminal-orange',
     'terminal-gold': 'colorway-swatch colorway-terminal-gold',
+    pride: 'colorway-swatch colorway-pride',
+    trans: 'colorway-swatch colorway-trans',
+    bi: 'colorway-swatch colorway-bi',
+    ace: 'colorway-swatch colorway-ace',
 };
 export const DEFAULT_COLORWAY = 'horse-relax';
 const KEPT = 'colorway';

@@ -190,7 +190,7 @@ const fn unlock(
 }
 
 /// Every unlock, in the order the Market lists them.
-pub const UNLOCKS: [Unlock; 23] = [
+pub const UNLOCKS: [Unlock; 27] = [
     unlock("friends", "Friends", 1_000, &[]),
     unlock("social", "Social", 1_000, &[]),
     unlock("private-notes", "Private notes", 2_500, &[]),
@@ -219,6 +219,10 @@ pub const UNLOCKS: [Unlock; 23] = [
     unlock("colorway-terminal-white", "terminal-white", 25_000, &[]),
     unlock("colorway-terminal-cyan", "terminal-cyan", 25_000, &[]),
     unlock("colorway-terminal-orange", "terminal-orange", 25_000, &[]),
+    unlock("colorway-pride", "pride", 25_000, &[]),
+    unlock("colorway-trans", "trans", 25_000, &[]),
+    unlock("colorway-bi", "bi", 25_000, &[]),
+    unlock("colorway-ace", "ace", 25_000, &[]),
     unlock("colorway-terminal-gold", "terminal-gold", 500_000, &[]),
 ];
 

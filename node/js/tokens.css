@@ -100,6 +100,7 @@
 
     --glow: rgba(31, 158, 144, 0.5);  /* teal outline (editor cursor node) */
     --dock-text: #fbf6ec;    /* light text that sits on the teal dock */
+    --frame-text: var(--dock-text); /* the words on the frame's header band: the dock's, unless a band is light (trans) */
     /* The words on a SOLID fill (Curtis, 2026-10-01: witchlight's yellow with white words on it "isn't
        terribly readable"): one token per kind of fill, per colourway, so no rule guesses - light on
        teal here, dark on a yellow or a lime. */
@@ -181,6 +182,18 @@
     --swatch-terminal-gold-1: #000000;
     --swatch-terminal-gold-2: #241c06;
     --swatch-terminal-gold-3: #ffd700;
+    --swatch-pride-1: linear-gradient(to right, #ff4d4d 50%, #ff9a1f 50%);
+    --swatch-pride-2: linear-gradient(to right, #ffe14d 50%, #2ee66b 50%);
+    --swatch-pride-3: linear-gradient(to right, #3da5ff 50%, #b06bff 50%);
+    --swatch-trans-1: #5bcefa;
+    --swatch-trans-2: linear-gradient(to right, #f5a9b8 50%, #ffffff 50%);
+    --swatch-trans-3: #f5a9b8;
+    --swatch-bi-1: #d60270;
+    --swatch-bi-2: #9b4f96;
+    --swatch-bi-3: #0038a8;
+    --swatch-ace-1: linear-gradient(to right, #000000 50%, #a3a3a3 50%);
+    --swatch-ace-2: #ffffff;
+    --swatch-ace-3: #800080;
 }
 
 :root[data-colorway='witchlight'] {
@@ -583,6 +596,225 @@
     --hex-border-light: #3a2e0b;
 
     --marker: #7a6420;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* pride (Curtis, 2026-10-08): "a dark-mode full rainbow on black". The rainbow is in the frame - the
+   app's border and its header band, a deep rainbow that white words read on at 4.6:1 or better on
+   every stripe (`--frame` is only ever a background, so a gradient is safe there) - and each role
+   wears its own hue on the black: danger red, scheduled orange, search hits gold, good green, the
+   accent blue, the borders violet, tags pink. Everything else is near-white on near-black. */
+:root[data-colorway='pride'] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #16121f;
+    --surface-2: #221b30;
+    --chip-on: #4a2a78;
+    --paper: #100c18;
+    --field: #0a0810;
+    --ink: #f7f5ff;
+    --ink-soft: #ddd8ea;
+    --muted: #b8b8c8;
+    --faint: #8a8aa0;
+    --border: #7c45c2;
+    --border-strong: #b06bff;
+    --frame: linear-gradient(
+        to right,
+        #c0102a,
+        #c45200,
+        #8a6d00,
+        #1a7f36,
+        #1d5ccf,
+        #7a2bc2
+    );
+
+    --teal: #3da5ff;
+    --teal-deep: #1a0f33;
+    --sea: #2ee66b;
+    --pink: #ff6ec7;
+    --peach: #ff9a1f;
+    --coral: #ff4d4d;
+    --react-good: #123d22;
+    --react-bad: #4a1418;
+
+    --glow: rgba(61, 165, 255, 0.5);
+    --crt-text-glow: 0 0 3px rgba(247, 245, 255, 0.35);
+    --dock-text: #ffffff;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 255, 255, 0.08);
+    --row-veil: rgba(22, 18, 31, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #b06bff;
+    --hex-border-light: #221b30;
+
+    --marker: #6b5600;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* trans (Curtis, 2026-10-08): pride's shape in the trans flag - the band light blue, pink, white, pink,
+   light blue, under dark words (`--frame-text`); on black, the accent blue, tags and strong borders pink. */
+:root[data-colorway='trans'] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #0f1a20;
+    --surface-2: #1a2a33;
+    --chip-on: #2d5a73;
+    --paper: #0a1318;
+    --field: #060c10;
+    --ink: #f7f9ff;
+    --ink-soft: #dbe3ea;
+    --muted: #b9c4cc;
+    --faint: #8796a0;
+    --border: #4f87a8;
+    --border-strong: #f5a9b8;
+    --frame: linear-gradient(
+        to right,
+        #5bcefa,
+        #f5a9b8,
+        #ffffff,
+        #f5a9b8,
+        #5bcefa
+    );
+    --frame-text: #141414; /* the pastel band wants dark words, the dock beneath keeps its light ones */
+
+    --teal: #5bcefa;
+    --teal-deep: #0b2230;
+    --sea: #4fe0b0;
+    --pink: #f5a9b8;
+    --peach: #ffb057;
+    --coral: #ff5c6c;
+    --react-good: #123d30;
+    --react-bad: #4a1420;
+
+    --glow: rgba(91, 206, 250, 0.5);
+    --crt-text-glow: 0 0 3px rgba(247, 245, 255, 0.35);
+    --dock-text: #ffffff;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 255, 255, 0.08);
+    --row-veil: rgba(15, 26, 32, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #f5a9b8;
+    --hex-border-light: #1a2a33;
+
+    --marker: #1f5a78;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* bi (Curtis, 2026-10-08): the bi flag across the band - magenta, purple, blue, the flag's 2:1:2 - under
+   white words; on black, the accent blue, tags magenta, borders purple. */
+:root[data-colorway='bi'] {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #170f1c;
+    --surface-2: #24182c;
+    --chip-on: #5a2d6b;
+    --paper: #110b16;
+    --field: #0a060d;
+    --ink: #faf5ff;
+    --ink-soft: #e0d6ea;
+    --muted: #c0b6c8;
+    --faint: #958aa0;
+    --border: #8a4f9e;
+    --border-strong: #c47fd6;
+    --frame: linear-gradient(
+        to right,
+        #d60270 20%,
+        #9b4f96 50%,
+        #0038a8 80%
+    );
+
+    --teal: #4d8bff;
+    --teal-deep: #120a2a;
+    --sea: #3fdc7a;
+    --pink: #ff5fae;
+    --peach: #ff9a1f;
+    --coral: #ff4d4d;
+    --react-good: #123d22;
+    --react-bad: #4a1418;
+
+    --glow: rgba(77, 139, 255, 0.5);
+    --crt-text-glow: 0 0 3px rgba(247, 245, 255, 0.35);
+    --dock-text: #ffffff;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 255, 255, 0.08);
+    --row-veil: rgba(23, 15, 28, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #c47fd6;
+    --hex-border-light: #24182c;
+
+    --marker: #5a2a6b;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* ace (Curtis, 2026-10-08): the ace flag across the band - black, grey, white, purple, the title on the black
+   and the buttons on the purple; the page charcoal rather than black, so the frame's black edge still
+   shows (1.3:1 - a darker band, not a line); the accent and tags purple, borders grey. */
+:root[data-colorway='ace'] {
+    color-scheme: dark;
+    --bg: #242424;
+    --surface: #2e2e2e;
+    --surface-2: #3a3a3a;
+    --chip-on: #5a2a6b;
+    --paper: #1c1c1c;
+    --field: #161616;
+    --ink: #f7f7f7;
+    --ink-soft: #dcdcdc;
+    --muted: #b8b8b8;
+    --faint: #8f8f8f;
+    --border: #6b6b6b;
+    --border-strong: #a3a3a3;
+    --frame: linear-gradient(
+        to right,
+        #000000,
+        #a3a3a3,
+        #ffffff,
+        #800080
+    );
+
+    --teal: #c060e0;
+    --teal-deep: #1a0a1f;
+    --sea: #3fdc7a;
+    --pink: #d9a3ec;
+    --peach: #ff9a1f;
+    --coral: #ff5c5c;
+    --react-good: #123d22;
+    --react-bad: #4a1418;
+
+    --glow: rgba(192, 96, 224, 0.5);
+    --crt-text-glow: 0 0 3px rgba(247, 245, 255, 0.35);
+    --dock-text: #ffffff;
+    --on-accent: #000000;
+    --on-danger: #000000;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 255, 255, 0.08);
+    --row-veil: rgba(46, 46, 46, 0.6);
+    --banner-veil: rgba(0, 0, 0, 0.55);
+    --plate: rgba(0, 0, 0, 0.8);
+
+    --hex-border-dark: #a3a3a3;
+    --hex-border-light: #3a3a3a;
+
+    --marker: #5a2a6b;
     --scrim: rgba(0, 0, 0, 0.7);
     --shadow-drop: rgba(0, 0, 0, 0.7);
     --shadow-punch: rgba(0, 0, 0, 0.5);

@@ -111,7 +111,7 @@ body {
     /* No right padding: the close button sits flush against the frame's right border. */
     padding: 0.35rem 0 0.45rem 0.5rem;
     background: var(--frame);
-    color: var(--dock-text);
+    color: var(--frame-text);
 }
 
 /* The header's left column: the title and, for document apps, the bucket switcher beside it. */
@@ -155,7 +155,7 @@ body {
     white-space: nowrap;
     font-family: "Press Start 2P", monospace;
     font-size: 1.05rem;
-    color: var(--dock-text);
+    color: var(--frame-text);
 }
 
 /* The bucket switcher: plus (a new notebook), arrows (page along the shelf), and the current

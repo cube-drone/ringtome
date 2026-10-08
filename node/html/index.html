@@ -9,7 +9,7 @@
         // head names; anywhere else, the one this browser last wore (colorway.js keeps it). The
         // names are colorway.js's COLORWAYS - a pure test holds the two lists together.
         try {
-            var colorways = ['horse-relax', 'witchlight', 'doors-xp', 'bosc', 'micross', 'terminal', 'terminal-white', 'terminal-cyan', 'terminal-orange', 'terminal-gold'];
+            var colorways = ['horse-relax', 'witchlight', 'doors-xp', 'bosc', 'micross', 'terminal', 'terminal-white', 'terminal-cyan', 'terminal-orange', 'terminal-gold', 'pride', 'trans', 'bi', 'ace'];
             var named = document.querySelector('meta[name="page-colorway"]');
             var colorway = named ? named.content : localStorage.getItem('colorway');
             if (colorways.indexOf(colorway) >= 0) document.documentElement.dataset.colorway = colorway;

@@ -2445,6 +2445,31 @@ article:has(.label-emoji-strip) {
     --s3: var(--swatch-terminal-gold-3);
 }
 
+/* pride's three stripes are two colours each: six bands, the whole rainbow. */
+.colorway-pride {
+    --s1: var(--swatch-pride-1);
+    --s2: var(--swatch-pride-2);
+    --s3: var(--swatch-pride-3);
+}
+
+.colorway-trans {
+    --s1: var(--swatch-trans-1);
+    --s2: var(--swatch-trans-2);
+    --s3: var(--swatch-trans-3);
+}
+
+.colorway-bi {
+    --s1: var(--swatch-bi-1);
+    --s2: var(--swatch-bi-2);
+    --s3: var(--swatch-bi-3);
+}
+
+.colorway-ace {
+    --s1: var(--swatch-ace-1);
+    --s2: var(--swatch-ace-2);
+    --s3: var(--swatch-ace-3);
+}
+
 /* API keys (persona.js, 2026-09-30): a heading, what a key is, the keys - trash first, the name, when -
    and a field to make another. A new key shows once, in a box of its own. */
 .settings-keys {

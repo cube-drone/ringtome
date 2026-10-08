@@ -18175,3 +18175,42 @@ Same with any of the other [tags] that have options."
   `marquee direction=right` - each filled whole, with words for what it does.
   Background colours are not offered: a text colour that reads on both is no
   promise about text over it.
+
+**2026-10-08 - pride, the whole rainbow on black.** Curtis: "a dark-mode 'full
+rainbow on black' colorway, 'pride'". A token can be one colour, so the rainbow
+goes where a gradient is safe and the roles take one hue each:
+
+- **The frame** - the app's border and its header band - is a deep rainbow
+  (`--frame`, only ever a `background`), each stripe giving the header's white
+  words 4.6:1 or better.
+- **The roles on black**: danger red, scheduled orange, search hits gold, good
+  green, the accent blue, the borders violet, tags pink - each 6:1 or better on
+  the black but the border (3.5:1, a border's measure). Words near-white on
+  near-black.
+- **The swatch**: three stripes of two colours each - six bands.
+
+Registered everywhere a colourway is: `colorway.js` (list, words, swatch class),
+`index.html`'s first-paint list, `persona.css`, the unlock (`colorway-pride`, H$
+25,000 like most - a price for Curtis to move), plans/UNLOCKS.md, and the
+unlocks probe's count (nine). The MCP tool's list follows the unlocks on its
+own.
+
+**2026-10-08 - trans, bi and ace, pride's band in their flags.** Curtis liked
+"the gradient along the top" and asked for three more that keep it. The header's
+words sit at the band's two ends - the title left, the buttons right (they wear
+their own surface) - so each flag needs only its ends readable:
+
+- **bi**: magenta, purple, blue in the flag's 2:1:2, white words on both ends
+  (5.1:1 and 9.9:1). On black, the accent blue, tags magenta, borders purple.
+- **ace**: black, grey, white, purple - the title on the black, the buttons on
+  the purple. The page is charcoal, not black, so the frame's black edge still
+  shows (1.3:1 - a darker band rather than a line). Accent and tags purple,
+  borders grey.
+- **trans**: light blue, pink, white, pink, light blue - pastels white words
+  can't read on, so the band's words got a token of their own, `--frame-text`,
+  `--dock-text` everywhere (so nothing else moved) and near-black here (9.9:1 or
+  better on every stripe). On black, the accent blue, tags and strong borders
+  pink.
+
+Each with its swatch, words, first-paint entry and unlock (H$ 25,000, as pride);
+the probe counts twelve.
