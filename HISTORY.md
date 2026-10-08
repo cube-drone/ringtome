@@ -18524,3 +18524,70 @@ your buckets from most-full to least-full". `bucketsForApp` kept home first and
 sorted the rest by plain `.sort()`, so capitals came before lowercase; now the
 rest go by their roster `members` count, the number the dropdown shows beside
 each, fullest first, with a tie broken by name (`localeCompare`).
+
+**2026-10-08 - Bigger column tabs on a phone, closer together.** Curtis: the
+narrow window's column tabs, "including their on-the-side versions", about 1.2x
+bigger, recovering "a little bit of that lost space by wedging them closer
+together". Under 900px the rails (`.pane-rail`) run 2.3rem wide instead of
+1.9rem, with their icon and name at 1.2x, and the open column's header
+(`.pane-head`) takes its type, icon and tuck arrow up by the same. The space is
+paid back in the gaps: 0.1rem between tabs (was 0.3rem), and less air inside
+each rail and around each header.
+
+**2026-10-08 - A thinner frame on a phone.** Curtis: in mobile mode, "reduce the
+padding between the app's edges and the app's container, as well as reducing the
+thickness of the app border". Under 900px the app frame sits 4px from the window
+(was 12px), its border is 5px (was 10px), and the page inside is 10px from it on
+every side (was 16px by 20px). The feed kept under an open post takes the same
+inset. An older under-500px rule for the same three sizes sat in
+`doc/editor.css`; it is gone, its quickbar padding stays.
+
+**2026-10-08 - A phone's title band is the search and the buttons.** Curtis: "on
+mobile, let's always hide the title in the title bar, and move the search bar to
+the leftmost position". Under 900px the header's grid drops its title column
+(`.app-header-lead`): the search box - or Neighbors' lookup, which wears the
+same class - leads at the left, and back/close keep the right. The fade that let
+a long title slip under the search is off there, with no title to fade. The
+stranger's shell already moved its title onto the page at that width; it still
+does.
+
+Then (Curtis: "looks a little empty in the parts of the app without a search
+bar... maybe the title can exist IF the search bar isn't there?"): the title
+hides only in a header that holds a search box
+(`.app-header:has(.app-header-search-box)`); without one, it keeps the left.
+
+**2026-10-08 - The feed's filters fold behind one chip.** Curtis: "The whole
+feed filters bar - in both mobile and desktop - is big, loud, and crowded, and
+could be hidden in a 'feed options' with the 'list' phosphor icon." The options
+box - curiosity, clear all, order, and the type and tag lists - no longer heads
+the stream: a list chip at the far end of "the feed" heading (title "feed
+options", word "options" under 900px) opens it beneath the heading, lit while
+open, and it starts closed. With it folded away and a pick still narrowing the
+feed, a coral dot in the chip's corner says so (`.feed-options-narrowed`). Where
+there are no options - the public feed, a place with nothing labelled - there is
+no chip.
+
+Then (Curtis: "it's such an important button, let's make it ... bigger, give it
+the title 'feed options', and open-by-default on desktop"): the chip says "feed
+options" beside its icon at every width, in larger, bolder type with more
+padding (`.feed-options-chip`), and the box starts open on a wide window, closed
+under 900px. The narrowing dot moved to the chip's `::before` - its `::after` is
+the chip's own jagged line, which the first cut painted over.
+
+**2026-10-08 - With the options folded, what they're set to shows under the
+heading.** Curtis: "under 'the feed', can we display a list of the _currently
+selected_ feed filters, if 'feed options' is closed?" A line under the heading
+(`PickedFacets`, facets.js) says the curiosity and the order in quiet words,
+then every pick that isn't left alone - me, kinds, buckets, tags - as the chip
+it is on the strip, "only" and "left out" looks and all; a press cycles it as
+the strip would, so a pick can be let go without opening the options. Open, the
+strip is its own list and the line goes.
+
+And the options start closed at every width again (Curtis: "I think this most
+recent fix made it unnecessary"): the line under the heading does what opening
+them on a desktop was for.
+
+Then the chip heads the stream on its own (Curtis: "swap 'feed options' to the
+left, and remove the title 'the feed'"): the title is gone - its phrase
+retired - and the chip sits at the left; a feed with no options draws no heading
+row at all.

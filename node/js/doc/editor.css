@@ -302,13 +302,6 @@
 }
 
 @media (max-width: 500px) {
-    .app-frame {
-        margin: 8px;
-        padding: 0 7px 7px;
-    }
-    .app-frame-inner {
-        padding: 12px;
-    }
     .quickbar {
         padding: 0.4rem 10px;
     }

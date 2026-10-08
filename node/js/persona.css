@@ -1540,12 +1540,36 @@ article:has(.label-emoji-strip) {
 
 .feed-stream-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 1rem;
 }
 
-.feed-stream-title {
+/* The feed's options, folded behind one chip that heads the stream at its left (apps/feed.js,
+   2026-10-08): a big one, saying its name, because it steers the whole feed. */
+.chip.feed-options-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.8rem;
+    font-size: 1.05rem;
     font-weight: 600;
+}
+
+.feed-options-chip svg {
+    font-size: 1.3rem;
+}
+
+/* A pick still narrowing the feed: a dot in the chip's corner says so, folded away or not. On
+   `::before`, because a chip's jagged line is its `::after` (tokens.css). */
+.chip.feed-options-narrowed::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    background: var(--coral);
+    clip-path: var(--dot-clip);
 }
 
 /* The card's OWN type size is the knob every metric below hangs off: `--post-scale` comes from

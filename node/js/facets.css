@@ -6,6 +6,25 @@
     gap: 0.3rem;
     margin: 0 0 0.8rem;
 }
+/* The picks in one line, where the strip is folded away (facets.js `PickedFacets`, 2026-10-08): the
+   host's settings as quiet words, then the chips in their strip looks. */
+.facets-picked {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+}
+
+.facets-picked-word {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.facets-picked-word + .facets-picked-word::before {
+    content: '·';
+    margin-right: 0.5rem;
+}
+
 /* What the counts cover, said quietly under the rows (the feed's cloud counts a year, 2026-09-28). */
 .facets-note {
     margin: 0;

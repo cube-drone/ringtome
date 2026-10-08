@@ -85,6 +85,25 @@ body {
     pointer-events: none;
 }
 
+/* A phone gives the app its room (Curtis, 2026-10-08: "reduce the padding between the app's edges
+   and the app's container, as well as reducing the thickness of the app border"): under 900px the
+   frame sits 4px from the window, its border is 5px, and the page inside it 10px from that. The
+   feed kept under a post keeps the same inset as the page. */
+@media (max-width: 900px) {
+    .app-frame {
+        margin: 4px;
+        padding: 0 5px 5px;
+    }
+
+    .app-frame-inner {
+        padding: 10px;
+    }
+
+    .feed-kept-under {
+        inset: 10px;
+    }
+}
+
 /* The bare desktop: the region the app selector (and the pre-persona flows) live on. No frame,
    no surface - just the warm page beneath, because the launcher isn't an app. Same footer below,
    same fill-the-space-above-it job as the shell. */
@@ -158,8 +177,8 @@ body {
     color: var(--frame-text);
 }
 
-/* The bucket switcher: plus (a new notebook), arrows (page along the shelf), and the current
-   bucket's name - a little mono pill; click it for the full list. It heads the app's list column
+/* The bucket switcher: the open folder and the current bucket's name - a little mono pill; click
+   it for the full list, a new notebook first (2026-10-08). It heads the app's list column
    (2026-09-30; the ink header band before), across the column's width, the name taking what the
    buttons leave. */
 .bucket-switch {
@@ -298,8 +317,8 @@ body {
     position: relative;
 }
 
-/* A narrow window lays the search over the end of the title (the middle track grows to the box,
-   and the box is centred on it). The title fades into the band on the way under, rather than
+/* A tight band lays the search over the end of the title (the middle track grows to the box,
+   and the box is centred on it; under 900px the title is gone instead, below). The title fades into the band on the way under, rather than
    stopping dead at the box's edge (Curtis, 2026-09-30: "what looks ugly is how harsh the cut-off
    is"): a band-coloured fade on the box's left, the band's full height. With room to spare it lies
    over empty band, ink on ink, and shows nothing. */
@@ -413,6 +432,34 @@ body {
     display: flex;
     align-items: center;
     gap: 0.45rem;
+}
+
+/* A phone's band is the search and the buttons (Curtis, 2026-10-08: "always hide the title in the
+   title bar, and move the search bar to the leftmost position"): the title's column goes, the
+   search leads where it stood, and the buttons keep the right. Where there is no search - a post,
+   a drawing - the title keeps the left after all (the same day: the band "looks a little empty"). The fade that let the title slip
+   under the search has nothing left to fade. */
+@media (max-width: 900px) {
+    .app-header {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .app-header:has(.app-header-search-box) .app-header-lead {
+        display: none;
+    }
+
+    .app-header-search-box {
+        grid-column: 1;
+        justify-self: start;
+    }
+
+    .app-header-search-box::before {
+        display: none;
+    }
+
+    .app-header-actions {
+        grid-column: 2;
+    }
 }
 
 /* Back/close are holes punched through the ink header: filled with the app surface (the content

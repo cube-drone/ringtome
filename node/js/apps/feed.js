@@ -64,9 +64,10 @@ import {
     visibleAt,
 } from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
+import { Chip } from '../doc/chips.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch, narrowParams } from '../postsearch.js';
-import { LabelFacets, NO_PICKS, anyPicks, useLabels, usePicks } from '../facets.js';
+import { LabelFacets, NO_PICKS, PickedFacets, anyPicks, useLabels, usePicks } from '../facets.js';
 import { meParam } from '../pure/facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { useLocation } from 'preact-iso';
@@ -309,6 +310,10 @@ export const FeedStream = ({
     // always held (fixed height), so its appearance never moves your read position either.
     const [pending, setPending] = useState([]);
     const [pageError, setPageError] = useState(false);
+    // The filters fold behind one chip heading the feed (Curtis, 2026-10-08: the bar was "big,
+    // loud, and crowded"), closed until asked for at any width - the line under the chip says
+    // what they're set to (an open-on-desktop start went once that line came, the same day).
+    const [optionsOpen, setOptionsOpen] = useState(false);
     const streamRef = useRef(null);
 
     // The order (PROJECT_PLAN's Scores and sort orders, slice 1): newest, or best over a window -
@@ -567,11 +572,64 @@ export const FeedStream = ({
                 (labels.buckets || []).length > 0 ||
                 (labels.tags || []).length > 0));
     const optionsShow = stop !== null || (sortable && sort !== null) || facetsShow;
+    // The dial and the order in words, for the line that stands in for the options while they're folded.
+    const settingWords = [
+        stop !== null &&
+            html`<span key="stop" class="facets-picked-word">${t('apps.feed.feed-curiosity', 'feed curiosity:')} ${STOP_WORDS[stopKey] ? STOP_WORDS[stopKey]() : ''}</span>`,
+        sortable &&
+            sort !== null &&
+            html`<span key="sort" class="facets-picked-word">${t('apps.feed.sort-by', 'order:')} ${SORT_WORDS[sort] ? SORT_WORDS[sort]() : sort}</span>`,
+    ].filter(Boolean);
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
             ${
+                /* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
+                the dial's corner it was hard to see): centred, and always the same height, so the
+                button appearing never moves your read position - the reason updates wait to be
+                asked for. */ ''
+            }
+            <div class="feed-fresh-bar">
+                ${
+                    pending.length > 0 &&
+                    html`<button class="feed-fresh-btn" onClick=${takePending}>
+                    ${pending.length === 1 ? t('apps.feed.1-update', '1 update') : t('apps.feed.n-updates', '{n} updates', { n: pending.length })}
+                    ${t('apps.feed.refresh', '· refresh')}
+                </button>`
+                }
+            </div>
+            ${
+                /* The chip IS the heading now, at the left (Curtis, 2026-10-08: "remove the title
+                'the feed'"), and with no options there is no heading at all. Lit while open; marked
+                while a pick narrows the feed, so a filter folded away is never a secret. */ ''
+            }
+            ${
                 optionsShow &&
+                html`<div class="feed-stream-head">
+                <${Chip}
+                    title=${t('apps.feed.feed-options', 'feed options')}
+                    on=${optionsOpen}
+                    modifier=${anyPicks(picks) ? 'feed-options-chip feed-options-narrowed' : 'feed-options-chip'}
+                    onClick=${() => setOptionsOpen((o) => !o)}
+                ><${Icons.menu} /><span>${t('apps.feed.feed-options', 'feed options')}</span><//>
+            </div>`
+            }
+            ${
+                /* The options folded away, what they are set to stays in sight under the chip
+                (Curtis, 2026-10-08): the curiosity and the order, then every pick. */ ''
+            }
+            ${
+                optionsShow &&
+                !optionsOpen &&
+                html`<${PickedFacets}
+                    picks=${picks}
+                    onPicks=${setPicks}
+                    lead=${settingWords.length ? settingWords : null}
+                />`
+            }
+            ${
+                optionsShow &&
+                optionsOpen &&
                 html`<div class="feed-options jag-line">
             ${
                 /* The dial first, above even the tag cloud (Curtis, 2026-09-27): how far the feed may
@@ -630,24 +688,6 @@ export const FeedStream = ({
             />
             </div>`
             }
-            ${
-                /* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
-                the dial's corner it was hard to see): centred, and always the same height, so the
-                button appearing never moves your read position - the reason updates wait to be
-                asked for. */ ''
-            }
-            <div class="feed-fresh-bar">
-                ${
-                    pending.length > 0 &&
-                    html`<button class="feed-fresh-btn" onClick=${takePending}>
-                    ${pending.length === 1 ? t('apps.feed.1-update', '1 update') : t('apps.feed.n-updates', '{n} updates', { n: pending.length })}
-                    ${t('apps.feed.refresh', '· refresh')}
-                </button>`
-                }
-            </div>
-            <div class="feed-stream-head">
-                <span class="feed-stream-title">${t('apps.feed.the-feed', 'the feed')}</span>
-            </div>
             ${shown.map(
                 (item) => html`<${PostEntry}
                     key=${`${item.author}:${item.doc_id}`}

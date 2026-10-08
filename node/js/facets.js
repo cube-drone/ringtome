@@ -20,6 +20,7 @@ import {
     fitCount,
     LEFT_OUT,
     OPEN_LINES,
+    pickState,
     tagFamily,
     tagRows,
     wrapLines,
@@ -278,6 +279,42 @@ export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = nul
         })}
         ${note && html`<p class="facets-note">${note}</p>`}
     </div>`;
+};
+
+/// What the strip has picked, said in one line where the strip itself is folded away (the feed's
+/// options closed - Curtis, 2026-10-08): `lead`, any words the host puts first (the feed's curiosity
+/// and order), then every chip that isn't left alone, in the strip's order - me, kinds, buckets,
+/// tags - each in its strip look, and a press cycles it as the strip would. Nothing to say, nothing
+/// drawn.
+export const PickedFacets = ({ picks, onPicks, lead = null }) => {
+    const owned = useOwns('tags');
+    const chips = [];
+    const chip = (key, state, glyph, word, onClick) =>
+        chips.push(
+            html`<button key=${key} class=${chipClass(state)} title=${chipTitle(state)} onClick=${onClick}>${glyph}${word}</button>`,
+        );
+    if (owned) {
+        const meState = picks.me === 'only' ? 'only' : picks.me === false ? 'out' : null;
+        if (meState)
+            chip('me', meState, html`<${Icons.me} />`, t('facets.me', 'me'), () =>
+                onPicks({ ...picks, me: cycleMe(picks.me) }),
+            );
+        const icon = (role) => (role && Icons[role] ? html`<${Icons[role]} />` : null);
+        const rows = [
+            ['kinds', (v) => icon(KIND_ICON[v]), (v) => (KIND_NAMES[v] ? KIND_NAMES[v]() : v)],
+            ['buckets', () => null, (v) => v],
+            ['tags', (v) => icon(tagIconRole(v)), (v) => v],
+        ];
+        for (const [row, glyph, word] of rows) {
+            for (const v of [...(picks[row] || []), ...(picks[LEFT_OUT[row]] || [])]) {
+                chip(`${row}:${v}`, pickState(picks, row, v), glyph(v), word(v), () =>
+                    onPicks(cyclePick(picks, row, v)),
+                );
+            }
+        }
+    }
+    if (!lead && chips.length === 0) return null;
+    return html`<div class="facets-picked">${lead}${chips}</div>`;
 };
 
 export const NO_PICKS = {
