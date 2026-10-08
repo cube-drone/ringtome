@@ -1,74 +1,27 @@
 #!/usr/bin/env bash
-# The Android project Tauri generates (`tauri android init` -> gen/android), and the one change it
-# needs from us: the window loads the node at http://127.0.0.1:<port> (src/lib.rs), and Android
-# refuses cleartext http by default. A network security config lets it through for the loopback
-# address and nothing else - not the template's all-or-nothing `usesCleartextTraffic`.
+# The Android project is committed (desktop/gen/android, since 2026-10-08): generated once from
+# Tauri's template by CI (.github/workflows/android.yml, run by hand with `project=true`) and edited
+# like any other source from then on. This only checks that it still carries what the app can't
+# run without, so a template refresh that drops one fails the build rather than the phone:
 #
-# Idempotent: generates the project only when it is absent (once it is committed, this only
-# checks), writes the config, and wires it into the manifest once. Run from desktop/, in CI
-# (.github/workflows/android.yml) and by hand before committing gen/android.
+# - the network security config: cleartext http to the node at 127.0.0.1, and nowhere else;
+# - the certificate verifier's Kotlin half (src/android_tls.rs), and the shrinker rule keeping it.
+#
+# Run from desktop/.
 set -euo pipefail
 
-# Through `npm run tauri` (desktop/package.json, the CLI pinned), never `npx`: the generated project
-# remembers how init was run and calls the CLI back the same way from Gradle - after an `npx` init
-# that was `npm run tauri` with no package.json to run it from (field-found, the first CI run).
-if [ ! -d gen/android ]; then
-    npm run tauri -- android init --ci
-fi
-
-xml=gen/android/app/src/main/res/xml/network_security_config.xml
-mkdir -p "$(dirname "$xml")"
-cat > "$xml" <<'XML'
-<?xml version="1.0" encoding="utf-8"?>
-<!-- desktop/tools/android-project.sh: plain http to the node inside the app, and nowhere else. -->
-<network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">127.0.0.1</domain>
-    </domain-config>
-</network-security-config>
-XML
-
-manifest=gen/android/app/src/main/AndroidManifest.xml
-if ! grep -q 'android:networkSecurityConfig=' "$manifest"; then
-    sed -i.bak 's|<application|<application android:networkSecurityConfig="@xml/network_security_config"|' "$manifest"
-    rm -f "$manifest.bak"
-fi
-# Said, not assumed: a template that renamed its tag would leave the app unable to reach its node,
-# and that failure is a blank window on a phone - worth a red build instead.
-grep -q 'android:networkSecurityConfig="@xml/network_security_config"' "$manifest" || {
-    echo "::error::could not wire the network security config into $manifest"
-    exit 1
+app=gen/android/app
+fail=0
+need() { # file, fixed string, what it is
+    if ! grep -qF -- "$2" "$1" 2>/dev/null; then
+        echo "::error::$1 lacks $3"
+        fail=1
+    fi
 }
-# The certificate verifier's Kotlin half (src/android_tls.rs): rustls-platform-verifier calls into
-# `org.rustls.platformverifier`, shipped as an .aar inside the `rustls-platform-verifier-android`
-# crate rather than on Maven. Handed to Gradle as the file itself - the crate's README's other
-# road - because as a Maven repository with artifact-only metadata Gradle went looking for a .jar
-# and found nothing (field-found, the second build; the .aar has no dependencies of its own to
-# lose by skipping its .pom). Its path is this machine's cargo registry, which is right while CI
-# generates the project per build; a committed gen/android has to find it at Gradle time instead.
-gradle=gen/android/app/build.gradle.kts
-if ! grep -q 'rustls-platform-verifier' "$gradle"; then
-    crate=$(cargo metadata --format-version 1 --filter-platform aarch64-linux-android --manifest-path Cargo.toml |
-        python3 -c 'import json,os,sys; d=json.load(sys.stdin); m=[p["manifest_path"] for p in d["packages"] if p["name"]=="rustls-platform-verifier-android"]; print(os.path.dirname(m[0])) if m else sys.exit("rustls-platform-verifier-android is not in the Android dependency graph")')
-    aar=$(find "$crate/maven" -name 'rustls-platform-verifier-*.aar' | sort -V | tail -1)
-    [ -n "$aar" ] || { echo "::error::no .aar under $crate/maven"; exit 1; }
-    cat >> "$gradle" <<GRADLE
-
-// desktop/tools/android-project.sh: the certificate verifier's Kotlin half (src/android_tls.rs).
-dependencies {
-    implementation(files("$aar"))
-}
-GRADLE
-fi
-# Reached only through JNI, which the release build's shrinker can't see: kept by name. Tauri's
-# template gives the shrinker every .pro file in the app directory.
-cat > gen/android/app/rustls-platform-verifier.pro <<'PRO'
-# desktop/tools/android-project.sh: called from Rust over JNI, invisible to the shrinker.
--keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
-PRO
-grep -q 'rustls-platform-verifier' "$gradle" || {
-    echo "::error::could not add the certificate verifier to $gradle"
-    exit 1
-}
-
-echo "gen/android ready: cleartext to 127.0.0.1 only, the certificate verifier added"
+[ -d gen/android ] || { echo "::error::no desktop/gen/android - it is committed; see this script's header"; exit 1; }
+need "$app/src/main/AndroidManifest.xml" 'android:networkSecurityConfig="@xml/network_security_config"' "the network security config"
+need "$app/src/main/res/xml/network_security_config.xml" '<domain includeSubdomains="false">127.0.0.1</domain>' "cleartext to 127.0.0.1"
+need "$app/build.gradle.kts" 'implementation(files(rustlsPlatformVerifierAar))' "the certificate verifier's Kotlin half"
+need "$app/proguard-rules.pro" 'class org.rustls.platformverifier.**' "the shrinker rule keeping the certificate verifier"
+[ "$fail" -eq 0 ] || exit 1
+echo "gen/android carries the network security config and the certificate verifier"

@@ -160,6 +160,7 @@ jobs:
             echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
           } >> "$GITHUB_ENV"
 
+      # Committed (desktop/gen/android); this checks it still carries what the app needs.
       - name: The Android project
         working-directory: desktop
         run: tools/android-project.sh

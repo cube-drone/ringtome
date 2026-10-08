@@ -192,13 +192,20 @@ The known snags:
 The port started. The desktop crate is a library now (`desktop/src/lib.rs`, with
 Tauri's mobile entry point); `cfg(desktop)` fences what a phone doesn't have -
 the tray and start-at-login, the single-instance guard, the self-updater,
-desktop notifications and the shell's save-dialog requests
+desktop notifications and the shell's save-dialog requests, whose crates are
+desktop-only dependencies. The window loads the node at
+`http://127.0.0.1:<port>` exactly as on a desktop, which Android refuses by
+default: the Android project's network security config allows cleartext to the
+loopback address and nothing else.
 
-- and their crates are desktop-only dependencies. The window loads the node at
-  `http://127.0.0.1:<port>` exactly as on a desktop, which Android refuses by
-  default: `desktop/tools/android-project.sh` gives the generated project a
-  network security config that allows cleartext to the loopback address and
-  nothing else.
+**The Android project is committed** (`desktop/gen/android`, 2026-10-08):
+generated once from Tauri's template by CI (the workflow run by hand with
+`project=true`, which needs the SDK the laptop doesn't hold) and edited as
+ordinary source since - the network security config, and the certificate
+verifier's Kotlin half (`desktop/src/android_tls.rs`) with the shrinker rule
+that keeps it. `desktop/tools/android-project.sh` checks in CI that those
+survive; a Tauri upgrade that changes the template is a merge against a fresh
+`project=true` run.
 
 **It builds in CI only** (Curtis: the laptop is already near full with this
 tree's build output). `.github/workflows/android.yml` makes an arm64 APK, signed
@@ -210,11 +217,11 @@ release, all or nothing like the other platforms. Its `node` job cross-compiles
 the node alone, the fast answer to the turso and aws-lc question below. The
 laptop keeps `adb` only, to install the APK and read `adb logcat`.
 
-Not done, and known: `gen/android` is generated per build until it is committed;
-the node boots in `setup` on Android's main thread, which risks a "not
-responding" kill on a slow first boot; nothing handles resume (iroh connections
-dead after the app was backgrounded); and the battery and cellular policy of
-open question 3 still doesn't exist.
+Not done, and known: the node boots in `setup` on Android's main thread, which
+risks a "not responding" kill on a slow first boot; the app draws under the
+system bars (Tauri's `MainActivity` turns on edge-to-edge, and nothing pads for
+the insets); and the battery and cellular policy of open question 3 still
+doesn't exist.
 
 ## The mirror question
 

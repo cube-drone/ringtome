@@ -18723,3 +18723,17 @@ artifact-only metadata, the verifier's crate-shipped component was looked for as
 a `.jar` and it is an `.aar`. `android-project.sh` hands Gradle the `.aar` file
 itself (`implementation(files(...))`, the crate README's other road), which has
 no dependencies of its own to lose.
+
+**2026-10-08 - The Android project is committed.** Curtis: "pull the project, as
+generated, from CI, and we can make all changes to that from this point
+forward." The workflow's hand-run `project=true` job generates it from Tauri's
+template - the SDK lives only in CI - and uploads it untouched; it is
+`desktop/gen/android` now (40 files, no machine paths; `gradlew` executable
+again after the artifact's zip dropped the bit), and what the script used to
+patch into a fresh copy every build is ordinary edits: the network security
+config (cleartext to 127.0.0.1 only), the certificate verifier's `.aar` in
+`app/build.gradle.kts` - found through `cargo metadata` when Gradle runs, so no
+machine's registry path is written down - and its keep rule in
+`app/proguard-rules.pro`. `tools/android-project.sh` only checks those survive.
+The insets work (the app drawn under the system bars; the template's
+`MainActivity` turns on edge-to-edge) is next, as an edit to `MainActivity.kt`.

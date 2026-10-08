@@ -381,10 +381,10 @@ while anyone types. Worst first:
   up after the background). Next: confirm the certificate fix - no
   "rustls-platform-verifier" panics in the next `adb logcat`; make the signing
   keystore and set `ANDROID_KEYSTORE_BASE64` / `_PASSWORD` /
-  `ANDROID_KEY_ALIAS`; commit `desktop/gen/android`, moving the verifier's Maven
-  path into Gradle as it goes (`tools/android-project.sh` says how); boot the
-  node off the main thread. Only then `ANDROID_IN_RELEASE=true`, and
-  `ANDROID_ON_PUSH` back off.
+  `ANDROID_KEY_ALIAS`; pad for the system bars (the app draws under the clock
+  and the home/back bar: `env(safe-area-inset-*)` in CSS, the real insets from
+  `MainActivity.kt`); boot the node off the main thread. Only then
+  `ANDROID_IN_RELEASE=true`, and `ANDROID_ON_PUSH` back off.
 
 ### Real-Time Chat
 
