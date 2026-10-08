@@ -94,7 +94,14 @@ import {
     dragBoxAt,
     fitBox,
 } from '../pure/transform.js';
-import { clampZoom, fitSize, centreOf, scrollToCentre } from '../pure/viewport.js';
+import {
+    clampZoom,
+    fitSize,
+    centreOf,
+    scrollToCentre,
+    pointAt,
+    scrollToKeep,
+} from '../pure/viewport.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 import { FLAT_FROM, FLAT_VERSION, flatVersion, findFlatCopy } from '../pure/flatcopy.js';
 import { openMirror, useLive } from '../mirror.js';
@@ -609,6 +616,46 @@ const FRAMED_MAX_SIDE = 1600;
 /// The largest a text can be set from the slider (the body allows more).
 const TEXT_SLIDER_MAX = 200;
 
+/// What each tool does, in a line - said under its name atop the tool's options (Curtis, 2026-10-08:
+/// "because we don't have hovertext... display the name of and description of the tool in the tool
+/// options" - on a phone first, then everywhere).
+const TOOL_ABOUT = {
+    brush: () =>
+        t('doc.drawing.about-brush', 'draw freehand - with a pen, pressing harder draws wider'),
+    eraser: () => t('doc.drawing.about-eraser', 'rub out what is on the current layer'),
+    line: () => t('doc.drawing.about-line', 'drag from one end of a straight line to the other'),
+    rect: () =>
+        t('doc.drawing.about-rect', 'drag from one corner of a rectangle to the opposite one'),
+    ellipse: () => t('doc.drawing.about-ellipse', 'drag out the box an ellipse fits in'),
+    bucket: () =>
+        t(
+            'doc.drawing.about-bucket',
+            'press to pour paint; hold, and it spreads up to the lines on this layer',
+        ),
+    eyedropper: () =>
+        t(
+            'doc.drawing.about-eyedropper',
+            'touch the drawing to pick up the colour there, from every visible layer',
+        ),
+    text: () => t('doc.drawing.about-text', 'touch where the words go, then type them here'),
+    sticker: () =>
+        t('doc.drawing.about-sticker', 'choose a sticker, then touch the drawing to stamp it'),
+    transform: () =>
+        t('doc.drawing.about-transform', 'move, turn and resize the current layer by its frame'),
+    grab: () => t('doc.drawing.about-grab', 'drag to move the whole current layer'),
+    crop: () => t('doc.drawing.about-crop', 'drag a box around what to keep, then crop'),
+    profile: () =>
+        t('doc.drawing.about-profile', 'frame a square of the drawing as your profile picture'),
+    banner: () =>
+        t('doc.drawing.about-banner', "frame a strip of the drawing as your page's banner"),
+};
+
+/// The tools that close a narrow window's tools tab when chosen (Curtis, 2026-10-08: choosing a tool
+/// "shouldn't dismiss the tools window immediately unless it's something that needs to be dropped
+/// right away like text"): those whose next move is one press on the drawing. The rest keep the tab
+/// open, their size and colour beside them.
+const SETTLING_TOOLS = ['text', 'eyedropper'];
+
 /// The tools dragged out corner to corner (Curtis, 2026-09-27), sharing one line width.
 const SHAPE_TOOLS = ['line', 'rect', 'ellipse'];
 /// The tools that take a size, and those that take a colour (Curtis, 2026-09-27: "tool options
@@ -1004,6 +1051,16 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const narrow = useNarrow();
     // The header's chips behind one menu chip in a narrow window (`chipDeck`, below).
     const chipMenu = useChipMenu();
+    // A tool the current layer can't take, pressed anyway (Curtis, 2026-10-08: "can it shake angrily
+    // and pop up a 'you can't do that on a text layer' message?"): which, and how many times in a
+    // row - the shake alternates between two identical animations so a second press shakes again.
+    const [refusal, setRefusal] = useState(null); // { tool, n }
+    const refusalTimer = useRef(null);
+    const refuse = (tool) => {
+        setRefusal((r) => ({ tool, n: r && r.tool === tool ? r.n + 1 : 0 }));
+        clearTimeout(refusalTimer.current);
+        refusalTimer.current = setTimeout(() => setRefusal(null), 2600);
+    };
     // ...and the publish bar behind a chip of its own beside it, as Writer's (doc/editor.js).
     const [publishOpen, setPublishOpen] = useState(false);
     const social = useUnlocked(root, 'social');
@@ -1055,6 +1112,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const layerCanvases = useRef(new Map());
     const [picturesArrived, setPicturesArrived] = useState(0);
     const [painted, setPainted] = useState(0); // bumps when the layer canvases change: the thumbnails follow
+    // Bumped to repaint the layers from the body - a stroke a pinch took back (below).
+    const [repaints, setRepaints] = useState(0);
     const restack = (shift = null) => {
         const canvas = canvasRef.current;
         if (canvas) composite(canvas, drawing, layerCanvases.current, shift);
@@ -1067,7 +1126,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         layerCanvases.current = paintLayers(drawing, W * BACKING, picturesNow(root, drawing));
         restack();
         setPainted((n) => n + 1);
-    }, [drawing, shown, picturesArrived]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [drawing, shown, picturesArrived, repaints]); // eslint-disable-line react-hooks/exhaustive-deps
     // The pictures the drawing refers to (DRAWING.md, "Images"): fetched as the drawing asks for
     // them, and a repaint when any that was missing arrives.
     useEffect(() => {
@@ -1090,6 +1149,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const [zoom, setZoomNow] = useState(1);
     const [fit, setFit] = useState(null);
     const keepCentre = useRef(null);
+    // A pinch's anchor (`touchMove`): the drawing's point to keep under the fingers' middle.
+    const keepAnchor = useRef(null);
     useEffect(() => {
         const stage = stageRef.current;
         if (!stage) return undefined;
@@ -1108,6 +1169,14 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     useLayoutEffect(() => {
         const stage = stageRef.current;
         const view = viewOf(stage, paperRef.current);
+        if (keepAnchor.current && view) {
+            const a = keepAnchor.current;
+            keepAnchor.current = null;
+            const to = scrollToKeep(view, a.fx, a.fy, a.sx, a.sy);
+            stage.scrollLeft = to.left;
+            stage.scrollTop = to.top;
+            return;
+        }
         if (!keepCentre.current || !view) return;
         const to = scrollToCentre(view, keepCentre.current.fx, keepCentre.current.fy);
         keepCentre.current = null;
@@ -1203,9 +1272,85 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         return canvas ? canvas.getContext('2d') : null;
     };
 
+    // Two fingers zoom and pan (Curtis, 2026-10-08: the navigator steers nothing on a phone, where
+    // its column covers the drawing - "just allow two-finger pinch and grab"). Every finger on the
+    // stage is followed; a second one down takes back whatever the first began - a stroke half
+    // drawn, a shape, a pour - and from then until the last lifts, their spread zooms and their
+    // middle pans, the drawing's point under it staying under it. No tool acts meanwhile.
+    const touches = useRef(new Map()); // pointerId -> { x, y }, screen pixels
+    const pinch = useRef(null); // { startDist, startZoom, fx, fy }; { done: true } as the last lifts
+    const fingers = () => {
+        const [a, b] = [...touches.current.values()];
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
+    };
+    const onStage = (p) => {
+        const r = stageRef.current.getBoundingClientRect();
+        return [p.x - r.left, p.y - r.top];
+    };
+    const abandonLive = () => {
+        const l = live.current;
+        live.current = null;
+        if (!l) return;
+        if (l.frame) cancelAnimationFrame(l.frame);
+        if (l.grab) setGrabbing(false);
+        setRepaints((n) => n + 1); // back to the body: nothing half-made stays painted
+    };
+    /// A finger down: true when it belongs to a pinch, and no tool should take it.
+    const touchDown = (e) => {
+        touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinch.current) return true;
+        if (touches.current.size < 2) return false;
+        abandonLive();
+        const view = viewOf(stageRef.current, paperRef.current);
+        if (!view) return true;
+        const m = fingers();
+        const [sx, sy] = onStage(m);
+        const { fx, fy } = pointAt(view, sx, sy);
+        pinch.current = { startDist: m.d, startZoom: zoom, fx, fy };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        return true;
+    };
+    const touchMove = (e) => {
+        if (!touches.current.has(e.pointerId)) return false;
+        touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const p = pinch.current;
+        if (!p) return false;
+        if (p.done || touches.current.size < 2) return true;
+        const m = fingers();
+        const [sx, sy] = onStage(m);
+        const next = clampZoom((p.startZoom * m.d) / p.startDist);
+        if (Math.abs(next - zoom) < 0.0001) {
+            // The zoom held (or hit its bound): a pan alone, at once.
+            const view = viewOf(stageRef.current, paperRef.current);
+            if (!view) return true;
+            const to = scrollToKeep(view, p.fx, p.fy, sx, sy);
+            stageRef.current.scrollLeft = to.left;
+            stageRef.current.scrollTop = to.top;
+        } else {
+            keepAnchor.current = { fx: p.fx, fy: p.fy, sx, sy };
+            setZoomNow(next);
+        }
+        return true;
+    };
+    /// A finger up: true while a pinch is ending, so the tool hears nothing of it.
+    const touchUp = (e) => {
+        touches.current.delete(e.pointerId);
+        if (!pinch.current) return false;
+        pinch.current = touches.current.size === 0 ? null : { done: true };
+        return true;
+    };
+    const onPointerUp = (e) => {
+        if (e.pointerType === 'touch' && touchUp(e)) return;
+        finishStroke();
+    };
+
     // The stage takes the presses (the transform's rotate begins outside the frame, which can be
     // outside the drawing); every tool but the transform takes only those on the drawing itself.
     const onPointerDown = (e) => {
+        if (e.pointerType === 'touch' && touchDown(e)) {
+            e.preventDefault();
+            return;
+        }
         if (!opened || e.button > 0 || !current) return;
         if (!transformTool && !boxTool && e.target !== canvasRef.current) return;
         // Not a press on the stage's own scrollbars.
@@ -1626,6 +1771,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     };
 
     const onPointerMove = (e) => {
+        if (e.pointerType === 'touch' && touchMove(e)) return;
         moveCursor(e);
         const l = live.current;
         // Dragging the eyedropper keeps picking: the colour follows the pointer until it lets go.
@@ -1795,11 +1941,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ['rect', Icons.rectangle, t('doc.drawing.rectangle', 'rectangle')],
         ['ellipse', Icons.ellipse, t('doc.drawing.ellipse', 'ellipse')],
         ['bucket', Icons.bucket, t('doc.drawing.bucket', 'paint bucket')],
-        [
-            'eyedropper',
-            Icons.eyedropper,
-            t('doc.drawing.eyedropper', 'eyedropper: pick up a colour'),
-        ],
+        ['eyedropper', Icons.eyedropper, t('doc.drawing.eyedropper', 'eyedropper')],
         ['text', Icons.text, t('doc.drawing.text-tool', 'text')],
         ['sticker', Icons.sticker, t('doc.drawing.sticker-tool', 'stickers')],
         ['transform', Icons.transform, t('doc.drawing.transform', 'transform')],
@@ -1848,26 +1990,40 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                   ${toolButtons.map(
                       ([tool, icon, name]) => html`<button
                           key=${tool}
-                          class=${tools.tool === tool ? 'drawing-tool-icon active' : 'drawing-tool-icon'}
+                          class=${[
+                              'drawing-tool-icon',
+                              tools.tool === tool && 'active',
+                              refusal &&
+                                  refusal.tool === tool &&
+                                  (refusal.n % 2 ? 'drawing-tool-shake-b' : 'drawing-tool-shake-a'),
+                          ]
+                              .filter(Boolean)
+                              .join(' ')}
                           title=${name}
                           aria-label=${name}
-                          disabled=${!toolAllowed(tool)}
-                          data-settles=${tool === 'sticker' ? undefined : ''}
+                          ${
+                              /* Not `disabled`: a disabled button hears no press, and a press here
+                              should be answered - with a shake and a word (`refuse`). */ ''
+                          }
+                          aria-disabled=${toolAllowed(tool) ? undefined : 'true'}
+                          data-settles=${SETTLING_TOOLS.includes(tool) && toolAllowed(tool) ? '' : undefined}
                           onClick=${() =>
-                              setTools(
-                                  // The eyedropper remembers the colour tool it was taken up from,
-                                  // and hands you back to it once a colour is picked.
-                                  tool === 'eyedropper'
-                                      ? {
-                                            tool,
-                                            dropperFrom:
-                                                tools.tool !== 'eyedropper' &&
-                                                COLOURED_TOOLS.includes(tools.tool)
-                                                    ? tools.tool
-                                                    : tools.dropperFrom || 'brush',
-                                        }
-                                      : { tool },
-                              )}
+                              !toolAllowed(tool)
+                                  ? refuse(tool)
+                                  : setTools(
+                                        // The eyedropper remembers the colour tool it was taken up from,
+                                        // and hands you back to it once a colour is picked.
+                                        tool === 'eyedropper'
+                                            ? {
+                                                  tool,
+                                                  dropperFrom:
+                                                      tools.tool !== 'eyedropper' &&
+                                                      COLOURED_TOOLS.includes(tools.tool)
+                                                          ? tools.tool
+                                                          : tools.dropperFrom || 'brush',
+                                              }
+                                            : { tool },
+                                    )}
                       ><${icon} /></button>`,
                   )}
                   ${/* With the tools: what works whatever the tool (Curtis, 2026-09-27). */ ''}
@@ -1889,9 +2045,31 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                   ><${Icons.unpublish} /></button>
               </div>
               ${
+                  refusal &&
+                  html`<p class="drawing-refused" role="status">${t(
+                      'doc.drawing.not-on-a-text-layer',
+                      "you can't use that on a text layer - choose another layer first",
+                  )}</p>`
+              }
+              ${
                   /* The tool in hand's own options, and only its own (Curtis, 2026-09-27: "tool options are
                   contextual and live with their associated tool"). */ ''
               }
+              ${
+                  /* ...headed by its name and what it does - begun for phones, where nothing hovers,
+                  and kept everywhere (Curtis, 2026-10-08: "useful enough that we maybe should just
+                  do it in mobile and desktop modes"). */ ''
+              }
+              ${(() => {
+                  const chosen = toolButtons.find(([id]) => id === tools.tool);
+                  return (
+                      chosen &&
+                      html`<p class="drawing-tool-about">
+                              <strong>${chosen[2]}</strong>
+                              ${TOOL_ABOUT[tools.tool] ? html`<span>${TOOL_ABOUT[tools.tool]()}</span>` : null}
+                          </p>`
+                  );
+              })()}
               ${
                   pourTool &&
                   html`<label class="drawing-size">
@@ -2071,12 +2249,21 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             : isCurrent
               ? 'drawing-layer current'
               : 'drawing-layer';
+    // A narrow window has no map in the column (the navigator hides there), so it says only what it holds.
+    const layersLabel = narrow
+        ? t('doc.drawing.layers', 'layers')
+        : t('doc.drawing.layers-and-map', 'layers & map');
     const layersColumn = tucked.has('layers')
-        ? html`<${Rail} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onClick=${() => toggleTuck('layers')} />`
-        : html`${tab('layers', Icons.layers, t('doc.drawing.layers-and-map', 'layers & map'))}<aside class="drawing-layers" style=${colStyle}>
-              <${PaneHead} icon=${Icons.layers} label=${t('doc.drawing.layers-and-map', 'layers & map')} onTuck=${() => toggleTuck('layers')} />
+        ? html`<${Rail} icon=${Icons.layers} label=${layersLabel} onClick=${() => toggleTuck('layers')} />`
+        : html`${tab('layers', Icons.layers, layersLabel)}<aside class="drawing-layers" style=${colStyle}>
+              <${PaneHead} icon=${Icons.layers} label=${layersLabel} onTuck=${() => toggleTuck('layers')} />
+              ${
+                  /* Not in a narrow window: there the column covers the drawing it would steer, and
+                  two fingers zoom and pan the drawing itself (`touchDown`). */ ''
+              }
               ${
                   shown &&
+                  !narrow &&
                   html`<${Navigator}
                   zoom=${zoom}
                   onZoom=${setZoom}
@@ -2202,6 +2389,16 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     // strings cop as copy.
     const saved = session.status === 'clean';
     const saveFailed = session.status === 'error';
+    // Undo as a chip too (Curtis, 2026-10-08): on a phone the tools column covers the drawing, so its
+    // undo was a tab away from what it undoes. In the row on a wide window; beside the menu chip on a
+    // narrow one, where a menu that closes on every pick would make each undo two presses.
+    const undoChip = html`<${Chip}
+        icon=${Icons.unpublish}
+        word=${t('chips.undo', 'undo')}
+        title=${t('doc.drawing.undo', 'undo')}
+        disabled=${!drawing.strokes.length}
+        onClick=${undoStroke}
+    />`;
     // The header's chips, the whole deck: a row, or in a narrow window behind one menu chip (doc/chips.js
     // `useChipMenu`; Curtis, 2026-10-08).
     const chipDeck = html`
@@ -2212,6 +2409,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 !row.fields?.published_as &&
                 html`<${Chip} icon=${Icons.trash} word=${t('chips.delete', 'delete')} modifier="chip-delete" title=${t('doc.drawing.delete', 'delete')} onClick=${session.remove} />`
             }
+            ${!chipMenu.narrow && undoChip}
             <${Chip}
                 icon=${Icons.copy} word=${t('chips.copy', 'copy')}
                 title=${t('doc.drawing.copy-a-picture-into-a-notebook', 'copy a picture of this drawing into a notebook')}
@@ -2260,6 +2458,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 /* Only where there is a bar to summon: PublishBar draws nothing for a private
                 drawing without Social. */ ''
             }
+            ${chipMenu.narrow && undoChip}
             ${
                 chipMenu.narrow &&
                 (docStatus(row) !== 'private' || social) &&
@@ -2298,8 +2497,8 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 ref=${stageRef}
                 onPointerDown=${onPointerDown}
                 onPointerMove=${onPointerMove}
-                onPointerUp=${finishStroke}
-                onPointerCancel=${finishStroke}
+                onPointerUp=${onPointerUp}
+                onPointerCancel=${onPointerUp}
             >
                 ${
                     !shown

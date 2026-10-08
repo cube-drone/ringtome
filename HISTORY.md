@@ -18451,3 +18451,61 @@ drawings, the 'publish' button could use the same treatment"): under 900px it
 hides behind a chip beside "options" wearing the drawing's standing, and only
 where there is a bar to summon. Writer's chip became `PublishChip`
 (doc/chips.js), worn by both.
+
+**2026-10-08 - Two fingers zoom and pan a drawing; the navigator stays wide.**
+Curtis: the drawing app's minimap "doesn't work - would it be better to hide it
+and just allow two-finger pinch and grab?" On a phone it can't: the columns are
+tabs, and opening "layers & map" hides the drawing it steers. It is hidden under
+900px now, and the stage follows every finger: a second one down takes back
+whatever the first began (`abandonLive` - a half-drawn stroke, a shape, a pour,
+repainted away from the body), and until the last lifts their spread zooms and
+their middle pans, the drawing's point under it held there (`pointAt`,
+`scrollToKeep` in pure/viewport.js, two pure claims). No tool acts during a
+pinch. Not yet tried on a phone.
+
+**2026-10-08 - Undo as a drawing chip.** Curtis: "even though 'undo' exists as a
+drawing tool, can it ALSO exist as a file chip for drawings?" On a phone the
+tools column covers the drawing, so its undo was a tab away from what it undoes.
+The header has an undo chip now (`undoChip`, the tools' own `undoStroke` and
+arrow, off with nothing to undo): in the row on a wide window, and beside the
+menu chip on a narrow one rather than in the menu - a menu that closes on every
+pick would make each undo two presses.
+
+And the column's name follows (Curtis: "the map is hidden, so 'Layers & Map'
+should just read 'Layers'"): under 900px the rail, the tab and the column's head
+say "layers".
+
+And the drawing tools' buttons half again on a phone (Curtis: "about 1.5x in
+size on mobile"): under 900px `.drawing-tool-icon` is 3.3rem square with a
+1.725rem glyph; the toolset already wraps.
+
+And the colour pickers too: under 900px the swatch grid's cells are 39px (from
+26), the picker's own swatch 39px and its hex larger, and the hue wheel 1.5x -
+drawn bigger and painted at 1.5x the device resolution, so it stays sharp
+(`scale` in doc/colourpicker.js; a press already maps through the drawn box).
+
+**2026-10-08 - Choosing a drawing tool keeps the tools open.** Curtis: changing
+tool "shouldn't dismiss the tools window immediately unless it's something that
+needs to be dropped right away like text". Every tool but stickers settled the
+narrow window's tools tab; now only `SETTLING_TOOLS` do - text and the
+eyedropper, whose next move is one press on the drawing. The rest keep the tab
+open beside their size and colour; adding an image and undo still close it.
+
+And each tool says what it is (Curtis: "because we don't have hovertext...
+display the name of and description of the tool in the tool options"): under
+900px the tool in hand's options open with its name and a line of what it does
+(`TOOL_ABOUT`, fourteen of them, `.drawing-tool-about`). The eyedropper's name
+lost the "pick up a colour" its tooltip carried, now that the line says so.
+
+Then everywhere (Curtis: "useful enough that we maybe should just do it in
+mobile and desktop modes"): the name and its line - smaller, italic - head the
+tool's options at any width.
+
+**2026-10-08 - A tool a text layer can't take shakes, and says why.** Curtis: on
+a text layer, pressing a tool that doesn't work there "can it shake angrily and
+pop up a 'you can't do that on a text layer' message?" Those tools were
+`disabled`, which hears no press. They are `aria-disabled` now - as dim, but
+pressable - and a press shakes the button (two identical animations, alternated,
+so a second press shakes again; none under reduced motion) and says "you can't
+use that on a text layer - choose another layer first" under the tools for a few
+seconds (`refuse`, `.drawing-refused`).

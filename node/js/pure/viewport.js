@@ -76,6 +76,27 @@ export function scrollToCentre(v, fx, fy) {
     };
 }
 
+/// The drawing's point under a spot on the stage - `sx`, `sy` from the stage's top-left, in pixels -
+/// as fractions of the drawing (not clamped: a pinch may start beside it). What a pinch keeps under
+/// its fingers (doc/drawing.js, 2026-10-08).
+export function pointAt(v, sx, sy) {
+    return {
+        fx: (v.scrollLeft + sx - v.paperLeft) / v.paperWidth,
+        fy: (v.scrollTop + sy - v.paperTop) / v.paperHeight,
+    };
+}
+
+/// The scroll that puts the drawing's point `fx`, `fy` under the stage spot `sx`, `sy`, kept to what
+/// the stage can scroll - a pinch's zoom and pan in one.
+export function scrollToKeep(v, fx, fy, sx, sy) {
+    const maxLeft = Math.max(0, v.paperLeft * 2 + v.paperWidth - v.clientWidth);
+    const maxTop = Math.max(0, v.paperTop * 2 + v.paperHeight - v.clientHeight);
+    return {
+        left: Math.max(0, Math.min(maxLeft, v.paperLeft + fx * v.paperWidth - sx)),
+        top: Math.max(0, Math.min(maxTop, v.paperTop + fy * v.paperHeight - sy)),
+    };
+}
+
 /// The drawing's point at the middle of the stage, as fractions - what a zoom keeps still.
 export function centreOf(v) {
     return {

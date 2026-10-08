@@ -89,3 +89,27 @@ describe('the navigator', () => {
         );
     });
 });
+
+describe('a pinch (2026-10-08)', () => {
+    it("finds the drawing's point under the fingers, and keeps it there", () => {
+        // The fingers' middle at (100, 60) on the stage: the drawing's point (200+100)/800 across
+        // and (150+60)/600 down.
+        const at = v.pointAt(zoomed, 100, 60);
+        assert.deepEqual(at, { fx: 0.375, fy: 0.35 });
+        assert.deepEqual(
+            v.scrollToKeep(zoomed, at.fx, at.fy, 100, 60),
+            { left: 200, top: 150 },
+            'the same spot: nothing moves',
+        );
+        // Zoomed to 4x (1600x1200), the same point stays under the same spot.
+        const closer = { ...zoomed, paperWidth: 1600, paperHeight: 1200 };
+        assert.deepEqual(v.scrollToKeep(closer, at.fx, at.fy, 100, 60), { left: 500, top: 360 });
+        // The fingers moved right and down by 50: the drawing follows them.
+        assert.deepEqual(v.scrollToKeep(zoomed, at.fx, at.fy, 150, 110), { left: 150, top: 100 });
+    });
+
+    it('never scrolls past what the stage can show', () => {
+        assert.deepEqual(v.scrollToKeep(zoomed, 0, 0, 300, 300), { left: 0, top: 0 });
+        assert.deepEqual(v.scrollToKeep(zoomed, 1, 1, 0, 0), { left: 400, top: 300 });
+    });
+});

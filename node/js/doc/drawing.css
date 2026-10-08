@@ -33,6 +33,94 @@
     cursor: pointer;
 }
 
+/* The tool in hand, said, atop its options (doc/drawing.js `TOOL_ABOUT`): its name, and a smaller
+   italic line of what it does. */
+.drawing-tool-about {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin: 0.4rem 0 0;
+    color: var(--muted);
+}
+
+.drawing-tool-about strong {
+    color: var(--ink);
+}
+
+.drawing-tool-about span {
+    font-size: 0.85rem;
+    font-style: italic;
+}
+
+/* Half again on a phone (Curtis, 2026-10-08), a size a thumb can press: the tools (the toolset
+   wraps), the colour swatches, and the picker's own swatch and hex (its wheel grows in
+   doc/colourpicker.js, which paints it). */
+@media (max-width: 900px) {
+    .drawing-tool-icon {
+        width: 3.3rem;
+        height: 3.3rem;
+        font-size: 1.725rem;
+    }
+
+    .drawing-colours {
+        grid-template-columns: repeat(auto-fill, minmax(39px, 1fr));
+    }
+
+    .colour-picker-now {
+        width: 39px;
+        height: 39px;
+    }
+
+    .colour-picker-hex {
+        font-size: 1.1rem;
+    }
+}
+
+/* A tool the current layer can't take (a text layer's): dim, as disabled was, but pressable - a press
+   shakes it and says why (doc/drawing.js `refuse`). Two identical shakes, alternated, so a second
+   press shakes again; none at all under reduced motion. */
+.drawing-tool-icon[aria-disabled='true'] {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.drawing-tool-shake-a {
+    animation: drawing-shake-a 0.35s ease-in-out;
+}
+
+.drawing-tool-shake-b {
+    animation: drawing-shake-b 0.35s ease-in-out;
+}
+
+@keyframes drawing-shake-a {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+
+@keyframes drawing-shake-b {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .drawing-tool-shake-a,
+    .drawing-tool-shake-b {
+        animation: none;
+    }
+}
+
+.drawing-refused {
+    margin: 0.4rem 0 0;
+    color: var(--coral);
+    font-size: 0.85rem;
+}
+
 .drawing-tool-icon:hover {
     border-color: var(--border-strong);
 }

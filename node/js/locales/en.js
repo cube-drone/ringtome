@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1714 phrases across 100 files.
+// 1731 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -738,6 +738,20 @@ export default {
     // --- node/js/doc/drawing.js ---
     'doc.drawing.not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
     'doc.drawing.untitled': 'untitled',
+    'doc.drawing.about-brush': 'draw freehand - with a pen, pressing harder draws wider',
+    'doc.drawing.about-eraser': 'rub out what is on the current layer',
+    'doc.drawing.about-line': 'drag from one end of a straight line to the other',
+    'doc.drawing.about-rect': 'drag from one corner of a rectangle to the opposite one',
+    'doc.drawing.about-ellipse': 'drag out the box an ellipse fits in',
+    'doc.drawing.about-bucket': 'press to pour paint; hold, and it spreads up to the lines on this layer',
+    'doc.drawing.about-eyedropper': 'touch the drawing to pick up the colour there, from every visible layer',
+    'doc.drawing.about-text': 'touch where the words go, then type them here',
+    'doc.drawing.about-sticker': 'choose a sticker, then touch the drawing to stamp it',
+    'doc.drawing.about-transform': 'move, turn and resize the current layer by its frame',
+    'doc.drawing.about-grab': 'drag to move the whole current layer',
+    'doc.drawing.about-crop': 'drag a box around what to keep, then crop',
+    'doc.drawing.about-profile': 'frame a square of the drawing as your profile picture',
+    'doc.drawing.about-banner': "frame a strip of the drawing as your page's banner",
     'doc.drawing.no-stickers': 'tag a picture or a drawing "{tag}" to keep it here',
     'doc.drawing.a-sticker': 'a sticker',
     'doc.drawing.layer-n': 'layer {n}',
@@ -758,7 +772,7 @@ export default {
     'doc.drawing.rectangle': 'rectangle',
     'doc.drawing.ellipse': 'ellipse',
     'doc.drawing.bucket': 'paint bucket',
-    'doc.drawing.eyedropper': 'eyedropper: pick up a colour',
+    'doc.drawing.eyedropper': 'eyedropper',
     'doc.drawing.text-tool': 'text',
     'doc.drawing.sticker-tool': 'stickers',
     'doc.drawing.transform': 'transform',
@@ -772,6 +786,7 @@ export default {
     'doc.drawing.tools': 'tools',
     'doc.drawing.add-an-image': 'add an image',
     'doc.drawing.undo': 'undo',
+    'doc.drawing.not-on-a-text-layer': "you can't use that on a text layer - choose another layer first",
     'doc.drawing.pour-speed': 'pour speed',
     'doc.drawing.type-here': 'type here',
     'doc.drawing.words': 'words',
@@ -781,6 +796,7 @@ export default {
     'doc.drawing.alignment': 'alignment',
     'doc.drawing.colour': 'colour',
     'doc.drawing.strokes': '{count} strokes',
+    'doc.drawing.layers': 'layers',
     'doc.drawing.layers-and-map': 'layers & map',
     'doc.drawing.new-layer': 'new layer',
     'doc.drawing.opacity': 'opacity',
@@ -791,6 +807,7 @@ export default {
     'doc.drawing.trash-layer': 'throw this layer away (undo brings it back)',
     'doc.drawing.this-layer-is-hidden': 'this layer is hidden - show it to draw on it',
     'doc.drawing.no-layers': 'no layers - make a new one to draw on',
+    'chips.undo': 'undo',
     'doc.drawing.delete': 'delete',
     'doc.drawing.copy-a-picture-into-a-notebook': 'copy a picture of this drawing into a notebook',
     'chips.download': 'download',

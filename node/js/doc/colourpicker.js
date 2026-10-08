@@ -23,6 +23,7 @@ import {
     pointToSv,
 } from '../pure/colour.js';
 import { t } from '../i18n.js';
+import { useNarrow } from '../panes.js';
 
 const html = htm.bind(h);
 
@@ -110,6 +111,9 @@ export const ColourPicker = ({ value, onChange }) => {
     // The picker keeps its own HSV, because a grey has no hue: turning a colour to grey and back
     // must not snap the ring to red.
     const [hsv, setHsv] = useState(() => rgbToHsv(hexToRgb(value) || [0, 0, 0]));
+    // Half again on a phone (Curtis, 2026-10-08), and painted half again finer, so it is as sharp as
+    // it is big: its geometry stays in `SIZE` units, and a press maps through the box it's drawn in.
+    const scale = useNarrow() ? 1.5 : 1;
     const [typed, setTyped] = useState(value);
     const hex = rgbToHex(hsvToRgb(hsv));
 
@@ -135,7 +139,7 @@ export const ColourPicker = ({ value, onChange }) => {
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = (window.devicePixelRatio || 1) * scale;
         const n = Math.round(SIZE * dpr);
         if (canvas.width !== n) {
             canvas.width = canvas.height = n;
@@ -169,7 +173,7 @@ export const ColourPicker = ({ value, onChange }) => {
         marker(ctx, c + mid * Math.cos(rad), c + mid * Math.sin(rad), RING / 2 - 2, false);
         const [sx, sy] = svToPoint(hsv, triangleCorners(hsv.h, c, c, tri));
         marker(ctx, sx, sy, 5, hsv.v < 0.55);
-    }, [hsv]);
+    }, [hsv, scale]);
 
     const at = (e) => {
         const rect = canvasRef.current.getBoundingClientRect();
@@ -205,7 +209,7 @@ export const ColourPicker = ({ value, onChange }) => {
         <canvas
             ref=${canvasRef}
             class="colour-picker-wheel"
-            style=${`width: ${SIZE}px; height: ${SIZE}px`}
+            style=${`width: ${SIZE * scale}px; height: ${SIZE * scale}px`}
             onPointerDown=${down}
             onPointerMove=${move}
             onPointerUp=${up}
