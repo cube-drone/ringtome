@@ -18266,3 +18266,13 @@ to NEXT_STEPS; Curtis took items 1-4 and 6.
 
 Pure claims (`kept.cjs`): the same name, picture and relative words the second
 time, and `wordsFor` a fresh copy each call. Not yet profiled.
+
+**2026-10-08 - An agent's "indie web" landed as "indie+web".** The MCP server's
+`escape` (src/mcp.rs) form-encoded every value it put in a URL, and form
+encoding writes a space as `+` - right for a query, wrong for a path segment,
+which decodes `%20` and keeps `+` a plus. Every tag, label, slug and document id
+the tools put in a path went through it. Now a space is `%20` (the form
+serializer already writes a literal `+` as `%2B`, so its remaining `+`s are all
+spaces), which reads right in a path and a query alike. A unit test pins the
+encoding; the MCP tags claim now sets "indie web" and "c++" and reads them back
+as written.

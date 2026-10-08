@@ -250,8 +250,13 @@ fn when(ms: Option<i64>) -> Value {
 /// A query string's value, escaped.
 use crate::bank::horsebucks;
 
+/// A value percent-encoded for a URL - a path segment or a query value alike. Spaces are `%20`,
+/// never form encoding's `+` (2026-10-08: an agent's tag "indie web" landed as "indie+web" - a path
+/// segment decodes `%20` and leaves `+` a plus). The form serializer already writes a literal `+`
+/// as `%2B`, so every `+` left in its output is a space.
 fn escape(value: &str) -> String {
-    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+    let form: String = url::form_urlencoded::byte_serialize(value.as_bytes()).collect();
+    form.replace('+', "%20")
 }
 
 /// Is `unlock` open to a persona that owns `owned`? None if so; if not, the agent's words: what
@@ -556,6 +561,14 @@ impl ServerHandler for Tools {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn escape_writes_a_space_as_percent_twenty_and_a_plus_as_a_plus() {
+        assert_eq!(escape("indie web"), "indie%20web");
+        assert_eq!(escape("c++"), "c%2B%2B");
+        assert_eq!(escape("a/b?c&d"), "a%2Fb%3Fc%26d");
+        assert_eq!(escape("plain"), "plain");
+    }
 
     #[test]
     fn horsebucks_reads_pennies_of_any_length() {

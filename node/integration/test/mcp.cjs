@@ -800,6 +800,14 @@ describe('MCP: the gaps an agent found', function () {
             ['ai-agent', 'carrots', 'hay'],
             'oats off, carrots on',
         );
+        // A tag with a space, and one with a plus, arrive as written (2026-10-08: "indie web" landed
+        // as "indie+web" - the path was form-encoded).
+        const spaced = await tool(agent, 'write_document', {
+            document: made.document,
+            tags: ['indie web', 'c++'],
+        });
+        assert.deepEqual(spaced.tags, ['ai-agent', 'c++', 'indie web']);
+        assert.deepEqual(await tagsOf(made.document), ['ai-agent', 'c++', 'indie web']);
         const bare = await tool(agent, 'write_document', { document: made.document, tags: [] });
         assert.deepEqual(bare.tags, ['ai-agent'], '[] clears all but what it was made with');
         assert.equal(await heads(), before, 'tags alone write no new version');
