@@ -18659,11 +18659,11 @@ rather than on the press, so the copy isn't waiting on the network.
 **2026-10-08 - A post's embedded player plays in the desktop app.** Curtis: a
 YouTube link posted from the desktop app opened "a separate browser... with a
 YouTube Video Player configuration error (Error 153)". The shell's navigation
-judge (desktop/src/links.rs) hands every navigation off our origin to the
-system browser, and WebKit asks it about every frame's navigation, not only the
-window's - wry passes on the URL and not the frame. So the post's iframe, loading
-`youtube-nocookie.com/embed/…`, was handed out, and YouTube refuses an embed
-that arrives with no page around it (153: no Referer). The three players
+judge (desktop/src/links.rs) hands every navigation off our origin to the system
+browser, and WebKit asks it about every frame's navigation, not only the
+window's - wry passes on the URL and not the frame. So the post's iframe,
+loading `youtube-nocookie.com/embed/…`, was handed out, and YouTube refuses an
+embed that arrives with no page around it (153: no Referer). The three players
 Marquee's turbolinks embed - YouTube's nocookie embed, Spotify's embed and
 OpenStreetMap's export embed - now load where they are (`EMBEDS`, `is_embed`,
 https and exact host and path prefix), with a test; everything else still goes
