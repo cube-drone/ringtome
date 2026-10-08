@@ -18097,6 +18097,40 @@ commands are global, so each surface files its save under its view (`savers`, a
 WeakMap) and `Vim.defineEx('write', 'w', …)` finds the one it was typed in
 through the adapter's `cm6`.
 
+Then the rest of the ex commands that mean something here (Curtis, 2026-10-08:
+"`:bn` / `:bp` (and gt/gT)... should just ride" the editor's arrows; ":e! and
+:q! can be left out", since they exist to throw changes away and autosave leaves
+none). `:wq`, `:x` and `:q` save and close the app, as the header's ✕ does;
+`:f[ile] name` renames the note; `:ene[w]` makes a new one in this notebook,
+`notes.js`'s `createNew` threaded down through `RightColumn` as `onNew`; `:vs`
+switches to side-by-side (a plain text box - vim stays in the interactive mode);
+`:bn`/`:bp` and `gt`/`gT` walk the arrows' `nav`. One handler table per editor
+(`vimCommands`, read at the moment of the command), found through `vimHosts`.
+Not yet tried in a browser.
+
+And vim's `:` line in a dark colourway (Curtis: "a white bar for me to type
+white text into"; and its font should be JetBrains Mono in any). The app never
+tells CodeMirror it is dark, so CodeMirror's panels wore the light theme's
+near-white while the input took the colourway's light ink. `houseTheme` (was
+`drawnSelection`) now dresses CodeMirror's own chrome from the tokens: the
+panels in `--field` and `--ink` over a `--border` rule, the command line in
+JetBrains Mono, and vim's search hits in `--marker`.
+
+And `:e Title` (Curtis, 2026-10-08, taking the pitch): the note of that title in
+this notebook - exactly as typed first, then ignoring case, the most recently
+edited of several (`pure/bytitle.js`, four pure claims) - or a new note by that
+name: `createNew` takes a title now, and the list's button and a bare `:enew`
+still make 'untitled'. Bare `:e` does nothing, and `:e!` - which the vim package
+hands over as `:e` with a "!" - does nothing rather than make a note called "!".
+Longest prefix wins in the vim package's matching, so `:ene` is still `:enew`.
+
+And the focus follows (Curtis: "start with focus in the text window in that
+file"): a note reached by `:e`, `:enew`, `:bn`/`:bp` or `gt`/`gT` opens in a
+fresh editor, which focused itself only when it remembered a caret, and a new
+note has none. The moving commands now leave a hand-off (`focusHandoff`), and
+the next editor to mount within ten seconds - long enough for the node to make a
+new note - takes the focus.
+
 **2026-10-07 - hrsePeople™ is Neighbors.** Curtis: "god dammit this has been
 staring me in the face for months". The app's name (`pure/apps.js`), the four
 catalog phrases that named it (the Friends unlock's blurb, two contracts' fine

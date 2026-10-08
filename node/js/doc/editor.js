@@ -51,7 +51,8 @@ import { Icons } from '../icons.js';
 import { ImagePickModal } from './imagepick.js';
 import { pickedReference } from './pickref.js';
 import { DrawingThumb } from './drawing.js';
-import { CopyLinkChip, docHref } from '../links.js';
+import { CopyLinkChip, docHref, LAUNCHER } from '../links.js';
+import { useLocation } from 'preact-iso';
 import { useGatedFeatures } from '../unlocks.js';
 
 const html = htm.bind(h);
@@ -97,7 +98,12 @@ export const Editor = ({
     foot,
     book,
     uploadBucket = FILES_BUCKET,
+    // A new note in this notebook, as the list's "+ new" makes one - vim's `:enew`. Optional.
+    onNew,
+    // Open the note of this title in this notebook, or make it - vim's `:e Title`. Optional.
+    onOpen,
 }) => {
+    const loc = useLocation();
     const feat = useGatedFeatures(root, features || featuresOf());
     // Vim keys, where the app has them and this browser turned them on (application settings).
     const vimPref = usePrefValue(root, VIM_KEY);
@@ -469,7 +475,29 @@ export const Editor = ({
                     touched();
                 }}
                 onBlur=${save}
-                onSave=${save}
+                vimCommands=${{
+                    save,
+                    quit: async () => {
+                        await save();
+                        loc.route(LAUNCHER);
+                    },
+                    rename: (params) => {
+                        const name = (params && params.argString ? params.argString : '').trim();
+                        if (!name) return;
+                        setTitle(name);
+                        touched();
+                    },
+                    newNote: onNew,
+                    open: (params) => {
+                        const name = (params && params.argString ? params.argString : '').trim();
+                        // `:e!` (reload, discarding) arrives as `:e` with a "!" - left out, not a
+                        // note called "!".
+                        if (name && !name.startsWith('!') && onOpen) onOpen(name);
+                    },
+                    side: available.includes('side') ? () => pickMode('side') : undefined,
+                    next: nav && nav.next ? () => nav.go(nav.next) : undefined,
+                    prev: nav && nav.prev ? () => nav.go(nav.prev) : undefined,
+                }}
             />`;
         }
         if (mode === 'side' && format === 'marquee') {

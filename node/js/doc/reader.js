@@ -326,6 +326,8 @@ export const RightColumn = ({
     book,
     dropper = false,
     missing = false,
+    onNew,
+    onOpen,
 }) => {
     // The document the address named isn't there (2026-10-03): said here, in its notebook, with the
     // list beside it - not on a page of its own.
@@ -355,6 +357,8 @@ export const RightColumn = ({
             book=${book}
             features=${features}
             onDeleted=${onDeleted}
+            onNew=${onNew}
+            onOpen=${onOpen}
         />`;
     }
     return html`<${Reader}

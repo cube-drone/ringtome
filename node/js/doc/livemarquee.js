@@ -36,18 +36,68 @@ const html = htm.bind(h);
 // one unless the state allows several - `basicSetup` does, and this editor doesn't use it.
 const vimMode = () => [vimKeys(), drawSelection(), EditorState.allowMultipleSelections.of(true)];
 
-// `:w` saves now (Curtis, 2026-10-08), rather than waiting out the autosave's debounce. Ex commands
-// are global to the vim package, so each surface files its save under its own view, and the
-// command finds the one it was typed in (`cm6`, the view behind vim's CodeMirror adapter).
-const savers = new WeakMap();
-Vim.defineEx('write', 'w', (cm) => savers.get(cm.cm6)?.());
+// Vim's ex commands, as this app means them (Curtis, 2026-10-08). The vim package's commands are
+// global, so each surface files its host's handlers under its own view (`vimHosts`), and a command
+// finds the one it was typed in (`cm6`, the view behind vim's CodeMirror adapter). A command the
+// host has no handler for does nothing.
+//
+//   :w            save now, rather than waiting out the autosave's debounce
+//   :wq :x :q     save, and close the app - autosave means there are no changes to lose, so
+//                 :q is :wq here; :q! and :e!, which exist to throw changes away, are left out
+//   :f[ile] name  rename the note
+//   :ene[w]       a new note in this notebook
+//   :e[dit] name  the note of that name in this notebook - exact, then ignoring case, the newest
+//                 of several (pure/bytitle.js) - or a new one by that name; bare :e does nothing
+//   :vs[plit]     source beside preview (the side-by-side mode, which is a plain text box -
+//                 vim stays behind in the interactive one)
+//   :bn :bp       the next and previous note, as the editor's arrows walk them - and gt / gT
+const vimHosts = new WeakMap();
+const vimCommand = (name) => (cm, params) => {
+    const run = vimHosts.get(cm.cm6)?.()?.[name];
+    if (!run) return;
+    if (MOVING.has(name)) focusHandoff = Date.now();
+    run(params);
+};
 
-// A drawn selection in the theme's own accent, washed out, rather than CodeMirror's fixed light
-// greys - which every dark theme here would wear badly. Vim's and the placeholder surfaces' alike.
-const drawnSelection = EditorView.theme({
-    // `&.cm-editor`: one class more than the base theme's light/dark-scoped rules, so this wins.
+// A command that moves to another note hands the focus on (Curtis, 2026-10-08: "start with focus
+// in the text window in that file"): the note opens in a fresh editor (doc/reader.js keys it by
+// document), which focuses itself only when it remembers a caret - and a new note has none. The
+// next editor to mount takes the hand-off, if it's fresh: ten seconds covers `:e` and `:enew`
+// waiting on the node to make the note.
+const MOVING = new Set(['open', 'newNote', 'next', 'prev']);
+const HANDOFF_MS = 10_000;
+let focusHandoff = 0;
+Vim.defineEx('write', 'w', vimCommand('save'));
+Vim.defineEx('wq', 'wq', vimCommand('quit'));
+Vim.defineEx('xit', 'x', vimCommand('quit'));
+Vim.defineEx('quit', 'q', vimCommand('quit'));
+Vim.defineEx('file', 'f', vimCommand('rename'));
+Vim.defineEx('enew', 'ene', vimCommand('newNote'));
+Vim.defineEx('edit', 'e', vimCommand('open'));
+Vim.defineEx('vsplit', 'vs', vimCommand('side'));
+Vim.defineEx('bnext', 'bn', vimCommand('next'));
+Vim.defineEx('bprevious', 'bp', vimCommand('prev'));
+Vim.map('gt', ':bnext<CR>', 'normal');
+Vim.map('gT', ':bprevious<CR>', 'normal');
+
+// CodeMirror's own chrome in the colourway's tokens (Curtis, 2026-10-07/08). The app never tells
+// CodeMirror it is dark, so it wears its light theme's fixed colours everywhere it draws for
+// itself - a grey selection, and a near-white panel under vim's `:` line, which a dark colourway's
+// light ink made white on white. `&.cm-editor`: one class more than the base theme's light/dark-
+// scoped rules, so these win.
+const houseTheme = EditorView.theme({
+    // The drawn selection (vim's, and the placeholder surfaces'): the accent, washed out.
     '&.cm-editor .cm-selectionBackground, &.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground':
         { background: 'color-mix(in srgb, var(--teal) 30%, transparent)' },
+    // The panels (vim's command line and its messages): the colourway's field and ink.
+    '&.cm-editor .cm-panels': { backgroundColor: 'var(--field)', color: 'var(--ink)' },
+    '&.cm-editor .cm-panels-bottom': { borderTop: '1px solid var(--border)' },
+    '&.cm-editor .cm-vim-panel, &.cm-editor .cm-vim-panel input': {
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        color: 'var(--ink)',
+    },
+    // Vim's search hits: the highlighter every search here uses.
+    '&.cm-editor .cm-searchMatch': { backgroundColor: 'var(--marker)' },
 });
 
 export const LiveMarquee = ({
@@ -75,8 +125,9 @@ export const LiveMarquee = ({
     // new ask), and focus the surface only when `focus` says so (Curtis, 2026-09-27: after an
     // image goes in, the caret lands right after it). Optional.
     caret,
-    // Save now, whatever the debounce says: vim's `:w`. Optional.
-    onSave,
+    // What vim's ex commands do here (`vimHosts` above): `{ save, quit, rename(params), newNote,
+    // side, next, prev }`, any of them absent. Read at the moment of the command. Optional.
+    vimCommands,
     // Vim keys (Curtis, 2026-10-07, Writer's application setting): @replit/codemirror-vim, in a
     // Compartment of its own so the switch takes effect without remounting. Optional.
     vim,
@@ -95,7 +146,7 @@ export const LiveMarquee = ({
     // Fresh callbacks every render, stable identity for the extensions (the timer-and-unmount
     // stale-closure lesson from doc/editor.js, applied here).
     const hooks = useRef({});
-    hooks.current = { onInput, onBlur, onCursor, onSave };
+    hooks.current = { onInput, onBlur, onCursor, vimCommands };
 
     // Built at commit, like the body and caret effects below - which run in declaration order
     // and so find the view already there.
@@ -115,7 +166,7 @@ export const LiveMarquee = ({
                 selection: at,
                 extensions: [
                     vimConf.current.of(vim ? vimMode() : []),
-                    drawnSelection,
+                    houseTheme,
                     history(),
                     ...(keys && keys.length ? [keymap.of(keys)] : []),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -167,7 +218,11 @@ export const LiveMarquee = ({
             v.focus();
         }
         view.current = v;
-        savers.set(v, () => hooks.current.onSave?.());
+        vimHosts.set(v, () => hooks.current.vimCommands);
+        if (Date.now() - focusHandoff < HANDOFF_MS) {
+            focusHandoff = 0;
+            v.focus();
+        }
         return () => {
             v.destroy();
             view.current = null;

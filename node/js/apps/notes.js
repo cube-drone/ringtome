@@ -22,6 +22,7 @@ import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch, queryWords } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
 import { featuresOf, itemNoun, itemPlural, bucketHolds, FILES_BUCKET } from '../pure/apps.js';
+import { noteByTitle } from '../pure/bytitle.js';
 import { browseFiles, UNFILED } from '../pure/filebrowse.js';
 import { orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
@@ -603,7 +604,10 @@ export const DocsApp = ({
         next: bookish ? 'Next — down the tree' : 'Next — older',
     });
 
-    const createNew = async () => {
+    // `title`: what to call it (vim's `:e`, below); anything else - the button's click, a bare
+    // `:enew` - makes it 'untitled'.
+    const createNew = async (title) => {
+        const named = typeof title === 'string' && title.trim() ? title.trim() : 'untitled';
         setBusy(true);
         try {
             // New items are Marquee by default - the interactive editor is the front door;
@@ -613,14 +617,14 @@ export const DocsApp = ({
             const made = await api(`/api/identity/${root}/docs`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    title: 'untitled',
+                    title: named,
                     body: format === 'drawing' ? writeBody(blankDrawing()) : '',
                     format,
                 }),
             });
             // Open it now (2026-10-01: "that isn't here" until the stream brought the row): the
             // row is stated ahead of the stream, filed where it's going, and the filing follows.
-            await holdNewDoc(root, made, { title: 'untitled', format, bucket });
+            await holdNewDoc(root, made, { title: named, format, bucket });
             select(made.doc_id);
             // File it into the CURRENT bucket - the notebook you're looking at is the notebook
             // a new page lands in.
@@ -815,6 +819,17 @@ export const DocsApp = ({
                     bucket=${bucket}
                     book=${book}
                     features=${feat}
+                    onNew=${() => createNew()}
+                    onOpen=${(title) => {
+                        // `:e Title` (pure/bytitle.js): the note of that name in this notebook,
+                        // or a new one by that name.
+                        const found = noteByTitle(
+                            (docs || []).filter((d) => bucketHolds(d, app, bucket)),
+                            title,
+                        );
+                        if (found) select(found);
+                        else createNew(title);
+                    }}
                     onDeleted=${() => {
                         forget(selected);
                         select(null);
