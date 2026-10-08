@@ -131,11 +131,19 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: node/js/package-lock.json
+          cache-dependency-path: |
+            node/js/package-lock.json
+            desktop/package-lock.json
 
       - name: Build the UI assets
         working-directory: node
         run: just ui-install && just ui-build
+
+      # The Tauri CLI, pinned in desktop/package.json: the generated Gradle project runs it back
+      # through `npm run tauri` to build the Rust half, so it must be installed where it looks.
+      - name: The Tauri CLI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
 
       # Tauri finds the NDK by NDK_HOME and sets the C compilers itself; bindgen still wants the
       # sysroot said.
@@ -153,7 +161,7 @@ jobs:
 
       - name: Build
         working-directory: desktop
-        run: npx --yes @tauri-apps/cli@2 android build --ci --apk --target aarch64
+        run: npm run tauri -- android build --ci --apk --target aarch64
 
       # Signed here rather than in Gradle, so the generated project needs no signing config: the
       # unsigned APK, aligned, then signed with the keystore - or a key for this run alone (header).

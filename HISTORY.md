@@ -18691,3 +18691,11 @@ release.yml calls the workflow, `publish` needs it, and `release-assemble.mjs`
 asks for the file (`RINGTOME_RELEASE_ANDROID`, with a test). Unset, a release
 neither waits for Android nor asks for it. None of the Android side has run yet:
 it is verified only by pushing it (NEXT_STEPS, _Mobile_).
+
+The first run (by hand, 2026-10-08): `node` green - turso's bindgen and aws-lc's
+C cross-compile for Android - and the whole app compiled for Android in release
+(11m 49s); `apk` then failed in Gradle. The generated project builds its Rust
+half by calling the Tauri CLI back the way `init` was run, and an `npx` init
+means `npm run tauri` from `desktop/`, which had no package.json (`npm` exit
+254). `desktop/package.json` now pins `@tauri-apps/cli` 2.11.5, the job installs
+it (`npm ci`), and init and build both go through `npm run tauri`.

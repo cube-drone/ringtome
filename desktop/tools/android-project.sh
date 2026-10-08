@@ -9,8 +9,11 @@
 # (.github/workflows/android.yml) and by hand before committing gen/android.
 set -euo pipefail
 
+# Through `npm run tauri` (desktop/package.json, the CLI pinned), never `npx`: the generated project
+# remembers how init was run and calls the CLI back the same way from Gradle - after an `npx` init
+# that was `npm run tauri` with no package.json to run it from (field-found, the first CI run).
 if [ ! -d gen/android ]; then
-    npx --yes @tauri-apps/cli@2 android init --ci
+    npm run tauri -- android init --ci
 fi
 
 xml=gen/android/app/src/main/res/xml/network_security_config.xml

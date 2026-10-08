@@ -1,0 +1,11 @@
+{
+    "name": "horse-drawing-tycoon-2-shell",
+    "private": true,
+    "description": "The Tauri CLI, pinned, for the Android build: the generated Android project calls back into it through `npm run tauri` (.github/workflows/android.yml).",
+    "scripts": {
+        "tauri": "tauri"
+    },
+    "devDependencies": {
+        "@tauri-apps/cli": "2.11.5"
+    }
+}
