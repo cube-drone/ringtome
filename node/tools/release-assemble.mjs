@@ -12,6 +12,10 @@
 //
 //   node node/tools/release-assemble.mjs <tag> <artifacts dir> <out dir> [notes file]
 //
+// RINGTOME_RELEASE_ANDROID=1 adds the Android app to what a whole set must hold - set by the workflow
+// exactly when the release built one (the `ANDROID_IN_RELEASE` variable, .github/workflows/release.yml),
+// so a release that switched it on can't ship without it, and one that didn't never asks.
+//
 // The artifacts dir is whatever the stashes unpacked to, in any layout; every file is found by its
 // name. The out dir receives each file ONCE, flat, under its published name (`publishedName`: spaces
 // turned to dots, as GitHub would anyway, and the Mac update's architecture) - the name
@@ -25,7 +29,9 @@ const REPO = process.env.GITHUB_REPOSITORY || 'cube-drone/ringtome';
 
 /// Everything a release carries, by what it is. `updater` marks the files an installed copy
 /// downloads to update itself: each must arrive with its `.sig`, or `latest.json` could not name it.
-function expected(tag) {
+/// `android` adds the phone's APK (.github/workflows/android.yml names it), which no updater
+/// fetches: a phone updates from wherever it was installed from.
+function expected(tag, { android = false } = {}) {
     const full = tag.replace(/^v/, '');
     const version = full.split('-')[0];
     const v = version.replaceAll('.', '\\.');
@@ -59,6 +65,14 @@ function expected(tag) {
             sha256: true,
         },
         { what: 'the server manifest', pattern: /^server-latest\.json$/ },
+        ...(android
+            ? [
+                  {
+                      what: 'the Android app',
+                      pattern: new RegExp(`^horse-drawing-tycoon-2-${v}-arm64\\.apk$`),
+                  },
+              ]
+            : []),
     ];
 }
 
@@ -131,10 +145,10 @@ function latestJson(tag, out, found, notes) {
     };
 }
 
-export function assemble(tag, artifacts, out, notes) {
+export function assemble(tag, artifacts, out, notes, options = {}) {
     const { names, problems } = gather(artifacts, out);
     const found = {};
-    for (const want of expected(tag)) {
+    for (const want of expected(tag, options)) {
         const hits = [...names].filter((n) => want.pattern.test(n));
         if (hits.length !== 1) {
             problems.push(
@@ -163,7 +177,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         process.exit(2);
     }
     const notes = notesFile ? fs.readFileSync(notesFile, 'utf8').trim() : '';
-    const { problems, found } = assemble(tag, artifacts, out, notes);
+    const android = process.env.RINGTOME_RELEASE_ANDROID === '1';
+    const { problems, found } = assemble(tag, artifacts, out, notes, { android });
     if (problems.length) {
         console.error(`not releasing ${tag} - the set is not whole:`);
         for (const p of problems) console.error(`  - ${p}`);

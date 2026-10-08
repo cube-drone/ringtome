@@ -1,0 +1,236 @@
+//! Horse Drawing Tycoon 2 for the desktop - and, since 2026-10-08, for Android: one window, one
+//! process, the Ringtome node inside it. A library, because that is how Tauri builds a phone app;
+//! the desktop's `main.rs` only calls [`run`].
+//!
+//! DESKTOP.md's architecture in three steps, and this file is all three: build the node, serve it
+//! on a loopback listener on the runtime the shell is already using, open the window at its URL.
+//! There is no child process here - no sidecar to orphan, no readiness poll, no second executable
+//! to ship or to notarize - because the node is a library (Stage 1) and this links it.
+//!
+//! What this file must never become is a second composition root. It decides three things that
+//! belong to an embedder - where the data lives, which port to ask for, and that the window exists;
+//! then it calls `ringtome_node::bind`. Everything else about what a node IS stays in the
+//! library, where `just ci` tests it.
+//!
+//! The environment is left to `RINGTOME_ENVIRONMENT`, which means a plain `just desktop` runs
+//! the node in dev mode and serves the UI from disk - edit `node/js`, hit reload, see it -
+//! while a packaged build says `prod` and eats the bundle baked into the binary. The tray, the
+//! hide-not-close window and start-at-login (Stage 5) are `tray.rs`; updates (Stage 6) are
+//! `update.rs`: fetched in the background, installed when nobody is looking.
+
+// The desktop's own furniture - notifications, the shell's requests (a save dialog, a folder
+// revealed), the tray and start-at-login, the self-updater - and none of it on a phone, where the
+// platform owns every one of those (Android: plans/MOBILE.md). `desktop` and `mobile` are the cfgs
+// tauri-build sets.
+#[cfg(desktop)]
+mod alerts;
+mod links;
+mod port;
+#[cfg(desktop)]
+mod requests;
+#[cfg(desktop)]
+mod tray;
+#[cfg(desktop)]
+mod update;
+
+use std::path::{Path, PathBuf};
+
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+/// The app: `main.rs` calls this on a desktop, and Android's activity calls it through the mobile
+/// entry point, which is why it is a library at all (Tauri builds a phone app from a `cdylib`).
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder
+        // First, so a second launch is answered before anything else is built.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_window(app);
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![tray::HIDDEN_ARG]),
+        ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on. Unless
+            // there is no tray to come back through, in which case close means quit - and the
+            // exit hook below still installs a pending update on the way out.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                if tray::present(app) {
+                    api.prevent_close();
+                    tray::hide_window(app);
+                } else {
+                    app.exit(0);
+                }
+            }
+        });
+    builder
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let data_dir = data_directory(app.handle())?;
+            // The key for this launch (DESKTOP.md, Stage 3), minted here and never written
+            // down, and handed to the window by an initialization script - which runs before any
+            // page script, so the client finds it already there. Since 2026-09-28 it signs
+            // nobody in (the window has the ordinary sign-in, like any browser): it only names
+            // the window, so the node knows whose alerts to show and that a request to open the
+            // system browser came from here. NOT the query string all the same: a URL lands in
+            // history, in a log, in a screenshot.
+            let token = ringtome_node::auth::mint_launch_token();
+            let (url, attention, requests) = start_node(&data_dir, token.clone())?;
+            // A phone has no tray, no login items and no hidden launch: the app is its window.
+            #[cfg(desktop)]
+            let hidden = tray::launched_hidden();
+            #[cfg(mobile)]
+            let (hidden, _) = (false, (attention, requests));
+            // Links that leave the app go to the system browser (links.rs): judged against the
+            // node's own origin, for navigations and for new-window requests alike.
+            let origin: tauri::Url = url.parse()?;
+            let (nav_app, nav_origin) = (app.handle().clone(), origin.clone());
+            let (win_app, win_origin) = (app.handle().clone(), origin.clone());
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
+                .on_navigation(move |target| links::navigation(&nav_app, &nav_origin, target))
+                .on_new_window(move |target, _features| {
+                    links::new_window(&win_app, &win_origin, target);
+                    tauri::webview::NewWindowResponse::Deny
+                })
+                .title("Horse Drawing Tycoon 2")
+                .inner_size(1280.0, 860.0)
+                .visible(!hidden)
+                .initialization_script(format!(
+                    "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};",
+                    serde_json::to_string(&token).expect("a hex string is JSON"),
+                    serde_json::to_string(std::env::consts::OS).expect("an OS name is JSON")
+                ))
+                .build()?;
+            #[cfg(desktop)]
+            {
+                update::start(app.handle().clone());
+                tray::build(app.handle(), &data_dir, &url);
+                alerts::start(app.handle().clone(), attention);
+                requests::start(app.handle().clone(), requests, url.clone());
+                // A hidden launch with nothing to come back through would be a node nobody can
+                // reach; without a tray, the window shows regardless.
+                if hidden && tray::present(app.handle()) {
+                    tray::hide_window(app.handle());
+                } else if hidden {
+                    tray::show_window(app.handle());
+                }
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("building the Horse Drawing Tycoon 2 desktop shell")
+        .run(|_app, _event| {
+            // The update-on-quit half of Stage 6: a downloaded update installs as the app goes,
+            // so the next launch is the new version and this one never restarted under anybody.
+            #[cfg(desktop)]
+            if let tauri::RunEvent::Exit = _event {
+                update::install_pending(_app);
+            }
+            // The dock icon clicked (macOS activates the app, and this is how Tauri says so): a
+            // hidden window comes back. A notification's own click is followed in alerts.rs.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                tray::show_window(_app);
+            }
+        });
+}
+
+/// Where this app keeps its node: the platform's own application-data directory, named by the
+/// bundle identifier - `~/Library/Application Support/net.lassam.ringtome` and its friends.
+///
+/// Deliberately NOT the node's own `./data` default, which is relative to the working directory:
+/// an app launched from the dock has no working directory worth the name, and an operator running
+/// the `ringtome` binary must never find that a desktop build moved their data. `RINGTOME_DATA_DIRECTORY`
+/// still wins when it is set, because that is how a developer points this at a scratch node.
+fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
+    if let Ok(said) = std::env::var("RINGTOME_DATA_DIRECTORY") {
+        return Ok(PathBuf::from(said));
+    }
+    Ok(app.path().app_data_dir()?)
+}
+
+/// Build the node, bind it, and hand back the URL the window should open - having started the
+/// server on Tauri's own runtime, which is the tokio runtime this app already has - and the
+/// node's two feeds to the shell, its attention (src/alerts.rs) and its requests
+/// (src/requests.rs), both subscribed before `serve` consumes the binding.
+///
+/// The port is the remembered one (see [`port`]); if something else took it since last launch the
+/// bind fails, and the answer to that is another port written down rather than a shell that will
+/// not start.
+fn start_node(
+    data_dir: &Path,
+    token: String,
+) -> anyhow::Result<(
+    String,
+    tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>,
+    tokio::sync::broadcast::Receiver<ringtome_node::shell::ShellRequest>,
+)> {
+    let mut config = ringtome_node::config::Config::from_env();
+    config.data_directory = data_dir.to_path_buf();
+    // A PACKAGED app is a prod node (DESKTOP.md, Stage 4), and a `cargo run` is a dev one - which
+    // is not a preference but a fact about where the UI comes from: a dev node serves the bundle
+    // from `node/js/target` by absolute path, which exists on the machine that compiled it and
+    // nowhere else. The build profile is the honest signal, and `RINGTOME_ENVIRONMENT` still wins
+    // for anyone who wants to argue with it.
+    if std::env::var("RINGTOME_ENVIRONMENT").is_err() && !cfg!(debug_assertions) {
+        config.environment = ringtome_node::config::Environment::Prod;
+    }
+    // ...and a packaged app is on the real network. The node's own default is `off` - right for
+    // an operator's binary, which is told where it lives - and the shell took it until
+    // 2026-09-25, so every release before then shipped a node that published nothing and
+    // resolved nobody: it could reach a friend only through an adoption code's inline address.
+    // Mainline (the real DHT, and iroh's relays with it) is what "find the people you follow"
+    // means for an app on somebody's laptop. A dev run keeps whatever `just desktop` gives it
+    // (the dev network's local directory), and `RINGTOME_DISCOVERY` wins over both.
+    if std::env::var("RINGTOME_DISCOVERY").is_err() && !cfg!(debug_assertions) {
+        config.discovery = ringtome_node::net::discovery::DiscoveryMode::Mainline;
+    }
+    // An app, not an operator's server: what makes this node a Device (its backups shown in the
+    // file manager, its files saved through the app). Since 2026-09-28 it is multi-user all the
+    // same - the ordinary sign-in, and the sign-up choices a server has - and the token below
+    // only names the window. Set here rather than read from the environment, because these two
+    // are facts about being an app rather than an operator's choice.
+    config.tenancy = ringtome_node::config::Tenancy::Single;
+    config.launch_token = Some(token);
+    // Loopback, always: the desktop node is this machine's, and the one place the password floor
+    // relaxes is a node that faces nobody (config.rs::password_min_len).
+    config.bind_address = "127.0.0.1".to_string();
+    config.port = port::remembered_or_fresh(data_dir)?;
+    // The shell's own target, said out loud: the library builds its default filter from its own
+    // crate name, so without this the lines below are logged to nobody. It is the crate this code
+    // compiles in - since the mobile split (2026-10-08) the shell's LIBRARY, Cargo.toml's [lib],
+    // not the binary nor the package - rename it, rename this.
+    ringtome_node::init_tracing_with(&config, &["horse_drawing_tycoon_2_lib"]);
+
+    // One retry, and it costs one assembly rather than two: the library binds its listener
+    // before it builds anything, so a taken port fails early and leaves nothing running.
+    let bound = match bind_blocking(config.clone()) {
+        Ok(bound) => bound,
+        Err(first) => {
+            tracing::warn!(port = config.port, error = %first, "the remembered port is taken; picking another");
+            config.port = port::pick_another(data_dir)?;
+            bind_blocking(config.clone())?
+        }
+    };
+    let url = format!("http://{}/", bound.addr());
+    let attention = bound.attention();
+    let requests = bound.shell_requests();
+    tracing::info!(%url, data_dir = %data_dir.display(), "ringtome desktop: node up");
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = ringtome_node::serve(bound).await {
+            tracing::error!(error = ?e, "the node stopped serving");
+        }
+    });
+    Ok((url, attention, requests))
+}
+
+/// The boot, awaited before the window exists - which is the whole readiness story: by the time
+/// there is a URL to open, the listener is bound and the router is assembled.
+fn bind_blocking(config: ringtome_node::config::Config) -> anyhow::Result<ringtome_node::Bound> {
+    tauri::async_runtime::block_on(ringtome_node::bind(config))
+}

@@ -1,0 +1,201 @@
+# The Android app: the desktop crate (desktop/, a library since 2026-10-08) built by Tauri into an
+# arm64 APK, the node inside it as on every other platform (plans/MOBILE.md).
+#
+# Built HERE and nowhere else (Curtis, 2026-10-08): the Android SDK, the NDK and a second target
+# directory of this tree don't fit beside the desktop one on a laptop that already holds ~200 GB of
+# build output. The laptop keeps only `adb`, to install what this makes and to read `adb logcat`.
+#
+# Three ways in, and two repository variables decide the automatic ones (Settings -> Secrets and
+# variables -> Actions -> Variables, or `gh variable set NAME --body true`):
+#
+# - every push, while `ANDROID_ON_PUSH` is `true` - for getting it working, and for a stretch of
+#   intense mobile work. Unset (or anything else) and a push builds nothing here.
+# - every release, while `ANDROID_IN_RELEASE` is `true`: release.yml calls this, and its `publish`
+#   then refuses a set without the APK - all or nothing, as for every other platform. Left unset
+#   until a push build is green, so a red Android build can never hold a desktop release back.
+# - by hand (Actions -> Android -> Run workflow), whatever the variables say.
+#
+# Two jobs, side by side. `node` cross-compiles the node library alone - no Tauri, no Gradle - which
+# is the fast answer to "does turso's bindgen and aws-lc's C build for Android", the known risk
+# (plans/MOBILE.md, "the known snags"). `apk` is the whole app, signed and stashed as an artifact.
+#
+# Signing: `ANDROID_KEYSTORE_BASE64` (the keystore, base64), `ANDROID_KEYSTORE_PASSWORD` and
+# `ANDROID_KEY_ALIAS`, repository secrets. Absent, the APK is signed with a key made for this run
+# alone - installable, but every build then has a different signature, and Android refuses to install
+# one over another: uninstall first, which deletes the app's data. A release refuses that (below).
+
+name: Android
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release:
+        description: "Called by release.yml: build whatever ANDROID_ON_PUSH says"
+        type: boolean
+        default: true
+
+# One build per branch at a time: a newer push makes the older one moot.
+concurrency:
+  group: android-${{ github.ref }}-${{ inputs.release && 'release' || github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' && !inputs.release }}
+
+env:
+  # The NDK's own clang for API 24 (Tauri's minimum), and the sysroot bindgen needs to read Android's
+  # headers rather than the runner's - turso's build script runs it (plans/MOBILE.md).
+  ANDROID_API: "24"
+
+jobs:
+  # Not in a release: there the APK is the whole question, and this would only repeat its compile.
+  node:
+    if: ${{ !inputs.release && (github.event_name == 'workflow_dispatch' || vars.ANDROID_ON_PUSH == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-node
+          cache-on-failure: true
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: node/js/package-lock.json
+
+      # The node bakes the UI into itself (`include_str!`), so the bundle exists before cargo runs.
+      - name: Build the UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
+
+      # The runner image carries the SDK and NDKs; this points cargo and the C builds at the NDK.
+      - name: The NDK's toolchain
+        run: |
+          ndk="${ANDROID_NDK_LATEST_HOME:?the runner image has no NDK}"
+          bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          clang="$bin/aarch64-linux-android${ANDROID_API}-clang"
+          {
+            echo "CC_aarch64_linux_android=$clang"
+            echo "CXX_aarch64_linux_android=${clang}++"
+            echo "AR_aarch64_linux_android=$bin/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$clang"
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          } >> "$GITHUB_ENV"
+          echo "NDK: $ndk"
+
+      - name: Cross-compile the node
+        run: cargo build --target aarch64-linux-android -p ringtome-node --lib
+
+  apk:
+    if: inputs.release || github.event_name == 'workflow_dispatch' || vars.ANDROID_ON_PUSH == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      # The runner's disk is the tightest part of this: the SDK image plus an LTO release build of
+      # the node. What a Rust build never uses goes first.
+      - name: Room on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/node_modules/@angular "$AGENT_TOOLSDIRECTORY/CodeQL"
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-apk
+          workspaces: desktop -> target
+          cache-on-failure: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: node/js/package-lock.json
+
+      - name: Build the UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
+
+      # Tauri finds the NDK by NDK_HOME and sets the C compilers itself; bindgen still wants the
+      # sysroot said.
+      - name: The NDK
+        run: |
+          ndk="${ANDROID_NDK_LATEST_HOME:?the runner image has no NDK}"
+          {
+            echo "NDK_HOME=$ndk"
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          } >> "$GITHUB_ENV"
+
+      - name: The Android project
+        working-directory: desktop
+        run: tools/android-project.sh
+
+      - name: Build
+        working-directory: desktop
+        run: npx --yes @tauri-apps/cli@2 android build --ci --apk --target aarch64
+
+      # Signed here rather than in Gradle, so the generated project needs no signing config: the
+      # unsigned APK, aligned, then signed with the keystore - or a key for this run alone (header).
+      - name: Sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE: ${{ inputs.release && 'true' || 'false' }}
+        run: |
+          unsigned=$(find desktop/gen/android -path '*release*' -name '*-unsigned.apk' | head -1)
+          [ -n "$unsigned" ] || { echo "::error::no unsigned release APK under desktop/gen/android"; find desktop/gen/android -name '*.apk'; exit 1; }
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          version=$(python3 -c "import json;print(json.load(open('desktop/tauri.conf.json'))['version'])")
+          mkdir -p out
+          apk="out/horse-drawing-tycoon-2-${version}-arm64.apk"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          elif [ "$RELEASE" = true ]; then
+            echo "::error::a release APK needs the ANDROID_KEYSTORE_* secrets: one signed with a throwaway key could never be updated"
+            exit 1
+          else
+            echo "::warning::no ANDROID_KEYSTORE_BASE64: signed with a key made for this run alone - uninstall the last build before installing this one"
+            KEYSTORE_PASSWORD=throwaway-$RANDOM$RANDOM
+            KEY_ALIAS=throwaway
+            keytool -genkeypair -keystore "$RUNNER_TEMP/release.keystore" -alias "$KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 30 -storepass "$KEYSTORE_PASSWORD" \
+              -dname "CN=Horse Drawing Tycoon 2 test build" -noprompt
+          fi
+          "$tools/zipalign" -f -p 4 "$unsigned" "$RUNNER_TEMP/aligned.apk"
+          KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" "$tools/apksigner" sign \
+            --ks "$RUNNER_TEMP/release.keystore" --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" --out "$apk" "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" verify "$apk"
+          rm -f "$RUNNER_TEMP/release.keystore"
+          ls -l out
+
+      # `android-release` is the name release.yml's `publish` gathers; a push build's artifact is
+      # where the phone downloads it from.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: out/*.apk
+          retention-days: 14
+          if-no-files-found: error

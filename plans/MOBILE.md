@@ -187,6 +187,35 @@ The known snags:
   [DESKTOP.md](DESKTOP.md) avoids by bundling Chromium is unavoidable on phones.
   Which brings us to the mirror.
 
+## The Android build (2026-10-08)
+
+The port started. The desktop crate is a library now (`desktop/src/lib.rs`, with
+Tauri's mobile entry point); `cfg(desktop)` fences what a phone doesn't have -
+the tray and start-at-login, the single-instance guard, the self-updater,
+desktop notifications and the shell's save-dialog requests
+
+- and their crates are desktop-only dependencies. The window loads the node at
+  `http://127.0.0.1:<port>` exactly as on a desktop, which Android refuses by
+  default: `desktop/tools/android-project.sh` gives the generated project a
+  network security config that allows cleartext to the loopback address and
+  nothing else.
+
+**It builds in CI only** (Curtis: the laptop is already near full with this
+tree's build output). `.github/workflows/android.yml` makes an arm64 APK, signed
+with the `ANDROID_KEYSTORE_*` secrets (or a throwaway key for a test build),
+stashed as the `android-release` artifact. Two repository variables decide when:
+`ANDROID_ON_PUSH=true` builds on every push, for getting it working and for
+stretches of mobile work; `ANDROID_IN_RELEASE=true` makes it part of every
+release, all or nothing like the other platforms. Its `node` job cross-compiles
+the node alone, the fast answer to the turso and aws-lc question below. The
+laptop keeps `adb` only, to install the APK and read `adb logcat`.
+
+Not done, and known: `gen/android` is generated per build until it is committed;
+the node boots in `setup` on Android's main thread, which risks a "not
+responding" kill on a slow first boot; nothing handles resume (iroh connections
+dead after the app was backgrounded); and the battery and cellular policy of
+open question 3 still doesn't exist.
+
 ## The mirror question
 
 **IndexedDB-on-WebKit is the most notorious compatibility surface on the web

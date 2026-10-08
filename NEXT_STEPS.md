@@ -376,6 +376,14 @@ while anyone types. Worst first:
 - oh this one's hard as fuck
 - idk defer defer
 - does this connect to a federated node or fully run the protocol in rust?
+- **Android, in CI only** (plans/MOBILE.md, _The Android build_): push the crate
+  split and `.github/workflows/android.yml`, then
+  `gh variable set ANDROID_ON_PUSH --body true` and get both jobs green - `node`
+  first (turso's bindgen, aws-lc's C). Then: make the signing keystore and set
+  `ANDROID_KEYSTORE_BASE64` / `_PASSWORD` / `ANDROID_KEY_ALIAS`; install the
+  artifact with `adb` and read `adb logcat`; commit `desktop/gen/android` once
+  it builds; boot the node off the main thread; reconnect on resume. Only then
+  `ANDROID_IN_RELEASE=true`, and `ANDROID_ON_PUSH` back off.
 
 ### Real-Time Chat
 

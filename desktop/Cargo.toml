@@ -11,6 +11,15 @@ publish = false
 name = "horse-drawing-tycoon-2"
 path = "src/main.rs"
 
+# The app itself is the library (2026-10-08, the Android build): a phone app is a `cdylib` its
+# activity loads, iOS would want the `staticlib`, and the desktop binary links the `rlib`. Its own
+# name, `_lib`, because a lib and a bin of one name collide in Windows' build output. The node's
+# tracing filter names this crate (src/lib.rs `start_node`) - rename it, rename that.
+[lib]
+name = "horse_drawing_tycoon_2_lib"
+path = "src/lib.rs"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 # ITS OWN WORKSPACE, following the spike's precedent (see ../spike-tauri/src-tauri/Cargo.toml).
 # Listed as a workspace member, Tauri and the whole webview stack would build on every
 # `cargo test` and every `just ci` run, and Linux CI would grow GTK and WebKitGTK dev packages
@@ -63,6 +72,12 @@ anyhow = "1"
 # never become an injection even if the minting ever changes shape.
 serde_json = "1"
 tracing = "0.1"
+# Links that leave the app open in the system browser (src/links.rs), driven from Rust.
+tauri-plugin-opener = "2"
+
+# The desktop's alone (src/lib.rs fences their modules with `cfg(desktop)`): a phone has no tray,
+# no login items, no second launch to answer, and updates from wherever it was installed from.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 # Stage 6 (DESKTOP.md): the updater fetches and verifies a newer release, the dialog is the one
 # question it asks ("restart now?"). Both are driven from Rust (src/update.rs), so neither needs
 # a capability granted to the webview.
@@ -75,5 +90,3 @@ tauri-plugin-single-instance = "2"
 # Desktop notifications whenever a badge would light (src/alerts.rs). Directly, not through the
 # Tauri plugin, whose desktop show() discards the handle that reports a click.
 notify-rust = "4.18"
-# Links that leave the app open in the system browser (src/links.rs), driven from Rust.
-tauri-plugin-opener = "2"

@@ -154,6 +154,29 @@ describe('assembling a release', () => {
         );
     });
 
+    it('asks for the Android app only when the release built one (ANDROID_IN_RELEASE)', () => {
+        const s = stashes();
+        try {
+            assert.deepEqual(assemble(TAG, s.artifacts, s.out, '').problems, [], 'not asked for');
+            const asked = assemble(TAG, s.artifacts, s.out, '', { android: true }).problems;
+            assert.deepEqual(
+                asked.map((p) => p.split(':')[0]),
+                ['the Android app'],
+                'asked for and missing',
+            );
+            const phone = path.join(s.artifacts, 'android-release');
+            fs.mkdirSync(phone, { recursive: true });
+            fs.writeFileSync(path.join(phone, 'horse-drawing-tycoon-2-0.1.7-arm64.apk'), 'apk');
+            assert.deepEqual(
+                assemble(TAG, s.artifacts, s.out, '', { android: true }).problems,
+                [],
+                'asked for and there',
+            );
+        } finally {
+            fs.rmSync(s.root, { recursive: true, force: true });
+        }
+    });
+
     it('refuses an updater file without its signature, a server node without its checksum, and a stale build', () => {
         let s = stashes(
             (n) =>

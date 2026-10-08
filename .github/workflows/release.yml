@@ -23,6 +23,10 @@
 # unsigned Windows one, each with a line in the log - a half-signed release is better than none.
 # Windows signs through Azure Artifact Signing with no secret at all: the job asks GitHub for an
 # OIDC token and Azure accepts it (`id-token: write` below), so there is nothing to paste or rotate.
+#
+# Android rides along while the `ANDROID_IN_RELEASE` repository variable is `true` (2026-10-08): the
+# `android` job calls android.yml, and `publish` then needs its APK like any other artifact. Unset,
+# the job is skipped and `publish` neither waits for it nor asks for the file.
 
 name: Release
 
@@ -723,9 +727,25 @@ jobs:
   # invisible first (the whole set checked, uploaded to a draft), then the two visible acts back to
   # back - the image's tags, then the release. A failure between those two is a re-run of this job,
   # which is safe to repeat: it reuses the draft, re-uploads with --clobber, re-tags the same digest.
+  # The phone (android.yml), only while ANDROID_IN_RELEASE is `true` - see the header.
+  android:
+    needs: preflight
+    if: vars.ANDROID_IN_RELEASE == 'true'
+    uses: ./.github/workflows/android.yml
+    with:
+      release: true
+    secrets: inherit
+
   publish:
-    needs: [build, server-sign, image]
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [build, server-sign, image, android]
+    # Every build succeeded - Android's too when it was asked for. `!cancelled()` because a skipped
+    # `android` would otherwise skip this job with it; the result checks put the all-or-nothing back.
+    if: >-
+      ${{ !cancelled() && startsWith(github.ref, 'refs/tags/')
+      && needs.build.result == 'success' && needs.server-sign.result == 'success'
+      && needs.image.result == 'success'
+      && (needs.android.result == 'success'
+          || (needs.android.result == 'skipped' && vars.ANDROID_IN_RELEASE != 'true')) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -743,7 +763,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: "{desktop-*,server-release}"
+          pattern: "{desktop-*,server-release,android-release}"
           path: artifacts
 
       # The notes `just release-*` wrote (the tagged commit's message), which also go into
@@ -751,6 +771,7 @@ jobs:
       - name: Is the set whole?
         env:
           NOTES: ${{ github.event.head_commit.message }}
+          RINGTOME_RELEASE_ANDROID: ${{ vars.ANDROID_IN_RELEASE == 'true' && '1' || '' }}
         run: |
           printf '%s\n' "$NOTES" > notes.txt
           node node/tools/release-assemble.mjs "$TAG" artifacts release notes.txt
@@ -768,6 +789,8 @@ jobs:
           done
 
       - name: Upload to a draft
+        env:
+          ANDROID: ${{ vars.ANDROID_IN_RELEASE == 'true' && '1' || '' }}
         run: |
           if ! gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
             {
@@ -776,6 +799,9 @@ jobs:
               echo "### Which download is which"
               echo
               echo "- **Horse Drawing Tycoon 2** (\`.dmg\`, \`.exe\`, \`.msi\`, \`.AppImage\`, \`.deb\`, \`.rpm\`) - the desktop app: a window and a tray, and it updates itself."
+              if [ "$ANDROID" = 1 ]; then
+                echo "- **\`horse-drawing-tycoon-2-...-arm64.apk\`** - the Android app, for a 64-bit ARM phone: install it from the phone (allowing installs from your browser). It doesn't update itself."
+              fi
               echo "- **\`ringtome-server-...-linux-x86_64\` / \`-aarch64\`** - the server node for a Linux host (glibc 2.28+): the node, and \`ringtome-supervisor\` to keep it running, updated and backed up. Also \`ghcr.io/cube-drone/ringtome:${TAG#v}\`. See [SERVER.md](https://github.com/${REPO}/blob/${TAG}/SERVER.md)."
               # The commit headers and what is what, and no more (Curtis, 2026-09-29): HISTORY.md
               # appended here was far too much text for a release page.

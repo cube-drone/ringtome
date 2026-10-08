@@ -18668,3 +18668,26 @@ Marquee's turbolinks embed - YouTube's nocookie embed, Spotify's embed and
 OpenStreetMap's export embed - now load where they are (`EMBEDS`, `is_embed`,
 https and exact host and path prefix), with a test; everything else still goes
 out.
+
+**2026-10-08 - An Android build, in CI only.** Curtis: an APK beside the Mac,
+Windows and Linux builds - compiled in CI rather than on a laptop already near
+full with this tree's build output; on every push "while we're getting it
+working or if we're doing intense mobile work", and otherwise "pinned to the
+release with the rest of the builds". The desktop crate is a library now
+(`desktop/src/lib.rs`, `run` with Tauri's mobile entry point; `main.rs` calls
+it), with the tray, autostart, single-instance, updater, dialog and notification
+pieces fenced by `cfg(desktop)` and their crates desktop-only dependencies; the
+node's tracing filter follows the code to the library's crate name. The window
+loads the in-process node over plain http to 127.0.0.1, which Android refuses by
+default: `desktop/tools/android-project.sh` generates the project when it is
+absent and gives it a network security config allowing cleartext to the loopback
+address only. `.github/workflows/android.yml` has two jobs: `node`
+cross-compiles the node library alone (the turso and aws-lc question, fast), and
+`apk` builds the arm64 APK with Tauri and signs it with the `ANDROID_KEYSTORE_*`
+secrets - or, for a test build, a key made for that run - as the
+`android-release` artifact. `ANDROID_ON_PUSH=true` (a repository variable)
+builds on every push; `ANDROID_IN_RELEASE=true` puts the APK in every release:
+release.yml calls the workflow, `publish` needs it, and `release-assemble.mjs`
+asks for the file (`RINGTOME_RELEASE_ANDROID`, with a test). Unset, a release
+neither waits for Android nor asks for it. None of the Android side has run yet:
+it is verified only by pushing it (NEXT_STEPS, _Mobile_).
