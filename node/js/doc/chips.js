@@ -82,7 +82,9 @@ export const NavChips = ({ nav }) => {
  * The panel is a line of the layout, not an overlay - dropped from its chip it spread under whatever
  * stood beside it (a narrow window's tab strip). Picking a chip or pressing elsewhere closes it -
  * by hiding, never unmounting: a chip whose button owns a modal (a confirm, a copy) keeps it
- * open, and a modal is a portal, so a press inside one reads as "elsewhere" too.
+ * open, and a modal is a portal, so a press inside one reads as "elsewhere" too. A chip whose
+ * answer is on itself - "link" turning to "copied" - wears `chip-keeps-menu`, and the menu stays
+ * open to show it (2026-10-08).
  */
 export function useChipMenu() {
     const narrow = useNarrow();
@@ -114,7 +116,10 @@ export function useChipMenu() {
                   class="chip-menu jag-line"
                   hidden=${!open}
                   ref=${panelRef}
-                  onClick=${(e) => e.target.closest('.chip-button') && setOpen(false)}
+                  onClick=${(e) =>
+                      e.target.closest('.chip-button') &&
+                      !e.target.closest('.chip-keeps-menu') &&
+                      setOpen(false)}
               >
                   ${deck}
               </div>`

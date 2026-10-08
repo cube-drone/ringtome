@@ -20,7 +20,7 @@ import { decoratedBodyUrl, FileDropper } from './upload.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
-import { docHref, shareUrl } from '../links.js';
+import { docHref, shareUrl, writeClipboard } from '../links.js';
 import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
@@ -72,7 +72,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
             : await shareUrl(docHref(root, docId));
         if (!p) return;
         try {
-            await navigator.clipboard.writeText(p);
+            await writeClipboard(p);
         } catch {
             return;
         }
@@ -258,6 +258,7 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                     <${Chip}
                         icon=${Icons.link}
                         on=${linkCopied}
+                        modifier="chip-keeps-menu"
                         word=${linkCopied ? t('chips.copied', 'copied') : t('chips.link', 'link')}
                         title=${
                             linkCopied

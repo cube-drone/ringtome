@@ -4,7 +4,7 @@
 // shareable URL a copy button hands over: the node's declared public URL when it has one, this
 // page's own origin otherwise - which is exactly what the address bar shows.
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { toBase58 } from './speakable.js';
@@ -69,9 +69,42 @@ export async function shareUrl(path) {
     return `${declared || window.location.origin}${path}`;
 }
 
+/// Put words on the clipboard, wherever the page is served from (Curtis, 2026-10-08: "link" did
+/// nothing in a phone's Firefox). `navigator.clipboard` exists only in a secure context - https, or
+/// localhost - so a page reached over the LAN at plain http has none, and the copy threw into a
+/// silent catch. There, and wherever the browser refuses it, the old road: a hidden field, selected,
+/// and `execCommand('copy')`, which still runs inside the press that asked for it. Throws when both
+/// are refused, so no caller says "copied" for nothing.
+export async function writeClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return;
+        } catch {
+            /* refused: the old road below */
+        }
+    }
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.top = '0';
+    field.style.opacity = '0';
+    document.body.appendChild(field);
+    field.select();
+    field.setSelectionRange(0, text.length); // iOS selects nothing without the range
+    let ok = false;
+    try {
+        ok = document.execCommand('copy');
+    } finally {
+        field.remove();
+    }
+    if (!ok) throw new Error('the clipboard refused');
+}
+
 /// Put an address on the clipboard, as its whole URL.
 export async function copyLink(path) {
-    await navigator.clipboard.writeText(await shareUrl(path));
+    await writeClipboard(await shareUrl(path));
 }
 
 /// The copy-a-link chip (2026-09-28): the thing's address, whole - what the address bar would show,
@@ -79,6 +112,11 @@ export async function copyLink(path) {
 /// app it unfolds (doc/turbolinks.js); pasted outside, it opens.
 export const CopyLinkChip = ({ path, title }) => {
     const [copied, setCopied] = useState(false);
+    // The public base asked for ahead of the press: a copy that waits on the network first may
+    // outlast the press's leave to touch the clipboard.
+    useEffect(() => {
+        base();
+    }, []);
     const copy = async (e) => {
         if (e) e.preventDefault();
         try {
@@ -92,6 +130,7 @@ export const CopyLinkChip = ({ path, title }) => {
     return html`<${Chip}
         icon=${Icons.link}
         on=${copied}
+        modifier="chip-keeps-menu"
         title=${copied ? t('links.copied', 'copied!') : title || t('links.copy-link', 'copy link')}
         word=${copied ? t('chips.copied', 'copied') : t('chips.link', 'link')}
         onClick=${copy}

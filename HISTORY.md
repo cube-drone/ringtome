@@ -18640,3 +18640,18 @@ back/close's height (`--search-h`), and a modal's close box at 2.4rem.
 colorway selectors be 1.3x bigger on mobile?" Under 900px each option's type,
 padding and three swatches, and the gaps between options, are 1.3x
 (`.colorway-option`, `.colorway-swatch`); the CRT switch beside them matches.
+
+**2026-10-08 - Copying a link works over plain http, and says so on a phone.**
+Curtis: "'link' and 'copy' buttons don't seem to work on mobile browsers (I'm
+using mobile firefox)". Two faults under "link". `navigator.clipboard` exists
+only in a secure context (https or localhost); a phone reaching a dev server
+across the LAN at plain http has none, so every copy threw into a silent catch.
+`writeClipboard` (links.js) now tries it and falls back to a hidden field,
+selected, and `execCommand('copy')`, still inside the press; it throws only when
+both refuse, so nothing says "copied" for nothing. Every clipboard write in the
+app goes through it - the link chips, an address, the assistant setup and an
+agent's key, the sync report. And on a phone the options menu closed the moment
+any chip was pressed, hiding the "copied" the link chip turns into; a chip that
+answers on itself wears `chip-keeps-menu` and the menu stays open
+(doc/chips.js). The link chip also asks for the public base when it mounts,
+rather than on the press, so the copy isn't waiting on the network.

@@ -37,7 +37,14 @@ import { useLedger, unlockedIn } from './unlocks.js';
 import { CrtToggle } from './crtpref.js';
 import { WarningLists } from './warnings.js';
 import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY, VIM_KEY } from './mirror/prefs.js';
-import { appHref, personHref, personaPageHref, LAUNCHER, shareUrl } from './links.js';
+import {
+    appHref,
+    personHref,
+    personaPageHref,
+    LAUNCHER,
+    shareUrl,
+    writeClipboard,
+} from './links.js';
 import { assistantSetup } from './pure/assistants.js';
 import { formatWhen } from './pure/when.js';
 
@@ -807,7 +814,7 @@ const AiAssistants = () => {
     if (!setup) return null;
     const copy = async (which) => {
         try {
-            await navigator.clipboard.writeText(setup[which]);
+            await writeClipboard(setup[which]);
             setCopied(which);
         } catch {
             /* select it by hand */
@@ -921,7 +928,7 @@ const ApiKeys = () => {
     };
     const copy = async () => {
         try {
-            await navigator.clipboard.writeText(made.key);
+            await writeClipboard(made.key);
             setCopied(true);
         } catch {
             /* select it by hand */

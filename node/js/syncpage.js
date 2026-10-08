@@ -16,6 +16,7 @@ import { t } from './i18n.js';
 import { agoUnit, agoWords } from './pure/ago.js';
 import { computerState, gapOf } from './pure/syncstatus.js';
 import { sizeLabel } from './pure/backups.js';
+import { writeClipboard } from './links.js';
 
 const html = htm.bind(h);
 
@@ -125,7 +126,7 @@ export const SyncSection = ({ root, keys, nameOf }) => {
     const copyReport = async () => {
         try {
             const { text } = await apiTextTitled(`/api/identity/${root}/sync/report`);
-            await navigator.clipboard.writeText(text);
+            await writeClipboard(text);
             setCopied(true);
             setTimeout(() => setCopied(false), 3000);
         } catch (e) {

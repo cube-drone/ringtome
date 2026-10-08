@@ -45,7 +45,7 @@ import {
     serialiseTags,
     TAG_MAX,
 } from './pure/contacttags.js';
-import { personHref, roomHref } from './links.js';
+import { personHref, roomHref, writeClipboard } from './links.js';
 import { useUnlocked } from './unlocks.js';
 
 const html = htm.bind(h);
@@ -577,7 +577,7 @@ export const AddressRow = ({ root, via, hosted, slug }) => {
     if (!address) return null;
     const copy = async () => {
         try {
-            await navigator.clipboard.writeText(address);
+            await writeClipboard(address);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
         } catch {
