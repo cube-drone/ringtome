@@ -24,6 +24,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
 import { autocompletion } from '@codemirror/autocomplete';
 import { marquee } from '@cube-drone/marquee-codemirror';
+import { vim as vimKeys } from '@replit/codemirror-vim';
 import { smallestChange } from '../pure/caret.js';
 
 const html = htm.bind(h);
@@ -53,12 +54,18 @@ export const LiveMarquee = ({
     // new ask), and focus the surface only when `focus` says so (Curtis, 2026-09-27: after an
     // image goes in, the caret lands right after it). Optional.
     caret,
+    // Vim keys (Curtis, 2026-10-07, Writer's application setting): @replit/codemirror-vim, in a
+    // Compartment of its own so the switch takes effect without remounting. Optional.
+    vim,
 }) => {
     const host = useRef(null);
     const view = useRef(null);
     // The marquee extension takes its profile at configure time; a Compartment lets a new
     // profile (turbolink data arriving) swap it live, rebuilding decorations in place.
     const marqueeConf = useRef(new Compartment());
+    // Vim's keymap must come FIRST to win key precedence (marquee-codemirror's README); it draws its
+    // own block cursor and its `:` line, superseding the extension's cursor while on.
+    const vimConf = useRef(new Compartment());
     // True while WE are dispatching the external replace - those doc changes are sync, not
     // typing, and must not reach onInput (which arms the dirty flag).
     const syncing = useRef(false);
@@ -84,6 +91,7 @@ export const LiveMarquee = ({
                 doc: body,
                 selection: at,
                 extensions: [
+                    vimConf.current.of(vim ? vimKeys() : []),
                     history(),
                     ...(keys && keys.length ? [keymap.of(keys)] : []),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -173,6 +181,12 @@ export const LiveMarquee = ({
         v.dispatch({ selection: { anchor: at }, scrollIntoView: true });
         if (caret.focus) v.focus();
     }, [caret && caret.seq]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // The vim switch, flipped in the settings while a document is open, takes effect in place.
+    useEffect(() => {
+        const v = view.current;
+        if (v) v.dispatch({ effects: vimConf.current.reconfigure(vim ? vimKeys() : []) });
+    }, [vim]);
 
     // A new profile identity (freshly resolved turbolink cards) reconfigures the extension;
     // decorations rebuild against the same untouched source.

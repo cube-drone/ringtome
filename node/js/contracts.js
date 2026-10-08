@@ -1,7 +1,7 @@
 // Contract names, in the reader's language (Curtis, 2026-10-04). The node keeps the contracts -
 // what each is worth, and whether it's done (bank.rs `CONTRACTS`) - and names them in English; the
 // words a person reads come from here, by the contract's id, so a translation reaches the
-// Contracts column, the ledger's line and the hrseMsg message alike. One literal `t()` per
+// Contracts column, the ledger's line and the Nags message alike. One literal `t()` per
 // contract, never a key built from the id (STYLE: never assemble a name at runtime) - the strings
 // tool reads them. A contract the node knows and this table doesn't yet wears the node's English.
 import { t } from './i18n.js';
@@ -52,7 +52,7 @@ const FINE_PRINT = {
     'follow-a-stranger': () => ({
         text: t(
             'contracts.follow-a-stranger-fine-print',
-            "Use the hrsePeople™ application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
+            "Use the Neighbors application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
         ),
         href: appHref('people'),
     }),
@@ -178,7 +178,7 @@ const FINE_PRINT = {
     'start-a-chat-for-two': () => ({
         text: t(
             'contracts.start-a-chat-for-two-fine-print',
-            "Open somebody's page in hrsePeople™ and start a private chat with them.",
+            "Open somebody's page in Neighbors and start a private chat with them.",
         ),
         href: appHref('people'),
     }),

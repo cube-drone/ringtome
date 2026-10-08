@@ -1,4 +1,4 @@
-// Unlocks (plans/UNLOCKS.md, 2026-10-05): a new persona sees the starting set - persona, hrseMsg,
+// Unlocks (plans/UNLOCKS.md, 2026-10-05): a new persona sees the starting set - persona, Nags,
 // hrseDrawing, hrseBank - and a locked app's address says what opens it; the Market sells the
 // rest, and a purchase opens its app.
 //
@@ -34,7 +34,7 @@ console.log(
 );
 console.log(
     'RESULT the starting set is there:',
-    ['hrseMsg', 'hrseDrawing', 'hrseBank'].every((n) => first.some((f) => f.includes(n))),
+    ['Nags', 'hrseDrawing', 'hrseBank'].every((n) => first.some((f) => f.includes(n))),
 );
 
 const notes = await s.boot('/ringtome/notes');
@@ -94,7 +94,7 @@ console.log(
         'horse-relax,witchlight',
 );
 
-// Bought from the Market itself: the card's button, and the dock grows hrsePeople at once.
+// Bought from the Market itself: the card's button, and the dock grows Neighbors at once.
 const market = await s.boot('/ringtome/bank');
 const mdoc = market.window.document;
 await waitFor(
@@ -111,8 +111,8 @@ card.querySelector('.bank-buy').dispatchEvent(
 );
 await waitFor(
     mdoc,
-    () => [...mdoc.querySelectorAll('.quickbar-hex')].some((b) => /hrsePeople/.test(b.title)),
-    'hrsePeople in the dock',
+    () => [...mdoc.querySelectorAll('.quickbar-hex')].some((b) => /Neighbors/.test(b.title)),
+    'Neighbors in the dock',
 );
 console.log(
     'RESULT bought, the card leaves the Market:',

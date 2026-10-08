@@ -70,7 +70,7 @@ impl RateLimiter {
         if count > limit {
             return Err(AppError::TooManyRequests(crate::msg!(
                 "rate_limit.rate-limit-for-action-exceeded",
-                "slow down a little ({action})",
+                "hold your horses ({action})",
                 action = action
             )));
         }

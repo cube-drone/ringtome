@@ -23,7 +23,7 @@ export const APPS = [
     { id: 'persona', name: 'hrsePersona™', icon: 'persona', live: true, system: true },
     {
         id: 'people',
-        name: 'hrsePeople™',
+        name: 'Neighbors',
         icon: 'people',
         live: true,
         // Bought in the Market (plans/UNLOCKS.md): the id of the unlock that opens the app.
@@ -69,11 +69,14 @@ export const APPS = [
             // was stamped at publish and the claim had nothing to say.
             date: true,
             modes: ['interactive', 'side', 'plain'],
+            // Vim keys are Writer's (Curtis, 2026-10-07: "my private Writer application"); the
+            // composer stays an ordinary text box.
+            vim: false,
         },
     },
     {
         id: 'notifications',
-        name: 'hrseMsg™',
+        name: 'Nags',
         icon: 'notifications',
         live: true,
         // The derived-events surface (PROJECT_PLAN, Arrival and Attention: the follow-edge
@@ -214,6 +217,7 @@ const DEFAULT_FEATURES = {
     publish: true, // the publish chip (PUBLISH.md): the feed composer has its own Post button
     linkColumn: false, // the Links column (doc/linkcol.js): what links to the open note, and what it links to
     bookColumn: false, // the Publish column (PROJECT_PLAN's Books): a notebook published as a book
+    vim: true, // vim keys in the interactive surface, where this browser turns them on (application settings)
 };
 
 /// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back

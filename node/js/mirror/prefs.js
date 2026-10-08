@@ -46,6 +46,10 @@ export const OPEN_ROOM_KEY = 'chat:room';
 /// 2026-09-27). Domain: 'off', or absent for on. This browser's, like every pref here.
 export const TOOLTIPS_KEY = 'tooltips';
 
+/// Vim keys in Writer's editor (Curtis, 2026-10-07), turned on from the application settings - the
+/// interactive surface only (doc/livemarquee.js). Domain: 'on' | 'off'; absent is off.
+export const VIM_KEY = 'editor:vim';
+
 /// Whether "your settings", the disclosure on your own page (persona.js PersonaMenu), was left open
 /// (Curtis, 2026-09-27). Domain: 'open' | 'closed'; absent is closed.
 export const SETTINGS_MENU_KEY = 'persona:settings-menu';

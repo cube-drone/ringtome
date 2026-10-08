@@ -170,7 +170,7 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
                   } - GOES TOO.`;
         if (
             !confirm(
-                `DELETE THE ${app.bucketNoun.toUpperCase()} “${bucket}”?\n\n${inside}\n\n` +
+                `WHOA THERE. DELETE THE ${app.bucketNoun.toUpperCase()} “${bucket}”?\n\n${inside}\n\n` +
                     `This is the big one. Are you sure?`,
             )
         )

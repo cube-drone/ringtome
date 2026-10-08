@@ -116,9 +116,9 @@ lightly federated, unapologetically Old Internet.
   and a _This computer_ tab of counts and a sync code to compare between
   devices. A design draft (2026-10-07); nothing built.
 - [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
-  starts with Drawing, the Bank and hrseMsg and buys the rest from the Market
-  with HorseBucks; unlocks on the private chain as ledger spends, gates in the
-  client only, contracts hidden until their unlock is owned. Built 2026-10-05.
+  starts with Drawing, the Bank and Nags and buys the rest from the Market with
+  HorseBucks; unlocks on the private chain as ledger spends, gates in the client
+  only, contracts hidden until their unlock is owned. Built 2026-10-05.
 - **The delivery-shape trio** — what kind of application this is, one document
   per candidate surface. Their relationship to canon differs and each says which
   at the top: **DESKTOP is canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri,

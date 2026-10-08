@@ -170,7 +170,7 @@ const StackItem = ({ root, row, onPost, posting }) => {
             !confirm(
                 t(
                     'apps.feed.discard-this-draft',
-                    'Discard this draft? It leaves the list right away.',
+                    'Whoa there - discard this draft? It leaves the list right away.',
                 ),
             )
         )

@@ -23,9 +23,9 @@ _Rulings_. Everything after that is Claude's proposal for him to correct.
 
    | Unlock                      | Price        | Opens                                                                                |
    | --------------------------- | ------------ | ------------------------------------------------------------------------------------ |
-   | Friends                     | H$ 1,000     | hrsePeople                                                                           |
+   | Friends                     | H$ 1,000     | Neighbors                                                                            |
    | Social                      | H$ 1,000     | hrseFeed, and publication everywhere                                                 |
-   | ~~hrseMsg~~                 | ~~H$ 1,000~~ | ~~hrseMsg~~ - struck by Ruling 6                                                     |
+   | ~~Nags~~                    | ~~H$ 1,000~~ | ~~Nags~~ - struck by Ruling 6                                                        |
    | Private notes               | H$ 2,500     | hrseWriter                                                                           |
    | Chat                        | H$ 5,000     | hrseChat                                                                             |
    | Taxonomy & tree publication | H$ 2,500     | the tree, and publishing a notebook                                                  |
@@ -79,10 +79,10 @@ and the one worn - a colourway chosen before it was for sale stays on.
 5. **Four more unlocks, on the same reading:** sealed posts & audiences,
    sharing, chats for two, and Writer's links. Search and format conversion stay
    open everywhere from the start.
-6. **hrseMsg is never gated** (on reading this draft): it is too load-bearing -
-   it is where a contract's payment is announced, and where everything else that
+6. **Nags is never gated** (on reading this draft): it is too load-bearing - it
+   is where a contract's payment is announced, and where everything else that
    happens to a person arrives. A new player starts with their persona,
-   hrseDrawing, hrseBank and hrseMsg.
+   hrseDrawing, hrseBank and Nags.
 7. **Node administrators can unlock everything** (2026-10-07, answering the open
    question below): "Node admins should have access to an 'unlock everything'
    (H$ 0) in their Market." A purchase, not a gift: it sits first in an
@@ -160,14 +160,14 @@ are to `node/js/`).
 The registry (`pure/apps.js` `APPS`) gains `unlock: '<id>'` on every app that
 needs one; `appsFor` and `consoleCellsFor`, which already filter `admin`, filter
 on it too - that covers the dock and the launcher. The narrow dock hardcodes
-hrseChat (`index.js` `narrowSlot`, beside hrseMsg's bell), so it reads the gate
+hrseChat (`index.js` `narrowSlot`, beside Nags's bell), so it reads the gate
 directly. The routes (`index.js` `<Router>`, `AppRoute`, `DocRoute`,
 `RoomRoute`, and the always-mounted feed beside the router) show the locked card
 for an unowned app.
 
 | App        | Unlock        |
 | ---------- | ------------- |
-| hrsePeople | Friends       |
+| Neighbors  | Friends       |
 | hrseFeed   | Social        |
 | hrseWriter | Private notes |
 | hrseChat   | Chat          |
@@ -289,7 +289,7 @@ being reached is not a feature you buy.
 
 Open from the first minute, whatever is owned (Rulings 4 and 6):
 
-- **hrseMsg:** the bell, the app, every notification.
+- **Nags:** the bell, the app, every notification.
 - **Personas, computers and backups:** making a second persona, bringing a
   persona to another computer (adoption), the backups on hrseDevice.
 - **Protection from other people:** blocking, muting, hiding lines from people

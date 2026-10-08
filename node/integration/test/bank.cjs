@@ -168,7 +168,7 @@ describe('HorseBucks: the ledger', function () {
                 (await (await cal(`api/identity/${calRoot}/notifications`)).json()).items || []
             ).filter((n) => n.kind === 'contract');
         const messages = await told();
-        assert.equal(messages.length, 1, 'one message in hrseMsg');
+        assert.equal(messages.length, 1, 'one message in Nags');
         assert.equal(JSON.parse(messages[0].detail).name, 'Draw a horse in hrseDrawing™');
         b = await bankOf();
         assert.equal(

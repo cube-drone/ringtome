@@ -379,7 +379,7 @@ const Inside = ({ session }) => {
         else if (inDoc && appHere) loc.route(appHref(appHere.id));
     };
     // A narrow window (under 900px, where the columns become tabs): three tiles, centred - home, the
-    // larger, between hrseMsg and hrseChat (Curtis, 2026-09-30: "without the taskbar's badges, we have
+    // larger, between Nags and hrseChat (Curtis, 2026-09-30: "without the taskbar's badges, we have
     // no way of knowing that we have incoming messages to deal with"). The two keep their badges and
     // their dock behaviour - the app you're in closes to the launcher.
     const narrow = useNarrow();
@@ -524,7 +524,7 @@ const Inside = ({ session }) => {
                     class="app-header-btn"
                     title=${
                         idBack === appHref('people')
-                            ? t('index.back-to-people', 'back to hrsePeople™')
+                            ? t('index.back-to-people', 'back to Neighbors')
                             : t('index.back-to-their-page', 'back to their page')
                     }
                     onClick=${() => loc.route(idBack)}

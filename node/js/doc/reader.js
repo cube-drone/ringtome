@@ -127,7 +127,15 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     };
 
     const remove = async () => {
-        if (!confirm('Delete this document? It leaves the list right away.')) return;
+        if (
+            !confirm(
+                t(
+                    'doc.delete-this-document',
+                    'Whoa there - delete this document? It leaves the list right away.',
+                ),
+            )
+        )
+            return;
         // Leave at once, as the editor does (doc/session.js): a refusal comes back said out loud,
         // with the document in the list again.
         const going = optimisticDoc(

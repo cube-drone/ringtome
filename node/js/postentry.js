@@ -260,7 +260,7 @@ const UnpublishButton = ({ item, current, onTakenDown }) => {
             <p class="feed-unpublish-warn">
                 ${t(
                     'postentry.this-removes-it-from-other',
-                    'It may take a while to disappear everywhere.',
+                    'Whoa there - it may take a while to disappear everywhere.',
                 )}
             </p>
             <div class="feed-unpublish-acts">

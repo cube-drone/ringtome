@@ -39,7 +39,7 @@ const ComputerLine = ({ computer, running, name }) => {
     if (state.kind === 'stuck')
         said = t(
             'syncpage.stuck',
-            'not making progress - the last {n} syncs left the two of them no closer. Sync now tries again; a sync report says why.',
+            'stalled - the last {n} syncs left the two of them no closer. Sync now tries again; a sync report says why.',
             { n: count(state.tries) },
         );
     else if (state.kind === 'pulling')

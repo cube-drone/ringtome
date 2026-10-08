@@ -585,7 +585,7 @@ impl Ledger {
                 "  reached {}, tried {}{}",
                 when(record.reached_ms, now),
                 when(record.tried_ms, now),
-                if record.stuck { ", STUCK - not making progress" } else { "" }
+                if record.stuck { ", STALLED - the last syncs got nowhere" } else { "" }
             );
             if let Some((theirs, ours)) = books.gaps.get(&(root.to_string(), (*peer).clone())) {
                 let _ = writeln!(

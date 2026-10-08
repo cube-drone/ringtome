@@ -233,7 +233,15 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     // of every list). Disarm the buffer FIRST - otherwise the doc-switch unmount flush would
     // save a fresh version onto the doc we're deleting. Then navigate away via onDeleted.
     const remove = async () => {
-        if (!confirm('Delete this document? It leaves the list right away.')) return;
+        if (
+            !confirm(
+                t(
+                    'doc.delete-this-document',
+                    'Whoa there - delete this document? It leaves the list right away.',
+                ),
+            )
+        )
+            return;
         const m = machine.current;
         m.dirty = false;
         if (m.timer) clearTimeout(m.timer);

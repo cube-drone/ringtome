@@ -1,5 +1,5 @@
 // Unlocks (plans/UNLOCKS.md; Curtis, 2026-10-05): the paywall as tutorial. A new player has their
-// persona, hrseDrawing, hrseBank and hrseMsg; the rest is bought in hrseBank's Market, a piece at a
+// persona, hrseDrawing, hrseBank and Nags; the rest is bought in hrseBank's Market, a piece at a
 // time, each with a word on what it opens. The node keeps the purchases (bank.rs `UNLOCKS`, a
 // private register) and sells them; the GATES are here - the client hides what isn't owned. It is
 // a tutorial, not a lock: the node serves every feature to anyone who asks.
@@ -196,7 +196,7 @@ const ABOUT = {
     friends: () =>
         t(
             'unlocks.friends-about',
-            'Unlocks hrsePeople™: look people up by their address, follow them, and keep track of everyone you know.',
+            'Unlocks Neighbors: look people up by their address, follow them, and keep track of everyone you know.',
         ),
     social: () =>
         t(

@@ -63,7 +63,7 @@ const MAGIC_WORDS: [&str; 9] = [
 // A contract is a goal: reach it and it pays, once. Completion is a fact on the persona's PRIVATE
 // chain (`contracts`: id -> the moment it was recorded) - it syncs, so every computer of the persona
 // knows it, pays it once (`contract` / id, like any line), and only the computer that RECORDED it
-// says so in hrseMsg: a message shown once, however many computers there are.
+// says so in Nags: a message shown once, however many computers there are.
 
 /// The private register completions are recorded in.
 const CONTRACTS_KV: &str = "contracts";
@@ -116,7 +116,7 @@ pub const CONTRACTS: [Contract; 21] = [
 
 // ---- unlocks (Curtis, 2026-10-05; plans/UNLOCKS.md) ----
 //
-// The paywall as tutorial: a new player has their persona, hrseDrawing, hrseBank and hrseMsg, and
+// The paywall as tutorial: a new player has their persona, hrseDrawing, hrseBank and Nags, and
 // buys the rest from the Market. A purchase is a fact on the PRIVATE chain (`unlocks`: id -> the
 // moment it was bought), so every computer of the persona owns it, and a spend in the ledger
 // (`unlock` / id), paid once. The gates are the client's: this is a tutorial, not a lock - the
@@ -540,7 +540,7 @@ async fn on_another_computer(data: &Store, root_hex: &str) -> Result<bool> {
     Ok(adopted)
 }
 
-/// A contract reached: recorded on the private chain first, then said in hrseMsg - by this
+/// A contract reached: recorded on the private chain first, then said in Nags - by this
 /// computer alone, the one that recorded it; a second computer, finding it recorded, pays and
 /// says nothing.
 async fn complete_contract(

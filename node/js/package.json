@@ -26,6 +26,7 @@
     "@cube-drone/marquee-turbolink": "^0.8.0",
     "@noble/hashes": "^2.2.0",
     "@phosphor-icons/react": "^2.1.10",
+    "@replit/codemirror-vim": "^6.4.0",
     "dexie": "^4.4.4",
     "gemoji": "^8.1.0",
     "htm": "^3.1.1",

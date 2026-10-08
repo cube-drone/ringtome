@@ -18062,3 +18062,46 @@ shared with you" to the persona that wrote it (in the desktop's log).
 Claim (`syncstatus.cjs`): a sealed post and a sealed room made on A open for the
 persona on B once B has synced - and fail ("the sealed post opens on the other
 computer") with the leg taken out.
+
+**2026-10-07 - Vim keys in Writer.** Curtis: "the codeMirror editor packaged
+with Marquee came with a vim mode option, right? I'd very much like to be able
+to enable vim mode on my private Writer application." Not packaged - marquee-
+codemirror's README documents it as a separate dependency, in a `Compartment`
+placed before every other keymap, and its demo toggles it - so
+`@replit/codemirror-vim` (6.4, with its peer `@codemirror/search`) joined
+node/js: about 35 KB of the 1.77 MB bundle, small enough to ship to everyone
+rather than load on demand.
+
+- **`LiveMarquee`'s `vim` prop**: the compartment first in the extensions,
+  reconfigured in place when the switch flips, so an open document follows it.
+- **The `vim` feature** (`pure/apps.js`): on by default, off for the feed's
+  composer - Writer is the app it was asked for, and the composer stays an
+  ordinary box. The interactive surface only; side-by-side and plain are
+  textareas.
+- **The switch**: "vim keys in hrseWriter™" in the application settings, a
+  per-browser pref (`VIM_KEY`) beside "disable tooltips".
+
+Gate: `just ui-check`, `just strings-check`. Not yet watched in a browser.
+
+**2026-10-07 - hrsePeople™ is Neighbors.** Curtis: "god dammit this has been
+staring me in the face for months". The app's name (`pure/apps.js`), the four
+catalog phrases that named it (the Friends unlock's blurb, two contracts' fine
+print, the back link), the harness probe, a doc comment and plans/UNLOCKS.md.
+The route id stays `people` - a stored key, like `notes` under Writer.
+
+**2026-10-07 - Horse puns, the approved four.** From an audit of the copy for
+puns missed (Curtis: "stalled" is in, hrseMsg -> Nags, "whoa there" for the
+delete confirmation, "hold your horses ... for anything where we tell the player
+to slow down"; the rest wait).
+
+- **Nags** is hrseMsg™'s name (`pure/apps.js`), and the docs, comments and the
+  unlocks probe say so. The route id stays `notifications`.
+- **Stalled**: a stuck pair's line on _Your computers_, and the sync report's.
+- **Whoa there** opens every confirmation before something is deleted or taken
+  down: a document (both doors, now through `t()` as
+  `doc.delete-this-document`), a notebook, a tree section, a feed draft, a chat
+  line, a room, a published post. Logging out and revoking a key keep their
+  words - confirmations, not deletions.
+- **Hold your horses** is the rate limiter's refusal (`rate_limit.rs`). The
+  unfurl budget's "link previews are paused" stays: that is the node slowing
+  down, not the player.

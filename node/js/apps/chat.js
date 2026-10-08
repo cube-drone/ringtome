@@ -1840,7 +1840,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                         /* Plain words for the person deciding (Curtis, 2026-09-19): the
                         machinery behind a takedown is CHAT.md's business, not theirs. */ ''
                     }
-                    ${t('apps.chat.do-you-want-to-take-the-room-down', 'Do you want to take the room down? It may take a while.')}
+                    ${t('apps.chat.do-you-want-to-take-the-room-down', 'Whoa there - take the room down? It may take a while.')}
                 </p>
                 <div class="feed-unpublish-acts">
                     <button class="feed-unpublish-go jag-line" disabled=${going} onClick=${takeDown}>
@@ -1955,7 +1955,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 title=${t('apps.chat.delete-this-line-title', 'delete this line')}
                 onClose=${() => setDeletingLine(null)}
             >
-                <p class="feed-unpublish-warn">${t('apps.chat.delete-this-line-question', 'Delete this line? It may take a while to disappear everywhere.')}</p>
+                <p class="feed-unpublish-warn">${t('apps.chat.delete-this-line-question', 'Whoa there - delete this line? It may take a while to disappear everywhere.')}</p>
                 <div class="feed-unpublish-acts">
                     <button class="feed-unpublish-go jag-line" onClick=${deleteLine}>${t('apps.chat.delete', 'delete')}</button>
                     <button class="feed-unpublish-no" onClick=${() => setDeletingLine(null)}>${t('apps.chat.keep-it', 'keep it')}</button>

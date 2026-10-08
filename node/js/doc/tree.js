@@ -573,7 +573,7 @@ export const WikiTree = ({
         const subs = descendants.length - 1;
         if (
             !confirm(
-                `Delete the section “${node.title || '(untitled)'}”?` +
+                `Whoa there - delete the section “${node.title || '(untitled)'}”?` +
                     (subs ? ` Its ${subs} sub-section${subs === 1 ? '' : 's'} go too.` : '') +
                     ` Nothing inside is deleted - it ${showUnfiled ? 'lands in unfiled' : 'moves to the top level'}.`,
             )

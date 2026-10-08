@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1655 phrases across 100 files.
+// 1657 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -183,7 +183,7 @@ export default {
     'apps.chat.block': 'block',
     'apps.chat.never-mind': 'never mind',
     'apps.chat.take-the-room-down': 'take the room down',
-    'apps.chat.do-you-want-to-take-the-room-down': 'Do you want to take the room down? It may take a while.',
+    'apps.chat.do-you-want-to-take-the-room-down': 'Whoa there - take the room down? It may take a while.',
     'apps.chat.taking-it-down': 'taking it down…',
     'apps.chat.take-it-down': 'take it down',
     'apps.chat.keep-it': 'keep it',
@@ -198,7 +198,7 @@ export default {
     'apps.chat.are-typing': 'are typing…',
     'apps.chat.editing-a-line': 'editing a line',
     'apps.chat.delete-this-line-title': 'delete this line',
-    'apps.chat.delete-this-line-question': 'Delete this line? It may take a while to disappear everywhere.',
+    'apps.chat.delete-this-line-question': 'Whoa there - delete this line? It may take a while to disappear everywhere.',
     'apps.chat.delete': 'delete',
     'apps.chat.wants-to-chat-with-you': '{who} wants to chat with you',
     'apps.chat.accept': 'accept',
@@ -286,7 +286,7 @@ export default {
     'apps.feed.sort-month': 'best this month',
     'apps.feed.sort-year': 'best this year',
     'apps.feed.still-arriving-from-another-computer': 'still arriving from another computer.',
-    'apps.feed.discard-this-draft': 'Discard this draft? It leaves the list right away.',
+    'apps.feed.discard-this-draft': 'Whoa there - discard this draft? It leaves the list right away.',
     'apps.feed.couldnt-discard-it': "couldn't discard it: {message}",
     'apps.feed.editing': 'editing',
     'apps.feed.discard-this-draft-title': 'discard this draft',
@@ -562,7 +562,7 @@ export default {
     'contracts.start-a-chat-for-two': 'Start a chat for two',
     'contracts.draw-a-horse-fine-print': 'Please open the hrseDrawing™ application and draw anything you like. It must contain at least three brush-strokes to qualify.',
     'contracts.post-a-horse-fine-print': 'Open the hrseFeed™ application, and create and share a post containing any drawing.',
-    'contracts.follow-a-stranger-fine-print': "Use the hrsePeople™ application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
+    'contracts.follow-a-stranger-fine-print': "Use the Neighbors application to find someone else who plays Horse Drawing Tycoon 2, and set some interest in them. The people you were following from the start don't count - only someone you've never followed before.",
     'contracts.get-a-follower-fine-print': "Get someone else who plays Horse Drawing Tycoon 2 to set some interest in you. The people who were following you from the start don't count, and neither do your own other personas.",
     'contracts.write-a-note-fine-print': 'Open the hrseWriter™ application and make a new note. It stays private - only you can see it.',
     'contracts.upload-an-image-fine-print': "Open the hrseFiles™ application and upload a picture of your own - a photo, a GIF, anything. A copy of one of your drawings doesn't count.",
@@ -580,7 +580,7 @@ export default {
     'contracts.bring-your-persona-fine-print': "Open your computers and bring this persona to a second one. A persona on two computers survives losing either - it's the best backup there is.",
     'contracts.seal-a-post-fine-print': "Publish a post only the people you choose can read: tick \"trusted only\" when you publish, or pick who it's for in hrseFeed™.",
     'contracts.share-a-post-fine-print': 'Find a post by somebody else in hrseFeed™ and share it with the people who follow you.',
-    'contracts.start-a-chat-for-two-fine-print': "Open somebody's page in hrsePeople™ and start a private chat with them.",
+    'contracts.start-a-chat-for-two-fine-print': "Open somebody's page in Neighbors and start a private chat with them.",
 
     // --- node/js/copyinto.js ---
     'copyinto.name-is-reserved': '"{name}" is kept for another app - choose another name',
@@ -860,6 +860,7 @@ export default {
     'doc.editor.keep-it': 'keep it',
 
     // --- node/js/doc/reader.js ---
+    'doc.delete-this-document': 'Whoa there - delete this document? It leaves the list right away.',
     'doc.session.couldnt-delete': "couldn't delete it: {message}",
     'doc.reader.pick-something-on-the-left': 'pick something on the left, or make something new.',
     'doc.reader.opening': 'opening…',
@@ -992,7 +993,7 @@ export default {
     'index.rotates-all-files-only-documents': 'rotates: all files / only documents / only media',
     'index.home': 'home',
     'index.filter-their-posts': 'filter their posts…',
-    'index.back-to-people': 'back to hrsePeople™',
+    'index.back-to-people': 'back to Neighbors',
     'index.back-to-their-page': 'back to their page',
     'index.close': 'close',
     'index.search': 'search…',
@@ -1144,6 +1145,7 @@ export default {
     'persona.content-control-2': 'content control',
     'persona.application-settings': 'application settings',
     'persona.disable-tooltips': 'disable tooltips',
+    'persona.vim-keys': 'vim keys in hrseWriter™ (the interactive editor)',
     'persona.settings-this-browser': 'these settings are for this browser',
     'persona.version': 'version',
     'persona.every-release': 'every release',
@@ -1227,7 +1229,7 @@ export default {
     'postentry.pin-this-to-the-top': 'pin this to the top of your page',
     'postentry.take-this-post-back-off': 'take this post back off the network',
     'postentry.take-it-down': 'take it down',
-    'postentry.this-removes-it-from-other': 'It may take a while to disappear everywhere.',
+    'postentry.this-removes-it-from-other': 'Whoa there - it may take a while to disappear everywhere.',
     'postentry.taking-it-down': 'taking it down…',
     'postentry.yes-take-it-down': 'yes, take it down',
     'postentry.keep-it': 'keep it',
@@ -1377,7 +1379,7 @@ export default {
 
     // --- node/js/syncpage.js ---
     'syncpage.just-now': 'just now',
-    'syncpage.stuck': 'not making progress - the last {n} syncs left the two of them no closer. Sync now tries again; a sync report says why.',
+    'syncpage.stuck': 'stalled - the last {n} syncs left the two of them no closer. Sync now tries again; a sync report says why.',
     'syncpage.pulling': 'syncing now - {n} brought in so far',
     'syncpage.serving': 'syncing now - sending it your things',
     'syncpage.failing-since': "can't be reached right now ({error}) - last reached {when}",
@@ -1441,7 +1443,7 @@ export default {
     'unlocks.horse-financial': 'Horse Financial',
     'unlocks.everything-about': "For the people who run this server: every app and every feature at once, without the tutorial. Free, and only offered to node administrators. Skip it if you'd rather play.",
     'unlocks.horse-financial-about': "Unlocks hrseBank™'s market to financial instruments like hrseBonds.",
-    'unlocks.friends-about': 'Unlocks hrsePeople™: look people up by their address, follow them, and keep track of everyone you know.',
+    'unlocks.friends-about': 'Unlocks Neighbors: look people up by their address, follow them, and keep track of everyone you know.',
     'unlocks.social-about': 'Unlocks hrseFeed™, and publishing everywhere: post your drawings and your writing for the people who follow you.',
     'unlocks.private-notes-about': 'Unlocks hrseWriter™: private notebooks, which you can choose to publish if you like.',
     'unlocks.chat-about': 'Unlocks hrseChat™: chatrooms of your own, and the chatrooms of the people you follow.',
@@ -1776,7 +1778,7 @@ export default {
     'pubkey.bad-what': 'bad {what}',
 
     // --- node/src/rate_limit.rs ---
-    'rate_limit.rate-limit-for-action-exceeded': 'slow down a little ({action})',
+    'rate_limit.rate-limit-for-action-exceeded': 'hold your horses ({action})',
 
     // --- node/src/record/bake.rs ---
     'record.bake.no-such-document': 'no such document',

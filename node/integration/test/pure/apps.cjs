@@ -302,7 +302,7 @@ describe('app registry', () => {
     // The settings app is for the people who look after the place (apps/device.js); the node
     // refuses everyone else at every door, and these keep the tile out of their way.
     // The Market's apps (plans/UNLOCKS.md, 2026-10-05): a new player starts with their persona,
-    // hrseDrawing, hrseMsg and hrseBank, and every other app shows once its unlock is bought.
+    // hrseDrawing, Nags and hrseBank, and every other app shows once its unlock is bought.
     describe('apps the Market sells', () => {
         it('starts with the starting set, and adds an app as its unlock is owned', () => {
             const none = () => false;

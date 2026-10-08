@@ -21,7 +21,7 @@ import { h } from 'preact';
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { readPref, setPref, viewModeKey } from '../mirror/prefs.js';
+import { readPref, setPref, viewModeKey, usePrefValue, VIM_KEY } from '../mirror/prefs.js';
 import { Chip, NavChips } from './chips.js';
 import { t } from '../i18n.js';
 import { publishWithBaking } from './publish.js';
@@ -99,6 +99,9 @@ export const Editor = ({
     uploadBucket = FILES_BUCKET,
 }) => {
     const feat = useGatedFeatures(root, features || featuresOf());
+    // Vim keys, where the app has them and this browser turned them on (application settings).
+    const vimPref = usePrefValue(root, VIM_KEY);
+    const vim = feat.vim && vimPref === 'on';
     // The save engine - loading, the buffer, autosave, divergence lookout - is the shared
     // document session; the Editor just composes chrome around it.
     const {
@@ -459,6 +462,7 @@ export const Editor = ({
                 ]}
                 initialSelection=${recallCursor(root, docId)}
                 caret=${caret}
+                vim=${vim}
                 onCursor=${(start, end) => rememberCursor(root, docId, start, end)}
                 onInput=${(text) => {
                     setBody(text);

@@ -36,7 +36,7 @@ import {
 import { useLedger, unlockedIn } from './unlocks.js';
 import { CrtToggle } from './crtpref.js';
 import { WarningLists } from './warnings.js';
-import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY } from './mirror/prefs.js';
+import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY, VIM_KEY } from './mirror/prefs.js';
 import { appHref, personHref, personaPageHref, LAUNCHER, shareUrl } from './links.js';
 import { assistantSetup } from './pure/assistants.js';
 import { formatWhen } from './pure/when.js';
@@ -754,6 +754,7 @@ export const AppSettings = ({ current }) =>
 // The page itself, once there is a persona whose prefs to read.
 const AppSettingsFor = ({ root }) => {
     const [tooltips, setTooltips] = usePref(root, TOOLTIPS_KEY, 'on');
+    const [vim, setVim] = usePref(root, VIM_KEY, 'off');
     return html`
         <div class="persona-page">
             <div class="persona-page-head">
@@ -766,6 +767,14 @@ const AppSettingsFor = ({ root }) => {
                     onChange=${(e) => setTooltips(e.currentTarget.checked ? 'off' : 'on')}
                 />
                 ${t('persona.disable-tooltips', 'disable tooltips')}
+            </label>
+            <label class="profile-setting">
+                <input
+                    type="checkbox"
+                    checked=${vim === 'on'}
+                    onChange=${(e) => setVim(e.currentTarget.checked ? 'on' : 'off')}
+                />
+                ${t('persona.vim-keys', 'vim keys in hrseWriter™ (the interactive editor)')}
             </label>
             <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
             <${AiAssistants} />

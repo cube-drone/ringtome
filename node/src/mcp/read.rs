@@ -716,7 +716,7 @@ impl Tools {
 }
 
 impl Tools {
-    /// A page of people off one of the persona's people doors, gated like hrsePeople (Friends).
+    /// A page of people off one of the persona's people doors, gated like Neighbors (Friends).
     async fn people(&self, parts: &Parts, args: PeopleArgs, door: &str, mine: bool) -> Answer {
         let persona = self.persona(parts, args.persona.as_deref()).await?;
         self.require(parts, &persona.root, "friends").await?;
