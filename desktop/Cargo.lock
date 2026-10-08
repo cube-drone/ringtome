@@ -1657,9 +1657,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-html-renderer"
-version = "0.8.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b91e0f2cb48fa947b35cd44b613625583c5d62c7aab7e4911e583964478c973"
+checksum = "d3d36ce663065e036341d79ca57d75e55f9d3c67e17d52a73bd519bbcff15f9f"
 dependencies = [
  "cube-drone-marquee-parser",
  "serde_json",
@@ -1668,9 +1668,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-markup"
-version = "0.8.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0aa68ed4acbca9787ce478395db711c8a832cb5efaa4a245acd6aab0c27643b2"
+checksum = "74c19f150e27546c8e660bfb895436dfe2a14904013e89be9e233375fb52073c"
 dependencies = [
  "base64 0.22.1",
  "cube-drone-marquee-html-renderer",
@@ -1683,9 +1683,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-parser"
-version = "0.8.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4433b7ae514f9878f26f1f16225d6c2f8ed3ba5efc688d38596a05c6168c3ba"
+checksum = "b6a527e796402899212f247467f2a052236cdc7683a6ecc7b60f54c596528aa4"
 dependencies = [
  "serde",
  "serde_json",
@@ -7038,7 +7038,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-desktop"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "anyhow",
  "notify-rust",
@@ -7057,7 +7057,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -7125,7 +7125,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "blake3",
  "ed25519-dalek 2.2.0",
