@@ -211,4 +211,60 @@ async function pullOnB(aliceOnB, root) {
             'its owner only',
         );
     });
+
+    it("a persona's own sealed post and sealed room, made on one computer, open on its other", async () => {
+        // The key memo was written only where a post was minted, so everything sealed on one
+        // computer stayed shut to the persona on the rest (Curtis, 2026-10-07: "none of the chats,
+        // none of the sealed posts"), though the draft carrying the key had synced across.
+        const alice = await makeUserFetch({ prefix: 'syncseal' });
+        const root = (await (await alice('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const draft = async (title) =>
+            (
+                await (
+                    await j(alice, `api/identity/${root}/docs`, {
+                        title,
+                        body: 'sealed words',
+                        format: 'marquee',
+                    })
+                ).json()
+            ).doc_id;
+        const note = await draft('a sealed post');
+        const sealed = await j(alice, `api/identity/${root}/docs/${note}/publish`, {
+            trusted_only: true,
+        });
+        assert.equal(sealed.status, 200, await sealed.clone().text());
+        const post = (await sealed.json()).post_id;
+        const kitchen = await draft('the kitchen');
+        await alice(`api/identity/${root}/docs/${kitchen}/buckets/chat`, { method: 'PUT' });
+        const made = await j(alice, `api/identity/${root}/docs/${kitchen}/publish`, {
+            room: true,
+            trusted_only: true,
+        });
+        assert.equal(made.status, 200, await made.clone().text());
+        const room = (await made.json()).post_id;
+        assert.equal(
+            (await alice(`id/${root}/docs/${post}/body`)).status,
+            200,
+            'it opens where it was made',
+        );
+
+        const aliceOnB = await makeUserFetch({ prefix: 'syncsealb', host: HOST_B });
+        const request = await (
+            await aliceOnB('api/identity/adopt/begin', { method: 'POST' })
+        ).json();
+        const grant = await (
+            await j(alice, `api/identity/${root}/nodes`, { code: request.code })
+        ).json();
+        await j(aliceOnB, 'api/identity/adopt/complete', { code: grant.code });
+        let body, door;
+        for (let i = 0; i < 60; i++) {
+            await aliceOnB(`api/identity/${root}/sync`, { method: 'POST' });
+            body = (await aliceOnB(`id/${root}/docs/${post}/body`)).status;
+            door = (await aliceOnB(`api/identity/${root}/rooms/${root}/${room}`)).status;
+            if (body === 200 && door === 200) break;
+            await new Promise((r) => setTimeout(r, 250));
+        }
+        assert.equal(body, 200, 'the sealed post opens on the other computer');
+        assert.equal(door, 200, 'and so does the sealed room');
+    });
 });

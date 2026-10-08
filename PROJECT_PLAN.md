@@ -4472,13 +4472,16 @@ _Contact tags_, ruling 4.
 **The key is the only gated thing.** It lives on the draft's private meta
 (`trusted_key`, device-durable, excluded from publish replication) and in the
 node's `post_keys` memo - the author's node at mint, under the post id and every
-twin id; a reader's node once the key lane teaches it. The HTTP body door
-decrypts for a persona the seal admits; node to node, `WantKey`/`Key` on the
-fragment lane names the persona asking, and the author's node releases only when
-that persona is admitted and the dialing endpoint serves it. "Not here" and "not
-for you" answer identically. Trust published later opens older posts; trust
-withdrawn closes future serving, and a key already released cannot be recalled -
-delivered copies are the honest-parties floor.
+twin id; the author's other computers from the draft once it syncs to them (the
+fold's `own_keys_leg`, 2026-10-07 - until then a post sealed on one computer
+stayed shut to its own author on the rest); a reader's node once the key lane
+teaches it. The HTTP body door decrypts for a persona the seal admits; node to
+node, `WantKey`/`Key` on the fragment lane names the persona asking, and the
+author's node releases only when that persona is admitted and the dialing
+endpoint serves it. "Not here" and "not for you" answer identically. Trust
+published later opens older posts; trust withdrawn closes future serving, and a
+key already released cannot be recalled - delivered copies are the
+honest-parties floor.
 
 **What the surfaces show.** A sealed post its reader cannot open never shows - a
 hollow card is an advertisement for a refusal - filtered at read, so the same

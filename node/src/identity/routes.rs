@@ -3415,98 +3415,19 @@ pub(crate) async fn held_public_header(
         .map_err(AppError::Internal)
 }
 
-/// Everything a mint owes after the header lands (PUBLISH.md lifted this out of the publish
-/// handler so the scheduled-publish sweep owes exactly the same): the reply's pins and
-/// comment notice, the sealing key's node memo, the draft's annotations restated in public,
-/// and the schedule mark cleared.
-pub(crate) async fn after_posted(
+/// The sealing key's node memo for one post minted from `draft` (PROJECT_PLAN's Post visibility
+/// slice 2b): the key, its audience and members, under the post's id and every twin's. Written at
+/// the mint by `after_posted`, and on the persona's OTHER computers by `memo_own_keys` - the draft's
+/// copy of the key reaches every one of them, and this is what makes it a key they can use.
+pub(crate) async fn memo_post_key(
     state: &AppState,
     data: &store::Store,
     root: &str,
     draft_id: &[u8; 16],
     post_id: [u8; 16],
-    reply: Option<crate::record::documents::ReplyLinks>,
-    // The mint flags ride along for symmetry with the handler; nothing here reads them
-    // any more - the key memo asks the draft, not the request.
-    flags: crate::record::documents::PublishFlags,
-) -> Result<(), AppError> {
-    let doc_id = *draft_id;
-    let state = state.clone();
+) {
     let root = root.to_string();
-    // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
-    // parent and the thread root are shared outright, ordinary pointers, crowd
-    // counts and all. Deduped when the parent is the root; your OWN posts pin
-    // nothing (they are already yours to serve, and a persona does not rebroadcast
-    // itself). Best-effort: the reply is on the chain either way, and a failed pin
-    // is re-mintable by sharing - a pin failure must not unsay the words.
-    if let Some((parent, root_link)) = reply {
-        let self_root = hex_fixed::<32>(&root, "root")?;
-        // The parent pin is QUIET (announce: false): the comment notice below is
-        // the same act said properly. The root pin - the nested case's second
-        // pointer - announces as an ordinary share when the root's author is
-        // somebody ELSE (for them the news IS "your post got passed along"), and
-        // stays quiet when the parent's author owns the root too (Curtis,
-        // 2026-08-29: answering someone's reply in their own thread rang them
-        // twice - "replied" and "shared" - for one act).
-        for (author, doc, announce) in
-            [(parent.0, parent.1, false), (root_link.0, root_link.1, root_link.0 != parent.0)]
-        {
-            if author == self_root || (announce && (author, doc) == parent) {
-                continue;
-            }
-            if let Err(e) = share_one(&state, data, &root, author, doc, announce).await {
-                tracing::warn!(author = %hex::encode(author), error = ?e,
-                    "a reply's pin did not mint; the reply stands, share by hand");
-            }
-        }
-        // The comment notice (PROJECT_PLAN's Replies slice 4): first-class, to the PARENT's
-        // author, carrying the reply's own signed header as evidence - the claim
-        // verify_claim checks against the recipient's name. Best-effort like the
-        // pins: the reply is on the chain either way. The follow-edge gate at the
-        // recipient drops this when they already pull us (the derived fold speaks
-        // there), so queueing unconditionally is correct, not chatty.
-        if parent.0 != self_root {
-            match crate::record::documents::public_header_entry(data.db(), &post_id).await {
-                Ok(Some(entry)) => {
-                    let parent_hex = hex::encode(parent.0);
-                    match data
-                        .notices()
-                        .seal(
-                            &parent.0,
-                            &entry,
-                            ringtome_proto::deliver::notice_kind::COMMENT,
-                            state.config.pow_requested_bits,
-                        )
-                        .await
-                    {
-                        Ok(envelope) => {
-                            if let Err(e) =
-                                crate::outbox::queue(&state.node_db, &root, &parent_hex, &envelope)
-                                    .await
-                            {
-                                tracing::warn!(author = %parent_hex, error = ?e,
-                                    "could not queue a comment notice");
-                            }
-                        }
-                        Err(e) => tracing::warn!(author = %parent_hex, error = ?e,
-                            "could not seal a comment notice"),
-                    }
-                }
-                Ok(None) => {
-                    tracing::warn!("the reply's own header is not readable; no comment notice")
-                }
-                Err(e) => tracing::warn!(error = ?e,
-                    "could not read the reply's header for its comment notice"),
-            }
-            // Knock now, the share path's eager idiom.
-            let eager = state.clone();
-            tokio::spawn(async move {
-                if let Err(e) = crate::outbox::sweep(eager).await {
-                    tracing::debug!(error = ?e, "eager comment-notice delivery failed");
-                }
-            });
-        }
-    }
+    let doc_id = *draft_id;
     // The sealing key's node memo (PROJECT_PLAN's Post visibility slice 2b): the author's node
     // remembers at mint so the body door and the key lane answer without a
     // private-chain read per request. Best-effort: the draft's copy is durable.
@@ -3613,6 +3534,175 @@ pub(crate) async fn after_posted(
             }
         }
     }
+}
+
+/// The fold's leg for `memo_own_keys`: on a computer hosting the persona, whenever the drafts'
+/// private meta (`DOC_META_PRIVATE`, where a draft's key and its `published_as` live) has moved
+/// since the leg last ran - and once per persona per process, so an upgraded computer mends
+/// itself at its first fold.
+pub(crate) async fn own_keys_leg(state: &AppState, root: &str) {
+    static SEEN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, u64>>> =
+        std::sync::LazyLock::new(Default::default);
+    if !crate::identity::is_agented(&state.node_db, root).await.unwrap_or(false) {
+        return;
+    }
+    let Ok(chains) = crate::net::frontier::memo_chains(&state.node_db, root).await else { return };
+    let mark: u64 = chains
+        .iter()
+        .filter(|c| c.1 == ringtome_proto::registry::service::DOC_META_PRIVATE)
+        .map(|c| c.4 + 1)
+        .sum();
+    if SEEN.lock().map(|s| s.get(root) == Some(&mark)).unwrap_or(false) {
+        return;
+    }
+    let Ok(data) = store::open_agented(state, root).await else { return };
+    match memo_own_keys(state, &data, root).await {
+        Ok(_) => {
+            if let Ok(mut seen) = SEEN.lock() {
+                seen.insert(root.to_string(), mark);
+            }
+        }
+        Err(e) => {
+            tracing::warn!(root = %root, error = ?e, "remembering this persona's own keys failed")
+        }
+    }
+}
+
+/// The persona's own sealing keys, from its own drafts, on a computer that hosts it (2026-10-07:
+/// Curtis's desktop "can't see any of the content that HorseDrawingTycoon sealed - none of the
+/// chats, none of the sealed posts"). The key memo was written only where a post was minted, and
+/// `idface::key_for` reads only the memo - so every sealed post and room made on one computer was
+/// shut to the persona on all its others, though the draft carrying the key had synced to them.
+/// Each published draft that holds a key and whose post this node has no key for gets the mint's
+/// memo now. Run by the fold, so it follows the private chains in.
+pub(crate) async fn memo_own_keys(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+) -> Result<usize, AppError> {
+    let mut noted = 0;
+    for (draft, key) in data.annotations().docs_with_field(store::TRUSTED_KEY).await? {
+        if key.trim().is_empty() {
+            continue;
+        }
+        let Some(post) = data
+            .annotations()
+            .field(&draft, store::PUBLISHED_AS)
+            .await?
+            .and_then(|p| hex::decode(p.trim()).ok())
+            .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        else {
+            continue;
+        };
+        if crate::postkeys::lookup(&state.node_db, root, &hex::encode(post))
+            .await
+            .map_err(AppError::Internal)?
+            .is_some()
+        {
+            continue;
+        }
+        memo_post_key(state, data, root, &draft, post).await;
+        noted += 1;
+    }
+    if noted > 0 {
+        tracing::info!(root = %root, posts = noted, "remembered this persona's own sealing keys from its drafts");
+    }
+    Ok(noted)
+}
+
+/// Everything a mint owes after the header lands (PUBLISH.md lifted this out of the publish
+/// handler so the scheduled-publish sweep owes exactly the same): the reply's pins and
+/// comment notice, the sealing key's node memo, the draft's annotations restated in public,
+/// and the schedule mark cleared.
+pub(crate) async fn after_posted(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    draft_id: &[u8; 16],
+    post_id: [u8; 16],
+    reply: Option<crate::record::documents::ReplyLinks>,
+    // The mint flags ride along for symmetry with the handler; nothing here reads them
+    // any more - the key memo asks the draft, not the request.
+    flags: crate::record::documents::PublishFlags,
+) -> Result<(), AppError> {
+    let doc_id = *draft_id;
+    let state = state.clone();
+    let root = root.to_string();
+    // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
+    // parent and the thread root are shared outright, ordinary pointers, crowd
+    // counts and all. Deduped when the parent is the root; your OWN posts pin
+    // nothing (they are already yours to serve, and a persona does not rebroadcast
+    // itself). Best-effort: the reply is on the chain either way, and a failed pin
+    // is re-mintable by sharing - a pin failure must not unsay the words.
+    if let Some((parent, root_link)) = reply {
+        let self_root = hex_fixed::<32>(&root, "root")?;
+        // The parent pin is QUIET (announce: false): the comment notice below is
+        // the same act said properly. The root pin - the nested case's second
+        // pointer - announces as an ordinary share when the root's author is
+        // somebody ELSE (for them the news IS "your post got passed along"), and
+        // stays quiet when the parent's author owns the root too (Curtis,
+        // 2026-08-29: answering someone's reply in their own thread rang them
+        // twice - "replied" and "shared" - for one act).
+        for (author, doc, announce) in
+            [(parent.0, parent.1, false), (root_link.0, root_link.1, root_link.0 != parent.0)]
+        {
+            if author == self_root || (announce && (author, doc) == parent) {
+                continue;
+            }
+            if let Err(e) = share_one(&state, data, &root, author, doc, announce).await {
+                tracing::warn!(author = %hex::encode(author), error = ?e,
+                    "a reply's pin did not mint; the reply stands, share by hand");
+            }
+        }
+        // The comment notice (PROJECT_PLAN's Replies slice 4): first-class, to the PARENT's
+        // author, carrying the reply's own signed header as evidence - the claim
+        // verify_claim checks against the recipient's name. Best-effort like the
+        // pins: the reply is on the chain either way. The follow-edge gate at the
+        // recipient drops this when they already pull us (the derived fold speaks
+        // there), so queueing unconditionally is correct, not chatty.
+        if parent.0 != self_root {
+            match crate::record::documents::public_header_entry(data.db(), &post_id).await {
+                Ok(Some(entry)) => {
+                    let parent_hex = hex::encode(parent.0);
+                    match data
+                        .notices()
+                        .seal(
+                            &parent.0,
+                            &entry,
+                            ringtome_proto::deliver::notice_kind::COMMENT,
+                            state.config.pow_requested_bits,
+                        )
+                        .await
+                    {
+                        Ok(envelope) => {
+                            if let Err(e) =
+                                crate::outbox::queue(&state.node_db, &root, &parent_hex, &envelope)
+                                    .await
+                            {
+                                tracing::warn!(author = %parent_hex, error = ?e,
+                                    "could not queue a comment notice");
+                            }
+                        }
+                        Err(e) => tracing::warn!(author = %parent_hex, error = ?e,
+                            "could not seal a comment notice"),
+                    }
+                }
+                Ok(None) => {
+                    tracing::warn!("the reply's own header is not readable; no comment notice")
+                }
+                Err(e) => tracing::warn!(error = ?e,
+                    "could not read the reply's header for its comment notice"),
+            }
+            // Knock now, the share path's eager idiom.
+            let eager = state.clone();
+            tokio::spawn(async move {
+                if let Err(e) = crate::outbox::sweep(eager).await {
+                    tracing::debug!(error = ?e, "eager comment-notice delivery failed");
+                }
+            });
+        }
+    }
+    memo_post_key(&state, data, &root, &doc_id, post_id).await;
     // The draft's annotations, restated in public about the new post (PROJECT_PLAN's Public annotations
     // slice 1) - best-effort, like the pins: a label must not unsay the words.
     {

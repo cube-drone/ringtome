@@ -381,6 +381,8 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
         crate::net::subscriptions::refresh_root(state, root).await;
         crate::replies::curation_refresh_root(state, root).await;
     }
+    // The persona's own sealing keys, from drafts that came here from its other computers.
+    crate::identity::own_keys_leg(state, root).await;
     let t_ledger = t.elapsed();
     tracing::debug!(
         root = %root,

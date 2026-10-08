@@ -18040,3 +18040,25 @@ step, the repair mends exactly it, and a stranger gets 404. Unit: stuck's rule,
 the hold and its forgiveness, the report's lines; pure: stuck beats "syncing
 now". Not found yet (NEXT_STEPS): why the server's pushes also arrived as
 resends - the desktop's next report will say.
+
+**2026-10-07 - A persona's own sealed things, on its other computers.** Curtis:
+the desktop "can't see any of the content that HorseDrawingTycoon sealed - none
+of the chats, none of the sealed posts... they're its own unsealing keys!" Not
+the resend loop - every sealed thing, not the newest. A sealed post's key lives
+on its draft (`trusted_key`, which syncs to every computer of the persona) and
+in the node's `post_keys` memo, which only the minting node ever wrote; and
+`idface::key_for` answers the persona's own asks from the memo alone. So the key
+reached the desktop and was never a key it could use: the body door said "not
+shared with you" to the persona that wrote it (in the desktop's log).
+
+- **`memo_post_key`**, lifted out of `after_posted` whole (key, audience,
+  members, every twin), and **`memo_own_keys`**: each published draft holding a
+  key whose post has no memo here gets the mint's memo now.
+- **The fold's `own_keys_leg`** runs it for a persona this node hosts, whenever
+  its `DOC_META_PRIVATE` chains have moved - and once per process, so an
+  upgraded computer mends itself at its first fold. PROJECT_PLAN's _Post
+  visibility_ says so.
+
+Claim (`syncstatus.cjs`): a sealed post and a sealed room made on A open for the
+persona on B once B has synced - and fail ("the sealed post opens on the other
+computer") with the leg taken out.
