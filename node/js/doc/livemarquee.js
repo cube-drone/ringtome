@@ -24,10 +24,31 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
 import { autocompletion } from '@codemirror/autocomplete';
 import { marquee } from '@cube-drone/marquee-codemirror';
-import { vim as vimKeys } from '@replit/codemirror-vim';
+import { vim as vimKeys, Vim } from '@replit/codemirror-vim';
 import { smallestChange } from '../pure/caret.js';
 
 const html = htm.bind(h);
+
+// Vim keys, whole (Curtis, 2026-10-07). Vim hides the browser's own selection and draws nothing
+// in its place: CodeMirror's `drawSelection` must, or a visual selection doesn't show at all (the
+// vim package's README: "make sure you include drawSelection... to correctly render the selection
+// in visual mode"). And block-visual (Ctrl-V) is one range per line, which CodeMirror collapses to
+// one unless the state allows several - `basicSetup` does, and this editor doesn't use it.
+const vimMode = () => [vimKeys(), drawSelection(), EditorState.allowMultipleSelections.of(true)];
+
+// `:w` saves now (Curtis, 2026-10-08), rather than waiting out the autosave's debounce. Ex commands
+// are global to the vim package, so each surface files its save under its own view, and the
+// command finds the one it was typed in (`cm6`, the view behind vim's CodeMirror adapter).
+const savers = new WeakMap();
+Vim.defineEx('write', 'w', (cm) => savers.get(cm.cm6)?.());
+
+// A drawn selection in the theme's own accent, washed out, rather than CodeMirror's fixed light
+// greys - which every dark theme here would wear badly. Vim's and the placeholder surfaces' alike.
+const drawnSelection = EditorView.theme({
+    // `&.cm-editor`: one class more than the base theme's light/dark-scoped rules, so this wins.
+    '&.cm-editor .cm-selectionBackground, &.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground':
+        { background: 'color-mix(in srgb, var(--teal) 30%, transparent)' },
+});
 
 export const LiveMarquee = ({
     body,
@@ -54,6 +75,8 @@ export const LiveMarquee = ({
     // new ask), and focus the surface only when `focus` says so (Curtis, 2026-09-27: after an
     // image goes in, the caret lands right after it). Optional.
     caret,
+    // Save now, whatever the debounce says: vim's `:w`. Optional.
+    onSave,
     // Vim keys (Curtis, 2026-10-07, Writer's application setting): @replit/codemirror-vim, in a
     // Compartment of its own so the switch takes effect without remounting. Optional.
     vim,
@@ -72,7 +95,7 @@ export const LiveMarquee = ({
     // Fresh callbacks every render, stable identity for the extensions (the timer-and-unmount
     // stale-closure lesson from doc/editor.js, applied here).
     const hooks = useRef({});
-    hooks.current = { onInput, onBlur, onCursor };
+    hooks.current = { onInput, onBlur, onCursor, onSave };
 
     // Built at commit, like the body and caret effects below - which run in declaration order
     // and so find the view already there.
@@ -91,7 +114,8 @@ export const LiveMarquee = ({
                 doc: body,
                 selection: at,
                 extensions: [
-                    vimConf.current.of(vim ? vimKeys() : []),
+                    vimConf.current.of(vim ? vimMode() : []),
+                    drawnSelection,
                     history(),
                     ...(keys && keys.length ? [keymap.of(keys)] : []),
                     keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -143,6 +167,7 @@ export const LiveMarquee = ({
             v.focus();
         }
         view.current = v;
+        savers.set(v, () => hooks.current.onSave?.());
         return () => {
             v.destroy();
             view.current = null;
@@ -185,7 +210,7 @@ export const LiveMarquee = ({
     // The vim switch, flipped in the settings while a document is open, takes effect in place.
     useEffect(() => {
         const v = view.current;
-        if (v) v.dispatch({ effects: vimConf.current.reconfigure(vim ? vimKeys() : []) });
+        if (v) v.dispatch({ effects: vimConf.current.reconfigure(vim ? vimMode() : []) });
     }, [vim]);
 
     // A new profile identity (freshly resolved turbolink cards) reconfigures the extension;

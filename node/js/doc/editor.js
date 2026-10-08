@@ -469,6 +469,7 @@ export const Editor = ({
                     touched();
                 }}
                 onBlur=${save}
+                onSave=${save}
             />`;
         }
         if (mode === 'side' && format === 'marquee') {

@@ -18083,6 +18083,20 @@ rather than load on demand.
 
 Gate: `just ui-check`, `just strings-check`. Not yet watched in a browser.
 
+Then, from Curtis's first try: Ctrl-V's lines "aren't highlighted meaningfully".
+Vim hides the browser's selection and needs CodeMirror's `drawSelection` to draw
+one (its README says so), and block-visual is a range per line, which CodeMirror
+collapses unless `allowMultipleSelections` is on - `basicSetup` sets both, and
+this editor doesn't use it. Both now ride vim's compartment (`vimMode`), and the
+drawn selection wears the theme's `--teal`, washed out, instead of CodeMirror's
+fixed light greys (`drawnSelection`).
+
+And `:w` saves at once (Curtis, 2026-10-08) - the editor session's own `save`,
+the one a blur runs, instead of the autosave's debounce. The vim package's ex
+commands are global, so each surface files its save under its view (`savers`, a
+WeakMap) and `Vim.defineEx('write', 'w', …)` finds the one it was typed in
+through the adapter's `cm6`.
+
 **2026-10-07 - hrsePeople™ is Neighbors.** Curtis: "god dammit this has been
 staring me in the face for months". The app's name (`pure/apps.js`), the four
 catalog phrases that named it (the Friends unlock's blurb, two contracts' fine
