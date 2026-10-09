@@ -18925,3 +18925,36 @@ otherwise open as far down as the page had been read - and puts it back on
 return. A hidden person's page lets go of the header band and claims it again
 when it comes back (`IdPage`'s `hidden`), so it never writes its name over the
 post's. The `.feed-kept` rules became `.kept-page-*`.
+
+**2026-10-09 - The bell is stamped when the persona heard, not the computer.**
+Curtis synced his phone to his persona, and once it had finished syncing its
+bell showed nine items unread - news he had read on his other computers, some of
+it weeks old, dated minutes ago. The bell's derived rows (shares, follows,
+labels, mentions) were stamped with `received_at_ms`, this computer's arrival -
+local and never synced - and held against the seen watermark, which is the
+persona's and synced: a computer that joins late receives the whole backlog at
+once, all of it "newer" than a watermark set elsewhere. Node rung 75 gives the
+notifications memo a `claimed_ms` (the winning statement's signed time, which
+the fold now carries from `published_edges`, `rebroadcasts` and
+`public_annotations`), and the bell reads each row through `persona_stamp`: the
+earliest word in the private `notifications_first_seen` register (keyed by the
+row and that claim), which the first computer to hear unread news writes once;
+else, on a computer that joined after the claim (`identity::agented_since`) and
+under the watermark, the claim - backlog, with no write; else this computer's
+arrival, as before. The claim alone was not enough: on a computer that was there
+all along, an old claim under the watermark is a share said offline yesterday,
+still news (PROJECT_PLAN's One cursor). A claim in `notifications.cjs` adopts a
+reader who has marked the bell read onto a second node and finds the row read
+there; it fails on the old code. Rows folded before the rung keep the arrival
+reading until their author next moves; residuals in NEXT_STEPS (Notifications).
+
+**2026-10-09 - An external link no longer freezes the Android app.** Curtis: the
+APK ran smoothly until he clicked a link to another site, and then it died. The
+phone's event log said what the release build could not: not a crash but an ANR,
+"Input dispatching timed out", the app killed after five seconds of a dead main
+thread. Android asks for a navigation's verdict on its main thread, and
+`links::hand_out` answered it by calling the opener, which on Android is a
+Kotlin plugin that tauri runs by posting to the main thread and waiting
+(`run_mobile_plugin`) - a thread waiting on itself. The opener now runs on a
+blocking task, so the verdict returns and the main thread opens the link. The
+desktop never showed it: there the opener calls the OS directly.

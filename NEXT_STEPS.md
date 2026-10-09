@@ -73,6 +73,12 @@ are driving towards.
 ### Notifications
 
 - Change the favicon when stuff happens
+- the bell's first-heard register (`notifications_first_seen`, routes.rs
+  `persona_stamp`) is LWW, so two computers that both hear a piece of news
+  before either's word crosses can leave the LATER stamp standing; and the
+  register only grows, one key per piece of news, read whole on every bell read.
+  Neither bites at today's sizes - keying by computer (min over keys) and
+  forgetting keys for rows the memo no longer holds are the fixes if one does.
 
 ### Localization
 

@@ -72,12 +72,21 @@ pub fn new_window(app: &AppHandle, origin: &Url, url: Url) {
 }
 
 /// The system's own handler for the web and mail; nothing else.
+///
+/// Off the calling thread (2026-10-09: every external link froze the Android app until the system
+/// killed it). Android asks for a navigation's verdict on its main thread, and the opener there is
+/// a Kotlin plugin, which tauri runs by posting to that same main thread and waiting for the
+/// answer - so asked from inside the verdict, it waits on a thread that is waiting on it. Handed
+/// to another thread, the verdict returns and the main thread is free to open the link.
 fn hand_out(app: &AppHandle, url: &Url) {
     match url.scheme() {
         "http" | "https" | "mailto" => {
-            if let Err(e) = app.opener().open_url(url.as_str(), None::<&str>) {
-                tracing::warn!(error = %e, %url, "could not open a link in the system browser");
-            }
+            let (app, url) = (app.clone(), url.clone());
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(e) = app.opener().open_url(url.as_str(), None::<&str>) {
+                    tracing::warn!(error = %e, %url, "could not open a link in the system browser");
+                }
+            });
         }
         other => tracing::info!(scheme = other, "refused a link to a non-web scheme"),
     }

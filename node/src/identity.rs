@@ -239,6 +239,18 @@ pub(crate) async fn adopted_identity(
     Ok(row.map(|(root_pubkey, created_at_ms)| Identity { root_pubkey, created_at_ms }))
 }
 
+/// When this node began agenting `root`: its creation here, or the adoption that brought it
+/// (`record_identity`'s stamp) - so whatever the persona said before it, this node met as
+/// backlog. 0 for a persona not agented here.
+pub async fn agented_since(node_db: &Db, root: &str) -> Result<i64, AppError> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional("SELECT created_at_ms FROM identities WHERE root_pubkey = ?1", (root,))
+        .await
+        .context("reading when this node began agenting a persona")
+        .map_err(AppError::Internal)?;
+    Ok(row.map_or(0, |(ms,)| ms))
+}
+
 /// Whether some account on this node already agents `root` with `leaf` - adoption's
 /// redelivery check (grant arrives again after the deal is done).
 pub(crate) async fn leaf_agents_root(

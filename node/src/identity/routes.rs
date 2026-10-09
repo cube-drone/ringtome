@@ -2829,6 +2829,8 @@ pub(crate) struct NotificationItem {
 /// Seen-state is a single watermark register (`notifications_seen/watermark`, a PUT to the
 /// existing private KV surface): rows newer than it are unseen, and "mark read" is one write
 /// that travels to every device. Per-row seen granularity waits for a kind that needs it.
+/// The watermark is the persona's, so the stamps it is held against are too: a derived row
+/// is stamped when the PERSONA first heard of it, not this computer ([`persona_stamp`]).
 /// GET `/api/identity/{root}/push` - the key a browser subscribes against (webpush.rs), and the
 /// endpoints this persona is already pushed to, so a browser can tell whether it is one of them.
 async fn push_key_handler(
@@ -3059,6 +3061,55 @@ async fn chat_request(
     Ok(!placed(data, &other).await?)
 }
 
+/// The private register of when this persona first heard each piece of bell news (2026-10-09):
+/// key [`bell_news_key`], value the stamp in ms - written once, by whichever of the persona's
+/// computers heard it first, and never again. See [`persona_stamp`].
+const BELL_FIRST_SEEN: &str = "notifications_first_seen";
+
+/// Names one piece of bell news the same way on every computer: the row's identity and the
+/// signed claim of the statement that won it. A re-share of the same post is a new claim, so new
+/// news; a re-fold of the same chains is the same claim, so the same key.
+fn bell_news_key(kind: &str, author: &str, doc_id: &str, claimed_ms: i64) -> String {
+    format!("{kind}|{author}|{doc_id}|{claimed_ms}")
+}
+
+/// When the PERSONA first heard of a derived bell row, and whether this computer should say so
+/// (Curtis, 2026-10-09: "the time when a message is received is when it's received by any
+/// computer in the persona"). `updated_ms` is this computer's arrival - local and never synced
+/// (Displayed Time vs. Claimed Time) - while the seen watermark is the persona's, so a computer
+/// that joins late, receiving a year of old shares at once, would otherwise read every one of
+/// them as newer than a watermark set elsewhere, and show them as minutes old.
+///
+/// - A row from before node rung 75 has no claim to name it by: arrival, as it always was.
+/// - Another computer heard it first: the earlier of its stamp and ours.
+/// - Said before THIS computer joined the persona (`joined_ms`, when this node began agenting
+///   it) and at or before the watermark: backlog, which the persona's older computers heard and
+///   showed - so the claim (receipt-bounded) stands, and nothing is written. That is what keeps a
+///   joining computer's catch-up from being a write per old row. Only a computer that joined
+///   after the claim may take it: on one that was here all along, a claim under the watermark
+///   proves nothing - a share said offline yesterday and arriving today is news (PROJECT_PLAN's
+///   One cursor: "clock skew makes a backdated post never read as new").
+/// - Otherwise it is this computer's arrival - said to the others when that makes it news here
+///   (above the watermark), since this computer is the first to hear it. A row already read here
+///   needs no word: it is a row from before the register, which every older computer holds read
+///   on its own arrival, and a newer computer reads as backlog.
+fn persona_stamp(
+    updated_ms: i64,
+    claimed_ms: Option<i64>,
+    first_heard: Option<i64>,
+    watermark: i64,
+    joined_ms: i64,
+) -> (i64, bool) {
+    match (claimed_ms, first_heard) {
+        (None, _) => (updated_ms, false),
+        (Some(_), Some(heard)) => (heard.min(updated_ms), false),
+        (Some(claimed), None) if claimed < joined_ms && claimed <= watermark => {
+            (claimed.min(updated_ms), false)
+        }
+        (Some(_), None) => (updated_ms, updated_ms > watermark),
+    }
+}
+
 pub(crate) async fn notification_items(
     state: &AppState,
     data: &store::Store,
@@ -3072,6 +3123,14 @@ pub(crate) async fn notification_items(
     let (regs, _) = data.private_registers("notifications_seen").all().await?;
     let watermark: i64 =
         regs.iter().find(|r| r.key == "watermark").and_then(|r| r.value.parse().ok()).unwrap_or(0);
+    let (heard, _) = data.private_registers(BELL_FIRST_SEEN).all().await?;
+    // When this computer joined the persona: its backlog is older than this.
+    let joined_ms = crate::identity::agented_since(&state.node_db, root).await?;
+    let heard: std::collections::HashMap<String, i64> =
+        heard.into_iter().filter_map(|r| r.value.parse().ok().map(|ms| (r.key, ms))).collect();
+    // What this computer heard first, said once to the persona's other computers - after the
+    // rows are built, so a failed write costs a stamp and never the bell.
+    let mut first_heard: Vec<(String, i64)> = Vec::new();
 
     let authors: Vec<String> = derived.iter().map(|r| r.author_root.clone()).collect();
     let bylines =
@@ -3081,8 +3140,19 @@ pub(crate) async fn notification_items(
         .into_iter()
         .map(|r| {
             let byline = bylines.get(&r.author_root).cloned().unwrap_or_default();
+            let news = r.claimed_ms.map(|c| bell_news_key(&r.kind, &r.author_root, &r.doc_id, c));
+            let (stamp, say) = persona_stamp(
+                r.updated_ms,
+                r.claimed_ms,
+                news.as_ref().and_then(|k| heard.get(k).copied()),
+                watermark,
+                joined_ms,
+            );
+            if let (true, Some(key)) = (say, news) {
+                first_heard.push((key, stamp));
+            }
             NotificationItem {
-                seen: r.updated_ms <= watermark,
+                seen: stamp <= watermark,
                 stranger: false,
                 claimed_name: None,
                 doc_id: r.doc_id,
@@ -3095,10 +3165,16 @@ pub(crate) async fn notification_items(
                 trust: r.trust,
                 interest: r.interest,
                 detail: r.detail,
-                updated_ms: r.updated_ms,
+                updated_ms: stamp,
             }
         })
         .collect();
+    for (key, stamp) in first_heard {
+        if let Err(e) = data.private_registers(BELL_FIRST_SEEN).set(&key, &stamp.to_string()).await
+        {
+            tracing::warn!(root = %root, error = ?e, "could not record when the bell first heard something");
+        }
+    }
     // `items` is exactly the derived rows at this point, which is what the dedup keys off.
     let delivered = undelivered_twice(&items, delivered);
     // The follow-edge rule, applied at READ (2026-08-27, caught by the deleted-reply case):
@@ -9116,5 +9192,77 @@ mod notification_dedup_tests {
                  or the notification dedup silently stops matching"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod persona_stamp_tests {
+    use super::{bell_news_key, persona_stamp};
+
+    /// The reported case (2026-10-09): a phone joins, and a share the desktop heard of - and the
+    /// persona read past - in the spring arrives on the phone today. It is old news everywhere.
+    #[test]
+    fn a_joining_computers_backlog_is_old_news_and_writes_nothing() {
+        let (said, read_past, phone_joined, arrived_on_phone) = (1_000, 5_000, 80_000, 90_000);
+        let (stamp, say) =
+            persona_stamp(arrived_on_phone, Some(said), None, read_past, phone_joined);
+        assert_eq!(stamp, said, "stamped when it was said, not when the phone heard it");
+        assert!(stamp <= read_past, "and so read, as it is on every other computer");
+        assert!(!say, "a backlog the persona has seen is no write per row");
+    }
+
+    /// Something said after the last read, which this computer hears first: news, at its arrival,
+    /// and the persona's other computers are told when that was.
+    #[test]
+    fn the_first_computer_to_hear_news_says_when() {
+        let (stamp, say) = persona_stamp(9_000, Some(8_000), None, 5_000, 0);
+        assert_eq!((stamp, say), (9_000, true));
+    }
+
+    /// The desktop heard it at 6_000 and wrote so; the phone hears it at 90_000. One persona,
+    /// one moment: the earlier, and nobody writes again.
+    #[test]
+    fn a_later_computer_takes_the_persona_s_moment() {
+        let (stamp, say) = persona_stamp(90_000, Some(5_500), Some(6_000), 5_000, 80_000);
+        assert_eq!((stamp, say), (6_000, false));
+        // ...and once the persona has read past it, it is read here too.
+        assert!(persona_stamp(90_000, Some(5_500), Some(6_000), 7_000, 80_000).0 <= 7_000);
+    }
+
+    /// Arrival ordering's own case, kept (PROJECT_PLAN's One cursor): a share said while its
+    /// author was offline, under the watermark, reaching a computer that was here all along. Its
+    /// claim proves nothing about what the persona was shown - it is news, and said.
+    #[test]
+    fn a_late_arrival_with_an_old_claim_is_still_news_where_it_lands() {
+        let (desktop_joined, said, read_past, arrived) = (100, 4_000, 5_000, 9_000);
+        let (stamp, say) = persona_stamp(arrived, Some(said), None, read_past, desktop_joined);
+        assert_eq!((stamp, say), (arrived, true), "unread, and the other computers are told");
+        // The phone, joining later still, takes the desktop's word for it.
+        let (on_phone, _) = persona_stamp(95_000, Some(said), Some(arrived), read_past, 90_000);
+        assert_eq!(on_phone, arrived);
+    }
+
+    /// A row already read on this computer, with nobody's word for it - a row folded before the
+    /// register existed - is left read, and costs no write.
+    #[test]
+    fn a_row_already_read_here_writes_nothing() {
+        assert_eq!(persona_stamp(4_000, Some(3_900), None, 5_000, 0), (4_000, false));
+    }
+
+    /// A row folded before node rung 75 has no claim: the arrival stamp, as before, and no
+    /// register traffic for it.
+    #[test]
+    fn an_unclaimed_row_reads_as_it_always_did() {
+        assert_eq!(persona_stamp(9_000, None, None, 5_000, 0), (9_000, false));
+    }
+
+    /// The key names the news, not the row: a re-share is a new claim and so new news; the same
+    /// claim folded twice is one.
+    #[test]
+    fn the_news_key_changes_with_the_claim_and_only_with_it() {
+        let a = bell_news_key("rebroadcast", "bb", "11", 1_000);
+        assert_eq!(a, bell_news_key("rebroadcast", "bb", "11", 1_000));
+        assert_ne!(a, bell_news_key("rebroadcast", "bb", "11", 2_000));
+        assert_ne!(a, bell_news_key("tagged", "bb", "11", 1_000));
     }
 }

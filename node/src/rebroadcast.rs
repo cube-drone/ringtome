@@ -203,6 +203,7 @@ mod tests {
             author_root: author.to_string(),
             doc_id: doc,
             version_seen: version,
+            timestamp_ms: 1,
             received_at_ms: 1,
         }
     }

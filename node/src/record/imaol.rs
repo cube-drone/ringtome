@@ -290,6 +290,8 @@ pub(crate) type Stamp = (i64, u64, [u8; 32]);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedRow {
     pub edge: PublishedEdge,
+    /// The winning statement's claimed time: signed, so the same on every computer.
+    pub timestamp_ms: i64,
     pub received_at_ms: i64,
 }
 
@@ -306,16 +308,20 @@ pub struct PublishedRow {
 /// last: the fold writes a memo, and reads never fold.
 pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, AppError> {
     catch_up_published_edges(db).await?;
-    type Row = (String, Option<String>, Option<String>, i64);
+    type Row = (String, Option<String>, Option<String>, i64, i64);
     let rows: Vec<Row> = db
-        .fetch_all("SELECT subject_root, trust, interest, received_at_ms FROM published_edges", ())
+        .fetch_all(
+            "SELECT subject_root, trust, interest, timestamp_ms, received_at_ms FROM published_edges",
+            (),
+        )
         .await
         .context("reading the published-edges view")
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .map(|(subject, trust, interest, received_at_ms)| {
-            (subject, PublishedRow { edge: PublishedEdge { trust, interest }, received_at_ms })
+        .map(|(subject, trust, interest, timestamp_ms, received_at_ms)| {
+            let edge = PublishedEdge { trust, interest };
+            (subject, PublishedRow { edge, timestamp_ms, received_at_ms })
         })
         .collect())
 }
@@ -388,6 +394,8 @@ pub struct RebroadcastRow {
     /// The version endorsed at share time. `None` is a folded retraction: the pointer was
     /// withdrawn, and the row survives only as the LWW tombstone.
     pub version_seen: Option<[u8; 32]>,
+    /// The winning pointer's claimed time: signed, so the same on every computer.
+    pub timestamp_ms: i64,
     pub received_at_ms: i64,
 }
 
@@ -407,10 +415,10 @@ impl RebroadcastRow {
 /// this read sits behind the feed.
 pub async fn rebroadcasts(db: &Db) -> Result<Vec<RebroadcastRow>, AppError> {
     catch_up_rebroadcasts(db).await?;
-    type Row = (String, Vec<u8>, Option<Vec<u8>>, i64);
+    type Row = (String, Vec<u8>, Option<Vec<u8>>, i64, i64);
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT author_root, doc_id, version_seen, received_at_ms FROM rebroadcasts
+            "SELECT author_root, doc_id, version_seen, timestamp_ms, received_at_ms FROM rebroadcasts
              ORDER BY received_at_ms DESC",
             (),
         )
@@ -419,7 +427,7 @@ pub async fn rebroadcasts(db: &Db) -> Result<Vec<RebroadcastRow>, AppError> {
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .filter_map(|(author_root, doc_id, version_seen, received_at_ms)| {
+        .filter_map(|(author_root, doc_id, version_seen, timestamp_ms, received_at_ms)| {
             Some(RebroadcastRow {
                 author_root,
                 doc_id: doc_id.try_into().ok()?,
@@ -427,6 +435,7 @@ pub async fn rebroadcasts(db: &Db) -> Result<Vec<RebroadcastRow>, AppError> {
                     None => None,
                     Some(v) => Some(v.try_into().ok()?),
                 },
+                timestamp_ms,
                 received_at_ms,
             })
         })
@@ -522,6 +531,8 @@ pub struct AnnotationRow {
     pub key: String,
     pub value: String,
     pub present: bool,
+    /// The winning statement's claimed time: signed, so the same on every computer.
+    pub timestamp_ms: i64,
     pub received_at_ms: i64,
 }
 
@@ -529,10 +540,10 @@ pub struct AnnotationRow {
 /// memo's source (PROJECT_PLAN's Public annotations, slice 2), filtered by stamp at the caller.
 pub async fn public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError> {
     catch_up_annotations(db).await?;
-    type Row = (String, Vec<u8>, String, String, i64, i64);
+    type Row = (String, Vec<u8>, String, String, i64, i64, i64);
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT target_author, target_doc, key, value, present, received_at_ms
+            "SELECT target_author, target_doc, key, value, present, timestamp_ms, received_at_ms
              FROM public_annotations ORDER BY received_at_ms, seq",
             (),
         )
@@ -541,13 +552,14 @@ pub async fn public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError>
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .filter_map(|(target_author, doc, key, value, present, received_at_ms)| {
+        .filter_map(|(target_author, doc, key, value, present, timestamp_ms, received_at_ms)| {
             Some(AnnotationRow {
                 target_author,
                 target_doc: doc.try_into().ok()?,
                 key,
                 value,
                 present: present != 0,
+                timestamp_ms,
                 received_at_ms,
             })
         })
@@ -642,12 +654,12 @@ async fn annotation_rows(
     db: &Db,
     (author, doc): (&str, &[u8; 16]),
 ) -> Result<Vec<AnnotationRow>, AppError> {
-    type Row = (String, Vec<u8>, String, String, i64, i64);
+    type Row = (String, Vec<u8>, String, String, i64, i64, i64);
     // One post's statements only, today; the whole-view read arrives with slice 2's memo
     // fold, which is its one consumer.
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT target_author, target_doc, key, value, present, received_at_ms
+            "SELECT target_author, target_doc, key, value, present, timestamp_ms, received_at_ms
              FROM public_annotations WHERE target_author = ?1 AND target_doc = ?2
              ORDER BY timestamp_ms, seq",
             (author, doc.as_slice()),
@@ -657,13 +669,14 @@ async fn annotation_rows(
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .filter_map(|(target_author, doc, key, value, present, received_at_ms)| {
+        .filter_map(|(target_author, doc, key, value, present, timestamp_ms, received_at_ms)| {
             Some(AnnotationRow {
                 target_author,
                 target_doc: doc.try_into().ok()?,
                 key,
                 value,
                 present: present != 0,
+                timestamp_ms,
                 received_at_ms,
             })
         })

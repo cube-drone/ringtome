@@ -3904,8 +3904,14 @@ indicts. A watermark over claimed time was examined and declined (clock skew
 makes a backdated post never read as new); where "since I last looked" is
 wanted, `arrived_ms` is on every row. Read state survives only at the bell: one
 watermark register per persona, arrival-stamped, **moved by a deliberate act,
-never by automatic observation**. The interest dial is a sync-cadence dial, and
-backfill is the burst to bound. Nodes share frontiers, never views.
+never by automatic observation**. Arrival is the _persona's_, not one computer's
+(2026-10-09, after a phone that joined late lit its bell with weeks of read
+news): the first computer to hear a piece of news writes when, in a private
+register keyed by the row and the winning statement's claim, and the others take
+the earliest word; a computer that joins later reads what was said before it
+joined, and under the watermark, as backlog (`persona_stamp`). The interest dial
+is a sync-cadence dial, and backfill is the burst to bound. Nodes share
+frontiers, never views.
 
 #### Feed selectivity: one slider, two budgets (designed 2026-08-15)
 

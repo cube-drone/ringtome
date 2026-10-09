@@ -12,7 +12,7 @@
     inbox path's job, and it must NOT leak through this one.
 */
 const assert = require('node:assert');
-const { sql } = require('./fetch.cjs');
+const { sql, HOST_B } = require('./fetch.cjs');
 const { makeUserFetch } = require('./helpers.cjs');
 const { beat } = require('./beat.cjs');
 
@@ -159,6 +159,78 @@ describe('edge publication and its notification', () => {
             (await notificationRows(readerRoot)).length,
             0,
             'a retraction is an absence, not a notification',
+        );
+    });
+});
+
+/*
+    The bell's seen-state is the persona's, so its stamps must be too (2026-10-09). Curtis synced
+    his phone to his persona and its bell lit with news he had read weeks before, dated minutes
+    ago: the phone stamped every row with its own arrival - the moment the backlog crossed - and
+    the watermark set on his other computers was older than all of it. A row is stamped when the
+    PERSONA first heard of it (routes.rs `persona_stamp`), and that is what crosses to a new
+    computer with the watermark.
+*/
+(HOST_B ? describe : describe.skip)("the bell across a persona's computers", function () {
+    this.timeout(120000);
+
+    it('news read on one computer arrives read on a computer that joins later', async () => {
+        const fan = await makeUserFetch({ prefix: 'bellfan' });
+        const fanRoot = (await (await fan('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const owner = await makeUserFetch({ prefix: 'bellowner' });
+        const ownerRoot = (await (await owner('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        await dial(owner, ownerRoot, fanRoot, 'interest', 'high'); // the owner follows the fan
+        await dial(fan, fanRoot, ownerRoot, 'interest', 'high');
+        await beat(undefined, 'mint', fanRoot);
+        await beat(undefined, 'fold', fanRoot);
+
+        // Read on the first computer: the bell shows the follow, and the owner marks it read.
+        const bell = async (fetcher) =>
+            (await (await fetcher(`api/identity/${ownerRoot}/notifications`)).json()).items.find(
+                (i) => i.author === fanRoot && i.kind === 'public-edge',
+            );
+        const onA = await bell(owner);
+        assert.ok(onA && !onA.seen, `news on the first computer: ${JSON.stringify(onA)}`);
+        await owner(`api/identity/${ownerRoot}/private/kv/notifications_seen/watermark`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: String(onA.updated_ms) }),
+        });
+        assert.equal((await bell(owner)).seen, true);
+
+        // Later, a second computer joins the persona and receives the fan's chain fresh.
+        await new Promise((r) => setTimeout(r, 50));
+        const ownerOnB = await makeUserFetch({ prefix: 'bellownerb', host: HOST_B });
+        const request = await (
+            await ownerOnB('api/identity/adopt/begin', { method: 'POST' })
+        ).json();
+        const grant = await (
+            await owner(`api/identity/${ownerRoot}/nodes`, {
+                method: 'POST',
+                body: JSON.stringify({ code: request.code }),
+            })
+        ).json();
+        const done = await ownerOnB('api/identity/adopt/complete', {
+            method: 'POST',
+            body: JSON.stringify({ code: grant.code }),
+        });
+        assert.equal(done.status, 200, await done.text());
+        await beat(undefined, 'eager-push', ownerRoot);
+        await beat(HOST_B, 'fold', ownerRoot);
+
+        let onB;
+        for (let attempt = 0; attempt < 20 && !onB; attempt++) {
+            await beat(HOST_B, 'follow-refresh');
+            await beat(HOST_B, 'pull', fanRoot);
+            await beat(HOST_B, 'fold', fanRoot);
+            onB = await bell(ownerOnB);
+            if (!onB) await new Promise((r) => setTimeout(r, 250));
+        }
+        assert.ok(onB, "the fan's follow reached the second computer's bell");
+        assert.equal(onB.seen, true, 'read on one computer is read on all of them');
+        assert.ok(
+            onB.updated_ms <= onA.updated_ms,
+            `stamped when the persona heard it (${onA.updated_ms}), not when this computer did (${onB.updated_ms})`,
         );
     });
 });
