@@ -82,7 +82,8 @@ struct Job {
 #[derive(Clone)]
 pub struct Exports {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
-    permit: Arc<tokio::sync::Semaphore>,
+    /// One export or import at a time, node-wide (import.rs runs under it too).
+    pub(crate) permit: Arc<tokio::sync::Semaphore>,
     generations: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -270,13 +271,42 @@ async fn run(state: &AppState, root: &str, generation: u64) -> Result<()> {
 }
 
 /// The files of one export, sent to the writer as they are made: the channel holds a few files,
-/// and a send waits while the writer compresses.
+/// and a send waits while the writer compresses. Each is noted for the manifest as it goes.
 struct Out<'a> {
     send: &'a tokio::sync::mpsc::Sender<Entry>,
+    manifest: Vec<serde_json::Value>,
 }
 
 impl Out<'_> {
+    /// A file that is no document's: the profile, the ledger, a chat.
     async fn put(&mut self, path: String, bytes: Vec<u8>) -> Result<()> {
+        self.note(&path, &bytes, None);
+        self.send(path, bytes).await
+    }
+
+    /// One of a document's renderings: the manifest says whose, and which version.
+    async fn put_doc(&mut self, path: String, bytes: Vec<u8>, meta: &Meta) -> Result<()> {
+        self.note(&path, &bytes, Some(meta));
+        self.send(path, bytes).await
+    }
+
+    fn note(&mut self, path: &str, bytes: &[u8], meta: Option<&Meta>) {
+        use sha2::Digest;
+        let mut row = serde_json::json!({
+            "path": path,
+            "sha256": hex::encode(sha2::Sha256::digest(bytes)),
+            "bytes": bytes.len(),
+        });
+        if let Some(meta) = meta {
+            row["id"] = meta.id.clone().into();
+            if let Some(head) = &meta.head {
+                row["head"] = head.clone().into();
+            }
+        }
+        self.manifest.push(row);
+    }
+
+    async fn send(&self, path: String, bytes: Vec<u8>) -> Result<()> {
         self.send.send((path, bytes)).await.map_err(|_| anyhow::anyhow!("the zip's thread stopped"))
     }
 }
@@ -291,7 +321,7 @@ async fn build(
         .await
         .map_err(|e| anyhow::anyhow!("opening the persona: {e}"))?;
     let ae = |e: AppError| anyhow::anyhow!("{e}");
-    let mut out = Out { send };
+    let mut out = Out { send, manifest: Vec::new() };
     let mut missing: Vec<String> = Vec::new();
 
     let (heads, _) = data.documents().summaries().await.map_err(ae)?;
@@ -319,6 +349,7 @@ async fn build(
         let in_buckets = buckets.get(&head.doc_id).cloned().unwrap_or_default();
         let meta = Meta {
             id: id.clone(),
+            head: Some(hex::encode(head.head)),
             title: head.title.clone(),
             format,
             created_ms: head.genesis_ms,
@@ -351,7 +382,7 @@ async fn build(
             let at = format!("{dir}/{stem}");
             paths_of.entry(head.doc_id).or_insert_with(|| at.clone());
             for (path, bytes) in render(&at, &meta, &body) {
-                out.put(path, bytes).await?;
+                out.put_doc(path, bytes, &meta).await?;
             }
         }
         state.exports.set(root, generation, Status::Running { done: done + 1, total });
@@ -363,7 +394,7 @@ async fn build(
         let note = claimed.get(&post.doc_id);
         let note_head = note.and_then(|n| heads.iter().find(|h| &h.doc_id == n));
         let title = note_head.map(|h| h.title.clone()).unwrap_or_else(|| post.title.clone());
-        let Some(body) = post_body(state, root, &data, post).await? else {
+        let Some((post_head, body)) = post_body(state, root, &data, post).await? else {
             missing.push(format!("{} (post {id})", display_title(&title)));
             continue;
         };
@@ -380,6 +411,7 @@ async fn build(
         }
         let meta = Meta {
             id: id.clone(),
+            head: Some(hex::encode(post_head)),
             title: title.clone(),
             format: Format::from_wire(post.format),
             created_ms: post.genesis_ms,
@@ -396,7 +428,7 @@ async fn build(
         };
         for dir in &dirs {
             for (path, bytes) in render(&format!("{dir}/{stem}"), &meta, &body) {
-                out.put(path, bytes).await?;
+                out.put_doc(path, bytes, &meta).await?;
             }
         }
         state.exports.set(root, generation, Status::Running { done: heads.len() + i + 1, total });
@@ -408,7 +440,22 @@ async fn build(
     bank_file(&data, &mut out).await?;
     chat_files(state, &data, root, &mut out).await?;
     readme(state, root, &missing, &mut out).await?;
-    Ok(())
+    manifest(root, out).await
+}
+
+/// `manifest.json`, last: every file in the zip with its SHA-256 and size, and - for a document's
+/// renderings - its id and the version exported. What an import reads to know a file, and what
+/// `shasum -a 256` checks a file against.
+async fn manifest(root: &str, out: Out<'_>) -> Result<()> {
+    let body = serde_json::json!({
+        "format": "hdt2-export",
+        "version": 1,
+        "persona": root,
+        "made": iso(crate::clock::now_ms()),
+        "files": out.manifest,
+    });
+    let bytes = serde_json::to_vec_pretty(&body).context("writing the manifest")?;
+    out.send("manifest.json".to_string(), bytes).await
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -480,7 +527,7 @@ fn display_title(title: &str) -> String {
 
 /// A name safe as one path segment on every system a zip opens on: no separators, no characters
 /// Windows refuses, no leading dot, and not too long.
-fn file_name(name: &str) -> String {
+pub(crate) fn file_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
         .map(|c| match c {
@@ -505,6 +552,9 @@ fn file_name(name: &str) -> String {
 /// What a note's renderings say about it, besides its words.
 struct Meta {
     id: String,
+    /// The version exported, hex: the document's display head (plans/EXPORT.md - cheap now, and
+    /// what an import that ever wants more than "additive" would anchor on).
+    head: Option<String>,
     title: String,
     format: Format,
     created_ms: i64,
@@ -525,6 +575,9 @@ impl Meta {
             ("created".to_string(), MetaValue::One(iso(self.created_ms))),
             ("updated".to_string(), MetaValue::One(iso(self.updated_ms))),
         ];
+        if let Some(head) = &self.head {
+            out.insert(1, ("head".to_string(), MetaValue::One(head.clone())));
+        }
         if !self.tags.is_empty() {
             out.push(("tags".to_string(), MetaValue::Many(self.tags.clone())));
         }
@@ -663,14 +716,15 @@ async fn public_posts(
     Ok(all)
 }
 
-/// A post's words, opened: a trusted-only post is sealed on the network, and the author holds its
-/// key (postkeys.rs). `None` when the bytes or the key are not on this computer.
+/// A post's display head and its words, opened: a trusted-only post is sealed on the network, and
+/// the author holds its key (postkeys.rs). `None` when the bytes or the key are not on this
+/// computer.
 async fn post_body(
     state: &AppState,
     root: &str,
     data: &crate::record::store::Store,
     post: &crate::record::documents::PublicDoc,
-) -> Result<Option<Vec<u8>>> {
+) -> Result<Option<([u8; 32], Vec<u8>)>> {
     let Some(head) = crate::record::documents::public_head(data.db(), &post.doc_id)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?
@@ -682,10 +736,10 @@ async fn post_body(
         return Ok(None);
     };
     if !post.trusted_only {
-        return Ok(Some(bytes));
+        return Ok(Some((head.head, bytes)));
     }
     let key = crate::postkeys::lookup(&state.node_db, root, &hex::encode(post.doc_id)).await?;
-    Ok(key.and_then(|k| crate::record::private::open_post_body(&bytes, &k)))
+    Ok(key.and_then(|k| crate::record::private::open_post_body(&bytes, &k)).map(|b| (head.head, b)))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -872,6 +926,7 @@ async fn readme(state: &AppState, root: &str, missing: &[String], out: &mut Out<
          .md (Markdown, words only) and .yml.md (Markdown under a YAML header of its details).\n\
          Plain notes are .txt and .yml.txt; drawings are .horsedrawing (a YAML header, then the strokes).\n\
          Pictures, video and sound are as they were stored, each with a .yml of its details beside it.\n\n\
+         manifest.json lists every file with its SHA-256, and each note's id and the version exported.\n\n\
          No keys are in this file: it is your words and pictures, not the means to be you.\n",
         iso(crate::clock::now_ms()),
     );
@@ -926,7 +981,12 @@ pub async fn download_handler(
         AppError::NotFound(crate::msg!("export.no-export-yet", "no export is ready yet"))
     })?;
     let bytes = file.metadata().await.map(|m| m.len()).unwrap_or(0);
-    let name = format!("horse-drawing-tycoon-2-{}.zip", &root[..8]);
+    let persona = crate::profiles::bylines(&state.node_db, std::slice::from_ref(&root))
+        .await
+        .map_err(AppError::Internal)?
+        .get(&root)
+        .and_then(|b| b.name.clone());
+    let name = download_name(persona.as_deref(), &root);
     let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file));
     Ok((
         [
@@ -936,6 +996,28 @@ pub async fn download_handler(
         ],
         body,
     ))
+}
+
+/// The zip's name as it downloads (Curtis, 2026-10-09): `hdt2-<persona's name>-<first 8 hex>.zip`,
+/// the name lowercased and cut to letters, digits and single hyphens - plain ASCII, so the
+/// header needs no quoting - and just `hdt2-<hex>.zip` when nothing of the name survives.
+fn download_name(persona: Option<&str>, root: &str) -> String {
+    let mut slug = String::new();
+    for c in persona.unwrap_or("").chars().flat_map(char::to_lowercase) {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c);
+        } else if !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug: String = slug.chars().take(40).collect();
+    let slug = slug.trim_end_matches('-');
+    let hash = &root[..8.min(root.len())];
+    if slug.is_empty() {
+        format!("hdt2-{hash}.zip")
+    } else {
+        format!("hdt2-{slug}-{hash}.zip")
+    }
 }
 
 /// POST `/api/identity/{root}/export/reveal` - the desktop app shows the zip in the file manager:
@@ -974,6 +1056,7 @@ mod tests {
         fields.insert(crate::record::store::TRUSTED_KEY.to_string(), "secret".to_string());
         Meta {
             id: "0123456789abcdef0123456789abcdef".to_string(),
+            head: Some("ab".repeat(32)),
             title: "A \"quoted\" horse".to_string(),
             format,
             created_ms: 0,
@@ -1001,11 +1084,13 @@ mod tests {
         assert_eq!(attrs.get("title").map(String::as_str), Some("A \"quoted\" horse"));
         assert_eq!(attrs.get("created").map(String::as_str), Some("1970-01-01T00:00:00Z"));
         assert_eq!(attrs.get("display_date").map(String::as_str), Some("2015-07-31"));
+        assert_eq!(attrs.get("head").map(String::as_str), Some("ab".repeat(32).as_str()));
         assert!(!mq.contains("secret"), "no sealing key in the export");
         let md = String::from_utf8(files[1].1.clone()).unwrap();
         assert!(md.contains("**horse**") && !md.contains("title"), "words only: {md}");
         let yml = String::from_utf8(files[2].1.clone()).unwrap();
         assert!(yml.starts_with("---\n\"id\": \"0123"), "{yml}");
+        assert!(yml.contains(&format!("\"head\": \"{}\"", "ab".repeat(32))), "{yml}");
         assert!(yml.contains("\"tags\": [\"horses\", \"with, commas\"]"), "{yml}");
         assert!(!yml.contains("secret"));
     }
@@ -1034,6 +1119,24 @@ mod tests {
         let (a, b) = ([1u8; 16], [2u8; 16]);
         assert_ne!(stem("", &a), stem("", &b));
         assert_eq!(stem("", &a), "untitled--01010101");
+    }
+
+    #[test]
+    fn the_download_wears_the_persona_s_name() {
+        let root = "0123456789abcdef";
+        assert_eq!(
+            download_name(Some("Petey Petey Pete"), root),
+            "hdt2-petey-petey-pete-01234567.zip"
+        );
+        assert_eq!(
+            download_name(Some("  Ünïcorn!! (the 2nd) "), root),
+            "hdt2-n-corn-the-2nd-01234567.zip"
+        );
+        assert_eq!(download_name(Some("馬"), root), "hdt2-01234567.zip");
+        assert_eq!(download_name(None, root), "hdt2-01234567.zip");
+        assert!(
+            download_name(Some(&"a".repeat(100)), root).len() <= "hdt2--01234567.zip".len() + 40
+        );
     }
 
     #[test]

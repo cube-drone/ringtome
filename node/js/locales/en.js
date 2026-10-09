@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1772 phrases across 104 files.
+// 1792 phrases across 105 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -269,6 +269,8 @@ export default {
     'device.dial-interest': 'interest',
     'device.dial-shares': 'their shares',
     'device.add': 'add',
+    'device.allow-imports': 'allow users to import',
+    'device.allow-imports-why': "An import brings a whole persona's zip onto this server - every note and picture, and the work of reading them in. Leave it off and people can still export from here to a computer of their own, which is the way things should flow.",
     'device.a-backup-holds-everything': 'A backup is a copy of everything here - every account, and the keys that unlock them. Whoever has one has all of it, so keep it as safe as this place itself.',
     'device.backing-up': 'backing up…',
     'device.make-a-backup-now': 'make a backup now',
@@ -280,6 +282,7 @@ export default {
     'device.show-in-folder': 'show in folder',
     'device.download': 'download',
     'device.restoring-is-not-here-yet': "Restoring from a backup isn't here yet.",
+    'device.imports': 'imports',
     'device.front-page-name': "the front page's name",
     'device.taglines-one-per-line': 'taglines, one to a line, scrolling under the sign-in',
     'device.back-to-the-apps-own': "back to the app's own",
@@ -1017,7 +1020,10 @@ export default {
 
     // --- node/js/exportpage.js ---
     'exportpage.title': 'import/export',
+    'exportpage.not-sync': 'Import and Export are useful for getting your files into and out of the network, but if you’re interested in reliable, automatic sync between devices, please check out {link}.',
+    'exportpage.persona-sync': 'persona sync',
     'exportpage.export': 'export',
+    'exportpage.import': 'import',
     'exportpage.what-it-is': "Everything you are here, in one .zip: every note, drawing and picture, by notebook and section; your posts; your profile, contacts, chats and bank. Notes come as Marquee, Markdown and plain text, so something opens them wherever you take them. It's unencrypted - anyone holding the file can read all of it - but it holds no keys: it can't be used to become you.",
     'exportpage.looking': 'looking…',
     'exportpage.queued': 'waiting its turn - this server makes one export at a time',
@@ -1029,6 +1035,14 @@ export default {
     'exportpage.download': 'download it',
     'exportpage.make-another': 'make a new one (it replaces this one)',
     'exportpage.make': 'make an export',
+    'exportpage.import-not-here': "This server doesn't take imports - the way out of a server is an export, to a computer of your own. Its administrator can allow them; or import into the Horse Drawing Tycoon 2 app on your own computer, which always can.",
+    'exportpage.import-what': "Bring an export back in - this persona's own, or another's. Only what's new is added: a document this persona already has is skipped, even if the file has changed, so nothing here is ever overwritten. Posts are published again as yours, and the people in it are followed again.",
+    'exportpage.sending': 'sending it…',
+    'exportpage.import-it': 'import it',
+    'exportpage.import-queued': 'waiting its turn - this server does one export or import at a time',
+    'exportpage.importing': 'importing…',
+    'exportpage.import-failed': 'The import stopped: {error}',
+    'exportpage.import-done': 'Done.',
 
     // --- node/js/facets.js ---
     'facets.narrow-on': 'showing only what is tagged this - click to let it go',
@@ -1866,6 +1880,14 @@ export default {
     'idface.no-such-persona-here-13': 'no such persona here',
     'idface.that-isnt-a-document-id-3': "that isn't a document id",
     'idface.not-carried-here-and-none': "not carried here, and none of the address's computers answered",
+
+    // --- node/src/import.rs ---
+    'import.not-here': "this server doesn't take imports - its administrator can allow them",
+    'import.one-at-a-time': 'an import is already under way - wait for it to finish',
+    'import.server-busy': 'this server is busy with other imports - try again in a little while',
+    'import.upload-broke': 'the upload broke off: {e}',
+    'import.too-large': 'that zip is larger than this server takes ({mb} MB)',
+    'import.empty': 'that file is empty',
 
     // --- node/src/lib.rs ---
     'lib.unfurl-needs-a-session-or-a-post': 'sign in, or say which public post the link is in',

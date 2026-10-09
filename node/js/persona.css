@@ -22,6 +22,46 @@
     align-self: flex-start;
 }
 
+/* Above import and export (Curtis, 2026-10-09): they are not sync, and sync is a link away. A solid
+   accent box, so its words and its link take the accent's own foreground. */
+.import-export-notice {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    background: var(--teal);
+    --j: 3px;
+    clip-path: var(--jag-1);
+    line-height: 1.5;
+}
+
+.import-export-notice,
+.import-export-notice a {
+    color: var(--on-accent);
+}
+
+.import-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* What the import said, line by line: scrolls on its own once it's long. */
+.import-log {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    list-style: none;
+    max-height: 18rem;
+    overflow-y: auto;
+    background: var(--surface);
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.import-file {
+    color: var(--ink-soft);
+    font: inherit;
+}
+
 /* All computers, on a persona's one computer (js/computers.js): the case for a second, under the tabs. */
 .computers-alone {
     margin-top: 2rem;

@@ -49,6 +49,9 @@ export const personaPageHref = (page) => (page ? `${PREFIX}/persona/${page}` : `
 /// report. Anything about syncing goes to `all`.
 export const computersHref = (tab = 'new') => personaPageHref(`computers/${tab}`);
 
+/// Import/export's two tabs (plans/EXPORT.md): `export` (the default) and `import`.
+export const importExportHref = (tab = 'export') => personaPageHref(`import-export/${tab}`);
+
 /// A notebook's own list.
 export const notebookHref = (bucketName, roster) => bucketHref(bucketName, roster);
 

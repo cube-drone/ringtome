@@ -34,12 +34,20 @@ bank, laid out as files and folders. Import comes later (_Not yet_).
    spare key are for; an unencrypted zip of keys is a stolen identity.
 4. **Everything else of the persona**: profile, contacts and follows, chat
    history, and the bank ledger.
+5. **Every version said, and every file hashed** (Curtis, 2026-10-09: "cheap to
+   add now and expensive to add later"): each document's metadata carries
+   `head`, the version exported, and `manifest.json` lists every file in the zip
+   with its SHA-256 and size, and each rendering with its document's id and
+   head. Import is additive (below) and needs neither today; an import that ever
+   wants to merge an edit will anchor on them, and a zip made before they
+   existed could never be.
 
 ## The tree
 
 ```
 <name>-export-<date>/
   README.txt                     what this is, when it was made, what's missing
+  manifest.json                  every file: its SHA-256 and size; a document's id and head
   public/
     profile.yml                  name, bio, colorway; avatar/banner beside it
     avatar.avif, banner.avif
@@ -110,9 +118,82 @@ bank, laid out as files and folders. Import comes later (_Not yet_).
 - Chat is what this computer holds of each room, which for a busy room is its
   recent history, not all of it.
 
+## Import (built 2026-10-09)
+
+**Additive only** (Curtis, 2026-10-09): "if I edit a document and re-import it,
+nothing should happen, it only adds New documents, New annotations, et-al. When
+running the import operation, it should display a list of 'Document <title>
+skipped: It already exists!'"
+
+- **A document is known by its id**, the `id` in its `:::meta` or front matter,
+  or the `--<id8>` at the end of its file name. One whose id this persona
+  already holds is skipped, whatever its words say now, and the import's report
+  says so: _Document <title> skipped: It already exists!_ Nothing is ever
+  overwritten, merged or deleted, so an import cannot lose anything, and
+  importing the same zip twice adds nothing the second time.
+- **One document, several files.** A note's renderings (`.mq`, `.md`, `.yml.md`;
+  `.txt`, `.yml.txt`) are one document: the import groups them by stem and reads
+  the richest one - `.mq`, then `.yml.md`, then `.md`; `.yml.txt`, then `.txt` -
+  so a note exported three ways is imported once, not three times.
+- **A file with no id** - a Markdown file written somewhere else and dropped
+  into the folder - is a new document, in the notebook and section its folder
+  names. Its id is made from its place in the zip and its bytes, so the same
+  file imported twice is one document, skipped the second time; a file changed
+  since is a new one.
+- **Annotations, notebooks and sections add, never change.** A tag the document
+  lacks is added; a field it has is left as it is, even if the file says
+  otherwise; a notebook or section membership is added, never removed. For a
+  document that already exists this applies only to what is missing - which is
+  why moving a file to another folder and re-importing adds it to that notebook
+  too, and takes it out of nothing.
+- **Into a fresh persona** every id is new, so everything is created. Dates are
+  signed, so the original creation date becomes `display_date`.
+- **Posts are republished** (Curtis, 2026-10-09). A post is signed by the
+  persona that made it, so another persona cannot take it over - only say it
+  again, as a post of its own. It reaches followers' feeds as new, dated the day
+  it was first said, and earns what publishing earns. It is said from the note
+  it was published from when the zip holds that note, else from a note made of
+  its words under the post's own id - so a second import finds it held. A post
+  whose note this persona has already published is skipped. Two kinds are never
+  said again, and the report says so: a **reply** (it belonged in somebody
+  else's thread) and a **room** (a chat room starts fresh).
+- **Contacts are re-applied** (Curtis, 2026-10-09): follows, trust and the
+  persona's own notes on each person are set again - which, from a new persona,
+  reaches each of them as somebody new following them.
+- **Bank and chat never import**: the ledger is derived from the persona's own
+  chains, and a room is its author's. They stay in the zip, to read.
+- **Servers don't take imports** unless their administrator allows them (Curtis,
+  2026-10-09: "by and large the direction we want is for users to export their
+  personas from servers to personal devices and not the other way around"):
+  _allow users to import_ on hrseServer's Backups page, off by default
+  (`import_policy`, node rung 76). The desktop app always takes them.
+- **The machine** (`import.rs`): the zip is the request's body, streamed to disk
+  and held to the node's upload cap (`RINGTOME_MAX_UPLOAD_BYTES`), then imported
+  in the background under the same one-at-a-time permit as exports. One import
+  per persona at a time, and at most four waiting on the whole node - each holds
+  its upload on disk. Pictures, video and sound go through the ordinary ingest
+  queue under their own ids. The page shows the import's report, line by line.
+- **Safety rails** (2026-10-09), for a zip nobody should trust:
+  - every name is kept inside the import's folder (no `..`, no absolute path; a
+    symlink is written as the text it holds);
+  - unpacking is held to the bytes actually written, not the sizes the zip
+    claims - four times the upload cap, between 1 and 16 GiB, so a server's 128
+    MiB unpacks to at most 1 GiB - and to 250,000 files, and stops while the
+    disk still has 1 GiB free;
+  - no file is read whole unless it fits what a document of its kind may be (the
+    document cap for words, the upload cap for media, 8 MiB for a details file);
+    a larger one is skipped and said so;
+  - a drawing must be drawing JSON - one that isn't is skipped - and is kept in
+    its canonical form;
+  - a notebook's sections stop 16 deep;
+  - a post is said again only from a note this import made, so a zip can never
+    publish a note the persona already had.
+
 ## Not yet
 
-- **Import** (Curtis: "We'll worry about 'import' in a bit").
+- **Imports larger than the upload cap**: a desktop app's cap is 1 GiB, less
+  than a persona with years of pictures; and a server that allows imports holds
+  them to its own (128 MiB by default).
 - **Links between notes** inside a `.md` still point at the app's addresses
   (`/api/identity/…/docs/…/body/…`); rewriting them to relative paths in the zip
   is the next step for a reader that wants the pictures inline.

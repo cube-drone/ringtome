@@ -646,7 +646,8 @@ const Inside = ({ session }) => {
             <${Computers} path="/ringtome/persona/computers/:tab" current=${persona.current} />
             <${Computers} path="/ringtome/persona/computers/all/report" tab="report" current=${persona.current} />
             <${ContentControl} path="/ringtome/persona/content" current=${persona.current} />
-            <${ExportPage} path="/ringtome/persona/export" current=${persona.current} />
+            <${ExportPage} path="/ringtome/persona/import-export" current=${persona.current} />
+            <${ExportPage} path="/ringtome/persona/import-export/:tab" current=${persona.current} />
             <${AppSettings} path="/ringtome/persona/settings" current=${persona.current} />
             <${Personas} path="/ringtome/persona/personas" persona=${persona} current=${persona.current} />
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />

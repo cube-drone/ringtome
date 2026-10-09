@@ -6,6 +6,7 @@
     anywhere in it (ruling 3). A second export replaces the first, and nobody else may ask.
 */
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -83,6 +84,10 @@ describe('exports: a persona as one zip', function () {
         const res = await ada(`api/identity/${adaRoot}/export/download`);
         assert.equal(res.status, 200);
         assert.equal(res.headers.get('content-type'), 'application/zip');
+        assert.match(
+            res.headers.get('content-disposition'),
+            new RegExp(`filename="hdt2-([a-z0-9-]+-)?${adaRoot.slice(0, 8)}\\.zip"`),
+        );
         zip = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ringtome-export-')), 'export.zip');
         fs.writeFileSync(zip, Buffer.from(await res.arrayBuffer()));
         assert.ok(listing().includes('README.txt'));
@@ -125,6 +130,29 @@ describe('exports: a persona as one zip', function () {
         }
         const everything = execFileSync('unzip', ['-p', zip], { encoding: 'utf8' });
         assert.doesNotMatch(everything, /trusted_key/, 'no sealing key (ruling 3)');
+    });
+
+    it('lists every file in its manifest, by hash - and each document by id and version', () => {
+        const manifest = JSON.parse(read('manifest.json'));
+        assert.equal(manifest.format, 'hdt2-export');
+        assert.equal(manifest.persona, adaRoot);
+        const listed = new Map(manifest.files.map((f) => [f.path, f]));
+        for (const name of listing().filter((n) => n && n !== 'manifest.json')) {
+            const row = listed.get(name);
+            assert.ok(row, `${name} is in the manifest`);
+            const bytes = execFileSync('unzip', ['-p', zip, name]);
+            assert.equal(row.sha256, crypto.createHash('sha256').update(bytes).digest('hex'), name);
+        }
+        const mq = manifest.files.find(
+            (f) => f.path.endsWith('.mq') && f.path.startsWith('private/'),
+        );
+        assert.equal(mq.id, horse);
+        assert.match(mq.head, /^[0-9a-f]{64}$/);
+        assert.match(
+            read(mq.path),
+            new RegExp(`head=${mq.head}`),
+            'and the file says which version',
+        );
     });
 
     it('nobody else may ask for it', async () => {

@@ -204,6 +204,12 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0075_notifications_claimed.sql"),
         refold: &[],
     },
+    Rung {
+        version: 76,
+        name: "0076_import_policy.sql",
+        sql: include_str!("../migrations/node/0076_import_policy.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).

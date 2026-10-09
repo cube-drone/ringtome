@@ -128,6 +128,14 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         )
         .route("/api/identity/{root}/export/download", get(crate::export::download_handler))
         .route("/api/identity/{root}/export/reveal", post(crate::export::reveal_handler))
+        // Imports (import.rs): a zip streamed to disk under the node's own upload cap, so the
+        // default body limit steps aside.
+        .route(
+            "/api/identity/{root}/import",
+            get(crate::import::report_handler)
+                .post(crate::import::start_handler)
+                .layer(axum::extract::DefaultBodyLimit::disable()),
+        )
         .route("/api/identity/{root}/push/test", post(push_test_handler))
         .route("/api/identity/{root}/serve", post(serve_handler))
         .route("/api/identity/{root}/keys/{target}/revoke", post(revoke_key_handler))

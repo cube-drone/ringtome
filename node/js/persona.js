@@ -42,6 +42,7 @@ import {
     personHref,
     personaPageHref,
     computersHref,
+    importExportHref,
     LAUNCHER,
     shareUrl,
     writeClipboard,
@@ -722,7 +723,7 @@ export const PersonaMenu = ({ persona, session }) => {
                         <small>${t('persona.what-gets-blurred-or-hidden', 'what gets blurred, and what stays off your pages')}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href=${personaPageHref('export')}>
+                <a class="persona-menu-item" href=${importExportHref()}>
                     <span class="persona-menu-icon"><${Icons.exportPersona} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.import-export', 'import/export')}</strong>

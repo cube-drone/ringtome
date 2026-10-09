@@ -50,6 +50,7 @@ pub mod groups;
 pub mod heartbeat;
 pub mod identity;
 pub mod idface;
+pub mod import;
 pub mod inbox;
 pub mod ingest;
 pub mod inspect;
@@ -177,6 +178,8 @@ pub struct AppState {
     pub backups: backup::Backups,
     /// Each persona's export, queued or running, and the permit that runs them in turn (export.rs).
     pub exports: export::Exports,
+    /// Each persona's last import, and what it said (import.rs).
+    pub imports: import::Imports,
     /// What the node asks of a desktop shell around it (shell.rs): restart listening elsewhere,
     /// show a file. The shell subscribes through [`Bound::shell_requests`].
     pub shell: shell::Shell,
@@ -519,6 +522,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         webpush,
         backups: backup::Backups::default(),
         exports: export::Exports::default(),
+        imports: import::Imports::default(),
         shell: shell::Shell::new(record_attention),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
@@ -889,6 +893,11 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/front", get(frontdoor::front_handler))
         .route("/api/admin/front", axum::routing::put(frontdoor::set_handler))
+        // Whether users may import here (import.rs): off on a server until its administrator says.
+        .route(
+            "/api/admin/import-policy",
+            axum::routing::get(import::policy_handler).put(import::set_policy_handler),
+        )
         .route(
             "/api/admin/super-pins/{author}/{doc}",
             axum::routing::put(frontdoor::pin_handler).delete(frontdoor::unpin_handler),

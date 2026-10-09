@@ -19003,4 +19003,57 @@ desktop app, where a webview downloads nothing) reveal it. The ledger read moved
 into `bank::all_lines` for the SQL-ownership convention. `export.cjs` takes a
 note through a notebook section, a plain note and a sealed post to their files,
 checks no `trusted_key` is anywhere in the zip, that nobody else may ask, and
-that a second export replaces the first.
+that a second export replaces the first. The zip downloads as
+`hdt2-<persona's name>-<first 8 hex>.zip` (Curtis:
+"hdt2-petey-petey-pete-<hash>.zip"): the name lowercased to letters, digits and
+hyphens, and just `hdt2-<hex>.zip` when none survive (`export::download_name`).
+Every document's metadata now says the version exported (`head`), and
+`manifest.json` lists every file in the zip with its SHA-256 and size, and each
+rendering with its document's id and head (Curtis: cheap to add now, expensive
+later). Import's rulings went into plans/EXPORT.md: additive only - an id the
+persona holds is skipped and said so - posts republished, contacts re-applied.
+
+**2026-10-09 - Import: an export, back in, additively.** Curtis: "let's build
+import as well", on his ruling that it is additive only - "if I edit a document
+and re-import it, nothing should happen, it only adds New documents, New
+annotations, et-al" - with posts republished and contacts re-applied.
+`import.rs` takes the zip as the request's body, streamed to disk under the
+node's upload cap (the first handler to stream a request rather than hold it),
+and imports it in the background under the exports' one-at-a-time permit. The
+zip is unpacked with every name kept inside its folder and the whole held to 16
+GiB. A note's renderings are one document, read from the richest (`.mq`, then
+`.yml.md`, then `.md`; `.yml.txt`, then `.txt`), its details from `:::meta` or
+YAML front matter - the export's own or a hand-written one. A document is known
+by its stated id, its manifest row's, or its file name's `--<id8>`; a file with
+none gets an id made of its place and bytes, so the same file imported twice is
+one document. Held: "Document <title> skipped: It already exists!", though it is
+still given the tags, notebooks, sections and fields it lacks. New: created
+under its id - text and drawings saved, media through the ingest queue - with
+its original date as `display_date`. Posts are said again from their note (or
+one made of their words under the post's id), dated as first said; replies and
+rooms are not, and say so. Contacts get every fact the persona lacks, then one
+subscription pass publishes the follows. The profile fills only what is empty.
+The page's import section sends the zip and shows the report line by line.
+`import.cjs` re-imports a persona's own export (nothing added, an edit in the
+zip ignored) and imports it into a fresh persona (ids, tags, notebook, a
+republished post, a re-applied follow, a hand-written note) - twice, the second
+adding nothing.
+
+**2026-10-09 - Import: safety rails, off on servers, and tabs.** Asked what a
+zip bomb or a malformed upload would do, the import had four holes, now closed
+(all in `import.rs`, plans/EXPORT.md _Safety rails_): unpacking was held only to
+16 GiB - now four times the upload cap (1 GiB on a server), and it stops with 1
+GiB of disk left; every file was read whole - now none is read past a document's
+cap (the upload cap for media, 8 MiB for a details file) and a larger one is
+skipped and said so; a `.horsedrawing` was saved unchecked - now it must be
+drawing JSON and is kept canonical; and sections had no depth limit - now 16.
+And a post was said again from any unpublished note the persona held, so a zip
+naming one of your private notes could publish it: now only notes the import
+made are published (`Ctx::created`) - a claim in `import.cjs` hands bea a zip
+whose post names her diary, and fails on the old rule. Curtis: "in 'server' mode
+import should simply be disabled" - `import_policy` (node rung 76) and _allow
+users to import_ on hrseServer's Backups page, off by default on a server; the
+desktop app always imports. At most four imports wait on a node. The page became
+two tabs, `import-export/export` and `/import`, routed as Your computers' are,
+under an accent box that says they aren't sync and links to all computers; on a
+server that takes no imports the import tab says so, and points to the app.

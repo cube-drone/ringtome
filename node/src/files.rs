@@ -625,6 +625,7 @@ mod tests {
             .unwrap(),
             backups: Default::default(),
             exports: Default::default(),
+            imports: Default::default(),
             shell: crate::shell::Shell::new(false),
         };
         crate::net::p2p::spawn_accept_loop(ep_a.clone(), state);

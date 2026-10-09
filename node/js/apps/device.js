@@ -357,6 +357,43 @@ const AutoFollowList = ({ status, onSaved }) => {
 // ---------------------------------------------------------------------------------------------
 // Backups
 
+/// Whether people here may import a persona's zip (import.rs, plans/EXPORT.md): off on a server
+/// until its administrator says - Curtis, 2026-10-09: the way is out of servers, to people's own
+/// computers - and always on in the desktop app, which doesn't ask.
+const ImportPolicy = () => {
+    const [allowed, setAllowed] = useState(null);
+    const [error, setError] = useState('');
+    useEffect(() => {
+        api('/api/admin/import-policy')
+            .then((r) => setAllowed(r.allowed))
+            .catch((e) => setError(e.message));
+    }, []);
+    const change = async (on) => {
+        setError('');
+        try {
+            setAllowed(
+                (
+                    await api('/api/admin/import-policy', {
+                        method: 'PUT',
+                        body: JSON.stringify({ allowed: on }),
+                    })
+                ).allowed,
+            );
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    if (allowed === null) return error ? html`<p class="form-error">${error}</p>` : null;
+    return html`<label class="profile-setting">
+            <input type="checkbox" checked=${allowed} onChange=${(e) => change(e.currentTarget.checked)} />
+            ${t('device.allow-imports', 'allow users to import')}
+        </label>
+        <p class="null-sub">
+            ${t('device.allow-imports-why', "An import brings a whole persona's zip onto this server - every note and picture, and the work of reading them in. Leave it off and people can still export from here to a computer of their own, which is the way things should flow.")}
+        </p>
+        ${error && html`<p class="form-error">${error}</p>`}`;
+};
+
 const Backups = () => {
     const [archives, setArchives] = useState(null);
     const [ticket, setTicket] = useState(null);
@@ -456,6 +493,7 @@ const Backups = () => {
                   </ul>`
             }
             <p class="null-sub">${t('device.restoring-is-not-here-yet', "Restoring from a backup isn't here yet.")}</p>
+            ${!isDevice() && html`<h3 class="computers-subtitle">${t('device.imports', 'imports')}</h3><${ImportPolicy} />`}
         </div>
     `;
 };
