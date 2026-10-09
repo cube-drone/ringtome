@@ -9,6 +9,8 @@ Drawing Tycoon 2, the protocol under it Ringtome).
 | `hdt_logo_2.svg`                       | the same, traced (below): five paths, one per stroke, in the logo's blue. The source of every icon, and of the tab icon the app paints in each colourway's colours (`node/js/pure/logo.js`) |
 | `hdt_logo_1024.png`                    | the SVG rendered at 1024, margins as drawn: the source for Windows, Linux and web icons                                                                                                     |
 | `hdt_logo_1024_macos.png`              | the SVG at 824 on a transparent 1024 canvas - Apple's icon grid, so it sits at the same size as its neighbours in the Dock: the source for `icon.icns` only                                 |
+| `hdt_logo_1024_android_fg.png`         | the SVG at 614 (60%) on a transparent 1024 canvas - the foreground of Android's adaptive icon, which a phone crops to its own shape and shows only the middle two-thirds of                 |
+| `hdt_logo_1024_android.png`            | the SVG at 737 (72%) on the house beige (`#f6efe0`, `--surface`) - Android's square and round icons, for the phones (Android 7) that predate adaptive ones                                  |
 | `hdt_logo.kra`, `hdt_logo.png`         | the first logo, the horse in its purple ring - kept, no longer used                                                                                                                         |
 | `hdt_2_banner.kra`, `hdt_2_banner.png` | the banner, 1024×768: a README / website / release-page picture, not an icon                                                                                                                |
 
@@ -67,13 +69,26 @@ render(256).save('node/html/favicon.ico', sizes=[(16, 16), (32, 32), (48, 48)])
 touch = Image.new('RGBA', (180, 180), (0xf6, 0xef, 0xe0, 255))   # iOS paints transparency black
 touch.alpha_composite(render(160), (10, 10))
 touch.convert('RGB').save('node/html/apple-touch-icon.png', optimize=True)
+def place(size, bg):                                                 # the logo, centred on a 1024 square
+    canvas = Image.new('RGBA', (1024, 1024), bg)
+    canvas.alpha_composite(render(size), ((1024 - size) // 2, (1024 - size) // 2))
+    return canvas
+place(614, (0, 0, 0, 0)).save('branding/hdt_logo_1024_android_fg.png', optimize=True)
+place(737, (0xf6, 0xef, 0xe0, 255)).save('branding/hdt_logo_1024_android.png', optimize=True)
 PY
 # The desktop app's whole set, then the Mac's own from the padded master. `tauri icon` also writes
-# android/ and ios/, which this app does not have.
+# android/ and ios/ beside them: neither belongs in desktop/icons.
 npx @tauri-apps/cli@2 icon branding/hdt_logo_1024.png -o desktop/icons
 npx @tauri-apps/cli@2 icon branding/hdt_logo_1024_macos.png -o /tmp/hdt-icons-mac
 cp /tmp/hdt-icons-mac/icon.icns desktop/icons/icon.icns
 rm -rf desktop/icons/android desktop/icons/ios
+# Android's (2026-10-08), from its own two masters through a manifest - the beige background, the
+# padded foreground - into the committed Android project. Its own `android_fg_scale` did nothing
+# for us, which is why the foreground master carries its margin itself.
+echo '{"default": "branding/hdt_logo_1024_android.png", "bg_color": "#f6efe0",
+       "android_fg": "branding/hdt_logo_1024_android_fg.png"}' > /tmp/hdt-android.json
+npx @tauri-apps/cli@2 icon /tmp/hdt-android.json -o /tmp/hdt-icons-android
+cp -R /tmp/hdt-icons-android/android/. desktop/gen/android/app/src/main/res/
 ```
 
 The web icons are baked into the node binary (`node/src/ui.rs`), so a rebuild

@@ -18807,3 +18807,20 @@ installed the pinned one. release.yml's build job now runs `npm ci` in
 does. The Android job, which installs it itself, built and signed 0.3.0's APK
 with the real key; 0.3.0 itself published nothing (all or nothing), and goes out
 as 0.3.1.
+
+**2026-10-08 - The Android app wears the logo, on beige.** Asked what decides
+the APK's icon: the manifest's `@mipmap/ic_launcher`, the PNGs in the committed
+Android project - which still held Tauri's own logo from the template; our
+`desktop/icons/` are never used there. (The desktop set, the favicon and the
+touch icon all have the new logo since the 2026-10-08 logo change, checked image
+by image; no release has shipped them yet - 0.3.1 will be the first.) Curtis
+chose beige behind it: the house `#f6efe0` (`--surface`), the touch icon's. Two
+new masters in `branding/`, rendered from the traced SVG: the logo at 60% on a
+transparent canvas for the adaptive icon's foreground, which a phone crops to
+its own shape, and at 72% on beige for the square and round icons of phones that
+predate adaptive ones. `tauri icon`, fed both through a manifest with the beige
+as `bg_color`, made every density, the `mipmap-anydpi-v26` adaptive definition
+and the background colour; they replace the template's in `desktop/gen/android`,
+and its unused stock vector drawables go. (The manifest's `android_fg_scale`
+changed nothing, which is why the foreground master carries its own margin.)
+branding/README.md's recipe now remakes Android's set with the rest.
