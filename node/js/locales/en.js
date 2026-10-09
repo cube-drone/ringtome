@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1792 phrases across 105 files.
+// 1797 phrases across 107 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -850,6 +850,11 @@ export default {
     'doc.editor.hide-from-the-book': 'hide from the book',
     'doc.editor.the-book-rolls-out-from': 'publish from the Publish column',
     'doc.editor.publish-the-changes': 'publish the changes',
+
+    // --- node/js/doc/epubbutton.js ---
+    'doc.epubbutton.download-as-an-epub': 'download as an ePub, for an e-reader',
+    'doc.epubbutton.making-it': 'making it…',
+    'doc.epubbutton.epub': 'ePub',
 
     // --- node/js/doc/imagepick.js ---
     'doc.imagepick.not-a-still': "that isn't a still picture - an animation becomes a video, and this wants a picture",
@@ -1724,6 +1729,10 @@ export default {
     'commodities.no-such-lot': 'no such lot',
     'commodities.held-two-days': 'a lot sells two days after it was bought, at the earliest',
     'commodities.not-that-many': "that lot doesn't hold that many",
+
+    // --- node/src/epub.rs ---
+    'epub.nothing-to-read': 'that notebook has nothing to read yet',
+    'epub.no-such-book': 'no such book here',
 
     // --- node/src/export.rs ---
     'export.no-export-yet': 'no export is ready yet',

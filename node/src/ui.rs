@@ -55,7 +55,7 @@ const FONTS_DEV_DIR: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/js/node_modules/@cube-drone/marquee-fonts/fonts");
 
 /// (filename, embedded bytes) — the lookup table for prod-mode font serving.
-const EMBEDDED_FONTS: &[(&str, &[u8])] = &[
+pub(crate) const EMBEDDED_FONTS: &[(&str, &[u8])] = &[
     (
         "radio-canada.woff2",
         include_bytes!("../js/node_modules/@cube-drone/marquee-fonts/fonts/radio-canada.woff2"),

@@ -127,6 +127,8 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             get(crate::export::report_handler).post(crate::export::start_handler),
         )
         .route("/api/identity/{root}/export/download", get(crate::export::download_handler))
+        // A notebook as an ePub (epub.rs).
+        .route("/api/identity/{root}/buckets/{bucket}/epub", get(crate::epub::notebook_handler))
         .route("/api/identity/{root}/export/reveal", post(crate::export::reveal_handler))
         // Imports (import.rs): a zip streamed to disk under the node's own upload cap, so the
         // default body limit steps aside.

@@ -19072,3 +19072,47 @@ both asks - an `Output::Xhtml` render mode and `Profile::link_target` (with
 `marquee_markdown::Options::link_target` beside it) - and both moved to
 plans/MARQUEE.md's _Fixed_. The npm packages stay on 0.9.2: 0.9.3 went to
 crates.io only, and `^0.9.3` finds nothing on npm.
+
+**2026-10-09 - The node paints drawings.** Curtis, on the ePub's drawings:
+"Let's port the drawing code to Rust: it's come up a second time now, it'll
+probably come up more often." `drawing_paint.rs` is the browser's painter
+(`doc/drawing.js`, `flatten`) on `tiny-skia`: each layer on a pixmap of its
+own - the base layer's fill, strokes with pressure and round ends, the eraser as
+`destination-out`, rectangles mitred and ellipses, pours, placed pictures (AVIF
+through `media::image::decode_avif`, now crate-visible), a text layer's words -
+each step through the moves, transforms and crops after it, then the visible
+layers stacked at their opacities. The geometry the painter asks of a body
+(`effective_ops`, `matrices_of`, `size_after`, `layers_of`, `decode_points`,
+`ellipse_outline`) joined `drawing.rs`. The pour is `pure/pour.js` exactly, held
+to `spec/test-vectors/pour-v1.json` - twelve cases (rings, pressure, rectangles,
+ellipses, an eraser's gap, a thin diagonal, a grab, a turn, a crop, a copied
+layer) whose cells the browser's own code answered - by tests on both sides.
+Text is set from the 31 Marquee faces already in the binary (`woff2-patched`
+unpacks each once; `ab_glyph` gives the outlines); sans, serif, mono and comic
+are Radio Canada, Zilla Slab, JetBrains Mono and Comic Neue. First use: an
+export writes `<drawing>.horsedrawing.png` beside each `.horsedrawing`, at twice
+its size, and an import knows that file for the drawing's picture, not a picture
+of its own.
+
+**2026-10-09 - Notebooks and books as ePubs.** Curtis: "take a notepad and, in
+taxonomy order, compile it into an ePub and download it ... Public books could
+be downloaded as ePubs as well", cached "with a hash of all of the contained
+members' versions". `epub.rs` (plans/EPUB.md) gathers a book - a notebook from
+its `wiki:` tree, then the pages the tree doesn't place; a public book from its
+JSON, every page read as a stranger would, sealed and taken-down pages left out
+and a trusted-only book refused - and writes it: `mimetype` first and stored,
+the container, an EPUB 3 package, a nested `nav.xhtml`, a title page, and a page
+per chapter, rendered by Marquee 0.9.3's `Output::Xhtml` (a new direct
+dependency on `cube-drone-marquee-html-renderer`) through `BookProfile`:
+pictures as files in the book (`media::image::book_picture` - JPEG, PNG where
+see-through, 1600 at most), drawings painted by `drawing_paint.rs`, sound and
+video as placeholders, turbolinks plain, emoji as characters, and page-to-page
+links pointed at their chapters through `link_target` (a public page's links,
+which name notes, through `annotations::published_from`). Cached at
+`<data>/epubs/<hash>.epub` by a hash of the format's version, the shape and
+every page's and picture's version; pruned to 30 days and 512 MiB; two built at
+a time. An **ePub** button in a notebook's tree toolbar and under a book's title
+in the reader, through `net.js` `downloadFile`. `epub.cjs` checks a notebook's
+ePub (order, well-formedness by Python's parser, chapter links, a converted
+picture, a painted drawing), the cache (byte-identical twice, new after an
+edit), the notebook's privacy, and a public book downloaded by a stranger.

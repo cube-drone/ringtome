@@ -15,6 +15,7 @@ import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
 import { postHref } from '../links.js';
 import { useArrowNav } from './docapp.js';
+import { EpubButton } from './epubbutton.js';
 
 const html = htm.bind(h);
 
@@ -146,6 +147,7 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     return html`<section class="book-reader">
         <aside class="book-reader-tree">
             <p class="book-reader-book"><${Icons.book} /> ${title || payload.title || t('doc.bookreader.a-book', 'a book')}</p>
+            <${EpubButton} path=${`/ringtome/user/${root}/post/${book}/epub`} fallback="book.epub" className="book-reader-step" />
             <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} />
             ${
                 picked.size > 0 &&

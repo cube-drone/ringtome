@@ -150,7 +150,9 @@ pub fn groups(paths: &[String]) -> Vec<Group> {
         // The export's own files are no documents: details beside media, chat transcripts, and
         // the README at its top (or under the one folder a person may have zipped it in).
         let outside = !lowered.split('/').any(|p| p == "public" || p == "private");
-        if lowered.ends_with(".yml")
+        // A drawing's picture beside it (export.rs) is the drawing, painted - no document of its own.
+        if lowered.ends_with(".horsedrawing.png")
+            || lowered.ends_with(".yml")
             || lowered.split('/').any(|p| p == "chat")
             || (outside && lowered.rsplit('/').next() == Some("readme.txt"))
         {
@@ -1388,6 +1390,7 @@ mod tests {
             "private/unfiled/pic--aaaaaaaa.avif",
             "private/unfiled/pic--aaaaaaaa.avif.yml",
             "private/unfiled/doodle--bbbbbbbb.horsedrawing",
+            "private/unfiled/doodle--bbbbbbbb.horsedrawing.png",
             "private/contacts.yml",
             "private/chat/# barn--cccccccc.txt",
             "README.txt",

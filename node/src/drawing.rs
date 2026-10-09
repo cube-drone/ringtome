@@ -666,6 +666,258 @@ pub fn merge(bodies: &[Vec<u8>]) -> String {
     })
 }
 
+// ---------------------------------------------------------------------------------------------
+// Geometry (2026-10-09): what the browser's painter asks of a body - the layers in stack order, each
+// layer's steps, where each step stands after the grabs and transforms after it, the canvas after
+// its crops - ported from `node/js/pure/drawing.js` so the node can paint a drawing itself
+// (drawing_paint.rs). Each function is its namesake's, rule for rule.
+
+/// The scale a transform's fixed-point matrix is written in (`MATRIX_ONE`).
+pub const MATRIX_ONE: f64 = 1_000_000.0;
+
+/// A matrix `[a, b, c, d, e, f]` as the canvas takes it: x' = a x + c y + e, y' = b x + d y + f.
+pub type Matrix = [f64; 6];
+pub const IDENTITY: Matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+/// A then B: the matrix that does `b` first, then `a` (`compose`).
+pub fn compose(a: &Matrix, b: &Matrix) -> Matrix {
+    [
+        a[0] * b[0] + a[2] * b[1],
+        a[1] * b[0] + a[3] * b[1],
+        a[0] * b[2] + a[2] * b[3],
+        a[1] * b[2] + a[3] * b[3],
+        a[0] * b[4] + a[2] * b[5] + a[4],
+        a[1] * b[4] + a[3] * b[5] + a[5],
+    ]
+}
+
+/// A point through a matrix (`apply`).
+pub fn apply(m: &Matrix, (x, y): (f64, f64)) -> (f64, f64) {
+    (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+}
+
+/// How wide a stroke is at a pressure, as a share of its `size` (`pressureWidth`).
+pub fn pressure_width(pressure: i64) -> f64 {
+    0.15 + 0.85 * (pressure.clamp(0, MAX_PRESSURE) as f64 / MAX_PRESSURE as f64)
+}
+
+/// The stored, delta-coded points back to absolute ones (`decodePoints`). An odd trailing number
+/// is ignored.
+pub fn decode_points(encoded: &[i64]) -> Vec<(f64, f64)> {
+    let (mut x, mut y) = (0i64, 0i64);
+    encoded
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            if i == 0 {
+                (x, y) = (p[0], p[1]);
+            } else {
+                (x, y) = (x + p[0], y + p[1]);
+            }
+            (x as f64, y as f64)
+        })
+        .collect()
+}
+
+/// The box a shape's two corners make, in order: [left, top, right, bottom] (`shapeBox`).
+pub fn shape_box(points: &[i64]) -> [f64; 4] {
+    let p = |i: usize| points.get(i).copied().unwrap_or(0) as f64;
+    let (x0, y0, x1, y1) = (p(0), p(1), p(2), p(3));
+    [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)]
+}
+
+/// An ellipse's outline as points, from the circle's rational parametrisation - only adding,
+/// multiplying and dividing, so every computer gets the same points (`ellipseOutline`). Closed.
+pub fn ellipse_outline([l, top, r, bottom]: [f64; 4]) -> Vec<(f64, f64)> {
+    const QUARTER: usize = 64;
+    let (cx, cy) = ((l + r) / 2.0, (top + bottom) / 2.0);
+    let (rx, ry) = ((r - l) / 2.0, (bottom - top) / 2.0);
+    let quarter: Vec<(f64, f64)> = (0..QUARTER)
+        .map(|i| {
+            let u = i as f64 / QUARTER as f64;
+            let d = 1.0 + u * u;
+            ((1.0 - u * u) / d, (2.0 * u) / d)
+        })
+        .collect();
+    let mut unit: Vec<(f64, f64)> = quarter.clone();
+    unit.extend(quarter.iter().map(|&(c, s)| (-s, c)));
+    unit.extend(quarter.iter().map(|&(c, s)| (-c, -s)));
+    unit.extend(quarter.iter().map(|&(c, s)| (s, -c)));
+    unit.push(unit[0]);
+    unit.into_iter().map(|(c, s)| (cx + rx * c, cy + ry * s)).collect()
+}
+
+/// The layers a standing `delete` entry has thrown away (`deletedLayers`).
+pub fn deleted_layers(body: &Body) -> HashSet<String> {
+    body.strokes
+        .iter()
+        .filter(|s| s.tool == "delete")
+        .map(|s| s.layer.clone().unwrap_or_else(|| BASE_LAYER.to_string()))
+        .collect()
+}
+
+/// Every layer, bottom of the stack first (`layersOf`): the entries, the base layer, and any layer a
+/// stroke is on that has no entry of its own, at its defaults - less the deleted.
+pub fn layers_of(body: &Body) -> Vec<Layer> {
+    let default = |id: &str| Layer {
+        id: id.to_string(),
+        n: 1,
+        name: None,
+        z: 0,
+        opacity: MAX_OPACITY,
+        hidden: false,
+        t: 0,
+    };
+    let mut layers: Vec<Layer> = vec![default(BASE_LAYER)];
+    for s in body.strokes.iter().filter(|s| s.tool != "crop") {
+        let id = s.layer.as_deref().unwrap_or(BASE_LAYER);
+        if !layers.iter().any(|l| l.id == id) {
+            layers.push(default(id));
+        }
+    }
+    for l in &body.layers {
+        match layers.iter_mut().find(|have| have.id == l.id) {
+            Some(have) => *have = l.clone(),
+            None => layers.push(l.clone()),
+        }
+    }
+    let deleted = deleted_layers(body);
+    layers.retain(|l| !deleted.contains(&l.id));
+    layers.sort_by(|a, b| a.z.cmp(&b.z).then_with(|| a.id.cmp(&b.id)));
+    layers
+}
+
+/// A layer's text, or none when it is not a text layer or has been thrown away (`textOf`).
+pub fn text_of<'a>(body: &'a Body, layer: &str) -> Option<&'a Text> {
+    let record = body.texts.iter().find(|r| r.layer == layer)?;
+    (!deleted_layers(body).contains(layer)).then_some(record)
+}
+
+/// One step a layer paints (`effectiveOps`): the base layer's fill, a text layer's words, or one of
+/// its entries.
+#[derive(Debug, Clone, Copy)]
+pub enum Op<'a> {
+    Fill,
+    Text(&'a Text),
+    Entry(&'a Stroke),
+}
+
+impl Op<'_> {
+    pub fn tool(&self) -> &str {
+        match self {
+            Op::Fill => "fill",
+            Op::Text(_) => "text",
+            Op::Entry(s) => s.tool,
+        }
+    }
+}
+
+/// What a layer paints, in order (`effectiveOps`): the base layer's fill first, a text layer's
+/// words, then its entries - each `copy` replaced by its source's steps from before it, and every
+/// crop among them. `before` is the copy being expanded.
+pub fn effective_ops<'a>(body: &'a Body, layer: &str, before: Option<&Stroke>) -> Vec<Op<'a>> {
+    let mut out = Vec::new();
+    if layer == BASE_LAYER {
+        out.push(Op::Fill);
+    }
+    if before.is_none() {
+        if let Some(text) = text_of(body, layer) {
+            out.push(Op::Text(text));
+        }
+    }
+    for op in body
+        .strokes
+        .iter()
+        .filter(|s| s.tool == "crop" || s.layer.as_deref().unwrap_or(BASE_LAYER) == layer)
+    {
+        if before.is_some_and(|b| order(op, b) != std::cmp::Ordering::Less) {
+            break;
+        }
+        match op.tool {
+            "copy" => {
+                if let Some(from) = op.from.as_deref() {
+                    out.extend(effective_ops(body, from, Some(op)));
+                }
+            }
+            "delete" => {}
+            _ => out.push(Op::Entry(op)),
+        }
+    }
+    out
+}
+
+/// The matrix a step applies to what came before it (`matrixOf`).
+fn matrix_of(op: &Op) -> Option<Matrix> {
+    let Op::Entry(s) = op else { return None };
+    match s.tool {
+        "move" => Some([1.0, 0.0, 0.0, 1.0, s.dx.unwrap_or(0) as f64, s.dy.unwrap_or(0) as f64]),
+        "crop" => {
+            let p = s.points.as_deref().unwrap_or(&[]);
+            let at = |i: usize| p.get(i).copied().unwrap_or(0) as f64;
+            Some([1.0, 0.0, 0.0, 1.0, -at(0), -at(1)])
+        }
+        "transform" => {
+            let m = s.m.as_deref().unwrap_or(&[]);
+            (m.len() == 6).then(|| {
+                let f = |i: usize| m[i] as f64 / MATRIX_ONE;
+                [f(0), f(1), f(2), f(3), f(4), f(5)]
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The matrix each step is painted through - every move, transform and crop after it, the
+/// earliest applied first - and the layer's whole matrix (`matricesOf`).
+pub fn matrices_of(ops: &[Op]) -> (Vec<Matrix>, Matrix) {
+    let mut each = vec![IDENTITY; ops.len()];
+    let mut m = IDENTITY;
+    for i in (0..ops.len()).rev() {
+        each[i] = m;
+        if let Some(own) = matrix_of(&ops[i]) {
+            m = compose(&m, &own);
+        }
+    }
+    (each, m)
+}
+
+/// The canvas after the crops among `ops`, from the drawing's own (`sizeAfter`): [width, height].
+pub fn size_after(body: &Body, ops: &[Op]) -> (i64, i64) {
+    let mut size = (body.width, body.height);
+    for op in ops {
+        if let Op::Entry(s) = op {
+            if s.tool == "crop" {
+                let p = s.points.as_deref().unwrap_or(&[]);
+                if p.len() == 4 {
+                    size = (p[2] - p[0], p[3] - p[1]);
+                }
+            }
+        }
+    }
+    size
+}
+
+/// The canvas as it stands (`sizeOf`).
+pub fn size_of(body: &Body) -> (i64, i64) {
+    let ops: Vec<Op> = body.strokes.iter().map(Op::Entry).collect();
+    size_after(body, &ops)
+}
+
+/// The picture documents a drawing places, each once (`imagesOf`).
+pub fn images_of(body: &Body) -> Vec<String> {
+    let mut seen = Vec::new();
+    for s in body.strokes.iter().filter(|s| s.tool == "image") {
+        if let Some(doc) = &s.doc {
+            if !seen.contains(doc) {
+                seen.push(doc.clone());
+            }
+        }
+    }
+    seen
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

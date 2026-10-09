@@ -37,7 +37,9 @@ pub mod config;
 pub mod db;
 pub mod downloads;
 pub mod drawing;
+pub mod drawing_paint;
 pub mod edgegraph;
+pub mod epub;
 pub mod error;
 pub mod eviction;
 pub mod export;
@@ -831,6 +833,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             get(idface::public_body_named_route),
         )
         .route("/ringtome/user/{seg}/doc/{doc}/thumb", get(idface::public_thumb_route))
+        // A public book as an ePub (epub.rs): a static segment, ahead of the page wildcard.
+        .route("/ringtome/user/{seg}/post/{book}/epub", get(epub::book_handler))
         .route("/ringtome/user/{seg}/rss.xml", get(rss::rss_handler))
         .route("/ringtome/user/{seg}", get(idface::idface))
         .route("/ringtome/user/{seg}/{*rest}", get(idface::idface_deep))

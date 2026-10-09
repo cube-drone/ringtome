@@ -497,6 +497,20 @@ tests read it.
 - **Its own app and bucket.** The registry gets a Drawing app with the style
   `drawing`, so the eponymous `drawing` bucket holds every drawing, and Lost &
   Found lists them with the rest.
+- **The node paints it too** (2026-10-09, `drawing_paint.rs`). The browser's
+  painter (`doc/drawing.js`, `flatten`), ported step for step onto `tiny-skia`
+  - Skia's own CPU rasteriser, so ends, joins, mitres and smoothing are the
+    canvas's - with the geometry it rests on (`effective_ops`, `matrices_of`,
+    `size_of`, `layers_of`) in `drawing.rs` beside the body. Wherever a picture
+    of a drawing is wanted with no browser at hand: an export's
+    `.horsedrawing.png`, next an ePub's pages. **Pours** are ported exactly
+    (`pure/pour.js`): a pour is worked out again on every computer, so the node
+    must cover the same cells, and `spec/test-vectors/pour-v1.json` - answered
+    by the browser's own code - holds both sides to them. **Text** is set in the
+    Marquee faces the node carries (ui.rs), its glyph outlines drawn as paths;
+    the four standard stacks, a reader's system fonts in a browser, are Radio
+    Canada, Zilla Slab, JetBrains Mono and Comic Neue here. Antialiasing can
+    never match a browser pixel for pixel; every mark lands where it does there.
 
 ## The app
 

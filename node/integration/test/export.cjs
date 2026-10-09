@@ -19,7 +19,7 @@ const j = (who, p, body, method = 'POST') => who(p, { method, body: JSON.stringi
 describe('exports: a persona as one zip', function () {
     this.timeout(120000);
 
-    let ada, adaRoot, horse, plain, zip;
+    let ada, adaRoot, horse, plain, doodle, zip;
 
     const ready = async () => {
         for (let i = 0; i < 200; i++) {
@@ -55,6 +55,26 @@ describe('exports: a persona as one zip', function () {
             ).json()
         ).doc_id;
         await ada(`api/identity/${adaRoot}/docs/${horse}/buckets/stable`, { method: 'PUT' });
+        doodle = (
+            await (
+                await j(ada, `api/identity/${adaRoot}/docs`, {
+                    title: 'doodle',
+                    body: JSON.stringify({
+                        strokes: [
+                            {
+                                id: '0000000000000001',
+                                t: 1,
+                                tool: 'brush',
+                                color: '#000000',
+                                size: 20,
+                                points: [100, 100, 600, 400],
+                            },
+                        ],
+                    }),
+                    format: 'drawing',
+                })
+            ).json()
+        ).doc_id;
         await ada(`api/identity/${adaRoot}/docs/${horse}/annotations/tags/brown`, {
             method: 'PUT',
         });
@@ -113,6 +133,15 @@ describe('exports: a persona as one zip', function () {
         const stem = `private/unfiled/shopping--${plain.slice(0, 8)}`;
         assert.equal(read(`${stem}.txt`), 'oats, hay');
         assert.match(read(`${stem}.yml.txt`), /^---\n[\s\S]*---\noats, hay$/);
+    });
+
+    it('paints a drawing beside its strokes, on the node (drawing_paint.rs)', () => {
+        const stem = `private/unfiled/doodle--${doodle.slice(0, 8)}`;
+        assert.match(read(`${stem}.horsedrawing`), /"tool":"brush"/);
+        const png = execFileSync('unzip', ['-p', zip, `${stem}.horsedrawing.png`]);
+        assert.equal(png.subarray(1, 4).toString(), 'PNG');
+        // IHDR: twice the drawing's 800 x 600, the browser download's own backing.
+        assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1600, 1200]);
     });
 
     it('opens the trusted-only post it published, under public/', () => {

@@ -210,6 +210,8 @@ fn user_db_opens_are_deliberate() {
         // overwhelming majority of moves (posts, from people who publish no edges) never
         // reach the open. The notifications.rs shape, for the same reason.
         ("edgegraph.rs", 1),
+        // A public book's ePub reads its author's database once per request (epub.rs).
+        ("epub.rs", 1),
         ("net/resync.rs", 1),
         // + derive_peers_for: ONE persona's crown per derive edge. The 4th (2026-08-15) is
         // sync_with_peer's exists-check before its create: the shelf is minted only when the

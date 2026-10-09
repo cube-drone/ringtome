@@ -81,6 +81,10 @@ lightly federated, unapologetically Old Internet.
   two histories merge by putting both sets of strokes together (on the node,
   held to the browser by shared test vectors); copies and publications are
   pictures of it.
+- [`EPUB.md`](plans/EPUB.md) — a notebook, or a public book, as an `.epub`:
+  Marquee rendered as XHTML, pictures converted into the book, drawings painted
+  on the node, links between pages made links between chapters - cached by a
+  hash of every page's version.
 - [`EXPORT.md`](plans/EXPORT.md) — a persona, whole, as one `.zip`: notes in
   every rendering (`.mq`, `.md`, `.yml.md`, `.txt`, `.horsedrawing`), media,
   posts, profile, contacts, chats and bank, in folders by notebook and section -

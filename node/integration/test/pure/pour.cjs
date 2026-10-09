@@ -229,3 +229,23 @@ describe('pouring into shapes', () => {
         assert.ok(has(runs, 400, 297) && !has(runs, 400, 303), 'held above the line');
     });
 });
+
+// The conformance boundary with the node (node/src/drawing_paint.rs, 2026-10-09): the node paints
+// drawings too - an ePub's pages, an export's pictures - so it works every pour out again, and must
+// cover the cells this does (spec/test-vectors/pour-v1.json).
+describe('a pour, as the shared vectors say', () => {
+    const vectors = require('../../../../spec/test-vectors/pour-v1.json');
+
+    it('covers every case exactly', () => {
+        assert.ok(vectors.cases.length >= 10);
+        for (const c of vectors.cases) {
+            const drawing = d.readBody(c.body);
+            const ops = d.effectiveOps(drawing, c.layer);
+            const index = ops.findIndex((o) => o.id === c.pour);
+            assert.ok(index >= 0, c.name);
+            const [w, h] = d.sizeAfter(drawing, ops.slice(0, index));
+            assert.deepEqual([w, h], c.size, c.name);
+            assert.deepEqual(p.pourRuns(ops, index, w, h), c.runs, c.name);
+        }
+    });
+});

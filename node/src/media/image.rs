@@ -276,6 +276,30 @@ pub fn avif_to_png(input: &[u8], bound: u32) -> Result<Vec<u8>, CrushError> {
     Ok(buf.into_inner())
 }
 
+/// A picture for a book (epub.rs, 2026-10-09): ePub readers take PNG and JPEG, not AVIF. Our AVIF
+/// (or, for anything else - an animation's PNG - its first frame) no larger than `bound` on a side,
+/// as JPEG when it is opaque - a photograph as PNG is several times the bytes - and as PNG where
+/// any of it is see-through. Returns the bytes and their extension. CPU-bound, like [`crush`].
+pub fn book_picture(input: &[u8], bound: u32) -> Result<(Vec<u8>, &'static str), CrushError> {
+    let decoded = match decode_avif(input) {
+        Ok(img) => img,
+        Err(_) => image::load_from_memory(input).map_err(map_image_err)?,
+    };
+    let img = fit_within(decoded, bound);
+    let mut buf = Cursor::new(Vec::new());
+    let opaque = img.to_rgba8().pixels().all(|p| p[3] == 255);
+    if opaque {
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 85)
+            .encode_image(&DynamicImage::ImageRgb8(img.to_rgb8()))
+            .map_err(|e| CrushError::Decode(format!("jpeg encode failed: {e}")))?;
+        Ok((buf.into_inner(), "jpg"))
+    } else {
+        img.write_to(&mut buf, ImageFormat::Png)
+            .map_err(|e| CrushError::Decode(format!("png encode failed: {e}")))?;
+        Ok((buf.into_inner(), "png"))
+    }
+}
+
 /// Encode an RGBA view of `img` to AVIF at the configured quality/speed.
 fn encode_avif(img: &DynamicImage) -> Result<Vec<u8>, CrushError> {
     let rgba = img.to_rgba8();
@@ -379,7 +403,7 @@ fn map_avif_parse_err(error: avif_parse::Error) -> CrushError {
 
 /// Decode an AVIF still to an RGBA8 `DynamicImage`, pure-rust: avif-parse extracts the primary (and
 /// optional alpha) AV1 item; rav1d decodes the AV1 bitstream; we convert YUV->RGBA ourselves.
-fn decode_avif(input: &[u8]) -> Result<DynamicImage, CrushError> {
+pub(crate) fn decode_avif(input: &[u8]) -> Result<DynamicImage, CrushError> {
     let data = avif_parse::read_avif(&mut Cursor::new(input)).map_err(map_avif_parse_err)?;
 
     // Bomb guard again, right at the decode boundary: reject before allocating/decoding pixels.

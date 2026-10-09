@@ -62,6 +62,23 @@ export async function saveFile(name, blob) {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+/// A file the node makes on request - an ePub (epub.rs) - fetched and saved as the page's own files
+/// are (`saveFile`): under the name the node gives it, else `fallback`. A refusal throws with the
+/// node's words, as `api` does.
+export async function downloadFile(path, fallback) {
+    const res = await fetch(path, { credentials: 'same-origin', headers: authHeaders() });
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+            body.key
+                ? t(body.key, body.message || '', body.params)
+                : body.message || `request failed (${res.status})`,
+        );
+    }
+    const named = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '');
+    await saveFile(named ? named[1] : fallback, await res.blob());
+}
+
 export async function api(path, options = {}) {
     // The caller's own headers are merged rather than replaced, and they win: ours are
     // defaults, and one of them - the launch token - must survive a caller that sets any.

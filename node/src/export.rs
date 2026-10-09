@@ -378,11 +378,22 @@ async fn build(
                 })
                 .collect()
         };
+        // A drawing's picture beside its strokes (2026-10-09, drawing_paint.rs): painted once, at
+        // twice its size - the browser's own download's backing - so it opens anywhere.
+        let picture = if format == Format::Drawing {
+            let width = crate::drawing::size_of(&crate::drawing::read(&body)).0.max(1) as u32 * 2;
+            crate::drawing_paint::png(&data, &body, Some(width)).await
+        } else {
+            None
+        };
         for dir in &dirs {
             let at = format!("{dir}/{stem}");
             paths_of.entry(head.doc_id).or_insert_with(|| at.clone());
             for (path, bytes) in render(&at, &meta, &body) {
                 out.put_doc(path, bytes, &meta).await?;
+            }
+            if let Some(png) = &picture {
+                out.put_doc(format!("{at}.horsedrawing.png"), png.clone(), &meta).await?;
             }
         }
         state.exports.set(root, generation, Status::Running { done: done + 1, total });
@@ -924,7 +935,8 @@ async fn readme(state: &AppState, root: &str, missing: &[String], out: &mut Out<
          \x20         your contacts, your chats as this computer holds them, and your bank ledger.\n\n\
          Every Marquee note is here three ways: .mq (Marquee, its details in a :::meta line at the top),\n\
          .md (Markdown, words only) and .yml.md (Markdown under a YAML header of its details).\n\
-         Plain notes are .txt and .yml.txt; drawings are .horsedrawing (a YAML header, then the strokes).\n\
+         Plain notes are .txt and .yml.txt; drawings are .horsedrawing (a YAML header, then the strokes),\n\
+         \x20with a .horsedrawing.png of the picture beside each.\n\
          Pictures, video and sound are as they were stored, each with a .yml of its details beside it.\n\n\
          manifest.json lists every file with its SHA-256, and each note's id and the version exported.\n\n\
          No keys are in this file: it is your words and pictures, not the means to be you.\n",
