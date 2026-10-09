@@ -18886,3 +18886,24 @@ every five minutes (`public-links`, also a test beat). Pure claims for the link
 reading; `publinks.cjs` across two nodes: shut before the link, open after -
 person and post - and someone else on that node still shut. PROJECT_PLAN's
 _Links in a public post_ is the ruling now.
+
+**2026-10-09 - An Android download, the downloads for the signed-in, and an
+update notice that won't go away.** With 0.3.1 live there is an official APK.
+Curtis: offer it on the front page beside macOS, Windows and Linux (Phosphor's
+`android-logo`); give a signed-in person somewhere to download the app at all -
+the download panel, whole, in "Your Computers" under "invite this computer to be
+you", set apart by a rule; and tell an out-of-date app, every hour, at the top
+of the feed and above the app selector's heptagons, "There's a new version of
+Horse Drawing Tycoon 2 for you to install! Please download it from here!", with
+"HDT2 is still in alpha, so if you don't update, your client might stop working
+correctly with the rest of the network!" under it - and no way to hide it: "HDT2
+is so new that ALL UPDATES ARE IMPORTANT". `downloads.rs` picks the release's
+`.apk` too (its claim takes the real asset name). The panel moved out of the
+front door into `downloads.js`, shared by the Download tab and Your Computers.
+`update.js`'s `UpdateNotice` shows only in an installed app - the desktop app or
+the Android one, never a browser (always as new as its server), never a dev
+build - when the node's hourly read of the newest release is newer than the
+running version, and links this system's own download (`pure/update.js`:
+`isNewer`, never "yes" on a guess, and `downloadFor` by the shell's platform;
+pure claims). The app selector's frame became a column so the notice stands
+above the comb.

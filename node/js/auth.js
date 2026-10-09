@@ -11,7 +11,7 @@ import htm from 'htm';
 import { api, isDevice, isLinuxApp } from './net.js';
 import { t } from './i18n.js';
 import { Icons } from './icons.js';
-import { Version } from './version.js';
+import { DownloadPanel } from './downloads.js';
 import { Marquee } from './frontdoor.js';
 
 const html = htm.bind(h);
@@ -157,55 +157,6 @@ const LinuxNotice = () => {
         ${' '}${t('auth.linux-works-best-in', 'on Linux, Horse Drawing Tycoon 2 works best from Chrome or Firefox.')}
         ${' '}<a href="#" onClick=${open}>${t('auth.open-in-your-browser', 'Click here to open in your system browser.')}</a>
         ${error && html`<p class="form-error">${error}</p>`}
-    </div>`;
-};
-
-// The Download tab (Curtis, 2026-09-29): the newest desktop app, one button per system - links the
-// node reads off the GitHub releases page (src/downloads.rs), so a visitor's browser never asks
-// GitHub itself. A system the release didn't ship a download for has no button; when none could be
-// found, the releases page itself. Under it all, quietly, what this server is running - the app's
-// own version link.
-const DownloadPanel = () => {
-    const [found, setFound] = useState(null);
-    useEffect(() => {
-        api('/api/node/downloads')
-            .then(setFound)
-            .catch(() => setFound({ releases: 'https://github.com/cube-drone/ringtome/releases' }));
-    }, []);
-    const systems = found
-        ? [
-              [found.mac, Icons.appleLogo, t('auth.download-mac', 'macOS')],
-              [found.windows, Icons.windowsLogo, t('auth.download-windows', 'Windows')],
-              [found.linux, Icons.linuxLogo, t('auth.download-linux', 'Linux')],
-          ].filter(([href]) => href)
-        : [];
-    return html`<div class="welcome-download">
-        ${!found && html`<p class="null-sub">${t('auth.download-looking', 'looking for the newest release…')}</p>`}
-        ${
-            systems.length > 0 &&
-            html`<div class="download-buttons">
-            ${systems.map(
-                ([
-                    href,
-                    Icon,
-                    name,
-                ]) => html`<a class="download-button" key=${name} href=${href} title=${found.tag || ''}>
-                    <${Icon} /><span>${name}</span>
-                </a>`,
-            )}
-        </div>`
-        }
-        ${
-            found &&
-            systems.length === 0 &&
-            html`<p class="field-note">
-            ${t('auth.download-none-found', "the downloads couldn't be found just now.")}
-            ${' '}<a href=${found.releases} target="_blank" rel="noopener">${t('auth.download-every-release', 'every release is here')}</a>
-        </p>`
-        }
-        <p class="download-server">
-            ${t('auth.this-server-is-running', 'this server is running')}${' '}<${Version} className="download-version" />
-        </p>
     </div>`;
 };
 

@@ -11,6 +11,7 @@ import { iconFor } from './icons.js';
 import { isDevice } from './net.js';
 import { t } from './i18n.js';
 import { useNarrow } from './panes.js';
+import { UpdateNotice } from './update.js';
 
 const html = htm.bind(h);
 
@@ -129,6 +130,7 @@ export const Console = ({ onLaunch, personaName, me, admin }) => {
     const rows = chunk(consoleCellsFor(admin, columns, owns), columns);
     return html`
         <div class="console">
+            <${UpdateNotice} />
             <div class="hex-comb">
                 ${rows.map(
                     (row, ri) => html`

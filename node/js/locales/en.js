@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1745 phrases across 100 files.
+// 1751 phrases across 102 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -428,13 +428,6 @@ export default {
     'auth.warning': 'Warning:',
     'auth.linux-works-best-in': 'on Linux, Horse Drawing Tycoon 2 works best from Chrome or Firefox.',
     'auth.open-in-your-browser': 'Click here to open in your system browser.',
-    'auth.download-mac': 'macOS',
-    'auth.download-windows': 'Windows',
-    'auth.download-linux': 'Linux',
-    'auth.download-looking': 'looking for the newest release…',
-    'auth.download-none-found': "the downloads couldn't be found just now.",
-    'auth.download-every-release': 'every release is here',
-    'auth.this-server-is-running': 'this server is running',
     'auth.locked-out-your-spare-key': 'locked out? your spare key gets you back in.',
     'auth.name': 'name',
     'auth.spare-key': 'spare key',
@@ -543,6 +536,7 @@ export default {
     'computers.bring-your-persona-from-another': 'bring your persona from another computer',
     'computers.paste-the-new-computers-code': "paste the new computer's code here",
     'computers.invite-this-computer-to-be': 'invite this computer to be you',
+    'computers.get-the-app': 'get the app',
 
     // --- node/js/console.js ---
     'console.blurb-persona': 'you: your profile, your personas, your computers and your settings',
@@ -1006,6 +1000,16 @@ export default {
 
     // --- node/js/doc/usercard.js ---
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
+
+    // --- node/js/downloads.js ---
+    'auth.download-mac': 'macOS',
+    'auth.download-windows': 'Windows',
+    'auth.download-linux': 'Linux',
+    'auth.download-android': 'Android',
+    'auth.download-looking': 'looking for the newest release…',
+    'auth.download-none-found': "the downloads couldn't be found just now.",
+    'auth.download-every-release': 'every release is here',
+    'auth.this-server-is-running': 'this server is running',
 
     // --- node/js/facets.js ---
     'facets.narrow-on': 'showing only what is tagged this - click to let it go',
@@ -1548,6 +1552,12 @@ export default {
     'unlocks.checking': 'checking…',
     'unlocks.for-sale-in-the-market': 'For sale in the {market}.',
     'unlocks.hrsebank-market': 'hrseBank™ market',
+
+    // --- node/js/update.js ---
+    'update.here': 'here',
+    'update.update': 'Update:',
+    'update.there-is-a-new-version': "There's a new version of Horse Drawing Tycoon 2 for you to install! Please download it from {here}!",
+    'update.still-in-alpha': "HDT2 is still in alpha, so if you don't update, your client might stop working correctly with the rest of the network!",
 
     // --- node/js/version.js ---
     'version.dev-build': 'a development build of {branch}, on {version}',

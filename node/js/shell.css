@@ -511,3 +511,46 @@ body {
 .mq-doc li > p {
     margin-block: 0.1em;
 }
+
+/* An installed app that is behind the newest release (update.js, 2026-10-09): loud, and with no way
+   to put it away - "HDT2 is so new that ALL UPDATES ARE IMPORTANT". At the top of the feed and above
+   the app selector's tiles. */
+.update-notice {
+    max-width: 40rem;
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--coral);
+    color: var(--on-danger);
+    --j: 4px;
+    clip-path: var(--jag-1);
+}
+
+.update-notice p {
+    margin: 0;
+}
+
+.update-notice-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    font-size: 1rem;
+}
+
+.update-notice-icon {
+    flex-shrink: 0;
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.update-notice a {
+    color: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.update-notice .update-notice-note {
+    margin-top: 0.35rem;
+    padding-left: 2rem;
+    font-size: 0.85rem;
+    opacity: 0.9;
+}

@@ -65,6 +65,7 @@ import {
 } from '../pure/selectivity.js';
 import { useDocDetail } from '../doc/detail.js';
 import { Chip } from '../doc/chips.js';
+import { UpdateNotice } from '../update.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch, narrowParams } from '../postsearch.js';
 import { LabelFacets, NO_PICKS, PickedFacets, anyPicks, useLabels, usePicks } from '../facets.js';
@@ -583,6 +584,7 @@ export const FeedStream = ({
 
     return html`
         <main class="feed-stream" ref=${streamRef}>
+            <${UpdateNotice} />
             ${
                 /* The updates slot, between the lists and the feed they narrow (Curtis, 2026-09-27: in
                 the dial's corner it was hard to see): centred, and always the same height, so the

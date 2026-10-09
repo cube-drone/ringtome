@@ -45,6 +45,7 @@ import {
     TextAlignRight,
     DownloadSimple,
     AppleLogo,
+    AndroidLogo,
     WindowsLogo,
     LinuxLogo,
     Info,
@@ -203,6 +204,7 @@ export const Icons = {
     appleLogo: AppleLogo,
     windowsLogo: WindowsLogo,
     linuxLogo: LinuxLogo,
+    androidLogo: AndroidLogo, // since 0.3.1 shipped an APK (2026-10-09)
     profile: IdentificationCard,
     settings: Gear,
     computers: Desktop,

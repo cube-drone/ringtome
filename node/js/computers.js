@@ -13,6 +13,7 @@ import { Icons } from './icons.js';
 import { blastRadius } from './pure/removal.js';
 import { t, tNodes } from './i18n.js';
 import { SyncSection, ThisComputer } from './syncpage.js';
+import { DownloadPanel } from './downloads.js';
 
 const html = htm.bind(h);
 
@@ -319,6 +320,13 @@ export const Computers = ({ current }) => {
             ${error && html`<p class="form-error">${error}</p>`}
             </div>`
             }
+            ${
+                /* The app, for a person already signed in - who had nowhere to get it from but the
+                front page they no longer see (Curtis, 2026-10-09): the front page's own panel. */ ''
+            }
+            <hr class="computers-rule" />
+            <h3 class="computers-subtitle">${t('computers.get-the-app', 'get the app')}</h3>
+            <${DownloadPanel} />
             ${
                 removing &&
                 html`<${RemovalFlow}

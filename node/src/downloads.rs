@@ -30,7 +30,10 @@ pub struct Downloads {
     pub mac: Option<String>,
     pub windows: Option<String>,
     pub linux: Option<String>,
-    /// Every release, for whatever the three buttons don't cover.
+    /// The phone's APK (2026-10-08, since 0.3.1): installed by hand, so it is also what an
+    /// out-of-date Android app's update notice links to (js/update.js).
+    pub android: Option<String>,
+    /// Every release, for whatever the buttons don't cover.
     pub releases: &'static str,
 }
 
@@ -54,6 +57,7 @@ pub fn pick(release: &serde_json::Value) -> Downloads {
         mac: find(".dmg"),
         windows: find("-setup.exe"),
         linux: find(".AppImage"),
+        android: find(".apk"),
         releases: RELEASES_PAGE,
     }
 }
@@ -111,6 +115,7 @@ mod tests {
             "Horse.Drawing.Tycoon.2_0.2.2_x64-setup.exe",
             "Horse.Drawing.Tycoon.2_0.2.2_x64_en-US.msi",
             "Horse.Drawing.Tycoon.2_universal.app.tar.gz",
+            "horse-drawing-tycoon-2-0.2.2-arm64.apk",
             "latest.json",
         ];
         let release = serde_json::json!({
@@ -122,6 +127,7 @@ mod tests {
         assert_eq!(d.mac, Some(format!("{base}/Horse.Drawing.Tycoon.2_0.2.2_universal.dmg")));
         assert_eq!(d.windows, Some(format!("{base}/Horse.Drawing.Tycoon.2_0.2.2_x64-setup.exe")));
         assert_eq!(d.linux, Some(format!("{base}/Horse.Drawing.Tycoon.2_0.2.2_amd64.AppImage")));
+        assert_eq!(d.android, Some(format!("{base}/horse-drawing-tycoon-2-0.2.2-arm64.apk")));
         assert_eq!(
             super::pick(&serde_json::json!({})),
             super::Downloads { releases: super::RELEASES_PAGE, ..Default::default() },
