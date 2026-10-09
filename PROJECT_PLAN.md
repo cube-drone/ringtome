@@ -33,10 +33,13 @@ a passage predates the split and plainly means the app.
 What keeps the old name even though a person can meet it: the bundle identifier
 (`net.lassam.ringtome` - it names the app's data directory, its OS permission
 grants and its login item, so changing it would make the renamed app a stranger
-to its own data), the release-name seed (`ringtome/<version>`, or every release
-name would change), and browser-storage keys (renaming them would orphan what
-they hold). The "gamey product layer" GODOT.md furnishes the argument for is
-this product's future, not a different one.
+to its own data - and it is the Android app's ID too, kept by choice when that
+was still free to change (Curtis, 2026-10-08, over `com.horsedrawingtycoon.*`):
+registered with Google's developer verification, it can never change again
+without making a different app), the release-name seed (`ringtome/<version>`, or
+every release name would change), and browser-storage keys (renaming them would
+orphan what they hold). The "gamey product layer" GODOT.md furnishes the
+argument for is this product's future, not a different one.
 
 ### Federation vs. P2P
 
