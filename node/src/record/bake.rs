@@ -254,14 +254,7 @@ fn text_of(node: &marquee_parser::Node, out: &mut String) {
 /// wrote before `/ringtome/` - `/home/<app>/<id>` and `/in/…/<id>` - which only ever meant the
 /// author's own. `None` for anything else: someone else's document, a post, the web.
 pub fn own_doc(target: &str, root_hex: &str) -> Option<String> {
-    let path = match target.find("://") {
-        Some(i) => {
-            let after = &target[i + 3..];
-            &after[after.find('/')?..]
-        }
-        None => target,
-    };
-    let path = path.split(['?', '#']).next().unwrap_or(path);
+    let path = link_path(target)?;
     let is_id = |s: &str| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit());
     if let Some(rest) = path.strip_prefix("/ringtome/user/") {
         let (seg, rest) = rest.split_once('/')?;
@@ -274,6 +267,28 @@ pub fn own_doc(target: &str, root_hex: &str) -> Option<String> {
         return is_id(id).then(|| id.to_ascii_lowercase());
     }
     None
+}
+
+/// A link target's path, at any origin, without its query or fragment.
+fn link_path(target: &str) -> Option<&str> {
+    let path = match target.find("://") {
+        Some(i) => {
+            let after = &target[i + 3..];
+            &after[after.find('/')?..]
+        }
+        None => target,
+    };
+    Some(path.split(['?', '#']).next().unwrap_or(path))
+}
+
+/// The person a `/ringtome/user/<seg>/...` link names, as root hex - in any spelling, at any origin,
+/// whatever follows (a post, a document, their page). `None` for anything else. What the public-link
+/// pass reads a front-page post's links for (publinks.rs).
+pub fn linked_root(target: &str) -> Option<String> {
+    let rest = link_path(target)?.strip_prefix("/ringtome/user/")?;
+    let seg = rest.split('/').next()?;
+    let crate::speakable::Parsed::Ok(root) = crate::speakable::parse(seg)? else { return None };
+    Some(hex::encode(root))
 }
 
 /// Every embed target in a parsed body, in order - for a reader outside this module (the post head's
@@ -1169,6 +1184,31 @@ async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], S
 
 #[cfg(test)]
 mod tests {
+
+    /// The person a `/ringtome/` link names (publinks.rs reads front-page posts for them): any
+    /// spelling of the root, any origin, whatever the link points at under them - and nothing for
+    /// the web, a cozy path, or a segment that is no root.
+    #[test]
+    fn the_person_a_ringtome_link_names() {
+        use super::linked_root;
+        let them = [9u8; 32];
+        let hex_root = hex::encode(them);
+        let speakable = crate::speakable::speakable(&them);
+        let short = speakable.rsplit('-').next().unwrap().to_string();
+        let id = "a".repeat(32);
+        for target in [
+            format!("/ringtome/user/{short}/post/{id}"),
+            format!("https://far.example/ringtome/user/{short}/doc/{id}?via=abc#top"),
+            format!("/ringtome/user/{hex_root}"),
+            format!("/ringtome/user/{speakable}/room/{id}"),
+        ] {
+            assert_eq!(linked_root(&target), Some(hex_root.clone()), "{target}");
+        }
+        for target in ["https://example.com/ringtome/", "/home/notes/abc", "/ringtome/user/nobody"]
+        {
+            assert_eq!(linked_root(target), None, "{target}");
+        }
+    }
 
     /// A body's links, for the Writer's Links column (2026-09-30): each target once, in order, its
     /// words as plain text, and the author's own documents recognised in every spelling - the

@@ -194,6 +194,11 @@ pub async fn beat(
             crate::speculative::reset_attempt_stamps();
             crate::speculative::acquire_pass(state.clone()).await
         }
+        ("public-links", _) => {
+            // "Warm NOW": the attempt stamps would otherwise skip a person tried a moment ago.
+            crate::publinks::reset_attempt_stamps();
+            crate::publinks::warm_pass(state.clone()).await
+        }
         ("evict", _) => {
             // Grace ZERO: a rung eviction gates on claims (hosted, dials, fragments,
             // demand), never on clocks - the forced-due posture of every sweep beat.

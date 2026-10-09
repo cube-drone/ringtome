@@ -1779,7 +1779,8 @@ pub(crate) async fn public_doc_bytes(
     };
     let facts = match facts {
         Some(f) => Some(f),
-        None if session.is_some()
+        // ...or a stranger, for someone a public post here links to (publinks.rs).
+        None if (session.is_some() || crate::publinks::linked_publicly_here(state, &root_hex))
             && not_here_yet
             && !hosted_here(state, &root_hex).await.unwrap_or(false) =>
         {
@@ -2476,7 +2477,8 @@ async fn shelf_readable(
     if hosted_here(state, root_hex).await? {
         return Ok(true);
     }
-    if session.is_none() {
+    // A stranger reads what a member would, for someone a public post here links to (publinks.rs).
+    if session.is_none() && !crate::publinks::linked_publicly_here(state, root_hex) {
         return Ok(false);
     }
     Ok(foreign_fetch_row(state, root_hex).await?.is_some()
@@ -3504,12 +3506,15 @@ pub async fn id_profile(
     let mut refreshing = false;
     let mut synced_ms: Option<i64> = None;
     if !hosted {
-        let Some(_member) = session.as_ref() else {
+        // A member, or a stranger following a link a public post here makes (publinks.rs - the
+        // public post vouches: "if something is on our node it's because someone we trust put
+        // it there"). Either is fetched for, and served stale while revalidating.
+        if session.is_none() && !crate::publinks::linked_publicly_here(&state, &root_hex) {
             return Err(AppError::NotFound(crate::msg!(
                 "idface.no-such-persona-here-5",
                 "no such persona here"
             )));
-        };
+        }
         let now = crate::clock::now_ms();
         let row = foreign_fetch_row(&state, &root_hex).await?;
         // Candidates: the address's own hints first, then the endpoint that answered last time

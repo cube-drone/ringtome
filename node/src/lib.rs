@@ -69,6 +69,7 @@ pub mod outbox;
 pub mod postkeys;
 pub mod profiles;
 pub mod pubkey;
+pub mod publinks;
 pub mod publish;
 pub mod publishing;
 pub mod rate_limit;
@@ -139,6 +140,9 @@ pub struct AppState {
     /// times dials their node once rather than ten times (idface's stale-while-revalidate).
     /// In-memory and per-process: a boot clears it, which at worst costs one extra exchange.
     pub refreshing: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    /// The people this node's public posts link to (publinks.rs): a stranger is admitted to
+    /// them as a member's visit is. Rebuilt by the public-link pass; a boot runs it at once.
+    pub publicly_linked: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     /// The tick sweeps' stat-before-open marks (loops::FreshnessMarks): a backstop sweep
     /// skips every root whose files haven't moved since it last folded them.
     pub sweep_marks: loops::FreshnessMarks,
@@ -258,17 +262,42 @@ async fn node_info(_session: auth::Session, State(state): State<AppState>) -> Js
 #[derive(serde::Deserialize)]
 struct UnfurlQuery {
     url: String,
+    /// The public post the link sits in, as `<author>/<doc>` - a stranger's proof that the link
+    /// is on this node (`linked_publicly`). A session needs none.
+    #[serde(rename = "in")]
+    in_post: Option<String>,
 }
 
 /// Fetch a link's OpenGraph card on the browser's behalf (net::unfurl - CORS forbids the
-/// browser doing it). Session-gated: unfurling spends the node's outbound budget and reveals
-/// interest in the target, so only this node's own users may ask. `null` is an honest "that
-/// page has no card" (or a transient fetch failure) - the turbolink falls to its plain form.
+/// browser doing it). `null` is an honest "that page has no card" (or a transient fetch
+/// failure) - the turbolink falls to its plain form.
+///
+/// This node's own users may ask about anything. A stranger may too (Curtis, 2026-10-08: the
+/// front page's links to newspaper articles sat there as plain links for anyone signed out),
+/// but only about a link a public post on this node points to - "if something is on our node
+/// it's because someone we trust put it there" - named by `in`, and checked against that
+/// post's public words. Anything else is refused, so the node is no general-purpose fetcher
+/// for the internet. Either way the fetch spends the one outbound budget and lands in the one
+/// day-long cache, so a front page's cards are fetched about once a day however many look.
 async fn unfurl_handler(
-    _session: auth::Session,
+    session: Option<auth::Session>,
     State(state): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<UnfurlQuery>,
 ) -> Result<Json<Option<net::unfurl::Summary>>, AppError> {
+    if session.is_none() {
+        let Some(place) = q.in_post.as_deref() else {
+            return Err(AppError::Unauthorized(crate::msg!(
+                "lib.unfurl-needs-a-session-or-a-post",
+                "sign in, or say which public post the link is in"
+            )));
+        };
+        if !linked_publicly(&state, place, &q.url).await {
+            return Err(AppError::Forbidden(crate::msg!(
+                "lib.unfurl-not-on-this-node",
+                "no public post here links there"
+            )));
+        }
+    }
     match state.unfurl.unfurl(&q.url).await {
         Ok(summary) => Ok(Json(summary)),
         Err(net::unfurl::Refusal::BadTarget(m)) => Err(AppError::BadRequest(m)),
@@ -276,6 +305,30 @@ async fn unfurl_handler(
             "lib.the-nodes-unfurl-budget-is",
             "link previews are paused for now"
         ))),
+    }
+}
+
+/// The words a public post on this node shows a stranger, the same door `/id/.../body` is, hold
+/// `url`. A stranger's read: what this node would hand anyone (a sealed post's words are
+/// ciphertext here, so its links never match), and nothing it would not (a post not held here is
+/// a 404). The words are capped well past any document's size; a bigger body is media, not words.
+async fn linked_publicly(state: &AppState, place: &str, url: &str) -> bool {
+    const MAX_WORDS: usize = 1024 * 1024;
+    let url = url.trim();
+    let Some((author, doc)) = place.split_once('/') else { return false };
+    if url.is_empty() {
+        return false;
+    }
+    let Ok(resp) = idface::public_doc_bytes(state, &None, author, doc, false, None, None).await
+    else {
+        return false;
+    };
+    if !resp.status().is_success() {
+        return false;
+    }
+    match axum::body::to_bytes(resp.into_body(), MAX_WORDS).await {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).contains(url),
+        Err(_) => false,
     }
 }
 
@@ -450,6 +503,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         unfurl,
         view_epochs: ViewEpochs::default(),
         refreshing: Default::default(),
+        publicly_linked: Default::default(),
         sweep_marks: Default::default(),
         activity: Default::default(),
         unplugged,
@@ -729,6 +783,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(3600)
     };
     loops::periodic("mirror-eviction", evict_beat, state.clone(), eviction::evict_pass);
+    // The people public posts link to (publinks.rs): who a stranger may follow a link to, and the
+    // peek cache warmed for them. Its first pass runs at boot, so the doors know at once.
+    loops::periodic(
+        "public-links",
+        std::time::Duration::from_secs(300),
+        state.clone(),
+        publinks::warm_pass,
+    );
     loops::periodic(
         "sync-anti-entropy",
         std::time::Duration::from_secs(state.config.resync_interval_secs),

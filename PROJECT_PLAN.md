@@ -4341,6 +4341,46 @@ until the keeping node ever meets the replier's chain or fragment.
 
 ---
 
+#### Links in a public post: the peek cache, not a pin (ruled 2026-10-08)
+
+The case (Curtis, 2026-10-08): Cube Drone's public post links a post someone
+off-node wrote, and a stranger reads it on our front page. A `/ringtome/` link
+names its target by key, so its card and its click both resolve through _this_
+node - and the doors fetched for members only, so a stranger met "(THIS DOCUMENT
+IS PRIVATE)" and "that isn't here" unless the post happened to be held.
+
+A pin was proposed and set aside: a public post linking a post would oblige the
+node to keep it, playing by the share's rules (the seal refuses spread, speech
+deletes, media rides the budget, no chain subscription), carriage without the
+social act. Curtis's ruling: the **peek cache** already holds what that bought -
+a stale copy beats nothing when the author doesn't answer, a node-wide budget
+with the least recently looked at going first, files reaped with the fragments
+that referenced them - "we probably had almost exactly this same discussion for
+peeks, and that same architecture makes perfect sense here." **A link is not a
+pin.** No obligation, no refusal rules, no cascade through rebroadcasts.
+
+**Built (`publinks.rs`):**
+
+- **The bar is the web links' bar** - "if something is on our node it's because
+  someone we trust put it there". The people this node's public posts link to
+  are admitted to a stranger exactly as a member's visit admits them: fetched as
+  a peek when nothing is held, served at once and revalidated behind the answer
+  when something is (the profile door, the post door's missing-post fetch, the
+  shelf). Someone no public post links stays as before: hosted only.
+- **Who counts** is read off the front page itself: a pass over the node shelf's
+  newest 200 posts and shares reads each one's words as a stranger would (a
+  sealed post's are ciphertext and name nobody), takes the first 10 off-node
+  people its links name, and publishes that set to the doors. An unchanged post
+  is not read again.
+- **Warming**: the same pass peeks a few of them (3 a pass) that this node does
+  not hold yet, with each link's own `?via=` hints, so the first stranger finds
+  the link already working; an author who didn't answer waits an hour for the
+  next try. A warmed peek nobody looks at expires by the peek cache's rules.
+
+The web half of the same case: a stranger's view gets the cards of ordinary web
+links in public posts here - `/api/unfurl` takes `in=<author>/<doc>`, and
+fetches for someone signed out only a link that post's public words contain.
+
 ## Iroh Protocol Mapping
 
 Iroh provides composable protocols on top of its QUIC-based p2p connections,

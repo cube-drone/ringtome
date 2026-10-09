@@ -819,7 +819,9 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
     const title = amended ? amended.title : item.title || sealedWords || '';
     // A room's description is Marquee (CHAT.md, ruling 1): rendered as such.
     const bodyFormat = item.format === 'room' ? 'marquee' : item.format;
-    const tlProfile = useTurbolinks(shownBody || '', bodyFormat);
+    // Its own address goes along, so a reader who isn't signed in still gets its links' cards
+    // (doc/turbolinks.js `placeOf`): the node fetches them for a link a public post here holds.
+    const tlProfile = useTurbolinks(shownBody || '', bodyFormat, `${item.author}/${item.doc_id}`);
     const { lead, cut: leadCut } = leadOf(shownBody || '', emphasis);
     // A book's card always draws its whole table (below), so nothing is ever held back from it -
     // nor from a post on its own page (Curtis, 2026-10-08: "if someone has bothered to click on

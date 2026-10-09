@@ -18843,3 +18843,46 @@ own parser) scrubs a description to one safe line; a name falls back exactly as
 names always did. The in-app renderer still drops alt on video and audio -
 Marquee's to fix, and the first entry of the new plans/MARQUEE.md, the running
 list of what's handed upstream (README's _The documents_ lists it).
+
+**2026-10-08 - Strangers get the front page's link cards.** Curtis, on the
+horsedrawingtycoon.com front page signed out: links to newspaper articles sat
+there as plain links - "my expectation would be that links to public
+/ringtome/.. assets or anything on the public web would unfurl properly". Web
+cards come from `/api/unfurl`, which only a session could ask. Rather than give
+strangers a fetch budget of their own, or a cache they could only read, the bar
+is Curtis's: "if something is on our node it's because someone we trust put it
+there", so fetching it "once a day doesn't seem malicious". A stranger may now
+ask about a link a public post here points to, naming the post
+(`in=<author>/ <doc>`); `linked_publicly` reads that post's words through the
+public body door as a stranger would - a sealed post's are ciphertext, a post
+not held here is a 404 - and lets the fetch through only if they contain the
+link. Anything else is refused, so the node is no fetcher for the internet; the
+one budget and the one day-long cache stand. The card side: `useTurbolinks`
+takes the post's address and `placeOf` remembers which post each link was met
+in, for the web resolver to name. Four new claims in `unfurl.cjs` prove it
+offline - past the gate, a private address meets the address guard's 400; a link
+not in the post, a sealed post's link, and a missing post meet 403. Links to
+off-node `/ringtome/` posts still work for a stranger only when the post happens
+to be held here: whether a public link should make the node keep it - an
+implicit pin, carriage without the social act of a share, playing by the share's
+rules - is written up in PROJECT_PLAN for Curtis to rule on.
+
+**2026-10-08 - A public link opens its person to a stranger.** The other half of
+the front page's links: a `/ringtome/` link to someone off-node resolves through
+this node, which fetched only for members - so a stranger met "(THIS DOCUMENT IS
+PRIVATE)" and "that isn't here". A pin was proposed (keep what public posts
+link, by the share's rules) and Curtis ruled it out: the peek cache already
+gives what it bought - "we probably had almost exactly this same discussion for
+peeks" - so a link is not a pin. `publinks.rs` reads the front page's newest 200
+posts as a stranger would, takes the first 10 off-node people each one's links
+name (`bake::linked_root`, any spelling at any origin), and publishes that set
+to the doors: the profile door, the post door's missing-post fetch and the shelf
+now admit a stranger to those people exactly as a member's visit is admitted -
+fetched as a peek when nothing is held, served and revalidated behind the answer
+when something is. The same pass warms the cache, three unheld people a pass
+with each link's `?via=` hints, an unanswered author retried hourly; a warmed
+peek nobody looks at expires by the peek cache's own rules. It runs at boot and
+every five minutes (`public-links`, also a test beat). Pure claims for the link
+reading; `publinks.cjs` across two nodes: shut before the link, open after -
+person and post - and someone else on that node still shut. PROJECT_PLAN's
+_Links in a public post_ is the ruling now.

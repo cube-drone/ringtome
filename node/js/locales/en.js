@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1743 phrases across 100 files.
+// 1745 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1833,6 +1833,8 @@ export default {
     'idface.not-carried-here-and-none': "not carried here, and none of the address's computers answered",
 
     // --- node/src/lib.rs ---
+    'lib.unfurl-needs-a-session-or-a-post': 'sign in, or say which public post the link is in',
+    'lib.unfurl-not-on-this-node': 'no public post here links there',
     'lib.the-nodes-unfurl-budget-is': 'link previews are paused for now',
 
     // --- node/src/made_with.rs ---

@@ -608,6 +608,7 @@ mod tests {
             unfurl: crate::net::unfurl::Unfurler::new(30.0),
             view_epochs: crate::ViewEpochs::default(),
             refreshing: Default::default(),
+            publicly_linked: Default::default(),
             activity: Default::default(),
             sweep_marks: Default::default(),
             unplugged: Default::default(),

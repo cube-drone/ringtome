@@ -39,13 +39,22 @@ import {
     turbolinkTargets,
 } from '@cube-drone/marquee-turbolink';
 
+/// Where each web link was met, as `<author>/<doc>` of the public post holding it (`useTurbolinks`'
+/// `place`): a stranger's proof that the link is on this node, which is what lets the node fetch its
+/// card for someone signed out (Curtis, 2026-10-08 - the front page's newspaper links). The first
+/// post a link was met in will do; a member's own session needs none.
+const placeOf = new Map();
+
 const ogPlugin = {
     name: 'ringtome-og',
     match: (target) => /^https?:\/\//i.test(target),
     resolve: async (target) => {
+        const place = placeOf.get(target);
         try {
             // A summary, or null for "that page has no card".
-            return await api(`/api/unfurl?url=${encodeURIComponent(target)}`);
+            return await api(
+                `/api/unfurl?url=${encodeURIComponent(target)}${place ? `&in=${encodeURIComponent(place)}` : ''}`,
+            );
         } catch {
             return null; // refused, rate-limited, or failed: the link stays plain
         }
@@ -369,8 +378,9 @@ async function prime(targets) {
 /// The hook a surface uses: hand it the current Marquee source, get back a profile whose
 /// turbolink socket knows everything resolved so far. The profile is a fresh object each
 /// time new data lands, so renderers re-render on identity change; per-keystroke re-parses
-/// are cheap and re-fetch nothing (`attempted` dedupes).
-export function useTurbolinks(source, format) {
+/// are cheap and re-fetch nothing (`attempted` dedupes). `place`, `<author>/<doc>` of the public
+/// post `source` is, lets a reader who isn't signed in have its web links' cards (`placeOf`).
+export function useTurbolinks(source, format, place = null) {
     const [gen, setGen] = useState(0);
     useEffect(() => {
         if (format !== 'marquee' || !source) return;
@@ -382,6 +392,7 @@ export function useTurbolinks(source, format) {
         }
         const targets = turbolinkTargets(doc);
         if (targets.length === 0) return;
+        if (place) for (const t of targets) if (!placeOf.has(t)) placeOf.set(t, place);
         let alive = true;
         prime(targets).then((changed) => {
             if (alive && changed) setGen((g) => g + 1);
@@ -389,7 +400,7 @@ export function useTurbolinks(source, format) {
         return () => {
             alive = false;
         };
-    }, [source, format]);
+    }, [source, format, place]);
 
     return useMemo(
         () => ({
