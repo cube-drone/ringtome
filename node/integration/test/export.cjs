@@ -184,6 +184,35 @@ describe('exports: a persona as one zip', function () {
         );
     });
 
+    // An export the node was making when it stopped (2026-10-09: a large account's came back to
+    // nothing, and the page could only offer to start again): its state is written down as it
+    // goes, so afterwards the page hears that it was interrupted, and how far it got.
+    it('an export the server stopped during is reported interrupted, with how far it got', async () => {
+        const stray = await makeUserFetch({ prefix: 'exportstray' });
+        const strayRoot = (await (await stray('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        // What a node that stopped mid-export leaves behind: the state, and no job running.
+        const dir = path.resolve(__dirname, '../../../data/test/exports');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(
+            path.join(dir, `${strayRoot}.json`),
+            JSON.stringify({ status: 'running', done: 5, total: 10, started_ms: 1 }),
+        );
+        const r = await (await stray(`api/identity/${strayRoot}/export`)).json();
+        assert.equal(r.status, 'interrupted');
+        assert.deepEqual([r.done, r.total], [5, 10]);
+        assert.match(r.error, /stopped/);
+        // Asking again starts afresh, and finishes.
+        await j(stray, `api/identity/${strayRoot}/export`, {});
+        for (let i = 0; i < 200; i++) {
+            const now = await (await stray(`api/identity/${strayRoot}/export`)).json();
+            if (now.status === 'ready') return;
+            assert.ok(['queued', 'running'].includes(now.status), JSON.stringify(now));
+            await new Promise((res) => setTimeout(res, 250));
+        }
+        throw new Error('never finished');
+    });
+
     it('nobody else may ask for it', async () => {
         const eve = await makeUserFetch({ prefix: 'exporteve' });
         assert.notEqual((await eve(`api/identity/${adaRoot}/export`)).status, 200);

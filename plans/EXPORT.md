@@ -95,6 +95,15 @@ bank, laid out as files and folders. Import comes later (_Not yet_).
   reading and compressing, and a server with many people should run them in
   turn. A persona's export is _queued_, then _running_ with its progress, then
   _ready_ (its size and when) or _failed_ (why).
+- **How far it has got** (2026-10-09, after a large account's export came back
+  to nothing): _gathering_ (reading what there is, before the total is known),
+  then _writing_ - a step per document and post, then the profile, lists,
+  contacts, ledger, chats and README - which the page draws as a bar, a share
+  and _N of M_. The state is written beside the zip (`<root>.json`) whenever it
+  changes kind and every two seconds while it runs, so a node that stopped
+  mid-export says so afterwards - _interrupted_, and how far it got - rather
+  than offering to start again as if nothing had happened. At most two files
+  wait in memory for the zip's thread at once.
 - **One per persona.** Starting a new one cancels any queued or running one and
   deletes the last zip; the new zip replaces it when it is whole (written as
   `.partial`, then renamed - backup.rs's rule).

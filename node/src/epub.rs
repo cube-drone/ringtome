@@ -727,12 +727,19 @@ async fn make(
     state: &AppState,
     data: Option<&crate::record::store::Store>,
     book: &Book,
+    progress: &(dyn Fn(usize) + Sync),
 ) -> Result<Made> {
+    let mut steps = 0usize;
+    let mut step = || {
+        steps += 1;
+        progress(steps);
+    };
     // The pictures first, so every page knows its pictures' files.
     let mut files: Vec<(String, Vec<u8>, &'static str)> = Vec::new();
     let mut picture_files: HashMap<String, String> = HashMap::new();
     let mut made: HashMap<String, String> = HashMap::new();
     for p in &book.pictures {
+        step();
         if let Some(name) = made.get(&p.doc) {
             picture_files.insert(p.target.clone(), name.clone());
             continue;
@@ -778,6 +785,7 @@ async fn make(
         "application/xhtml+xml",
     ));
     for (i, c) in book.chapters.iter().enumerate() {
+        step();
         let title = display(&c.title);
         let inner = match &c.words {
             Words::Marquee(source) => {
@@ -1033,6 +1041,7 @@ async fn file_for(
     state: &AppState,
     data: Option<&crate::record::store::Store>,
     book: &Book,
+    progress: &(dyn Fn(usize) + Sync),
 ) -> Result<PathBuf> {
     let dir = cache_dir(state);
     tokio::fs::create_dir_all(&dir).await.context("making the ePub cache")?;
@@ -1048,7 +1057,7 @@ async fn file_for(
     if path.is_file() {
         return Ok(path);
     }
-    let (files, cover) = make(state, data, book).await?;
+    let (files, cover) = make(state, data, book, progress).await?;
     let partial = dir.join(format!("{}.{}.partial", book.key(), rand::random::<u64>()));
     let (book_shape, to) = (BookShape::of(book), partial.clone());
     tokio::task::spawn_blocking(move || zip_book(&book_shape.0, &files, cover.as_deref(), &to))
@@ -1150,13 +1159,107 @@ async fn serve(path: PathBuf, title: &str) -> Result<impl IntoResponse, AppError
     ))
 }
 
-/// GET `/api/identity/{root}/buckets/{bucket}/epub` - a notebook as an ePub, for its own persona.
+// ---------------------------------------------------------------------------------------------
+// Building in the background (2026-10-09: "very large ePubs ahoy")
+
+/// A book being made, as a poll sees it.
+#[derive(Clone)]
+struct Build {
+    done: usize,
+    total: usize,
+    error: Option<String>,
+}
+
+/// Every book being made, by who asked for what: a notebook, or a book and the account asking -
+/// a trusted reader's copy may hold pages a stranger's doesn't, and a poll is answered from here,
+/// before the book is gathered again, by the same asker who passed the door when it began.
+fn builds() -> &'static std::sync::Mutex<HashMap<String, Build>> {
+    static BUILDS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Build>>> =
+        std::sync::OnceLock::new();
+    BUILDS.get_or_init(Default::default)
+}
+
+/// A build's answer to a poll: `202` and how far it has got, or what stopped it - said once, then
+/// forgotten, so asking again starts afresh.
+fn polled(job: &str) -> Option<axum::response::Response> {
+    let mut all = builds().lock().ok()?;
+    let b = all.get(job)?.clone();
+    if b.error.is_some() {
+        all.remove(job);
+    }
+    let status = if b.error.is_some() { "failed" } else { "building" };
+    let body =
+        serde_json::json!({ "status": status, "done": b.done, "total": b.total, "error": b.error });
+    Some((axum::http::StatusCode::ACCEPTED, axum::Json(body)).into_response())
+}
+
+/// The book's file when this exact book was made before; otherwise its making begins, in the
+/// background, and the asker is told to come back (`202`, with the steps to go).
+async fn answer(
+    state: &AppState,
+    job: String,
+    book: Book,
+) -> Result<axum::response::Response, AppError> {
+    let path = cache_dir(state).join(format!("{}.epub", book.key()));
+    if path.is_file() {
+        if let Ok(f) = std::fs::File::options().append(true).open(&path) {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
+        return Ok(serve(path, &book.title).await?.into_response());
+    }
+    let total = book.pictures.len() + book.chapters.len();
+    {
+        let mut all = builds().lock().map_err(|_| AppError::Internal(anyhow::anyhow!("builds")))?;
+        if !all.contains_key(&job) {
+            all.insert(job.clone(), Build { done: 0, total, error: None });
+            let state = state.clone();
+            let job = job.clone();
+            tokio::spawn(async move {
+                let data = if book.public {
+                    None
+                } else {
+                    crate::record::store::open_agented(&state, &book.root).await.ok()
+                };
+                let progress = |done: usize| {
+                    if let Ok(mut all) = builds().lock() {
+                        if let Some(b) = all.get_mut(&job) {
+                            b.done = done;
+                        }
+                    }
+                };
+                let made = file_for(&state, data.as_ref(), &book, &progress).await;
+                if let Ok(mut all) = builds().lock() {
+                    match made {
+                        // Made: the next ask finds it in the cache.
+                        Ok(_) => {
+                            all.remove(&job);
+                        }
+                        Err(e) => {
+                            tracing::warn!(job = %job, error = ?e, "an ePub could not be made");
+                            if let Some(b) = all.get_mut(&job) {
+                                b.error = Some(format!("{e:#}"));
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+    Ok(polled(&job).unwrap_or_else(|| axum::http::StatusCode::ACCEPTED.into_response()))
+}
+
+/// GET `/api/identity/{root}/buckets/{bucket}/epub` - a notebook as an ePub, for its own persona:
+/// the file, or `202` and how far its making has got.
 pub async fn notebook_handler(
     session: Session,
     State(state): State<AppState>,
     UrlPath((root, bucket)): UrlPath<(String, String)>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
+    let job = format!("notebook:{root}:{bucket}");
+    if let Some(r) = polled(&job) {
+        return Ok(r);
+    }
     let book = notebook(&state, &data, &root, &bucket).await.map_err(AppError::Internal)?;
     if book.chapters.is_empty() {
         return Err(AppError::NotFound(crate::msg!(
@@ -1164,17 +1267,17 @@ pub async fn notebook_handler(
             "that notebook has nothing to read yet"
         )));
     }
-    let path = file_for(&state, Some(&data), &book).await.map_err(AppError::Internal)?;
-    serve(path, &book.title).await
+    answer(&state, job, book).await
 }
 
 /// GET `/ringtome/user/{seg}/post/{book}/epub` - a public book as an ePub, for anyone; a book or a page
-/// sealed for trusted readers, for them alone (`reader_key`), asked before the cache is.
+/// sealed for trusted readers, for them alone (`reader_key`), asked before the cache is. The file,
+/// or `202` and how far its making has got.
 pub async fn book_handler(
     session: Option<Session>,
     State(state): State<AppState>,
     UrlPath((seg, book)): UrlPath<(String, String)>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let not_here = || AppError::NotFound(crate::msg!("epub.no-such-book", "no such book here"));
     let Some(crate::speakable::Parsed::Ok(root)) = crate::speakable::parse(&seg) else {
         return Err(not_here());
@@ -1183,6 +1286,11 @@ pub async fn book_handler(
     let Some(book_id) = hex::decode(&book).ok().and_then(|b| <[u8; 16]>::try_from(b).ok()) else {
         return Err(not_here());
     };
+    let asker = session.as_ref().map_or("anyone".to_string(), |s| s.account.id.to_string());
+    let job = format!("book:{root}:{}:{asker}", hex::encode(book_id));
+    if let Some(r) = polled(&job) {
+        return Ok(r);
+    }
     // Any author this node holds, as the book's own pages are served (idface.rs `public_doc_bytes`):
     // a book you are reading here is a book you can carry off, hosted here or followed from
     // elsewhere. `public_book` finds nothing for an author it doesn't hold.
@@ -1192,8 +1300,7 @@ pub async fn book_handler(
     if book.chapters.is_empty() {
         return Err(not_here());
     }
-    let path = file_for(&state, None, &book).await.map_err(AppError::Internal)?;
-    serve(path, &book.title).await
+    answer(&state, job, book).await
 }
 
 #[cfg(test)]

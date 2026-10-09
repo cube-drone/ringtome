@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1797 phrases across 107 files.
+// 1799 phrases across 108 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -855,6 +855,7 @@ export default {
     'doc.epubbutton.download-as-an-epub': 'download as an ePub, for an e-reader',
     'doc.epubbutton.making-it': 'making it…',
     'doc.epubbutton.epub': 'ePub',
+    'doc.epubbutton.percent': '{percent}%',
 
     // --- node/js/doc/imagepick.js ---
     'doc.imagepick.not-a-still': "that isn't a still picture - an animation becomes a video, and this wants a picture",
@@ -1032,9 +1033,9 @@ export default {
     'exportpage.what-it-is': "Everything you are here, in one .zip: every note, drawing and picture, by notebook and section; your posts; your profile, contacts, chats and bank. Notes come as Marquee, Markdown and plain text, so something opens them wherever you take them. It's unencrypted - anyone holding the file can read all of it - but it holds no keys: it can't be used to become you.",
     'exportpage.looking': 'looking…',
     'exportpage.queued': 'waiting its turn - this server makes one export at a time',
-    'exportpage.running': 'making it: {done} of {total}',
-    'exportpage.starting': 'making it…',
+    'exportpage.gathering': 'gathering everything you have…',
     'exportpage.failed': 'It didn’t work: {error}',
+    'exportpage.interrupted': 'The server stopped while this was being made ({done} of {total} done) - make it again.',
     'exportpage.ready': 'Ready: {size}, made {when}.',
     'exportpage.show-in-folder': 'show it in its folder',
     'exportpage.download': 'download it',
@@ -1484,6 +1485,9 @@ export default {
     'posts.nothing-they-said-says-that': 'nothing they said says that.',
     'posts.reading-further-back': 'reading further back…',
     'posts.load-more': 'load more',
+
+    // --- node/js/progress.js ---
+    'progress.share': '{percent}% - {done} of {total}',
 
     // --- node/js/push.js ---
     'push.needs-https': 'notifications in this browser need https (or localhost)',

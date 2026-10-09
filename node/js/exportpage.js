@@ -15,6 +15,7 @@ import { t, tNodes } from './i18n.js';
 import { computersHref, importExportHref } from './links.js';
 import { sizeLabel } from './pure/backups.js';
 import { formatWhen } from './pure/when.js';
+import { Progress } from './progress.js';
 
 const html = htm.bind(h);
 
@@ -78,6 +79,7 @@ const ExportSection = ({ root }) => {
     const queued = status === 'queued';
     const running = status === 'running';
     const failed = status === 'failed';
+    const interrupted = status === 'interrupted';
     const working = queued || running;
     useEffect(() => {
         if (!working) return undefined;
@@ -113,16 +115,24 @@ const ExportSection = ({ root }) => {
         ${queued && html`<p class="null-sub">${t('exportpage.queued', 'waiting its turn - this server makes one export at a time')}</p>`}
         ${
             running &&
-            html`<p class="null-sub">${
-                report.total
-                    ? t('exportpage.running', 'making it: {done} of {total}', {
-                          done: Number(report.done || 0).toLocaleString(),
-                          total: Number(report.total).toLocaleString(),
-                      })
-                    : t('exportpage.starting', 'making it…')
-            }</p>`
+            html`<${Progress}
+                done=${report.done}
+                total=${report.phase === 'writing' ? report.total : 0}
+                doing=${t('exportpage.gathering', 'gathering everything you have…')}
+            />`
         }
         ${failed && html`<p class="form-error">${t('exportpage.failed', 'It didn’t work: {error}', { error: report.error })}</p>`}
+        ${
+            interrupted &&
+            html`<p class="form-error">${t(
+                'exportpage.interrupted',
+                'The server stopped while this was being made ({done} of {total} done) - make it again.',
+                {
+                    done: Number(report.done || 0).toLocaleString(),
+                    total: Number(report.total || 0).toLocaleString(),
+                },
+            )}</p>`
+        }
         ${
             ready &&
             html`<p class="null-sub">

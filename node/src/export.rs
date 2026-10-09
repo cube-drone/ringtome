@@ -46,13 +46,22 @@ const CHAT_PAGE: i64 = crate::chat::HISTORY_PAGE;
 /// One persona's export, as its page asks after it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Report {
-    /// "none", "queued", "running", "ready" or "failed".
+    /// "none", "queued", "running", "ready", "failed" - or "interrupted": it was queued or running
+    /// when the node stopped (2026-10-09: an export on a large account came back to nothing, and
+    /// the page could only offer to start again without saying why).
     pub status: &'static str,
-    /// While running: documents written so far, of how many.
+    /// While running: "gathering" (reading what there is, before the total is known) or "writing",
+    /// and the steps done so far, of how many - a document each, then the profile, lists,
+    /// contacts, ledger, chats and README.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub done: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total: Option<usize>,
+    /// When it was asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_ms: Option<i64>,
     /// When ready: the zip's size and when it was made.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bytes: Option<u64>,
@@ -67,7 +76,7 @@ pub struct Report {
 #[derive(Debug, Clone)]
 enum Status {
     Queued,
-    Running { done: usize, total: usize },
+    Running { phase: &'static str, done: usize, total: usize },
     Failed(String),
 }
 
@@ -75,7 +84,29 @@ struct Job {
     generation: u64,
     status: Status,
     task: tokio::task::AbortHandle,
+    started_ms: i64,
+    /// When its state was last written down (`<root>.json`).
+    saved: std::time::Instant,
 }
+
+/// A job's state as written beside the zip, so a node that stops and starts again can say what
+/// became of it.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Saved {
+    status: String,
+    #[serde(default)]
+    done: usize,
+    #[serde(default)]
+    total: usize,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    started_ms: i64,
+}
+
+/// How often a running job's progress is written down: often enough to say how far it got,
+/// rarely enough to cost nothing.
+const SAVE_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// The node's exports: each persona's queued or running one, and the permit that runs them one at
 /// a time. A finished export is its file, not an entry here.
@@ -98,28 +129,54 @@ impl Default for Exports {
 }
 
 impl Exports {
-    fn set(&self, root: &str, generation: u64, status: Status) {
+    /// A job's new state - written down when it changes kind, and every [`SAVE_EVERY`] while it runs.
+    fn set(&self, state: &AppState, root: &str, generation: u64, status: Status) {
         let mut jobs = self.jobs.lock().expect("exports poisoned");
-        if let Some(job) = jobs.get_mut(root).filter(|j| j.generation == generation) {
-            job.status = status;
+        let Some(job) = jobs.get_mut(root).filter(|j| j.generation == generation) else { return };
+        let changed_kind = std::mem::discriminant(&job.status) != std::mem::discriminant(&status)
+            || matches!((&job.status, &status), (Status::Running { phase: a, .. }, Status::Running { phase: b, .. }) if a != b);
+        job.status = status;
+        if changed_kind || job.saved.elapsed() >= SAVE_EVERY {
+            job.saved = std::time::Instant::now();
+            save(state, root, job);
         }
     }
 
-    /// The job is over (done or failed): a done one is its file from here on.
-    fn end(&self, root: &str, generation: u64, failed: Option<String>) {
+    /// The job is over (done or failed): a done one is its file from here on, a failed one its
+    /// reason, kept across a restart.
+    fn end(&self, state: &AppState, root: &str, generation: u64, failed: Option<String>) {
         let mut jobs = self.jobs.lock().expect("exports poisoned");
         if jobs.get(root).is_some_and(|j| j.generation == generation) {
             match failed {
                 Some(e) => {
                     if let Some(job) = jobs.get_mut(root) {
                         job.status = Status::Failed(e);
+                        save(state, root, job);
                     }
                 }
                 None => {
                     jobs.remove(root);
+                    let _ = std::fs::remove_file(state_path(state, root));
                 }
             }
         }
+    }
+}
+
+fn state_path(state: &AppState, root: &str) -> PathBuf {
+    exports_dir(state).join(format!("{root}.json"))
+}
+
+fn save(state: &AppState, root: &str, job: &Job) {
+    let (status, done, total, error) = match &job.status {
+        Status::Queued => ("queued", 0, 0, None),
+        Status::Running { done, total, .. } => ("running", *done, *total, None),
+        Status::Failed(e) => ("failed", 0, 0, Some(e.clone())),
+    };
+    let saved = Saved { status: status.into(), done, total, error, started_ms: job.started_ms };
+    let _ = std::fs::create_dir_all(exports_dir(state));
+    if let Ok(json) = serde_json::to_vec(&saved) {
+        let _ = std::fs::write(state_path(state, root), json);
     }
 }
 
@@ -142,6 +199,7 @@ pub fn start(state: &AppState, root: &str) -> Report {
         old.task.abort();
     }
     let _ = std::fs::remove_file(zip_path(state, root));
+    let _ = std::fs::remove_file(state_path(state, root));
     let task = {
         let (state, root) = (state.clone(), root.to_string());
         tokio::spawn(async move {
@@ -149,18 +207,26 @@ pub fn start(state: &AppState, root: &str) -> Report {
                 Ok(p) => p,
                 Err(_) => return,
             };
-            state.exports.set(&root, generation, Status::Running { done: 0, total: 0 });
+            let gathering = Status::Running { phase: "gathering", done: 0, total: 0 };
+            state.exports.set(&state, &root, generation, gathering);
+            tracing::info!(root = %root, "an export began");
             let outcome = run(&state, &root, generation).await;
-            if let Err(e) = &outcome {
-                tracing::warn!(root = %root, error = ?e, "an export failed");
+            match &outcome {
+                Ok(()) => tracing::info!(root = %root, "an export finished"),
+                Err(e) => tracing::warn!(root = %root, error = ?e, "an export failed"),
             }
-            state.exports.end(&root, generation, outcome.err().map(|e| format!("{e:#}")));
+            state.exports.end(&state, &root, generation, outcome.err().map(|e| format!("{e:#}")));
         })
     };
-    jobs.insert(
-        root.to_string(),
-        Job { generation, status: Status::Queued, task: task.abort_handle() },
-    );
+    let job = Job {
+        generation,
+        status: Status::Queued,
+        task: task.abort_handle(),
+        started_ms: crate::clock::now_ms(),
+        saved: std::time::Instant::now(),
+    };
+    save(state, root, &job);
+    jobs.insert(root.to_string(), job);
     drop(jobs);
     report(state, root)
 }
@@ -170,21 +236,57 @@ pub fn report(state: &AppState, root: &str) -> Report {
     let reveal = crate::registration::is_device(state);
     let none = Report {
         status: "none",
+        phase: None,
         done: None,
         total: None,
+        started_ms: None,
         bytes: None,
         made_ms: None,
         error: None,
         reveal,
     };
     if let Some(job) = state.exports.jobs.lock().expect("exports poisoned").get(root) {
+        let started = Report { started_ms: Some(job.started_ms), ..none.clone() };
         return match &job.status {
-            Status::Queued => Report { status: "queued", ..none },
-            Status::Running { done, total } => {
-                Report { status: "running", done: Some(*done), total: Some(*total), ..none }
-            }
-            Status::Failed(e) => Report { status: "failed", error: Some(e.clone()), ..none },
+            Status::Queued => Report { status: "queued", ..started },
+            Status::Running { phase, done, total } => Report {
+                status: "running",
+                phase: Some(phase),
+                done: Some(*done),
+                total: Some(*total),
+                ..started
+            },
+            Status::Failed(e) => Report { status: "failed", error: Some(e.clone()), ..started },
         };
+    }
+    // No job here now: what became of the last one, if the node wrote it down.
+    if let Some(saved) = std::fs::read(state_path(state, root))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Saved>(&b).ok())
+    {
+        match saved.status.as_str() {
+            "queued" | "running" => {
+                return Report {
+                    status: "interrupted",
+                    done: Some(saved.done),
+                    total: Some(saved.total),
+                    started_ms: Some(saved.started_ms),
+                    error: Some(
+                        "the server stopped while it was being made - make it again".to_string(),
+                    ),
+                    ..none
+                };
+            }
+            "failed" => {
+                return Report {
+                    status: "failed",
+                    started_ms: Some(saved.started_ms),
+                    error: saved.error,
+                    ..none
+                };
+            }
+            _ => {}
+        }
     }
     match std::fs::metadata(zip_path(state, root)) {
         Ok(meta) => Report {
@@ -258,7 +360,9 @@ async fn run(state: &AppState, root: &str, generation: u64) -> Result<()> {
     std::fs::create_dir_all(exports_dir(state)).context("making the exports directory")?;
     let final_path = zip_path(state, root);
     let partial = exports_dir(state).join(format!("{root}.{generation}.partial"));
-    let (send, entries) = tokio::sync::mpsc::channel::<Entry>(16);
+    // Two files waiting, at most: a large account's pictures and videos are each as large as an
+    // upload may be, and every one held here is memory the node is not using for anything else.
+    let (send, entries) = tokio::sync::mpsc::channel::<Entry>(2);
     let (say_finished, finished) = std::sync::mpsc::channel::<bool>();
     let thread =
         tokio::task::spawn_blocking(move || writer(partial, final_path, entries, finished));
@@ -337,8 +441,12 @@ async fn build(
     let (sections, others) = notebook_sections(&data, root).await?;
     let claimed = data.annotations().notes_claiming().await.map_err(ae)?;
     let posts = public_posts(&data).await?;
-    let total = heads.len() + posts.len();
-    state.exports.set(root, generation, Status::Running { done: 0, total });
+    // Every document, every post, and the six files after them (profile, lists, contacts, ledger,
+    // chats, README).
+    const AFTER: usize = 6;
+    let total = heads.len() + posts.len() + AFTER;
+    let step = |done: usize| Status::Running { phase: "writing", done, total };
+    state.exports.set(state, root, generation, step(0));
 
     // The private side: every note, in each of its notebooks, at its place in the notebook's tree.
     let mut paths_of: HashMap<[u8; 16], String> = HashMap::new();
@@ -396,7 +504,7 @@ async fn build(
                 out.put_doc(format!("{at}.horsedrawing.png"), png.clone(), &meta).await?;
             }
         }
-        state.exports.set(root, generation, Status::Running { done: done + 1, total });
+        state.exports.set(state, root, generation, step(done + 1));
     }
 
     // The public side: what the persona published, opened, under the notebook of its note.
@@ -442,15 +550,22 @@ async fn build(
                 out.put_doc(path, bytes, &meta).await?;
             }
         }
-        state.exports.set(root, generation, Status::Running { done: heads.len() + i + 1, total });
+        state.exports.set(state, root, generation, step(heads.len() + i + 1));
     }
 
+    let base = heads.len() + posts.len();
     profile(state, &data, &mut out).await?;
+    state.exports.set(state, root, generation, step(base + 1));
     taxonomies_file(&others, &paths_of, &mut out).await?;
+    state.exports.set(state, root, generation, step(base + 2));
     contacts_file(state, &data, &mut out).await?;
+    state.exports.set(state, root, generation, step(base + 3));
     bank_file(&data, &mut out).await?;
+    state.exports.set(state, root, generation, step(base + 4));
     chat_files(state, &data, root, &mut out).await?;
+    state.exports.set(state, root, generation, step(base + 5));
     readme(state, root, &missing, &mut out).await?;
+    state.exports.set(state, root, generation, step(base + AFTER));
     manifest(root, out).await
 }
 

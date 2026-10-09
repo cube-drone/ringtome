@@ -79,6 +79,18 @@ Who is asking is checked before the cache is consulted, so a cached copy is
 never handed to someone the seal doesn't admit, and "sealed" is part of the
 hash, so a sealed book's file is never one an open request could find.
 
+## Made in the background
+
+A large book takes a while (Curtis: "very large ePubs ahoy"), longer than a
+proxy waits for one request. The first ask that finds no cached file starts the
+making and answers `202` with how far it has got - a step per picture and per
+page - and every ask after it, until it is done, is answered from that, before
+the book is gathered again. Done, the next ask downloads it. A build is known by
+its notebook, or by its book and the account asking (or "anyone"): a trusted
+reader's copy may hold pages a stranger's doesn't, and a poll only ever reaches
+a build its own asker began. The button and the chip ask every second and a
+half, and show the bar (or, on a chip, the percentage) meanwhile.
+
 ## Who may have one
 
 - A notebook - `GET /api/identity/{root}/buckets/{bucket}/epub` - its persona's

@@ -9,6 +9,7 @@ import { downloadFile } from '../net.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { Chip } from './chips.js';
+import { Progress } from '../progress.js';
 
 const html = htm.bind(h);
 
@@ -17,15 +18,19 @@ const html = htm.bind(h);
 export const EpubButton = ({ path, fallback, className = 'tree-tool jag-line' }) => {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
+    // A large book is made in the background (epub.rs): how far it has got, while it is.
+    const [made, setMade] = useState(null);
     const go = async () => {
         setBusy(true);
         setError(null);
+        setMade(null);
         try {
-            await downloadFile(path, fallback);
+            await downloadFile(path, fallback, setMade);
         } catch (e) {
             setError(e.message);
         } finally {
             setBusy(false);
+            setMade(null);
         }
     };
     return html`<button
@@ -37,6 +42,15 @@ export const EpubButton = ({ path, fallback, className = 'tree-tool jag-line' })
         >
             <${Icons.download} /> ${busy ? t('doc.epubbutton.making-it', 'making it…') : t('doc.epubbutton.epub', 'ePub')}
         </button>
+        ${
+            busy &&
+            made &&
+            html`<div class="epub-error"><${Progress}
+                done=${made.done}
+                total=${made.total}
+                doing=${t('doc.epubbutton.making-it', 'making it…')}
+            /></div>`
+        }
         ${error && html`<p class="form-error epub-error">${error}</p>`}`;
 };
 
@@ -45,11 +59,13 @@ export const EpubButton = ({ path, fallback, className = 'tree-tool jag-line' })
 export const EpubChip = ({ path }) => {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
+    const [made, setMade] = useState(null);
     const go = async () => {
         setBusy(true);
         setError(null);
+        setMade(null);
         try {
-            await downloadFile(path, 'book.epub');
+            await downloadFile(path, 'book.epub', setMade);
         } catch (e) {
             setError(e.message);
         } finally {
@@ -60,7 +76,15 @@ export const EpubChip = ({ path }) => {
         icon=${Icons.book}
         disabled=${busy}
         title=${error || t('doc.epubbutton.download-as-an-epub', 'download as an ePub, for an e-reader')}
-        word=${busy ? t('doc.epubbutton.making-it', 'making it…') : t('doc.epubbutton.epub', 'ePub')}
+        word=${
+            busy && made && made.total
+                ? t('doc.epubbutton.percent', '{percent}%', {
+                      percent: Math.floor((100 * (made.done || 0)) / made.total),
+                  })
+                : busy
+                  ? t('doc.epubbutton.making-it', 'making it…')
+                  : t('doc.epubbutton.epub', 'ePub')
+        }
         onClick=${go}
     />`;
 };

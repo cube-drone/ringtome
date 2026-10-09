@@ -64,9 +64,19 @@ export async function saveFile(name, blob) {
 
 /// A file the node makes on request - an ePub (epub.rs) - fetched and saved as the page's own files
 /// are (`saveFile`): under the name the node gives it, else `fallback`. A refusal throws with the
-/// node's words, as `api` does.
-export async function downloadFile(path, fallback) {
-    const res = await fetch(path, { credentials: 'same-origin', headers: authHeaders() });
+/// node's words, as `api` does. While the node is still making it (`202`), `onPending` hears how
+/// far it has got ({ done, total }) and the file is asked for again shortly.
+export async function downloadFile(path, fallback, onPending = () => {}) {
+    let res;
+    for (;;) {
+        res = await fetch(path, { credentials: 'same-origin', headers: authHeaders() });
+        if (res.status !== 202) break;
+        const made = await res.json().catch(() => ({}));
+        if (made.status === 'failed')
+            throw new Error(made.error || `request failed (${res.status})`);
+        onPending(made);
+        await new Promise((r) => setTimeout(r, 1500));
+    }
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(

@@ -19134,3 +19134,20 @@ cache is, and "sealed" is in the hash. The feed's chip shows on sealed books
 too. `epub.cjs`: the author gets the sealed book opened; a stranger gets
 nothing, even after the author's copy is cached; someone the author trusts gets
 nothing before the trust is published and the opened book after.
+
+**2026-10-09 - Long jobs say how far they've got.** Curtis's export of his own
+large account on horsedrawingtycoon.com ran a while and came back to "make an
+export", saying nothing. The job's state lived only in memory, so a node that
+stopped mid-export (the logs will say why) forgot it ever began. Now `export.rs`
+writes each job's state beside the zip - on every change of kind and every two
+seconds while running - and a job the node has no memory of but whose state says
+queued or running reports **interrupted**, with how far it got (`export.cjs`
+leaves such a state and finds it so). Progress is a phase - _gathering_ before
+the total is known, then _writing_ - and steps for every document and post and
+the six files after them, drawn on the page as a bar, a percentage and _N of M_
+(`progress.js`, shared). At most two files wait in memory for the zip's thread
+(it was sixteen, each as large as an upload may be). And ePubs are made in the
+background: the first ask starts the making and answers `202` with its steps;
+asks after it are answered from that build - keyed by notebook, or by book and
+asker - until the file is cached and downloads (`net.js` `downloadFile`'s
+`onPending`; the button shows the bar, the chip its percentage).

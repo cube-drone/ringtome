@@ -43,8 +43,16 @@ describe('ePubs: notebooks and books to carry off', function () {
     let ada, adaRoot, work, one, two, pic, doodle, bookId;
     const bucket = 'stable';
 
+    // A book is made in the background (2026-10-09): ask until it is ready, as the page does.
     const fetchEpub = async (who, p) => {
-        const res = await who(p);
+        let res;
+        for (let i = 0; i < 120; i++) {
+            res = await who(p);
+            if (res.status !== 202) break;
+            const made = await res.json();
+            assert.notEqual(made.status, 'failed', made.error);
+            await new Promise((r) => setTimeout(r, 250));
+        }
         assert.equal(res.status, 200, await res.clone().text());
         assert.equal(res.headers.get('content-type'), 'application/epub+zip');
         const bytes = Buffer.from(await res.arrayBuffer());
@@ -115,6 +123,15 @@ describe('ePubs: notebooks and books to carry off', function () {
     });
 
     it('makes a notebook a well-formed ePub, in its tree order, its pictures its own', async () => {
+        // Asked for the first time, it is made in the background, and the asker is told how far.
+        const asked = await ada(`api/identity/${adaRoot}/buckets/${bucket}/epub`);
+        assert.equal(asked.status, 202);
+        const made = await asked.json();
+        assert.equal(made.status, 'building');
+        assert.ok(
+            made.total >= 4,
+            `a picture, three pages and a drawing to make: ${JSON.stringify(made)}`,
+        );
         const { book } = await fetchEpub(ada, `api/identity/${adaRoot}/buckets/${bucket}/epub`);
         assert.equal(book.first, 'mimetype', 'the mimetype leads');
         assert.ok(book.stored, 'and is stored, not compressed');
