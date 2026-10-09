@@ -19057,3 +19057,14 @@ desktop app always imports. At most four imports wait on a node. The page became
 two tabs, `import-export/export` and `/import`, routed as Your computers' are,
 under an accent box that says they aren't sync and links to all computers; on a
 server that takes no imports the import tab says so, and points to the app.
+
+**2026-10-09 - Marquee 0.9.2, everywhere.** Every Marquee dependency moved from
+0.9.1 to 0.9.2: the three pinned crates (`cube-drone-marquee-parser`, `-markup`,
+`-markdown`, with `-html-renderer` beneath them) in both the node's and the
+desktop shell's lockfiles, and the seven npm packages. It fixes both of
+plans/MARQUEE.md's open items - the editor's block cache no longer keys on a
+block's position, and the React renderer labels audio and video with their alt
+text - which moved to _Fixed_. The two asks for the ePub - an XHTML output mode
+and a `link_target` hook - went into that plan's _Open_, beside a note of the
+ePub rules that are ours (no sound, plain turbolinks, pictures in the book,
+emoji as text).

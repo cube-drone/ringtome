@@ -7,49 +7,78 @@ where, what, why it matters to Horse Drawing Tycoon 2, and a suggested fix.
 Curtis routes them; when a release fixes one, it moves to _Fixed_ with the
 version, and the version bump lands in HISTORY as usual.
 
-We are on **0.9.1** everywhere: the npm packages (`@cube-drone/marquee-*`) and
-the pinned crates (`cube-drone-marquee-parser`, `-markup`).
+We are on **0.9.2** everywhere (2026-10-09): the npm packages
+(`@cube-drone/marquee-*`) and the pinned crates (`cube-drone-marquee-parser`,
+`-markup`, and `-markdown`, which export uses). Neither request below is in it
+yet.
 
 ## Open
 
-### The editor's block cache keys on position
+### An XHTML output mode for the HTML renderer
 
-_Handed over 2026-10-08; still so in 0.9.1._
+_Asked for 2026-10-09; Curtis is adding it._
 
-`marquee-codemirror`, `src/marquee.ts`, `renderBlock`: rendered HTML is cached
-by `` `${span.start}:${source.slice(span.start, span.end)}` ``. The file's own
-header says the cache is keyed by a block's source text, so an unedited block
-hits it - but `span.start` is in the key too, and typing one character shifts
-the start of every block below the caret. Every one of those misses on every
-keystroke and re-renders; only `BlockWidget.eq` comparing the HTML keeps
-CodeMirror from rebuilding their DOM, so nothing flails, it just costs. In a
-long note, typing near the top re-renders the whole document per keystroke - one
-of the costs in the Firefox typing profile (NEXT_STEPS, the frontend audit: "the
-editor parses each keystroke three times").
+`marquee-html-renderer` (the crate, `src/render.rs`, and the npm package to
+match) writes HTML5: void elements unclosed - `<br>` and `<hr>` (`render.rs`
+lines 167 and 202 in 0.9.1), `<img …>` for emoji and embeds (194, 266) - and
+nothing stops a named entity like `&nbsp;` reaching the output. That's right for
+a web page and wrong for an **ePub**, whose pages must be well-formed XML: a
+strict reader refuses the book, a lenient one guesses. Horse Drawing Tycoon 2
+wants to download a notebook or a public book as an ePub (2026-10-09), its pages
+rendered by this renderer.
 
-**Suggested fix:** key on the source text alone. If a block's output can depend
-on where it sits (a footnote's number, a heading's id), put _that_ in the key
-rather than the offset - the block's ordinal among its kind, say - so moving
-text above a block doesn't evict it.
+**Suggested fix:** an output mode - an option beside `render_marquee`
+(`render_marquee_with(source, profile, Output::Xhtml)`, or a field on a render
+options struct) - in which every void element closes itself (`<br/>`, `<hr/>`,
+`<img …/>`), attributes are always quoted, and only XML's own five entities
+appear, everything else as itself or a numeric reference. Embedder vocabulary
+(`Profile::directive`, `turbolink`) returns HTML the renderer can't rewrite, so
+the contract should say a profile used in XHTML mode must return XHTML too.
 
-### The React renderer drops alt text on video and audio
+### A hook that rewrites where a link goes
 
-_Found 2026-10-08, not yet handed over._
+_Asked for 2026-10-09._
 
-`marquee-react-renderer`, `src/render.ts`, `embed()`: an image gets
-`alt: node.alt`, but audio and video get nothing - the alt text in
-`![a horse galloping](clip.webm)` is parsed and then discarded. The HTML
-renderer (`marquee-html-renderer`, `src/render.ts`, `embed()`) labels both with
-`aria-label`, including the silent looping video. So the same post is labelled
-for a screen reader on its published page and unlabelled inside the app, which
-renders with the React renderer. It matters more now that uploads ask for a
-description and use it as alt text: a described video loses it in the app.
+`marquee-html-renderer`, `Profile::link_allowed`: a profile may say whether a
+target becomes a link, but not where it points. Embeds already have this -
+`Profile::media` returns a `MediaResolution` whose `url` the renderer uses - but
+links don't. Horse Drawing Tycoon 2 needs it twice over:
 
-**Suggested fix:** match the HTML renderer -
-`"aria-label": node.alt || undefined` on the `audio` element and on both `video`
-branches.
+- **An ePub** (above): a link from one note to another must point at the other's
+  chapter inside the book (`chapter-07.xhtml#…`), not at the app's address,
+  which a reader offline can't follow.
+- **An export** (plans/EXPORT.md, _Not yet_): the `.md` files keep app addresses
+  for links between notes, where the zip's own paths would do.
+
+Without the hook, both have to rewrite targets in the Marquee source before
+rendering, which means a second parse and a serializer round trip.
+
+**Suggested fix:** `fn link_target(&self, target: &str) -> Option<String>`
+beside `link_allowed`, defaulting to `None` (keep the target as written): `Some`
+is the address the anchor uses. Asked after `link_allowed` says yes, so a
+refused link stays refused. The Markdown bridge (`marquee_markdown`) would want
+the same hook for the export's `.md` files.
+
+### Not upstream: the ePub's own rules
+
+For the record, so nobody hands them over: what an ePub may embed is ours to
+decide, through the profile the renderer already asks. **No embedded sound** -
+`Profile::media` returns `None` for audio, and the renderer's inert fallback
+stands in. **Limited turbolink expansion** - `Profile::turbolink_level` caps it,
+and `turbolink` returning `None` is the plain link. **Pictures inside the
+book** - `media`'s `url` points at the copy in the zip. **Emoji as text** -
+`Profile::emoji` returns `Text`. All of it is an ePub profile on our side.
 
 ## Fixed
+
+- **The editor's block cache keyed on position** (`marquee-codemirror`,
+  `renderBlock`): typing one character shifted every block below the caret and
+  missed the cache for all of them. Handed over 2026-10-08; fixed in **0.9.2**,
+  which keys on the node's type and its source text alone.
+- **The React renderer dropped alt text on video and audio**: an image got
+  `alt`, but a described clip lost its description inside the app. Found
+  2026-10-08; fixed in **0.9.2**, where audio and every video branch carry
+  `aria-label` from the alt text, as the static renderer does.
 
 - **The live preview ignored `by=letter` and `by=word`** (rainbow, bounce, and
   the rest of the per-unit effects), which the side-by-side view drew. Handed
