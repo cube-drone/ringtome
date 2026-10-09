@@ -19,6 +19,7 @@ export async function pickedReference(root, pick, bodyFormat = 'marquee') {
             title: copy.title,
             animation: false,
             bodyFormat,
+            alt: pick.description,
         });
     }
     return crushedReference({
@@ -28,5 +29,7 @@ export async function pickedReference(root, pick, bodyFormat = 'marquee') {
         title: pick.title,
         animation: !!pick.animation,
         bodyFormat,
+        // Described once, alt text everywhere it's used (2026-10-08).
+        alt: pick.description,
     });
 }

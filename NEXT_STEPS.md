@@ -344,8 +344,8 @@ while anyone types. Worst first:
 - **The editor parses each keystroke three times** - marquee-codemirror's field,
   `useTurbolinks`, `useUserCards` (five in side-by-side). Debounce or share the
   two effects. Upstream (Marquee): its block cache keys on `span.start`, so
-  every block below the caret misses on each keystroke (written up and handed to
-  Marquee, 2026-10-08; still so in 0.9.1).
+  every block below the caret misses on each keystroke - plans/MARQUEE.md has it
+  with the rest of what's handed over.
 - **Polls that set fresh state when nothing changed**: Nags' list (30 s,
   `notifications.js:183`), chat's floor (15 s, `chat.js:1105`) and room list (30
   s, `chat.js:2221`). Compare before `setState`.

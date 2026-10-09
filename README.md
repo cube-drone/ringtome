@@ -87,6 +87,10 @@ lightly federated, unapologetically Old Internet.
   measured in HorseTicks rather than time, exact bigint balances shown in
   broken-number notation, wealth-gated posts honoured by the reader's own node,
   and a daily public heartbeat. A design draft (2026-09-29); nothing built.
+- [`MARQUEE.md`](plans/MARQUEE.md) — Marquee, upstream: what we've found in the
+  markup language's libraries and handed over, each open item written up to be
+  handed over as it stands (where, what, why it matters here, a suggested fix),
+  and what later releases fixed. The running list, not a design.
 - [`MCP.md`](plans/MCP.md) — Horse Drawing Tycoon 2 for AI agents: the node
   serves the Model Context Protocol at `/mcp`, behind the existing API key
   (never a cookie); a small set of task-shaped tools dispatched through the

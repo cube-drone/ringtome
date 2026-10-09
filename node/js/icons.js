@@ -312,6 +312,9 @@ export const Icons = {
     // A contract in hrseBank (2026-10-04): a goal that pays once.
     contract: Scroll,
     hidden: EyeSlash,
+    // The upload window's description field (doc/upload.js): it is the alt text, for the people who
+    // can't see the picture - the eye-slash says who it's for.
+    altText: EyeSlash,
     // Rooms (CHAT.md): the app tile, and the chip a room post wears.
     chat: ChatsCircle,
     // A room, beside its title (2026-09-28): the hash, as a channel is marked.

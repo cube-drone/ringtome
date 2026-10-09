@@ -55,11 +55,32 @@ export function bodyUrlFor(root, docId, format, title, animation = false) {
 /// is the only guess - `image/gif` says picture - and an animated gif comes out of the crush
 /// as a WebM or an APNG. This is the same reference respelled from the document's real
 /// format and its animation fact; a marquee body gets the embed, plaintext the bare URL.
-export function crushedReference({ root, docFormat, docId, title, animation, bodyFormat }) {
+export function crushedReference({ root, docFormat, docId, title, animation, bodyFormat, alt }) {
     const url = bodyUrlFor(root, docId, docFormat, title, animation);
     if (bodyFormat === 'plaintext') return url;
-    const label = (title || 'file').replace(/[[\]()]/g, '');
-    return `![${label}](${url})`;
+    return `![${altLabel(alt, title)}](${url})`;
+}
+
+/// The words inside an embed's brackets - its alt text, which a screen reader says in the picture's
+/// place (Curtis, 2026-10-08: uploads ask for "a detailed description of the image", and it is the
+/// alt text). The description when there is one, scrubbed of what would break the markup around
+/// it - brackets and parentheses, and line breaks, since an embed lives on one line - and of the
+/// whitespace those leave behind. Else the file's name, scrubbed as names always were: brackets
+/// only, and a name of nothing else leaves the label empty (the reference vectors pin that).
+export function altLabel(alt, fallback) {
+    const described = String(alt || '')
+        .replace(/[[\]()]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return described || String(fallback || 'file').replace(/[[\]()]/g, '');
+}
+
+/// `reference` - an embed already in a document - with new alt text, its target untouched. Anything
+/// that isn't an embed (a plaintext body's bare URL, a link) comes back as it was: there is nowhere
+/// to put the words.
+export function withAlt(reference, alt, fallback) {
+    const m = /^!\[[^\]]*\](\(.*\))$/s.exec(String(reference || ''));
+    return m ? `![${altLabel(alt, fallback)}]${m[1]}` : reference;
 }
 
 /// Whether a target is spelled as a silent loop.

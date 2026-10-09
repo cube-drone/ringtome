@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1739 phrases across 100 files.
+// 1743 phrases across 100 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -992,8 +992,12 @@ export default {
     'doc.upload.looking-for-it': 'looking for it…',
     'doc.upload.almost-there': 'processed - opening it…',
     'doc.upload.processing': 'processing…',
+    'doc.upload.describe-video': 'please provide a detailed description of the video',
+    'doc.upload.describe-audio': 'please provide a detailed description of the sound',
+    'doc.upload.describe-image': 'please provide a detailed description of the image',
     'doc.upload.video-is-in-the-market': 'uploading video is unlocked in the hrseBank™ market',
     'doc.upload.sending-name': 'sending {name}…',
+    'doc.upload.describe-title': "read aloud in the picture's place for people who can't see it, and found by search",
     'doc.upload.uploading-is-in-the-market': 'uploading files is unlocked in the hrseBank™ market',
     'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
     'doc.upload.drag-a-file-here-or': 'drag a file here, or',

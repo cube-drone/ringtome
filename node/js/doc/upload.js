@@ -27,7 +27,7 @@ import { Icons } from '../icons.js';
 // happens in the browser's hardened, licensed decoder, and the server only ever sees
 // our-encoder bytes - AV1-in-WebM (happy lane) or 320p APNG + Ogg Opus (universal fallback).
 import { ingestVideo } from '../../../video-ingest/src/index.js';
-import { bodyUrlFor, crushedReference } from '../pure/mediakind.js';
+import { altLabel, bodyUrlFor, crushedReference, withAlt } from '../pure/mediakind.js';
 import { caretThroughSwap } from '../pure/caret.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 import { useUnlocked } from '../unlocks.js';
@@ -142,6 +142,17 @@ export const PendingUpload = ({ root, docId }) => {
     </div>`;
 };
 
+/// What the description field asks for, by what the file is (Curtis, 2026-10-08: "please provide a
+/// detailed description of the image").
+const describePrompt = (file) => {
+    const type = (file && file.type) || '';
+    if (type.startsWith('video/'))
+        return t('doc.upload.describe-video', 'please provide a detailed description of the video');
+    if (type.startsWith('audio/'))
+        return t('doc.upload.describe-audio', 'please provide a detailed description of the sound');
+    return t('doc.upload.describe-image', 'please provide a detailed description of the image');
+};
+
 const UploadFlow = ({
     root,
     bucket,
@@ -155,6 +166,8 @@ const UploadFlow = ({
     hidden = false,
     // What OK does while anything is in flight, in words; the editor's default is below.
     okNote = null,
+    // A file's description was saved: (index, docId, text) - the host's cue to respell its alt.
+    onDescribed,
 }) => {
     // Video is bought apart from pictures and sounds (plans/UNLOCKS.md: experimental, and said so).
     const video = useUnlocked(root, 'video-upload');
@@ -173,6 +186,8 @@ const UploadFlow = ({
             // the input differs from this; it applies wherever the file is in its life - the
             // queued job while pending, the DOCUMENT record once a version exists.
             appliedName: f.name,
+            // Its description - the alt text (`describeNow`, below) - as typed.
+            description: '',
             tagsOpen: false,
             // Video pre-encode bookkeeping: which lane it took, when the encode began (for the
             // elapsed readout), the intermediary's size, and whether audio had to be dropped.
@@ -185,6 +200,27 @@ const UploadFlow = ({
     const patchRow = (i, up) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...up } : r)));
     // The names as they are RIGHT NOW (state is async; async completions need current values).
     const namesRef = useRef(files.map((f) => f.name));
+    // The descriptions likewise, and what the node last saved of each.
+    const descsRef = useRef(files.map(() => ''));
+    const savedDescs = useRef(files.map(() => ''));
+
+    // Save a file's description (Curtis, 2026-10-08): its `description` annotation, which search
+    // reads, and - through `onDescribed` - the alt text of the reference its host already wrote.
+    // Only once it has an id; typed before then, it is saved as the id arrives.
+    const describeNow = async (i, docId) => {
+        const text = descsRef.current[i].trim();
+        if (!docId || text === savedDescs.current[i]) return;
+        const url = `/api/identity/${root}/docs/${docId}/annotations/fields/description`;
+        try {
+            await (text
+                ? api(url, { method: 'PUT', body: JSON.stringify({ value: text }) })
+                : api(url, { method: 'DELETE' }));
+            savedDescs.current[i] = text;
+            onDescribed && onDescribed(i, docId, text);
+        } catch (e) {
+            patchRow(i, { descError: e.message || String(e) });
+        }
+    };
 
     // Apply the row's current name wherever the file is: the queued job (title lands at
     // transcode) or, once processed, the document record itself (the media-safe retitle route).
@@ -302,6 +338,8 @@ const UploadFlow = ({
                 if (namesRef.current[i] !== file.name) {
                     renameNow(i, { phase: 'queued', jobId: res.job_id, appliedName: file.name });
                 }
+                // ...and a description typed while the bytes were in flight.
+                describeNow(i, res.doc_id);
             } catch (e) {
                 patchRow(i, { phase: 'failed', error: e.message });
                 onFailed && onFailed(i); // remove the placeholder; nothing landed
@@ -432,6 +470,28 @@ const UploadFlow = ({
                             onClick=${() => patchRow(i, { tagsOpen: !r.tagsOpen })}
                         ><${Icons.tag} /><span class="chip-word">${t('chips.tags', 'tags')}</span></button>
                     </div>
+                    <label
+                        class="upload-describe"
+                        title=${t('doc.upload.describe-title', "read aloud in the picture's place for people who can't see it, and found by search")}
+                    >
+                        <span class="upload-describe-icon"><${Icons.altText} /></span>
+                        <textarea
+                            class="upload-describe-text jag-field"
+                            rows="2"
+                            value=${r.description}
+                            disabled=${r.phase === 'failed'}
+                            placeholder=${describePrompt(r.file)}
+                            onInput=${(e) => {
+                                descsRef.current[i] = e.currentTarget.value;
+                                patchRow(i, {
+                                    description: e.currentTarget.value,
+                                    descError: null,
+                                });
+                            }}
+                            onBlur=${() => describeNow(i, r.docId)}
+                        ></textarea>
+                    </label>
+                    ${r.descError && html`<div class="upload-status upload-failed">${r.descError}</div>`}
                     ${
                         r.phase === 'encoding' &&
                         html`<div class="upload-status">
@@ -545,7 +605,7 @@ export function decoratedBodyUrl(root, docId, format, title, animation = false) 
     return bodyUrlFor(root, docId, format, title, animation);
 }
 
-export function mediaReference({ root, format, mimeType, docId, name }) {
+export function mediaReference({ root, format, mimeType, docId, name, alt }) {
     const base = `/api/identity/${root}/docs/${docId}/body`;
     const t = mimeType || '';
     const ext = t.startsWith('image/')
@@ -558,7 +618,7 @@ export function mediaReference({ root, format, mimeType, docId, name }) {
     const label = (name || 'file').replace(/[[\]()]/g, '');
     const slug = label.replace(/[^\w.-]+/g, '_').replace(/\.[^.]*$/, '') || 'file';
     if (format === 'plaintext') return ext ? `${base}/${slug}.${ext}` : base;
-    return ext ? `![${label}](${base}/${slug}.${ext})` : `[${label}](${base})`;
+    return ext ? `![${altLabel(alt, name)}](${base}/${slug}.${ext})` : `[${label}](${base})`;
 }
 
 /**
@@ -601,6 +661,9 @@ export function useUploadCapture({
     bodyNow.current = body;
     const uploadTokens = useRef([]); // placeholder text per file index, for the open modal
     const insertedRefs = useRef([]); // the reference each placeholder became, for the respell
+    // Each file's description - its alt text - and its name, the alt's fallback (2026-10-08).
+    const descs = useRef([]);
+    const labels = useRef([]);
     const captureFiles = (files) => {
         if (!files.length) return;
         if (!canUpload) {
@@ -645,6 +708,8 @@ export function useUploadCapture({
             (f) => `[uploading "${f.name}" …${Math.random().toString(36).slice(2, 6)}]`,
         );
         uploadTokens.current = tokens;
+        descs.current = [];
+        labels.current = [];
         const at = cursorPos ? cursorPos() : null;
         const pos = Math.min(at == null ? bodyNow.current.length : at, bodyNow.current.length);
         setBody(bodyNow.current.slice(0, pos) + tokens.join('\n') + bodyNow.current.slice(pos));
@@ -666,18 +731,31 @@ export function useUploadCapture({
             placeCursor(caretThroughSwap(caret, at, tok.length, replacement.length));
     };
     const onUploaded = (i, file, uploadedId, name) => {
+        labels.current[i] = name || file.name;
         const reference = mediaReference({
             root,
             format,
             mimeType: file.type,
             docId: uploadedId,
             name: name || file.name,
+            alt: descs.current[i],
         });
         insertedRefs.current[i] = reference;
         swapToken(i, reference);
         if (onUploadedDoc) onUploadedDoc(uploadedId, file);
     };
     const onUploadFailed = (i) => swapToken(i, '');
+    // A description saved in the upload window: the reference already written takes it as its alt.
+    const onDescribed = (i, _docId, text) => {
+        descs.current[i] = text;
+        const before = insertedRefs.current[i];
+        if (!before || !bodyNow.current.includes(before)) return;
+        const after = withAlt(before, text, labels.current[i]);
+        if (after === before) return;
+        insertedRefs.current[i] = after;
+        setBody(bodyNow.current.replace(before, after));
+        touched();
+    };
     // The crush has spoken (2026-09-03): the reference written at upload guessed from the
     // MIME type - `image/gif` said picture - and an animated gif comes out as a WebM or an
     // APNG, so the guess rendered as a broken image. Respell it from the document's real
@@ -692,6 +770,7 @@ export function useUploadCapture({
             title: doc.title,
             animation: !!(doc.media && doc.media.animation),
             bodyFormat: format,
+            alt: descs.current[i],
         });
         if (after === before) return;
         insertedRefs.current[i] = after;
@@ -770,6 +849,7 @@ export function useUploadCapture({
             onUploaded=${onUploaded}
             onFailed=${onUploadFailed}
             onIngested=${onIngested}
+            onDescribed=${onDescribed}
             onClose=${() => {
                 setUploadFiles(null);
                 // Back to the text, where the caret was left - after the image.

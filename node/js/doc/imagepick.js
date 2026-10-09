@@ -101,6 +101,7 @@ export const ImagePickModal = ({
             height: row.media.height,
             animation: !!row.media.animation,
             title: row.title || upload.title || '',
+            description: (row.fields || {}).description || '',
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [docs, upload]);
@@ -228,6 +229,7 @@ export const ImagePickModal = ({
                                           height: doc.media ? doc.media.height : null,
                                           animation: !!(doc.media && doc.media.animation),
                                           title: doc.title || '',
+                                          description: (doc.fields || {}).description || '',
                                       })}
                               >
                                   <span class="imagepick-thumb drawing-floor">

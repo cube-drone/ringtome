@@ -16,6 +16,8 @@ let ownMediaKind,
     loopSuffix,
     bodyUrlFor,
     crushedReference,
+    altLabel,
+    withAlt,
     parse,
     render,
     bareWebProfile;
@@ -28,6 +30,8 @@ before(async () => {
         loopSuffix,
         bodyUrlFor,
         crushedReference,
+        altLabel,
+        withAlt,
     } = await import('../../../js/pure/mediakind.js'));
     ({ parse } = await import(jsRequire.resolve('@cube-drone/marquee-parser')));
     ({ render, bareWebProfile } = await import(
@@ -127,6 +131,57 @@ describe('silent animations: the -loop spelling', () => {
             { kind: 'image', url: '/id/r/docs/d/body/media-loop.avif' },
             'a picture never loops',
         );
+    });
+});
+
+describe('alt text: a description in an embed (2026-10-08)', () => {
+    const embedAlt = (source) => {
+        const found = [];
+        const walk = (n) => {
+            if (!n || typeof n !== 'object') return;
+            if (n.type === 'embed') found.push(n.alt);
+            for (const v of Object.values(n)) {
+                if (Array.isArray(v)) v.forEach(walk);
+                else if (v && typeof v === 'object') walk(v);
+            }
+        };
+        walk(parse(source));
+        return found;
+    };
+
+    it('takes the description, else the name, scrubbed to one safe line', () => {
+        assert.equal(altLabel('a grey horse', 'IMG_2034.png'), 'a grey horse');
+        assert.equal(altLabel('', 'IMG_2034.png'), 'IMG_2034.png');
+        assert.equal(altLabel('  ', null), 'file');
+        assert.equal(
+            altLabel('a horse [mid-gallop]\n(blurry), on\tsand', 'x'),
+            'a horse mid-gallop blurry, on sand',
+        );
+    });
+
+    it('puts it where the parser reads it, whatever the description held', () => {
+        const ref = crushedReference({
+            root: 'r',
+            docFormat: 'avif',
+            docId: 'd',
+            title: 'IMG_2034.png',
+            animation: false,
+            bodyFormat: 'marquee',
+            alt: 'two horses [one brown]\nbeside a (red) barn',
+        });
+        assert.deepEqual(embedAlt(ref), ['two horses one brown beside a red barn']);
+    });
+
+    it('swaps the alt of a reference already written, leaving its target alone', () => {
+        const before = '![IMG_2034.png](/api/identity/r/docs/d/body/IMG_2034.avif)';
+        assert.equal(
+            withAlt(before, 'a grey horse'),
+            '![a grey horse](/api/identity/r/docs/d/body/IMG_2034.avif)',
+        );
+        assert.equal(withAlt(before, '', 'IMG_2034.png'), before, 'cleared: back to the name');
+        const bare = '/api/identity/r/docs/d/body/IMG_2034.avif';
+        assert.equal(withAlt(bare, 'a grey horse'), bare, 'a plaintext body has nowhere to put it');
+        assert.equal(withAlt('[notes](/x)', 'words'), '[notes](/x)', 'a link is not an embed');
     });
 });
 
