@@ -147,7 +147,9 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     return html`<section class="book-reader">
         <aside class="book-reader-tree">
             <p class="book-reader-book"><${Icons.book} /> ${title || payload.title || t('doc.bookreader.a-book', 'a book')}</p>
-            <${EpubButton} path=${`/ringtome/user/${root}/post/${book}/epub`} fallback="book.epub" className="book-reader-step" />
+            <div class="book-reader-epub">
+                <${EpubButton} path=${`/ringtome/user/${root}/post/${book}/epub`} fallback="book.epub" className="book-reader-step" />
+            </div>
             <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} />
             ${
                 picked.size > 0 &&

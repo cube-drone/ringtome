@@ -22,9 +22,12 @@
 //! a new file. Files nobody has asked for in [`CACHE_DAYS`] go, and the folder is held to
 //! [`CACHE_BYTES`], oldest first.
 //!
-//! **Who may have one**: a notebook, its persona's own signed-in account; a public book, anyone -
-//! it is public - unless it is for trusted readers only, whose pages are sealed (refused whole), and
-//! a page sealed or taken down is left out.
+//! **Who may have one**: a notebook, its persona's own signed-in account; a public book, anyone - it
+//! is public. A book or a page sealed for its trusted readers (2026-10-09) is theirs: opened with
+//! the key of a persona on their session the seal admits, as the book reader opens it, and left out
+//! (a page) or refused (a book) for anyone else - asked before the cache is, so a sealed book's
+//! copy is never handed to someone its seal doesn't admit, and kept apart from open books in the
+//! cache by its key.
 
 use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
@@ -44,7 +47,7 @@ use crate::AppState;
 
 /// The format's own version: bump it when what an ePub holds changes, and every cached one is
 /// made again.
-const EPUB_VERSION: &str = "hdt2-epub-1/marquee-0.9.3";
+const EPUB_VERSION: &str = "hdt2-epub-2/marquee-0.9.3";
 /// The longest side a picture in a book may have: a reading screen's, give or take.
 pub const PICTURE_BOUND: u32 = 1600;
 /// How long a cached ePub nobody asks for again is kept, and how much the cache may hold.
@@ -75,6 +78,8 @@ struct Chapter {
     head: String,
     title: String,
     words: Words,
+    /// The key a sealed page opened with - and its pictures open with. Never in the cache key.
+    key: Option<[u8; 32]>,
 }
 
 /// The contents, as the tree or the book's sections nest: a page, or a section of them.
@@ -95,6 +100,8 @@ struct Picture {
     format: Format,
     /// Where its bytes are: a private document's blob, or a public twin's.
     file_hash: [u8; 32],
+    /// A sealed page's picture is sealed under the page's key (PROJECT_PLAN's Post visibility).
+    key: Option<[u8; 32]>,
 }
 
 /// A book, gathered: everything it is made of, read, and nothing yet made.
@@ -112,6 +119,9 @@ struct Book {
     /// Links that name a document of the book's, by that document's id (hex) - a note's id, and,
     /// in a public book, a page post's.
     chapter_of: HashMap<String, usize>,
+    /// Opened with a trusted reader's key: a readable copy of sealed words, kept apart in the
+    /// cache from any book anyone may have.
+    sealed: bool,
 }
 
 impl Book {
@@ -123,6 +133,7 @@ impl Book {
             h.update(b"\0");
         };
         put(EPUB_VERSION);
+        put(if self.sealed { "sealed" } else { "open" });
         put(&self.identity);
         put(&self.title);
         put(&self.author);
@@ -195,6 +206,7 @@ async fn notebook(
         root: root.to_string(),
         public: false,
         chapter_of: HashMap::new(),
+        sealed: false,
     };
     let root_bytes: [u8; 32] =
         hex::decode(root).ok().and_then(|b| b.try_into().ok()).context("a root")?;
@@ -280,6 +292,7 @@ async fn private_chapter(
         head: hex::encode(head.head),
         title: head.title,
         words,
+        key: None,
     }))
 }
 
@@ -304,6 +317,7 @@ async fn private_pictures(
                 head: hex::encode(head.head),
                 format,
                 file_hash: head.file_hash,
+                key: None,
             });
         }
     }
@@ -354,8 +368,26 @@ async fn author_name(state: &AppState, root: &str) -> String {
 /// A public book as an ePub: its cover, its own pages, then its sections, as the book's JSON orders
 /// them (books.rs `BookPayload`) - every page a public post read as a stranger reads it. A page
 /// taken down, or sealed for trusted readers, is left out; a book for trusted readers is refused.
+/// The key a sealed post opens with for whoever is reading (Curtis, 2026-10-09: a trusted-only book is
+/// its trusted readers' ePub too): a persona on the session the seal admits, and that persona's key -
+/// the book reader's own door (idface.rs `trusted_viewer`, `key_for`). `None` for anyone else.
+async fn reader_key(
+    state: &AppState,
+    session: &Option<Session>,
+    root: &str,
+    doc: &[u8; 16],
+) -> Result<Option<[u8; 32]>, AppError> {
+    let Some(viewer) =
+        crate::idface::trusted_viewer(state, session, root, &hex::encode(doc), false, None).await?
+    else {
+        return Ok(None);
+    };
+    Ok(crate::idface::key_for(state, root, doc, &viewer, None).await)
+}
+
 async fn public_book(
     state: &AppState,
+    session: &Option<Session>,
     root: &str,
     book_id: &[u8; 16],
 ) -> Result<Option<Book>, AppError> {
@@ -365,10 +397,25 @@ async fn public_book(
     let Some(doc) = crate::record::documents::public_doc(&db, book_id).await? else {
         return Ok(None);
     };
-    if Format::from_wire(doc.format) != Format::Book || doc.trusted_only {
+    if Format::from_wire(doc.format) != Format::Book {
         return Ok(None);
     }
-    let Some(bytes) = public_bytes(state, &db, book_id).await? else { return Ok(None) };
+    // A book for trusted readers only: theirs, opened with their key; nobody else's at all.
+    let book_key = if doc.trusted_only {
+        match reader_key(state, session, root, book_id).await? {
+            Some(k) => Some(k),
+            None => return Ok(None),
+        }
+    } else {
+        None
+    };
+    let Some(mut bytes) = public_bytes(state, &db, book_id).await? else { return Ok(None) };
+    if let Some(k) = book_key {
+        let Some(open) = crate::record::private::open_post_body(&bytes.1, &k) else {
+            return Ok(None);
+        };
+        bytes.1 = open;
+    }
     let Ok(payload) = serde_json::from_slice::<serde_json::Value>(&bytes.1) else {
         return Ok(None);
     };
@@ -382,27 +429,33 @@ async fn public_book(
         root: root.to_string(),
         public: true,
         chapter_of: HashMap::new(),
+        sealed: false,
     };
     let mut seen = BTreeSet::new();
     if !payload["cover"].is_null() {
         if let Some(e) =
-            public_page(state, &db, &payload["cover"], &mut book.chapters, &mut seen).await?
+            public_page(state, session, root, &db, &payload["cover"], &mut book.chapters, &mut seen)
+                .await?
         {
             book.contents.push(e);
         }
     }
     for page in payload["pages"].as_array().into_iter().flatten() {
-        if let Some(e) = public_page(state, &db, page, &mut book.chapters, &mut seen).await? {
+        if let Some(e) =
+            public_page(state, session, root, &db, page, &mut book.chapters, &mut seen).await?
+        {
             book.contents.push(e);
         }
     }
     for section in payload["sections"].as_array().into_iter().flatten() {
         if let Some(e) =
-            public_section(state, &db, section, &mut book.chapters, &mut seen, 0).await?
+            public_section(state, session, root, &db, section, &mut book.chapters, &mut seen, 0)
+                .await?
         {
             book.contents.push(e);
         }
     }
+    book.sealed = book_key.is_some() || book.chapters.iter().any(|c| c.key.is_some());
     for (i, c) in book.chapters.iter().enumerate() {
         book.chapter_of.insert(c.id.clone(), i);
     }
@@ -422,23 +475,34 @@ async fn public_book(
     }
     let root_bytes: [u8; 32] =
         hex::decode(root).ok().and_then(|b| b.try_into().ok()).unwrap_or([0; 32]);
-    for target in embeds(&book.chapters) {
-        let Some((who, twin)) = crate::record::bake::twin_address(&target) else { continue };
-        if who != root_bytes {
-            continue;
-        }
-        let Some(head) = crate::record::documents::public_head(&db, &twin).await? else { continue };
-        let format = Format::from_wire(head.format);
-        if matches!(format, Format::Avif | Format::Apng) {
-            book.pictures.push(Picture {
-                target,
-                doc: hex::encode(twin),
-                head: hex::encode(head.head),
-                format,
-                file_hash: head.file_hash,
-            });
+    // Each page's pictures, sealed under that page's key when it is.
+    let mut pictures: Vec<Picture> = Vec::new();
+    for chapter in &book.chapters {
+        for target in embeds(std::slice::from_ref(chapter)) {
+            if pictures.iter().any(|p| p.target == target) {
+                continue;
+            }
+            let Some((who, twin)) = crate::record::bake::twin_address(&target) else { continue };
+            if who != root_bytes {
+                continue;
+            }
+            let Some(head) = crate::record::documents::public_head(&db, &twin).await? else {
+                continue;
+            };
+            let format = Format::from_wire(head.format);
+            if matches!(format, Format::Avif | Format::Apng) {
+                pictures.push(Picture {
+                    target,
+                    doc: hex::encode(twin),
+                    head: hex::encode(head.head),
+                    format,
+                    file_hash: head.file_hash,
+                    key: chapter.key,
+                });
+            }
         }
     }
+    book.pictures = pictures;
     Ok(Some(book))
 }
 
@@ -457,8 +521,11 @@ async fn public_bytes(
     Ok(bytes.map(|b| (head.head, b)))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn public_page(
     state: &AppState,
+    session: &Option<Session>,
+    root: &str,
     db: &crate::db::Db,
     page: &serde_json::Value,
     chapters: &mut Vec<Chapter>,
@@ -472,10 +539,22 @@ async fn public_page(
         return Ok(None);
     };
     let Some(doc) = crate::record::documents::public_doc(db, &id).await? else { return Ok(None) };
-    if doc.trusted_only {
-        return Ok(None);
+    // A sealed page: its trusted readers' to read, with their key; left out for anyone else.
+    let key = if doc.trusted_only {
+        match reader_key(state, session, root, &id).await? {
+            Some(k) => Some(k),
+            None => return Ok(None),
+        }
+    } else {
+        None
+    };
+    let Some((head, mut bytes)) = public_bytes(state, db, &id).await? else { return Ok(None) };
+    if let Some(k) = key {
+        let Some(open) = crate::record::private::open_post_body(&bytes, &k) else {
+            return Ok(None);
+        };
+        bytes = open;
     }
-    let Some((head, bytes)) = public_bytes(state, db, &id).await? else { return Ok(None) };
     let text = String::from_utf8_lossy(&bytes).into_owned();
     let words = match Format::from_wire(doc.format) {
         Format::Plaintext => Words::Plain(text),
@@ -483,12 +562,15 @@ async fn public_page(
         _ => return Ok(None),
     };
     let title = page["title"].as_str().map(str::to_string).unwrap_or(doc.title);
-    chapters.push(Chapter { id: post.to_string(), head: hex::encode(head), title, words });
+    chapters.push(Chapter { id: post.to_string(), head: hex::encode(head), title, words, key });
     Ok(Some(Entry::Page(chapters.len() - 1)))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn public_section<'a>(
     state: &'a AppState,
+    session: &'a Option<Session>,
+    root: &'a str,
     db: &'a crate::db::Db,
     section: &'a serde_json::Value,
     chapters: &'a mut Vec<Chapter>,
@@ -502,12 +584,14 @@ fn public_section<'a>(
         }
         let mut entries = Vec::new();
         for page in section["pages"].as_array().into_iter().flatten() {
-            if let Some(e) = public_page(state, db, page, chapters, seen).await? {
+            if let Some(e) = public_page(state, session, root, db, page, chapters, seen).await? {
                 entries.push(e);
             }
         }
         for inner in section["sections"].as_array().into_iter().flatten() {
-            if let Some(e) = public_section(state, db, inner, chapters, seen, depth + 1).await? {
+            if let Some(e) =
+                public_section(state, session, root, db, inner, chapters, seen, depth + 1).await?
+            {
                 entries.push(e);
             }
         }
@@ -630,17 +714,20 @@ fn plain(text: &str) -> String {
 fn stylesheet() -> String {
     format!(
         "{}\nimg {{ max-width: 100%; height: auto; }}\nfigure {{ margin: 1em 0; text-align: center; }}\n\
-         .book-title {{ text-align: center; margin-top: 30%; }}\n.book-author {{ text-align: center; font-style: italic; }}\n",
+         .book-cover {{ text-align: center; }}\n.book-cover img {{ max-height: 95vh; }}\n.book-title {{ text-align: center; margin-top: 30%; }}\n.book-author {{ text-align: center; font-style: italic; }}\n",
         marquee_markup::MARQUEE_CSS
     )
 }
 
 /// Make the book's files: every picture fetched and converted, every chapter rendered.
+/// A book's files, and which of its pictures is its cover.
+type Made = (Vec<(String, Vec<u8>, &'static str)>, Option<String>);
+
 async fn make(
     state: &AppState,
     data: Option<&crate::record::store::Store>,
     book: &Book,
-) -> Result<Vec<(String, Vec<u8>, &'static str)>> {
+) -> Result<Made> {
     // The pictures first, so every page knows its pictures' files.
     let mut files: Vec<(String, Vec<u8>, &'static str)> = Vec::new();
     let mut picture_files: HashMap<String, String> = HashMap::new();
@@ -650,7 +737,8 @@ async fn make(
             picture_files.insert(p.target.clone(), name.clone());
             continue;
         }
-        let Some((bytes, ext)) = picture(state, data, book, p.format, p.file_hash).await? else {
+        let Some((bytes, ext)) = picture(state, data, book, p.format, p.file_hash, p.key).await?
+        else {
             continue;
         };
         let name = format!("images/{}.{ext}", p.doc);
@@ -667,6 +755,14 @@ async fn make(
         book.chapter_of.get(&note).map(|i| chapter_file(*i))
     };
     let profile = BookProfile { pictures: &picture_files, chapters: &chapter_of };
+    // The cover (Curtis, 2026-10-09): the first picture on the title page - the book's first page,
+    // a public book's own cover page - when it has one.
+    let mut cover: Option<String> = match book.chapters.first().map(|c| &c.words) {
+        Some(Words::Marquee(_)) => {
+            embeds(&book.chapters[..1]).into_iter().find_map(|t| picture_files.get(&t).cloned())
+        }
+        _ => None,
+    };
     // The title page.
     files.push((
         "title.xhtml".to_string(),
@@ -717,6 +813,9 @@ async fn make(
                 };
                 let name = format!("images/{}.{ext}", c.id);
                 files.push((name.clone(), bytes, media_type(ext)));
+                if i == 0 && cover.is_none() {
+                    cover = Some(name.clone());
+                }
                 format!("<figure><img src=\"{}\" alt=\"{}\"/></figure>", xml(&name), xml(&title))
             }
         };
@@ -733,8 +832,20 @@ async fn make(
             "application/xhtml+xml",
         ));
     }
+    if let Some(image) = &cover {
+        let body = format!(
+            "<section epub:type=\"cover\" class=\"book-cover\"><img src=\"{}\" alt=\"{}\"/></section>",
+            xml(image),
+            xml(&book.title)
+        );
+        files.push((
+            "cover.xhtml".to_string(),
+            page(&book.title, &body).into_bytes(),
+            "application/xhtml+xml",
+        ));
+    }
     files.push(("style.css".to_string(), stylesheet().into_bytes(), "text/css"));
-    Ok(files)
+    Ok((files, cover))
 }
 
 /// A public page's own link to another page of a book: `…/post/<book>/page/<page>` or `…/post/<id>`.
@@ -756,6 +867,7 @@ async fn picture(
     book: &Book,
     format: Format,
     file_hash: [u8; 32],
+    key: Option<[u8; 32]>,
 ) -> Result<Option<(Vec<u8>, &'static str)>> {
     let bytes = match (book.public, data) {
         (false, Some(data)) => {
@@ -763,7 +875,13 @@ async fn picture(
         }
         _ => state.files.get_public(iroh_blobs::Hash::from_bytes(file_hash)).await?,
     };
-    let Some(bytes) = bytes else { return Ok(None) };
+    let Some(mut bytes) = bytes else { return Ok(None) };
+    if let Some(k) = key {
+        let Some(open) = crate::record::private::open_post_body(&bytes, &k) else {
+            return Ok(None);
+        };
+        bytes = open;
+    }
     if format == Format::Drawing {
         let Some(data) = data else { return Ok(None) };
         let width = (crate::drawing::size_of(&crate::drawing::read(&bytes)).0.max(1) as u32 * 2)
@@ -819,7 +937,7 @@ fn nav(book: &Book) -> String {
 }
 
 /// The package (`content.opf`): what the book is, what is in it, and the order it is read in.
-fn package(book: &Book, files: &[(String, Vec<u8>, &'static str)]) -> String {
+fn package(book: &Book, files: &[(String, Vec<u8>, &'static str)], cover: Option<&str>) -> String {
     let modified = time::OffsetDateTime::now_utc()
         .replace_nanosecond(0)
         .ok()
@@ -828,13 +946,22 @@ fn package(book: &Book, files: &[(String, Vec<u8>, &'static str)]) -> String {
     let item_id = |name: &str| name.replace(['/', '.'], "-");
     let mut manifest = String::from("<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>\n");
     for (name, _, media) in files {
+        // The cover picture says so twice: EPUB 3's property, and the `meta` older readers look for.
+        let props = if cover == Some(name.as_str()) { " properties=\"cover-image\"" } else { "" };
         manifest.push_str(&format!(
-            "<item id=\"{}\" href=\"{}\" media-type=\"{media}\"/>\n",
+            "<item id=\"{}\" href=\"{}\" media-type=\"{media}\"{props}/>\n",
             item_id(name),
             xml(name)
         ));
     }
-    let mut spine = String::from("<itemref idref=\"title-xhtml\"/>\n");
+    let cover_meta = cover
+        .map(|c| format!("<meta name=\"cover\" content=\"{}\"/>\n", item_id(c)))
+        .unwrap_or_default();
+    let mut spine = String::new();
+    if cover.is_some() {
+        spine.push_str("<itemref idref=\"cover-xhtml\"/>\n");
+    }
+    spine.push_str("<itemref idref=\"title-xhtml\"/>\n");
     for i in 0..book.chapters.len() {
         let name = chapter_file(i);
         if files.iter().any(|(n, _, _)| *n == name) {
@@ -846,7 +973,7 @@ fn package(book: &Book, files: &[(String, Vec<u8>, &'static str)]) -> String {
          <package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"book-id\" xml:lang=\"en\">\n\
          <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n\
          <dc:identifier id=\"book-id\">{id}</dc:identifier>\n<dc:title>{title}</dc:title>\n<dc:creator>{author}</dc:creator>\n\
-         <dc:language>en</dc:language>\n<meta property=\"dcterms:modified\">{modified}</meta>\n</metadata>\n\
+         <dc:language>en</dc:language>\n<meta property=\"dcterms:modified\">{modified}</meta>\n{cover_meta}</metadata>\n\
          <manifest>\n{manifest}</manifest>\n<spine>\n{spine}</spine>\n</package>\n",
         id = xml(&book.identity),
         title = xml(&book.title),
@@ -860,7 +987,12 @@ const CONTAINER: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 </container>\n";
 
 /// The zip: `mimetype` first and stored, then the rest under `OEBPS/`.
-fn zip_book(book: &Book, files: &[(String, Vec<u8>, &'static str)], to: &Path) -> Result<()> {
+fn zip_book(
+    book: &Book,
+    files: &[(String, Vec<u8>, &'static str)],
+    cover: Option<&str>,
+    to: &Path,
+) -> Result<()> {
     let file = std::fs::File::create(to).with_context(|| format!("creating {}", to.display()))?;
     let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
     let stored =
@@ -872,7 +1004,7 @@ fn zip_book(book: &Book, files: &[(String, Vec<u8>, &'static str)], to: &Path) -
     zip.start_file("META-INF/container.xml", deflated)?;
     zip.write_all(CONTAINER.as_bytes())?;
     zip.start_file("OEBPS/content.opf", deflated)?;
-    zip.write_all(package(book, files).as_bytes())?;
+    zip.write_all(package(book, files, cover).as_bytes())?;
     zip.start_file("OEBPS/nav.xhtml", deflated)?;
     zip.write_all(nav(book).as_bytes())?;
     for (name, bytes, media) in files {
@@ -916,10 +1048,10 @@ async fn file_for(
     if path.is_file() {
         return Ok(path);
     }
-    let files = make(state, data, book).await?;
+    let (files, cover) = make(state, data, book).await?;
     let partial = dir.join(format!("{}.{}.partial", book.key(), rand::random::<u64>()));
     let (book_shape, to) = (BookShape::of(book), partial.clone());
-    tokio::task::spawn_blocking(move || zip_book(&book_shape.0, &files, &to))
+    tokio::task::spawn_blocking(move || zip_book(&book_shape.0, &files, cover.as_deref(), &to))
         .await
         .context("the ePub's thread")??;
     tokio::fs::rename(&partial, &path).await.context("moving the ePub into place")?;
@@ -946,6 +1078,7 @@ impl BookShape {
             root: b.root.clone(),
             public: b.public,
             chapter_of: HashMap::new(),
+            sealed: b.sealed,
         })
     }
 }
@@ -1035,8 +1168,10 @@ pub async fn notebook_handler(
     serve(path, &book.title).await
 }
 
-/// GET `/ringtome/user/{seg}/post/{book}/epub` - a public book as an ePub, for anyone.
+/// GET `/ringtome/user/{seg}/post/{book}/epub` - a public book as an ePub, for anyone; a book or a page
+/// sealed for trusted readers, for them alone (`reader_key`), asked before the cache is.
 pub async fn book_handler(
+    session: Option<Session>,
     State(state): State<AppState>,
     UrlPath((seg, book)): UrlPath<(String, String)>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -1048,10 +1183,12 @@ pub async fn book_handler(
     let Some(book_id) = hex::decode(&book).ok().and_then(|b| <[u8; 16]>::try_from(b).ok()) else {
         return Err(not_here());
     };
-    if !crate::idface::hosted_here(&state, &root).await? {
+    // Any author this node holds, as the book's own pages are served (idface.rs `public_doc_bytes`):
+    // a book you are reading here is a book you can carry off, hosted here or followed from
+    // elsewhere. `public_book` finds nothing for an author it doesn't hold.
+    let Some(book) = public_book(&state, &session, &root, &book_id).await? else {
         return Err(not_here());
-    }
-    let Some(book) = public_book(&state, &root, &book_id).await? else { return Err(not_here()) };
+    };
     if book.chapters.is_empty() {
         return Err(not_here());
     }
@@ -1078,11 +1215,12 @@ mod tests {
             root: "aa".repeat(32),
             public: false,
             chapter_of,
+            sealed: false,
         }
     }
 
     fn chapter(id: &str, title: &str, words: Words) -> Chapter {
-        Chapter { id: id.repeat(16), head: "00".repeat(32), title: title.into(), words }
+        Chapter { id: id.repeat(16), head: "00".repeat(32), title: title.into(), words, key: None }
     }
 
     #[test]
@@ -1168,7 +1306,7 @@ mod tests {
             (chapter_file(0), Vec::new(), "application/xhtml+xml"),
             (chapter_file(1), Vec::new(), "application/xhtml+xml"),
         ];
-        let opf = package(&b, &files);
+        let opf = package(&b, &files, None);
         let spine: Vec<&str> = opf.lines().filter(|l| l.starts_with("<itemref")).collect();
         assert_eq!(
             spine,
@@ -1179,6 +1317,24 @@ mod tests {
             ]
         );
         assert!(opf.contains("<dc:title>The Stable &amp; &lt;Co&gt;</dc:title>"));
+        assert!(!opf.contains("cover"), "no picture, no cover");
+        let mut with_cover = files.clone();
+        with_cover.push(("images/c.jpg".to_string(), Vec::new(), "image/jpeg"));
+        with_cover.push(("cover.xhtml".to_string(), Vec::new(), "application/xhtml+xml"));
+        let opf = package(&b, &with_cover, Some("images/c.jpg"));
+        assert!(
+            opf.contains(
+                "href=\"images/c.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\""
+            ),
+            "{opf}"
+        );
+        assert!(opf.contains("<meta name=\"cover\" content=\"images-c-jpg\"/>"), "{opf}");
+        assert!(
+            opf.contains(
+                "<spine>\n<itemref idref=\"cover-xhtml\"/>\n<itemref idref=\"title-xhtml\"/>"
+            ),
+            "the cover leads: {opf}"
+        );
         assert_eq!(plain("a\nb\n\nc & d"), "<p>a<br/>b</p>\n<p>c &amp; d</p>");
     }
 
@@ -1190,7 +1346,7 @@ mod tests {
         let to = dir.join("b.epub");
         let files =
             vec![(chapter_file(0), page("one", "<p>x</p>").into_bytes(), "application/xhtml+xml")];
-        zip_book(&b, &files, &to).unwrap();
+        zip_book(&b, &files, None, &to).unwrap();
         let bytes = std::fs::read(&to).unwrap();
         // A local file header, then the name and the content, uncompressed: what readers sniff.
         assert_eq!(&bytes[0..4], b"PK\x03\x04");

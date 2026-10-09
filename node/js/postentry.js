@@ -26,6 +26,7 @@ import { Icons } from './icons.js';
 import { tagIconRole } from './pure/tagicons.js';
 import { SuperPinChip } from './frontdoor.js';
 import { useChipMenu } from './doc/chips.js';
+import { EpubChip } from './doc/epubbutton.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
 import { descriptionOf, excerpt } from './pure/excerpt.js';
@@ -1125,6 +1126,12 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                         /* The post's address (2026-09-28), just before the copy into notes: pasted
                         in the app it unfolds as this card; pasted outside, it opens. */ ''
                     }
+                    ${
+                        /* A book as an ePub (Curtis, 2026-10-09), beside its address - a sealed one
+                        too: the node opens it for the trusted reader it is shown to, as the reader
+                        does, and for nobody else. */ ''
+                    }
+                    ${!open && item.format === 'book' && html`<${EpubChip} path=${`/ringtome/user/${item.author}/post/${item.doc_id}/epub`} />`}
                     ${!open && html`<${CopyLinkChip} path=${href} />`}
                     ${
                         /* Copy into private notes, last on every card (Curtis, 2026-09-08: the

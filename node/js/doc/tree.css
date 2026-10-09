@@ -17,8 +17,17 @@
 
 .tree-toolbar {
     display: flex;
+    flex-wrap: wrap; /* a refusal under the buttons takes a line of its own */
     gap: 0.4rem;
     margin-bottom: 0.5rem;
+}
+
+/* The ePub button's refusal (doc/epubbutton.js), on its own line under the toolbar's buttons, inside
+   the column rather than past its border. */
+.epub-error {
+    flex-basis: 100%;
+    margin: 0;
+    overflow-wrap: anywhere;
 }
 
 .tree-tool {

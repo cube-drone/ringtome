@@ -19115,4 +19115,22 @@ a time. An **ePub** button in a notebook's tree toolbar and under a book's title
 in the reader, through `net.js` `downloadFile`. `epub.cjs` checks a notebook's
 ePub (order, well-formedness by Python's parser, chapter links, a converted
 picture, a painted drawing), the cache (byte-identical twice, new after an
-edit), the notebook's privacy, and a public book downloaded by a stranger.
+edit), the notebook's privacy, and a public book downloaded by a stranger. Then,
+from Curtis's first look: a book's card in the feed carries an **ePub** chip
+beside its link; the reader's button sits on its own line under the title; the
+notebook toolbar wraps, so a refusal reads on a line of its own inside the
+column. A book read on a node that follows its author rather than hosts it
+answered "no such book here" - the door asked for hosting where held is enough,
+as it is for the book's own pages; `epub.cjs` now asks node B, which follows,
+and fails on the old check. And a book has a **cover**: the first picture on its
+title page, `cover.xhtml` first in the reading order and the picture marked
+`cover-image` (`EPUB_VERSION` bumped, so every cached book is made again). And a
+trusted-only book is its trusted readers' ePub (Curtis: "why not?" - it had been
+refused whole, a shortcut): the door takes the session, and a sealed book or
+page opens with the key of a persona the seal admits (`epub::reader_key`, over
+idface's `trusted_viewer` and `key_for`), its pictures with their page's key;
+anyone else is refused the book, or finds the page left out. Asked before the
+cache is, and "sealed" is in the hash. The feed's chip shows on sealed books
+too. `epub.cjs`: the author gets the sealed book opened; a stranger gets
+nothing, even after the author's copy is cached; someone the author trusts gets
+nothing before the trust is published and the opened book after.

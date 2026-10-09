@@ -13,8 +13,8 @@ const { execFileSync } = require('node:child_process');
 const crypto = require('node:crypto');
 
 const { makeUserFetch, makePng } = require('./helpers.cjs');
-const { makeFetch } = require('./fetch.cjs');
-const { beat } = require('./beat.cjs');
+const { makeFetch, HOST_B } = require('./fetch.cjs');
+const { beat, pullAndFold } = require('./beat.cjs');
 
 const j = (who, p, body, method = 'POST') => who(p, { method, body: JSON.stringify(body) });
 
@@ -40,7 +40,7 @@ print(json.dumps(out))
 describe('ePubs: notebooks and books to carry off', function () {
     this.timeout(180000);
 
-    let ada, adaRoot, work, one, two, pic, doodle;
+    let ada, adaRoot, work, one, two, pic, doodle, bookId;
     const bucket = 'stable';
 
     const fetchEpub = async (who, p) => {
@@ -122,11 +122,16 @@ describe('ePubs: notebooks and books to carry off', function () {
         assert.deepEqual(book.bad, [], 'every page is well-formed XML');
         const opf = book.text['OEBPS/content.opf'];
         const spine = [...opf.matchAll(/<itemref idref="([^"]+)"/g)].map((m) => m[1]);
-        assert.deepEqual(spine.slice(0, 3), [
+        assert.deepEqual(spine.slice(0, 4), [
+            'cover-xhtml',
             'title-xhtml',
             'chapter-001-xhtml',
             'chapter-002-xhtml',
         ]);
+        // The cover (2026-10-09): the first picture on the title page - here, the first page's plate.
+        assert.match(opf, /properties="cover-image"/);
+        assert.match(opf, /<meta name="cover" content="images-[0-9a-f]{32}-(jpg|png)"\/>/);
+        assert.match(book.text['OEBPS/cover.xhtml'], /epub:type="cover"/);
         assert.match(book.text['OEBPS/chapter-001.xhtml'], /The first page/);
         assert.match(book.text['OEBPS/chapter-002.xhtml'], /The second page/);
         assert.match(book.text['OEBPS/nav.xhtml'], /<span>Part one<\/span>/, 'the section nests');
@@ -210,5 +215,98 @@ describe('ePubs: notebooks and books to carry off', function () {
             404,
             'no such book',
         );
+        bookId = plan.book;
     });
+
+    // A book sealed for trusted readers (2026-10-09): its own author - whom the seal always admits -
+    // gets it opened; a stranger gets nothing, not even from the cache the author's copy filled.
+    it("a trusted-only book is its trusted readers' ePub, opened, and nobody else's", async () => {
+        const sealed = 'sealed-stable';
+        const page = (
+            await (
+                await j(ada, `api/identity/${adaRoot}/docs`, {
+                    title: 'A sealed page',
+                    body: 'Words for the trusted.',
+                    format: 'marquee',
+                })
+            ).json()
+        ).doc_id;
+        await ada(`api/identity/${adaRoot}/docs/${page}/buckets/${sealed}`, { method: 'PUT' });
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/books/${sealed}`,
+            { value: JSON.stringify({ mode: 'book' }) },
+            'PUT',
+        );
+        const asked = await j(ada, `api/identity/${adaRoot}/books/${sealed}/rollout`, {
+            trusted_only: true,
+        });
+        assert.equal(asked.status, 200, await asked.text());
+        let plan = null;
+        for (let i = 0; i < 60; i++) {
+            await beat(undefined, 'book-rollout', adaRoot);
+            const r = await (await ada(`api/identity/${adaRoot}/private/kv/book_rollout`)).json();
+            const row = (r.values || []).find((v) => v.key === sealed);
+            plan = row ? JSON.parse(row.value) : null;
+            if (plan && (plan.status === 'done' || plan.status === 'failed')) break;
+            await new Promise((r) => setTimeout(r, 500));
+        }
+        assert.equal(plan && plan.status, 'done', JSON.stringify(plan));
+        const at = `ringtome/user/${adaRoot}/post/${plan.book}/epub`;
+        const { book } = await fetchEpub(ada, at);
+        assert.deepEqual(book.bad, []);
+        const pages = Object.entries(book.text)
+            .filter(([n]) => /chapter-\d+\.xhtml$/.test(n))
+            .map(([, text]) => text)
+            .join('\n');
+        assert.match(pages, /Words for the trusted\./, "opened with the reader's key");
+        assert.equal((await makeFetch()(at)).status, 404, 'a stranger gets nothing');
+        // Someone the author publishes trust for: the seal admits them, so the book is theirs too.
+        const cal = await makeUserFetch({ prefix: 'epubcal' });
+        const calRoot = (await (await cal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        assert.equal((await cal(at)).status, 404, 'not before the trust');
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/contact:${calRoot}/trust`,
+            { value: 'max' },
+            'PUT',
+        );
+        await beat(undefined, 'mint', adaRoot);
+        await beat(undefined, 'fold', adaRoot);
+        const theirs = await fetchEpub(cal, at);
+        const words = Object.entries(theirs.book.text)
+            .filter(([n]) => /chapter-\d+\.xhtml$/.test(n))
+            .map(([, text]) => text)
+            .join('\n');
+        assert.match(words, /Words for the trusted\./, 'a trusted reader gets it opened');
+    });
+
+    // Field-found 2026-10-09: an ePub asked for on a node that FOLLOWS the author, not hosts them -
+    // a book being read there - answered "no such book here". Held is enough, as for its pages.
+    (HOST_B ? it : it.skip)(
+        "a book followed from elsewhere is the follower's node's ePub too",
+        async () => {
+            const bea = await makeUserFetch({ prefix: 'epubbea', host: HOST_B });
+            const beaRoot = (await (await bea('api/identity', { method: 'POST' })).json())
+                .root_pubkey;
+            await j(
+                bea,
+                `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`,
+                { value: 'high' },
+                'PUT',
+            );
+            const onB = makeFetch(HOST_B);
+            let res;
+            for (let i = 0; i < 20; i++) {
+                await beat(HOST_B, 'follow-refresh');
+                await pullAndFold(HOST_B, adaRoot);
+                await beat(HOST_B, 'bodies-sweep');
+                res = await onB(`ringtome/user/${adaRoot}/post/${bookId}/epub`);
+                if (res.status === 200) break;
+                await new Promise((r) => setTimeout(r, 500));
+            }
+            assert.equal(res.status, 200, await res.text());
+            assert.equal(res.headers.get('content-type'), 'application/epub+zip');
+        },
+    );
 });
