@@ -936,7 +936,6 @@ export default {
     'doc.reader.body-not-on-this-computer': '(body not on this computer yet)',
     'doc.reader.body-not-on-this-computer-2': '(body not on this computer yet)',
     'doc.reader.a-document---no-reader': '(a {format} document - no reader for it yet)',
-    'doc.reader.untitled': 'untitled',
     'doc.reader.delete-removes-this-document-from': 'delete',
     'doc.reader.copy-into-private-notes': 'copy this note into another bucket',
     'doc.reader.conflict-2': 'conflict',
@@ -956,6 +955,7 @@ export default {
     'doc.reader.tags-date-description': 'tags, date & description',
     'doc.reader.pinned-click-to-unpin-it': 'Pinned — click to unpin it from the top of the list',
     'doc.reader.not-pinned-click-to-pin': 'Not pinned — click to pin it to the top of the list',
+    'doc.reader.untitled': 'untitled',
     'index.not-here': "that isn't here - it was deleted, or hasn't reached this computer yet.",
 
     // --- node/js/doc/session.js ---
