@@ -7,7 +7,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2rem;
+    /* Clear of a phone's system bars as well (tokens.css, --safe-*). */
+    padding: calc(2rem + var(--safe-top)) calc(2rem + var(--safe-right))
+        calc(2rem + var(--safe-bottom)) calc(2rem + var(--safe-left));
 }
 
 /* The same two-layer panel trick as the app frame: the teal outer layer's padding is the

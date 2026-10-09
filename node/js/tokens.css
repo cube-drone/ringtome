@@ -4,6 +4,17 @@
  * the translucent ones (shadows, the scrim, the marker pen) - so the whole scheme re-tunes from
  * here, and a literal colour anywhere below is a bug. */
 :root {
+    /* The screen's own furniture - a phone's clock and battery, its home/back bar, a notch - which
+       the page is drawn underneath when it runs edge to edge (Curtis, 2026-10-08: the app bar sat
+       under Android's home/back buttons, the header under its clock). The browser's insets by
+       default; the Android app sets these on the root from the real ones (MainActivity.kt, and
+       the bridge in index.html), because its web view doesn't reliably report them to env().
+       Zero on a desktop. The frame pads its top and sides by them, the app bar its bottom. */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+
     /* The measure of a written post (Curtis, 2026-09-04): about 800px is where readable
        content sits - narrower crowds, wider puts whole paragraphs on one line. Every surface
        that shows a post caps itself here: the feed's cards, the shelf, the permalink, the

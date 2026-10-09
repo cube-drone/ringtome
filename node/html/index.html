@@ -19,6 +19,31 @@
         } catch (e) {
             /* no storage: the default until a profile says otherwise */
         }
+        // The phone's system bars, before anything draws (2026-10-08): the Android app hands
+        // their sizes over (MainActivity.kt, `__ringtomeInsets`) because its web view doesn't
+        // reliably report them to CSS's env(). They become tokens.css's --safe-* on the root, and
+        // again whenever they change - the app calls `__ringtomeInsetsChanged` on a rotation, and
+        // a resize asks too. Anywhere else there is no bridge and env() stands.
+        (function () {
+            var bridge = window.__ringtomeInsets;
+            if (!bridge) return;
+            var apply = function () {
+                try {
+                    var insets = JSON.parse(bridge.get());
+                    var style = document.documentElement.style;
+                    // Only what the app has measured: before its first report it answers {}, and
+                    // env() stands until then.
+                    ['top', 'right', 'bottom', 'left'].forEach(function (side) {
+                        if (typeof insets[side] === 'number') style.setProperty('--safe-' + side, insets[side] + 'px');
+                    });
+                } catch (e) {
+                    /* a bridge that answers badly: env() stands */
+                }
+            };
+            window.__ringtomeInsetsChanged = apply;
+            window.addEventListener('resize', apply);
+            apply();
+        })();
     </script>
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="icon" id="favicon" href="/favicon.svg" type="image/svg+xml">

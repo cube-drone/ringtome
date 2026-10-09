@@ -7,11 +7,13 @@
    aligned, so their tops overflow upward - hence overflow:visible and align-items:flex-end. */
 .quickbar {
     flex-shrink: 0;
-    height: 3rem;
+    /* Taller by the phone's home/back bar, all of it padding (tokens.css, --safe-bottom): the teal
+       runs on underneath, and what sits in the bar sits where it always did, above it. */
+    height: calc(3rem + var(--safe-bottom));
     display: flex;
     align-items: flex-end;
     justify-content: space-between; /* app dock left, clock right */
-    padding: 0 20px 6px;
+    padding: 0 20px calc(6px + var(--safe-bottom));
     background: var(--teal-deep);
     overflow: visible;
     /* Stack above the app region so the tiles' poking-up tops paint over it, not behind it. */
@@ -100,7 +102,7 @@
 .quickbar-sync-narrow {
     position: absolute;
     right: 20px;
-    top: 50%;
+    top: calc((100% - var(--safe-bottom)) / 2); /* the bar's middle, not its home/back padding's */
     margin: 0;
     transform: translateY(-50%);
 }

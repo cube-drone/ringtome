@@ -218,10 +218,8 @@ the node alone, the fast answer to the turso and aws-lc question below. The
 laptop keeps `adb` only, to install the APK and read `adb logcat`.
 
 Not done, and known: the node boots in `setup` on Android's main thread, which
-risks a "not responding" kill on a slow first boot; the app draws under the
-system bars (Tauri's `MainActivity` turns on edge-to-edge, and nothing pads for
-the insets); and the battery and cellular policy of open question 3 still
-doesn't exist.
+risks a "not responding" kill on a slow first boot; and the battery and cellular
+policy of open question 3 still doesn't exist.
 
 ## The mirror question
 

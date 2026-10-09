@@ -18737,3 +18737,21 @@ machine's registry path is written down - and its keep rule in
 `app/proguard-rules.pro`. `tools/android-project.sh` only checks those survive.
 The insets work (the app drawn under the system bars; the template's
 `MainActivity` turns on edge-to-edge) is next, as an edit to `MainActivity.kt`.
+
+**2026-10-08 - The phone's system bars.** Curtis: on the phone "a bunch of vital
+UI was rendered _under_ the phone's own UI" - the app bar under Android's
+home/back buttons, the header under its clock. Tauri's `MainActivity` turns on
+edge-to-edge, and nothing padded for it. tokens.css has `--safe-top`, `-right`,
+`-bottom` and `-left`, defaulting to the browser's `env(safe-area-inset-*)`; the
+frame (`.app-main`) pads its top and sides by them, the app bar grows by the
+bottom one - all padding, so its teal runs on under the home/back bar and what
+sits in it stays put (and its phone padding and the cloud's centring follow) -
+and a modal's backdrop clears all four. Android's web view doesn't reliably
+report the insets to `env()`, so `MainActivity.kt` measures them (system bars
+and cutouts, in CSS pixels) and offers them through a JavaScript bridge,
+`__ringtomeInsets`, which index.html's first-paint script reads into the root's
+`--safe-*` - only sides the app has measured - and again on a resize or when the
+app calls it on a rotation. The listener passes the insets on to the web view's
+own handling, so the keyboard is left as it was; a shrinker rule keeps the
+bridge's method. Zero everywhere else, so a desktop is unchanged; the Kotlin is
+proven only by the next build.

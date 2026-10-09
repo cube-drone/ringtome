@@ -23,3 +23,9 @@
 # The certificate verifier's Kotlin half (desktop/src/android_tls.rs) is called from Rust over JNI,
 # which the release build's shrinker can't see: kept by name.
 -keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
+
+# The system-bar bridge (MainActivity.kt, `__ringtomeInsets`) is called by name from the page's
+# JavaScript: kept, whatever the default rules already do for @JavascriptInterface.
+-keepclassmembers class net.lassam.ringtome.MainActivity$* {
+    @android.webkit.JavascriptInterface <methods>;
+}

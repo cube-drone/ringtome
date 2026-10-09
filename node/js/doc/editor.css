@@ -303,7 +303,7 @@
 
 @media (max-width: 500px) {
     .quickbar {
-        padding: 0.4rem 10px;
+        padding: 0.4rem 10px calc(0.4rem + var(--safe-bottom));
     }
 }
 

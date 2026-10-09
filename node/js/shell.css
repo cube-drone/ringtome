@@ -36,6 +36,9 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    /* Clear of the phone's clock and any notch (tokens.css, --safe-*); the bottom is the app bar's
+       to clear, so its teal runs on under the home/back bar. */
+    padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
 }
 
 /* The app region: the bordered box between the top of the window and the footer. It fills the
