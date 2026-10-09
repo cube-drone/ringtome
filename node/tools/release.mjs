@@ -195,6 +195,17 @@ function refreshLocks(dryRun) {
             }
         }
     }
+    // ...and npm's, which spells node/js/package.json's version twice: 0.3.0's release left it at
+    // 0.2.12, for the next `npm install` to change underneath somebody else's commit.
+    try {
+        execFileSync(
+            'npm',
+            ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'],
+            { cwd: path.join(ROOT, 'node/js'), stdio: 'ignore' },
+        );
+    } catch {
+        console.warn('  (could not refresh node/js/package-lock.json - check it by hand)');
+    }
 }
 
 try {

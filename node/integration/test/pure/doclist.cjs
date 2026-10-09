@@ -4,9 +4,15 @@
 // reshuffles under the pointer on every mirror tick.
 const assert = require('node:assert');
 
-let orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind, appForStyle, DEFAULT_STYLE;
+let orderDocs,
+    tagCounts,
+    byPinnedThenClaimed,
+    nextSearchKind,
+    filesHides,
+    appForStyle,
+    DEFAULT_STYLE;
 before(async () => {
-    ({ orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind } =
+    ({ orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind, filesHides } =
         await import('../../../js/pure/doclist.js'));
     ({ appForStyle, DEFAULT_STYLE } = await import('../../../js/pure/apps.js'));
 });
@@ -21,6 +27,47 @@ const doc = (n, over = {}) => ({
 });
 const journal = () => appForStyle('journal');
 const ids = (list) => list.map((d) => d.doc_id.slice(0, 2));
+
+describe('filesHides (what hrseFiles leaves out)', () => {
+    const empty = new Set([id(1), id(2), id(3), id(4)]);
+
+    it('leaves out a published feed post, and keeps a feed draft', () => {
+        const post = doc(5, { buckets: ['feed'], fields: { published_as: 'abc' } });
+        const draft = doc(6, { buckets: ['feed'] });
+        const notePublished = doc(7, { buckets: ['notes'], fields: { published_as: 'def' } });
+        assert.equal(filesHides(post, empty), true);
+        assert.equal(filesHides(draft, empty), false);
+        assert.equal(filesHides(notePublished, empty), false, 'a published NOTE is still a file');
+    });
+
+    it('leaves out an untitled, untagged text document with no words', () => {
+        assert.equal(filesHides(doc(1, { title: '', format: 'marquee' }), empty), true);
+        assert.equal(filesHides(doc(2, { title: '  ', format: 'plaintext' }), empty), true);
+    });
+
+    it('keeps it with a title, a tag, words, or no word on its words yet', () => {
+        assert.equal(filesHides(doc(1, { title: 'groceries', format: 'marquee' }), empty), false);
+        assert.equal(
+            filesHides(doc(2, { title: '', format: 'marquee', tags: ['x'] }), empty),
+            false,
+        );
+        assert.equal(
+            filesHides(doc(8, { title: '', format: 'marquee' }), empty),
+            false,
+            'has words',
+        );
+        assert.equal(
+            filesHides(doc(3, { title: '', format: 'marquee' }), null),
+            false,
+            'bags unknown',
+        );
+    });
+
+    it('keeps an untitled picture or drawing', () => {
+        assert.equal(filesHides(doc(3, { title: '', format: 'avif', media: {} }), empty), false);
+        assert.equal(filesHides(doc(4, { title: '', format: 'drawing' }), empty), false);
+    });
+});
 
 describe('orderDocs', () => {
     it('shows only what this app s notebook holds', () => {

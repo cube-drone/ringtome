@@ -4,6 +4,7 @@
 // tag narrows that again.
 import { bucketHolds } from './apps.js';
 import { claimedMs } from './docdate.js';
+import { FEED_STYLE, isTextDoc, publishedState } from './feed.js';
 
 // The kind filter's dial, in rotation order: what a document IS - prose, or a media file (a
 // summary with `media` facts: image, video, audio). One extra search option today; the
@@ -16,6 +17,24 @@ export const nextSearchKind = (kind) =>
 /// everything else is prose. Unknown kinds behave as 'all' rather than emptying the list.
 export const kindHolds = (doc, kind) =>
     kind === 'docs' ? !doc.media : kind === 'media' ? !!doc.media : true;
+
+/// What hrseFiles leaves out of its list (Curtis, 2026-10-08): "publicly posted feed items" - a post
+/// is the feed's, said in public, not a file you keep (a feed draft still shows) - and "untitled text
+/// blocks with no content or tags": a text document with no title, no tags and no words at all.
+/// `emptyBags` is the set of document ids whose search bag is empty (the mirror's search rows: the
+/// words of title, annotations and body, so an empty one is nothing written anywhere); a document
+/// whose bag hasn't arrived isn't in it, and stays.
+export function filesHides(doc, emptyBags) {
+    if (!doc) return false;
+    if ((doc.buckets || []).includes(FEED_STYLE) && publishedState(doc).published) return true;
+    return (
+        isTextDoc(doc) &&
+        !(doc.title || '').trim() &&
+        !(doc.tags || []).length &&
+        !!emptyBags &&
+        emptyBags.has(doc.doc_id)
+    );
+}
 
 /**
  * @param app    the app registry entry, which decides what its bucket holds

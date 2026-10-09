@@ -220,7 +220,17 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: node/js/package-lock.json
+          cache-dependency-path: |
+            node/js/package-lock.json
+            desktop/package-lock.json
+
+      # The Tauri CLI, pinned in desktop/package.json (2026-10-08, for the Android build): with a
+      # package.json beside it, tauri-action runs `npm run tauri build` rather than fetching a CLI of
+      # its own, so the pinned one must be installed first - 0.3.0's desktop builds all died at
+      # `tauri: not found`. Every platform now builds with the same CLI the phone does.
+      - name: The Tauri CLI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
 
       - name: Linux build dependencies
         if: matrix.platform == 'ubuntu-22.04'

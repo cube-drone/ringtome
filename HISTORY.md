@@ -18783,3 +18783,27 @@ a file opens) builds its chips once as a `deck`, as the editor does: the row on
 a wide window, and under 900px one "options" chip whose panel opens as a
 full-width line of the header (`useChipMenu`). The copy-into-notes window moved
 out of the deck, beside it, as in the editor.
+
+**2026-10-08 - hrseFiles leaves out posts and empty notes.** Curtis: hide
+"publicly posted feed items" and "untitled text blocks with no content or tags"
+in the files app. `filesHides` (pure/doclist.js, with vectors): a document in
+the feed's notebook that carries a publication (`published_as`) - a feed draft
+still shows, and so does a published note from a notebook - and a text document
+with no title, no tags and an empty search bag. The bag is the mirror's search
+row, the words of title, annotations and body, so empty means nothing written
+anywhere; a document whose bag hasn't arrived stays. hrseFiles filters before
+ordering, so the list, the tiles, prev/next and the tag cloud agree, and never
+hides the document that is open - a note made there doesn't vanish as it's made,
+and a hidden one opened by its address still opens. The empty bags come off the
+mirror as one sorted string, so the list re-renders only when that set changes.
+
+**2026-10-08 - 0.3.0's desktop builds, and the CLI they now share.** Every
+desktop build of the 0.3.0 release died at "Build and sign": `tauri: not found`.
+The `desktop/package.json` that pins the Tauri CLI for the Android build changed
+what tauri-action does - with a package.json beside it, it runs
+`npm run tauri build` rather than fetching a CLI of its own - and nothing had
+installed the pinned one. release.yml's build job now runs `npm ci` in
+`desktop/` first, so every platform builds with the same pinned CLI the phone
+does. The Android job, which installs it itself, built and signed 0.3.0's APK
+with the real key; 0.3.0 itself published nothing (all or nothing), and goes out
+as 0.3.1.

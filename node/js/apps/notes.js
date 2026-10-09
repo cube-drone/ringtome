@@ -25,7 +25,7 @@ import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docda
 import { featuresOf, itemNoun, itemPlural, bucketHolds, FILES_BUCKET } from '../pure/apps.js';
 import { noteByTitle } from '../pure/bytitle.js';
 import { browseFiles, UNFILED } from '../pure/filebrowse.js';
-import { orderDocs, tagCounts } from '../pure/doclist.js';
+import { filesHides, orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
 import { LinksColumn } from '../doc/linkcol.js';
@@ -35,7 +35,7 @@ import { Icons, formatIcon } from '../icons.js';
 import { DrawingThumb } from '../doc/drawing.js';
 import { blankDrawing, writeBody } from '../pure/drawing.js';
 import { t } from '../i18n.js';
-import { holdNewDoc } from '../mirror.js';
+import { holdNewDoc, openMirror, useLive } from '../mirror.js';
 import { docStatus, isTextDoc } from '../pure/feed.js';
 import { BookColumn, useBookFacts, useBookTree } from '../doc/bookcol.js';
 import { isBookBucket, hiddenDocsOf, pageStanding, titlePageOf } from '../pure/books.js';
@@ -549,7 +549,34 @@ export const DocsApp = ({
           )
         : null;
 
-    const ordered = orderDocs(docs, {
+    // hrseFiles leaves out published feed posts and empty untitled text (pure/doclist.js
+    // `filesHides`) - never the one open, so a new note made here doesn't vanish as it's made. The
+    // empty ones come off the mirror's search bags, as one string, so the list re-renders only
+    // when that set changes rather than on every save.
+    const emptyBagIds = useLive(
+        () =>
+            app.everything
+                ? openMirror(root)
+                      .search.toArray()
+                      .then((rows) =>
+                          rows
+                              .filter((r) => !(r.tokens || '').trim())
+                              .map((r) => r.doc_id)
+                              .sort()
+                              .join(' '),
+                      )
+                : '',
+        [root, app.everything],
+    );
+    const emptyBags = useMemo(
+        () => (emptyBagIds ? new Set(emptyBagIds.split(' ')) : null),
+        [emptyBagIds],
+    );
+    const listed = app.everything
+        ? (docs || []).filter((d) => d.doc_id === selected || !filesHides(d, emptyBags))
+        : docs;
+
+    const ordered = orderDocs(listed, {
         app,
         bucket,
         hits,
@@ -582,7 +609,7 @@ export const DocsApp = ({
     // Counted over the SEARCH results (query + kind dial) rather than the tag-filtered list, so
     // the cloud narrows with a search but still shows every tag you could add.
     const tagCloud = feat.tagColumn
-        ? tagCounts(orderDocs(docs, { app, bucket, hits, kind: searchKind }))
+        ? tagCounts(orderDocs(listed, { app, bucket, hits, kind: searchKind }))
         : [];
 
     // Which columns are tucked away to a rail - column chrome, so panes.js owns it alongside the
