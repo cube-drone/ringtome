@@ -7,57 +7,13 @@ where, what, why it matters to Horse Drawing Tycoon 2, and a suggested fix.
 Curtis routes them; when a release fixes one, it moves to _Fixed_ with the
 version, and the version bump lands in HISTORY as usual.
 
-We are on **0.9.2** everywhere (2026-10-09): the npm packages
-(`@cube-drone/marquee-*`) and the pinned crates (`cube-drone-marquee-parser`,
-`-markup`, and `-markdown`, which export uses). Neither request below is in it
-yet.
+We are on **0.9.3** in Rust (2026-10-09): the pinned crates
+(`cube-drone-marquee-parser`, `-markup`, `-markdown`, and `-html-renderer`
+beneath them), in the node's and the desktop shell's lockfiles. The npm packages
+(`@cube-drone/marquee-*`) are on **0.9.2**, the newest npm has - 0.9.3 was
+published to crates.io only; nothing the browser draws needs it yet.
 
 ## Open
-
-### An XHTML output mode for the HTML renderer
-
-_Asked for 2026-10-09; Curtis is adding it._
-
-`marquee-html-renderer` (the crate, `src/render.rs`, and the npm package to
-match) writes HTML5: void elements unclosed - `<br>` and `<hr>` (`render.rs`
-lines 167 and 202 in 0.9.1), `<img …>` for emoji and embeds (194, 266) - and
-nothing stops a named entity like `&nbsp;` reaching the output. That's right for
-a web page and wrong for an **ePub**, whose pages must be well-formed XML: a
-strict reader refuses the book, a lenient one guesses. Horse Drawing Tycoon 2
-wants to download a notebook or a public book as an ePub (2026-10-09), its pages
-rendered by this renderer.
-
-**Suggested fix:** an output mode - an option beside `render_marquee`
-(`render_marquee_with(source, profile, Output::Xhtml)`, or a field on a render
-options struct) - in which every void element closes itself (`<br/>`, `<hr/>`,
-`<img …/>`), attributes are always quoted, and only XML's own five entities
-appear, everything else as itself or a numeric reference. Embedder vocabulary
-(`Profile::directive`, `turbolink`) returns HTML the renderer can't rewrite, so
-the contract should say a profile used in XHTML mode must return XHTML too.
-
-### A hook that rewrites where a link goes
-
-_Asked for 2026-10-09._
-
-`marquee-html-renderer`, `Profile::link_allowed`: a profile may say whether a
-target becomes a link, but not where it points. Embeds already have this -
-`Profile::media` returns a `MediaResolution` whose `url` the renderer uses - but
-links don't. Horse Drawing Tycoon 2 needs it twice over:
-
-- **An ePub** (above): a link from one note to another must point at the other's
-  chapter inside the book (`chapter-07.xhtml#…`), not at the app's address,
-  which a reader offline can't follow.
-- **An export** (plans/EXPORT.md, _Not yet_): the `.md` files keep app addresses
-  for links between notes, where the zip's own paths would do.
-
-Without the hook, both have to rewrite targets in the Marquee source before
-rendering, which means a second parse and a serializer round trip.
-
-**Suggested fix:** `fn link_target(&self, target: &str) -> Option<String>`
-beside `link_allowed`, defaulting to `None` (keep the target as written): `Some`
-is the address the anchor uses. Asked after `link_allowed` says yes, so a
-refused link stays refused. The Markdown bridge (`marquee_markdown`) would want
-the same hook for the export's `.md` files.
 
 ### Not upstream: the ePub's own rules
 
@@ -70,6 +26,17 @@ book** - `media`'s `url` points at the copy in the zip. **Emoji as text** -
 `Profile::emoji` returns `Text`. All of it is an ePub profile on our side.
 
 ## Fixed
+
+- **An XHTML output mode** (asked 2026-10-09 for the ePub): in **0.9.3**,
+  `render_marquee_with(source, profile, Output::Xhtml)` - void elements close
+  themselves, every attribute has a value, and only XML's own entities appear. A
+  profile used with it must return XHTML from its own hooks too.
+- **A hook that rewrites where a link goes** (asked 2026-10-09, for the ePub's
+  chapter links and the export's `.md` files): in **0.9.3**,
+  `Profile::link_target(target) -> Option<String>`, asked after `link_allowed`
+  for links, turbolinks and an embed's fallback link - the visible text stays
+  the author's - and `marquee_markdown::Options::link_target` for the Markdown
+  bridge.
 
 - **The editor's block cache keyed on position** (`marquee-codemirror`,
   `renderBlock`): typing one character shifted every block below the caret and

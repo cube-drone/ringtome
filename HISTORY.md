@@ -19067,4 +19067,8 @@ block's position, and the React renderer labels audio and video with their alt
 text - which moved to _Fixed_. The two asks for the ePub - an XHTML output mode
 and a `link_target` hook - went into that plan's _Open_, beside a note of the
 ePub rules that are ours (no sound, plain turbolinks, pictures in the book,
-emoji as text).
+emoji as text). Then **0.9.3** for the crates, the same day: Curtis released
+both asks - an `Output::Xhtml` render mode and `Profile::link_target` (with
+`marquee_markdown::Options::link_target` beside it) - and both moved to
+plans/MARQUEE.md's _Fixed_. The npm packages stay on 0.9.2: 0.9.3 went to
+crates.io only, and `^0.9.3` finds nothing on npm.

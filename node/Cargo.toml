@@ -19,14 +19,14 @@ path = "src/main.rs"
 [dependencies]
 # The Marquee reference parser (our own, ~/code/marqueemarkup): publication's media pre-pass
 # walks the AST for embed targets rather than regexing source. Pinned like turso: pre-1.0.
-cube-drone-marquee-parser = "=0.9.2"
+cube-drone-marquee-parser = "=0.9.3"
 # And its batteries-included sibling, for the OpenGraph parse behind link cards: the browser
 # cannot fetch a page across origins, so the node fetches and this crate reads the head -
 # the same entity table and rules as the npm turbolink package, kept in one place (2026-09-03,
 # after a hand-rolled port grew a third copy of the table).
-cube-drone-marquee-markup = "=0.9.2"
+cube-drone-marquee-markup = "=0.9.3"
 # And its Markdown bridge (plans/EXPORT.md): an export writes every Marquee note as `.md` too.
-cube-drone-marquee-markdown = "=0.9.2"
+cube-drone-marquee-markdown = "=0.9.3"
 # the protocol layer: canonical bytes, hashing, signing, chain validation
 ringtome-proto = { path = "../proto" }
 # How full the disk under the data directory is (registration.rs: a sign-up limit an operator can
