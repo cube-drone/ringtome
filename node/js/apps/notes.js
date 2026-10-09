@@ -839,6 +839,7 @@ export const DocsApp = ({
                     docId=${selected}
                     missing=${missing && !selected}
                     dropper=${!!app.everything}
+                    onSelect=${select}
                     docs=${docs}
                     nav=${nav}
                     bucket=${bucket}

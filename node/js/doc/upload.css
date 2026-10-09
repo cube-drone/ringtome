@@ -107,6 +107,46 @@
     color: var(--on-accent);
 }
 
+/* A file's page while it is still on its way (doc/upload.js PendingUpload): the upload glyph, its
+   name, and where it is - the queue, the processing bar, or what went wrong. */
+.upload-pending {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    width: min(28rem, 100%);
+    margin: auto;
+    padding: 2rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.upload-pending .upload-bar {
+    width: 100%;
+}
+
+.upload-pending-title {
+    margin: 0;
+    color: var(--ink);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+/* The upload window folded to a line per file still sending (FileDropper, after OK). */
+.upload-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    width: min(32rem, 100%);
+    margin: 1rem auto 0;
+}
+
+.upload-inline-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
 /* hrseFiles's empty page (doc/upload.js FileDropper): a big dotted drop frame, the upload button in
    the middle of it. Lit teal while a file is dragged over it. */
 .file-dropper {

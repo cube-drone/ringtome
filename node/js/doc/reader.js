@@ -14,9 +14,9 @@ import htm from 'htm';
 import { api } from '../net.js';
 import { openMirror, useLive, optimisticDoc } from '../mirror.js';
 import { useDocDetail } from './detail.js';
-import { Chip, NavChips } from './chips.js';
+import { Chip, NavChips, useChipMenu } from './chips.js';
 import { MarqueeBody } from './marqueebody.js';
-import { decoratedBodyUrl, FileDropper } from './upload.js';
+import { decoratedBodyUrl, FileDropper, PendingUpload, isLanding } from './upload.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
 import { useTurbolinks } from './turbolinks.js';
@@ -55,6 +55,9 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     const hydrated = useRef(false); // the body-retry loop refetches; hydrate the input ONCE
     const [showMeta, setShowMeta] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
+    // A narrow window's chips sit behind one menu chip, as the editor's and the drawing's do (Curtis,
+    // 2026-10-08: the file page's row was the same crowd); doc/chips.js `useChipMenu`.
+    const menu = useChipMenu();
     // For a MEDIA document the useful link is the file itself: the decorated byte URL pastes
     // straight into `![](…)` and renders (the cozy document address never can - the embed
     // sniff needs the extension). A text document copies its address (2026-09-28): a
@@ -202,18 +205,8 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
         body = html`<p class="null-sub">${t('doc.reader.a-document---no-reader', '(a {format} document - no reader for it yet)', { format: doc.format })}</p>`;
     }
 
-    return html`
-        <div class="reader reader-file">
-            <header class="reader-head">
-                <input
-                    class="editor-title"
-                    value=${title}
-                    placeholder=${t('doc.reader.untitled', 'untitled')}
-                    readOnly=${!!doc.builtin}
-                    onInput=${(e) => setTitle(e.currentTarget.value)}
-                    onBlur=${saveTitle}
-                />
-                <span class="reader-chips">
+    // The row of chips: in the header on a wide window, behind the menu chip on a narrow one.
+    const deck = html`
                     ${/* Trash is always the leftmost chip, on every row (Curtis, 2026-09-27). */ ''}
                     ${
                         onDeleted &&
@@ -231,14 +224,6 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                         icon=${Icons.copy} word=${t('chips.copy', 'copy')}
                         title=${t('doc.reader.copy-into-private-notes', 'copy this note into another bucket')}
                         onClick=${() => setCopying(true)}
-                    />`
-                    }
-                    ${
-                        copying &&
-                        html`<${CopyIntoModal}
-                        current=${{ root }}
-                        source=${{ author: root, doc_id: docId, private: true }}
-                        onClose=${() => setCopying(false)}
                     />`
                     }
                     ${
@@ -301,7 +286,33 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
                     />`
                     }
                     <${NavChips} nav=${nav} />
-                </span>
+    `;
+
+    return html`
+        <div class="reader reader-file">
+            <header class="reader-head">
+                <input
+                    class="editor-title"
+                    value=${title}
+                    placeholder=${t('doc.reader.untitled', 'untitled')}
+                    readOnly=${!!doc.builtin}
+                    onInput=${(e) => setTitle(e.currentTarget.value)}
+                    onBlur=${saveTitle}
+                />
+                <span class="reader-chips">${menu.narrow ? menu.chip : deck}</span>
+                ${
+                    /* Open, the deck is a full-width line of the header, under the title, as in the
+                    editor (doc/editor.js). */ ''
+                }
+                ${menu.panel(deck)}
+                ${
+                    copying &&
+                    html`<${CopyIntoModal}
+                    current=${{ root }}
+                    source=${{ author: root, doc_id: docId, private: true }}
+                    onClose=${() => setCopying(false)}
+                />`
+                }
                 ${
                     showMeta &&
                     html`<div class="editor-meta jag-line">
@@ -330,6 +341,7 @@ export const RightColumn = ({
     missing = false,
     onNew,
     onOpen,
+    onSelect,
 }) => {
     // The document the address named isn't there (2026-10-03): said here, in its notebook, with the
     // list beside it - not on a page of its own.
@@ -340,9 +352,13 @@ export const RightColumn = ({
     // Nothing open: hrseFiles offers a place to drop files (`dropper`); the rest say to pick one.
     if (!docId)
         return dropper
-            ? html`<${FileDropper} root=${root} />`
+            ? html`<${FileDropper} root=${root} onOpen=${onSelect} />`
             : html`<${Reader} root=${root} docId=${null} />`;
     const row = (docs || []).find((d) => d.doc_id === docId);
+    // An upload still on its way (doc/upload.js `PendingUpload`): not in the list until its transcode
+    // lands, and not the text document the fallback below would open an editor on.
+    if (!row && isLanding(docId))
+        return html`<${PendingUpload} root=${root} docId=${docId} key=${docId} />`;
     const format = row ? row.format : 'plaintext';
     // A drawing opens on its canvas (DRAWING.md), wherever it is listed - the Drawing app, or Lost &
     // Found - and brings its own tools column.

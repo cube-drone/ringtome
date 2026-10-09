@@ -18757,3 +18757,29 @@ bridge's method. Zero everywhere else, so a desktop is unchanged; the Kotlin is
 proven only by the next build.
 
 (triggering a build to try and get the new signed APK to do the thing)
+
+**2026-10-08 - An upload opens its file, ready or not.** Curtis: clicking
+through an upload in hrseFiles should take you to the file's page "whether or
+not the file has finished uploading... If the file isn't ready yet, here would
+be a good place to show where it is in the file processing queue, a loading
+spinner, or if all else fails: error text." OK on one file now opens it
+(`FileDropper`, via the list's own `select`). A file still in the queue isn't in
+the document list yet, and `RightColumn` used to open a text editor on anything
+it couldn't find; `upload.js` now remembers every document id an upload has been
+handed (`isLanding`), and for one of those `RightColumn` shows `PendingUpload`:
+the upload glyph, the file's name, and where it is - "next up", "N ahead of it",
+the processing bar, or the failure's words - asked of `/ingest` each second.
+When the transcode lands, the document reaches the list and its own page takes
+over. If OK comes while the bytes are still going up, with no id to open yet,
+the window folds to a "sending…" line with its bar on the drop page and the file
+opens as its id arrives. Several files stay on the drop page, each with its line
+until it is in the queue. The window's note says "OK opens the file" there; the
+editor's uploads are unchanged.
+
+**2026-10-08 - The file page's chips fold too.** Curtis: "the file browser has
+the same overcrowded file chip set that we tucked away into a dropdown menu in
+drawing and writer". The Reader (a media file's page, in hrseFiles and wherever
+a file opens) builds its chips once as a `deck`, as the editor does: the row on
+a wide window, and under 900px one "options" chip whose panel opens as a
+full-width line of the header (`useChipMenu`). The copy-into-notes window moved
+out of the deck, beside it, as in the editor.

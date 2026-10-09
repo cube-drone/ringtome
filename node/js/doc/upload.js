@@ -73,7 +73,89 @@ const queueLabel = (r) =>
             : `waiting in the processing queue — ${r.queuePos} ahead of it…`
         : QUEUE_WORD[r.queueStatus] || 'processing…';
 
-const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onIngested }) => {
+/// The documents uploaded in this page's life, by id, from the moment the node hands one back - long
+/// before its transcode lands and it reaches the document list. A page asked for one of these that
+/// the list doesn't hold yet is an upload on its way, not a text document nobody can find
+/// (doc/reader.js `RightColumn`, which shows `PendingUpload` for it).
+const landing = new Set();
+export const isLanding = (docId) => landing.has(docId);
+
+/// A file's page while the file is still on its way (Curtis, 2026-10-08: opening the file whether or
+/// not it has finished, and "if the file isn't ready yet, here would be a good place to show where it
+/// is in the file processing queue, a loading spinner, or if all else fails: error text"). It follows
+/// the same ingest queue the upload window does; when the transcode lands, the document reaches the
+/// list and its page takes this one's place.
+export const PendingUpload = ({ root, docId }) => {
+    const [job, setJob] = useState(undefined); // undefined: not asked yet; null: not in the queue
+    const [asking, setAsking] = useState(null); // why the queue couldn't be asked, if it couldn't
+    const failed = !!(job && job.status === 'failed');
+    useEffect(() => {
+        if (failed) return undefined; // a failure is final: nothing more to ask
+        let live = true;
+        const ask = async () => {
+            try {
+                const jobs = await api(`/api/identity/${root}/ingest`);
+                if (!live) return;
+                setJob(jobs.find((j) => j.doc_id === docId) || null);
+                setAsking(null);
+            } catch (e) {
+                if (live) setAsking(e.message || String(e));
+            }
+        };
+        ask();
+        const id = setInterval(ask, 1000);
+        return () => {
+            live = false;
+            clearInterval(id);
+        };
+    }, [root, docId, failed]);
+    const spin = (words) =>
+        html`<div class="upload-status"><span class="status-spin"><${Icons.spinner} /></span> ${words}</div>`;
+    let status;
+    if (failed)
+        status = html`<div class="upload-status upload-failed">
+            ${job.error || t('doc.upload.processing-failed', 'processing failed')}
+        </div>`;
+    else if (asking && job === undefined)
+        status = html`<div class="upload-status upload-failed">
+            ${t('doc.upload.couldnt-ask-the-queue', "couldn't ask where this file is: {error}", { error: asking })}
+        </div>`;
+    else if (job === undefined) status = spin(t('doc.upload.looking-for-it', 'looking for it…'));
+    // Not in the queue, or through it: the document is on its way to the list.
+    else if (!job || job.status === 'done')
+        status = spin(t('doc.upload.almost-there', 'processed - opening it…'));
+    else if (job.status === 'processing')
+        status = html`${spin(t('doc.upload.processing', 'processing…'))}
+            ${
+                job.progress != null &&
+                html`<div class="upload-bar jag-line-2">
+                <div class="upload-bar-fill" style=${`width: ${job.progress}%`}></div>
+            </div>`
+            }`;
+    else status = spin(queueLabel({ queueStatus: job.status, queuePos: job.position ?? null }));
+    return html`<div class="reader reader-empty">
+        <div class="upload-pending">
+            <span class="file-dropper-icon"><${Icons.upload} /></span>
+            ${job && job.title && html`<p class="upload-pending-title">${job.title}</p>`}
+            ${status}
+        </div>
+    </div>`;
+};
+
+const UploadFlow = ({
+    root,
+    bucket,
+    files,
+    onClose,
+    onUploaded,
+    onFailed,
+    onIngested,
+    // Folded away (FileDropper, after OK): the uploads carry on, said in a line per file still
+    // sending rather than in the window.
+    hidden = false,
+    // What OK does while anything is in flight, in words; the editor's default is below.
+    okNote = null,
+}) => {
     // Video is bought apart from pictures and sounds (plans/UNLOCKS.md: experimental, and said so).
     const video = useUnlocked(root, 'video-upload');
     // One row per file. `phase`: uploading -> queued -> done | failed.
@@ -197,6 +279,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
                         patchRow(i, { pct }),
                     );
                 }
+                landing.add(res.doc_id);
                 patchRow(i, { docId: res.doc_id, jobId: res.job_id, phase: 'queued', pct: 100 });
                 // The doc_id exists: the host swaps this file's in-document placeholder for
                 // the real reference now (the body URL is stable; it self-describes while the
@@ -298,6 +381,30 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
     const anyInFlight = rows.some(
         (r) => r.phase === 'encoding' || r.phase === 'uploading' || r.phase === 'queued',
     );
+
+    if (hidden) {
+        // A line for each file not yet handed to the queue: once one is, its own page says where it
+        // is (PendingUpload). A failure stays said here.
+        const sending = rows.filter((r) => !r.docId);
+        if (!sending.length) return null;
+        return html`<div class="upload-inline">
+            ${sending.map(
+                (r, i) => html`<div class="upload-inline-row" key=${i}>
+                    ${
+                        r.phase === 'failed'
+                            ? html`<div class="upload-status upload-failed">${r.name}: ${r.error}</div>`
+                            : html`<div class="upload-status">
+                                  <span class="status-spin"><${Icons.spinner} /></span>
+                                  ${t('doc.upload.sending-name', 'sending {name}…', { name: r.name })}
+                              </div>
+                              <div class="upload-bar jag-line-2">
+                                  <div class="upload-bar-fill" style=${`width: ${r.phase === 'encoding' ? r.encPct || 0 : r.pct}%`}></div>
+                              </div>`
+                    }
+                </div>`,
+            )}
+        </div>`;
+    }
 
     return html`<${Modal} title="File upload" onClose=${onClose}>
         <div class="upload-rows">
@@ -406,7 +513,7 @@ const UploadFlow = ({ root, bucket, files, onClose, onUploaded, onFailed, onInge
             ${
                 anyInFlight &&
                 html`<span class="upload-note">
-                OK returns to the document - the upload keeps going and lands on its own.
+                ${okNote || 'OK returns to the document - the upload keeps going and lands on its own.'}
             </span>`
             }
             <button class="modal-ok" onClick=${onClose}>OK</button>
@@ -700,15 +807,38 @@ export { FILES_BUCKET };
 /// hrseFiles's empty page (Curtis, 2026-09-27): a big file dropper - "drag a file here, or [upload
 /// a file]" in a chunky dotted frame - in place of "pick something on the left". The usual upload
 /// path, the same modal every surface uses: each file uploads, is processed, can be renamed and
-/// tagged, and files into FILES_BUCKET. A file that lands is not opened, because opening one takes
-/// this page - and the modal following the uploads - away.
-export const FileDropper = ({ root }) => {
+/// tagged, and files into FILES_BUCKET.
+///
+/// OK on ONE file opens it (Curtis, 2026-10-08), finished or not: its page follows it through the
+/// queue (`PendingUpload`), which is why the window no longer has to. Its bytes may still be going
+/// up, with no document to open yet: the window folds to a line on this page, and the file opens
+/// the moment it has an id. Several files stay here, each going on with its line until it lands.
+export const FileDropper = ({ root, onOpen }) => {
     const [files, setFiles] = useState(null); // File[] | null
+    const [folded, setFolded] = useState(false); // OK pressed: the window folds to lines
     const [over, setOver] = useState(false);
     const pick = useRef(null);
+    // Read by the upload's own callbacks, which are bound when it starts.
+    const ids = useRef([]);
+    const follow = useRef(false);
     const take = (list) => {
         const chosen = Array.from(list || []);
-        if (chosen.length) setFiles(chosen);
+        if (!chosen.length) return;
+        ids.current = [];
+        follow.current = false;
+        setFolded(false);
+        setFiles(chosen);
+    };
+    const landed = (i, _file, docId) => {
+        ids.current[i] = docId;
+        if (follow.current && onOpen) onOpen(docId);
+    };
+    const ok = () => {
+        if (files && files.length === 1 && onOpen) {
+            if (ids.current[0]) return onOpen(ids.current[0]);
+            follow.current = true; // still sending: open it when it has an id
+        }
+        setFolded(true);
     };
     const hasFiles = (e) =>
         Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
@@ -747,6 +877,24 @@ export const FileDropper = ({ root }) => {
                 }}
             />
         </div>
-        ${files && html`<${UploadFlow} root=${root} bucket=${FILES_BUCKET} files=${files} onClose=${() => setFiles(null)} />`}
+        ${
+            files &&
+            html`<${UploadFlow}
+                root=${root}
+                bucket=${FILES_BUCKET}
+                files=${files}
+                hidden=${folded}
+                onUploaded=${landed}
+                onClose=${ok}
+                okNote=${
+                    files.length === 1 && onOpen
+                        ? t(
+                              'doc.upload.ok-opens-the-file',
+                              'OK opens the file - its page shows how it is getting on.',
+                          )
+                        : null
+                }
+            />`
+        }
     </div>`;
 };
