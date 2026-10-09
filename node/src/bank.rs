@@ -1728,6 +1728,17 @@ pub async fn line_count(data: &Store) -> Result<u64> {
     Ok(n as u64)
 }
 
+/// Every line of the ledger, oldest first, as `(kind, source, pennies, at_ms, detail JSON)` - the
+/// export's read (export.rs, plans/EXPORT.md).
+pub async fn all_lines(data: &Store) -> Result<Vec<(String, String, String, i64, String)>> {
+    data.db()
+        .fetch_all(
+            "SELECT kind, source, pennies, at_ms, detail FROM bank_lines ORDER BY at_ms, kind, source",
+            (),
+        )
+        .await
+}
+
 /// A line's stored amount: a decimal string (0031_bank_lines_bigint.sql). Only ever written by
 /// `bank`, so a string that doesn't parse is a corrupt row - read as nothing, and said so.
 fn amount(text: &str) -> BigInt {

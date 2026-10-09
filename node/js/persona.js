@@ -41,6 +41,7 @@ import {
     appHref,
     personHref,
     personaPageHref,
+    computersHref,
     LAUNCHER,
     shareUrl,
     writeClipboard,
@@ -707,7 +708,7 @@ export const PersonaMenu = ({ persona, session }) => {
                         <small>${t('persona.manage-who-you-appear-to-be', 'manage who you appear to be')}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href=${personaPageHref('computers')}>
+                <a class="persona-menu-item" href=${computersHref()}>
                     <span class="persona-menu-icon"><${Icons.computers} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.your-computers-2', 'your computers')}</strong>
@@ -719,6 +720,13 @@ export const PersonaMenu = ({ persona, session }) => {
                     <span class="persona-menu-label">
                         <strong>${t('persona.content-control', 'content control')}</strong>
                         <small>${t('persona.what-gets-blurred-or-hidden', 'what gets blurred, and what stays off your pages')}</small>
+                    </span>
+                </a>
+                <a class="persona-menu-item" href=${personaPageHref('export')}>
+                    <span class="persona-menu-icon"><${Icons.exportPersona} /></span>
+                    <span class="persona-menu-label">
+                        <strong>${t('persona.import-export', 'import/export')}</strong>
+                        <small>${t('persona.everything-you-are-as-a-zip', 'everything you are here, as one .zip')}</small>
                     </span>
                 </a>
                 <button class="persona-menu-item persona-menu-danger" onClick=${logout}>

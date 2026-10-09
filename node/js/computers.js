@@ -1,9 +1,12 @@
 // "Your computers": the persona's key tree in domestic clothing (GLOSSARY, Cozyweb mapping -
 // keys render by their device names, never as bare hex; the crown and the spare key render by
-// role). Also the granting half of adoption: "invite this computer to be you" - paste the new
-// computer's request code, carry the answer back.
+// role), each computer with how it is syncing. Three tabs, each its own address (2026-10-09): add
+// a computer - the granting half of adoption, "invite this computer to be you": paste the new
+// computer's request code, carry the answer back - which is the page's default; all computers;
+// and this computer.
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useLocation } from 'preact-iso';
 import htm from 'htm';
 
 import { api } from './net.js';
@@ -12,7 +15,8 @@ import { Modal } from './modal.js';
 import { Icons } from './icons.js';
 import { blastRadius } from './pure/removal.js';
 import { t, tNodes } from './i18n.js';
-import { SyncSection, ThisComputer } from './syncpage.js';
+import { SyncActs, SyncLine, SyncReport, ThisComputer, useSyncStatus } from './syncpage.js';
+import { computersHref } from './links.js';
 import { DownloadPanel } from './downloads.js';
 
 const html = htm.bind(h);
@@ -169,16 +173,54 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
     <//>`;
 };
 
-export const Computers = ({ current }) => {
+/// The page's tabs, in order (2026-10-09): add a computer (the default), every computer and how
+/// each is syncing, and what this one holds. `report` is the sync report, under `all`.
+const TABS = ['new', 'all', 'mine'];
+
+/// `/ringtome/persona/computers` and `/ringtome/persona/computers/:tab` - a bare or unknown tab lands
+/// on `new`.
+export const Computers = ({ current, tab }) => {
+    const loc = useLocation();
+    const known = TABS.includes(tab) || tab === 'report';
+    useEffect(() => {
+        if (!known) loc.route(computersHref('new'), true);
+    }, [known, loc]);
+    if (!known) return null;
+    const on = tab === 'report' ? 'all' : tab;
+    const tabLink = (to, icon, words) =>
+        html`<a class=${on === to ? 'tab active' : 'tab'} href=${computersHref(to)}>
+            <${icon} /> ${words}
+        </a>`;
+    return html`
+        <div class="computers">
+            <h2 class="computers-title">${t('computers.your-computers', 'your computers')}</h2>
+            <nav class="welcome-tabs">
+                ${tabLink('new', Icons.plus, t('computers.tab-new', 'add computer'))}
+                ${tabLink('all', Icons.syncIdle, t('computers.tab-computers', 'all computers'))}
+                ${tabLink('mine', Icons.computers, t('computers.tab-this', 'this computer'))}
+            </nav>
+            ${tab === 'new' && html`<${AddComputer} current=${current} />`}
+            ${tab === 'all' && html`<${AllComputers} current=${current} />`}
+            ${
+                tab === 'report' &&
+                html`<a class="skip-link" href=${computersHref('all')}>
+                        ${t('computers.back-to-all', 'back to all computers')}
+                    </a>
+                    <${SyncReport} root=${current.root} />`
+            }
+            ${tab === 'mine' && html`<${ThisComputer} root=${current.root} />`}
+        </div>
+    `;
+};
+
+/// The persona's computers as its key tree - each sitting under whoever invited it - and, under
+/// each, how it is syncing with this one (plans/SYNC_STATUS.md, piece 4). The spare key and this
+/// computer have no sync of their own to show.
+const AllComputers = ({ current }) => {
     const [keys, setKeys] = useState(null);
-    const [requestCode, setRequestCode] = useState('');
-    const [grantCode, setGrantCode] = useState(null);
-    const [delivered, setDelivered] = useState(false);
-    const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     const [removing, setRemoving] = useState(null); // the key whose removal flow is open
-    // The page's two tabs (plans/SYNC_STATUS.md, piece 5): every computer, or what this one holds.
-    const [tab, setTab] = useState('computers');
+    const sync = useSyncStatus(current.root);
 
     const load = useCallback(
         () =>
@@ -191,49 +233,40 @@ export const Computers = ({ current }) => {
         load();
     }, [load]);
 
-    const invite = async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        setError(null);
-        try {
-            const res = await api(`/api/identity/${current.root}/nodes`, {
-                method: 'POST',
-                body: JSON.stringify({ code: requestCode.trim() }),
-            });
-            // One-trip: delivered means the grant went over the wire and the new computer has
-            // already moved in - no code to carry. Otherwise, fall back to the courier.
-            setDelivered(res.delivered);
-            setGrantCode(res.delivered ? null : res.code);
-            setRequestCode('');
-            load(); // the new key is authorized now; show it (named once it syncs back)
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setBusy(false);
-        }
-    };
+    const running = (sync.status && sync.status.running) || [];
+    const syncs = (sync.status && sync.status.computers) || [];
+    const syncOf = new Map(syncs.filter((c) => c.leaf).map((c) => [c.leaf, c]));
+    // A computer the ledger knows by its address but not (yet) by its key still says how it's doing.
+    const unnamed = keys
+        ? syncs.filter((c) => !c.leaf || !keys.some((k) => k.pubkey === c.leaf))
+        : [];
+    // On one computer only (Curtis, 2026-10-09): nothing to list and nothing to sync - the tab is
+    // the case for a second computer instead. Counted from the tree, which knows every computer,
+    // where the sync ledger knows only those reached since the server started.
+    const alone =
+        keys &&
+        unnamed.length === 0 &&
+        keys.filter((k) => roleOf(k) !== 'spare' && k.status === 'active').length <= 1;
+    if (alone)
+        return html`<div class="null-state computers-alone">
+            <span class="null-glyph"><${Icons.computerNode} /></span>
+            <p class="null-sub">
+                ${t(
+                    'computers.only-on-this-computer',
+                    "This persona only exists on this computer! If something happens to this computer, your persona and all of your files, dreams, and horses will be lost forever! Nobody is backing it up for you - that's your responsibility. For safety, I recommend you add a few extra computers to the network - so long as they come online every once in a while, they'll keep a full backup of your identity.",
+                )}
+            </p>
+            <a class="welcome-go" href=${computersHref('new')}>${t('computers.tab-new', 'add computer')}</a>
+        </div>`;
 
-    return html`
-        <div class="computers">
-            <h2 class="computers-title">${t('computers.your-computers', 'your computers')}</h2>
-            <div class="welcome-tabs">
-                <button class=${tab === 'computers' ? 'tab active' : 'tab'} onClick=${() => setTab('computers')}>
-                    <${Icons.syncIdle} /> ${t('computers.tab-computers', 'all of them')}
-                </button>
-                <button class=${tab === 'this' ? 'tab active' : 'tab'} onClick=${() => setTab('this')}>
-                    <${Icons.computers} /> ${t('computers.tab-this', 'this computer')}
-                </button>
-            </div>
-            ${tab === 'this' && html`<${ThisComputer} root=${current.root} />`}
-            ${
-                tab === 'computers' &&
-                html`<div>
-            ${!keys && !error && html`<p class="null-sub">${t('computers.looking-around', 'looking around…')}</p>`}
-            ${
-                keys &&
-                html`<ul class="computer-list">
+    return html`<div>
+        ${!keys && !error && html`<p class="null-sub">${t('computers.looking-around', 'looking around…')}</p>`}
+        ${
+            keys &&
+            html`<ul class="computer-list">
                 ${keys.map((k) => {
                     const d = describe(k);
+                    const synced = syncOf.get(k.pubkey);
                     // The server sends responsibility order (rank paths); the indent makes the
                     // chain of vouching visible - each computer sits under whoever invited it.
                     const depth = k.rank_path.length;
@@ -243,7 +276,7 @@ export const Computers = ({ current }) => {
                         style="margin-left: ${depth * 0.9}rem"
                     >
                         <span class="computer-name">
-                            ${d.label}
+                            <${Icons.computerNode} /> ${d.label}
                             ${d.detail && html` <span class="computer-detail">— ${d.detail}</span>`}
                         </span>
                         <span class="computer-facts" title=${k.pubkey}>
@@ -263,33 +296,90 @@ export const Computers = ({ current }) => {
                             <${Icons.trash} />
                         </button>`
                         }
+                        ${synced && html`<${SyncLine} computer=${synced} running=${running} />`}
                     </li>`;
                 })}
+                ${unnamed.map(
+                    (c) => html`<li class="computer-row" key=${c.endpoint}>
+                        <span class="computer-name">
+                            <${Icons.computerNode} /> ${t('syncpage.another-computer', 'another computer')}
+                        </span>
+                        <${SyncLine} computer=${c} running=${running} />
+                    </li>`,
+                )}
             </ul>`
-            }
-            ${keys && html`<${SyncSection} root=${current.root} keys=${keys} nameOf=${(k) => describe(k).label} />`}
+        }
+        ${sync.status && html`<${SyncActs} root=${current.root} status=${sync.status} look=${sync.look} />`}
+        ${(error || sync.error) && html`<p class="form-error">${error || sync.error}</p>`}
+        ${
+            removing &&
+            html`<${RemovalFlow}
+                current=${current}
+                target=${removing}
+                keys=${keys || []}
+                onDone=${() => {
+                    setRemoving(null);
+                    load(); // the tree changed; show the new status
+                }}
+                onClose=${() => setRemoving(null)}
+            />`
+        }
+    </div>`;
+};
 
-            <h3 class="computers-subtitle">${t('computers.invite-another-computer-to-be', 'invite another computer to be you')}</h3>
-            ${
-                delivered &&
-                html`<p class="field-note ok">
+/// The granting half of adoption: paste the new computer's request code, and either it moves right
+/// in or there is an invite to carry back. And the app, for a person already signed in - who had
+/// nowhere to get it from but the front page they no longer see (Curtis, 2026-10-09).
+const AddComputer = ({ current }) => {
+    const [requestCode, setRequestCode] = useState('');
+    const [grantCode, setGrantCode] = useState(null);
+    const [delivered, setDelivered] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+
+    const invite = async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api(`/api/identity/${current.root}/nodes`, {
+                method: 'POST',
+                body: JSON.stringify({ code: requestCode.trim() }),
+            });
+            // One-trip: delivered means the grant went over the wire and the new computer has
+            // already moved in - no code to carry. Otherwise, fall back to the courier.
+            setDelivered(res.delivered);
+            setGrantCode(res.delivered ? null : res.code);
+            setRequestCode('');
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return html`<div>
+        <h3 class="computers-subtitle">${t('computers.invite-another-computer-to-be', 'invite another computer to be you')}</h3>
+        ${
+            delivered &&
+            html`<p class="field-note ok">
                     ${t('computers.it-moved-right-in--', 'It moved right in - nothing to carry back. It should be itself over there already.')}
                 </p>
                 <button class="skip-link" onClick=${() => setDelivered(false)}>
                     ${t('computers.invite-another-computer', 'invite another computer')}
                 </button>`
-            }
-            ${
-                grantCode
-                    ? html`<p class="null-sub">
+        }
+        ${
+            grantCode
+                ? html`<p class="null-sub">
                           ${t('computers.couldnt-reach-the-new-computer', "Couldn't reach the new computer directly - carry this invite back and paste it there. Keep this computer awake while it moves in.")}
                       </p>
                       <code class="spare-key">${grantCode}</code>
                       <button class="skip-link" onClick=${() => setGrantCode(null)}>
                           ${t('computers.invite-a-different-computer', 'invite a different computer')}
                       </button>`
-                    : !delivered &&
-                      html`<p class="null-sub">
+                : !delivered &&
+                  html`<p class="null-sub">
                           ${tNodes(
                               'computers.on-the-new-computer-sign',
                               'On the new computer, sign in and choose {action} - it will give you a code to paste here.',
@@ -316,30 +406,10 @@ export const Computers = ({ current }) => {
                               ${busy ? '…' : t('computers.invite-this-computer-to-be', 'invite this computer to be you')}
                           </button>
                       </form>`
-            }
-            ${error && html`<p class="form-error">${error}</p>`}
-            </div>`
-            }
-            ${
-                /* The app, for a person already signed in - who had nowhere to get it from but the
-                front page they no longer see (Curtis, 2026-10-09): the front page's own panel. */ ''
-            }
-            <hr class="computers-rule" />
-            <h3 class="computers-subtitle">${t('computers.get-the-app', 'get the app')}</h3>
-            <${DownloadPanel} />
-            ${
-                removing &&
-                html`<${RemovalFlow}
-                current=${current}
-                target=${removing}
-                keys=${keys || []}
-                onDone=${() => {
-                    setRemoving(null);
-                    load(); // the tree changed; show the new status
-                }}
-                onClose=${() => setRemoving(null)}
-            />`
-            }
-        </div>
-    `;
+        }
+        ${error && html`<p class="form-error">${error}</p>`}
+        <hr class="computers-rule" />
+        <h3 class="computers-subtitle">${t('computers.get-the-app', 'get the app')}</h3>
+        <${DownloadPanel} />
+    </div>`;
 };

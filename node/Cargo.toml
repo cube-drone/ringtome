@@ -25,6 +25,8 @@ cube-drone-marquee-parser = "=0.9.1"
 # the same entity table and rules as the npm turbolink package, kept in one place (2026-09-03,
 # after a hand-rolled port grew a third copy of the table).
 cube-drone-marquee-markup = "=0.9.1"
+# And its Markdown bridge (plans/EXPORT.md): an export writes every Marquee note as `.md` too.
+cube-drone-marquee-markdown = "=0.9.1"
 # the protocol layer: canonical bytes, hashing, signing, chain validation
 ringtome-proto = { path = "../proto" }
 # How full the disk under the data directory is (registration.rs: a sign-up limit an operator can
@@ -187,6 +189,9 @@ gethostname = "1.1.0"
 flate2 = "1.1.9"
 # Backups (backup.rs): the data directory packed as one .tar.gz.
 tar = "0.4"
+# Exports (export.rs, plans/EXPORT.md): a persona as one .zip - the version the desktop shell's
+# updater already builds.
+zip = { version = "4.6.1", default-features = false, features = ["deflate"] }
 blake3 = "1.8.5"
 iroh-gossip = "0.101"
 bytes = "1.12.1"

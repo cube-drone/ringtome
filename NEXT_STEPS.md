@@ -88,7 +88,10 @@ are driving towards.
 
 ### Private Notes
 
-- Import/export bucket or whole persona
+- Import: the other half of plans/EXPORT.md (export shipped 2026-10-09). Also
+  from there: an export's `.md` links between notes still point at the app's
+  addresses rather than the zip's own paths, and the APK's webview has no
+  download handler, so an export can't leave a phone yet.
 - Document history: let me go back in time
 - GC: clean up unused docs and files (first customer: blank drafts - untitled,
   empty, unposted - which the feed stack now hides rather than lists,

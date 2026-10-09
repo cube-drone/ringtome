@@ -11,11 +11,12 @@ import { useLocation } from 'preact-iso';
 import { openMirror, useLive } from './mirror.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { computersHref } from './links.js';
 
 const html = htm.bind(h);
 
-/// Where the cloud leads: the persona's computers, where the sync status lives.
-export const SYNC_PAGE = '/ringtome/persona/computers';
+/// Where the cloud leads: all your computers, where each one's sync status lives.
+export const SYNC_PAGE = computersHref('all');
 
 const ICON = { down: Icons.syncDown, up: Icons.syncUp, sun: Icons.syncSun, idle: Icons.syncIdle };
 /// Each face's classes, spelled out whole (the CSS conventions find a class by its name).

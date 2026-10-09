@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1751 phrases across 102 files.
+// 1772 phrases across 104 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -522,11 +522,15 @@ export default {
     'computers.locked-out-with-it': 'locked out with it:',
     'computers.lock-it-out': 'lock it out',
     'computers.your-computers': 'your computers',
-    'computers.tab-computers': 'all of them',
+    'computers.tab-new': 'add computer',
+    'computers.tab-computers': 'all computers',
     'computers.tab-this': 'this computer',
+    'computers.back-to-all': 'back to all computers',
+    'computers.only-on-this-computer': "This persona only exists on this computer! If something happens to this computer, your persona and all of your files, dreams, and horses will be lost forever! Nobody is backing it up for you - that's your responsibility. For safety, I recommend you add a few extra computers to the network - so long as they come online every once in a while, they'll keep a full backup of your identity.",
     'computers.looking-around': 'looking around…',
     'computers.leave-this-persona-2': 'leave this persona',
     'computers.remove-this-computer': 'remove this computer',
+    'syncpage.another-computer': 'another computer',
     'computers.invite-another-computer-to-be': 'invite another computer to be you',
     'computers.it-moved-right-in--': 'It moved right in - nothing to carry back. It should be itself over there already.',
     'computers.invite-another-computer': 'invite another computer',
@@ -1011,6 +1015,21 @@ export default {
     'auth.download-every-release': 'every release is here',
     'auth.this-server-is-running': 'this server is running',
 
+    // --- node/js/exportpage.js ---
+    'exportpage.title': 'import/export',
+    'exportpage.export': 'export',
+    'exportpage.what-it-is': "Everything you are here, in one .zip: every note, drawing and picture, by notebook and section; your posts; your profile, contacts, chats and bank. Notes come as Marquee, Markdown and plain text, so something opens them wherever you take them. It's unencrypted - anyone holding the file can read all of it - but it holds no keys: it can't be used to become you.",
+    'exportpage.looking': 'looking…',
+    'exportpage.queued': 'waiting its turn - this server makes one export at a time',
+    'exportpage.running': 'making it: {done} of {total}',
+    'exportpage.starting': 'making it…',
+    'exportpage.failed': 'It didn’t work: {error}',
+    'exportpage.ready': 'Ready: {size}, made {when}.',
+    'exportpage.show-in-folder': 'show it in its folder',
+    'exportpage.download': 'download it',
+    'exportpage.make-another': 'make a new one (it replaces this one)',
+    'exportpage.make': 'make an export',
+
     // --- node/js/facets.js ---
     'facets.narrow-on': 'showing only what is tagged this - click to let it go',
     'facets.narrow-off': 'click to show only what is tagged this',
@@ -1228,6 +1247,8 @@ export default {
     'persona.the-machines-that-carry-this': "the computers you're signed in on",
     'persona.content-control': 'content control',
     'persona.what-gets-blurred-or-hidden': 'what gets blurred, and what stays off your pages',
+    'persona.import-export': 'import/export',
+    'persona.everything-you-are-as-a-zip': 'everything you are here, as one .zip',
     'persona.log-out': 'log out',
     'persona.forget-this-browser-and-head': 'forget this browser and head out',
     'persona.content-control-2': 'content control',
@@ -1478,20 +1499,19 @@ export default {
     'syncpage.never': 'not reached since this server started',
     'syncpage.theirs-ahead': 'it had {n} entries this computer didn’t',
     'syncpage.ours-ahead': 'this computer had {n} entries it didn’t',
-    'syncpage.title': 'syncing',
     'syncpage.only-this-one': 'This is the only computer this persona is on.',
-    'syncpage.another-computer': 'another computer',
     'syncpage.bodies-waiting': '{n} files and notes still on their way here',
     'syncpage.sync-now': 'sync now',
-    'syncpage.report-copied': 'copied - paste it into your bug report',
-    'syncpage.copy-report': 'copy a sync report',
-    'syncpage.report-about': 'for a bug report: how this computer and the others have been syncing, in numbers - nothing you wrote.',
+    'syncpage.sync-report': 'sync report',
     'syncpage.network-title': 'this server and the network',
     'syncpage.network-busy': 'Syncing the network for {people} people right now: {pulling} bringing in, {serving} sending out.',
     'syncpage.network-quiet': 'Not syncing the network for anyone right now.',
+    'syncpage.report-about': 'for a bug report: how this computer and the others have been syncing, in numbers - nothing you wrote.',
+    'syncpage.counting': 'counting…',
+    'syncpage.report-copied': 'copied - paste it into your bug report',
+    'syncpage.copy': 'copy',
     'syncpage.repaired': '{n} of its records were out of step with what it holds, and are mended.',
     'syncpage.records-agree': 'Its records agree with what it holds.',
-    'syncpage.counting': 'counting…',
     'syncpage.sync-code': 'sync code',
     'syncpage.sync-code-about': 'Your other computers show the same code when they hold the same things. Counts can differ for a while - something still on its way - but the code is what has to match.',
     'syncpage.notes': 'notes',
@@ -1690,6 +1710,11 @@ export default {
     'commodities.no-such-lot': 'no such lot',
     'commodities.held-two-days': 'a lot sells two days after it was bought, at the earliest',
     'commodities.not-that-many': "that lot doesn't hold that many",
+
+    // --- node/src/export.rs ---
+    'export.no-export-yet': 'no export is ready yet',
+    'export.no-export-yet-2': 'no export is ready yet',
+    'export.only-the-desktop-app-shows-files': 'only the desktop app can show a file on this computer',
 
     // --- node/src/frontdoor.rs ---
     'frontdoor.name-too-long': 'that name is longer than a header can hold',

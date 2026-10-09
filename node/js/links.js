@@ -44,6 +44,11 @@ export const LAUNCHER = PREFIX;
 export const appHref = (appId) => (appId ? `${PREFIX}/${appId}` : PREFIX);
 export const personaPageHref = (page) => (page ? `${PREFIX}/persona/${page}` : `${PREFIX}/persona`);
 
+/// Your computers' tabs (2026-10-09): `new` adds a computer (the page's default), `all` is every
+/// computer with how each is syncing, `mine` is what this one holds; `all/report` is the sync
+/// report. Anything about syncing goes to `all`.
+export const computersHref = (tab = 'new') => personaPageHref(`computers/${tab}`);
+
 /// A notebook's own list.
 export const notebookHref = (bucketName, roster) => bucketHref(bucketName, roster);
 

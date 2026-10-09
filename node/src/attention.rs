@@ -700,7 +700,7 @@ const MAX_PICTURE_BYTES: usize = 16 * 1024 * 1024;
 /// A room's name as its post titles it, or "a room" for a sealed or unheld one.
 /// A room's name for a notification: `# <title>` (Curtis, 2026-09-28 - a room is marked as one
 /// wherever its title stands), or the bare title of a private chat for two, which names a person.
-async fn room_name(state: &AppState, author: &str, doc: &str) -> String {
+pub(crate) async fn room_name(state: &AppState, author: &str, doc: &str) -> String {
     let title = match crate::identity::routes::held_public_header(state, author, doc).await {
         Ok(Some(h)) if !h.title.trim().is_empty() => h.title,
         _ => return crate::msg!("attention.a-room", "a room").english,

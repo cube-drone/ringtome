@@ -215,6 +215,13 @@ which way, posts being fetched for followers, bodies on their way), in counts -
 "syncing for 3 people" (ruling 5) - never whose. An administrator's hrseServer
 may show more; this page never names another person's persona.
 
+Since 2026-10-09 the page is three tabs, each its own address: **add computer**
+(`computers/new`, the default - the invite flow and the app), **all computers**
+(`computers/all`, where the corner cloud and every other question about syncing
+leads), and **this computer** (`computers/mine`). The sync section is no longer
+a second list: each computer's sync sits under its own row in the tree, with
+Sync now and the sync report beneath.
+
 ### 5. A _This computer_ tab
 
 What this computer holds for the persona, in counts a person can read off two
@@ -327,12 +334,13 @@ next to it and the alarm for whatever comes next:
      usually busy;
    - is held off the eager and anti-entropy loops to one try every ten minutes
      (`Ledger::held`), and Sync now forgives it and tries at once;
-   - is written up by **the sync report** (`GET …/sync/report`, a "copy a sync
-     report" button): this computer, its version and sync code, whether its memo
-     agrees with its entries, every chain beside what each other computer last
-     claimed of it, and each one's version, reach, gap and last exchanges.
-     Counts, heads and keys - nothing anyone wrote, though the counts do say how
-     busy each private chain is, and the person sees the text before sending it.
+   - is written up by **the sync report** (`GET …/sync/report`, shown as plain
+     text with a copy button at `computers/all/report`): this computer, its
+     version and sync code, whether its memo agrees with its entries, every
+     chain beside what each other computer last claimed of it, and each one's
+     version, reach, gap and last exchanges. Counts, heads and keys - nothing
+     anyone wrote, though the counts do say how busy each private chain is, and
+     the person sees the text before sending it.
 
    And _This computer_ gets **check this computer's records**
    (`POST …/sync/repair`): the memo checked against the entries and rebuilt -

@@ -121,6 +121,13 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         // Web Push (webpush.rs): the node's public key, and this browser's subscription.
         .route("/api/identity/{root}/push", get(push_key_handler).post(push_subscribe_handler))
         .route("/api/identity/{root}/push/forget", post(push_forget_handler))
+        // Exports (export.rs, plans/EXPORT.md): the persona as one zip, made in the background.
+        .route(
+            "/api/identity/{root}/export",
+            get(crate::export::report_handler).post(crate::export::start_handler),
+        )
+        .route("/api/identity/{root}/export/download", get(crate::export::download_handler))
+        .route("/api/identity/{root}/export/reveal", post(crate::export::reveal_handler))
         .route("/api/identity/{root}/push/test", post(push_test_handler))
         .route("/api/identity/{root}/serve", post(serve_handler))
         .route("/api/identity/{root}/keys/{target}/revoke", post(revoke_key_handler))

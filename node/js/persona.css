@@ -9,6 +9,36 @@
     gap: 1rem;
 }
 
+/* Import/export (js/exportpage.js): its acts are a button or a download link, styled alike. */
+.export-go {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    text-decoration: none;
+}
+
+.export-again {
+    align-self: flex-start;
+}
+
+/* All computers, on a persona's one computer (js/computers.js): the case for a second, under the tabs. */
+.computers-alone {
+    margin-top: 2rem;
+}
+
+.computers-alone .welcome-go {
+    align-self: center;
+    padding: 0.6rem 1.2rem;
+    text-decoration: none;
+}
+
+.null-glyph {
+    font-size: 4rem;
+    line-height: 1;
+    color: var(--teal);
+}
+
 .null-title {
     font-family: "Press Start 2P", monospace;
     font-size: 1rem;
@@ -408,6 +438,11 @@
     margin: 1.5rem 0 0;
 }
 
+/* "get the app" over the front page's own download panel, which brings no margin of its own. */
+.computers-subtitle + .welcome-download {
+    margin-top: 1rem;
+}
+
 .computer-list {
     list-style: none;
     margin: 0;
@@ -419,6 +454,7 @@
 
 .computer-row {
     display: flex;
+    flex-wrap: wrap; /* the sync line takes a line of its own beneath */
     justify-content: space-between;
     align-items: baseline;
     background: var(--surface);
@@ -477,25 +513,15 @@
     font-family: "JetBrains Mono", ui-monospace, monospace;
 }
 
-/* The sync section (js/syncpage.js; plans/SYNC_STATUS.md, piece 4): each other computer on a line
-   of its own - its name, what's happening with it, and how far apart the two were. */
-.sync-computers {
-    list-style: none;
-    margin: 0 0 0.75rem;
-    padding: 0;
-}
-
-.sync-computer {
+/* How each computer is syncing (js/syncpage.js; plans/SYNC_STATUS.md, piece 4), under its own row
+   in the All computers tree (2026-10-09): what's happening with it, and how far apart the two were. */
+.computer-sync {
+    flex-basis: 100%;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.2rem 0.75rem;
-    align-items: baseline;
-    padding: 0.35rem 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.sync-computer-name {
-    font-weight: 600;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-top: 0.25rem;
+    font-size: 0.9rem;
 }
 
 .sync-computer-state {
@@ -506,7 +532,7 @@
     color: var(--coral);
 }
 
-/* A quiet act beside the sync section's words (piece 7): copy a sync report, check the records. */
+/* A quiet act beside the This computer tab's words: check the records. */
 .sync-quiet-act {
     background: none;
     border: 0;
@@ -523,9 +549,57 @@
 }
 
 .sync-computer-gap {
-    flex-basis: 100%;
     color: var(--muted);
     font-size: 0.85rem;
+}
+
+/* Beneath the tree: Sync now, and the way to the sync report - and the report's own copy button. */
+.sync-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 1rem 0 0.5rem;
+}
+
+.sync-now {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.sync-act {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: none;
+    border: 1px solid transparent;
+    --line: var(--border-strong);
+    position: relative;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    color: var(--teal);
+    padding: 0.6rem 0.9rem;
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.sync-act:hover {
+    --line: var(--teal);
+}
+
+/* The sync report (piece 7): plain text, wrapped to the screen, one tap selecting all of it. */
+.sync-report {
+    margin: 0;
+    padding: 0.75rem;
+    background: var(--surface);
+    color: var(--ink);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: all;
 }
 
 .computer-status {

@@ -1,9 +1,10 @@
-// The sync section of "Your computers" (plans/SYNC_STATUS.md, piece 4): where the corner cloud leads.
-// Each of the persona's other computers - reached when, or why not; syncing right now; how far
-// apart the two were at the last exchange - the bodies still to come, a Sync now button, and, for
-// the curious, what this server is doing for everyone (rulings 2 and 5: how many, never who). A
-// pair that keeps exchanging without getting closer says so, and a sync report goes on the
-// clipboard for a bug report (piece 7).
+// The sync half of "Your computers" (plans/SYNC_STATUS.md, piece 4): where the corner cloud leads.
+// Since 2026-10-09 each of the persona's other computers says how it is syncing under its own row
+// in the All computers tree - reached when, or why not; syncing right now; how far apart the two
+// were at the last exchange - and beneath the tree come the bodies still to come, a Sync now
+// button, and, for the curious, what this server is doing for everyone (rulings 2 and 5: how many,
+// never who). A pair that keeps exchanging without getting closer says so, and the sync report
+// (piece 7) is a page of plain text for a bug report.
 // Read from the node's sync ledger every few seconds while the page is open; the words are decided
 // in pure/syncstatus.js.
 import { h } from 'preact';
@@ -16,7 +17,7 @@ import { t } from './i18n.js';
 import { agoUnit, agoWords } from './pure/ago.js';
 import { computerState, gapOf } from './pure/syncstatus.js';
 import { sizeLabel } from './pure/backups.js';
-import { writeClipboard } from './links.js';
+import { writeClipboard, computersHref } from './links.js';
 
 const html = htm.bind(h);
 
@@ -30,8 +31,9 @@ const ago = (ms) => {
 
 const count = (n) => Number(n || 0).toLocaleString();
 
-/// One computer's line: what's happening with it, in words.
-const ComputerLine = ({ computer, running, name }) => {
+/// One computer's sync, in words, under its row in the tree: what's happening with it, and how far
+/// apart the two were at the last exchange.
+export const SyncLine = ({ computer, running }) => {
     const state = computerState(computer, running);
     const gap = gapOf(computer);
     let said;
@@ -63,8 +65,7 @@ const ComputerLine = ({ computer, running, name }) => {
     else if (state.kind === 'reached')
         said = t('syncpage.reached', 'reached {when}', { when: ago(state.reached) });
     else said = t('syncpage.never', 'not reached since this server started');
-    return html`<li class="sync-computer">
-        <span class="sync-computer-name">${name}</span>
+    return html`<span class="computer-sync">
         <span class=${['failing', 'stuck'].includes(state.kind) ? 'sync-computer-state sync-failing' : 'sync-computer-state'}>${said}</span>
         ${
             gap &&
@@ -78,20 +79,14 @@ const ComputerLine = ({ computer, running, name }) => {
                       })
             }</span>`
         }
-    </li>`;
+    </span>`;
 };
 
-/**
- * @param root  the persona
- * @param keys  its computers, as the Computers page lists them (`pubkey` is each one's leaf)
- * @param nameOf  a key -> the name the page shows for it
- */
-export const SyncSection = ({ root, keys, nameOf }) => {
+/// The persona's sync status from the node's ledger, asked again every few seconds while the page
+/// is open: `{ status, error, look }`, `look` asking right now.
+export const useSyncStatus = (root) => {
     const [status, setStatus] = useState(null);
-    const [asked, setAsked] = useState(false);
     const [error, setError] = useState(null);
-    const [copied, setCopied] = useState(false);
-
     const look = useCallback(
         () =>
             api(`/api/identity/${root}/sync/status`)
@@ -107,6 +102,20 @@ export const SyncSection = ({ root, keys, nameOf }) => {
         const timer = setInterval(look, LOOK_MS);
         return () => clearInterval(timer);
     }, [look]);
+    return { status, error, look };
+};
+
+/**
+ * Beneath the computers on the All computers tab: the bodies still to come, Sync now, the way to
+ * the sync report, and - for the curious - what this server is doing for everyone (rulings 2 and
+ * 5: how many, never who).
+ * @param root  the persona
+ * @param status  its sync status ({@link useSyncStatus})
+ * @param look  ask for the status again
+ */
+export const SyncActs = ({ root, status, look }) => {
+    const [asked, setAsked] = useState(false);
+    const [error, setError] = useState(null);
 
     // Sync now (piece 4): every computer that can be reached, in the background - the node answers
     // within seconds either way, and the lines above fill in as it works.
@@ -121,45 +130,10 @@ export const SyncSection = ({ root, keys, nameOf }) => {
         look();
     };
 
-    // The sync report (piece 7): plain text for a bug report - counts, heads and keys, nothing
-    // anyone wrote - onto the clipboard.
-    const copyReport = async () => {
-        try {
-            const { text } = await apiTextTitled(`/api/identity/${root}/sync/report`);
-            await writeClipboard(text);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 3000);
-        } catch (e) {
-            setError(e.message);
-        }
-    };
-
-    if (!status) return error ? html`<p class="form-error">${error}</p>` : null;
-    const byLeaf = new Map((keys || []).map((k) => [k.pubkey, k]));
-    const computers = status.computers || [];
+    const others = (status.computers || []).length > 0;
     const network = status.network || {};
     return html`<section class="sync-section">
-        <h3 class="computers-subtitle"><${Icons.syncIdle} /> ${t('syncpage.title', 'syncing')}</h3>
-        ${
-            computers.length === 0
-                ? html`<p class="null-sub">${t('syncpage.only-this-one', 'This is the only computer this persona is on.')}</p>`
-                : html`<ul class="sync-computers">
-                      ${computers.map(
-                          (c) =>
-                              html`<${ComputerLine}
-                                  key=${c.endpoint}
-                                  computer=${c}
-                                  running=${status.running || []}
-                                  name=${
-                                      (c.leaf &&
-                                          byLeaf.get(c.leaf) &&
-                                          nameOf(byLeaf.get(c.leaf))) ||
-                                      t('syncpage.another-computer', 'another computer')
-                                  }
-                              />`,
-                      )}
-                  </ul>`
-        }
+        ${!others && html`<p class="null-sub">${t('syncpage.only-this-one', 'This is the only computer this persona is on.')}</p>`}
         ${
             status.bodies_waiting > 0 &&
             html`<p class="null-sub">${t(
@@ -171,26 +145,15 @@ export const SyncSection = ({ root, keys, nameOf }) => {
             )}</p>`
         }
         ${
-            computers.length > 0 &&
-            html`<button class="welcome-go" type="button" disabled=${asked} onClick=${syncNow}>
-                ${asked ? '…' : t('syncpage.sync-now', 'sync now')}
-            </button>`
-        }
-        ${
-            computers.length > 0 &&
-            html`<p class="null-sub">
-                <button class="sync-quiet-act" type="button" onClick=${copyReport}>
-                    ${
-                        copied
-                            ? t('syncpage.report-copied', 'copied - paste it into your bug report')
-                            : t('syncpage.copy-report', 'copy a sync report')
-                    }
+            others &&
+            html`<div class="sync-acts">
+                <button class="welcome-go sync-now" type="button" disabled=${asked} onClick=${syncNow}>
+                    <${Icons.syncNow} /> ${asked ? '…' : t('syncpage.sync-now', 'sync now')}
                 </button>
-                ${' '}${t(
-                    'syncpage.report-about',
-                    'for a bug report: how this computer and the others have been syncing, in numbers - nothing you wrote.',
-                )}
-            </p>`
+                <a class="sync-act" href=${computersHref('all/report')}>
+                    <${Icons.syncReport} /> ${t('syncpage.sync-report', 'sync report')}
+                </a>
+            </div>`
         }
         <h3 class="computers-subtitle"><${Icons.syncSun} /> ${t('syncpage.network-title', 'this server and the network')}</h3>
         <p class="null-sub">${
@@ -206,6 +169,45 @@ export const SyncSection = ({ root, keys, nameOf }) => {
                   )
                 : t('syncpage.network-quiet', 'Not syncing the network for anyone right now.')
         }</p>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </section>`;
+};
+
+/// The sync report (piece 7), on a page of its own: plain text for a bug report - counts, heads and
+/// keys, nothing anyone wrote - laid out to be read or copied whole.
+export const SyncReport = ({ root }) => {
+    const [text, setText] = useState(null);
+    const [error, setError] = useState(null);
+    const [copied, setCopied] = useState(false);
+    useEffect(() => {
+        apiTextTitled(`/api/identity/${root}/sync/report`)
+            .then((r) => setText(r.text))
+            .catch((e) => setError(e.message));
+    }, [root]);
+    const copy = async () => {
+        try {
+            await writeClipboard(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 3000);
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    return html`<section class="sync-section">
+        <p class="null-sub">${t(
+            'syncpage.report-about',
+            'for a bug report: how this computer and the others have been syncing, in numbers - nothing you wrote.',
+        )}</p>
+        ${!text && !error && html`<p class="null-sub">${t('syncpage.counting', 'counting…')}</p>`}
+        ${
+            text &&
+            html`<div class="sync-acts">
+                    <button class="sync-act" type="button" onClick=${copy}>
+                        <${Icons.copy} /> ${copied ? t('syncpage.report-copied', 'copied - paste it into your bug report') : t('syncpage.copy', 'copy')}
+                    </button>
+                </div>
+                <pre class="sync-report">${text}</pre>`
+        }
         ${error && html`<p class="form-error">${error}</p>`}
     </section>`;
 };

@@ -81,6 +81,10 @@ lightly federated, unapologetically Old Internet.
   two histories merge by putting both sets of strokes together (on the node,
   held to the browser by shared test vectors); copies and publications are
   pictures of it.
+- [`EXPORT.md`](plans/EXPORT.md) — a persona, whole, as one `.zip`: notes in
+  every rendering (`.mq`, `.md`, `.yml.md`, `.txt`, `.horsedrawing`), media,
+  posts, profile, contacts, chats and bank, in folders by notebook and section -
+  a queued background job, one per persona, no keys.
 - [`HORSE_BASED_CURRENCIES.md`](plans/HORSE_BASED_CURRENCIES.md) — HorseBucks
   and the other currencies: never transferable, a balance is a fold over the
   persona's own ledger that may go negative and is never rolled back, interest

@@ -18958,3 +18958,49 @@ Kotlin plugin that tauri runs by posting to the main thread and waiting
 (`run_mobile_plugin`) - a thread waiting on itself. The opener now runs on a
 blocking task, so the verdict returns and the main thread opens the link. The
 desktop never showed it: there the opener calls the OS directly.
+
+**2026-10-09 - Your computers, in three tabs.** Curtis asked for the page to be
+tidied. It is now three tabs, each its own address, as links: **add computer**
+(`computers/new` - the "invite another computer to be you" flow and the app's
+downloads, and where the bare page, the persona menu and the bring-your-persona
+contract land), **all computers** (`computers/all`, renamed from "all of them")
+and **this computer** (`computers/mine`). The sync section stopped being a
+second list of the same computers: each computer's sync - its state and gap
+(`syncpage.js` `SyncLine`) - sits under its own row in the tree, every computer
+wears Phosphor's graph, and beneath the tree come Sync now (arrows-clockwise)
+and **sync report** (file-cloud), a button to a page of the report as plain
+text, one tap selecting it all, with a copy button (`computers/all/report`). The
+corner cloud (`SYNC_PAGE`) leads to all computers. `computersHref` (links.js)
+names the tabs; the status poll is `useSyncStatus`, shared by the tree and its
+actions. On a persona's only computer - one key in the tree that has not left,
+the spare key aside - all computers is instead a null state: the graph, large,
+the case for a second computer ("your persona and all of your files, dreams, and
+horses will be lost forever!") and a way to add one.
+
+**2026-10-09 - Export: a persona, whole, as one zip.** Curtis asked for an
+"import/export" page under your settings (the package icon, between content
+control and log out) that makes and hands over a `.zip` of the persona's entire
+public and private self, unencrypted, as a file tree; plans/EXPORT.md has the
+ask and his rulings - every rendering of a note side by side, media as its
+stored bytes, no keys of any kind, and profile, contacts, chats and bank too.
+`export.rs` builds it: `public/` (posts, trusted-only ones opened with the
+author's key from the postkeys memo; profile.yml and its pictures) and
+`private/` (notes by notebook, then by section of the notebook's `wiki:` tree;
+unfiled notes; `taxonomies.yml` for the lists that are no notebook's; contacts,
+bank and chat files). A Marquee note is `.mq` (its details in a `:::meta`
+directive, written by the parser crate's own serializer), `.md`
+(`marquee_markdown::to_markdown`, new dependency at the parser's pinned 0.9.1)
+and `.yml.md`; plaintext is `.txt` and `.yml.txt`; a drawing is `.horsedrawing`
+(front matter, then its JSON); media keep their bytes with a `.yml` beside them.
+YAML is hand-written with every scalar a JSON string. Files are named
+`<title>--<id8>`. The job runs in the background, one at a time node-wide (a
+semaphore), one per persona - a new export aborts the old job and deletes the
+old zip - and its compressing happens on a blocking thread fed by a channel; the
+zip (new dependency `zip`, the desktop's own 4.6.1) is written as `.partial` and
+renamed, so `<data>/exports/<root>.zip` is always whole and a restart finds it
+ready. The persona's own session may start, ask after, download, and (on the
+desktop app, where a webview downloads nothing) reveal it. The ledger read moved
+into `bank::all_lines` for the SQL-ownership convention. `export.cjs` takes a
+note through a notebook section, a plain note and a sealed post to their files,
+checks no `trusted_key` is anywhere in the zip, that nobody else may ask, and
+that a second export replaces the first.

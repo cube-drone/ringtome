@@ -5,7 +5,7 @@
 // contract, never a key built from the id (STYLE: never assemble a name at runtime) - the strings
 // tool reads them. A contract the node knows and this table doesn't yet wears the node's English.
 import { t } from './i18n.js';
-import { appHref, personaPageHref } from './links.js';
+import { appHref, computersHref, personaPageHref } from './links.js';
 
 const NAMES = {
     'draw-a-horse': () => t('contracts.draw-a-horse', 'Draw a horse in hrseDrawing™'),
@@ -159,7 +159,7 @@ const FINE_PRINT = {
             'contracts.bring-your-persona-fine-print',
             "Open your computers and bring this persona to a second one. A persona on two computers survives losing either - it's the best backup there is.",
         ),
-        href: personaPageHref('computers'),
+        href: computersHref(),
     }),
     'seal-a-post': () => ({
         text: t(

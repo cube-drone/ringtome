@@ -40,6 +40,7 @@ pub mod drawing;
 pub mod edgegraph;
 pub mod error;
 pub mod eviction;
+pub mod export;
 pub mod fanout;
 pub mod files;
 pub mod fold;
@@ -174,6 +175,8 @@ pub struct AppState {
     pub webpush: webpush::WebPush,
     /// Backup tickets: the one running and the last few finished (backup.rs).
     pub backups: backup::Backups,
+    /// Each persona's export, queued or running, and the permit that runs them in turn (export.rs).
+    pub exports: export::Exports,
     /// What the node asks of a desktop shell around it (shell.rs): restart listening elsewhere,
     /// show a file. The shell subscribes through [`Bound::shell_requests`].
     pub shell: shell::Shell,
@@ -515,6 +518,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         attention: attention::Attention::new(record_attention),
         webpush,
         backups: backup::Backups::default(),
+        exports: export::Exports::default(),
         shell: shell::Shell::new(record_attention),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());

@@ -159,6 +159,7 @@
 .welcome-tabs .tab {
     position: relative;
     gap: 0.4rem;
+    text-decoration: none; /* Your computers' tabs are links, each tab its own address */
     font-size: 0.95rem; /* the words ride beside the icon here */
     border-color: transparent;
     --line: var(--border-strong);

@@ -31,6 +31,7 @@ import {
     AppSettings,
 } from './persona.js';
 import { Computers } from './computers.js';
+import { ExportPage } from './exportpage.js';
 import { DocsApp } from './apps/notes.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
@@ -642,7 +643,10 @@ const Inside = ({ session }) => {
             <${PersonaHome} path="/ringtome/persona" persona=${persona} />
             <${Profile} path="/ringtome/persona/profile" current=${persona.current} />
             <${Computers} path="/ringtome/persona/computers" current=${persona.current} />
+            <${Computers} path="/ringtome/persona/computers/:tab" current=${persona.current} />
+            <${Computers} path="/ringtome/persona/computers/all/report" tab="report" current=${persona.current} />
             <${ContentControl} path="/ringtome/persona/content" current=${persona.current} />
+            <${ExportPage} path="/ringtome/persona/export" current=${persona.current} />
             <${AppSettings} path="/ringtome/persona/settings" current=${persona.current} />
             <${Personas} path="/ringtome/persona/personas" persona=${persona} current=${persona.current} />
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />

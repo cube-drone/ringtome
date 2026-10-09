@@ -138,6 +138,9 @@ import {
     ArrowsOut,
     ShieldSlash,
     Cloud,
+    Graph,
+    ArrowsClockwise,
+    FileCloud,
     CloudArrowDown,
     CloudArrowUp,
     CloudSun,
@@ -151,6 +154,11 @@ export const Icons = {
     syncDown: CloudArrowDown,
     syncUp: CloudArrowUp,
     syncSun: CloudSun,
+    // Your computers' own page (2026-10-09): each computer in the persona's tree, the sync-now
+    // button, and the sync report.
+    computerNode: Graph,
+    syncNow: ArrowsClockwise,
+    syncReport: FileCloud,
     // apps (the console tiles + each app's own header)
     persona: UserCircle,
     // Your own reach, on your own page (2026-09-28): public follows and fetches.
@@ -208,6 +216,8 @@ export const Icons = {
     profile: IdentificationCard,
     settings: Gear,
     computers: Desktop,
+    // Import/export (plans/EXPORT.md): the persona, whole, as one zip.
+    exportPersona: Package,
     logout: HandWaving,
     // editor status + document format (icon-only chips; the tooltip carries the words)
     saved: FloppyDiskBack,
