@@ -18907,3 +18907,21 @@ running version, and links this system's own download (`pure/update.js`:
 `isNewer`, never "yes" on a guess, and `downloadFor` by the shell's platform;
 pure claims). The app selector's frame became a column so the notice stands
 above the comb.
+
+**2026-10-09 - Every list you open a post from keeps your place.** Curtis: the
+personal feed came back exactly where you left it after opening a post, "but
+other people's posts and the public feed don't work this way. Could we fix this
+everywhere?" The feed's own trick, made general (`keptpage.js`): a page you open
+posts from is drawn beside the router, from the moment you open it until you go
+somewhere that isn't a post; under a post it stays laid out, unseen and inert,
+and back is the post going away. Kept now: the personal feed and a person's page
+in the signed-in shell, the node's public feed and a person's page in the
+stranger's (`useKeptUrl`; their routes are `KeptRoute`s that draw nothing; a
+person's sub-pages are ordinary routes still). A feed scrolls inside itself, so
+it keeps its place as before (`kept-page-fill`); a person's page scrolls the
+shell's frame, so `KeptLayer` remembers the frame's position while the page is
+in view, puts the frame at the top for the post opened over it - which would
+otherwise open as far down as the page had been read - and puts it back on
+return. A hidden person's page lets go of the header band and claims it again
+when it comes back (`IdPage`'s `hidden`), so it never writes its name over the
+post's. The `.feed-kept` rules became `.kept-page-*`.

@@ -34,6 +34,7 @@ import { Computers } from './computers.js';
 import { DocsApp } from './apps/notes.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
+import { KeptLayer, KeptRoute, PERSON_PATH, useKeptUrl } from './keptpage.js';
 import { PostPage } from './postpage.js';
 import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
@@ -202,19 +203,10 @@ const Inside = ({ session }) => {
     const inApp = loc.path !== LAUNCHER;
     // The feed stays alive under a post opened from it (Curtis, 2026-10-02: deep in a filtered
     // feed, open a post, come back - "which takes me back... to the top of my feed, losing my
-    // scroll position and all of my progress. All of the images slowly reload"). A route is
-    // unmounted when you leave it, and the feed's pages, picks' results and scroll went with it;
-    // so the feed is mounted out here, beside the router, from the moment you open it until you go
-    // anywhere that is not a post. Under a post it is there but unseen and inert (`.feed-kept`);
-    // back is the post going away and the feed exactly as you left it, images and all.
-    const onFeed = loc.path === FEED_PATH;
-    const onPost = POST_PATH.test(loc.path);
-    const [feedKept, setFeedKept] = useState(false);
-    useEffect(() => {
-        if (onFeed) setFeedKept(true);
-        else if (!onPost) setFeedKept(false);
-    }, [onFeed, onPost]);
-    const keepFeed = onFeed || (feedKept && onPost);
+    // scroll position and all of my progress. All of the images slowly reload"), and so does a
+    // person's page (2026-10-09, "fix this everywhere"): both are drawn beside the router
+    // (keptpage.js), and under a post they are there but unseen and inert.
+    const kept = useKeptUrl(loc, (path) => path === FEED_PATH || PERSON_PATH.test(path));
     // The /id lens page: not an app off the registry - People (/home/people) is the app,
     // and id pages are the shareable places it navigates out to - but the frame looks wrong
     // headless, so it gets the band with the viewed persona's name, reported upward by the
@@ -624,13 +616,19 @@ const Inside = ({ session }) => {
     // why the notes about ordering live out here (field-found 2026-08-03).
     // Once open, the URL is honored (a deep link survives the flow). The console lives at `/home`
     // on the bare stage; an open app (any deeper route) gets the shell. `inApp` is that line.
-    const keptFeed =
-        keepFeed &&
-        owns('social') &&
-        html`<div class=${onFeed ? 'feed-kept' : 'feed-kept feed-kept-under'} inert=${!onFeed} aria-hidden=${onFeed ? undefined : 'true'}>
-            <${FeedApp} current=${persona.current} searchQuery=${query} />
-        </div>`;
-    const routed = html`${keptFeed}
+    const keptPath = kept.url && kept.url.split('?')[0];
+    const keptPerson = keptPath && PERSON_PATH.exec(keptPath);
+    const keptPage =
+        keptPath === FEED_PATH
+            ? owns('social') &&
+              html`<${KeptLayer} key=${kept.url} visible=${kept.visible} fill=${true}>
+                  <${FeedApp} current=${persona.current} searchQuery=${query} />
+              </${KeptLayer}>`
+            : keptPerson &&
+              html`<${KeptLayer} key=${kept.url} visible=${kept.visible}>
+                  <${IdPage} seg=${decodeURIComponent(keptPerson[1])} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />
+              </${KeptLayer}>`;
+    const routed = html`${keptPage}
         <${Router}>
             <${HomeBounce} path="/" />
             <${HomeBounce} path="/feed" />
@@ -648,7 +646,7 @@ const Inside = ({ session }) => {
             <${AppSettings} path="/ringtome/persona/settings" current=${persona.current} />
             <${Personas} path="/ringtome/persona/personas" persona=${persona} current=${persona.current} />
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
-            <${KeptFeedRoute} path=${FEED_PATH} />
+            <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
             <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} />
@@ -663,7 +661,7 @@ const Inside = ({ session }) => {
             <${PostPage} path="/ringtome/user/:seg/post/:doc" current=${persona.current} onTitle=${setIdTitle} />
             <${PostHistory} path="/ringtome/user/:seg/post/:doc/history" />
             <${DocRoute} path="/ringtome/user/:seg/doc/:doc" current=${persona.current} appHere=${appHere} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
-            <${IdPage} path="/ringtome/user/:seg" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
+            <${KeptRoute} path="/ringtome/user/:seg" />
             <${IdPage} path="/ringtome/user/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
             <${AppRoute} path="/ringtome/:app" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${AppRoute} path="/ringtome/:app/notebook/:notebook" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
@@ -685,13 +683,8 @@ const Inside = ({ session }) => {
     ></${SuperPinner.Provider}>`;
 };
 
-/// The feed's address, and a post's page - the one place the feed stays alive under (`Inside`).
+/// The feed's address: a kept page (`Inside`, keptpage.js).
 const FEED_PATH = '/ringtome/feed';
-const POST_PATH = /^\/ringtome\/user\/[^/]+\/post\//;
-
-/// The feed's route draws nothing: the feed itself is mounted beside the router (`Inside`), so a
-/// post opened from it can leave it standing underneath.
-const KeptFeedRoute = () => null;
 
 /// The address before `/ringtome/` (2026-09-28): `/id/<seg>[/…]` goes on to its `/ringtome/user/`
 /// form, the hints kept - what the node's own redirect does for a page load, done here for a link
@@ -962,6 +955,7 @@ const Outside = ({ session }) => {
         (loc.path.startsWith(`${LAUNCHER}/`) && !loc.path.startsWith(`${LAUNCHER}/user/`));
     const onPeople = loc.path === '/people';
     const onFeed = loc.path === '/feed';
+    const kept = useKeptUrl(loc, (path) => path === '/feed' || PERSON_PATH.test(path));
     // The place's own name on the front page (2026-09-30: Horse Drawing Tycoon 2 unless its
     // administrators chose one); each other page says what it is.
     const front = useFront();
@@ -1015,13 +1009,27 @@ const Outside = ({ session }) => {
             }
         </span>
     </header>`;
+    // The public feed and a person's page stay alive under a post opened from them, as inside
+    // (keptpage.js; 2026-10-09).
+    const keptPath = kept.url && kept.url.split('?')[0];
+    const keptPerson = keptPath && PERSON_PATH.exec(keptPath);
+    const keptPage =
+        keptPath === '/feed'
+            ? html`<${KeptLayer} key=${kept.url} visible=${kept.visible} fill=${true}>
+                  <${NodeFeed} current=${null} searchQuery=${query} />
+              </${KeptLayer}>`
+            : keptPerson &&
+              html`<${KeptLayer} key=${kept.url} visible=${kept.visible}>
+                  <${IdPage} seg=${decodeURIComponent(keptPerson[1])} current=${null} persona=${null} session=${null} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />
+              </${KeptLayer}>`;
     return html`<div class="app-frame">
         ${header}
         <div class="app-frame-inner">
             ${title && html`<h1 class="outside-page-title">${title}</h1>`}
+            ${keptPage}
             <${Router}>
                 <${FrontDoor} path="/" session=${session} />
-                <${NodeFeed} path="/feed" current=${null} searchQuery=${query} />
+                <${KeptRoute} path="/feed" />
                 <${NodePeople} path="/people" current=${null} searchQuery=${query} />
                 <${PostPage} path="/ringtome/user/:seg/post/:doc/page/:page" current=${null} onTitle=${setIdTitle} />
                 <${PostPage} path="/ringtome/user/:seg/post/:doc" current=${null} onTitle=${setIdTitle} />
@@ -1029,7 +1037,7 @@ const Outside = ({ session }) => {
                 <${DocResolve} path="/ringtome/user/:seg/doc/:doc" current=${null} />
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc" />
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc/line/:line" />
-                <${IdPage} path="/ringtome/user/:seg" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${KeptRoute} path="/ringtome/user/:seg" />
                 <${IdPage} path="/ringtome/user/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
                 <${LegacyId} path="/id/:seg" />
                 <${LegacyId} path="/id/:seg/*" />

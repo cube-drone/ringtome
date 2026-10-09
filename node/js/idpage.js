@@ -129,7 +129,17 @@ const KnownBy = ({ viewer, subject, current }) => {
     ${row(known.followed, t('idpage.followed-by', 'followed by'), (n) => t('idpage.and-n-more-you-know', 'and {n} more you know', { n }))}`;
 };
 
-export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery }) => {
+/// `hidden`: kept alive under a post opened from it (keptpage.js) - the header band is the post's
+/// then, so the page claims it only in view, and again on coming back.
+export const IdPage = ({
+    seg,
+    current,
+    persona,
+    session,
+    onTitle,
+    searchQuery,
+    hidden = false,
+}) => {
     const loc = useLocation();
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
     // profile: undefined = loading, null = unreachable, object = served (local or fetched)
@@ -196,7 +206,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
     // derivable), the better names the moment the mirror and shelf answer. Cleared on the
     // way out so the next tenant of the band never inherits a stale name.
     useEffect(() => {
-        if (!onTitle) return;
+        if (!onTitle || hidden) return;
         if (!root) {
             onTitle('');
             return () => onTitle(null);
@@ -206,7 +216,7 @@ export const IdPage = ({ seg, current, persona, session, onTitle, searchQuery })
         onTitle(nickname || (name && name.value) || words);
         return () => onTitle(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root, profile, nickname]);
+    }, [root, profile, nickname, hidden]);
 
     if (!parsed) {
         return html`<${Card}>

@@ -70,17 +70,19 @@ body {
     padding: 16px 20px;
     background: var(--surface);
     clip-path: var(--panel-clip);
-    position: relative; /* what the feed kept under a post (.feed-kept-under) lies over */
+    position: relative; /* what a page kept under a post (.kept-page-under) lies over */
 }
 
-/* The feed, mounted beside the router (index.js `Inside`): in view, it fills the frame as the feed
-   always has. Under a post opened from it, it stays laid out exactly where it was - unseen, untouchable,
-   out of the tab order (`inert`) - because a feed taken out of layout (display: none, or squeezed to
-   nothing) loses its scroll position, and keeping that is the whole point. */
-.feed-kept {
+/* A page kept under a post (keptpage.js): the feed, the public feed, a person's page, mounted beside
+   the router. In view it is the page. Under a post opened from it, it stays laid out exactly where
+   it was - unseen, untouchable, out of the tab order (`inert`) - because a page taken out of layout
+   (display: none, or squeezed to nothing) loses its scroll position, and keeping that is the whole
+   point. A feed scrolls inside itself, so it fills the frame (`-fill`); a person's page scrolls the
+   frame, whose position the layer keeps. */
+.kept-page-fill {
     height: 100%;
 }
-.feed-kept-under {
+.kept-page-under {
     position: absolute;
     inset: 16px 20px;
     height: auto;
@@ -90,8 +92,8 @@ body {
 
 /* A phone gives the app its room (Curtis, 2026-10-08: "reduce the padding between the app's edges
    and the app's container, as well as reducing the thickness of the app border"): under 900px the
-   frame sits 4px from the window, its border is 5px, and the page inside it 10px from that. The
-   feed kept under a post keeps the same inset as the page. */
+   frame sits 4px from the window, its border is 5px, and the page inside it 10px from that. A
+   page kept under a post keeps the same inset as the page. */
 @media (max-width: 900px) {
     .app-frame {
         margin: 4px;
@@ -102,7 +104,7 @@ body {
         padding: 10px;
     }
 
-    .feed-kept-under {
+    .kept-page-under {
         inset: 10px;
     }
 }
