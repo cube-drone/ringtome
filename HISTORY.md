@@ -18824,3 +18824,22 @@ and the background colour; they replace the template's in `desktop/gen/android`,
 and its unused stock vector drawables go. (The manifest's `android_fg_scale`
 changed nothing, which is why the foreground master carries its own margin.)
 branding/README.md's recipe now remakes Android's set with the rest.
+
+**2026-10-08 - Uploads ask for a description, and it is the alt text.** Curtis:
+the upload window already proposes a title - "great time to also prompt for a
+description (good use of the eye-slash logo to remind folks who that's for) of
+what the image actually is, which we would then use as alt-text", in the words
+"please provide a detailed description of the image". Each file's row has the
+field under its name (the eye-slash, `Icons.altText`; "...of the video", "...of
+the sound" for those), saved to the document's `description` annotation when you
+leave it - or as the file's id arrives, if typed while the bytes were still
+going up. Annotations are in the search bag, so the description is searched too.
+In the editor and chat the reference already written takes it as its alt
+(`withAlt`), and the respell once processing lands keeps it rather than
+reverting to the file name; a picture inserted from the picker carries its
+description as alt, so describing it once serves everywhere it's used.
+`altLabel` (pure/mediakind.js, with vectors that parse the result with Marquee's
+own parser) scrubs a description to one safe line; a name falls back exactly as
+names always did. The in-app renderer still drops alt on video and audio -
+Marquee's to fix, and the first entry of the new plans/MARQUEE.md, the running
+list of what's handed upstream (README's _The documents_ lists it).
