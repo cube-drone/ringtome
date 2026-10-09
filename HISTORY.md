@@ -18755,3 +18755,5 @@ app calls it on a rotation. The listener passes the insets on to the web view's
 own handling, so the keyboard is left as it was; a shrinker rule keeps the
 bridge's method. Zero everywhere else, so a desktop is unchanged; the Kotlin is
 proven only by the next build.
+
+(triggering a build to try and get the new signed APK to do the thing)
