@@ -11,7 +11,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { useLocation } from 'preact-iso';
-import { api, saveFile } from './net.js';
+import { api, isDevice, saveFile } from './net.js';
 import { takeImportIntent } from './auth.js';
 import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb, flattenToBlob } from './doc/drawing.js';
@@ -1235,7 +1235,7 @@ export const Profile = ({ current }) => {
                     placeholder=${t('persona.what-people-call-you-here', 'what people call you here')}
                 />
             </label>
-            <${NodeSlug} root=${root} />
+            ${!isDevice() && html`<${NodeSlug} root=${root} />`}
             <label class="profile-field">
                 <${FieldLabel} label=${t('persona.bio', 'bio')} field=${bio} />
                 <textarea
@@ -1309,7 +1309,8 @@ const ColorwayPicker = ({ root }) => {
 
 /// Your short name on this node (PROJECT_PLAN's The node's public face, rulings 6 and 7): `@cube-drone`, first come
 /// first served here and meaning nothing anywhere else. You keep the one before it too,
-/// which sends readers on to the current one; changing again drops the older.
+/// which sends readers on to the current one; changing again drops the older. Not shown in the
+/// desktop app (Curtis, 2026-10-10): nobody else reads that node, so a name on it names nothing.
 const NodeSlug = ({ root }) => {
     const [held, setHeld] = useState(null); // { slug, last }
     const [draft, setDraft] = useState('');

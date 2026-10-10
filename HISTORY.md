@@ -19317,3 +19317,10 @@ once and answers its embed, refuses a second send, reads back the same embed,
 files and tags it, and a post publishing it serves its own public copy; an
 unknown link and a non-picture each say so. Three unit tests on the links (once,
 expiry, the per-account cap).
+
+## 2026-10-10 (cont.): no @name in the desktop app
+
+The profile's "your name on this node" - the `@slug` a node hands out first come
+first served - is hidden in the desktop app (`isDevice()`): nobody else reads a
+node on someone's own computer, so a name on it named nothing. A browser on a
+server sees it as before; the endpoint is untouched.
