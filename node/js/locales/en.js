@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1801 phrases across 109 files.
+// 1804 phrases across 109 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1080,11 +1080,14 @@ export default {
     'frontdoor.default-name': 'Horse Drawing Tycoon 2',
     'frontdoor.tagline-draw-and-share': 'finally, a way to draw and share pictures of horses',
     'frontdoor.tagline-tycoon': 'a tycoon game where you draw horses indefinitely',
+    'frontdoor.tagline-cozy': 'a cozy little retro-internet just for you',
     'frontdoor.tagline-p2p': 'a horse-themed peer-to-peer social network',
-    'frontdoor.tagline-least-qualified': 'a social network designed by the least qualified possible person to design a social network',
-    'frontdoor.tagline-marquee': "finally a home for the internet's lost marquee element",
+    'frontdoor.tagline-writ-small': 'social computing writ small',
+    'frontdoor.tagline-marquee': "a home for the internet's lost marquee element",
+    'frontdoor.tagline-owned-by-nobody': 'owned by nobody, owned by everybody',
     'frontdoor.tagline-both': 'horses! drawings! both at the same time!',
-    'frontdoor.tagline-zug-zug': 'do you remember when you played Starcraft 2 and you clicked on a guy a few too many times and he started to say weird comedy things? anyways, zug zug.',
+    'frontdoor.tagline-horse': 'horse!',
+    'frontdoor.tagline-least-qualified': 'a social network designed by the least qualified possible person to design a social network',
     'frontdoor.take-this-off-the-front-page': "take this off the server's front page",
     'frontdoor.super-pin-this': "super-pin this to the top of the server's front page",
     'chips.unfeature': 'unfeature',
