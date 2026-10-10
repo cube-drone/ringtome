@@ -356,3 +356,151 @@ a.chip-button {
     --line: var(--border-strong);
 }
 
+
+/* The text helpers (doc/texthelpers.js): four chips in the tool row, each with a menu hanging
+   under it - over the text, not pushing it down - and kept within the window's width. */
+.texthelp-row {
+    display: inline-flex;
+    gap: 0.35rem;
+}
+
+.texthelp-anchor {
+    position: relative;
+    display: inline-flex;
+}
+
+.texthelp-panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: max-content;
+    max-width: min(30rem, calc(100vw - 2rem));
+    max-height: min(80vh, 40rem);
+    overflow-y: auto;
+    /* A menu taller than the window scrolls - and says so: macOS hides an idle scrollbar, which
+       made the font list's end look cut off (2026-10-10). */
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    padding: 0.6rem;
+    background: var(--paper);
+    --line: var(--border);
+    --j: 3px;
+    color: var(--ink);
+    text-align: left;
+}
+
+.texthelp-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    padding: 0.3rem 0.5rem;
+    border: none;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.texthelp-item:hover,
+.texthelp-item:focus-visible {
+    background: var(--surface-2);
+}
+
+.texthelp-about {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.texthelp-heading {
+    margin: 0.3rem 0 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.texthelp-letter {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* Every font in its own face, three to a row - all 35 in one look, no scrolling. */
+.texthelp-fonts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.1rem;
+}
+
+.texthelp-fonts .texthelp-item {
+    padding: 0.2rem 0.35rem;
+    font-size: 0.95rem;
+    line-height: 1.25;
+    min-width: 0;
+}
+
+.texthelp-fonts .texthelp-item > span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.texthelp-sizes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem;
+}
+
+.texthelp-sizes .texthelp-item {
+    font-size: 1rem;
+}
+
+.texthelp-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(1.6rem, 1fr));
+    gap: 0.35rem;
+}
+
+.texthelp-swatch {
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+    background: var(--swatch);
+    cursor: pointer;
+}
+
+.texthelp-address {
+    font: inherit;
+    padding: 0.35rem 0.5rem;
+    width: 18rem;
+    max-width: 100%;
+}
+
+/* Inside a narrow window's "edit" menu (doc/chips.js useChipMenu), a helper's menu can't hang
+   over the text: the edit menu is clipped to its jagged outline, which cut every dropdown off at
+   its edge (Curtis, 2026-10-10). There the helpers' wrappers step out of the layout and the open
+   menu is a full-width line of the edit menu itself, after its chips. */
+.chip-menu .texthelp-row,
+.chip-menu .texthelp-anchor {
+    display: contents;
+}
+
+.chip-menu .texthelp-panel {
+    position: static;
+    order: 1;
+    flex: 1 1 100%;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    clip-path: none;
+    padding: 0.4rem 0 0;
+    border-top: 1px dashed var(--border);
+}

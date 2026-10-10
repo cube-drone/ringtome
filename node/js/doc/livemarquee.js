@@ -277,7 +277,9 @@ export const LiveMarquee = ({
         const v = view.current;
         if (!v || !caret) return;
         const at = Math.min(caret.at, v.state.doc.length);
-        v.dispatch({ selection: { anchor: at }, scrollIntoView: true });
+        // A range when it names one (the text helpers select the words they styled).
+        const head = Math.min(caret.head ?? caret.at, v.state.doc.length);
+        v.dispatch({ selection: { anchor: at, head }, scrollIntoView: true });
         if (caret.focus) v.focus();
     }, [caret && caret.seq]); // eslint-disable-line react-hooks/exhaustive-deps
 

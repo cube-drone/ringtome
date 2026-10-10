@@ -146,6 +146,9 @@ import {
     CloudSun,
     Lifebuoy,
     Square,
+    Sparkle,
+    TextAa,
+    Paragraph,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -254,6 +257,10 @@ export const Icons = {
     navPrev: ArrowLeft,
     navNext: ArrowRight,
     // file upload (the doc-menu button; drop and paste land in the same place)
+    // the text helpers (doc/texthelpers.js): effects, text style, blocks
+    effects: Sparkle,
+    textStyle: TextAa,
+    blocks: Paragraph,
     // help with writing Marquee - the editor's tool row, out to its own site (doc/editor.js)
     help: Lifebuoy,
     upload: UploadSimple,

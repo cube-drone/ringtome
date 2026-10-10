@@ -49,6 +49,9 @@ import { CopyIntoModal } from '../copyinto.js';
 import { featuresOf, editorModes } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { ImagePickModal } from './imagepick.js';
+import { TextHelpers } from './texthelpers.js';
+import { applySpan, applyLink, applyBlock } from '../pure/markuphelp.js';
+import { smallestChange } from '../pure/caret.js';
 import { pickedReference } from './pickref.js';
 import { DrawingThumb } from './drawing.js';
 import { CopyLinkChip, docHref, LAUNCHER } from '../links.js';
@@ -219,10 +222,10 @@ export const Editor = ({
 
     // A caret asked for from outside the text - an upload's (doc/upload.js placeCursor): noted for
     // this document, then set on whichever surface is showing, focused only when asked.
-    const [caret, setCaret] = useState(null); // { at, focus, seq }
-    const placeCursor = (at, { focus = false } = {}) => {
-        rememberCursor(root, docId, at, at);
-        setCaret((c) => ({ at, focus, seq: (c ? c.seq : 0) + 1 }));
+    const [caret, setCaret] = useState(null); // { at, head, focus, seq }
+    const placeCursor = (at, { focus = false, head = at } = {}) => {
+        rememberCursor(root, docId, at, head);
+        setCaret((c) => ({ at, head, focus, seq: (c ? c.seq : 0) + 1 }));
     };
 
     const {
@@ -361,7 +364,7 @@ export const Editor = ({
         const ta = sourceRef.current;
         if (!ta) return;
         const at = Math.min(caret.at, ta.value.length);
-        ta.setSelectionRange(at, at);
+        ta.setSelectionRange(at, Math.min(caret.head ?? at, ta.value.length));
         if (caret.focus) ta.focus();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [caret && caret.seq]);
@@ -549,6 +552,36 @@ export const Editor = ({
     // Social), so a narrow window offers its chip only when it summons something.
     const hasPublishBar = feat.publish && (!!book || standing !== 'private' || social);
 
+    // The text helpers (doc/texthelpers.js, plans/TEXT_HELPERS.md): a rule of pure/markuphelp.js
+    // applied to the words and the selection, the answer written back to whichever surface shows
+    // as ONE edit the surface's own undo takes back - the interactive one through the body it syncs
+    // as a change of its own; a textarea through `insertText`, which the browser's undo records
+    // (a value set outright would wipe it) - and the styled words left selected.
+    const helpWith = (rule) => {
+        const sel = recallCursor(root, docId) || { start: body.length, end: body.length };
+        const from = Math.min(sel.start, sel.end);
+        const to = Math.max(sel.start, sel.end);
+        const out = rule(body, Math.min(from, body.length), Math.min(to, body.length));
+        if (out.source === body && out.from === from && out.to === to) return;
+        const ta = mode === 'plain' || mode === 'side' ? sourceRef.current : null;
+        if (ta) {
+            ta.focus();
+            const change = smallestChange(ta.value, out.source);
+            ta.setSelectionRange(change.from, change.to);
+            const typed =
+                document.execCommand && document.execCommand('insertText', false, change.insert);
+            if (!typed || ta.value !== out.source) ta.value = out.source;
+            setBody(out.source);
+            touched();
+            ta.setSelectionRange(out.from, out.to);
+            rememberCursor(root, docId, out.from, out.to);
+            return;
+        }
+        setBody(out.source);
+        touched();
+        placeCursor(out.from, { head: out.to, focus: true });
+    };
+
     // The writing tools (Curtis, 2026-10-10): a row of their own, right of the mode tabs, out of the
     // header's deck - upload, a picture, the format, and help with Marquee. They are rich text's, so
     // a plaintext document has only the way back to Marquee, and read-only - nothing to edit - none.
@@ -588,6 +621,11 @@ export const Editor = ({
                       word=${t('chips.image', 'image')}
                       title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}
                       onClick=${() => setPicking(true)}
+                  />
+                  <${TextHelpers}
+                      onSpan=${(open) => helpWith((s, a, b) => applySpan(s, a, b, open))}
+                      onLink=${(address) => helpWith((s, a, b) => applyLink(s, a, b, address))}
+                      onBlock=${(block) => helpWith((s, a, b) => applyBlock(s, a, b, block))}
                   />
                   ${formatChip}
                   <${Chip}

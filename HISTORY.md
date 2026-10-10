@@ -19396,3 +19396,34 @@ narrow window the three are one set - Writer holds which is open (`folded`),
 opening one shuts the others and pressing the open one shuts it, where before
 the publish bar stayed open under either menu. `useChipMenu` takes `open` and
 `setOpen` for a host that holds the state, and keeps its own otherwise.
+
+## 2026-10-10 (cont.): the text helpers
+
+plans/TEXT_HELPERS.md, built: four chips in Writer's tool row - effects, style
+(font, size, colour), link, blocks - for people who don't know Marquee's markup.
+The rules are pure (`pure/markuphelp.js`) with 23 vectors: nothing selected
+writes "text" wearing the style, selected; the styled words stay selected; a
+selection that is exactly a same-kind span's inside changes it (six fonts in a
+row edit one span; size 3 takes the span away; the same effect again takes it
+off, a different one nests); across paragraphs each gets its own span (Curtis:
+"each one, then"), code and directive lines left be; blocks act on every line
+touched and toggle - a quote puts `>` on every line, blank ones too. Writing the
+vectors found the plan's gap: a cross-paragraph press selects tags between the
+paragraphs, so the next press is `peel`ed back to the words first. The menus
+(`doc/texthelpers.js`) stay open through picks and keep the words' focus; Writer
+applies an answer as one undoable edit on either surface (`helpWith`; a caret
+may carry a `head` now). Effects are described, not previewed animated, and the
+link box takes an address only - both in the plan's _Not yet_. Then, in a narrow
+window (Curtis: "dropdowns get cut off before they reach the text editor
+window"): the helpers' menus hung out of the "edit" menu, which is clipped to
+its jagged outline. Inside it the helpers' wrappers now take no box
+(`display: contents`) and the open menu is a full-width line of the edit menu,
+after its chips (doc/editor.css).
+Then the style menu (Curtis: "quicksand" sat out of the box): the menu capped its
+height at 60vh and scrolled, and macOS hides an idle scrollbar, so the font
+list's end - and the sizes and colours under it - read as cut off. Seen in a
+headless-Chrome screenshot of the menu with the app's stylesheet. The fonts are
+a three-column grid now (all 35 in one look, a long name ellipsized, its family
+in the tooltip), the menu up to 80vh, and a menu taller than the window keeps a
+thin scrollbar. Each font's name is drawn in its face on a span inside its
+button (the button's own `font: inherit` had won over the face).

@@ -1,8 +1,8 @@
 # Text helpers
 
 Buttons in Writer's tool row that write Marquee for people who don't know
-markup: select some words, press a button, and they're styled. A design draft
-(2026-10-10); nothing built.
+markup: select some words, press a button, and they're styled. Built 2026-10-10
+(_As built_, below).
 
 ## The ask (Curtis, 2026-10-10)
 
@@ -133,7 +133,41 @@ wipes it.
   the result back as one undoable edit with the new selection.
 - **Read-only and plaintext** get none of them, as now.
 
+## As built (2026-10-10)
+
+- **The rules** are `pure/markuphelp.js` - `applySpan`, `applyLink`,
+  `applyBlock` over `(source, from, to)` - with 23 vectors in
+  `integration/test/pure/markuphelp.cjs`, written with the selection marked in
+  the text (`a «brown» horse`). Building them found one thing the plan missed: a
+  press across paragraphs leaves the selection running from the first one's
+  words to the last one's, tags between and all, so the next press's paragraphs
+  began or ended in a tag - `peel` takes the tags at a stretch's ends off before
+  looking for the span to change.
+- **The menus** are `doc/texthelpers.js`: effects (with a "letter by letter"
+  box, `by=letter`), style (each font in its own face, the size dial by its
+  words, the colours as swatches), link (an address box), blocks. A menu stays
+  open through picks and keeps the words' focus, so six fonts are six clicks;
+  inside a narrow window's **edit** menu its chips wear `chip-keeps-menu`.
+- **Applying** is Writer's `helpWith`: the remembered selection, the rule, and
+  the answer written back as one undoable edit - the interactive surface through
+  its synced body, a textarea through `execCommand('insertText')` over the
+  smallest change - with the styled words selected (a `caret` may carry a `head`
+  now, on both surfaces).
+- **Differs from the plan:**
+  - effects are described in a line each, not previewed animated - their motion
+    needs the renderer's own script (`.mq-anim` and its observer, the letter
+    splitting), which a menu doesn't run;
+  - the link box takes an address only - picking one of the persona's notes is
+    still the `[` picker's;
+  - the effect and size lists live in `pure/markuphelp.js` beside the
+    completions' own (`SPAN_TAGS`); the fonts and colours are already shared
+    (the renderer's `FONTS`, `pure/markcolors.js`).
+
 ## Not yet
+
+- Effects previewed animated in their menu.
+- Linking to one of the persona's own notes from the link menu.
+- One table of span vocabulary for the completions and the helpers both.
 
 - Page themes (the stretch).
 - Custom emoji, if they come: the case that would bring an emoji button back.

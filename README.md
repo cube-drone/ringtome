@@ -131,7 +131,7 @@ lightly federated, unapologetically Old Internet.
   people who don't know markup: effects, text style (font, size, colour), link
   and blocks (a quote on every line, a starter table), each acting on the
   selection - or on "text", inserted and selected - and changing a span already
-  there rather than nesting another. A design draft (2026-10-10); nothing built.
+  there rather than nesting another. Built 2026-10-10.
 - [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
   starts with Drawing, the Bank and Nags and buys the rest from the Market with
   HorseBucks; unlocks on the private chain as ledger spends, gates in the client
