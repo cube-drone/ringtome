@@ -21,6 +21,14 @@ strip = "debuginfo"
 # bytes, so "green locally is green on the action" stays one bar.
 [profile.dev]
 debug = "line-tables-only"
+# No object-file sidecars (2026-10-10, the disk full for the second day running). macOS's default,
+# "unpacked", leaves each binary's debug info in its codegen units' `.o` files in `target/*/deps`,
+# under fresh names on every recompile and never removed: 102,310 of them, 110 GB, 48 GB of it
+# written in one day. "off" is what Linux - and so CI - already does. What it costs on a Mac: a
+# panic still names its file and line, but a backtrace's frames show only their functions.
+# ("packed" keeps whole backtraces by running dsymutil after each link: 35 s for the node's test
+# binary, every Rust change.)
+split-debuginfo = "off"
 
 # Dev builds optimize DEPENDENCIES while our own crates stay opt-0 (fast compiles where we
 # actually develop). The codec crates are pure pixel-math inner loops - rav1e in true debug

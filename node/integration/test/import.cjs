@@ -212,6 +212,171 @@ describe('imports: additive only', function () {
         assert.equal((await posts(bea, beaRoot)).length, 1, 'still the one post');
     });
 
+    // An export's pictures, into another persona (2026-10-10, Curtis on dev: "none of my images
+    // linked properly, in private or public documents", and the avatar came back as a post of its
+    // bytes). The note's embed moves to the new persona's root; the post said again from it embeds
+    // a public copy of the new persona's own, which serves; and the profile picture is the
+    // profile's, never a post.
+    it('an exported picture shows in the persona it is imported into, and the avatar is no post', async () => {
+        const cal = await makeUserFetch({ prefix: 'importcal' });
+        const calRoot = (await (await cal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const pic = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'sample_media', 'its_webp.webp'),
+        );
+        const form = new FormData();
+        form.append('image', new Blob([pic]), 'face.webp');
+        assert.equal(
+            (
+                await cal(`api/identity/${calRoot}/avatar`, {
+                    method: 'POST',
+                    body: form,
+                    file: true,
+                })
+            ).status,
+            200,
+        );
+        const up = await (
+            await cal(`api/identity/${calRoot}/docs/binary?title=pic`, {
+                method: 'POST',
+                body: pic,
+                file: true,
+                headers: { 'content-type': 'application/octet-stream' },
+            })
+        ).json();
+        for (let i = 0; i < 120; i++) {
+            if ((await cal(`api/identity/${calRoot}/docs/${up.doc_id}`)).status === 200) break;
+            await new Promise((res) => setTimeout(res, 250));
+        }
+        const note = (
+            await (
+                await j(cal, `api/identity/${calRoot}/docs`, {
+                    title: 'With a picture',
+                    body: `Look:\n\n![pic](/api/identity/${calRoot}/docs/${up.doc_id}/body/pic.avif)\n`,
+                    format: 'marquee',
+                })
+            ).json()
+        ).doc_id;
+        assert.equal(
+            (await j(cal, `api/identity/${calRoot}/docs/${note}/publish`, {})).status,
+            200,
+        );
+        await j(cal, `api/identity/${calRoot}/export`, {});
+        for (let i = 0; i < 200; i++) {
+            if ((await (await cal(`api/identity/${calRoot}/export`)).json()).status === 'ready')
+                break;
+            await new Promise((res) => setTimeout(res, 250));
+        }
+        const zip = path.join(work, 'cal.zip');
+        fs.writeFileSync(
+            zip,
+            Buffer.from(await (await cal(`api/identity/${calRoot}/export/download`)).arrayBuffer()),
+        );
+
+        const dee = await makeUserFetch({ prefix: 'importdee' });
+        const deeRoot = (await (await dee('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const log = await imported(dee, deeRoot, zip);
+        const said = log.join('\n');
+        assert.ok(!said.includes('Post avatar'), `the avatar is the profile's, no post: ${said}`);
+        assert.ok(!said.includes("doesn't hold"), `nothing reported missing: ${said}`);
+        assert.ok(log.includes('Profile: avatar added.'), said);
+
+        const body = (await (await dee(`api/identity/${deeRoot}/docs/${note}`)).json()).body;
+        assert.ok(body.includes(`/api/identity/${deeRoot}/docs/${up.doc_id}/body/pic.avif`), body);
+        const theirs = await posts(dee, deeRoot);
+        assert.deepEqual(
+            theirs.map((p) => p.title),
+            ['With a picture'],
+            'one post, and no avatar',
+        );
+        const words = await (
+            await dee(`ringtome/user/${deeRoot}/doc/${theirs[0].doc_id}/body`)
+        ).text();
+        const embed = /\]\(([^)]+)\)/.exec(words);
+        assert.ok(embed, words);
+        // The new persona's own copy - on this rig the old persona's would serve too, from the same
+        // node, so the address must name the new one.
+        const { parseSpeakable } = await import('../../js/speakable.js');
+        const seg = /\/ringtome\/user\/([^/]+)\/doc\//.exec(embed[1]);
+        assert.ok(seg, embed[1]);
+        assert.equal(
+            (parseSpeakable(seg[1]) || {}).root,
+            deeRoot,
+            `the post embeds its own copy: ${embed[1]}`,
+        );
+        const served = await dee(embed[1].replace(/^\//, ''));
+        assert.equal(served.status, 200, `the post's picture serves: ${embed[1]}`);
+        assert.equal(served.headers.get('content-type'), 'image/avif');
+    });
+
+    // An Obsidian vault made into a zip (2026-10-09): its pictures and sounds come in whatever
+    // format they were, are made into the stored ones and filed where uploads live, and the notes
+    // that show them - by Obsidian's `![[name]]` or a Markdown path - point at what they became. A
+    // file the app keeps no kind of is named, a hidden folder isn't, and an embed of a file the
+    // zip lacks is said.
+    it("a vault's pictures and sounds come with it, and its notes show them", async () => {
+        const media = path.join(__dirname, '..', '..', '..', 'sample_media');
+        const dir = path.join(work, 'vault');
+        fs.rmSync(dir, { recursive: true, force: true });
+        for (const sub of ['Vault/Journal', 'Vault/attachments', 'Vault/sounds', 'Vault/.obsidian'])
+            fs.mkdirSync(path.join(dir, sub), { recursive: true });
+        // (A WebP for the still - a format the node doesn't store, as a JPEG isn't - since the rig takes
+        // a zip of at most 1 MiB.)
+        fs.copyFileSync(
+            path.join(media, 'its_webp.webp'),
+            path.join(dir, 'Vault/attachments/polaroid.webp'),
+        );
+        fs.copyFileSync(
+            path.join(media, 'animated_color_squirrel_small.gif'),
+            path.join(dir, 'Vault/attachments/squirrel.gif'),
+        );
+        fs.copyFileSync(
+            path.join(media, 'buck-audio.mp3'),
+            path.join(dir, 'Vault/sounds/neigh.mp3'),
+        );
+        fs.writeFileSync(path.join(dir, 'Vault/notes.pdf'), '%PDF-1.4 not really');
+        fs.writeFileSync(path.join(dir, 'Vault/.obsidian/app.json'), '{}');
+        fs.writeFileSync(
+            path.join(dir, 'Vault/Journal/trip.md'),
+            '# Trip\n\n![[polaroid.webp]]\n\n![a squirrel](../attachments/squirrel.gif)\n\n![[neigh.mp3]]\n\n![[missing.png]]\n',
+        );
+        const vault = path.join(work, 'vault.zip');
+        fs.rmSync(vault, { force: true });
+        execFileSync('zip', ['-qr', vault, '.'], { cwd: dir });
+
+        const log = await imported(bea, beaRoot, vault);
+        const said = log.join('\n');
+        assert.ok(log.includes("Skipped a file this app doesn't keep: Vault/notes.pdf."), said);
+        assert.ok(!said.includes('.obsidian'), `a hidden folder goes unmentioned: ${said}`);
+        assert.ok(
+            log.includes("Document trip shows a file the zip doesn't hold: missing.png."),
+            said,
+        );
+
+        const mine = await docs(bea, beaRoot);
+        const by = (title) => {
+            const d = mine.find((x) => x.title === title);
+            assert.ok(d, `${title} imported: ${JSON.stringify(mine.map((x) => x.title))}`);
+            return d;
+        };
+        const [photo, squirrel, neigh, trip] = ['polaroid', 'squirrel', 'neigh', 'trip'].map(by);
+        for (const d of [photo, squirrel, neigh])
+            assert.deepEqual(d.buckets, ['files'], `${d.title} is filed where uploads live`);
+        const body = (await (await bea(`api/identity/${beaRoot}/docs/${trip.doc_id}`)).json()).body;
+        const at = (d, name) => `/api/identity/${beaRoot}/docs/${d.doc_id}/body/${name}`;
+        assert.ok(body.includes(`![polaroid](${at(photo, 'polaroid.avif')})`), body);
+        assert.ok(body.includes(`![a squirrel](${at(squirrel, 'squirrel-loop.webm')})`), body);
+        assert.ok(body.includes(`![neigh](${at(neigh, 'neigh.ogg')})`), body);
+        // What's missing stays as the words it was - escaped by the Markdown bridge, so it reads as
+        // written rather than as Marquee syntax.
+        assert.ok(
+            body.includes('!\\[\\[missing.png\\]\\]'),
+            `what's missing stays as it was: ${body}`,
+        );
+        const served = await bea(at(photo, 'polaroid.avif'));
+        assert.equal(served.status, 200);
+        assert.equal(served.headers.get('content-type'), 'image/avif');
+    });
+
     it('refuses what no document may be: too large, or a drawing that is no drawing', async () => {
         const dir = path.join(work, 'odd');
         fs.rmSync(dir, { recursive: true, force: true });

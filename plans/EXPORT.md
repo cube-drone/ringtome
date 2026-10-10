@@ -182,6 +182,33 @@ skipped: It already exists!'"
   personas from servers to personal devices and not the other way around"):
   _allow users to import_ on hrseServer's Backups page, off by default
   (`import_policy`, node rung 76). The desktop app always takes them.
+- **A zip made elsewhere: best-effort, not supported** (Curtis, 2026-10-10:
+  import "is only intended for use on our own exports"; an agent building an
+  Obsidian vault into one "was a 'hack' but not quite fully supported yet").
+  What follows makes such a zip more likely to arrive whole (2026-10-09); it
+  promises nothing about one.
+  - **Pictures, video and sound in any format an upload takes** - JPEG, GIF,
+    WebP, BMP, TIFF, QOI, AVIF and PNG; WebM; MP3, M4A/AAC, FLAC, WAV, Ogg and
+    Opus - each made into the stored form by the ordinary ingest queue, and,
+    when it comes from outside an export's own folders, filed in the files
+    notebook, as an upload is.
+  - **They come first, and are waited for**: the import queues every one, then
+    waits for ingest to make them - for as long as it keeps making them, giving
+    up only after two minutes with nothing made - so each note is written
+    knowing what its pictures became. A GIF that became a looping video is
+    embedded as one.
+  - **A note's embeds point at them**: Obsidian's `![[name]]` (by name, wherever
+    it sits; a `|300` width dropped, a `|words` alias kept as alt text) and
+    Markdown's `![alt](path)` (from the note's folder, else the zip's top; `%20`
+    and `<…>` read), each rewritten to the composer's own address
+    (`pure/mediakind.js` `bodyUrlFor`). An exported note's embed under another
+    persona's root is moved to this one's. Code, the web, and a `![[Note]]` that
+    shows another note stay as they were. An embed of a file the zip lacks is
+    left as its words, and the report names it.
+  - **Every file it leaves is named** - _Skipped 3 files this app doesn't keep:
+    …_ (a PDF, a canvas) - except hidden ones: a vault's `.obsidian` and
+    `.trash`, `.DS_Store`, a Mac's `__MACOSX`. An export never names anything
+    with a leading dot, so nothing of ours is hidden.
 - **The machine** (`import.rs`): the zip is the request's body, streamed to disk
   and held to the node's upload cap (`RINGTOME_MAX_UPLOAD_BYTES`), then imported
   in the background under the same one-at-a-time permit as exports. One import
@@ -209,6 +236,15 @@ skipped: It already exists!'"
 - **Imports larger than the upload cap**: a desktop app's cap is 1 GiB, less
   than a persona with years of pictures; and a server that allows imports holds
   them to its own (128 MiB by default).
+- **Foreign imports, supported** (Obsidian and the like) - not yet a goal; the
+  item below is what it would start with.
+- **A vault zipped as it sits**: a zip laid out as an export is
+  (`private/buckets/<notebook>/<section>/…`) files every note in its notebook
+  and section, which is how a generated import arrives in order. A vault zipped
+  as it sits on disk (`MyVault/Recipes/soup.md`) has no such folders, so its
+  notes land in no notebook; reading a foreign zip's top folders as notebooks
+  and sections would save remaking it. And Obsidian's links between notes
+  (`[[Other note]]`) stay as their words.
 - **Links between notes** inside a `.md` still point at the app's addresses
   (`/api/identity/…/docs/…/body/…`); rewriting them to relative paths in the zip
   is the next step for a reader that wants the pictures inline.

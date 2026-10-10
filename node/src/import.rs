@@ -98,7 +98,9 @@ pub enum Kind {
     Marquee,
     Plaintext,
     Drawing,
-    Media(Format),
+    /// A picture, video or sound, in any format the app's own uploads take: ingest sniffs the bytes
+    /// and makes the stored form, as it does for a file dropped on a note.
+    Media,
 }
 
 /// A document's file endings, richest first: the one an import reads. A Marquee note's `.mq` keeps
@@ -110,10 +112,29 @@ const ENDINGS: &[(&str, Kind)] = &[
     (".yml.txt", Kind::Plaintext),
     (".txt", Kind::Plaintext),
     (".horsedrawing", Kind::Drawing),
-    (".avif", Kind::Media(Format::Avif)),
-    (".png", Kind::Media(Format::Apng)),
-    (".webm", Kind::Media(Format::WebmAv1)),
-    (".opus", Kind::Media(Format::OggOpus)),
+    // The stored formats an export writes, and (2026-10-09, an Obsidian vault made into an import)
+    // everything else ingest turns into one: a picture from a camera or a web page, a sound from
+    // anywhere (media/image.rs, media/video.rs, media/audio.rs say what each lane decodes).
+    (".avif", Kind::Media),
+    (".png", Kind::Media),
+    (".apng", Kind::Media),
+    (".jpg", Kind::Media),
+    (".jpeg", Kind::Media),
+    (".gif", Kind::Media),
+    (".webp", Kind::Media),
+    (".bmp", Kind::Media),
+    (".tif", Kind::Media),
+    (".tiff", Kind::Media),
+    (".qoi", Kind::Media),
+    (".webm", Kind::Media),
+    (".opus", Kind::Media),
+    (".ogg", Kind::Media),
+    (".oga", Kind::Media),
+    (".mp3", Kind::Media),
+    (".m4a", Kind::Media),
+    (".aac", Kind::Media),
+    (".flac", Kind::Media),
+    (".wav", Kind::Media),
 ];
 
 /// One document's files: everything in one folder that shares a stem.
@@ -159,14 +180,23 @@ pub fn groups(paths: &[String]) -> Vec<Group> {
             continue;
         }
         let Some((dir, stem, ending, kind)) = classify(path) else { continue };
+        // The profile's own pictures (`public/avatar.avif`, `public/banner.png`): the profile step
+        // reads them back as the profile's (2026-10-10: one republished as a post of its bytes).
+        // An export files every post under `public/unfiled` or `public/buckets`, never at `public`.
+        let profile_picture = kind == Kind::Media
+            && dir.rsplit('/').next().is_some_and(|d| d.eq_ignore_ascii_case("public"))
+            && matches!(stem.to_lowercase().as_str(), "avatar" | "banner");
+        if profile_picture {
+            continue;
+        }
         let rank = ENDINGS.iter().position(|(e, _)| *e == ending).unwrap_or(usize::MAX);
         // Media and text never share a document, even with one stem: a picture called `horse`
         // beside a note called `horse` are two things.
         let family = match kind {
-            Kind::Media(_) => 1,
+            Kind::Media => 1,
             _ => 0,
         };
-        let sidecar = matches!(kind, Kind::Media(_))
+        let sidecar = matches!(kind, Kind::Media)
             .then(|| format!("{path}.yml"))
             .filter(|s| lower.contains(&s.to_lowercase()));
         let group =
@@ -180,6 +210,334 @@ pub fn groups(paths: &[String]) -> Vec<Group> {
         }
     }
     found.into_values().map(|(_, g)| g).collect()
+}
+
+/// A file no person put there on purpose: anything under a hidden folder - an Obsidian vault's
+/// `.obsidian` settings and `.trash`, a repository's `.git` - a hidden file (`.DS_Store`), and the
+/// `__MACOSX` folder a Mac's own zipping adds. Never read, and never reported as skipped: an
+/// export's names never begin with a dot (export.rs `file_name`), so nothing of ours is among them.
+pub fn hidden(path: &str) -> bool {
+    path.split('/').any(|part| part.starts_with('.') || part == "__MACOSX")
+}
+
+/// The files an import leaves behind and says so (2026-10-09: a 300 MB file in a zip vanished
+/// without a word): neither a document's rendering nor one of the export's own details files, nor
+/// hidden. A PDF, a spreadsheet, an Obsidian canvas - kept nowhere, but named in the report.
+pub fn unclaimed(paths: &[String]) -> Vec<&str> {
+    paths
+        .iter()
+        .map(String::as_str)
+        .filter(|p| !hidden(p) && classify(p).is_none())
+        .filter(|p| {
+            let lowered = p.to_lowercase();
+            let name = lowered.rsplit('/').next().unwrap_or("");
+            !(lowered.ends_with(".yml")
+                || lowered.split('/').any(|part| part == "chat")
+                || name == "manifest.json")
+        })
+        .collect()
+}
+
+/// A picture, video or sound's file ending, by its name.
+fn is_media(name: &str) -> bool {
+    classify(name).is_some_and(|(_, _, _, kind)| kind == Kind::Media)
+}
+
+/// What an embed in a note points at, for the import to resolve against what it brought.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ref {
+    /// A file at this path inside the zip, `/`-separated, `..` and `.` already walked.
+    Path(String),
+    /// A file known only by its name, as Obsidian's `![[horse.png]]` names one: wherever in the
+    /// vault it is.
+    Name(String),
+    /// One of this app's own embeds (`/api/identity/<root>/docs/<id>/body/…`) - an exported note's
+    /// picture, perhaps under another persona's root.
+    Own([u8; 16]),
+}
+
+/// A note's words with the pictures it embeds pointing at the documents an import made of them,
+/// and the embeds it could find nothing for. `resolve` answers a [`Ref`] with the embed's new
+/// address, or `None`. Code - fenced blocks and inline spans - is left as it is, as is every
+/// embed of the web, and any embed of something that isn't a picture, video or sound (Obsidian's
+/// `![[Other note]]`, which shows a note inside another).
+pub fn relink(
+    src: &str,
+    note_dir: &str,
+    resolve: &dyn Fn(&Ref) -> Option<String>,
+) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(src.len());
+    let mut missing = Vec::new();
+    let mut fence: Option<&str> = None;
+    for line in src.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        let opens = ["```", "~~~"].into_iter().find(|f| trimmed.starts_with(f));
+        match (fence, opens) {
+            (Some(f), Some(o)) if f == o => {
+                fence = None;
+                out.push_str(line);
+                continue;
+            }
+            (Some(_), _) => {
+                out.push_str(line);
+                continue;
+            }
+            (None, Some(o)) => {
+                fence = Some(o);
+                out.push_str(line);
+                continue;
+            }
+            (None, None) => {}
+        }
+        relink_line(line, note_dir, resolve, &mut out, &mut missing);
+    }
+    (out, missing)
+}
+
+fn relink_line(
+    line: &str,
+    note_dir: &str,
+    resolve: &dyn Fn(&Ref) -> Option<String>,
+    out: &mut String,
+    missing: &mut Vec<String>,
+) {
+    let mut rest = line;
+    while !rest.is_empty() {
+        // Inline code, a run of backticks to the same run again, as it is.
+        if rest.starts_with('`') {
+            let run = rest.len() - rest.trim_start_matches('`').len();
+            let ticks = &rest[..run];
+            match rest[run..].find(ticks) {
+                Some(at) => {
+                    let end = run + at + run;
+                    out.push_str(&rest[..end]);
+                    rest = &rest[end..];
+                }
+                None => {
+                    out.push_str(ticks);
+                    rest = &rest[run..];
+                }
+            }
+            continue;
+        }
+        if let Some((embed, used)) = wiki_embed(rest, resolve, missing)
+            .or_else(|| markdown_embed(rest, note_dir, resolve, missing))
+        {
+            out.push_str(&embed);
+            rest = &rest[used..];
+            continue;
+        }
+        let step = rest.chars().next().map_or(1, char::len_utf8);
+        out.push_str(&rest[..step]);
+        rest = &rest[step..];
+    }
+}
+
+/// Obsidian's `![[target]]`, `![[target|alt]]` and `![[target|300]]` (a width, which the import
+/// drops - the reader's screen decides). `(the embed, bytes used)` when `rest` begins with one of a
+/// picture, video or sound this zip holds.
+fn wiki_embed(
+    rest: &str,
+    resolve: &dyn Fn(&Ref) -> Option<String>,
+    missing: &mut Vec<String>,
+) -> Option<(String, usize)> {
+    let inner_at = rest.strip_prefix("![[")?;
+    let close = inner_at.find("]]")?;
+    let inner = &inner_at[..close];
+    if inner.contains('\n') {
+        return None;
+    }
+    let used = 3 + close + 2;
+    let (target, alias) = inner.split_once('|').unwrap_or((inner, ""));
+    let target = target.split('#').next().unwrap_or("").trim();
+    if !is_media(target) {
+        return None;
+    }
+    let found = if target.contains('/') {
+        walk("", target).and_then(|p| resolve(&Ref::Path(p)))
+    } else {
+        None
+    }
+    .or_else(|| {
+        let name = target.rsplit('/').next().unwrap_or(target);
+        resolve(&Ref::Name(name.to_string()))
+    });
+    let Some(url) = found else {
+        missing.push(target.to_string());
+        return Some((rest[..used].to_string(), used));
+    };
+    let alias = alias.trim();
+    let sized = !alias.is_empty()
+        && alias.split('x').all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+    let alt = if alias.is_empty() || sized { stem_of(target) } else { alias.to_string() };
+    Some((format!("![{}]({url})", alt_label(&alt)), used))
+}
+
+/// A Markdown embed, `![alt](target)` or `![alt](<target with spaces>)`, its target relative to the
+/// note's folder (or, failing that, to the zip's top, as Obsidian also writes them) - or one of
+/// this app's own embeds, whose root may be another persona's.
+fn markdown_embed(
+    rest: &str,
+    note_dir: &str,
+    resolve: &dyn Fn(&Ref) -> Option<String>,
+    missing: &mut Vec<String>,
+) -> Option<(String, usize)> {
+    let after = rest.strip_prefix("![")?;
+    let alt_end = after.find(']')?;
+    let alt = &after[..alt_end];
+    let tail = after[alt_end + 1..].strip_prefix('(')?;
+    let (target, used_in_tail) = if let Some(angled) = tail.strip_prefix('<') {
+        let end = angled.find('>')?;
+        let close = angled[end..].find(')')? + end;
+        (&angled[..end], 1 + close + 1)
+    } else {
+        let close = tail.find(')')?;
+        let inside = &tail[..close];
+        (inside.split_whitespace().next().unwrap_or(""), close + 1)
+    };
+    if alt.contains('\n') || target.is_empty() {
+        return None;
+    }
+    let used = 2 + alt_end + 1 + 1 + used_in_tail;
+    if let Some(doc) = own_embed(target) {
+        let url = resolve(&Ref::Own(doc))?;
+        return Some((format!("![{alt}]({url})"), used));
+    }
+    // The web, mail, an inline picture: as they are. So is any other address of the app's own - a
+    // public post's picture is its public copy's (`/ringtome/user/<root>/doc/<copy>/body/…`), which
+    // an export doesn't carry and a post said again from its note never needs - and no file the
+    // zip lacks.
+    let scheme = target.split('/').next().unwrap_or("");
+    let app = ["/ringtome/", "/api/", "/id/"].iter().any(|p| target.starts_with(p));
+    if scheme.contains(':') || target.starts_with("//") || app {
+        return None;
+    }
+    let target = percent_decoded(target);
+    if !is_media(&target) {
+        return None;
+    }
+    let found = walk(note_dir, &target)
+        .and_then(|p| resolve(&Ref::Path(p)))
+        .or_else(|| walk("", &target).and_then(|p| resolve(&Ref::Path(p))));
+    let Some(url) = found else {
+        missing.push(target);
+        return None;
+    };
+    let alt = if alt.trim().is_empty() { stem_of(&target) } else { alt.to_string() };
+    Some((format!("![{}]({url})", alt_label(&alt)), used))
+}
+
+/// The document an `/api/identity/<root>/docs/<id>/body…` address embeds.
+fn own_embed(target: &str) -> Option<[u8; 16]> {
+    let rest = target.strip_prefix("/api/identity/")?;
+    let (root, rest) = rest.split_once('/')?;
+    let rest = rest.strip_prefix("docs/")?;
+    let (doc, rest) = rest.split_once('/')?;
+    if root.len() != 64 || !rest.starts_with("body") {
+        return None;
+    }
+    hex::decode(doc).ok()?.try_into().ok()
+}
+
+/// `target` from `dir`, `..` and `.` walked, `/`-separated; `None` for a path that climbs out of
+/// the zip. A leading `/` is the zip's top.
+fn walk(dir: &str, target: &str) -> Option<String> {
+    let mut parts: Vec<&str> = if target.starts_with('/') {
+        Vec::new()
+    } else {
+        dir.split('/').filter(|p| !p.is_empty()).collect()
+    };
+    for part in target.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            p => parts.push(p),
+        }
+    }
+    Some(parts.join("/"))
+}
+
+fn percent_decoded(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    let hex = |b: u8| (b as char).to_digit(16).map(|d| d as u8);
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                out.push(hi << 4 | lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A file's name without its folder or its ending.
+fn stem_of(path: &str) -> String {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.rsplit_once('.').map_or(name, |(stem, _)| stem).to_string()
+}
+
+/// Alt text as the composer writes it (pure/mediakind.js `altLabel`): no brackets or parentheses
+/// to break the embed around it, one line.
+fn alt_label(alt: &str) -> String {
+    let cleaned: String = alt.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')')).collect();
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The address an embed of a stored picture, video or sound uses - the composer's own
+/// (pure/mediakind.js `bodyUrlFor`): the extension the renderer reads its kind from, `-loop`
+/// before it for a silent animation, and a name the route ignores.
+pub fn media_url(root: &str, doc: &[u8; 16], title: &str, ext: &str, animation: bool) -> String {
+    let mut slug = String::new();
+    let mut gap = false;
+    for c in title.chars() {
+        if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
+            slug.push(c);
+            gap = false;
+        } else if !gap {
+            slug.push('_');
+            gap = true;
+        }
+    }
+    if let Some(dot) = slug.rfind('.') {
+        slug.truncate(dot);
+    }
+    if slug.is_empty() {
+        slug = "file".to_string();
+    }
+    let lp = if animation { "-loop" } else { "" };
+    format!("/api/identity/{root}/docs/{}/body/{slug}{lp}.{ext}", hex::encode(doc))
+}
+
+/// The extension an embed of a stored format wears (pure/mediakind.js `REFERENCE_EXT`).
+fn reference_ext(format: Format) -> &'static str {
+    match format {
+        Format::Apng => "apng",
+        Format::WebmAv1 => "webm",
+        Format::OggOpus => "ogg",
+        _ => "avif",
+    }
+}
+
+/// The extension to guess, by a file's own name, for one not made in time: a sound is `ogg`, a
+/// WebM `webm`, and any picture `avif` - right for every still. An animated picture may yet come
+/// out a video, and its embed then shows nothing until respelled; the report names each one the
+/// import guessed for.
+fn guessed_ext(name: &str) -> &'static str {
+    let lowered = name.to_lowercase();
+    let ending = lowered.rsplit('.').next().unwrap_or("");
+    match ending {
+        "webm" => "webm",
+        "opus" | "ogg" | "oga" | "mp3" | "m4a" | "aac" | "flac" | "wav" => "ogg",
+        _ => "avif",
+    }
 }
 
 /// Where a document's folder puts it: which side, which notebook, which sections. An exported
@@ -369,7 +727,7 @@ pub fn read_document(kind: Kind, file: &str, bytes: &[u8]) -> (Details, Vec<u8>)
             let body = if kind == Kind::Drawing { body.trim_end().to_string() } else { body };
             (details, body.into_bytes())
         }
-        Kind::Media(_) => (Details::new(), bytes.to_vec()),
+        Kind::Media => (Details::new(), bytes.to_vec()),
     }
 }
 
@@ -416,6 +774,15 @@ const NOT_ANNOTATIONS: &[&str] = &[
 
 /// How long a republished post may wait on its pictures, which are still being made.
 const BAKE_TRIES: usize = 60;
+
+/// How long the import waits on ingest making its pictures before it writes the notes that embed
+/// them, counted from the last one made: a vault of a thousand pictures takes as long as it takes,
+/// and only a queue that has stopped moving is given up on.
+const MEDIA_PATIENCE: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// The notebook every upload lives in (pure/apps.js `FILES_BUCKET`): a picture an import brings
+/// from outside an export is filed there, as one dropped on a note is.
+const FILES_BUCKET: &str = "files";
 
 /// One persona's import, as its page follows it: where it stands, and every line it has said.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -639,11 +1006,34 @@ async fn run(state: &AppState, root: &str, account: &str, zip: &Path) -> Result<
         .map_err(|e| anyhow::anyhow!("opening the persona: {e}"))?;
     let mut ctx = Ctx::new(state, root, account, &dir, &paths, data).await?;
 
-    let found = groups(&paths);
+    let visible: Vec<String> = paths.iter().filter(|p| !hidden(p)).cloned().collect();
+    let found = groups(&visible);
     let (posts, notes): (Vec<&Group>, Vec<&Group>) =
         found.iter().partition(|g| place(&g.dir).public);
     say(format!("Found {} documents and {} posts.", notes.len(), posts.len()));
-    for group in notes {
+    let left = unclaimed(&paths);
+    if !left.is_empty() {
+        const NAMED: usize = 20;
+        let names = left.iter().take(NAMED).copied().collect::<Vec<_>>().join(", ");
+        let more = left.len().saturating_sub(NAMED);
+        let more = if more > 0 { format!(" and {more} more") } else { String::new() };
+        let count = match left.len() {
+            1 => "a file".to_string(),
+            n => format!("{n} files"),
+        };
+        say(format!("Skipped {count} this app doesn't keep: {names}{more}."));
+    }
+    // Pictures, videos and sounds first, and made, so the notes that show them can be written
+    // pointing at them (2026-10-09).
+    let (media, texts): (Vec<&Group>, Vec<&Group>) =
+        notes.into_iter().partition(|g| g.kind == Kind::Media);
+    for group in media {
+        if let Err(e) = ctx.note(group).await {
+            say(format!("Document {} couldn't be imported: {e:#}", ctx.title_of(group)));
+        }
+    }
+    ctx.await_media().await;
+    for group in texts {
         if let Err(e) = ctx.note(group).await {
             say(format!("Document {} couldn't be imported: {e:#}", ctx.title_of(group)));
         }
@@ -692,8 +1082,23 @@ struct Ctx<'a> {
     by_stem: HashMap<String, [u8; 16]>,
     /// Taxonomy titles, by id, kept current as sections are made.
     titles: HashMap<[u8; 16], String>,
+    /// Every picture, video and sound in the zip - added or already held - by its path relative to
+    /// the top, lowercased: what a note's embeds are resolved against.
+    media_paths: HashMap<String, [u8; 16]>,
+    media: HashMap<[u8; 16], MediaDoc>,
     added: usize,
     skipped: usize,
+}
+
+/// A picture, video or sound the import brought, as its notes will embed it.
+struct MediaDoc {
+    title: String,
+    /// Its file's name, whose ending guesses its kind until it is made.
+    name: String,
+    /// Its stored format and whether it is a silent animation, once ingest has made it.
+    made: Option<(Format, bool)>,
+    /// Ingest couldn't make it: its embeds are left as they were.
+    failed: bool,
 }
 
 impl<'a> Ctx<'a> {
@@ -754,6 +1159,8 @@ impl<'a> Ctx<'a> {
             created: BTreeSet::new(),
             by_stem: HashMap::new(),
             titles,
+            media_paths: HashMap::new(),
+            media: HashMap::new(),
             added: 0,
             skipped: 0,
         })
@@ -836,7 +1243,7 @@ impl<'a> Ctx<'a> {
     /// else a document's cap - the limits the app's own doors hold every upload to.
     fn cap_for(&self, kind: Kind) -> u64 {
         match kind {
-            Kind::Media(_) => self.state.config.max_upload_bytes as u64,
+            Kind::Media => self.state.config.max_upload_bytes as u64,
             _ => self.state.config.max_document_bytes as u64,
         }
     }
@@ -853,7 +1260,10 @@ impl<'a> Ctx<'a> {
             ));
             return Ok(None);
         };
-        let (mut details, body) = read_document(group.kind, &group.file, &bytes);
+        let relinked = (group.kind == Kind::Marquee && !self.media.is_empty())
+            .then(|| self.relinked(group, &bytes));
+        let words = relinked.as_deref().unwrap_or(&bytes);
+        let (mut details, body) = read_document(group.kind, &group.file, words);
         if let Some(sidecar) = &group.sidecar {
             if let Ok(Some(side)) = read_capped(&self.dir.join(sidecar), MAX_DETAILS_BYTES).await {
                 let (side, _) = read_front_matter(&String::from_utf8_lossy(&side));
@@ -863,6 +1273,106 @@ impl<'a> Ctx<'a> {
             }
         }
         Ok(Some((details, body, bytes)))
+    }
+
+    /// A Marquee or Markdown note's words with its embeds pointing at the documents this import
+    /// made of the pictures it brought - and the report told of each embed it found nothing for.
+    fn relinked(&self, group: &Group, bytes: &[u8]) -> Vec<u8> {
+        let text = String::from_utf8_lossy(bytes);
+        let relative = self.relative(&group.file);
+        let note_dir = relative.rsplit_once('/').map_or("", |(dir, _)| dir);
+        let (words, missing) = relink(&text, note_dir, &|r| self.embed_for(r));
+        if !missing.is_empty() {
+            self.say(format!(
+                "Document {} shows {} the zip doesn't hold: {}.",
+                self.title_of(group),
+                if missing.len() == 1 { "a file" } else { "files" },
+                missing.join(", ")
+            ));
+        }
+        words.into_bytes()
+    }
+
+    /// The address an embed of `r` takes now, if `r` is a picture, video or sound this import
+    /// brought (or found already held) and ingest didn't refuse.
+    fn embed_for(&self, r: &Ref) -> Option<String> {
+        let id = match r {
+            Ref::Path(p) => *self.media_paths.get(&p.to_lowercase())?,
+            Ref::Name(name) => {
+                let name = name.to_lowercase();
+                // Obsidian's own rule for a name two folders share: the one nearest the top.
+                self.media_paths
+                    .iter()
+                    .filter(|(p, _)| p.rsplit('/').next() == Some(name.as_str()))
+                    .min_by_key(|(p, _)| (p.matches('/').count(), p.len()))
+                    .map(|(_, id)| *id)?
+            }
+            Ref::Own(doc) => *doc,
+        };
+        let media = self.media.get(&id).filter(|m| !m.failed)?;
+        Some(match media.made {
+            Some((format, animation)) => {
+                media_url(self.root, &id, &media.title, reference_ext(format), animation)
+            }
+            None => media_url(self.root, &id, &media.title, guessed_ext(&media.name), false),
+        })
+    }
+
+    /// Wait for ingest to make what this import queued, learning each one's stored format - so a
+    /// note embeds a GIF that became a video as the video it is - until all are made or refused,
+    /// or nothing has been made for [`MEDIA_PATIENCE`].
+    async fn await_media(&mut self) {
+        let mut last_made = std::time::Instant::now();
+        loop {
+            let waiting: Vec<[u8; 16]> = self
+                .media
+                .iter()
+                .filter(|(_, m)| m.made.is_none() && !m.failed)
+                .map(|(id, _)| *id)
+                .collect();
+            if waiting.is_empty() {
+                return;
+            }
+            let mut moved = false;
+            for id in waiting {
+                if let Ok(Some(head)) = self.data.documents().head(&id).await {
+                    if let Some(m) = self.media.get_mut(&id) {
+                        m.made = Some((Format::from_wire(head.format), head.animation));
+                    }
+                    moved = true;
+                    continue;
+                }
+                let job = crate::ingest::latest_job_for_doc(
+                    &self.state.node_db,
+                    self.account,
+                    &hex::encode(id),
+                )
+                .await;
+                if let Ok(Some((status, error))) = job {
+                    if status == "failed" {
+                        let Some(m) = self.media.get_mut(&id) else { continue };
+                        m.failed = true;
+                        let line = format!(
+                            "Document {} couldn't be made into a picture, video or sound: {}",
+                            m.title,
+                            error.unwrap_or_else(|| "its file couldn't be read".to_string())
+                        );
+                        self.say(line);
+                        moved = true;
+                    }
+                }
+            }
+            if moved {
+                last_made = std::time::Instant::now();
+            } else if last_made.elapsed() > MEDIA_PATIENCE {
+                let still = self.media.values().filter(|m| m.made.is_none() && !m.failed).count();
+                self.say(format!(
+                    "{still} pictures are still being made: the notes that show them were written guessing what kind each is."
+                ));
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
     }
 
     /// One private document: created when the persona lacks it, skipped when it has it - and,
@@ -876,6 +1386,12 @@ impl<'a> Ctx<'a> {
             None => self.derived_id(group, &raw),
         };
         let stem_key = format!("{}/{}", self.relative(&group.dir), group.stem);
+        if group.kind == Kind::Media {
+            self.media_paths.insert(self.relative(&group.file).to_lowercase(), id);
+            let name = group.file.rsplit('/').next().unwrap_or(&group.file).to_string();
+            self.media
+                .insert(id, MediaDoc { title: title.clone(), name, made: None, failed: false });
+        }
         if self.holds(&id).await? {
             self.say(format!("Document {title} skipped: It already exists!"));
             self.skipped += 1;
@@ -884,7 +1400,7 @@ impl<'a> Ctx<'a> {
             return Ok(());
         }
         match group.kind {
-            Kind::Media(_) => {
+            Kind::Media => {
                 self.state
                     .ingest
                     .enqueue(
@@ -993,6 +1509,11 @@ impl<'a> Ctx<'a> {
         if buckets.is_empty() {
             buckets.extend(where_.bucket.clone());
         }
+        // A picture from outside an export - a vault's attachment - is filed where uploads are.
+        let foreign = !group.dir.to_lowercase().split('/').any(|p| p == "public" || p == "private");
+        if buckets.is_empty() && new && group.kind == Kind::Media && foreign {
+            buckets.push(FILES_BUCKET.to_string());
+        }
         if buckets.is_empty() {
             return Ok(());
         }
@@ -1001,7 +1522,8 @@ impl<'a> Ctx<'a> {
         let roster: BTreeSet<String> =
             self.data.buckets().roster().await.map_err(ae)?.into_iter().map(|b| b.name).collect();
         for bucket in &buckets {
-            if !roster.contains(bucket) {
+            // The files notebook is no notebook of any app's: it is never defined as one.
+            if !roster.contains(bucket) && bucket != FILES_BUCKET {
                 self.data.buckets().define(bucket, "default").await.map_err(ae)?;
             }
             if !have.contains(bucket) {
@@ -1107,6 +1629,42 @@ impl<'a> Ctx<'a> {
             }
             // No note to say it from: one made of its words, under the post's own id, so the
             // same zip imported again finds it held.
+            // A picture, video or sound: made by ingest under the post's id, as an upload is, and
+            // said once it is made (2026-10-10: one saved as the words of a Marquee note posted
+            // its bytes as text).
+            _ if group.kind == Kind::Media => {
+                let id = post_id;
+                self.state
+                    .ingest
+                    .enqueue(
+                        &self.state.node_db,
+                        crate::ingest::Upload {
+                            account: self.account,
+                            root: self.root,
+                            doc_id: id,
+                            parents: &[],
+                            title: &title,
+                            bytes: &body,
+                            audio: None,
+                        },
+                    )
+                    .await
+                    .map_err(ae)?;
+                let name = group.file.rsplit('/').next().unwrap_or(&group.file).to_string();
+                self.media
+                    .insert(id, MediaDoc { title: title.clone(), name, made: None, failed: false });
+                self.await_media().await;
+                if !self.media.get(&id).is_some_and(|m| m.made.is_some()) {
+                    self.say(format!(
+                        "Post {title} not republished yet: its picture is still being made. Publish it when it's ready."
+                    ));
+                    return Ok(());
+                }
+                self.held.insert(id);
+                self.created.insert(id);
+                self.extras(&id, group, &details, true).await?;
+                id
+            }
             _ => {
                 let id = post_id;
                 let format =
@@ -1407,7 +1965,7 @@ mod tests {
         assert!(files.contains(&"private/unfiled/doodle--bbbbbbbb.horsedrawing"));
         assert!(files.contains(&"notes/written elsewhere.md"));
         let pic = found.iter().find(|g| g.stem == "pic--aaaaaaaa").unwrap();
-        assert_eq!(pic.kind, Kind::Media(Format::Avif));
+        assert_eq!(pic.kind, Kind::Media);
         assert_eq!(pic.sidecar.as_deref(), Some("private/unfiled/pic--aaaaaaaa.avif.yml"));
         assert!(!files.iter().any(|f| f.contains("/chat/")), "a chat is never a document");
         assert!(!files.contains(&"README.txt"), "the zip's own README is no note: {files:?}");
@@ -1540,6 +2098,117 @@ mod tests {
         assert_eq!(unpack_limit(128 << 20), MIN_UNPACKED_BYTES, "a server's 128 MiB: 1 GiB");
         assert_eq!(unpack_limit(1 << 30), 4 << 30, "a desktop's 1 GiB: 4 GiB");
         assert_eq!(unpack_limit(u64::MAX), MAX_UNPACKED_BYTES);
+    }
+
+    #[test]
+    fn a_vaults_pictures_and_sounds_are_documents_and_the_rest_is_named() {
+        let paths: Vec<String> = [
+            "Vault/trip.md",
+            "Vault/attachments/horse.JPG",
+            "Vault/attachments/pony.gif",
+            "Vault/sounds/neigh.mp3",
+            "Vault/notes.pdf",
+            "Vault/board.canvas",
+            "Vault/.obsidian/app.json",
+            "Vault/.obsidian/workspace.md",
+            "Vault/.trash/old.md",
+            ".DS_Store",
+            "__MACOSX/Vault/._trip.md",
+            "manifest.json",
+            "private/contacts.yml",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let visible: Vec<String> = paths.iter().filter(|p| !hidden(p)).cloned().collect();
+        let found = groups(&visible);
+        let kinds: Vec<(&str, Kind)> = found.iter().map(|g| (g.file.as_str(), g.kind)).collect();
+        assert!(kinds.contains(&("Vault/attachments/horse.JPG", Kind::Media)));
+        assert!(kinds.contains(&("Vault/attachments/pony.gif", Kind::Media)));
+        assert!(kinds.contains(&("Vault/sounds/neigh.mp3", Kind::Media)));
+        assert!(kinds.contains(&("Vault/trip.md", Kind::Marquee)));
+        assert_eq!(found.len(), 4, "hidden folders hold no documents: {kinds:?}");
+        assert_eq!(unclaimed(&paths), ["Vault/notes.pdf", "Vault/board.canvas"]);
+    }
+
+    fn resolver(
+        root_dir: &'static [(&'static str, &'static str)],
+    ) -> impl Fn(&Ref) -> Option<String> {
+        move |r| match r {
+            Ref::Path(p) => {
+                root_dir.iter().find(|(k, _)| k.eq_ignore_ascii_case(p)).map(|(_, u)| u.to_string())
+            }
+            Ref::Name(n) => root_dir
+                .iter()
+                .find(|(k, _)| k.rsplit('/').next().is_some_and(|f| f.eq_ignore_ascii_case(n)))
+                .map(|(_, u)| u.to_string()),
+            Ref::Own(doc) => (doc == &[0xab; 16]).then(|| "/new/ab".to_string()),
+        }
+    }
+
+    #[test]
+    fn a_notes_embeds_point_at_what_the_import_made() {
+        const HELD: &[(&str, &str)] = &[
+            ("vault/attachments/horse.jpg", "/u/horse.avif"),
+            ("vault/pics/my pony.gif", "/u/pony-loop.webm"),
+        ];
+        let resolve = resolver(HELD);
+        let src = "# Trip\n\
+                   ![[horse.jpg]]\n\
+                   ![[horse.jpg|300]] and ![[horse.jpg|a brown horse]]\n\
+                   ![a pony](../pics/my%20pony.gif) ![](<../pics/my pony.gif>)\n\
+                   ![[Another note]] ![[gone.png]] ![lost](lost.png)\n\
+                   ![web](https://example.com/a.png) `![[horse.jpg]]`\n\
+                   ```\n![[horse.jpg]]\n```\n\
+                   ![old](/api/identity/{r}/docs/abababababababababababababababab/body/x.avif)\n";
+        let src = src.replace("{r}", &"c".repeat(64));
+        let (out, missing) = relink(&src, "vault/notes", &resolve);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[1], "![horse](/u/horse.avif)");
+        assert_eq!(
+            lines[2], "![horse](/u/horse.avif) and ![a brown horse](/u/horse.avif)",
+            "a width is dropped, alt text kept"
+        );
+        assert_eq!(lines[3], "![a pony](/u/pony-loop.webm) ![my pony](/u/pony-loop.webm)");
+        assert_eq!(
+            lines[4], "![[Another note]] ![[gone.png]] ![lost](lost.png)",
+            "a note, and what's missing, as they were"
+        );
+        assert_eq!(
+            lines[5], "![web](https://example.com/a.png) `![[horse.jpg]]`",
+            "the web, and code, untouched"
+        );
+        assert_eq!(lines[7], "![[horse.jpg]]", "a fenced block untouched");
+        assert_eq!(lines[9], "![old](/new/ab)", "an exported embed under another persona's root");
+        assert_eq!(missing, ["gone.png", "lost.png"]);
+    }
+
+    #[test]
+    fn paths_walk_and_climb_no_further_than_the_top() {
+        assert_eq!(walk("vault/notes", "../pics/a.png").as_deref(), Some("vault/pics/a.png"));
+        assert_eq!(walk("vault/notes", "./a.png").as_deref(), Some("vault/notes/a.png"));
+        assert_eq!(walk("vault/notes", "/top.png").as_deref(), Some("top.png"));
+        assert_eq!(walk("vault", "../../out.png"), None);
+        assert_eq!(percent_decoded("my%20pony%2Gx%"), "my pony%2Gx%");
+        assert_eq!(percent_decoded("caf%C3%A9.png"), "café.png");
+    }
+
+    #[test]
+    fn an_embeds_address_is_the_composers() {
+        let id = [0x12; 16];
+        assert_eq!(
+            media_url("rr", &id, "IMG 4021.jpeg", "avif", false),
+            format!("/api/identity/rr/docs/{}/body/IMG_4021.avif", hex::encode(id))
+        );
+        assert_eq!(
+            media_url("rr", &id, "pony", "webm", true),
+            format!("/api/identity/rr/docs/{}/body/pony-loop.webm", hex::encode(id))
+        );
+        assert_eq!(media_url("rr", &id, "", "ogg", false).rsplit('/').next(), Some("file.ogg"));
+        assert_eq!(
+            (guessed_ext("a.MP3"), guessed_ext("b.gif"), guessed_ext("c.webm")),
+            ("ogg", "avif", "webm")
+        );
     }
 
     #[test]

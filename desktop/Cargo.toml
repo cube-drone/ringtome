@@ -39,6 +39,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # if these drift from the root's.
 [profile.dev]
 debug = "line-tables-only"
+# No `.o` debug sidecars on macOS - the root Cargo.toml says why (the disk, 2026-10-10).
+split-debuginfo = "off"
 
 [profile.dev.package."*"]
 opt-level = 2

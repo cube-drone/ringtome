@@ -804,25 +804,36 @@ desktop-check: ui-build
     cd "{{workspace}}/desktop" && CARGO_TARGET_DIR="{{workspace}}/target" cargo check
 
 # 2026-09-28: target/ had reached 300 GB. Cargo never collects it - every toolchain update rebuilds
-# every dependency and keeps the old copies, and incremental caches pile up beside them. With
-# cargo-sweep (`cargo install cargo-sweep`) this drops what toolchains no longer installed built,
-# then anything untouched for `days`, in both workspaces' targets; without it, it says so and
-# changes nothing (`cargo clean` is the blunt alternative).
-# Prune old Rust build output in both workspaces (needs cargo-sweep).
+# every dependency and keeps the old copies, and incremental caches pile up beside them. Since
+# 2026-10-10 (the disk full again, 356 GB, and this recipe freeing nothing: a day's builds had
+# touched it all) it first removes what the clock can't judge - the `.o` debug sidecars and the
+# incremental caches, both cache - then, with cargo-sweep (`cargo install cargo-sweep`), drops what
+# toolchains no longer installed built and anything untouched for `days`, in both workspaces.
+# Prune Rust build output in both workspaces.
 tidy days="14":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{workspace}}"
-    if ! cargo sweep --version >/dev/null 2>&1; then
-        echo "tidy: cargo-sweep isn't installed - 'cargo install cargo-sweep', then run this again." >&2
-        echo "  (or 'cargo clean', here and in desktop/, clears everything)" >&2
-        exit 1
-    fi
-    echo "before: $(du -sh target 2>/dev/null | cut -f1) in target/, $(du -sh desktop/target 2>/dev/null | cut -f1) in desktop/target/"
-    for dir in . desktop; do
-        (cd "$dir" && cargo sweep --installed && cargo sweep --time {{days}})
+    free() { df -h . | awk 'NR==2 {print $4}'; }
+    echo "before: $(du -sh target 2>/dev/null | cut -f1) in target/, $(du -sh desktop/target 2>/dev/null | cut -f1) in desktop/target/, $(free) free"
+    for t in target desktop/target; do
+        [ -d "$t" ] || continue
+        # What actually filled the disk (2026-10-10), neither of which cargo-sweep's clock sees,
+        # since a day's builds touch it all: the `.o` debug sidecars macOS's old "unpacked"
+        # default left beside every binary (Cargo.toml's [profile.dev] now writes none), and the
+        # incremental caches. Both are cache - no binary needs them to run - and both cost one
+        # slower rebuild of our own crates, never the dependencies.
+        find "$t" -path '*/deps/*' -name '*.rcgu.o' -delete 2>/dev/null || true
+        find "$t" -maxdepth 2 -type d -name incremental -prune -exec rm -rf {} + 2>/dev/null || true
     done
-    echo "after: $(du -sh target 2>/dev/null | cut -f1) in target/, $(du -sh desktop/target 2>/dev/null | cut -f1) in desktop/target/"
+    if cargo sweep --version >/dev/null 2>&1; then
+        for dir in . desktop; do
+            (cd "$dir" && cargo sweep --installed && cargo sweep --time {{days}})
+        done
+    else
+        echo "tidy: (cargo-sweep isn't installed - 'cargo install cargo-sweep' also drops builds older than {{days}} days)"
+    fi
+    echo "after: $(du -sh target 2>/dev/null | cut -f1) in target/, $(du -sh desktop/target 2>/dev/null | cut -f1) in desktop/target/, $(free) free"
 
 # Seed the DESKTOP app's node with the same fake network `test-data` makes.
 #

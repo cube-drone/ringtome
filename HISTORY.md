@@ -19227,3 +19227,53 @@ default it prevents would have. **"type in a brush size ... so I'm not pixel
 hunting on a slider"**: a number box beside the size slider, reaching the full
 `MAX_SIZE` (200) past the slider's 80, taking a size as it is typed and settling
 into range on Enter or leaving the box. Text size keeps its slider alone.
+
+## 2026-10-09 (cont.): a vault's pictures come with it
+
+Curtis asked an agent (through the MCP) to bring a client's Obsidian vault in;
+it had no way to upload a picture, so it built the vault into an import zip
+instead - a use of import nobody had planned for. Built to make that work
+(`import.rs`, plans/EXPORT.md's _A zip made elsewhere_). The import took only
+the four formats the node stores, so a vault's JPEGs, GIFs and MP3s were dropped
+without a word - as was a 300 MB test file, "Found 1 documents" and nothing
+more. Now every format an upload takes is a document, made by the ordinary
+ingest queue and filed in the files notebook; the media are queued first and
+waited for (for as long as ingest keeps making them, two quiet minutes at most),
+so each note is written knowing what its pictures became; and a note's embeds -
+Obsidian's `![[name]]`, Markdown's `![alt](path)`, an exported embed under
+another persona's root - are rewritten to the composer's own address, with the
+extension the renderer reads its kind from (a GIF that became a looping WebM is
+`-loop.webm`). Code, the web and a note-in-a-note embed stay as they were; an
+embed of a file the zip lacks is named in the report, as is every file left
+behind (hidden folders aside: `.obsidian`, `.trash`, `__MACOSX`). Four unit
+tests for the pure parts (`relink`, `walk`, `unclaimed`, `media_url`), and an
+acceptance claim importing a small vault - a WebP, an animated GIF, an MP3, a
+PDF, a hidden folder and a missing picture - into a persona, reading the note's
+words back and fetching the picture at the address they name. Measured on the
+way: a 300 MB import uploads and imports in 1.3 s from Node against a scratch
+node with the desktop's cap - the Linux app's "network error" is the webview's,
+still to be found.
+
+## 2026-10-10: an export's pictures, imported into another persona
+
+Curtis exported a persona from the web (0.3.5) and imported it on dev: every
+picture came, none showed, in notes or posts, and the persona's avatar came back
+as a public post called "avatar" whose words were the AVIF's bytes. Reproduced
+on a scratch node, export to import. Three findings. **The avatar**: the export
+writes the profile's pictures at `public/avatar.<ext>` for the profile step to
+read back, but a picture under `public/` was also a post, and a post with no
+note in the zip was saved as a Marquee note of its file's bytes and published.
+The profile's pictures are no documents now, and a public picture, video or
+sound with no note is made by ingest under the post's id and said once made.
+**The links**: a note's embed names its persona's root
+(`/api/identity/<root>/docs/<id>/body/…`), which in another persona leads
+nowhere - what the previous entry's relinking moves to the importing root, and
+the reason committed `main`, without it, linked nothing. A post said again from
+its note embeds a public copy of the new persona's own. **A false report**: the
+relinker took a public post's own picture address (`/ringtome/user/…`) for a
+missing file in the zip; every app address is left alone now. An acceptance
+claim exports a persona with an avatar and a published note showing a picture,
+imports it into another, and reads back the note's embed, the post's embed -
+naming the new persona, and serving - and the absence of an avatar post; with
+the profile-picture skip switched off, it fails as Curtis saw. What an import
+made before this is as it was: additive import doesn't revisit a note it holds.
