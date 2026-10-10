@@ -112,9 +112,10 @@ pub fn run() {
                 .inner_size(1280.0, 860.0)
                 .visible(!hidden)
                 .initialization_script(format!(
-                    "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};",
+                    "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};\n{}",
                     serde_json::to_string(&token).expect("a hex string is JSON"),
-                    serde_json::to_string(std::env::consts::OS).expect("an OS name is JSON")
+                    serde_json::to_string(std::env::consts::OS).expect("an OS name is JSON"),
+                    links::BLANK_CLICKS
                 ))
                 .build()?;
             #[cfg(desktop)]

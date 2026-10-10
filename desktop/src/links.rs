@@ -22,6 +22,22 @@
 //! arriving with no page around it). Those three exact addresses load where they are.
 
 use tauri::{AppHandle, Manager, Url};
+
+/// A `target="_blank"` click, made a navigation of the window (Curtis, 2026-10-09: the version
+/// label's release notes did nothing in 0.3.4 on macOS - no log line, while the same link's "Open
+/// Link" from the context menu, a plain navigation, opened the browser). The new-window request
+/// never reached `new_window` below; a navigation always reaches `navigation`, which hands the web
+/// out and keeps the window where it is, and lands our own pages in the window as `new_window`
+/// would have. Run in every page the window loads (lib.rs, the initialization script), in the
+/// bubbling phase, so a page's own handler that takes the click first keeps it. A link that
+/// downloads is left to the webview.
+pub const BLANK_CLICKS: &str = r#"window.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0) return;
+    const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
+    if (!a || a.target !== '_blank' || a.hasAttribute('download')) return;
+    e.preventDefault();
+    window.location.assign(a.href);
+});"#;
 use tauri_plugin_opener::OpenerExt;
 
 /// Is `url` the app itself - same scheme, host and port as the node the window was opened at?
@@ -83,8 +99,9 @@ fn hand_out(app: &AppHandle, url: &Url) {
         "http" | "https" | "mailto" => {
             let (app, url) = (app.clone(), url.clone());
             tauri::async_runtime::spawn_blocking(move || {
-                if let Err(e) = app.opener().open_url(url.as_str(), None::<&str>) {
-                    tracing::warn!(error = %e, %url, "could not open a link in the system browser");
+                match app.opener().open_url(url.as_str(), None::<&str>) {
+                    Ok(()) => tracing::info!(%url, "opened a link in the system browser"),
+                    Err(e) => tracing::warn!(error = %e, %url, "could not open a link in the system browser"),
                 }
             });
         }
