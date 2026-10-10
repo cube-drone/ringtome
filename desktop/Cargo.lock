@@ -7323,7 +7323,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-desktop"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "anyhow",
  "jni 0.22.4",
@@ -7344,7 +7344,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "ab_glyph",
  "aes-gcm",
@@ -7418,7 +7418,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "blake3",
  "ed25519-dalek 2.2.0",
