@@ -885,17 +885,46 @@ fn iso(ms: i64) -> String {
 async fn public_posts(
     data: &crate::record::store::Store,
 ) -> Result<Vec<crate::record::documents::PublicDoc>> {
+    every_page(SHELF_PAGE, |after| async move {
+        crate::record::documents::public_docs(data.db(), after, SHELF_PAGE as i64)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    })
+    .await
+}
+
+/// How many posts a page of the shelf brings.
+const SHELF_PAGE: usize = 200;
+
+/// Every page of the shelf, walked by its own key (2026-10-09). The shelf is ordered by the date a
+/// post SHOWS - its display date, else when it was first said (`PublicDoc::display_ms`) - so that is
+/// what the cursor must be. It was the first-said date, and on a page that ended at a backdated
+/// post the next page asked for everything shown before NOW: the shelf again from near the top,
+/// forever, until the kernel killed the node for memory (horsedrawingtycoon.com, Curtis's own
+/// export). And should a cursor ever be wrong again, a page that brings nothing new ends the walk.
+async fn every_page<F, Fut>(
+    page: usize,
+    mut fetch: F,
+) -> Result<Vec<crate::record::documents::PublicDoc>>
+where
+    F: FnMut(Option<(i64, [u8; 16])>) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<crate::record::documents::PublicDoc>>>,
+{
     let mut all = Vec::new();
+    let mut seen: std::collections::HashSet<[u8; 16]> = std::collections::HashSet::new();
     let mut after = None;
     loop {
-        let page = crate::record::documents::public_docs(data.db(), after, 200)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-        let Some(last) = page.last() else { break };
-        after = Some((last.genesis_ms, last.doc_id));
-        let full = page.len() == 200;
-        all.extend(page);
-        if !full {
+        let got = fetch(after).await?;
+        let Some(last) = got.last() else { break };
+        after = Some((last.display_ms(), last.doc_id));
+        let full = got.len() >= page;
+        let before = all.len();
+        for p in got {
+            if seen.insert(p.doc_id) {
+                all.push(p);
+            }
+        }
+        if !full || all.len() == before {
             break;
         }
     }
@@ -1324,6 +1353,72 @@ mod tests {
         assert!(
             download_name(Some(&"a".repeat(100)), root).len() <= "hdt2--01234567.zip".len() + 40
         );
+    }
+
+    fn post(id: u8, genesis_ms: i64, dated_ms: Option<i64>) -> crate::record::documents::PublicDoc {
+        crate::record::documents::PublicDoc {
+            reply_to: None,
+            thread_root: None,
+            doc_id: [id; 16],
+            title: format!("post {id}"),
+            format: None,
+            genesis_ms,
+            head_ms: genesis_ms,
+            thumb_hash: None,
+            settled: false,
+            trusted_only: false,
+            onward: false,
+            dated_ms,
+            part_of: None,
+        }
+    }
+
+    /// A page ending at a backdated post (the out-of-memory kill, 2026-10-09): every post exactly
+    /// once, by the shelf's own order - and a fetch that ignores its cursor can't loop forever.
+    #[tokio::test]
+    async fn the_shelf_is_walked_by_the_date_it_shows() {
+        // Five posts said "now"; two of them dated earlier, so they sort last - one of them at
+        // the end of the first page of four. The shelf as the real query orders it
+        // (`public_docs`): newest shown first, id ascending on a tie.
+        let ordered = || {
+            let mut shelf = vec![
+                post(1, 1_000, None),
+                post(2, 1_001, None),
+                post(3, 1_002, Some(500)),
+                post(4, 1_003, None),
+                post(5, 1_004, Some(100)),
+            ];
+            shelf.sort_by_key(|p| (std::cmp::Reverse(p.display_ms()), p.doc_id));
+            shelf
+        };
+        // ...and its cursor `(shown, id)`, taking what sorts after it. Counted: the walk by the right
+        // key asks twice; by the first-said date it asked for the shelf again and again.
+        let asked = std::cell::Cell::new(0);
+        let fetch = |after: Option<(i64, [u8; 16])>| {
+            asked.set(asked.get() + 1);
+            async move {
+                Ok(ordered()
+                    .into_iter()
+                    .filter(|p| match after {
+                        None => true,
+                        Some((ms, id)) => {
+                            p.display_ms() < ms || (p.display_ms() == ms && p.doc_id > id)
+                        }
+                    })
+                    .take(4)
+                    .collect::<Vec<_>>())
+            }
+        };
+        let all = every_page(4, fetch).await.unwrap();
+        let ids: Vec<u8> = all.iter().map(|p| p.doc_id[0]).collect();
+        assert_eq!(ids, [4, 2, 1, 3, 5], "each once, in the shelf's order");
+        assert_eq!(asked.get(), 2, "a page, then the rest - never the shelf again");
+
+        // A fetch that answers the same page whatever it is asked: the walk still ends.
+        let stuck = |_after: Option<(i64, [u8; 16])>| async move {
+            Ok(ordered().into_iter().take(3).collect::<Vec<_>>())
+        };
+        assert_eq!(every_page(3, stuck).await.unwrap().len(), 3);
     }
 
     /// What waits for the zip is held to its budget in bytes (2026-10-09, the out-of-memory kill):

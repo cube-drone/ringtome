@@ -19159,4 +19159,14 @@ a budget of 64 MiB in bytes (`BUDGET_KIB`, a semaphore whose share each file
 carries until it is written), not a count of sixteen files, and a picture, video
 or sound is moved into the zip rather than copied through `render` first. The
 largest single file still costs its encrypted and its decrypted copy while it is
-read.
+read. And the real cause, found when Curtis's `free -h` showed 7.8 GiB
+available - no queue of files eats that: export's walk of the public shelf used
+each page's last post's first-said date (`genesis_ms`) as its cursor, where the
+shelf is ordered, and paged, by the date a post shows (`display_ms`, its display
+date else its first-said). A page ending at a backdated post asked next for
+everything shown before now - the shelf again, from near the top - forever,
+every lap appended, until the kernel killed the node. `every_page` walks by
+`display_ms`, as idface and fanout always did, and a page that brings nothing
+new ends the walk; its test - a page of four ending at a post dated earlier -
+counts two fetches, and the old cursor makes it three (unbounded, without the
+guard). The byte budget stays: still the right shape for a large account.

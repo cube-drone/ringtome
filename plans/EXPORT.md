@@ -106,7 +106,10 @@ bank, laid out as files and folders. Import comes later (_Not yet_).
   for the zip's thread is held to a budget of 64 MiB in bytes, not a count of
   files (an out-of-memory kill on horsedrawingtycoon.com, 2026-10-09, with
   sixteen waiting): a file waits for room, and pictures and videos go in without
-  being copied first.
+  being copied first. The kill itself was a loop: the posts were paged by the
+  wrong date, so a backdated post at a page's end sent the walk back to the top,
+  forever (`every_page` now pages by the date a post shows, and stops when a
+  page brings nothing new).
 - **One per persona.** Starting a new one cancels any queued or running one and
   deletes the last zip; the new zip replaces it when it is whole (written as
   `.partial`, then renamed - backup.rs's rule).
