@@ -32,3 +32,6 @@ server/bin/
 
 # This is for testing API KEY interactions
 API_KEY
+
+# cargo sweep -s writes its stamp where it runs (node/justfile tidy)
+sweep.timestamp

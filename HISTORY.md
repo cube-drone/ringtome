@@ -19277,3 +19277,22 @@ imports it into another, and reads back the note's embed, the post's embed -
 naming the new persona, and serving - and the absence of an avatar post; with
 the profile-picture skip switched off, it fails as Curtis saw. What an import
 made before this is as it was: additive import doesn't revisit a note it holds.
+
+## 2026-10-10 (cont.): the disk, found
+
+The disk filled two days running (Curtis: "we're hitting the disk size limit
+pretty much daily now"), and `just tidy` freed nothing - cargo-sweep goes by
+age, and a day's builds had touched everything. Measured: `target/` 356 GB, and
+the pile was the `.o` files macOS's default `split-debuginfo = "unpacked"` keeps
+beside every binary for its debug info - written under new names on every
+recompile, never removed: 102,310 of them, 110 GB, 48 GB in the last day. The
+dev profile now says `split-debuginfo = "off"`, in both workspaces (the
+desktop's must match - `the_desktop_workspace_keeps_the_dev_profile`), which is
+what Linux and so CI already did; a full `just ci` on it left no `.o` at all.
+The cost on a Mac: a panic still names its file and line, a backtrace's frames
+only their functions. "packed" would have kept them, at 35 s of `dsymutil` per
+link of the node's test binary. `just tidy` now removes the object files and
+incremental caches first (cache, a slower rebuild of our own crates at most),
+needs no cargo-sweep for that, and says the free space before and after. Today:
+356 GB to 13 GB in `target/` (tidy, then a stamped `cargo sweep` around one
+`just ci` on the new profile), 372 GB free.
