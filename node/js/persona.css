@@ -2362,8 +2362,13 @@ article:has(.label-emoji-strip) {
 }
 
 
-/* Managing yourself (persona.js PersonaMenu): the disclosure on your own /id page, where "this
-   is you" sits. The summary wears the ledger's head; open, it lists the three items. */
+/* Managing yourself (persona.js PersonaMenu): on your own /id page, where "this is you" sits - since
+   2026-10-09 the door to the Settings app, wearing the ledger's head and its arrow. */
+.settings-door {
+    color: var(--ink);
+    text-decoration: none;
+}
+
 .you-menu {
     margin-top: 0.4rem;
     padding: 0.5rem 0.9rem;
@@ -2372,12 +2377,6 @@ article:has(.label-emoji-strip) {
     --j: 5px;
     clip-path: var(--jag);
     text-align: left;
-}
-.you-menu[open] > .ledger-head::after {
-    transform: rotate(90deg);
-}
-.you-menu .persona-menu {
-    margin-top: 0.7rem;
 }
 
 /* The pinned strip above the shelf (posts.js): a little air before "recent posts". */

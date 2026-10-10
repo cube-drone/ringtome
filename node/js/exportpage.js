@@ -25,7 +25,7 @@ const LOOK_MS = 1500;
 /// The page's tabs, each its own address as Your computers' are (Curtis, 2026-10-09).
 const TABS = ['export', 'import'];
 
-/// `/ringtome/persona/import-export` and `/ringtome/persona/import-export/:tab` - a bare or
+/// `/ringtome/settings/import-export` and `/ringtome/settings/import-export/:tab` - a bare or
 /// unknown tab lands on `export`. Above both, the word that they are not sync.
 export const ExportPage = ({ current, tab }) => {
     const loc = useLocation();
@@ -217,10 +217,7 @@ const ImportSection = ({ root }) => {
         return html`<div class="null-state computers-alone">
             <span class="null-glyph"><${Icons.importUser} /></span>
             <p class="null-sub">
-                ${t(
-                    'exportpage.import-not-here',
-                    "This server doesn't take imports - the way out of a server is an export, to a computer of your own. Its administrator can allow them; or import into the Horse Drawing Tycoon 2 app on your own computer, which always can.",
-                )}
+                ${t('exportpage.import-not-here', "This server doesn't allow imports.")}
             </p>
         </div>`;
     return html`<section class="import-section">

@@ -19170,3 +19170,20 @@ every lap appended, until the kernel killed the node. `every_page` walks by
 new ends the walk; its test - a page of four ending at a post dated earlier -
 counts two fetches, and the old cursor makes it three (unbounded, without the
 guard). The byte budget stays: still the right shape for a large account.
+
+## 2026-10-09 - Settings, an app of its own
+
+Curtis: the settings under the profile were "getting so expansive that I'm
+thinking they deserve an app all to themselves, rather than a relatively
+hard-to-find spot under the user's profile". **hrseSettings™** is now the second
+app in the stack, after the persona and before Neighbors (`pure/apps.js`, a
+system app like the persona: always installed, never a document app). Its front
+page is the list the profile's disclosure used to open - profile, application
+settings, personas, computers, content, import/export, log out (`persona.js`
+`SettingsList`, `apps/settings.js`) - and its pages moved from
+`/ringtome/persona/<page>` to `/ringtome/settings/<page>` (`links.js`
+`settingsHref`; application settings, once `persona/settings`, is
+`settings/app`). Every old address, and anything beneath it, redirects with its
+query (`index.js` `SettingsMoved`), so a bookmark or a link in an old message
+still lands. "Your settings" on your own profile is now a link to the app, no
+longer a disclosure. `personaPageHref` is gone.

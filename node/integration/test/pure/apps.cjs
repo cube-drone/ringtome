@@ -323,14 +323,15 @@ describe('app registry', () => {
             const none = () => false;
             assert.deepEqual(
                 appsFor(false, none).map((a) => a.id),
-                ['persona', 'notifications', 'drawing', 'bank'],
+                ['persona', 'settings', 'notifications', 'drawing', 'bank'],
+                "Settings is everyone's, second, and never sold (2026-10-09)",
             );
             const friends = (id) => id === 'friends';
             assert.ok(appsFor(false, friends).some((a) => a.id === 'people'));
             assert.ok(!appsFor(false, friends).some((a) => a.id === 'notes'));
             assert.deepEqual(
                 appsFor(true, none).map((a) => a.id),
-                ['persona', 'notifications', 'drawing', 'bank', 'device'],
+                ['persona', 'settings', 'notifications', 'drawing', 'bank', 'device'],
                 'an administrator also has the server',
             );
             const cells = consoleCellsFor(false, 4, none);

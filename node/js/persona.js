@@ -36,11 +36,11 @@ import {
 import { useLedger, unlockedIn } from './unlocks.js';
 import { CrtToggle } from './crtpref.js';
 import { WarningLists } from './warnings.js';
-import { usePref, TOOLTIPS_KEY, SETTINGS_MENU_KEY, VIM_KEY } from './mirror/prefs.js';
+import { usePref, TOOLTIPS_KEY, VIM_KEY } from './mirror/prefs.js';
 import {
     appHref,
     personHref,
-    personaPageHref,
+    settingsHref,
     computersHref,
     importExportHref,
     LAUNCHER,
@@ -639,16 +639,21 @@ export const PersonaHome = ({ persona }) => {
     return null;
 };
 
-/// Managing yourself, on your own page: the three items the old persona home carried -
-/// profile, your computers, log out - folded into the disclosure that sits where "this is
-/// you" used to be a link (Curtis, 2026-09-05), under a gear and "your settings". Only the
-/// person in question ever sees it.
 // The account tag the node hands its administrators (src/auth.rs) - a key, never a phrase.
 const NODE_ADMIN_TAG = 'node_admin';
 
-export const PersonaMenu = ({ persona, session }) => {
-    // Left open or closed, it stays that way (Curtis, 2026-09-27) - a pref, kept by this browser.
-    const [menu, setMenu] = usePref(persona.current.root, SETTINGS_MENU_KEY, 'closed');
+/// "your settings", on your own page: once a disclosure holding them all (Curtis, 2026-09-05), now
+/// the way into the Settings app they outgrew it for (2026-10-09). Only the person in question ever
+/// sees it.
+export const PersonaMenu =
+    () => html`<a class="you-menu ledger-head settings-door" href=${settingsHref()}>
+    <span class="persona-menu-icon"><${Icons.settings} /></span>
+    ${t('persona.your-settings', 'your settings')}
+</a>`;
+
+/// Every setting there is, as the Settings app (apps/settings.js) lists them: profile, how the app
+/// behaves, personas, computers, content control, import/export - and log out.
+export const SettingsList = ({ persona, session }) => {
     const logout = async () => {
         // Heading out forgets this browser: stream stopped, mirror dropped. Confirm first - it's
         // easy to hit by mistake, and coming back means signing in again.
@@ -665,18 +670,6 @@ export const PersonaMenu = ({ persona, session }) => {
         session.logout();
     };
     return html`
-        <details
-            class="you-menu"
-            open=${menu === 'open'}
-            onToggle=${(e) => {
-                const now = e.currentTarget.open ? 'open' : 'closed';
-                if (now !== menu) setMenu(now);
-            }}
-        >
-            <summary class="ledger-head">
-                <span class="persona-menu-icon"><${Icons.settings} /></span>
-                ${t('persona.your-settings', 'your settings')}
-            </summary>
             ${
                 /* An administrator is told so (Curtis, 2026-09-16): the account's tags ride
                 the session's whoami answer. */ ''
@@ -688,21 +681,21 @@ export const PersonaMenu = ({ persona, session }) => {
                 html`<p class="persona-menu-note">${t('persona.you-administer-this-node', 'you administer this node')}</p>`
             }
             <nav class="persona-menu">
-                <a class="persona-menu-item" href=${personaPageHref('profile')}>
+                <a class="persona-menu-item" href=${settingsHref('profile')}>
                     <span class="persona-menu-icon"><${Icons.profile} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.profile', 'profile')}</strong>
                         <small>${t('persona.your-name-and-how-you', 'your name and how you appear')}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href=${personaPageHref('settings')}>
+                <a class="persona-menu-item" href=${settingsHref('app')}>
                     <span class="persona-menu-icon"><${Icons.appSettings} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.application-settings-menu', 'application settings')}</strong>
                         <small>${t('persona.how-the-app-behaves', 'how the app behaves for you, on this browser')}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href=${personaPageHref('personas')}>
+                <a class="persona-menu-item" href=${settingsHref('personas')}>
                     <span class="persona-menu-icon"><${Icons.personas} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.your-personas', 'your personas')}</strong>
@@ -716,7 +709,7 @@ export const PersonaMenu = ({ persona, session }) => {
                         <small>${t('persona.the-machines-that-carry-this', "the computers you're signed in on")}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href=${personaPageHref('content')}>
+                <a class="persona-menu-item" href=${settingsHref('content')}>
                     <span class="persona-menu-icon"><${Icons.biohazard} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.content-control', 'content control')}</strong>
@@ -738,7 +731,6 @@ export const PersonaMenu = ({ persona, session }) => {
                     </span>
                 </button>
             </nav>
-        </details>
     `;
 };
 

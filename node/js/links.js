@@ -39,18 +39,27 @@ export const docHref = (rootHex, doc, { row = null, bucket = null } = {}) =>
         bucket: bucketHint(row, bucket),
     });
 
-/// The console (2026-09-28: `/ringtome` where `/home` was), an app in it, and the persona's pages.
+/// The console (2026-09-28: `/ringtome` where `/home` was), and an app in it. The persona's own
+/// pages moved into the Settings app (2026-10-09, `settingsHref` below).
 export const LAUNCHER = PREFIX;
 export const appHref = (appId) => (appId ? `${PREFIX}/${appId}` : PREFIX);
-export const personaPageHref = (page) => (page ? `${PREFIX}/persona/${page}` : `${PREFIX}/persona`);
+
+/// The Settings app and its pages (2026-10-09: "they deserve an app all to themselves") -
+/// `profile`, `app` (how the app behaves), `personas`, `computers`, `content`, `import-export`.
+/// They lived under the persona at `/ringtome/persona/<page>`, which still redirects here;
+/// application settings was `persona/settings`, and is `settings/app`.
+export const settingsHref = (page) => {
+    if (!page) return `${PREFIX}/settings`;
+    return `${PREFIX}/settings/${page === 'settings' ? 'app' : page}`;
+};
 
 /// Your computers' tabs (2026-10-09): `new` adds a computer (the page's default), `all` is every
 /// computer with how each is syncing, `mine` is what this one holds; `all/report` is the sync
 /// report. Anything about syncing goes to `all`.
-export const computersHref = (tab = 'new') => personaPageHref(`computers/${tab}`);
+export const computersHref = (tab = 'new') => settingsHref(`computers/${tab}`);
 
 /// Import/export's two tabs (plans/EXPORT.md): `export` (the default) and `import`.
-export const importExportHref = (tab = 'export') => personaPageHref(`import-export/${tab}`);
+export const importExportHref = (tab = 'export') => settingsHref(`import-export/${tab}`);
 
 /// A notebook's own list.
 export const notebookHref = (bucketName, roster) => bucketHref(bucketName, roster);

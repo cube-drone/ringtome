@@ -177,7 +177,7 @@ const RemovalFlow = ({ current, target, keys, onDone, onClose }) => {
 /// each is syncing, and what this one holds. `report` is the sync report, under `all`.
 const TABS = ['new', 'all', 'mine'];
 
-/// `/ringtome/persona/computers` and `/ringtome/persona/computers/:tab` - a bare or unknown tab lands
+/// `/ringtome/settings/computers` and `/ringtome/settings/computers/:tab` - a bare or unknown tab lands
 /// on `new`.
 export const Computers = ({ current, tab }) => {
     const loc = useLocation();

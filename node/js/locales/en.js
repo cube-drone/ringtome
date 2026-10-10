@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1799 phrases across 108 files.
+// 1800 phrases across 109 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -424,6 +424,9 @@ export default {
     'apps.people.you-used-to-know': 'you used to know',
     'apps.people.relationships-you-set-and-later': 'people you used to follow',
     'apps.people.cleared': 'cleared',
+
+    // --- node/js/apps/settings.js ---
+    'settings.title': 'your settings',
 
     // --- node/js/auth.js ---
     'auth.running-in-local-server-mode': 'Running in Local Server Mode:',
@@ -1041,7 +1044,7 @@ export default {
     'exportpage.download': 'download it',
     'exportpage.make-another': 'make a new one (it replaces this one)',
     'exportpage.make': 'make an export',
-    'exportpage.import-not-here': "This server doesn't take imports - the way out of a server is an export, to a computer of your own. Its administrator can allow them; or import into the Horse Drawing Tycoon 2 app on your own computer, which always can.",
+    'exportpage.import-not-here': "This server doesn't allow imports.",
     'exportpage.import-what': "Bring an export back in - this persona's own, or another's. Only what's new is added: a document this persona already has is skipped, even if the file has changed, so nothing here is ever overwritten. Posts are published again as yours, and the people in it are followed again.",
     'exportpage.sending': 'sending it…',
     'exportpage.import-it': 'import it',
@@ -1254,8 +1257,8 @@ export default {
     'persona.--a-name-this-long': "- a name this long won't fit",
     'persona.thats-me': 'that’s me',
     'persona.maybe-later': 'maybe later',
-    'persona.log-out-of-this-browser': 'Log out of this browser? You will sign in again to come back.',
     'persona.your-settings': 'your settings',
+    'persona.log-out-of-this-browser': 'Log out of this browser? You will sign in again to come back.',
     'persona.you-administer-this-node': 'you administer this node',
     'persona.profile': 'profile',
     'persona.your-name-and-how-you': 'your name and how you appear',

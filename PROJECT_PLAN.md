@@ -2623,7 +2623,8 @@ and slice 3's rewrite at publish drops it.
 **Slice 2, as built** (2026-09-28). The signed-in app lives under `/ringtome`:
 the console at `/ringtome`, each app at `/ringtome/<app>`, a notebook's list at
 `/ringtome/<app>/notebook/<slug>` (`bucketHref`), the persona's pages at
-`/ringtome/persona/…`, a room at its
+`/ringtome/persona/…` (the settings' since 2026-10-09 at `/ringtome/settings/…`,
+their own app), a room at its
 `/ringtome/user/<author>/room/<doc>[/line/<hash>]`, and your own document at its
 `/ringtome/user/<you>/doc/<id>` - the shell reads the notebook it opens in off
 the mirror row and the `?bucket=` (`docPlacement`), and the app from that

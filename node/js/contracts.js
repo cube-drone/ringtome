@@ -5,7 +5,7 @@
 // contract, never a key built from the id (STYLE: never assemble a name at runtime) - the strings
 // tool reads them. A contract the node knows and this table doesn't yet wears the node's English.
 import { t } from './i18n.js';
-import { appHref, computersHref, personaPageHref } from './links.js';
+import { appHref, computersHref, settingsHref } from './links.js';
 
 const NAMES = {
     'draw-a-horse': () => t('contracts.draw-a-horse', 'Draw a horse in hrseDrawing™'),
@@ -82,14 +82,14 @@ const FINE_PRINT = {
             'contracts.set-a-profile-picture-fine-print',
             'Open your profile and choose a picture of yourself - upload one, or use one of your drawings.',
         ),
-        href: personaPageHref('profile'),
+        href: settingsHref('profile'),
     }),
     'choose-a-colorway': () => ({
         text: t(
             'contracts.choose-a-colorway-fine-print',
             'Open your profile and choose a colorway - the colors the whole app wears, for you and for everyone who visits your page.',
         ),
-        href: personaPageHref('profile'),
+        href: settingsHref('profile'),
     }),
     'say-hello': () => ({
         text: t(
@@ -152,7 +152,7 @@ const FINE_PRINT = {
             'contracts.make-a-second-persona-fine-print',
             'Open your personas and make another: a second you, with a name, friends and posts of its own, on this same account.',
         ),
-        href: personaPageHref('personas'),
+        href: settingsHref('personas'),
     }),
     'bring-your-persona': () => ({
         text: t(

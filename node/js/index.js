@@ -43,6 +43,7 @@ import { PostHistory } from './posthistory.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
 import { DeviceApp } from './apps/device.js';
+import { SettingsApp } from './apps/settings.js';
 import { BankApp } from './apps/bank.js';
 import { ChatApp } from './apps/chat.js';
 import { appsFor, appById, appLabel } from './pure/apps.js';
@@ -62,7 +63,7 @@ import {
     docHref,
     roomHref,
     appHref,
-    personaPageHref,
+    settingsHref,
     LAUNCHER,
 } from './links.js';
 import { parseSpeakable } from './speakable.js';
@@ -177,9 +178,9 @@ const AtRoute = ({ at, fallback: Fallback, ...props }) =>
 // persona is open, routing takes over. The whole internal UI lives under /ringtome (since
 // 2026-09-28; /home and /in before it, which now only redirect): `/ringtome` is the console,
 // `/ringtome/notes` the notes app, a document at its own `/ringtome/user/…/doc/…` address, and
-// `/ringtome/persona` jumps to your own person page -
-// identity management lives there, with `/ringtome/persona/profile` and `/computers` beneath it
-// (reached by the dock's persona tile).
+// `/ringtome/persona` jumps to your own person page (reached by the dock's persona tile), and
+// `/ringtome/settings` is the Settings app - profile, computers and the rest beneath it, which
+// lived under `/ringtome/persona/` until 2026-10-09 and redirect from there.
 /// One of the account's other personas, stacked above the dock's persona tile (Curtis, 2026-09-30:
 /// switching is "something I'm doing a lot of"): their face in their colour, their name on hover,
 /// a click to be them.
@@ -641,15 +642,18 @@ const Inside = ({ session }) => {
                 admin=${nodeAdmin}
             />
             <${PersonaHome} path="/ringtome/persona" persona=${persona} />
-            <${Profile} path="/ringtome/persona/profile" current=${persona.current} />
-            <${Computers} path="/ringtome/persona/computers" current=${persona.current} />
-            <${Computers} path="/ringtome/persona/computers/:tab" current=${persona.current} />
-            <${Computers} path="/ringtome/persona/computers/all/report" tab="report" current=${persona.current} />
-            <${ContentControl} path="/ringtome/persona/content" current=${persona.current} />
-            <${ExportPage} path="/ringtome/persona/import-export" current=${persona.current} />
-            <${ExportPage} path="/ringtome/persona/import-export/:tab" current=${persona.current} />
-            <${AppSettings} path="/ringtome/persona/settings" current=${persona.current} />
-            <${Personas} path="/ringtome/persona/personas" persona=${persona} current=${persona.current} />
+            <${SettingsApp} path="/ringtome/settings" persona=${persona} session=${session} />
+            <${Profile} path="/ringtome/settings/profile" current=${persona.current} />
+            <${Computers} path="/ringtome/settings/computers" current=${persona.current} />
+            <${Computers} path="/ringtome/settings/computers/:tab" current=${persona.current} />
+            <${Computers} path="/ringtome/settings/computers/all/report" tab="report" current=${persona.current} />
+            <${ContentControl} path="/ringtome/settings/content" current=${persona.current} />
+            <${ExportPage} path="/ringtome/settings/import-export" current=${persona.current} />
+            <${ExportPage} path="/ringtome/settings/import-export/:tab" current=${persona.current} />
+            <${AppSettings} path="/ringtome/settings/app" current=${persona.current} />
+            <${Personas} path="/ringtome/settings/personas" persona=${persona} current=${persona.current} />
+            <${SettingsMoved} path="/ringtome/persona/:page" />
+            <${SettingsMoved} path="/ringtome/persona/:page/*" />
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
@@ -751,6 +755,19 @@ const DocResolve = ({ seg, doc, current }) => {
         };
     }, [seg, doc, me, loc]);
     return privateHere ? html`<${PrivateDoc} />` : null;
+};
+
+/// The settings' old addresses (2026-10-09): `/ringtome/persona/<page>` - and anything beneath it -
+/// is `/ringtome/settings/<page>` now, application settings `settings/app` (links.js `settingsHref`).
+const SettingsMoved = () => {
+    const loc = useLocation();
+    useEffect(() => {
+        const rest = loc.path.replace(/^\/ringtome\/persona\/?/, '');
+        const [page, ...deeper] = rest.split('/');
+        const query = loc.url.includes('?') ? loc.url.slice(loc.url.indexOf('?')) : '';
+        loc.route(settingsHref([page, ...deeper].join('/')) + query, true);
+    }, [loc]);
+    return null;
 };
 
 /// Root, signed in: the console lives at /home (PROJECT_PLAN's The node's public face, 2026-09-15 - root is the
@@ -885,7 +902,7 @@ const LegacyHome = ({ current }) => {
         if (!cozy) {
             const [first, second, third, fourth] = segs;
             if (!first) return go(LAUNCHER);
-            if (first === 'persona') return go(personaPageHref(second));
+            if (first === 'persona') return go(second ? settingsHref(second) : appHref('persona'));
             if (first === 'device')
                 return go(second ? `${appHref('device')}/${second}` : appHref('device'));
             if (first === 'chat') {

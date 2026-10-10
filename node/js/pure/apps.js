@@ -21,6 +21,10 @@ export const APPS = [
     // pages (profile, computers, log out) rather than a document surface - so no `style`, and it
     // is excluded from the document-app routes. Its dock tile wears the persona's own name.
     { id: 'persona', name: 'hrsePersona™', icon: 'persona', live: true, system: true },
+    // Settings (2026-10-09): every setting, an app of its own - second, before Neighbors - where it
+    // had been a disclosure on your own page. A system app like Persona: its own pages, no
+    // documents (apps/settings.js).
+    { id: 'settings', name: 'hrseSettings™', icon: 'settings', live: true, system: true },
     {
         id: 'people',
         name: 'Neighbors',
