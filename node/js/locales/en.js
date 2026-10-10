@@ -367,6 +367,8 @@ export default {
     'apps.notes.nothing-matches': 'nothing matches.',
     'apps.notes.storage-foot-title': 'what moving this persona to another computer carries: every file, each version, and its own records',
     'apps.notes.storage-foot': '{size} in all',
+    'apps.notes.count': '{n} {things}',
+    'apps.notes.count-of': '{shown} of {n} {things}',
     'apps.notes.remove-filter': 'remove filter',
     'apps.notes.tags': 'tags',
     'apps.notes.tree': 'tree',

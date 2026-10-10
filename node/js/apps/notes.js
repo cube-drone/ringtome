@@ -635,6 +635,13 @@ export const DocsApp = ({
     const browse = app.everything
         ? browseFiles(ordered, { notebook, tags: tagFilter, kinds: kindFilter })
         : null;
+    // How many the notebook holds, unfiltered - the count under "+ new" (Curtis, 2026-10-10), which
+    // says "12 of 120" while a search or a tag narrows the list.
+    const holding = useMemo(
+        () =>
+            app.everything ? 0 : orderDocs(listed, { app, bucket, hits: null, tags: [] }).length,
+        [listed, app, bucket],
+    );
     // What the files take (storage.js): asked only in the browser, and again when the documents move.
     const storage = useStorage(
         app.everything ? root : null,
@@ -809,6 +816,24 @@ export const DocsApp = ({
                         html`<button class="notes-new" data-settles disabled=${busy} onClick=${createNew}>
                         ${busy ? '…' : `+ new ${noun}`}
                     </button>`
+                    }
+                    ${
+                        !app.everything &&
+                        docs &&
+                        html`<p class="notes-count">
+                            ${
+                                list.length === holding
+                                    ? t('apps.notes.count', '{n} {things}', {
+                                          n: holding,
+                                          things: holding === 1 ? noun : nouns,
+                                      })
+                                    : t('apps.notes.count-of', '{shown} of {n} {things}', {
+                                          shown: list.length,
+                                          n: holding,
+                                          things: holding === 1 ? noun : nouns,
+                                      })
+                            }
+                        </p>`
                     }
                     ${
                         tagFilter.length > 0 &&

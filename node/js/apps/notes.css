@@ -29,6 +29,14 @@
     min-height: 0;
 }
 
+/* How many the notebook holds, under "+ new" (apps/notes.js): small, quiet, centred. */
+.notes-count {
+    margin: -0.15rem 0 0.1rem;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
 .notes-new {
     background: none;
     border: 1px dashed var(--border-strong);

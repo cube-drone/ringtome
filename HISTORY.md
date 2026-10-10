@@ -19458,3 +19458,14 @@ since this morning, across the remount that used to clear it. Now a picked tag
 stays on that row whatever it counts, and both apps drop a picked tag no
 document carries any more once the mirror holds them (a deleted document leaves
 the mirror, `docs_removed`, and its tags with it).
+
+## 2026-10-10 (cont.): how many there are
+
+Curtis: under "+ new" in the list, "a small, subtle, centered count of the
+number of notes in the collection ... For pictures, too". Writer's and
+hrseDrawing's lists (one code path) say how many the notebook holds - "120
+notes", "1 drawing"
+
+- and, while a search or a tag narrows the list, "12 of 120 notes", so the count
+  never disagrees with the rows (apps/notes.js `holding`, `.notes-count`).
+  hrseFiles, which has no "+ new", has none.
