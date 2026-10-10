@@ -130,6 +130,7 @@
     clip-path: var(--jag-1);
     color: var(--sea);
     font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
     font-size: 0.8rem;
     padding: 0.8rem;
     word-break: break-all;
@@ -207,6 +208,7 @@
     --j: 3px;
     color: var(--sea);
     font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
     font-size: 0.75rem;
     padding: 0.55rem 0.7rem;
     resize: vertical;
@@ -547,6 +549,7 @@
 .computer-facts {
     color: var(--faint);
     font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
     font-size: 0.75rem;
 }
 
@@ -561,6 +564,7 @@
 .held-code {
     margin: 0.1rem 0 0.5rem;
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     font-size: 2rem;
     letter-spacing: 0.15em;
 }
@@ -580,6 +584,7 @@
 
 .held-count {
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
 }
 
 /* How each computer is syncing (js/syncpage.js; plans/SYNC_STATUS.md, piece 4), under its own row
@@ -665,6 +670,7 @@
     background: var(--surface);
     color: var(--ink);
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     font-size: 0.8rem;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -740,6 +746,7 @@
 .removal-fact {
     color: var(--faint);
     font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
     font-size: 0.75rem;
     margin: 0.7rem 0 0.3rem;
 }
@@ -2490,6 +2497,7 @@ article:has(.label-emoji-strip) {
 
 .settings-version {
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     color: var(--ink-soft);
 }
 
@@ -2762,6 +2770,7 @@ article:has(.label-emoji-strip) {
 
 .settings-key-value {
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     font-size: 0.8rem;
     overflow-wrap: anywhere;
     user-select: all;

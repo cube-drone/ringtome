@@ -127,6 +127,11 @@ lightly federated, unapologetically Old Internet.
   chunky), each computer's sync state and a Sync now button on _Your computers_,
   and a _This computer_ tab of counts and a sync code to compare between
   devices. A design draft (2026-10-07); nothing built.
+- [`TEXT_HELPERS.md`](plans/TEXT_HELPERS.md) — buttons that write Marquee for
+  people who don't know markup: effects, text style (font, size, colour), link
+  and blocks (a quote on every line, a starter table), each acting on the
+  selection - or on "text", inserted and selected - and changing a span already
+  there rather than nesting another. A design draft (2026-10-10); nothing built.
 - [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
   starts with Drawing, the Bank and Nags and buys the rest from the Market with
   HorseBucks; unlocks on the private chain as ledger spends, gates in the client

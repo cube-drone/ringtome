@@ -144,6 +144,8 @@ import {
     CloudArrowDown,
     CloudArrowUp,
     CloudSun,
+    Lifebuoy,
+    Square,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -226,7 +228,9 @@ export const Icons = {
     conflict: GitPullRequest,
     merged: GitMerge,
     formatMarquee: ArticleMedium,
-    formatPlain: TextT,
+    // plain text: a square, "make this document boring" (Curtis, 2026-10-10) - TextT read as a
+    // font picker
+    formatPlain: Square,
     // editor view modes (icon-only tabs; names live in the tooltip)
     modeInteractive: ArticleMedium,
     modeSide: SquareHalf,
@@ -250,6 +254,8 @@ export const Icons = {
     navPrev: ArrowLeft,
     navNext: ArrowRight,
     // file upload (the doc-menu button; drop and paste land in the same place)
+    // help with writing Marquee - the editor's tool row, out to its own site (doc/editor.js)
+    help: Lifebuoy,
     upload: UploadSimple,
     // say it: the chat composer's send
     send: PaperPlaneRight,

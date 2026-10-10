@@ -103,6 +103,8 @@ const houseTheme = EditorView.theme({
     '&.cm-editor .cm-panels-bottom': { borderTop: '1px solid var(--border)' },
     '&.cm-editor .cm-vim-panel, &.cm-editor .cm-vim-panel input': {
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        // No code ligatures - fonts.css says why.
+        fontVariantLigatures: 'none',
         color: 'var(--ink)',
     },
     // Vim's search hits: the highlighter every search here uses.

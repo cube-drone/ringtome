@@ -264,6 +264,7 @@
     min-width: 1.1em;
     padding: 0.15rem 0.2rem;
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     font-weight: 700;
     text-align: center;
     color: var(--bg);
@@ -290,6 +291,7 @@
     align-items: flex-end;
     color: var(--faint);
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     font-size: 0.7rem;
 }
 
@@ -387,6 +389,7 @@
 .download-version {
     color: inherit;
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
 }
 
 a.download-version:hover,

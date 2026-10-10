@@ -208,6 +208,7 @@ body {
     padding: 0.15rem 0.55rem;
     color: var(--ink);
     font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
     font-size: 0.85rem;
     cursor: pointer;
     flex: 1;

@@ -19342,6 +19342,7 @@ hrseFiles's dropper folds its upload window on OK and keeps it, holding a
 failure as a line, and the window reads its files when it opens - so a second
 pick went into the open one, which showed the old failure and never sent. Each
 pick gets a window of its own now (`key`).
+
 ## 2026-10-10 (cont.): fewer conflicts between parallel branches
 
 Two things every branch touched, and so every pair of branches fought over. The
@@ -19352,3 +19353,46 @@ gives `HISTORY.md` `merge=union`: two entries appended at the end keep both,
 ours then theirs, instead of stopping - safe while old entries go unedited. The
 migration ladder's duplicate-number worry was already met:
 `each_ladder_matches_its_directory` wants versions dense.
+
+## 2026-10-10 (cont.): the editor's writing tools
+
+Curtis: a row of "helpful" text-editing chips right of the editor's mode tabs,
+in its editing modes - upload a file, insert an image, convert between plaintext
+and Marquee, and a new help chip (Phosphor's lifebuoy) out to
+https://marquee.cube-drone.com/ - and, these being rich text's tools, only
+"convert to Marquee" for a plaintext document. Built in doc/editor.js as
+`tools`, drawn at the tab strip's right end (`.editor-tools`), and taken out of
+the header's deck, so nothing is offered twice; read-only has none. The strip
+draws for the tools alone where there are no tabs - a narrow window, a one-mode
+document - so a phone keeps its upload. The format chip now says what it does
+("convert this document to plaintext", the target's glyph) rather than naming
+the format it's in, and the tools' tooltips translate. A chip can be a link now
+(doc/chips.js `href`, opened beside the app - the desktop hands it to the system
+browser).
+
+## 2026-10-10 (cont.): no code ligatures
+
+Curtis: "..." and "-->" showed inconsistent ligatures in the plain editor and in
+the interactive one. JetBrains Mono, the app's monospace everywhere, draws code
+ligatures through `calt`, on by default - and a ligature forms only within one
+run of text, so CodeMirror's styled spans joined an arrow in one place and not
+the next. Every rule that sets JetBrains Mono now also sets
+`font-variant-ligatures: none` (18 of them), as does the interactive editor's
+theme (doc/livemarquee.js); fonts.css says why, since the @font-face way to turn
+a feature off is Firefox's alone. Rendered Marquee's code is `ui-monospace`,
+which has none; its author-chosen `.mq-font-jetbrains-mono` is marqueemarkup's.
+
+## 2026-10-10 (cont.): file and edit, on a phone
+
+Curtis: under 900px the new writing tools fold into one chip, as the options and
+publish rows do - and Writer's "options" becomes "file", the tools "edit".
+`useChipMenu` takes the chip's word, tooltip and glyph now
+(`{ word, title, icon }`, "options" when unsaid, so feed cards, drawings, the
+reader and chat are as they were); Writer's two are "file" (the header's chips)
+and "edit" (the tools, whose strip hides on a narrow window). Two open menus
+close each other: each closes on a press outside it. Then (Curtis: "file",
+"edit" and "publish" should all be part of this shared tab management): on a
+narrow window the three are one set - Writer holds which is open (`folded`),
+opening one shuts the others and pressing the open one shuts it, where before
+the publish bar stayed open under either menu. `useChipMenu` takes `open` and
+`setOpen` for a host that holds the state, and keeps its own otherwise.

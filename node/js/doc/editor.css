@@ -23,6 +23,7 @@
     --j: 3px;
     color: var(--ink);
     font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
     font-size: 0.85rem;
     line-height: 1.5;
     padding: 0.8rem;
@@ -58,6 +59,17 @@
    neighbours, but its clip, its line and its paper now share an edge (no paper hair outside the
    steps), and its bottom row lies over the editor's top line, which its paper covers between its
    sides and its sides meet. Its icon keeps the teal that says which one is open. */
+/* The writing tools (doc/editor.js): chips at the tab strip's right end, standing clear of the
+   editor's top line the tabs sit on. */
+.editor-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-left: auto;
+    align-self: center;
+    padding: 0 0.6rem calc(0.6rem + 2 * var(--lw)) 0;
+}
+
 .editor-tabs .tab.active {
     background: var(--paper);
     --line: var(--border);
@@ -203,6 +215,13 @@
 
 .chip-button:hover {
     --line: var(--sea);
+}
+
+/* A chip that is a link (doc/chips.js `href`): a chip still, not underlined text. */
+a.chip-button {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
 }
 
 /* An end-of-the-book nav arrow: still present (the pair keeps its shape), just quiet. */

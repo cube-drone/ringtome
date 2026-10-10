@@ -135,11 +135,29 @@ export const Editor = ({
     // fires on the way out.
     const metaChipRef = useRef(null);
     const metaPanelRef = useRef(null);
-    // A narrow window's chips sit behind one menu chip (`deck`, below; doc/chips.js `useChipMenu`).
-    const menu = useChipMenu();
+    // A narrow window folds the header's chips behind "file", the writing tools behind "edit", and
+    // the publish bar behind "publish" (Curtis, 2026-10-10) - one set, like tabs: opening one shuts
+    // the others, and pressing the open one shuts it. `folded` is which is open, or null.
+    const [folded, setFolded] = useState(null);
+    const opens = (which) => (on) => setFolded((now) => (on ? which : now === which ? null : now));
+    const menu = useChipMenu({
+        word: t('chips.file', 'file'),
+        title: t('doc.editor.file-title', 'this document: delete, copy, its link, tags and pins'),
+        icon: Icons.page,
+        open: folded === 'file',
+        setOpen: opens('file'),
+    });
+    const editMenu = useChipMenu({
+        word: t('chips.edit', 'edit'),
+        title: t('doc.editor.edit-title', 'writing tools: upload, pictures, the format, help'),
+        icon: Icons.rename,
+        open: folded === 'edit',
+        setOpen: opens('edit'),
+    });
     const narrow = menu.narrow;
-    // ...and the publish bar behind a chip of its own beside it, summoned when wanted.
-    const [publishOpen, setPublishOpen] = useState(false);
+    const publishOpen = folded === 'publish';
+    const setPublishOpen = (next) =>
+        opens('publish')(typeof next === 'function' ? next(publishOpen) : next);
     const social = useUnlocked(root, 'social');
     // The publish bar (doc/publishbar.js, shared with the drawing surface): Writer brings its door
     // (publishWithBaking, after a save - the door publishes what is SAVED) and its answer to "do
@@ -531,6 +549,56 @@ export const Editor = ({
     // Social), so a narrow window offers its chip only when it summons something.
     const hasPublishBar = feat.publish && (!!book || standing !== 'private' || social);
 
+    // The writing tools (Curtis, 2026-10-10): a row of their own, right of the mode tabs, out of the
+    // header's deck - upload, a picture, the format, and help with Marquee. They are rich text's, so
+    // a plaintext document has only the way back to Marquee, and read-only - nothing to edit - none.
+    const marquee = format === 'marquee';
+    const formatChip =
+        feat.format &&
+        html`<${Chip}
+            icon=${marquee ? Icons.formatPlain : Icons.formatMarquee}
+            word=${marquee ? t('chips.to-plain', 'plain') : t('chips.to-marquee', 'marquee')}
+            title=${
+                marquee
+                    ? t('doc.editor.convert-to-plaintext', 'convert this document to plaintext')
+                    : t('doc.editor.convert-to-marquee', 'convert this document to Marquee')
+            }
+            onClick=${() => {
+                setFormat(marquee ? 'plaintext' : 'marquee');
+                touched();
+            }}
+        />`;
+    const tools =
+        mode === 'read'
+            ? null
+            : !marquee
+              ? formatChip
+              : html`
+                  ${
+                      canUpload &&
+                      html`<${Chip}
+                          icon=${Icons.upload}
+                          word=${t('chips.upload', 'upload')}
+                          title=${t('doc.editor.upload-a-file', 'upload a file into this document (dropping or pasting one works too)')}
+                          onClick=${pickFiles}
+                      />`
+                  }
+                  <${Chip}
+                      icon=${Icons.addImage}
+                      word=${t('chips.image', 'image')}
+                      title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}
+                      onClick=${() => setPicking(true)}
+                  />
+                  ${formatChip}
+                  <${Chip}
+                      icon=${Icons.help}
+                      word=${t('chips.help', 'help')}
+                      title=${t('doc.editor.marquee-help', "Marquee's own guide: links, pictures, tables and the rest")}
+                      href="https://marquee.cube-drone.com/"
+                  />
+              `;
+    const showTabs = available.length > 1 && !narrow;
+
     // The chips, the whole deck (Curtis, 2026-10-08): a row on a wide window, and behind one
     // menu chip on a narrow one, where the row never fit (below).
     const deck = html`
@@ -564,35 +632,6 @@ export const Editor = ({
                               title="Merged — changes from two computers woven together cleanly; your next save seals the weave"
                           />`)
                     }
-                    ${
-                        feat.format &&
-                        html`<${Chip}
-                        icon=${format === 'marquee' ? Icons.formatMarquee : Icons.formatPlain}
-                        word=${format === 'marquee' ? t('chips.marquee', 'marquee') : t('chips.plain', 'plain')}
-                        title=${
-                            format === 'marquee'
-                                ? 'Marquee — click to convert this document to plaintext'
-                                : 'Plaintext — click to convert this document to Marquee'
-                        }
-                        onClick=${() => {
-                            setFormat(format === 'plaintext' ? 'marquee' : 'plaintext');
-                            touched();
-                        }}
-                    />`
-                    }
-                    ${
-                        canUpload &&
-                        html`<${Chip}
-                        icon=${Icons.upload} word=${t('chips.upload', 'upload')}
-                        title="Upload — attach a file to this document (drop or paste works too)"
-                        onClick=${pickFiles}
-                    />`
-                    }
-                    <${Chip}
-                        icon=${Icons.addImage} word=${t('chips.image', 'image')}
-                        title=${t('doc.editor.insert-an-image', 'insert an image from your pictures and drawings')}
-                        onClick=${() => setPicking(true)}
-                    />
                     ${
                         /* The document's address (2026-09-28): a `/ringtome/…/doc/` link - pasted into
                         another document it unfolds as this one for you, and says "private" to anyone
@@ -673,6 +712,7 @@ export const Editor = ({
                         />`
                     }
                     ${narrow ? menu.chip : deck}
+                    ${narrow && tools && editMenu.chip}
                 </span>
                 ${
                     /* Open, the deck is a full-width line of the header, under the title: within the
@@ -680,6 +720,7 @@ export const Editor = ({
                     over it (2026-10-08: dropped from the chip, it spread under the tabs). */ ''
                 }
                 ${menu.panel(deck)}
+                ${tools && editMenu.panel(tools)}
                 ${
                     copying &&
                     html`<${CopyIntoModal}
@@ -763,17 +804,20 @@ export const Editor = ({
             />`
             }
             ${
-                available.length > 1 &&
-                !narrow &&
+                (showTabs || (tools && !narrow)) &&
                 html`<div class="editor-tabs">
-                ${available.map(
-                    (m) => html`<button
+                ${
+                    showTabs &&
+                    available.map(
+                        (m) => html`<button
                         key=${m}
                         class=${mode === m ? 'tab jag-line-top active' : 'tab jag-line-top'}
                         title=${MODES[m]}
                         onClick=${() => pickMode(m)}
                     ><${MODE_ICONS[m]} /></button>`,
-                )}
+                    )
+                }
+                ${tools && !narrow && html`<span class="editor-tools">${tools}</span>`}
             </div>`
             }
             ${status === 'error' && html`<p class="form-error">${error}</p>`}

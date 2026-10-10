@@ -29,7 +29,7 @@ const html = htm.bind(h);
  * Rendered as a <span> when there is no onClick, because a chip can also be a STATUS - the format
  * name, the save spinner - and a button you cannot press is a lie to a keyboard.
  */
-export const Chip = ({ icon, title, onClick, disabled, on, modifier, children, word }) => {
+export const Chip = ({ icon, title, onClick, href, disabled, on, modifier, children, word }) => {
     const cls = [
         'chip',
         onClick && 'chip-button',
@@ -44,6 +44,13 @@ export const Chip = ({ icon, title, onClick, disabled, on, modifier, children, w
     // children need none.
     const glyph = children || (icon && html`<${icon} />`);
     const inner = word ? html`${glyph}<span class="chip-word">${word}</span>` : glyph;
+    // A chip that goes somewhere else - the editor's help, a site of its own - is a link, opened
+    // beside the app (the desktop app hands a new window to the system browser: desktop/src/links.rs).
+    if (href) {
+        return html`<a class=${`${cls} chip-button`} title=${title} href=${href} target="_blank" rel="noopener">
+            ${inner}
+        </a>`;
+    }
     if (!onClick) return html`<span class=${cls} title=${title}>${inner}</span>`;
     return html`<button class=${cls} title=${title} disabled=${disabled} onClick=${onClick}>
         ${inner}
@@ -86,27 +93,43 @@ export const NavChips = ({ nav }) => {
  * answer is on itself - "link" turning to "copied" - wears `chip-keeps-menu`, and the menu stays
  * open to show it (2026-10-08).
  */
-export function useChipMenu() {
+///
+/// The chip says "options" unless the host names it (2026-10-10: Writer's two are "file" and
+/// "edit"): `{ word, title, icon }`. A host whose menus are one set - only one open at a time, as
+/// Writer's file, edit and publish are - holds which is open itself and passes `open` and
+/// `setOpen`; left out, the menu holds its own.
+export function useChipMenu({ word, title, icon, open: heldOpen, setOpen: setHeldOpen } = {}) {
     const narrow = useNarrow();
-    const [open, setOpen] = useState(false);
+    const [ownOpen, setOwnOpen] = useState(false);
+    const held = typeof setHeldOpen === 'function';
+    const open = held ? !!heldOpen : ownOpen;
+    const setOpen = (next) => {
+        const value = typeof next === 'function' ? next(open) : next;
+        if (held) setHeldOpen(value);
+        else setOwnOpen(value);
+    };
     const anchor = useRef(null);
     const panelRef = useRef(null);
+    // The closer the press-elsewhere listener calls: this render's, read when it fires, so the
+    // listener needn't be remade every render.
+    const closer = useRef(setOpen);
+    closer.current = setOpen;
     useEffect(() => {
         if (!open) return undefined;
         const onDown = (e) => {
             const inChip = anchor.current && anchor.current.contains(e.target);
             const inPanel = panelRef.current && panelRef.current.contains(e.target);
-            if (!inChip && !inPanel) setOpen(false);
+            if (!inChip && !inPanel) closer.current(false);
         };
         document.addEventListener('mousedown', onDown);
         return () => document.removeEventListener('mousedown', onDown);
     }, [open]);
     const chip = html`<span class="chip-menu-anchor" ref=${anchor}>
         <${Chip}
-            icon=${Icons.menu}
-            word=${t('chips.options', 'options')}
+            icon=${icon || Icons.menu}
+            word=${word || t('chips.options', 'options')}
             on=${open}
-            title=${t('doc.chips.options-title', 'options')}
+            title=${title || t('doc.chips.options-title', 'options')}
             onClick=${() => setOpen((v) => !v)}
         />
     </span>`;

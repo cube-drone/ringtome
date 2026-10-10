@@ -521,6 +521,7 @@
     min-width: 0;
     font: inherit;
     font-family: "JetBrains Mono", monospace;
+    font-variant-ligatures: none;
     font-size: 0.85rem;
     color: var(--ink);
     background: var(--field);

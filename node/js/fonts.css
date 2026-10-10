@@ -11,6 +11,10 @@
 @font-face { font-family: "IM Fell English"; src: url("/fonts/im-fell-english.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Uncial Antiqua"; src: url("/fonts/uncial-antiqua.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "UnifrakturMaguntia"; src: url("/fonts/unifraktur.woff2") format("woff2"); font-display: swap; }
+/* JetBrains Mono draws `-->`, `...`, `!=` and the rest as code ligatures (its `calt`), which in
+   text being written or read as typed is a surprise - and joined only within one run of text, so the
+   same arrow formed in one place and not the next (Curtis, 2026-10-10). Every rule that sets it also
+   sets `font-variant-ligatures: none`: the @font-face way to turn a feature off is Firefox's alone. */
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "VT323"; src: url("/fonts/vt323.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "Press Start 2P"; src: url("/fonts/press-start.woff2") format("woff2"); font-display: swap; }

@@ -57,6 +57,7 @@
     padding: 0.2em 0.55em;
     color: var(--dock-text);
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     font-size: 0.9rem;
     letter-spacing: 0.03em;
     opacity: 0.9;
@@ -141,6 +142,7 @@
     margin: 6px 0.6rem 0 auto;
     color: var(--dock-text);
     font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-ligatures: none;
     font-size: 0.75rem;
     letter-spacing: 0.02em;
     opacity: 0.65;
