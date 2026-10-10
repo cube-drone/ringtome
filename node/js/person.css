@@ -89,6 +89,19 @@
     opacity: 1;
 }
 
+/* Inside a post, the card drops below its chip (Curtis, 2026-10-10: popping up, a name at the
+   top of a post had its card cut off by the post's own jagged edge - and below there is always
+   room, since a post is taller than its first line, and to the right). */
+.feed-entry .person-chip-label {
+    bottom: auto;
+    top: calc(100% + 0.35rem);
+    /* ...and opens rightward from the chip rather than centred on it: a name sits at a post's
+       left edge, where a centred card's left half was cut off too, and the room is to the right. */
+    left: 0;
+    transform: none;
+    align-items: flex-start;
+}
+
 /* The name in the flow of a line: face and name together, nothing to pop over. */
 .person-inline {
     display: inline-flex;

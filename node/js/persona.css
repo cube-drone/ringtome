@@ -1746,6 +1746,22 @@ article:has(.label-emoji-strip) {
     padding: 0.7em 1em;
 }
 
+/* A card off screen is neither laid out nor painted (2026-10-10, after the notes list's 1,100
+   rows: the feed is the app's longest list), held at a typical card's height until it scrolls near
+   - `auto` remembers each card's real height once seen. The containment this brings clips nothing
+   the card's own jagged clip-path doesn't already; and while one of its popovers is open - the
+   reaction palette, the sharers' roster - the card is drawn as it always was, guard and all. */
+.feed-entry {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 14rem;
+}
+
+.feed-entry:has(.label-emoji-strip),
+.feed-entry:has(.feed-entry-via-others:hover),
+.feed-entry:has(.feed-entry-via-others:focus-within) {
+    content-visibility: visible;
+}
+
 /* Low interest: a little transparent - present, but quieter. Its size used to be a 15% step
    here, which made one cliff between "Low priority" and "Medium", left the top three stops
    identical, and was invisible enough that nobody noticed it existed; the ramp owns size now. */
@@ -1827,6 +1843,15 @@ article:has(.label-emoji-strip) {
     box-shadow: 0 2px 8px var(--shadow-drop);
     opacity: 0;
     transition: opacity 0.12s ease;
+}
+
+/* Inside a post it drops below the "shared by" line, for the reason a name's card does
+   (person.css): opening upward from a post's first line, the post's own edge cut it off. */
+.feed-entry .feed-entry-via-roster {
+    bottom: auto;
+    top: 100%;
+    margin-bottom: 0;
+    margin-top: 0.25em;
 }
 
 .feed-entry-via-others:hover .feed-entry-via-roster,

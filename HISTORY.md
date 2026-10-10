@@ -19485,4 +19485,22 @@ it's written (mirror.js `nextStamp`, Dexie's creating/updating hooks, a
 page-load prefix since rows outlive the page), so `sameRow` compares stamps,
 falling back to JSON only for a row from before them. Not the feed: its cards'
 emoji strip and sharers' roster hang outside the card, and paint containment
-holds while a card is on screen too.
+holds while a card is on screen too. Then the feed (Curtis: "go ahead with the
+feed guard"): `.feed-entry` carries `content-visibility: auto` too
+(`contain-intrinsic-size: auto 14rem`). Looking for what its containment would
+cut off turned up that the card already clips everything inside it to its jagged
+outline (`clip-path: var(--jag)`), so the reaction palette's dropdown and the
+sharers' roster are clipped at the card's edge today - the containment cuts
+nothing new. The guard is there anyway: a card with its palette open, or its
+roster hovered or focused, is drawn as it always was
+(`content-visibility: visible`). Whether the wide window's palette dropdown is
+cut off by the card's own clip now is worth a look - unseen, and unreported.
+Then the pop-outs that were the real trouble (Curtis: the emoji palette never
+was - "most posts... are simply too tall" - but "user card pop-outs... pop up,
+not down"): inside a post, a name's card (`.person-chip-label`) now drops below
+its chip and opens rightward from it rather than centred over it, and the
+"shared by" roster drops below its line - a post's first line put both against
+the post's own clipped top edge, and a name at its left edge cut a centred
+card's left half off too. Outside a post they open as they did. Seen in a
+headless-Chrome screenshot of a post mock-up with the app's stylesheet, before
+and after.
