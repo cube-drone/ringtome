@@ -11,7 +11,15 @@
 // what let Recipes and Wikibook wear the same skeleton before they were folded back into
 // Writer (2026-08-08), and what lets Lost & Found wear it now without importing a line.
 import { h } from 'preact';
-import { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'preact/hooks';
+import {
+    useState,
+    useEffect,
+    useLayoutEffect,
+    useContext,
+    useRef,
+    useCallback,
+    useMemo,
+} from 'preact/hooks';
 import { memo } from 'preact/compat';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
@@ -448,7 +456,14 @@ const FileBrowser = ({
         browse.cloud.length > 0 &&
         html`<${TagFacetRow}
         label=${t('apps.notes.tagged', 'tagged')}
-        items=${browse.cloud.map(([value, count]) => ({ value, count }))}
+        items=${[
+            ...browse.cloud.map(([value, count]) => ({ value, count })),
+            // A picked tag stays on the row whatever it counts here (2026-10-10): one no file
+            // carries any more dropped off it, and the filter it made couldn't be taken back.
+            ...tags
+                .filter((tag) => !browse.cloud.some(([value]) => value === tag))
+                .map((value) => ({ value, count: 0 })),
+        ]}
         picked=${tags}
         out=${[]}
         onToggle=${onToggleTag}
@@ -480,6 +495,14 @@ const FileBrowser = ({
 // machinery is the same, so a new app style is a registry line plus, later, its own layout.
 // `searchQuery`, not `query` - preact-iso's Router injects its OWN `query` prop (parsed URL search
 // params, an object), which would shadow a prop of that name and break the string search.
+/// The list's own view of things - its tag filters, hrseFiles's notebook and kind picks, how far it
+/// is scrolled - per persona and app, kept outside the app (Curtis, 2026-10-10: deleting a note
+/// "forced what felt like a page refresh", clearing the tags and the list's scroll). A note at its
+/// own address and the notebook's list are drawn under different routes (index.js `DocRoute`,
+/// `AppRoute`), so going from one to the other - a delete, opening the first note - mounts a fresh
+/// app; this is what it finds again. Per tab, like the last note open (doc/docapp.js).
+const listViews = new Map();
+
 export const DocsApp = ({
     app,
     current,
@@ -494,9 +517,25 @@ export const DocsApp = ({
     const noun = itemNoun(app); // what this app calls one of its things, and many of them
     const nouns = itemPlural(app);
     const [busy, setBusy] = useState(false);
-    const [tagFilter, setTagFilter] = useState([]); // active tag filters, stacked (AND)
-    const [notebook, setNotebook] = useState(''); // hrseFiles's notebook pick: '' is every one
-    const [kindFilter, setKindFilter] = useState([]); // hrseFiles's kind picks: either of them
+    const viewKey = `${root}:${app.id}`;
+    const kept = listViews.get(viewKey) || {};
+    const [tagFilter, setTagFilter] = useState(() => kept.tags || []); // active tag filters, stacked (AND)
+    const [notebook, setNotebook] = useState(() => kept.notebook || ''); // hrseFiles's notebook pick: '' is every one
+    const [kindFilter, setKindFilter] = useState(() => kept.kinds || []); // hrseFiles's kind picks: either of them
+    useEffect(() => {
+        listViews.set(viewKey, {
+            ...listViews.get(viewKey),
+            tags: tagFilter,
+            notebook,
+            kinds: kindFilter,
+        });
+    }, [viewKey, tagFilter, notebook, kindFilter]);
+    // The list's scroll: noted as it moves, and put back once a fresh mount has rows to scroll.
+    const listRef = useRef(null);
+    const scrollBack = useRef(kept.scroll || 0);
+    const noteScroll = (e) => {
+        listViews.set(viewKey, { ...listViews.get(viewKey), scroll: e.currentTarget.scrollTop });
+    };
 
     // The shared documents-app spine (doc/docapp.js): the live documents, the open document and how
     // to change it (it lives in the URL, so back/forward and deep links just work), the resume-where
@@ -508,6 +547,15 @@ export const DocsApp = ({
         bucket,
         { resume: !missing },
     );
+    // A tag filter for a tag no document carries any more goes (Curtis, 2026-10-10: deleting the
+    // last note with a tag left it picked - kept, now, across the remount - over a list showing
+    // nothing). Judged once the mirror holds the documents, never on the empty first read.
+    useEffect(() => {
+        if (!docs || !docs.length || !tagFilter.length) return;
+        const carried = new Set(docs.flatMap((d) => d.tags || []));
+        if (tagFilter.every((tag) => carried.has(tag))) return;
+        setTagFilter((f) => f.filter((tag) => carried.has(tag)));
+    }, [docs, tagFilter]);
     // The notebook switcher heads the list column (2026-09-30; it was in the app header). A switcher
     // over one notebook offers a choice that isn't one.
     const shelf = useContext(BucketShelf);
@@ -595,6 +643,14 @@ export const DocsApp = ({
             : undefined,
     );
     const list = browse ? browse.files : ordered;
+    // Back to where the list was scrolled, once there are rows to scroll (`listViews`, above): before
+    // paint, so it never shows from the top first.
+    useLayoutEffect(() => {
+        const el = listRef.current;
+        if (!el || !scrollBack.current || !list.length) return;
+        el.scrollTop = scrollBack.current;
+        scrollBack.current = 0;
+    }, [list.length]);
 
     // Lost & Found's follow-me-home: the document's own address, which opens it in its first
     // notebook's app (pure/naming.js `docPlacement`; the unbucketed stay here).
@@ -713,7 +769,7 @@ export const DocsApp = ({
                     tucked.has('list')
                         ? html`<${Rail} icon=${Icons.list} label=${nouns} onClick=${() => toggleTuck('list')} />`
                         : app.everything
-                          ? html`${tab('list', Icons.list, nouns)}<aside class="notes-list notes-list-browser">
+                          ? html`${tab('list', Icons.list, nouns)}<aside class="notes-list notes-list-browser" ref=${listRef} onScroll=${noteScroll}>
                     <${PaneHead} icon=${Icons.list} label=${nouns} onTuck=${() => toggleTuck('list')} />
                     ${switcher}
                     <${FileBrowser}
@@ -741,7 +797,7 @@ export const DocsApp = ({
                     >${t('apps.notes.storage-foot', '{size} in all', { size: sizeLabel(storage.move_bytes) })}</p>`
                     }
                 </aside>${resizer('list')}`
-                          : html`${tab('list', Icons.list, nouns)}<aside class="notes-list">
+                          : html`${tab('list', Icons.list, nouns)}<aside class="notes-list" ref=${listRef} onScroll=${noteScroll}>
                     <${PaneHead} icon=${Icons.list} label=${nouns} onTuck=${() => toggleTuck('list')} />
                     ${switcher}
                     ${

@@ -19437,3 +19437,24 @@ only the main one. It reports every range now, and `applyEach`
 what each earlier change put in - one change, every row's words selected after.
 Three vectors: a font on each row, a second pick changing them all, a quote on
 each row with the ranges handed back in their own order.
+
+## 2026-10-10 (cont.): a delete that isn't a page refresh
+
+Curtis, pruning notes: a delete "forced what felt like a page refresh: clearing
+my set tags and resetting my note scroll position". A note at its own address
+and the notebook's list are drawn under different routes (index.js `DocRoute`,
+`AppRoute`), so going from one to the other - a delete's `select(null)`, or
+opening the first note from the list - unmounts the notes app and mounts a fresh
+one, and its tag filters were plain component state. The list's view now lives
+outside the app, per persona and app (apps/notes.js `listViews`, per tab like
+the last note open): the tag filters, hrseFiles's notebook and kind picks, and
+the list's scroll, noted as it moves and put back before paint once a fresh
+mount has rows. The routes themselves are as they were. Then (Curtis: could a
+delete take a tag's last note and leave the tag picked, trapping the list
+empty?): in Writer's list, no - an active filter is always a chip with its ×. In
+hrseFiles, yes: its tag row lists the tags its files carry, so a picked tag with
+none left vanished from the row, and its filter couldn't be taken back - kept,
+since this morning, across the remount that used to clear it. Now a picked tag
+stays on that row whatever it counts, and both apps drop a picked tag no
+document carries any more once the mirror holds them (a deleted document leaves
+the mirror, `docs_removed`, and its tags with it).
