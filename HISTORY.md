@@ -19212,3 +19212,18 @@ pull lands for the next pass to record, as the product intends. The claim now
 rings the pass in bounded rounds until the fetch is recorded, journalfill's
 2026-09-17 idiom. Which of the three it was is unconfirmed: a failing run's logs
 would say.
+
+## 2026-10-09 (cont.): a tester's first night in hrseDrawing
+
+The first outside tester's notes, by way of Curtis. **"ctrl z does not undo!"**
+It did - until the toolbar was touched. The drawing's Cmd/Ctrl+Z stood aside for
+any focused `INPUT`, meaning a text field's own undo, but the size slider and
+the colour well are inputs too, and the canvas's press prevents its default -
+the focus change among it - so a slider touched before a stroke kept the focus
+through it, and every undo after went to a slider, which has none. It now stands
+aside only for typing (`typingIn`: text-like inputs and numbers, textareas,
+editable text), and a stroke's press releases a toolbar input's focus, as the
+default it prevents would have. **"type in a brush size ... so I'm not pixel
+hunting on a slider"**: a number box beside the size slider, reaching the full
+`MAX_SIZE` (200) past the slider's 80, taking a size as it is typed and settling
+into range on Enter or leaving the box. Text size keeps its slider alone.

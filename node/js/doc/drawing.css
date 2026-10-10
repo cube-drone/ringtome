@@ -183,6 +183,23 @@
     accent-color: var(--teal);
 }
 
+/* The slider and its typed twin (doc/drawing.js), one row: the slider takes the room. */
+.drawing-size-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.drawing-size-row input[type='range'] {
+    flex: 1;
+    min-width: 0;
+}
+
+.drawing-size .drawing-size-number {
+    width: 4.2rem;
+    flex: none;
+}
+
 .drawing-colours {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));

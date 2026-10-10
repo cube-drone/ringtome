@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1800 phrases across 109 files.
+// 1801 phrases across 109 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -793,6 +793,7 @@ export default {
     'doc.drawing.undo': 'undo',
     'doc.drawing.not-on-a-text-layer': "you can't use that on a text layer - choose another layer first",
     'doc.drawing.pour-speed': 'pour speed',
+    'doc.drawing.size-typed': 'size, typed',
     'doc.drawing.type-here': 'type here',
     'doc.drawing.words': 'words',
     'doc.drawing.click-to-place-text': 'click the drawing to place text',

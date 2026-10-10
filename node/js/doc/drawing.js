@@ -112,6 +112,15 @@ const html = htm.bind(h);
 /// The canvas's backing resolution, as a multiple of the drawing's own units.
 const BACKING = 2;
 
+/// The inputs a person types into, whose Cmd/Ctrl+Z is their own: text of any kind and numbers -
+/// never a slider, a colour well, a checkbox or a select, which have no undo to take.
+const TYPED_INPUTS = new Set(['text', 'search', 'email', 'url', 'tel', 'password', 'number']);
+const typingIn = (el) =>
+    !!el &&
+    (el.tagName === 'TEXTAREA' ||
+        el.isContentEditable ||
+        (el.tagName === 'INPUT' && TYPED_INPUTS.has((el.type || 'text').toLowerCase())));
+
 // ---------------------------------------------------------------------------------------------
 // Painting
 
@@ -1371,6 +1380,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (current.hidden || !toolAllowed(tools.tool)) return;
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
+        // A stroke takes the focus from the toolbar (the default this press just prevented would
+        // have): a size typed, then a stroke, then Cmd/Ctrl+Z undoes the stroke, not the typing.
+        const held = document.activeElement;
+        if (held && held.tagName === 'INPUT') held.blur();
         // The crop box (DRAWING.md, "Cropping"): a corner or an edge resizes it, inside moves it,
         // outside draws a fresh one. Nothing is recorded until the crop button.
         // Text: a click places a new text layer there, and its words are typed in the tools column.
@@ -1920,11 +1933,13 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     };
 
     // Cmd/Ctrl+Z undoes a stroke - unless you are typing somewhere, where it is that field's undo.
+    // Typing, not any input (2026-10-09, a tester: "ctrl z does not undo!"): the size slider and the
+    // colour picker are inputs too, and one touched before a stroke held the focus through it, so
+    // every undo after it went to a slider, which has none.
     useEffect(() => {
         const onKey = (e) => {
             if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
-            const tag = (document.activeElement && document.activeElement.tagName) || '';
-            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+            if (typingIn(document.activeElement)) return;
             e.preventDefault();
             undoStroke();
         };
@@ -1962,6 +1977,9 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             changeLayers(setText(drawing, current.id, { color }, Date.now()));
     };
     // The size slider speaks for whichever tool is in hand: the shapes share a line width.
+    // The size is a slider and a number box beside it (2026-10-09, a tester: "so I'm not pixel
+    // hunting on a slider") - the box reaching the full MAX_SIZE, past the slider's end, taking a
+    // size as it is typed when it is one and settling into range on Enter or leaving the box.
     const sizeKey = tools.tool === 'eraser' ? 'eraserSize' : shapeTool ? 'shapeSize' : 'brushSize';
     const sizeWords = () =>
         tools.tool === 'eraser'
@@ -2086,14 +2104,37 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
               ${
                   SIZED_TOOLS.includes(tools.tool) &&
                   html`<label class="drawing-size">
-                  <span>${sizeWords()} · ${size}</span>
-                  <input
-                      type="range"
-                      min="1"
-                      max=${Math.min(80, MAX_SIZE)}
-                      value=${size}
-                      onInput=${(e) => setTools({ [sizeKey]: +e.currentTarget.value })}
-                  />
+                  <span>${sizeWords()}</span>
+                  <span class="drawing-size-row">
+                      <input
+                          type="range"
+                          min="1"
+                          max=${Math.min(80, MAX_SIZE)}
+                          value=${size}
+                          onInput=${(e) => setTools({ [sizeKey]: +e.currentTarget.value })}
+                      />
+                      <input
+                          type="number"
+                          class="drawing-size-number"
+                          min="1"
+                          max=${MAX_SIZE}
+                          step="1"
+                          value=${size}
+                          aria-label=${t('doc.drawing.size-typed', 'size, typed')}
+                          onInput=${(e) => {
+                              const n = Number(e.currentTarget.value);
+                              if (Number.isInteger(n) && n >= 1 && n <= MAX_SIZE)
+                                  setTools({ [sizeKey]: n });
+                          }}
+                          onChange=${(e) => {
+                              const n = Math.round(Number(e.currentTarget.value));
+                              const settled =
+                                  Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_SIZE) : size;
+                              e.currentTarget.value = String(settled);
+                              setTools({ [sizeKey]: settled });
+                          }}
+                      />
+                  </span>
               </label>`
               }
               ${
