@@ -306,8 +306,15 @@ pub fn report(state: &AppState, root: &str) -> Report {
 // ---------------------------------------------------------------------------------------------
 // Writing the zip
 
-/// One file for the zip: its path inside it, and its bytes.
-type Entry = (String, Vec<u8>);
+/// One file for the zip: its path inside it, its bytes, and its share of the memory budget - held
+/// until the bytes are written, then given back.
+type Entry = (String, Vec<u8>, tokio::sync::OwnedSemaphorePermit);
+
+/// The most an export holds in memory on its way into the zip, in KiB (2026-10-09: a large account's
+/// export was killed for memory on a server, its writer's queue holding sixteen files - each as
+/// large as an upload may be). A file waits for room; one larger than the whole budget takes all of
+/// it, alone.
+const BUDGET_KIB: u32 = 64 * 1024;
 
 /// The zip's own thread: every entry that comes down the channel, deflated, until the channel
 /// closes. Finished - the sender's `true` - it is renamed into place; dropped, it is thrown away.
@@ -324,7 +331,7 @@ fn writer(
     let compressed =
         |name: &str| [".avif", ".png", ".webm", ".opus"].iter().any(|ext| name.ends_with(ext));
     let outcome = (|| -> Result<()> {
-        while let Some((name, bytes)) = entries.blocking_recv() {
+        while let Some((name, bytes, share)) = entries.blocking_recv() {
             let method = if compressed(&name) {
                 zip::CompressionMethod::Stored
             } else {
@@ -335,6 +342,8 @@ fn writer(
                 .large_file(bytes.len() as u64 >= u32::MAX as u64);
             zip.start_file(name.as_str(), options).context("starting a file in the zip")?;
             zip.write_all(&bytes).context("writing a file into the zip")?;
+            drop(bytes);
+            drop(share);
         }
         Ok(())
     })();
@@ -360,9 +369,9 @@ async fn run(state: &AppState, root: &str, generation: u64) -> Result<()> {
     std::fs::create_dir_all(exports_dir(state)).context("making the exports directory")?;
     let final_path = zip_path(state, root);
     let partial = exports_dir(state).join(format!("{root}.{generation}.partial"));
-    // Two files waiting, at most: a large account's pictures and videos are each as large as an
-    // upload may be, and every one held here is memory the node is not using for anything else.
-    let (send, entries) = tokio::sync::mpsc::channel::<Entry>(2);
+    // What waits is held to a budget in bytes (`BUDGET_KIB`), not a count: a count of large
+    // videos is no limit at all.
+    let (send, entries) = tokio::sync::mpsc::channel::<Entry>(64);
     let (say_finished, finished) = std::sync::mpsc::channel::<bool>();
     let thread =
         tokio::task::spawn_blocking(move || writer(partial, final_path, entries, finished));
@@ -379,6 +388,7 @@ async fn run(state: &AppState, root: &str, generation: u64) -> Result<()> {
 struct Out<'a> {
     send: &'a tokio::sync::mpsc::Sender<Entry>,
     manifest: Vec<serde_json::Value>,
+    budget: Arc<tokio::sync::Semaphore>,
 }
 
 impl Out<'_> {
@@ -411,7 +421,18 @@ impl Out<'_> {
     }
 
     async fn send(&self, path: String, bytes: Vec<u8>) -> Result<()> {
-        self.send.send((path, bytes)).await.map_err(|_| anyhow::anyhow!("the zip's thread stopped"))
+        let kib =
+            u32::try_from(bytes.len().div_ceil(1024)).unwrap_or(u32::MAX).clamp(1, BUDGET_KIB);
+        let share = self
+            .budget
+            .clone()
+            .acquire_many_owned(kib)
+            .await
+            .map_err(|_| anyhow::anyhow!("the export's budget closed"))?;
+        self.send
+            .send((path, bytes, share))
+            .await
+            .map_err(|_| anyhow::anyhow!("the zip's thread stopped"))
     }
 }
 
@@ -425,7 +446,11 @@ async fn build(
         .await
         .map_err(|e| anyhow::anyhow!("opening the persona: {e}"))?;
     let ae = |e: AppError| anyhow::anyhow!("{e}");
-    let mut out = Out { send, manifest: Vec::new() };
+    let mut out = Out {
+        send,
+        manifest: Vec::new(),
+        budget: Arc::new(tokio::sync::Semaphore::new(BUDGET_KIB as usize)),
+    };
     let mut missing: Vec<String> = Vec::new();
 
     let (heads, _) = data.documents().summaries().await.map_err(ae)?;
@@ -494,6 +519,25 @@ async fn build(
         } else {
             None
         };
+        // A picture, video or sound is the largest thing an export carries: written as it is, and
+        // moved rather than copied into the last of its folders.
+        if let Some(ext) = media_ext(format) {
+            let mut body = Some(body);
+            for (k, dir) in dirs.iter().enumerate() {
+                let at = format!("{dir}/{stem}");
+                paths_of.entry(head.doc_id).or_insert_with(|| at.clone());
+                let bytes = if k + 1 == dirs.len() {
+                    body.take().unwrap_or_default()
+                } else {
+                    body.as_ref().cloned().unwrap_or_default()
+                };
+                out.put_doc(format!("{at}.{ext}"), bytes, &meta).await?;
+                out.put_doc(format!("{at}.{ext}.yml"), front_matter(&meta).into_bytes(), &meta)
+                    .await?;
+            }
+            state.exports.set(state, root, generation, step(done + 1));
+            continue;
+        }
         for dir in &dirs {
             let at = format!("{dir}/{stem}");
             paths_of.entry(head.doc_id).or_insert_with(|| at.clone());
@@ -725,7 +769,10 @@ enum MetaValue {
 }
 
 /// A note's files, at `at` (its folder and stem): every rendering its format has (ruling 1).
-fn render(at: &str, meta: &Meta, body: &[u8]) -> Vec<Entry> {
+/// One rendering of a document: its path in the zip, and its bytes.
+type Rendering = (String, Vec<u8>);
+
+fn render(at: &str, meta: &Meta, body: &[u8]) -> Vec<Rendering> {
     let text = || String::from_utf8_lossy(body).into_owned();
     match meta.format {
         Format::Marquee | Format::Room => {
@@ -749,6 +796,8 @@ fn render(at: &str, meta: &Meta, body: &[u8]) -> Vec<Entry> {
             )]
         }
         Format::Avif | Format::Apng | Format::WebmAv1 | Format::OggOpus => {
+            // (The build writes media itself, without this copy - `media_ext`; this is the
+            // renderings' whole story, as the tests read it.)
             let ext = match meta.format {
                 Format::Avif => "avif",
                 Format::Apng => "png",
@@ -763,6 +812,17 @@ fn render(at: &str, meta: &Meta, body: &[u8]) -> Vec<Entry> {
         }
         // A book is a published notebook, whose pages are posts of their own.
         Format::Book => Vec::new(),
+    }
+}
+
+/// The extension a picture, video or sound is written under, or `None` for anything else.
+fn media_ext(format: Format) -> Option<&'static str> {
+    match format {
+        Format::Avif => Some("avif"),
+        Format::Apng => Some("png"),
+        Format::WebmAv1 => Some("webm"),
+        Format::OggOpus => Some("opus"),
+        _ => None,
     }
 }
 
@@ -1264,6 +1324,30 @@ mod tests {
         assert!(
             download_name(Some(&"a".repeat(100)), root).len() <= "hdt2--01234567.zip".len() + 40
         );
+    }
+
+    /// What waits for the zip is held to its budget in bytes (2026-10-09, the out-of-memory kill):
+    /// a file that doesn't fit waits until one ahead of it is written, and goes the moment it is.
+    #[tokio::test]
+    async fn the_queue_holds_bytes_to_its_budget() {
+        let (send, mut entries) = tokio::sync::mpsc::channel::<Entry>(64);
+        let mut out = Out {
+            send: &send,
+            manifest: Vec::new(),
+            budget: Arc::new(tokio::sync::Semaphore::new(8)),
+        };
+        out.put("a".into(), vec![0; 6 * 1024]).await.unwrap();
+        let second = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            out.put("b".into(), vec![0; 6 * 1024]),
+        )
+        .await;
+        assert!(second.is_err(), "6 KiB more doesn't fit an 8 KiB budget with 6 waiting");
+        let (name, _, share) = entries.recv().await.unwrap();
+        assert_eq!(name, "a");
+        drop(share); // written: its room is given back
+        out.put("b".into(), vec![0; 6 * 1024]).await.unwrap();
+        assert_eq!(entries.recv().await.unwrap().0, "b");
     }
 
     #[test]

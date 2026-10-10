@@ -102,8 +102,11 @@ bank, laid out as files and folders. Import comes later (_Not yet_).
   and _N of M_. The state is written beside the zip (`<root>.json`) whenever it
   changes kind and every two seconds while it runs, so a node that stopped
   mid-export says so afterwards - _interrupted_, and how far it got - rather
-  than offering to start again as if nothing had happened. At most two files
-  wait in memory for the zip's thread at once.
+  than offering to start again as if nothing had happened. What waits in memory
+  for the zip's thread is held to a budget of 64 MiB in bytes, not a count of
+  files (an out-of-memory kill on horsedrawingtycoon.com, 2026-10-09, with
+  sixteen waiting): a file waits for room, and pictures and videos go in without
+  being copied first.
 - **One per persona.** Starting a new one cancels any queued or running one and
   deletes the last zip; the new zip replaces it when it is whole (written as
   `.partial`, then renamed - backup.rs's rule).

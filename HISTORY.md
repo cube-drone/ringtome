@@ -19150,4 +19150,13 @@ the six files after them, drawn on the page as a bar, a percentage and _N of M_
 background: the first ask starts the making and answers `202` with its steps;
 asks after it are answered from that build - keyed by notebook, or by book and
 asker - until the file is cached and downloads (`net.js` `downloadFile`'s
-`onPending`; the button shows the bar, the chip its percentage).
+`onPending`; the button shows the bar, the chip its percentage). Curtis's
+journald read settled the cause:
+`ringtome.service: The kernel OOM killer killed some processes in this unit`,
+mid-export, and the node back a second later knowing nothing of it - so the
+export also stops spending memory it needn't. What waits for the zip's thread is
+a budget of 64 MiB in bytes (`BUDGET_KIB`, a semaphore whose share each file
+carries until it is written), not a count of sixteen files, and a picture, video
+or sound is moved into the zip rather than copied through `render` first. The
+largest single file still costs its encrypted and its decrypted copy while it is
+read.
