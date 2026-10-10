@@ -9,8 +9,6 @@
 // Keys are names, minted once and never edited: renaming one orphans every translation
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
-//
-// 1816 phrases across 111 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',

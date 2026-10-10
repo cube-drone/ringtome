@@ -846,10 +846,8 @@ export function renderEnglish(entries, existing) {
         '// attached to it. To start another language, copy this file, translate the values, and',
     );
     lines.push('// register it in i18n.js - the keys are already right.');
-    lines.push('//');
-    lines.push(
-        `// ${new Set(entries.map((e) => e.key)).size} phrases across ${new Set(entries.map((e) => e.file)).size} files.`,
-    );
+    // No phrase count here (2026-10-10): every branch that added a phrase rewrote that one line,
+    // so any two conflicted on it. `just strings` and `just strings-check` say the count instead.
     lines.push('export default {');
     let currentFile = null;
     // One line per KEY, not per call site. The same sentence used twice in one file mints the

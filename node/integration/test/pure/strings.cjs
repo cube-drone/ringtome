@@ -95,7 +95,6 @@ describe('the string tool finds messages however the source wrapped them', funct
         const rendered = renderEnglish(entries, {});
         const hits = rendered.split('\n').filter((l) => l.includes("'a.someone'"));
         assert.equal(hits.length, 1, 'one key, one line');
-        assert.ok(rendered.includes('2 phrases'), 'and the count is of keys, not call sites');
         assert.ok(collect, 'collect is exported for the check path');
     });
 

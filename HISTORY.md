@@ -19324,3 +19324,14 @@ The profile's "your name on this node" - the `@slug` a node hands out first come
 first served - is hidden in the desktop app (`isDevice()`): nobody else reads a
 node on someone's own computer, so a name on it named nothing. A browser on a
 server sees it as before; the endpoint is untouched.
+
+## 2026-10-10 (cont.): fewer conflicts between parallel branches
+
+Two things every branch touched, and so every pair of branches fought over. The
+English catalog's header no longer carries `N phrases across M files` - any
+phrase added rewrote that line (it had drifted to 1816 against 1953 anyway);
+`just strings` and `just strings-check` say the count. And `.gitattributes`
+gives `HISTORY.md` `merge=union`: two entries appended at the end keep both,
+ours then theirs, instead of stopping - safe while old entries go unedited. The
+migration ladder's duplicate-number worry was already met:
+`each_ladder_matches_its_directory` wants versions dense.
