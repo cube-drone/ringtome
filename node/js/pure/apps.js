@@ -27,7 +27,7 @@ export const APPS = [
     { id: 'settings', name: 'hrseSettings™', icon: 'settings', live: true, system: true },
     {
         id: 'people',
-        name: 'Neighbors',
+        name: 'hrseNeighbors™',
         icon: 'people',
         live: true,
         // Bought in the Market (plans/UNLOCKS.md): the id of the unlock that opens the app.
@@ -80,7 +80,7 @@ export const APPS = [
     },
     {
         id: 'notifications',
-        name: 'Nags',
+        name: 'hrseNags™',
         icon: 'notifications',
         live: true,
         // The derived-events surface (PROJECT_PLAN, Arrival and Attention: the follow-edge

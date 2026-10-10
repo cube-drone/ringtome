@@ -228,7 +228,7 @@ const ABOUT = {
     friends: () =>
         t(
             'unlocks.friends-about',
-            'Unlocks Neighbors: look people up by their address, follow them, and keep track of everyone you know.',
+            'Unlocks hrseNeighbors™: look people up by their address, follow them, and keep track of everyone you know.',
         ),
     social: () =>
         t(

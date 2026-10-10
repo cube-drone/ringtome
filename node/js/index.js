@@ -522,7 +522,7 @@ const Inside = ({ session }) => {
                     class="app-header-btn"
                     title=${
                         idBack === appHref('people')
-                            ? t('index.back-to-people', 'back to Neighbors')
+                            ? t('index.back-to-people', 'back to hrseNeighbors™')
                             : t('index.back-to-their-page', 'back to their page')
                     }
                     onClick=${() => loc.route(idBack)}
