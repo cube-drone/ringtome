@@ -10,6 +10,11 @@ set windows-shell := ["bash", "-uc"]
 workspace := justfile_directory() / ".."
 test_data := "./data/test"
 
+# Dev nodes take uploads up to 1 GiB, as a desktop app does (Curtis, 2026-10-10: a 165 MB test
+# file failed against a dev node at a server's 128 MiB default). Every recipe here gets it; the
+# integration rig names its own 1 MiB inline, which wins, and so does an environment that sets it.
+export RINGTOME_MAX_UPLOAD_BYTES := env_var_or_default("RINGTOME_MAX_UPLOAD_BYTES", "1073741824")
+
 # --- ports: one band per checkout, three lanes inside it -------------------------------------
 #
 # Nothing here talks to a backing service, so "can these two runs coexist?" is entirely a

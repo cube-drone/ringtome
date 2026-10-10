@@ -19324,3 +19324,21 @@ The profile's "your name on this node" - the `@slug` a node hands out first come
 first served - is hidden in the desktop app (`isDevice()`): nobody else reads a
 node on someone's own computer, so a name on it named nothing. A browser on a
 server sees it as before; the endpoint is untouched.
+
+## 2026-10-10 (cont.): a file too large, said so
+
+Curtis uploaded a 165 MB file to a dev node: "upload failed (network)", and
+then, the window closed and a new file chosen, the failure came back and the new
+file never went. Three fixes. **Dev takes 1 GiB**: the justfile exports
+`RINGTOME_MAX_UPLOAD_BYTES` at 1 GiB, as a desktop app's is, to every recipe -
+dev nodes ran as servers, at 128 MiB; the integration rig names its 1 MiB
+inline, which wins, as an environment that sets it does. **Too large is said
+before sending**: the page carries the cap (`<meta name="app-max-upload">`,
+ui.rs), and net.js `xhrUpload` refuses a file over it with its size and the
+cap - a server refuses an over-cap body before reading it, which the browser saw
+only as the connection dropping. A 413 says the same; a dropped connection now
+says what it may mean, in words that translate. **A new pick, a new window**:
+hrseFiles's dropper folds its upload window on OK and keeps it, holding a
+failure as a line, and the window reads its files when it opens - so a second
+pick went into the open one, which showed the old failure and never sent. Each
+pick gets a window of its own now (`key`).

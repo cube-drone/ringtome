@@ -208,6 +208,9 @@ pub fn app_page(state: &AppState, head: &str) -> String {
         .replace("$VERSION$", version)
         .replace("$BRANCH$", &branch)
         .replace("$ENVIRONMENT$", environment)
+        // The upload cap (`RINGTOME_MAX_UPLOAD_BYTES`), so the page can say a file is too large
+        // before sending it, rather than watch the connection drop (net.js `xhrUpload`).
+        .replace("$MAX_UPLOAD$", &state.config.max_upload_bytes.to_string())
 }
 
 /// The checkout this dev node was built from - the repository above the node crate.

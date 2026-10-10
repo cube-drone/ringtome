@@ -895,6 +895,10 @@ export { FILES_BUCKET };
 /// the moment it has an id. Several files stay here, each going on with its line until it lands.
 export const FileDropper = ({ root, onOpen }) => {
     const [files, setFiles] = useState(null); // File[] | null
+    // Which pick this is: each one gets a window of its own (2026-10-10: the window reads its files
+    // when it opens, so a second pick into one still open - folded, holding a failure - brought the
+    // failure back and never sent the new file).
+    const [pickNo, setPickNo] = useState(0);
     const [folded, setFolded] = useState(false); // OK pressed: the window folds to lines
     const [over, setOver] = useState(false);
     const pick = useRef(null);
@@ -907,6 +911,7 @@ export const FileDropper = ({ root, onOpen }) => {
         ids.current = [];
         follow.current = false;
         setFolded(false);
+        setPickNo((n) => n + 1);
         setFiles(chosen);
     };
     const landed = (i, _file, docId) => {
@@ -960,6 +965,7 @@ export const FileDropper = ({ root, onOpen }) => {
         ${
             files &&
             html`<${UploadFlow}
+                key=${pickNo}
                 root=${root}
                 bucket=${FILES_BUCKET}
                 files=${files}

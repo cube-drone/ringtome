@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1816 phrases across 111 files.
+// 1820 phrases across 112 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1146,6 +1146,12 @@ export default {
 
     // --- node/js/modal.js ---
     'modal.close': 'close',
+
+    // --- node/js/net.js ---
+    'net.upload-too-large': 'that file is {size} - more than this place takes ({max})',
+    'net.upload-too-large-plain': 'that file is larger than this place takes',
+    'net.upload-failed-status': 'the upload failed ({status})',
+    'net.upload-cut-off': 'the upload was cut off before it finished - the connection dropped, or something between here and the server refused a file this size. Try again, or try a smaller file.',
 
     // --- node/js/nodefeed.js ---
     'nodefeed.nobody-has-said-anything': 'nobody has said anything on this node yet.',

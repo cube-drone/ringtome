@@ -183,6 +183,25 @@ export async function apiText(path, options = {}) {
     return text;
 }
 
+/// The node's upload cap, from the page (ui.rs `app_page`), or null when the page doesn't say.
+export function maxUploadBytes() {
+    const el = document.querySelector('meta[name="app-max-upload"]');
+    const n = el ? Number(el.getAttribute('content')) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const megabytes = (n) => `${Math.round(n / (1024 * 1024))} MB`;
+
+/// What a file too large for the node is told: its size when known, and the cap.
+function tooLarge(size, max) {
+    return size && max
+        ? t('net.upload-too-large', 'that file is {size} - more than this place takes ({max})', {
+              size: megabytes(size),
+              max: megabytes(max),
+          })
+        : t('net.upload-too-large-plain', 'that file is larger than this place takes');
+}
+
 /**
  * The one job `fetch` cannot do: report upload progress. Same JSON-out, same thrown-Error contract
  * as `api()`, so a caller cannot tell which transport it got - only the progress callback differs.
@@ -194,6 +213,16 @@ export async function apiText(path, options = {}) {
  */
 export function xhrUpload(url, body, onPct) {
     return new Promise((resolve, reject) => {
+        // Larger than this place takes: said before a byte goes (Curtis, 2026-10-10: a 165 MB file
+        // ended "upload failed (network)" - a server refuses an over-cap body before reading it, and
+        // the browser sees only the connection drop).
+        const max = maxUploadBytes();
+        if (max && body instanceof Blob && body.size > max) {
+            const err = new Error(tooLarge(body.size, max));
+            err.status = 413;
+            reject(err);
+            return;
+        }
         const xhr = new XMLHttpRequest();
         xhr.open('POST', url);
         xhr.responseType = 'json';
@@ -208,12 +237,25 @@ export function xhrUpload(url, body, onPct) {
                 return;
             }
             const message =
-                (xhr.response && xhr.response.message) || `upload failed (${xhr.status})`;
+                (xhr.response && xhr.response.message) ||
+                (xhr.status === 413
+                    ? tooLarge(body instanceof Blob ? body.size : null, max)
+                    : t('net.upload-failed-status', 'the upload failed ({status})', {
+                          status: xhr.status,
+                      }));
             const err = new Error(message);
             err.status = xhr.status;
             reject(err);
         };
-        xhr.onerror = () => reject(new Error('upload failed (network)'));
+        xhr.onerror = () =>
+            reject(
+                new Error(
+                    t(
+                        'net.upload-cut-off',
+                        'the upload was cut off before it finished - the connection dropped, or something between here and the server refused a file this size. Try again, or try a smaller file.',
+                    ),
+                ),
+            );
         xhr.send(body);
     });
 }
