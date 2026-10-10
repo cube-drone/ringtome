@@ -213,9 +213,6 @@ const base58 = async (host) => {
         await beat(HOST_B, 'demand-push', friendRoot);
         await beat(HOST_C, 'fold', friendRoot);
         await beat(HOST_C, 'fold', coraRoot);
-        await beat(HOST_C, 'speculative-acquire');
-        // Drain the pull's own fold (the byline cache fills on the fold chain).
-        await beat(HOST_C, 'fold', author2Root);
 
         // The memo drew the depth line...
         const { rows: demand } = await sql(
@@ -224,11 +221,26 @@ const base58 = async (host) => {
         );
         assert.equal(demand.length, 1, 'the tail target is in the memo');
         assert.equal(demand[0].depth, 'headers', 'past the budget means headers depth');
-        // ...the pull recorded what it holds...
-        const { rows: fetched } = await sql(
-            `SELECT depth FROM speculative_fetches WHERE target_root = '${author2Root}'`,
-            HOST_C,
-        );
+        // ...the pull recorded what it holds. Rung in rounds (2026-10-09, red once in a full
+        // `just ci`, never in isolation nor under CPU load): the rig's own speculative pass
+        // runs every two seconds beside the beat, and one that is mid-pull of this very
+        // target can leave the beat's pass with nothing - its attempt mark taken between the
+        // beat's reset and its read, its pull a third in line and so deduped, or its pull
+        // landing past the deadline, detached - while that pull lands for the NEXT pass to
+        // record, as designed. Each round is a whole pass; the rounds are bounded, never a
+        // clock.
+        const headersFetches = () =>
+            sql(
+                `SELECT depth FROM speculative_fetches WHERE target_root = '${author2Root}'`,
+                HOST_C,
+            );
+        let { rows: fetched } = await headersFetches();
+        for (let round = 0; round < 6 && fetched.length === 0; round++) {
+            await beat(HOST_C, 'speculative-acquire');
+            ({ rows: fetched } = await headersFetches());
+        }
+        // Drain the pull's own fold (the byline cache fills on the fold chain).
+        await beat(HOST_C, 'fold', author2Root);
         assert.equal(fetched.length, 1, 'the headers pull landed a quiet mirror');
         assert.equal(fetched[0].depth, 'headers');
         // ...the byline is the payoff...

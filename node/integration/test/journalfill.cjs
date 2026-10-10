@@ -111,12 +111,19 @@ const base58 = async (host) => {
         for (let i = 1; i <= 25; i++) await publish(`dark-${i}`);
         await plugIn(HOST_C);
 
-        // ...and the next arrival closes the exact gap. The trigger post's push carries every
-        // missed entry in one exchange; the persisted mark makes the walk page down to all of
-        // them, where the boot-reset mark used to cap this at the newest twenty.
+        // ...and the next arrival closes the exact gap. The persisted mark makes the walk page
+        // down to every missed post, where the boot-reset mark used to cap this at the newest
+        // twenty. The trigger post's push does NOT carry the whole stretch (2026-10-09): 26
+        // posts are some 78 entries against the rig's 60-entry exchange budget, so the push is
+        // cut and the reader's own follow-up pull brings the rest - detached, and under a
+        // loaded rig it lost the race to the fold below about one run in eight ("sent=60
+        // cut=true", then the fold journaled before the pull landed). The pull beat drives
+        // that continuation to the end first: the property here is the walk's depth, not the
+        // push's reach.
         await publish('the-trigger');
         await beat(undefined, 'fold', authorRoot);
         await beat(undefined, 'demand-push', authorRoot);
+        await beat(HOST_C, 'pull', authorRoot);
         await beat(HOST_C, 'fold', authorRoot);
         for (let i = 0; i < 4; i++) await beat(HOST_C, 'journal-fill');
         assert.ok(

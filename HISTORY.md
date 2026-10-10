@@ -19187,3 +19187,28 @@ settings, personas, computers, content, import/export, log out (`persona.js`
 query (`index.js` `SettingsMoved`), so a bookmark or a link in an old message
 still lands. "Your settings" on your own profile is now a link to the app, no
 longer a disclosure. `personaPageHref` is gone.
+
+## 2026-10-09 (cont.): two flakes, one found and one fenced
+
+A full `just ci` came back red on two sync claims that passed alone; Curtis
+asked for them stabilized. **journalfill** ("a dark gap journals exactly")
+reproduced under CPU load, one run in eight, and its node logs named the cause:
+the dark stretch is 26 posts, some 78 entries, against the rig's 60-entry
+exchange budget (`RINGTOME_SYNC_BUDGET_ENTRIES`), so the trigger's push is
+always cut (`sent=60 cut=true`) and the rest comes by the reader's detached
+follow-up pull - which the claim's fold raced, and under load lost. The test
+said the push "carries every missed entry in one exchange"; it never could. It
+now rings a `pull` beat (which follows a cut to its end) before the fold: the
+property is the walk's depth, not the push's reach. Sixteen of sixteen under the
+same load. **speculative** ("a second vouch past the budget lands at HEADERS
+depth") never reproduced - not alone, not in twenty runs under twice the load.
+One theory was falsified on the way: a backlog of dead headers targets crowding
+the lane's cap of four (a full run's HOST_C log shows no pass ever attempting
+more than two). What remains is the rig's own speculative pass, every two
+seconds, mid-pull of the same target when the beat rings - by a mark taken
+between the beat's reset and its read, a third pull in line and so deduped, or a
+pull detached at the deadline - each leaving the beat's one pass empty while the
+pull lands for the next pass to record, as the product intends. The claim now
+rings the pass in bounded rounds until the fetch is recorded, journalfill's
+2026-09-17 idiom. Which of the three it was is unconfirmed: a failing run's logs
+would say.
