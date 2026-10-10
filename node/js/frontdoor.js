@@ -23,16 +23,16 @@ export const defaultName = () => t('frontdoor.default-name', 'Horse Drawing Tyco
 export const defaultTaglines = () => [
     t('frontdoor.tagline-draw-and-share', 'finally, a way to draw and share pictures of horses'),
     t('frontdoor.tagline-tycoon', 'a tycoon game where you draw horses indefinitely'),
+    t('frontdoor.tagline-cozy', 'a cozy little retro-internet just for you'),
     t('frontdoor.tagline-p2p', 'a horse-themed peer-to-peer social network'),
+    t('frontdoor.tagline-writ-small', 'social computing writ small'),
+    t('frontdoor.tagline-marquee', "a home for the internet's lost marquee element"),
+    t('frontdoor.tagline-owned-by-nobody', 'owned by nobody, owned by everybody'),
+    t('frontdoor.tagline-both', 'horses! drawings! both at the same time!'),
+    t('frontdoor.tagline-horse', 'horse!'),
     t(
         'frontdoor.tagline-least-qualified',
         'a social network designed by the least qualified possible person to design a social network',
-    ),
-    t('frontdoor.tagline-marquee', "finally a home for the internet's lost marquee element"),
-    t('frontdoor.tagline-both', 'horses! drawings! both at the same time!'),
-    t(
-        'frontdoor.tagline-zug-zug',
-        'do you remember when you played Starcraft 2 and you clicked on a guy a few too many times and he started to say weird comedy things? anyways, zug zug.',
     ),
 ];
 
