@@ -19418,12 +19418,22 @@ window (Curtis: "dropdowns get cut off before they reach the text editor
 window"): the helpers' menus hung out of the "edit" menu, which is clipped to
 its jagged outline. Inside it the helpers' wrappers now take no box
 (`display: contents`) and the open menu is a full-width line of the edit menu,
-after its chips (doc/editor.css).
-Then the style menu (Curtis: "quicksand" sat out of the box): the menu capped its
-height at 60vh and scrolled, and macOS hides an idle scrollbar, so the font
-list's end - and the sizes and colours under it - read as cut off. Seen in a
-headless-Chrome screenshot of the menu with the app's stylesheet. The fonts are
-a three-column grid now (all 35 in one look, a long name ellipsized, its family
-in the tooltip), the menu up to 80vh, and a menu taller than the window keeps a
-thin scrollbar. Each font's name is drawn in its face on a span inside its
-button (the button's own `font: inherit` had won over the face).
+after its chips (doc/editor.css). Then the style menu (Curtis: "quicksand" sat
+out of the box): the menu capped its height at 60vh and scrolled, and macOS
+hides an idle scrollbar, so the font list's end - and the sizes and colours
+under it - read as cut off. Seen in a headless-Chrome screenshot of the menu
+with the app's stylesheet. The fonts are a three-column grid now (all 35 in one
+look, a long name ellipsized, its family in the tooltip), the menu up to 80vh,
+and a menu taller than the window keeps a thin scrollbar. Each font's name is
+drawn in its face on a span inside its button (the button's own `font: inherit`
+had won over the face). Then vim (Curtis: should it all work "in vim mode, with
+vim selections"): vim's visual selection is CodeMirror's own
+(codemirror-vim-core `handleExternalSelection` binds the two, characterwise), so
+the helpers read what vim shows, and a styled selection they leave is taken up
+as visual mode; `u` is CodeMirror's history, which the edit lands in. The gap
+was a visual block (Ctrl-V): a CodeMirror range a row, and LiveMarquee reported
+only the main one. It reports every range now, and `applyEach`
+(pure/markuphelp.js) runs a rule on each, last first, moving the ones done by
+what each earlier change put in - one change, every row's words selected after.
+Three vectors: a font on each row, a second pick changing them all, a quote on
+each row with the ranges handed back in their own order.

@@ -19,7 +19,7 @@ import {
     drawSelection,
     tooltips,
 } from '@codemirror/view';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, EditorSelection, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { stripSelfOrigin, pastedPicture } from '../pure/portable.js';
 import { autocompletion } from '@codemirror/autocomplete';
@@ -212,9 +212,12 @@ export const LiveMarquee = ({
                         }
                         if ((u.selectionSet || u.docChanged) && !syncing.current) {
                             const sel = u.state.selection.main;
+                            // Every range too - a vim visual block is one a row - for the text
+                            // helpers, which style each (doc/editor.js helpWith).
                             hooks.current.onCursor?.(
                                 Math.min(sel.anchor, sel.head),
                                 Math.max(sel.anchor, sel.head),
+                                u.state.selection.ranges.map((r) => ({ from: r.from, to: r.to })),
                             );
                         }
                     }),
@@ -277,9 +280,19 @@ export const LiveMarquee = ({
         const v = view.current;
         if (!v || !caret) return;
         const at = Math.min(caret.at, v.state.doc.length);
-        // A range when it names one (the text helpers select the words they styled).
-        const head = Math.min(caret.head ?? caret.at, v.state.doc.length);
-        v.dispatch({ selection: { anchor: at, head }, scrollIntoView: true });
+        // A range when it names one (the text helpers select the words they styled), or several
+        // (each row of a vim visual block, styled).
+        const len = v.state.doc.length;
+        const head = Math.min(caret.head ?? caret.at, len);
+        const selection =
+            caret.ranges && caret.ranges.length > 1
+                ? EditorSelection.create(
+                      caret.ranges.map((r) =>
+                          EditorSelection.range(Math.min(r.from, len), Math.min(r.to, len)),
+                      ),
+                  )
+                : { anchor: at, head };
+        v.dispatch({ selection, scrollIntoView: true });
         if (caret.focus) v.focus();
     }, [caret && caret.seq]); // eslint-disable-line react-hooks/exhaustive-deps
 

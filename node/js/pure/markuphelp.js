@@ -16,6 +16,8 @@
 //   directive's line, a comment or code is left as it is;
 // - a block button acts on every line the selection touches, and takes off what is already there.
 
+import { smallestChange } from './caret.js';
+
 /// What a button writes when nothing is selected.
 export const PLACEHOLDER = 'text';
 
@@ -449,4 +451,32 @@ export function applyBlock(source, from, to, block) {
     if (!shape) return { source, from, to };
     if (blank && run.length === 1) return starter(source, from, shape.starter, PLACEHOLDER);
     return prefixed(source, run, shape);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Several selections at once
+
+/// A rule (`applySpan`, `applyLink` or `applyBlock`, bound to its choice) applied to each of
+/// several selections - a vim visual block is one a row - as one change: the last first, so each
+/// stretch is read where it stands, and the ones already done moved by what each earlier change
+/// put in or took out. Answers `{ source, ranges }`, each range the words its rule left selected,
+/// in the order they were given.
+export function applyEach(source, ranges, rule) {
+    const order = ranges.map((r, i) => ({ ...r, i })).sort((a, b) => b.from - a.from);
+    const out = new Array(ranges.length);
+    let now = source;
+    for (const r of order) {
+        const before = now;
+        const res = rule(now, Math.min(r.from, r.to), Math.max(r.from, r.to));
+        now = res.source;
+        const change = smallestChange(before, now);
+        const shift = change.insert.length - (change.to - change.from);
+        for (const done of out) {
+            if (!done) continue;
+            if (done.from >= change.to) done.from += shift;
+            if (done.to >= change.to) done.to += shift;
+        }
+        out[r.i] = { from: res.from, to: res.to };
+    }
+    return { source: now, ranges: out };
 }

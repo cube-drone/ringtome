@@ -3,9 +3,9 @@
 // marked in it: «selected» or | for a caret.
 const assert = require('node:assert');
 
-let applySpan, applyLink, applyBlock, TABLE_STARTER;
+let applySpan, applyLink, applyBlock, applyEach, TABLE_STARTER;
 before(async () => {
-    ({ applySpan, applyLink, applyBlock, TABLE_STARTER } =
+    ({ applySpan, applyLink, applyBlock, applyEach, TABLE_STARTER } =
         await import('../../../js/pure/markuphelp.js'));
 });
 
@@ -183,5 +183,45 @@ describe('the text helpers: blocks', () => {
         const out = block('words|', 'table');
         assert.ok(out.startsWith('words\n:::table header=row\n[c]«heading»[/c]'), out);
         assert.equal(out.replace('«', '').replace('»', ''), `words\n${TABLE_STARTER}`);
+    });
+});
+
+describe('the text helpers: several selections at once (a vim visual block)', () => {
+    // A visual block over the middle letters of three rows: a selection a row.
+    const rows = 'abcd\nefgh\nijkl';
+    const block = [
+        { from: 1, to: 3 },
+        { from: 6, to: 8 },
+        { from: 11, to: 13 },
+    ];
+    const words = ({ source, ranges }) => ranges.map((r) => source.slice(r.from, r.to));
+
+    it("styles each row, and leaves each row's words selected", () => {
+        const out = applyEach(rows, block, (s, a, b) => applySpan(s, a, b, 'font=lobster'));
+        assert.equal(
+            out.source,
+            'a[font=lobster]bc[/font]d\ne[font=lobster]fg[/font]h\ni[font=lobster]jk[/font]l',
+        );
+        assert.deepEqual(words(out), ['bc', 'fg', 'jk']);
+    });
+
+    it("a second pick changes every row's span, as one does", () => {
+        const first = applyEach(rows, block, (s, a, b) => applySpan(s, a, b, 'font=lobster'));
+        const second = applyEach(first.source, first.ranges, (s, a, b) =>
+            applySpan(s, a, b, 'font=serif'),
+        );
+        assert.equal(
+            second.source,
+            'a[font=serif]bc[/font]d\ne[font=serif]fg[/font]h\ni[font=serif]jk[/font]l',
+        );
+        assert.deepEqual(words(second), ['bc', 'fg', 'jk']);
+    });
+
+    it('a block rule takes each row, and they are given back in their own order', () => {
+        const out = applyEach(rows, [block[2], block[0]], (s, a, b) =>
+            applyBlock(s, a, b, 'quote'),
+        );
+        assert.equal(out.source, '> abcd\nefgh\n> ijkl');
+        assert.deepEqual(words(out), ['> ijkl', '> abcd']);
     });
 });

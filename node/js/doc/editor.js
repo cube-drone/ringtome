@@ -50,7 +50,7 @@ import { featuresOf, editorModes } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { ImagePickModal } from './imagepick.js';
 import { TextHelpers } from './texthelpers.js';
-import { applySpan, applyLink, applyBlock } from '../pure/markuphelp.js';
+import { applySpan, applyLink, applyBlock, applyEach } from '../pure/markuphelp.js';
 import { smallestChange } from '../pure/caret.js';
 import { pickedReference } from './pickref.js';
 import { DrawingThumb } from './drawing.js';
@@ -87,8 +87,8 @@ const MODE_ICONS = {
 // cross-tab storage would make two tabs on one doc clobber each other, and a stale cursor
 // is noise. Per tab, per session, like scroll positions everywhere else on the web.
 const cursorMemory = new Map();
-const rememberCursor = (root, docId, start, end) =>
-    cursorMemory.set(`${root}:${docId}`, { start, end });
+const rememberCursor = (root, docId, start, end, ranges = null) =>
+    cursorMemory.set(`${root}:${docId}`, { start, end, ranges });
 const recallCursor = (root, docId) => cursorMemory.get(`${root}:${docId}`) || null;
 
 export const Editor = ({
@@ -508,7 +508,7 @@ export const Editor = ({
                 initialSelection=${recallCursor(root, docId)}
                 caret=${caret}
                 vim=${vim}
-                onCursor=${(start, end) => rememberCursor(root, docId, start, end)}
+                onCursor=${(start, end, ranges) => rememberCursor(root, docId, start, end, ranges)}
                 onInput=${(text) => {
                     setBody(text);
                     touched();
@@ -559,6 +559,24 @@ export const Editor = ({
     // (a value set outright would wipe it) - and the styled words left selected.
     const helpWith = (rule) => {
         const sel = recallCursor(root, docId) || { start: body.length, end: body.length };
+        // Several selections (a vim visual block, a row each): the rule on each, as one change.
+        const many =
+            mode === 'interactive' && sel.ranges && sel.ranges.length > 1 ? sel.ranges : null;
+        if (many) {
+            const out = applyEach(body, many, rule);
+            if (out.source === body) return;
+            setBody(out.source);
+            touched();
+            const [first] = out.ranges;
+            setCaret((c) => ({
+                at: first.from,
+                head: first.to,
+                ranges: out.ranges,
+                focus: true,
+                seq: (c ? c.seq : 0) + 1,
+            }));
+            return;
+        }
         const from = Math.min(sel.start, sel.end);
         const to = Math.max(sel.start, sel.end);
         const out = rule(body, Math.min(from, body.length), Math.min(to, body.length));
