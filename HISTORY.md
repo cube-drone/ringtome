@@ -19469,3 +19469,20 @@ notes", "1 drawing"
 - and, while a search or a tag narrows the list, "12 of 120 notes", so the count
   never disagrees with the rows (apps/notes.js `holding`, `.notes-count`).
   hrseFiles, which has no "+ new", has none.
+
+## 2026-10-10 (cont.): 1,100 notes, lighter
+
+Curtis, working a list of 1,100 private notes: "the performance is still a bit
+sluggish at times". Two costs found by reading, not measured: every row - and
+every tag chip on it - is two `clip-path`s (the jagged outline), thousands for
+the list; and the mirror hands back fresh row objects on every change, the open
+note's own autosave among them, so the list's memo fell back to comparing each
+of 1,100 rows as JSON. Now `.note-row` and hrseFiles's `.files-tile-slot` carry
+`content-visibility: auto` (with `contain-intrinsic-size: auto …`): off screen,
+a row is neither laid out nor painted, and nothing of either draws outside its
+box for the paint containment to cut. And the mirror stamps each document row as
+it's written (mirror.js `nextStamp`, Dexie's creating/updating hooks, a
+page-load prefix since rows outlive the page), so `sameRow` compares stamps,
+falling back to JSON only for a row from before them. Not the feed: its cards'
+emoji strip and sharers' roster hang outside the card, and paint containment
+holds while a card is on screen too.

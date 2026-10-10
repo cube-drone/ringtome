@@ -516,6 +516,15 @@
     --line: var(--border-strong);
 }
 
+/* A row off screen is neither laid out nor painted (Curtis, 2026-10-10: 1,100 notes, sluggish),
+   held at a typical row's height until it scrolls near - `auto` remembers each one's real height
+   once it has been seen. Nothing of a row draws outside it (its outline is clipped to it already),
+   so the paint containment this brings cuts nothing off. */
+.note-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 3.2rem;
+}
+
 .note-row.selected {
     --line: var(--teal);
 }
@@ -572,6 +581,10 @@
 .files-tile-slot {
     position: relative;
     min-width: 0;
+    /* Off screen, skipped, as the notes list's rows are (.note-row): a tile draws nothing outside
+       its slot - its "home" button sits inside it. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 9rem;
 }
 
 .files-tile {

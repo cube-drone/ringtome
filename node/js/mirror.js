@@ -26,6 +26,12 @@ import * as optimistic from './pure/optimistic.js';
 // for an identity the session doesn't own" starts with them not sharing a database).
 const mirrors = new Map();
 
+/// A stamp for a document row as it is written (`openMirror`'s hooks): unique to this page load and
+/// counting up.
+const STAMP_PREFIX = Math.random().toString(36).slice(2, 10);
+let stamped = 0;
+const nextStamp = () => `${STAMP_PREFIX}:${++stamped}`;
+
 export function openMirror(root) {
     let db = mirrors.get(root);
     if (!db) {
@@ -58,6 +64,14 @@ export function openMirror(root) {
             feedpages: 'key, used',
             floors: 'key, used',
         });
+        // Every document row written - from the stream, or a write stated ahead of it - is stamped
+        // (`_v`), so a list can tell an unchanged row from a changed one without comparing their
+        // words (apps/notes.js `sameRow`, 2026-10-10: 1,100 notes compared as JSON on every save).
+        // The page load's own prefix, since rows outlive it: a stamp is never reused for other words.
+        db.docs.hook('creating', (_key, row) => {
+            row._v = nextStamp();
+        });
+        db.docs.hook('updating', () => ({ _v: nextStamp() }));
         mirrors.set(root, db);
     }
     return db;

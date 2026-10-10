@@ -333,7 +333,14 @@ const sameRow = (a, b) => {
         if (k === 'selected' || k === 'doc') continue;
         if (a[k] !== b[k]) return false;
     }
-    if (a.doc !== b.doc && JSON.stringify(a.doc) !== JSON.stringify(b.doc)) return false;
+    if (a.doc !== b.doc) {
+        // The mirror stamps each row as it is written (mirror.js): the same stamp is the same
+        // row, a new one a changed one - no comparing every row's words on every save. A row
+        // with no stamp (a mirror from before them) is compared as it was.
+        const stamps = a.doc._v !== undefined && b.doc._v !== undefined;
+        if (stamps ? a.doc._v !== b.doc._v : JSON.stringify(a.doc) !== JSON.stringify(b.doc))
+            return false;
+    }
     return (a.selected === a.doc.doc_id) === (b.selected === b.doc.doc_id);
 };
 const NoteRow = memo(NoteRowBody, sameRow);
