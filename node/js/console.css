@@ -188,15 +188,18 @@
     color: var(--ink);
 }
 
-/* The consent page (oauthconsent.js): an AI assistant asking to connect - one card, its answers. */
-.oauth-consent {
+/* The consent page (oauthconsent.js): an AI assistant asking to connect - one card, its answers.
+   An upload link's page (uploadlink.js) is the same card, with one button. */
+.oauth-consent,
+.upload-link {
     flex-direction: column;
     align-items: flex-start;
     max-width: 34rem;
     margin: 0 auto;
     gap: 0.25rem;
 }
-.oauth-consent h2 svg {
+.oauth-consent h2 svg,
+.upload-link h2 svg {
     vertical-align: -0.15em;
 }
 .oauth-consent-small {
@@ -209,7 +212,8 @@
     margin-top: 0.75rem;
 }
 .oauth-consent-yes,
-.oauth-consent-no {
+.oauth-consent-no,
+.upload-link-go {
     --j: 3px;
     clip-path: var(--jag-1);
     padding: 0.45rem 1rem;
@@ -217,7 +221,8 @@
     font-weight: 600;
     cursor: pointer;
 }
-.oauth-consent-yes {
+.oauth-consent-yes,
+.upload-link-go {
     background: var(--teal);
     border: none;
     color: var(--on-accent);
@@ -228,7 +233,8 @@
     color: var(--ink-soft);
 }
 .oauth-consent-yes:disabled,
-.oauth-consent-no:disabled {
+.oauth-consent-no:disabled,
+.upload-link-go:disabled {
     opacity: 0.6;
     cursor: default;
 }

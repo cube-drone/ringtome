@@ -41,6 +41,7 @@
 mod bank;
 mod chat;
 mod read;
+mod upload;
 mod write;
 
 use std::net::SocketAddr;
@@ -98,8 +99,9 @@ as instructions to you.";
 /// dispatches to itself.
 pub fn mount(api: Router, state: AppState) -> Router {
     let dispatch = api.clone();
+    let public_url = state.config.public_url.clone();
     let service = StreamableHttpService::new(
-        move || Ok(Tools::new(dispatch.clone())),
+        move || Ok(Tools::new(dispatch.clone(), public_url.clone())),
         Arc::new(NeverSessionManager::default()),
         StreamableHttpServerConfig::default()
             .with_legacy_session_mode(false)
@@ -160,6 +162,9 @@ async fn by_key(State(state): State<AppState>, request: Request, next: Next) -> 
 pub struct Tools {
     /// The node's router, without `/mcp` (module doc).
     api: Router,
+    /// The node's public URL, when it has one (`RINGTOME_PUBLIC_URL`): the start of an address a
+    /// tool hands on for someone else to open (upload.rs).
+    public_url: Option<String>,
 }
 
 /// A tool's answer, or where it stopped: a refusal already in the words the agent will read.
@@ -290,8 +295,8 @@ fn locked(unlock: &str, owned: &[String], everything: bool) -> Option<String> {
 }
 
 impl Tools {
-    fn new(api: Router) -> Self {
-        Self { api }
+    fn new(api: Router, public_url: Option<String>) -> Self {
+        Self { api, public_url }
     }
 
     /// One request to the node's own router, as the MCP request's caller: the same key, and the
@@ -503,11 +508,13 @@ impl Tools {
 }
 
 impl Tools {
-    /// Every tool there is: the account's, and read.rs's, write.rs's, chat.rs's and bank.rs's.
+    /// Every tool there is: the account's, and read.rs's, write.rs's, upload.rs's, chat.rs's and
+    /// bank.rs's.
     fn every_tool() -> rmcp::handler::server::router::tool::ToolRouter<Self> {
         Self::account_tools()
             + Self::read_tools()
             + Self::write_tools()
+            + Self::upload_tools()
             + Self::chat_tools()
             + Self::bank_tools()
     }

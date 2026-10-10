@@ -100,6 +100,7 @@ pub mod storage;
 pub mod syncstatus;
 pub mod test_endpoints;
 pub mod ui;
+pub mod uploadlink;
 pub mod webpush;
 
 use config::{Config, PublicConfig};
@@ -182,6 +183,8 @@ pub struct AppState {
     pub exports: export::Exports,
     /// Each persona's last import, and what it said (import.rs).
     pub imports: import::Imports,
+    /// The upload links open now (uploadlink.rs): an AI agent's way to send a picture.
+    pub upload_links: uploadlink::Links,
     /// What the node asks of a desktop shell around it (shell.rs): restart listening elsewhere,
     /// show a file. The shell subscribes through [`Bound::shell_requests`].
     pub shell: shell::Shell,
@@ -525,6 +528,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         backups: backup::Backups::default(),
         exports: export::Exports::default(),
         imports: import::Imports::default(),
+        upload_links: uploadlink::Links::default(),
         shell: shell::Shell::new(record_attention),
     };
     net::p2p::spawn_accept_loop(endpoint, state.clone());
@@ -928,6 +932,23 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route(
             "/api/shell/save",
             axum::routing::post(shell::save_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
+        )
+        // Upload links (uploadlink.rs): minted by a signed-in caller or a key; spent by whoever
+        // holds the address - the token is the authority, so no session is asked for.
+        .route("/api/identity/{root}/upload-links", axum::routing::post(uploadlink::mint_handler))
+        // The page's own door (js/uploadlink.js): every api() path is under /api/.
+        .route(
+            "/api/upload/{token}",
+            get(uploadlink::describe_handler)
+                .post(uploadlink::upload_handler)
+                .layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
+        )
+        // The address handed out: a browser GETs the page, a shell POSTs the file to it.
+        .route(
+            "/upload/{token}",
+            get(ui::homepage)
+                .post(uploadlink::upload_handler)
                 .layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
         )
         .merge(identity::router(body_limits));

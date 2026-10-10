@@ -645,14 +645,26 @@ impl Tools {
 
     async fn document(&self, parts: &Parts, args: DocumentArgs) -> Answer {
         let persona = self.persona(parts, args.persona.as_deref()).await?;
-        let doc = self
+        let wanted = args.document.trim();
+        let doc = match self
             .call(
                 parts,
                 Method::GET,
-                &format!("/api/identity/{}/docs/{}", persona.root, escape(args.document.trim())),
+                &format!("/api/identity/{}/docs/{}", persona.root, escape(wanted)),
                 None,
             )
-            .await?;
+            .await
+        {
+            Ok(doc) => doc,
+            // No document yet may be an upload still being made (upload.rs): say so, or why it
+            // couldn't be, rather than that there's no such thing.
+            Err(refused) => {
+                return Err(self
+                    .upload_underway(parts, &persona.root, wanted)
+                    .await
+                    .unwrap_or_else(|| refused.into()))
+            }
+        };
         let format = doc.get("format").and_then(Value::as_str).unwrap_or_default();
         let (kind, unlock) = kind_of(format);
         if let Some(unlock) = unlock {
@@ -668,6 +680,28 @@ impl Tools {
             answered["diverged"] = json!(
                 "edited on two computers at once and not yet merged: these are the newest words"
             );
+        }
+        if kind == "file" {
+            // What shows it in a note or a post - the composer's own reference (upload.rs).
+            let (ext, animation) = match format {
+                "apng" => ("apng", false),
+                "webm" => {
+                    ("webm", doc.pointer("/media/animation").and_then(Value::as_bool) == Some(true))
+                }
+                "opus" => ("ogg", false),
+                _ => ("avif", false),
+            };
+            let title = doc.get("title").and_then(Value::as_str).unwrap_or("file");
+            if let Ok(id) = <[u8; 16]>::try_from(hex::decode(wanted).unwrap_or_default().as_slice())
+            {
+                let url = crate::import::media_url(&persona.root, &id, title, ext, animation);
+                let label: String =
+                    title.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')')).collect();
+                answered["embed"] = json!(format!(
+                    "![{}]({url})",
+                    label.split_whitespace().collect::<Vec<_>>().join(" ")
+                ));
+            }
         }
         if is_text(format) {
             let body = doc.get("body").and_then(Value::as_str).unwrap_or_default();
@@ -716,6 +750,33 @@ impl Tools {
 }
 
 impl Tools {
+    /// What became of an upload that isn't a document yet: still being made, or refused and why.
+    /// `None` when no upload of that id was ever queued - the document simply isn't there.
+    async fn upload_underway(
+        &self,
+        parts: &Parts,
+        root: &str,
+        doc: &str,
+    ) -> Option<CallToolResult> {
+        let jobs = self
+            .call(parts, Method::GET, &format!("/api/identity/{root}/ingest"), None)
+            .await
+            .ok()?;
+        let job = jobs.as_array()?.iter().find(|j| {
+            j.get("doc_id").and_then(Value::as_str).is_some_and(|d| d.eq_ignore_ascii_case(doc))
+        })?;
+        match job.get("status").and_then(Value::as_str)? {
+            "failed" => Some(stop(format!(
+                "that upload couldn't be made into a picture, video or sound: {}",
+                job.get("error").and_then(Value::as_str).unwrap_or("its file couldn't be read")
+            ))),
+            "done" => None,
+            _ => Some(stop(
+                "that upload is still being made - a photo takes seconds, a long video minutes; ask again shortly",
+            )),
+        }
+    }
+
     /// A page of people off one of the persona's people doors, gated like Neighbors (Friends).
     async fn people(&self, parts: &Parts, args: PeopleArgs, door: &str, mine: bool) -> Answer {
         let persona = self.persona(parts, args.persona.as_deref()).await?;

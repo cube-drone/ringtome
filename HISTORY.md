@@ -19296,3 +19296,24 @@ incremental caches first (cache, a slower rebuild of our own crates at most),
 needs no cargo-sweep for that, and says the free space before and after. Today:
 356 GB to 13 GB in `target/` (tidy, then a stamped `cargo sweep` around one
 `just ci` on the new profile), 372 GB free.
+
+## 2026-10-10 (cont.): pictures, through the MCP
+
+Curtis: "Our next task? Making the MCP able to deal with images!" MCP carries no
+file from a client to a server, and a model rarely holds a picture's bytes to
+type them out, so the agent is handed an address instead (plans/MCP.md ruling 11
+and _Pictures_; Curtis chose this way in alone, for embeds in notes and posts).
+`upload_link` (mcp/upload.rs, File upload's) mints a single-use, half-hour link
+(uploadlink.rs: in memory, by hash, 32 open an account) bound to the persona and
+a document id minted with it. An agent with a shell `curl --data-binary`s the
+file to it; a person opens it in a browser, where the app draws a page to choose
+one (js/uploadlink.js, signed in or out). The upload is an ordinary one -
+ingest, the upload cap, the files notebook, `ai-agent` when an agent asked - and
+its answer waits up to 45 s for the picture to be made and hands back `embed`,
+the composer's own reference. `read_document` gives a file's `embed` too, and
+says of an upload not yet made that it's being made, or why it couldn't be. The
+agent's guide says how. Two acceptance claims: an agent's link takes the WebP
+once and answers its embed, refuses a second send, reads back the same embed,
+files and tags it, and a post publishing it serves its own public copy; an
+unknown link and a non-picture each say so. Three unit tests on the links (once,
+expiry, the per-account cap).

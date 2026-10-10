@@ -63,8 +63,16 @@ search titles, keep to the published or unpublished, or just count.
 `read_document` reads one: a note's words, or a picture file as a picture.
 `write_document` writes a note and sets its tags; `pin_document` pins one.
 Drawings are made, seen and posted in the app: an agent reads that one exists,
-no more. Films and sounds are described, not played, and nothing can be uploaded
-from here yet.
+no more. Films and sounds are described, not played.
+
+**Adding a picture.** MCP can't carry a file, so `upload_link` gives an address
+that takes one, once, for half an hour. With a shell, send the file as the body:
+`curl --data-binary @photo.jpg '<url>'`. Without one, give the person the
+address: they open it in a browser and choose the file. The upload answers with
+`embed` - markup like `![a horse](/api/identity/…/body/a_horse.avif)` - which
+shows the picture when it's in a note's or a post's words. If it says `pending`,
+the picture is still being made: `read_document` on its `document` gives `embed`
+once it is. Any common format works; it needs File upload.
 
 ## Chat
 

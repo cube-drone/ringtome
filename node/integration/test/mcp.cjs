@@ -1173,3 +1173,107 @@ describe('MCP: connecting an assistant with OAuth', function () {
         assert.equal((await register({ redirect_uris: ['http://example.com/cb'] })).status, 400);
     });
 });
+
+// Pictures, through an upload link (uploadlink.rs, mcp/upload.rs, plans/MCP.md _Pictures_,
+// 2026-10-10): MCP carries no file from a client, so `upload_link` hands back an address that takes
+// one, once - curled by an agent with a shell, opened in a browser by a person. The upload is an
+// ordinary one, filed where uploads live and marked as the agent's, and its answer is the embed a
+// note or a post shows it with.
+describe('MCP: pictures, through an upload link', function () {
+    this.timeout(180000);
+
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const picture = fs.readFileSync(
+        path.join(__dirname, '..', '..', '..', 'sample_media', 'its_webp.webp'),
+    );
+
+    let me, root, agent;
+    before(async () => {
+        ({ me, root, agent } = await keyed('mcpupload'));
+    });
+
+    it('an agent sends a picture to the link it was given, once, and gets the markup that shows it', async () => {
+        const link = await tool(agent, 'upload_link', { title: 'a brown horse' });
+        assert.ok(!link.stopped, link.stopped);
+        assert.match(link.url, /^http:\/\/[^/]+\/upload\/[0-9a-f]{64}$/, link.url);
+        assert.match(link.document, /^[0-9a-f]{32}$/);
+        assert.ok(link.with_a_shell.includes(link.url), link.with_a_shell);
+        const at = new URL(link.url).pathname.slice(1);
+
+        // A person's browser: the page, and what it says before the file is chosen - nothing of the
+        // persona, only the title.
+        const stranger = makeFetch();
+        const page = await stranger(at);
+        assert.equal(page.status, 200);
+        assert.match(page.headers.get('content-type') || '', /text\/html/);
+        const about = await (await stranger(`api/${at}`)).json();
+        assert.equal(about.title, 'a brown horse');
+
+        // The agent's shell: the file as the body, no key, no cookie.
+        const sent = await stranger(at, { method: 'POST', body: picture, file: true });
+        const uploaded = await sent.json();
+        assert.equal(sent.status, 200, JSON.stringify(uploaded));
+        assert.equal(uploaded.status, 'ready');
+        assert.equal(uploaded.doc_id, link.document);
+        assert.equal(uploaded.format, 'avif');
+        const embed = `![a brown horse](/api/identity/${root}/docs/${link.document}/body/a_brown_horse.avif)`;
+        assert.equal(uploaded.embed, embed);
+
+        const again = await stranger(at, { method: 'POST', body: picture, file: true });
+        assert.equal(again.status, 404, 'a link works once');
+        assert.equal((await stranger(`api/${at}`)).status, 404, 'and is gone after');
+
+        // Read back: the same embed, filed where uploads live, marked as the agent's.
+        const read = await callTool(agent, 'read_document', { document: link.document });
+        assert.ok(!read.isError, read.content[0].text);
+        assert.equal(JSON.parse(read.content[0].text).embed, embed);
+        const doc = (await (await me(`api/identity/${root}/docs`)).json()).docs.find(
+            (d) => d.doc_id === link.document,
+        );
+        assert.deepEqual(doc.buckets, ['files']);
+        const tags = await (
+            await me(`api/identity/${root}/docs/${link.document}/annotations`)
+        ).json();
+        assert.ok(JSON.stringify(tags).includes('ai-agent'), JSON.stringify(tags));
+
+        // ...and a post that shows it carries its own public copy, which serves.
+        const posted = await tool(agent, 'publish', {
+            words: `Look:\n\n${embed}\n`,
+            title: 'a horse',
+        });
+        assert.ok(!posted.stopped, posted.stopped);
+        const [author, post] = posted.post.split('/');
+        const words = await (await stranger(`ringtome/user/${author}/doc/${post}/body`)).text();
+        const shown = /\]\((\/ringtome\/user\/[^)]+)\)/.exec(words);
+        assert.ok(shown, words);
+        const served = await stranger(shown[1].slice(1));
+        assert.equal(served.status, 200, shown[1]);
+        assert.equal(served.headers.get('content-type'), 'image/avif');
+    });
+
+    it("a link nobody minted, or one that isn't a picture, says so", async () => {
+        const stranger = makeFetch();
+        const nobody = await stranger(`upload/${'0'.repeat(64)}`, {
+            method: 'POST',
+            body: picture,
+            file: true,
+        });
+        assert.equal(nobody.status, 404);
+        assert.match((await nobody.json()).message, /used, or has expired/);
+
+        const link = await tool(agent, 'upload_link', {});
+        const at = new URL(link.url).pathname.slice(1);
+        // Sent through the page's own door this time (js/uploadlink.js posts under /api/).
+        const sent = await stranger(`api/${at}`, {
+            method: 'POST',
+            body: 'not a picture at all',
+            file: true,
+        });
+        const answered = await sent.json();
+        assert.equal(answered.status, 'failed', JSON.stringify(answered));
+        assert.ok(answered.error, JSON.stringify(answered));
+        const read = await tool(agent, 'read_document', { document: link.document });
+        assert.match(read.stopped || '', /couldn't be made/, JSON.stringify(read));
+    });
+});

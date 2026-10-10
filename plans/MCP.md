@@ -61,6 +61,12 @@ and what they keep private, not their balance.
    an image (PNG, from the stored AVIF); a drawing still says only that it
    exists.
 10. **Upload still waits** (2026-10-07, ruling 5 standing).
+11. **Pictures come in by an upload link** (2026-10-10, overturning 5 and 10:
+    "Our next task? Making the MCP able to deal with images!"). Asked which ways
+    in, Curtis chose `upload_link` alone - not a fetch from a web address, not
+    base64 in an argument - and that what an upload is for is a note's or a
+    post's embed: not the avatar or banner, not a picture posted on its own
+    (_Pictures_, below).
 
 ## What MCP is, and why not just a spec
 
@@ -488,7 +494,7 @@ through a bridge such as `mcp-remote`.
      `list_followers`: whose public edges name it, as far as this node knows.
      Both need new routes - the client reads contacts off the mirror's stream.
    - `edit_profile`: the name and the bio. The avatar and banner are pictures,
-     which wait on upload.
+     which wait on upload (and, upload built, were left out of ruling 11).
    - `read_notifications` pages; `mark_notifications_seen` takes `through`, so a
      person can say "up to here".
    - `set_colorway`: one that's free or owned.
@@ -507,13 +513,43 @@ through a bridge such as `mcp-remote`.
    is. Paging is over what the doors answer whole (`next` is an offset), which
    bounds what an agent reads, not what the node does.
 
+## Pictures (built 2026-10-10)
+
+`upload_link` (mcp/upload.rs), File upload's, mints an address that takes one
+file (uploadlink.rs): `POST /api/identity/{root}/upload-links` as the persona,
+answered with `/upload/<token>`, which the tool hands back whole - the node's
+public URL, else the address the agent connected to.
+
+- **Two ways to use it.** An agent with a shell sends the file as the body
+  (`curl --data-binary @file <url>`); a person in a chat client opens the
+  address, where the app draws a page to choose the file (js/uploadlink.js),
+  signed in or not. The address is the permission: no key, no cookie.
+- **Once, for half an hour, and only so many.** The first upload spends it; it
+  expires after 30 minutes; an account holds at most 32 open. Only the token's
+  hash is kept, in memory - a restart costs the agent one more `upload_link`.
+  `GET /api/upload/<token>` tells the page the title and the size cap, and
+  nothing of the persona.
+- **An ordinary upload.** Queued for ingest under the document id the link was
+  minted with (so the agent knows it before sending), held to the upload cap,
+  filed in the files notebook, and tagged with what it was made with (`ai-agent`
+  when an agent asked for the link).
+- **Its answer is the embed.** The upload waits up to 45 seconds for the picture
+  to be made and answers `ready` with `embed` - the composer's own reference
+  (`![title](/api/identity/<root>/docs/<id>/body/<slug>.<ext>)`, the extension
+  the stored format's, `-loop` for a silent animation) - or `pending` (202) or
+  `failed` with why. `read_document` gives a file's `embed` too, and for an
+  upload not yet made says it is still being made, or why it couldn't be.
+- **Publishing does the rest**: a post whose words embed it carries its own
+  public copy, as one written in the app does.
+
 ## Open questions
 
-1. **Image upload** (ruling 5: it waits). MCP lets a server hand a client
-   pictures, but has no way for a client to hand a server a file. The model
-   would have to type the image out as base64 in a tool argument, and it usually
-   can't, because it never holds the bytes of a photo it was shown. One
-   workaround to weigh when this comes back: an `upload_link` tool that returns
-   a short-lived, single-use upload URL. An agent with a shell `curl`s the file
-   to it, and a person in a chat client opens it in a browser. Another is a tool
-   that takes a URL and has the node fetch it, as it already does for unfurls.
+1. **Image upload** (ruling 5: it waits) - _answered by ruling 11 and Pictures,
+   above; kept for the reasoning._ MCP lets a server hand a client pictures, but
+   has no way for a client to hand a server a file. The model would have to type
+   the image out as base64 in a tool argument, and it usually can't, because it
+   never holds the bytes of a photo it was shown. One workaround to weigh when
+   this comes back: an `upload_link` tool that returns a short-lived, single-use
+   upload URL. An agent with a shell `curl`s the file to it, and a person in a
+   chat client opens it in a browser. Another is a tool that takes a URL and has
+   the node fetch it, as it already does for unfurls.

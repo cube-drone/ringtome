@@ -10,7 +10,7 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 //
-// 1801 phrases across 109 files.
+// 1813 phrases across 111 files.
 export default {
     // --- node/js/apps/bank.js ---
     'apps.bank.kind-words': 'words written',
@@ -1606,6 +1606,17 @@ export default {
     'update.there-is-a-new-version': "There's a new version of Horse Drawing Tycoon 2 for you to install! Please download it from {here}!",
     'update.still-in-alpha': "HDT2 is still in alpha, so if you don't update, your client might stop working correctly with the rest of the network!",
 
+    // --- node/js/uploadlink.js ---
+    'uploadlink.too-large': 'That file is larger than this place takes ({mb} MB).',
+    'uploadlink.title': 'Send a file to your assistant',
+    'uploadlink.failed': "It arrived, but couldn't be made into a picture, video or sound: {why}",
+    'uploadlink.pending': "It's uploaded, and still being made - tell your assistant, and it can use it in a minute.",
+    'uploadlink.ready': "It's uploaded. Tell your assistant it's there - it can use it now.",
+    'uploadlink.looking': 'looking…',
+    'uploadlink.what': 'Your assistant asked for "{title}": choose a picture, video or sound to send it. This link works once.',
+    'uploadlink.sending': 'sending…',
+    'uploadlink.send': 'send',
+
     // --- node/js/version.js ---
     'version.dev-build': 'a development build of {branch}, on {version}',
     'version.release-notes': 'the release notes for this version',
@@ -2026,6 +2037,11 @@ export default {
     'ui.unknown-font-filename': 'unknown font: {filename}',
     'ui.invalid-version-requested': 'invalid version: {requested}',
     'ui.requested-version-requested-is-newer': 'requested version {requested} is newer than running version {current}',
+
+    // --- node/src/uploadlink.rs ---
+    'upload-link.too-many': 'this account has {n} upload links open already - use one, or wait half an hour',
+    'upload-link.gone': 'this upload link has been used, or has expired - ask for another',
+    'upload-link.empty': "that upload was empty - send the file as the request's body",
 
     // --- node/src/webpush.rs ---
     'webpush.test-title': 'Horse Drawing Tycoon 2',

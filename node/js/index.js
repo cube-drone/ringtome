@@ -71,6 +71,7 @@ import { api } from './net.js';
 import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement, bucketHref } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
 import { OAuthConsent } from './oauthconsent.js';
+import { UploadLink } from './uploadlink.js';
 import { isDevice } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
@@ -1072,6 +1073,12 @@ const Outside = ({ session }) => {
 
 const App = () => {
     const session = useSession();
+
+    // An upload link (uploadlink.js) is the same page signed in or out: the address is the permission.
+    const uploading = /^\/upload\/([0-9a-f]{64})$/.exec(window.location.pathname);
+    if (uploading) {
+        return html`<div class="app-main"><${UploadLink} token=${uploading[1]} /></div>`;
+    }
 
     // First paint: don't flash the front door at someone who's already in.
     if (session.checking) {
