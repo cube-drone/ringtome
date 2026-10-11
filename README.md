@@ -81,8 +81,8 @@ lightly federated, unapologetically Old Internet.
   folded into a per-persona view, so an upload the persona already holds names
   the existing blob, or returns the existing document. Public and private never
   share; key rotation doesn't split it. Album cover art as sound thumbnails is
-  the forcing function. Storage and upload dedup built 2026-10-11; cover art and
-  the backfill to come.
+  the forcing function. Storage and upload dedup built 2026-10-11; cover art to
+  come.
 - [`DRAWING.md`](plans/DRAWING.md) — the horse-drawing app: a drawing is a
   versioned document whose body is its strokes, undo is a recorded removal, and
   two histories merge by putting both sets of strokes together (on the node,

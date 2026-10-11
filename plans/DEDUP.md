@@ -3,7 +3,7 @@
 One copy of each private file a persona holds. Uploading the same surprised
 Pikachu a fiftieth time gives you the Pikachu you already have, and the
 twenty-six tracks of an album share one cover. Designed 2026-10-11; steps 1-5
-built the same day (_Order of work_, below), cover art and the backfill to come.
+built the same day (_Order of work_, below), cover art to come.
 
 ## The ask (Curtis, 2026-10-11)
 
@@ -247,15 +247,14 @@ copies to regret:
 
 ## What existing documents get
 
-Versions written before this carry no prints, and their headers can't be
-rewritten. A background pass, the same shape as the search index's (search.rs
-`index_pass`), decrypts each private media blob once, prints it and records the
-row, so new uploads dedup against old ones. Backfilled rows are view rows only.
-A new device rebuilding the view from the chain finds no prints in those headers
-and runs the same pass. Duplicates already in the store stay as they are.
-Merging them - pointing old versions at one blob - would need new versions of
-documents nobody edited, so it is not part of this. A "duplicates" view in Files
-that offers to fold them is possible later.
+Nothing. Versions written before this carry no prints, and their headers can't
+be rewritten, so new uploads don't dedup against them. A backfill pass that
+decrypted and printed old media was planned and dropped (Curtis, 2026-10-11):
+the network has one user, so there is no body of old uploads worth the code.
+Duplicates already in the store stay as they are. Merging them - pointing old
+versions at one blob - would need new versions of documents nobody edited, so it
+is not part of this. A "duplicates" view in Files that offers to fold them is
+possible later.
 
 ## What it costs and what stays true
 
@@ -292,6 +291,8 @@ that offers to fold them is possible later.
    persona's upload is its own.
 6. **Cover art:** read the front cover, thumbnail it, keep the waveform as the
    fallback. A fixture with a cover in it.
-7. **The backfill pass.**
+
+There is no step 7: the backfill pass was dropped (_What existing documents
+get_).
 
 Steps 1-4 make the album cheap; 5 is the Pikachu; 6 is what started it.
