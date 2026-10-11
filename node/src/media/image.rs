@@ -163,6 +163,32 @@ pub fn crush(input: &[u8]) -> Result<Crushed, CrushError> {
     Ok(Crushed { avif, thumb_avif, width, height, duration_ms: None })
 }
 
+/// A thumbnail alone, from a still picture's bytes: a sound's embedded cover art (Curtis,
+/// 2026-10-11), which has no document of its own to want a main image. The same guards as
+/// [`crush`] (format by magic, animation refused, the decode bomb bound) and the same bound as its
+/// thumbnail, fitted from the source directly.
+pub fn thumbnail(input: &[u8]) -> Result<Vec<u8>, CrushError> {
+    let format = image::guess_format(input).map_err(|e| CrushError::Unsupported(e.to_string()))?;
+    let decoded = if format == ImageFormat::Avif {
+        let (w, h) = avif_dimensions(input)?;
+        if w > MAX_DECODE_DIMENSION || h > MAX_DECODE_DIMENSION {
+            return Err(CrushError::Decode(format!(
+                "avif declares {w}x{h}, over the {MAX_DECODE_DIMENSION}px decode bound"
+            )));
+        }
+        decode_avif(input)?
+    } else {
+        if is_animated(input, format)? {
+            return Err(CrushError::Animated);
+        }
+        let mut reader = ImageReader::new(Cursor::new(input));
+        reader.set_format(format);
+        reader.limits(decode_limits());
+        reader.decode().map_err(map_image_err)?
+    };
+    encode_avif(&fit_within(decoded, THUMB_BOUND))
+}
+
 /// Ingest an AVIF upload. Unlike the other formats we can *emit* AVIF verbatim, so an already-in-spec,
 /// already-marked AVIF passes through untouched (zero re-encode, zero generational loss); anything
 /// oversized, unmarked, or foreign is decoded and re-crushed like any other upload.

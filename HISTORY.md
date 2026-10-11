@@ -19777,3 +19777,33 @@ after its cursor, which says there isn't. Checked in headless Chrome as a
 stranger on a scratch node: the strip shows, a tag narrows, and "load more"
 reads the rest. The node's own feed (`/feed`) and the signed-in feed still cap a
 narrowed list at 100 with no cursor.
+
+## 2026-10-11 (cont.): a sound's cover art is its thumbnail (DEDUP step 6)
+
+A sound uploaded with cover art embedded now uses that cover as its thumbnail
+instead of a drawn waveform, and the tracks of an album store the cover once.
+
+- **Reading the cover** (`node/src/media/audio.rs`): `read_tags` became
+  `read_meta`, which also takes the picture symphonia finds alongside the tags:
+  an ID3 `APIC` frame, an iTunes `covr` atom, a FLAC picture. It prefers the one
+  named front cover, else the first. Ogg Opus passes through undecoded, so
+  `opus_cover` reads its `METADATA_BLOCK_PICTURE` comment (base64 of a FLAC
+  picture block) from the OpusTags packet the tags already come from.
+- **Crushing it** (`node/src/media/image.rs`): `image::thumbnail` makes only the
+  128px thumbnail, behind the same guards as an uploaded picture (format by
+  magic, animation refused, the decode bound). A cover that fails them counts as
+  no cover.
+- **Using it** (`node/src/media.rs`): a sound's thumbnail is its cover when it
+  has one, else its waveform, and the encode skips drawing the waveform when a
+  cover is in hand. The stored sound still carries no metadata, and the original
+  cover bytes are kept nowhere.
+
+The album case comes free from the storage dedup built earlier today: the same
+picture crushes to the same bytes, so its print matches and the second track
+names the first one's blob. New fixtures are
+`sample_media/buck-cover.{mp3,m4a,flac,opus}` (one 96px JPEG on two seconds of
+the buck sample; the Opus one's picture block was built by hand, since ffmpeg
+won't attach one). The unit test `a_sounds_cover_art_is_its_thumbnail` covers
+all four formats, and a new claim in `integration/test/dedup.cjs` uploads two
+tracks with one cover and finds both thumbnails are the cover and the storage
+tally counts it once.

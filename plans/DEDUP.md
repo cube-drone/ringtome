@@ -3,7 +3,7 @@
 One copy of each private file a persona holds. Uploading the same surprised
 Pikachu a fiftieth time gives you the Pikachu you already have, and the
 twenty-six tracks of an album share one cover. Designed 2026-10-11; steps 1-5
-built the same day (_Order of work_, below), cover art to come.
+built the same day (_Order of work_, below), and cover art too.
 
 ## The ask (Curtis, 2026-10-11)
 
@@ -235,12 +235,16 @@ With storage dedup in place, a sound's cover becomes its thumbnail with no
 copies to regret:
 
 - **Reading it:** symphonia exposes a container's embedded pictures as `Visual`s
-  alongside the tags `read_tags` already reads - ID3 `APIC`, FLAC `PICTURE`, the
-  iTunes `covr` atom. Take the front cover (or the only one), decode it through
-  the image lane's own decoder and limits (an embedded picture is upload bytes
-  like any other), and make the usual 128px thumbnail.
+  alongside the tags `read_meta` reads - ID3 `APIC`, FLAC `PICTURE`, the iTunes
+  `covr` atom. An Ogg Opus file passes through undecoded, so its
+  `METADATA_BLOCK_PICTURE` comment is read from its OpusTags by hand
+  (`opus_cover`). Take the front cover, or the first picture when none is named
+  front, decode it through the image lane's own decoder and limits
+  (`image::thumbnail`; an embedded picture is upload bytes like any other), and
+  make the usual 128px thumbnail. A cover that won't decode counts as no cover.
 - **The waveform stays as the fallback**, for the sounds that have no cover:
-  voice notes, sound effects, a recording made in the app.
+  voice notes, sound effects, a recording made in the app. A sound with a cover
+  doesn't draw one.
 - **The stored sound still carries nothing.** The crush strips the container's
   metadata, cover included; the cover lives only as the thumbnail, a blob of its
   own.
@@ -289,8 +293,13 @@ possible later.
    integration/test/dedup.cjs - the same picture twice is one document under its
    first title, a delete lets the same bytes make a new one, and another
    persona's upload is its own.
-6. **Cover art:** read the front cover, thumbnail it, keep the waveform as the
-   fallback. A fixture with a cover in it.
+6. **Cover art** - built: `read_meta` and `opus_cover` in media/audio.rs,
+   `image::thumbnail`, and the cover ahead of the waveform in media.rs. Fixtures
+   `sample_media/buck-cover.{mp3,m4a,flac,opus}`: one 96px JPEG cover on two
+   seconds of the buck sample. Unit test `a_sounds_cover_art_is_its_thumbnail`
+   (every format reads its cover, the four crush to the same bytes, a bare file
+   keeps its waveform). Acceptance in dedup.cjs: two tracks with one cover are
+   two sounds whose shared thumbnail the storage tally counts once.
 
 There is no step 7: the backfill pass was dropped (_What existing documents
 get_).

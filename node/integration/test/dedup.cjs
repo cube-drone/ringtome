@@ -12,7 +12,8 @@ const path = require('node:path');
 
 const { makeUserFetch } = require('./helpers.cjs');
 
-const FLOPPY = path.join(__dirname, '..', '..', '..', 'sample_media', 'floppy.png');
+const SAMPLES = path.join(__dirname, '..', '..', '..', 'sample_media');
+const FLOPPY = path.join(SAMPLES, 'floppy.png');
 
 describe('private dedup: the same upload is the same document', function () {
     this.timeout(600000);
@@ -73,6 +74,37 @@ describe('private dedup: the same upload is the same document', function () {
         const again = (await r.json()).doc_id;
         assert.notEqual(again, first);
         await made(ada, adaRoot, again);
+    });
+
+    it('two tracks with one cover are two sounds whose thumbnail is the cover, stored once', async () => {
+        const cleo = await makeUserFetch({ prefix: 'dupcleo' });
+        const cleoRoot = (await (await cleo('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        const track = async (name) => {
+            const r = await cleo(
+                `api/identity/${cleoRoot}/docs/binary?title=${encodeURIComponent(name)}`,
+                { method: 'POST', body: fs.readFileSync(path.join(SAMPLES, name)), file: true },
+            );
+            assert.equal(r.status, 202, `${name} is queued`);
+            const id = (await r.json()).doc_id;
+            await made(cleo, cleoRoot, id);
+            return id;
+        };
+        const one = await track('buck-cover.mp3');
+        const two = await track('buck-cover.m4a');
+        assert.notEqual(one, two, 'different sounds are different documents');
+        const thumb = async (id) =>
+            Buffer.from(
+                await (await cleo(`api/identity/${cleoRoot}/docs/${id}/thumb`)).arrayBuffer(),
+            );
+        const [a, b] = [await thumb(one), await thumb(two)];
+        assert.ok(a.length > 0 && a.equals(b), 'both thumbnails are the one cover');
+        // The tally counts a stored file once; each document's size counts every file it names.
+        const tally = await (await cleo(`api/identity/${cleoRoot}/storage`)).json();
+        assert.ok(
+            tally.files_bytes < tally.docs[one] + tally.docs[two],
+            `the cover is stored once: ${JSON.stringify(tally)}`,
+        );
     });
 
     it("another persona's upload of the same bytes is its own", async () => {

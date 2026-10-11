@@ -168,8 +168,12 @@ pub struct Crushed {
     /// True when the input was in-spec Ogg Opus passed through without re-encoding.
     pub passthrough: bool,
     /// A small AVIF waveform thumbnail (peak envelope). `None` on the passthrough lane - we never
-    /// decode Opus, so there is no PCM to draw.
+    /// decode Opus, so there is no PCM to draw - and where the file carries its cover.
     pub waveform_avif: Option<Vec<u8>>,
+    /// The file's own cover art, crushed to a thumbnail: the front cover where it names one, else
+    /// its first picture. A sound's thumbnail is its cover when it has one, and its waveform when
+    /// it doesn't (Curtis, 2026-10-11). The cover's original bytes are kept nowhere.
+    pub cover_avif: Option<Vec<u8>>,
     /// What the file said about itself, for the document's annotations ([`TAG_FIELDS`]): its title,
     /// artist, album and the like, read from its ID3, Vorbis comments, iTunes atoms or OpusTags.
     /// Still never written into the output - the stored file stays stripped.
@@ -251,10 +255,11 @@ pub fn tag_fields(
     out
 }
 
-/// The tags a decodable file carries, as fields: the probe's own metadata (an ID3v2 block ahead of
-/// the stream) and the container's (Vorbis comments, iTunes atoms, RIFF INFO). A file that can't
-/// be probed has none - the decode reports why.
-fn read_tags(input: &[u8]) -> Vec<(&'static str, String)> {
+/// The tags a decodable file carries, as fields, and its cover art's bytes: the probe's own
+/// metadata (an ID3v2 block ahead of the stream) and the container's (Vorbis comments, iTunes
+/// atoms, RIFF INFO, FLAC pictures). A file that can't be probed has neither - the decode reports
+/// why.
+fn read_meta(input: &[u8]) -> (Vec<(&'static str, String)>, Option<Vec<u8>>) {
     let source = MediaSourceStream::new(Box::new(Cursor::new(input.to_vec())), Default::default());
     let Ok(mut probed) = symphonia::default::get_probe().format(
         &Hint::new(),
@@ -262,45 +267,44 @@ fn read_tags(input: &[u8]) -> Vec<(&'static str, String)> {
         &FormatOptions::default(),
         &MetadataOptions::default(),
     ) else {
-        return Vec::new();
+        return (Vec::new(), None);
     };
     let mut pairs = Vec::new();
-    let mut take = |tags: &[symphonia::core::meta::Tag]| {
-        for tag in tags {
+    let (mut front, mut first) = (None, None);
+    let mut take = |rev: &symphonia::core::meta::MetadataRevision| {
+        for tag in rev.tags() {
             if let Some(field) = tag.std_key.and_then(std_tag_field) {
                 pairs.push((field, tag.value.to_string()));
+            }
+        }
+        for visual in rev.visuals() {
+            if front.is_none()
+                && visual.usage == Some(symphonia::core::meta::StandardVisualKey::FrontCover)
+            {
+                front = Some(visual.data.to_vec());
+            }
+            if first.is_none() {
+                first = Some(visual.data.to_vec());
             }
         }
     };
     if let Some(meta) = probed.metadata.get() {
         if let Some(rev) = meta.current() {
-            take(rev.tags());
+            take(rev);
         }
     }
     if let Some(rev) = probed.format.metadata().current() {
-        take(rev.tags());
+        take(rev);
     }
-    tag_fields(pairs)
+    (tag_fields(pairs), front.or(first))
 }
 
 /// An OpusTags packet's comments as fields (RFC 7845 5.2: the magic, a vendor string, then a count
 /// of `NAME=value` comments, each length-prefixed, little-endian). A malformed one yields what it
 /// held before it went wrong.
 fn opus_tags(packet: &[u8]) -> Vec<(&'static str, String)> {
-    let mut at = 8; // "OpusTags"
-    let read_u32 = |at: &mut usize| -> Option<usize> {
-        let b = packet.get(*at..*at + 4)?;
-        *at += 4;
-        Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
-    };
     let mut pairs = Vec::new();
-    let Some(vendor) = read_u32(&mut at) else { return Vec::new() };
-    at = at.saturating_add(vendor);
-    let Some(count) = read_u32(&mut at) else { return Vec::new() };
-    for _ in 0..count.min(256) {
-        let Some(len) = read_u32(&mut at) else { break };
-        let Some(bytes) = packet.get(at..at.saturating_add(len)) else { break };
-        at += len;
+    for bytes in opus_comments(packet) {
         let comment = String::from_utf8_lossy(bytes);
         if let Some((name, value)) = comment.split_once('=') {
             if let Some(field) = vorbis_tag_field(name) {
@@ -309,6 +313,63 @@ fn opus_tags(packet: &[u8]) -> Vec<(&'static str, String)> {
         }
     }
     tag_fields(pairs)
+}
+
+/// An OpusTags packet's comments, raw: those before anything malformed.
+fn opus_comments(packet: &[u8]) -> Vec<&[u8]> {
+    let mut at = 8; // "OpusTags"
+    let read_u32 = |at: &mut usize| -> Option<usize> {
+        let b = packet.get(*at..*at + 4)?;
+        *at += 4;
+        Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    };
+    let mut out = Vec::new();
+    let Some(vendor) = read_u32(&mut at) else { return out };
+    at = at.saturating_add(vendor);
+    let Some(count) = read_u32(&mut at) else { return out };
+    for _ in 0..count.min(256) {
+        let Some(len) = read_u32(&mut at) else { break };
+        let Some(bytes) = packet.get(at..at.saturating_add(len)) else { break };
+        at += len;
+        out.push(bytes);
+    }
+    out
+}
+
+/// An OpusTags packet's cover art's bytes: a `METADATA_BLOCK_PICTURE` comment, base64 of a FLAC
+/// picture block (big-endian: its picture type, a MIME type and a description each
+/// length-prefixed, four dimension words, then the picture, length-prefixed). The front cover
+/// (type 3) where one is named, else the first picture that parses.
+fn opus_cover(packet: &[u8]) -> Option<Vec<u8>> {
+    use base64::Engine;
+    let picture = |block: &[u8]| -> Option<(usize, Vec<u8>)> {
+        let word = |at: usize| {
+            block
+                .get(at..at.checked_add(4)?)
+                .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize)
+        };
+        let kind = word(0)?;
+        let at = 8usize.checked_add(word(4)?)?; // past the MIME type
+        let at = at.checked_add(4)?.checked_add(word(at)?)?.checked_add(16)?; // the description, the dimensions
+        let start = at.checked_add(4)?;
+        Some((kind, block.get(start..start.checked_add(word(at)?)?)?.to_vec()))
+    };
+    let mut first = None;
+    for bytes in opus_comments(packet) {
+        let Some(eq) = bytes.iter().position(|b| *b == b'=') else { continue };
+        if !bytes[..eq].eq_ignore_ascii_case(b"METADATA_BLOCK_PICTURE") {
+            continue;
+        }
+        let Ok(block) = base64::engine::general_purpose::STANDARD.decode(&bytes[eq + 1..]) else {
+            continue;
+        };
+        match picture(&block) {
+            Some((3, data)) => return Some(data),
+            Some((_, data)) if first.is_none() => first = Some(data),
+            _ => {}
+        }
+    }
+    first
 }
 
 /// Why an upload could not be turned into canonical audio.
@@ -454,6 +515,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
     let mut packets: Vec<AudioPacket> = Vec::new();
     let mut seen_tags = false;
     let mut tags = Vec::new();
+    let mut cover = None;
     while let Some(packet) = reader.read_packet().map_err(map_ogg)? {
         // A hostile blob could interleave other logical streams; only the Opus stream survives.
         if packet.stream_serial() != serial {
@@ -467,6 +529,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
             }
             // Read for the document's fields, never copied into the output.
             tags = opus_tags(&packet.data);
+            cover = opus_cover(&packet.data);
             continue;
         }
         packets.push(AudioPacket {
@@ -537,6 +600,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
         passthrough: true,
         // No decode on this lane means no PCM to draw a waveform from.
         waveform_avif: None,
+        cover_avif: cover.and_then(|bytes| crate::media::image::thumbnail(&bytes).ok()),
         tags,
     })
 }
@@ -815,7 +879,10 @@ fn crush_via_decode(
 ) -> Result<Crushed, CrushError> {
     let duration_ms = measure_duration_ms(input, max_ms)?;
     let mut bitrate_bps = fit_bitrate_bps(cap_bytes, duration_ms);
-    let tags = read_tags(input);
+    let (tags, cover) = read_meta(input);
+    // A cover that won't crush (a format we don't read, an animation, a bomb) is no cover: the
+    // waveform stands in, as for a file with none.
+    let cover_avif = cover.and_then(|bytes| crate::media::image::thumbnail(&bytes).ok());
 
     // The cap is a promise, not a target. The estimator already budgets for the container and
     // VBR variance, and this loop is the backstop that makes ≤ cap true BY CONSTRUCTION: on
@@ -823,7 +890,8 @@ fn crush_via_decode(
     // floor-rate encode that still overflows is honestly too long. Field-found 2026-07-31:
     // long files used to land a few percent OVER and die downstream at the document cap.
     for _ in 0..3 {
-        let pass = encode_pass(input, max_ms, duration_ms, bitrate_bps, progress)?;
+        let pass =
+            encode_pass(input, max_ms, duration_ms, bitrate_bps, cover_avif.is_none(), progress)?;
         if pass.bytes.len() as u64 <= cap_bytes {
             return Ok(Crushed {
                 bytes: pass.bytes,
@@ -832,6 +900,7 @@ fn crush_via_decode(
                 bitrate_bps,
                 passthrough: false,
                 waveform_avif: pass.waveform_avif,
+                cover_avif,
                 tags,
             });
         }
@@ -864,6 +933,7 @@ fn encode_pass(
     max_ms: u64,
     duration_ms: u64,
     bitrate_bps: u32,
+    draw_waveform: bool,
     progress: &(dyn Fn(u8) + Sync),
 ) -> Result<EncodedPass, CrushError> {
     // Progress rides the decode loop (decode and encode stream together here): frames
@@ -915,7 +985,7 @@ fn encode_pass(
 
     let out_duration_ms = encoded.total_samples.saturating_mul(1_000) / u64::from(OPUS_SAMPLE_RATE);
     let bytes = mux_ogg_opus(&encoded, stages.out_channels as u8)?;
-    let waveform_avif = Some(stages.waveform.render()?);
+    let waveform_avif = if draw_waveform { Some(stages.waveform.render()?) } else { None };
     Ok(EncodedPass {
         bytes,
         duration_ms: out_duration_ms,
@@ -1423,7 +1493,7 @@ mod tests {
     fn a_sounds_tags_are_read_from_every_kind_of_file() {
         let title = "Big Buck Bunny, Sunflower version";
         for name in ["buck-audio.mp3", "buck-audio.flac", "buck-audio.ogg", "buck-audio.wav"] {
-            let tags = read_tags(&corpus(name));
+            let (tags, _) = read_meta(&corpus(name));
             let field = |f: &str| tags.iter().find(|(k, _)| *k == f).map(|(_, v)| v.as_str());
             assert_eq!(field("track"), Some(title), "{name}: {tags:?}");
             assert!(
@@ -1764,6 +1834,27 @@ mod tests {
     /// Every decodable corpus format crushes to a structurally-valid canonical Ogg Opus: 48 kHz
     /// stereo OpusHead, real packet flow, ~20 s of granule time, house bitrate, and a waveform.
     /// Sizes shrink vs the source for the fat formats (wav/flac/mp3 at 128 kbps+).
+    /// A sound's cover art is its thumbnail (Curtis, 2026-10-11), read from every place a file
+    /// keeps one - an ID3 APIC frame, an iTunes `covr` atom, a FLAC picture block, an OpusTags
+    /// `METADATA_BLOCK_PICTURE` on the passthrough lane - and no waveform is drawn beside it. The
+    /// same picture in two files crushes to the same bytes, so an album's tracks store one cover.
+    #[test]
+    fn a_sounds_cover_art_is_its_thumbnail() {
+        let mut covers = Vec::new();
+        for name in ["buck-cover.mp3", "buck-cover.m4a", "buck-cover.flac", "buck-cover.opus"] {
+            let out = crush(&corpus(name), CrushOpts::default())
+                .unwrap_or_else(|e| panic!("{name} crushes: {e}"));
+            let cover = out.cover_avif.unwrap_or_else(|| panic!("{name} has its cover read"));
+            assert!(is_avif(&cover), "{name}'s cover is an AVIF thumbnail");
+            assert!(out.waveform_avif.is_none(), "{name} draws no waveform beside its cover");
+            covers.push(cover);
+        }
+        assert!(covers.windows(2).all(|w| w[0] == w[1]), "one picture, one thumbnail");
+        let bare = crush(&corpus("buck-audio.mp3"), CrushOpts::default()).expect("crushes");
+        assert!(bare.cover_avif.is_none(), "a file without a cover has none");
+        assert!(bare.waveform_avif.is_some(), "and its waveform stands in");
+    }
+
     #[test]
     fn wild_formats_crush_to_ogg_opus() {
         for name in [

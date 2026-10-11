@@ -180,7 +180,7 @@ impl Ingested {
         Ingested {
             body: c.bytes,
             format: Format::OggOpus,
-            thumb_avif: c.waveform_avif,
+            thumb_avif: c.cover_avif.or(c.waveform_avif),
             preview_webm: None,
             animation: false,
             width: None,
