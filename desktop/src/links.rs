@@ -31,12 +31,18 @@ use tauri::{AppHandle, Manager, Url};
 /// would have. Run in every page the window loads (lib.rs, the initialization script), in the
 /// bubbling phase, so a page's own handler that takes the click first keeps it. A link that
 /// downloads is left to the webview.
+///
+/// By dropping the link's `target`, so the click goes on as a plain link's would, not by a
+/// navigation of our own (2026-10-11: on Android the update notice's "here" did nothing however
+/// often it was pressed: the taps reached the app, and no line from `navigation` followed, so the
+/// webview never asked about the scripted `location.assign` - and a link to a download it loads
+/// itself has nowhere to put the file). A plain link reaches `navigation` on every system we've
+/// seen: the feed's links always opened on the phone.
 pub const BLANK_CLICKS: &str = r#"window.addEventListener('click', (e) => {
     if (e.defaultPrevented || e.button !== 0) return;
     const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
     if (!a || a.target !== '_blank' || a.hasAttribute('download')) return;
-    e.preventDefault();
-    window.location.assign(a.href);
+    a.removeAttribute('target');
 });"#;
 use tauri_plugin_opener::OpenerExt;
 

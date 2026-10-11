@@ -19683,3 +19683,18 @@ changes - one editing mode, no mode tabs, the publish bar behind its chip -
 still follows the window; the feed's writer has no publish bar anyway. On a wide
 window the folded chips say their words too (`.reader-folded`), at a mouse's
 size rather than a thumb's.
+
+## 2026-10-11 (cont.): the update notice's link on a phone
+
+Curtis: on the phone, the update notice's "here" did nothing, pressed a dozen
+times. `adb logcat` showed the taps reaching the app (0.3.5) and nothing after
+them - no line from the shell's link handling (links.rs, which logs every link
+it opens, refuses or fails), no intent to a browser. The link is
+`target="_blank"`, and in the shell a blank link goes through `BLANK_CLICKS`,
+which cancelled the click and navigated by script (`location.assign`) - so
+either the Android webview never asked the shell about a scripted navigation, or
+the click never got that far; with the page out of reach of a debugger (release
+builds), the logs can't say which. The feed's link previews, plain links, always
+opened on the phone. So the script now only drops the link's `target` and lets
+the click go on as a plain link's would. Not yet seen on a phone: it rides the
+next APK.
