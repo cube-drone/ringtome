@@ -2618,10 +2618,23 @@ pub async fn id_posts(
     let hosted_here = crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(false);
     let narrow = crate::search::Narrow::parse(raw.as_deref(), query.q.as_deref());
     let searching = !narrow.is_empty();
-    let page = if searching { crate::search::RESULTS_CAP as i64 } else { POSTS_PAGE };
+    let page = POSTS_PAGE;
     let posts = if searching {
-        // The whole shelf, judged by the labels and the index (search.rs).
-        let all = whole_shelf(&state, &root_hex).await;
+        // The whole shelf, judged by the labels and the index (search.rs), a page at a time
+        // (Curtis, 2026-10-11: a stranger narrowing a person's page to their books reads on past
+        // the first hundred): what lies beyond the cursor, newest first, to the first page and
+        // one more that match.
+        let mut all: Vec<_> = whole_shelf(&state, &root_hex)
+            .await
+            .into_iter()
+            .filter(|p| match &after {
+                Some((ms, doc)) => {
+                    p.display_ms() < *ms || (p.display_ms() == *ms && p.doc_id > *doc)
+                }
+                None => true,
+            })
+            .collect();
+        all.sort_by(|a, b| b.display_ms().cmp(&a.display_ms()).then(a.doc_id.cmp(&b.doc_id)));
         let candidates: Vec<crate::search::Candidate> = all
             .iter()
             .map(|p| crate::search::Candidate {
@@ -2632,9 +2645,15 @@ pub async fn id_posts(
                 kind: post_kind(p),
             })
             .collect();
-        let keep = crate::search::matching(&state, &candidates, &narrow, query.as_root.as_deref())
-            .await
-            .map_err(AppError::Internal)?;
+        let keep = crate::search::matching_first(
+            &state,
+            &candidates,
+            &narrow,
+            query.as_root.as_deref(),
+            (POSTS_PAGE + 1) as usize,
+        )
+        .await
+        .map_err(AppError::Internal)?;
         all.into_iter().enumerate().filter(|(i, _)| keep.contains(i)).map(|(_, p)| p).collect()
     } else if !hosted_here && peek_held(&state, &root_hex).await {
         touch_look(&state, &root_hex).await;

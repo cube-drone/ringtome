@@ -556,6 +556,18 @@ pub async fn matching(
     admitted(state, candidates, narrow, viewer, RESULTS_CAP, None).await
 }
 
+/// `matching`, stopping at the first `cap` matches - a page of a listing that pages by its own
+/// cursor (a person's page, 2026-10-11), rather than one deep answer.
+pub async fn matching_first(
+    state: &AppState,
+    candidates: &[Candidate],
+    narrow: &Narrow,
+    viewer: Option<&str>,
+    cap: usize,
+) -> Result<Vec<usize>> {
+    admitted(state, candidates, narrow, viewer, cap, None).await
+}
+
 /// Labels already read for a set of posts, as a reader may see them: `(author, doc) -> labels`.
 pub type Labels =
     std::collections::HashMap<(String, String), Vec<crate::annotations::KnownAnnotation>>;

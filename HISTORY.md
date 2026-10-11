@@ -19752,3 +19752,28 @@ clicks another before the node says who may sign up, their choice stands, unless
 that tab then disappears. Checked in headless Chrome against a scratch node,
 with the registration answer stubbed for closed and password: all six
 combinations come out in the intended order.
+
+## 2026-10-11 (cont.): a stranger narrows a person's page, and reads on
+
+Someone who isn't signed in can now narrow a person's page with the tag strip
+("just their books", "just their rebroadcasts") and page through what's left.
+Two things stood in the way:
+
+- **The strip was an unlock.** `LabelFacets` and `usePicks` (`js/facets.js`)
+  answer only to a persona that has bought `tags` (plans/UNLOCKS.md), and a
+  stranger has no persona. Both take `free` now, and `PublicPosts`
+  (`js/posts.js`) passes it when nobody is signed in. A signed-in reader who
+  hasn't bought filters still doesn't see them.
+- **A narrowed page didn't page.** It answered one list of up to 100 posts with
+  no cursor. `id_posts` (`src/idface.rs`) now applies the shelf's own
+  `after_ms`/`after_doc` cursor to the matched posts and stops at a page and one
+  more (`search::matching_first`), so `more` is the node's real answer.
+  `useSearch` (`js/postsearch.js`) keeps that answer and gains `loadMore`, and
+  the page's "load more" button serves the narrowed list too.
+
+Acceptance: `integration/test/pagenarrow.cjs`, in which a stranger reads 25
+tagged posts among others as a page of 20 that says there is more, then the 5
+after its cursor, which says there isn't. Checked in headless Chrome as a
+stranger on a scratch node: the strip shows, a tag narrows, and "load more"
+reads the rest. The node's own feed (`/feed`) and the signed-in feed still cap a
+narrowed list at 100 with no cursor.

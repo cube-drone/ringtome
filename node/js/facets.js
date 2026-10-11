@@ -234,10 +234,20 @@ export const TagFacetRow = (props) => (useOwns('tags') ? html`<${FacetRow} ...${
 /// values) with `notKinds`, `notBuckets`, `notTags` (its left-out ones) and `me`, and `onPicks`
 /// with the next picks. Every chip cycles the same way (Curtis, 2026-10-01): left alone, only,
 /// left out - "only" picks in one row widen to either, the rows narrow together.
-export const LabelFacets = ({ labels, picks, onPicks, meChip = false, note = null }) => {
-    // Filters are bought with tags (plans/UNLOCKS.md, "Reactions, tags & filters").
+export const LabelFacets = ({
+    labels,
+    picks,
+    onPicks,
+    meChip = false,
+    note = null,
+    free = false,
+}) => {
+    // Filters are bought with tags (plans/UNLOCKS.md, "Reactions, tags & filters") - by a persona.
+    // Someone who isn't signed in has none to buy them with, and reads a person's page or the
+    // node's feed narrowed all the same (Curtis, 2026-10-11: "just my books", "just my
+    // rebroadcasts"): `free` there.
     const owned = useOwns('tags');
-    if (!owned) return null;
+    if (!owned && !free) return null;
     if (
         !meChip &&
         (!labels ||
@@ -349,7 +359,8 @@ const writePicks = (key, picks) => {
         /* no storage: the picks live for the page */
     }
 };
-export function usePicks(key) {
+/// `free` as `LabelFacets`' own: someone not signed in narrows without owning filters.
+export function usePicks(key, free = false) {
     const [picks, setPicksState] = useState(() => (key ? readPicks(key) : NO_PICKS));
     useEffect(() => {
         setPicksState(key ? readPicks(key) : NO_PICKS);
@@ -359,7 +370,7 @@ export function usePicks(key) {
         if (key) writePicks(key, next);
     };
     // No filters owned, no filter in force: a pick kept from before can't narrow a list unseen.
-    const owned = useOwns('tags');
+    const owned = useOwns('tags') || free;
     return [owned ? picks : NO_PICKS, setPicks];
 }
 export const anyPicks = (picks) =>

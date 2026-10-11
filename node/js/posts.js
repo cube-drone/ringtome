@@ -132,7 +132,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
     // query is open. Hooks before the early return below, as always.
-    const [picks, setPicks] = usePicks(root ? `id:${root}` : null);
+    const [picks, setPicks] = usePicks(root ? `id:${root}` : null, !current);
     const viewer = current ? `?as=${current.root}` : '';
     // The picks thin the lists (Curtis, 2026-09-27; search.rs facet_sets) - the words stay out.
     const pickQuery = narrowParams('', picks);
@@ -148,11 +148,16 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
         ? (search.results || []).map((p) => shelfItem(p, dress))
         : items;
     const shownPinned = search.active ? [] : pinnedItems;
+    // A narrowed shelf pages too (2026-10-11), by the same cursor as the whole one.
+    const loadMoreFound = () => {
+        const cursor = postCursor(search.results);
+        if (cursor) search.loadMore(`after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}`);
+    };
     if (!search.active && !list.length && !scheduledItems.length && !pinnedItems.length)
         return null; // nothing said in public yet
 
     return html`
-        <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} />
+        <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} free=${!current} />
         ${
             shownPinned.length > 0 &&
             html`<section class="public-posts public-posts-pinned">
@@ -193,9 +198,13 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
             )}
             ${error && html`<p class="form-error">${error}</p>`}
             ${
-                hasMore &&
-                html`<button class="public-posts-more" disabled=${loading} onClick=${loadMore}>
-                ${loading ? t('posts.reading-further-back', 'reading further back…') : t('posts.load-more', 'load more')}
+                (search.active ? search.more : hasMore) &&
+                html`<button
+                    class="public-posts-more"
+                    disabled=${search.active ? search.loading : loading}
+                    onClick=${search.active ? loadMoreFound : loadMore}
+                >
+                ${(search.active ? search.loading : loading) ? t('posts.reading-further-back', 'reading further back…') : t('posts.load-more', 'load more')}
             </button>`
             }
         </section>

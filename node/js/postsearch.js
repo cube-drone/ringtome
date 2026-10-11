@@ -39,35 +39,69 @@ export function narrowParams(query, picks, extra = {}) {
     return parts.join('&');
 }
 
-/// `{ active, results, searching, error }` - `active` while there are words or picks;
-/// `results` the items the node returned (null until the first answer).
+/// `{ active, results, searching, error, more, loadMore, loading }` - `active` while there are
+/// words or picks; `results` the items the node returned (null until the first answer). `more` is
+/// the node's word that a listing which pages goes further, and `loadMore(cursor)` reads the next
+/// page - `cursor` its query string, in the listing's own terms - onto the end of `results`.
 export function useSearch(url, query, picks, extra = {}) {
     const q = narrowParams(query, picks, extra);
     const active = q.length > 0;
-    const [state, setState] = useState({ for: '', results: null, error: null });
+    const [state, setState] = useState({ for: '', results: null, error: null, more: false });
+    const [loading, setLoading] = useState(false);
+    const ask = (cursor) =>
+        api(`${url}${url.includes('?') ? '&' : '?'}${q}${cursor ? `&${cursor}` : ''}`);
     useEffect(() => {
         if (!active || !url) return undefined;
         let alive = true;
         const timer = setTimeout(async () => {
             try {
-                const page = await api(`${url}${url.includes('?') ? '&' : '?'}${q}`);
+                const page = await ask(null);
                 if (alive)
-                    setState({ for: q, results: page.items || page.posts || [], error: null });
+                    setState({
+                        for: q,
+                        results: page.items || page.posts || [],
+                        error: null,
+                        more: !!page.more,
+                    });
             } catch (e) {
-                if (alive) setState({ for: q, results: [], error: e.message || String(e) });
+                if (alive)
+                    setState({ for: q, results: [], error: e.message || String(e), more: false });
             }
         }, DEBOUNCE_MS);
         return () => {
             alive = false;
             clearTimeout(timer);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `ask` is this url and q
     }, [active, url, q]);
     if (!active) return { active: false, results: null, searching: false, error: null };
     const fresh = state.for === q;
+    const loadMore = async (cursor) => {
+        setLoading(true);
+        try {
+            const page = await ask(cursor);
+            // A page that answers after the words or picks moved on belongs to nothing on screen.
+            setState((s) =>
+                s.for === q
+                    ? {
+                          ...s,
+                          results: [...(s.results || []), ...(page.items || page.posts || [])],
+                          more: !!page.more,
+                      }
+                    : s,
+            );
+        } catch (e) {
+            setState((s) => (s.for === q ? { ...s, error: e.message || String(e) } : s));
+        }
+        setLoading(false);
+    };
     return {
         active: true,
         results: fresh ? state.results : null,
         searching: !fresh,
         error: fresh ? state.error : null,
+        more: fresh && state.more,
+        loadMore,
+        loading,
     };
 }
