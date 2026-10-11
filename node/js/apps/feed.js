@@ -83,6 +83,7 @@ import {
 } from '../postentry.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { formatWhen } from '../pure/when.js';
+import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
 
@@ -180,10 +181,11 @@ const StackItem = ({ root, row, onPost, posting }) => {
         try {
             await api(`/api/identity/${root}/docs/${row.doc_id}`, { method: 'DELETE' });
         } catch (e) {
-            alert(
+            toast(
                 t('apps.feed.couldnt-discard-it', "couldn't discard it: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };

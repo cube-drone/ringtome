@@ -1,0 +1,36 @@
+/* Developer Options (developer.js): a settings page of buttons in groups. The browser-notification
+   switch is borrowed from hrseNags (push.js), so its buttons are re-dressed here, by the host. */
+.developer-group {
+    margin: 1rem 0;
+}
+
+.developer-heading {
+    font-size: 0.9rem;
+    margin: 0 0 0.4rem;
+    color: var(--ink-soft);
+}
+
+.developer-row,
+.developer-group .push-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.developer-button,
+.developer-group .push-button {
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: var(--surface);
+    --line: var(--border);
+    --j: 4px;
+    padding: 0.3rem 0.8rem;
+    cursor: pointer;
+}
+
+.developer-button:hover,
+.developer-group .push-button:hover {
+    --line: var(--border-strong);
+}

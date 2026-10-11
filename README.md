@@ -139,6 +139,11 @@ lightly federated, unapologetically Old Internet.
   and blocks (a quote on every line, a starter table), each acting on the
   selection - or on "text", inserted and selected - and changing a span already
   there rather than nesting another. Built 2026-10-10.
+- [`TOASTS.md`](plans/TOASTS.md) — short messages that fade by themselves, above
+  the quickbar at the right on a desktop and across the lower third on a phone:
+  errors that were `alert()`s, "moved to X · open it", and chat and bell alerts
+  while you're in the app, carried down the live stream from the node's
+  attention watcher, one per room until you look. Built 2026-10-11.
 - [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
   starts with Drawing, the Bank and Nags and buys the rest from the Market with
   HorseBucks; unlocks on the private chain as ledger spends, gates in the client

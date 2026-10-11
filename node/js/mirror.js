@@ -21,6 +21,7 @@ import Dexie, { liveQuery } from 'dexie';
 import { useState, useEffect } from 'preact/hooks';
 
 import * as optimistic from './pure/optimistic.js';
+import { announceAlert } from './toasts.js';
 
 // One Dexie handle per persona per page - the mirror is per-identity ("nothing is ever cached
 // for an identity the session doesn't own" starts with them not sharing a database).
@@ -227,6 +228,9 @@ export function startLiveCache(root) {
                 if (msg.sync && typeof msg.sync.face === 'string') {
                     await db.kv.put({ key: 'sync_face', value: msg.sync });
                 }
+                // What the node's attention watcher said about this persona (plans/TOASTS.md):
+                // shown as toasts, which decide for themselves whether this page should hear it.
+                for (const alert of msg.alerts || []) announceAlert(alert);
                 state.retryMs = 1000; // a healthy message resets the backoff
             } catch (e) {
                 console.warn('live cache: bad frame', e);

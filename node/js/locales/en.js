@@ -30,6 +30,7 @@ export default {
     'apps.bank.kind-debt-interest': 'interest on debt',
     'apps.bank.kind-magic-words': 'the magic words',
     'apps.bank.kind-contract': 'contracts completed',
+    'apps.bank.kind-gift': 'gifts, from developer options',
     'apps.bank.kind-unlock': 'unlocks bought',
     'apps.bank.kind-commodity': 'commodities bought',
     'apps.bank.kind-commodity-sale': 'commodities sold',
@@ -73,6 +74,8 @@ export default {
     'apps.bank.bought-units-of': 'bought {units} {name}',
     'apps.bank.sold-commodities-n-times': 'sold commodities {count} times',
     'apps.bank.sold-units-of': 'sold {units} {name}',
+    'apps.bank.n-gifts': '{count} gifts, from developer options',
+    'apps.bank.a-gift': 'a gift, from developer options',
     'apps.bank.unlocked': 'unlocked',
     'apps.bank.n-lines': '{n} lines',
     'apps.bank.counting': 'counting…',
@@ -457,9 +460,6 @@ export default {
     'auth.lost-your-password': 'lost your password?',
 
     // --- node/js/buckets.js ---
-    'buckets.moved-to': 'moved to {bucket}',
-    'buckets.open-it': 'open it',
-    'buckets.dismiss': 'dismiss',
     'buckets.name-is-reserved': '"{name}" is kept for another app - choose another name',
     'buckets.couldnt-create-it': "couldn't create it: {message}",
     'buckets.couldnt-delete-it': "couldn't delete it: {message}",
@@ -626,6 +626,21 @@ export default {
     'crtpref.disable-crt': 'disable CRT',
     'crtpref.enable-crt': 'enable CRT',
 
+    // --- node/js/developer.js ---
+    'developer.gift-given': '{amount} is yours: your balance is {balance}',
+    'developer.open-the-bank': 'open the bank',
+    'developer.no-gift': 'no gift: {message}',
+    'developer.title': 'developer options',
+    'developer.who-sees-this': "for a node's administrators, and for everyone on a development build",
+    'developer.toasts': 'toasts',
+    'developer.example-toast': 'an example toast: it fades in five seconds, or holds while you point at it',
+    'developer.pop-an-example-toast': 'pop an example toast',
+    'developer.example-error': "an example error: couldn't do the thing: the thing said no",
+    'developer.pop-an-example-error': 'pop an example error',
+    'developer.notifications': 'notifications',
+    'developer.horsebucks': 'HorseBucks',
+    'developer.give-me-a-million': 'give me H$ 1,000,000',
+
     // --- node/js/doc/annotations.js ---
     'doc.annotations.untitled': 'untitled',
     'doc.annotations.no-reacting-to-your-own': "a reaction is for somebody else's post",
@@ -636,6 +651,8 @@ export default {
     'doc.annotations.time-optional': 'time (optional)',
     'doc.annotations.set-a-date-first': 'set a date first',
     'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
+    'doc.annotations.moved-to': 'moved to {bucket}',
+    'doc.annotations.open-it': 'open it',
     'doc.annotations.notebook': 'notebook',
     'doc.annotations.move': 'move…',
     'doc.annotations.title': 'title',
@@ -1367,6 +1384,8 @@ export default {
     'persona.what-gets-blurred-or-hidden': 'what gets blurred, and what stays off your pages',
     'persona.import-export': 'import/export',
     'persona.everything-you-are-as-a-zip': 'everything you are here, as one .zip',
+    'persona.developer-options': 'developer options',
+    'persona.try-the-machinery': "try the app's own machinery: toasts, notifications, money",
     'persona.log-out': 'log out',
     'persona.forget-this-browser-and-head': 'forget this browser and head out',
     'persona.content-control-2': 'content control',
@@ -1656,6 +1675,11 @@ export default {
     'syncpage.disk': 'space on this computer',
     'syncpage.check-records': 'check this computer’s records',
 
+    // --- node/js/toasts.js ---
+    'toasts.alert': '{title}: {body}',
+    'toasts.open': 'open',
+    'toasts.dismiss': 'dismiss',
+
     // --- node/js/unlocks.js ---
     'unlocks.everything': 'Unlock everything',
     'unlocks.friends': 'Friends',
@@ -1810,6 +1834,7 @@ export default {
     'bank.unlock-the-others-first': 'that one needs another unlock first',
     'bank.you-cant-afford-that-2': "you can't afford that",
     'bank.only-node-admins-unlock-everything': 'only a node administrator can unlock everything',
+    'bank.only-developers-get-gifts': 'only a node administrator, or anyone on a development build, gets gifts',
 
     // --- node/src/builtin.rs ---
     'builtin.not-in-this-build': 'that picture no longer comes with the app',

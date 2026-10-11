@@ -53,6 +53,8 @@ import { Clock } from './clock.js';
 import { SyncCloud } from './synccloud.js';
 import { CornerBank } from './cornerbank.js';
 import { LockedApp, useLedger, useLedgerPoll, unlockedIn } from './unlocks.js';
+import { Toasts } from './toasts.js';
+import { DeveloperOptions } from './developer.js';
 import { Version } from './version.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
@@ -582,14 +584,15 @@ const Inside = ({ session }) => {
     // and pre-persona flows, which aren't apps and so get no shell. Either way the footer (`bar`)
     // renders after, and the flex column in `.app-main` stacks the region above it.
     // The ledger's poll rides beside the bar, whichever bar it is: inside the wide one, a narrow
-    // window never mounted it, and its unlocks never loaded (2026-10-08).
+    // window never mounted it, and its unlocks never loaded (2026-10-08). The toasts (toasts.js)
+    // ride there too, for the same reason, and are fixed above the bar.
     const shell = (content) =>
         html`<div class="app-frame">
             ${appHeader}
             <div class="app-frame-inner">${content}</div>
-        </div>${bar}<${LedgerPoll} root=${root} />`;
+        </div>${bar}<${LedgerPoll} root=${root} /><${Toasts} />`;
     const stage = (content) =>
-        html`<div class="app-stage">${content}</div>${bar}<${LedgerPoll} root=${root} />`;
+        html`<div class="app-stage">${content}</div>${bar}<${LedgerPoll} root=${root} /><${Toasts} />`;
 
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
     // whatever the URL says. These onboarding flows aren't apps either, so they ride the stage.
@@ -652,6 +655,7 @@ const Inside = ({ session }) => {
             <${ExportPage} path="/ringtome/settings/import-export" current=${persona.current} />
             <${ExportPage} path="/ringtome/settings/import-export/:tab" current=${persona.current} />
             <${AppSettings} path="/ringtome/settings/app" current=${persona.current} />
+            <${DeveloperOptions} path="/ringtome/settings/developer" current=${persona.current} session=${session} />
             <${Personas} path="/ringtome/settings/personas" persona=${persona} current=${persona.current} />
             <${SettingsMoved} path="/ringtome/persona/:page" />
             <${SettingsMoved} path="/ringtome/persona/:page/*" />

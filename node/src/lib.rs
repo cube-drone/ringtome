@@ -883,6 +883,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/identity/{root}/storage", get(storage::persona_handler))
         .route("/api/node/storage", get(storage::node_handler))
         .route("/api/identity/{root}/bank/instruments", axum::routing::post(bank::buy_handler))
+        .route("/api/identity/{root}/bank/gift", axum::routing::post(bank::gift_handler))
         .route(
             "/api/identity/{root}/bank/instruments/{id}/sell",
             axum::routing::post(bank::sell_handler),

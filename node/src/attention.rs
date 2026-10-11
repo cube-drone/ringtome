@@ -27,7 +27,13 @@
 //!
 //! **Only the personas somebody is listening for.** An embedder (the desktop app) and the test
 //! recorder listen for everyone; Web Push (webpush.rs) listens only for the personas with a
-//! subscription. A hosted node whose members never turned push on does no work here at all.
+//! subscription; an open page listens for the persona its live stream is for, and hears each
+//! alert down that socket as a toast (plans/TOASTS.md). A hosted node whose members never turned
+//! push on and have no page open does no work here at all.
+//!
+//! **Nobody listening forgets what was seen.** A persona dropped from the watch loses its record,
+//! so being watched again starts with a silent first look: closing the app for an hour and opening
+//! it again must not replay the hour as toasts from a record an hour stale.
 //!
 //! What this does NOT do: decide whether anyone is looking. The embedder knows whether its
 //! window is focused; this knows only that the badge lit.
@@ -99,6 +105,29 @@ pub struct Attention {
     window_roots: Arc<Mutex<HashSet<String>>>,
     /// The personas Web Push listens for: those with at least one subscription.
     push_roots: Arc<Mutex<HashSet<String>>>,
+    /// The personas an open page listens for: how many live streams each has open
+    /// (`identity::routes::serve_stream`), counted up by [`Self::watch_stream`] and down by its
+    /// guard's drop.
+    stream_roots: Arc<Mutex<HashMap<String, usize>>>,
+}
+
+/// One open stream's claim on its persona's alerts. Dropped however the socket ends - a close, an
+/// error, a panic - and the count goes down with it.
+pub struct StreamWatch {
+    root: String,
+    stream_roots: Arc<Mutex<HashMap<String, usize>>>,
+}
+
+impl Drop for StreamWatch {
+    fn drop(&mut self) {
+        let mut held = self.stream_roots.lock().expect("stream roots poisoned");
+        if let Some(n) = held.get_mut(&self.root) {
+            *n -= 1;
+            if *n == 0 {
+                held.remove(&self.root);
+            }
+        }
+    }
 }
 
 impl Attention {
@@ -112,6 +141,7 @@ impl Attention {
             window_account: Default::default(),
             window_roots: Default::default(),
             push_roots: Default::default(),
+            stream_roots: Default::default(),
         }
     }
 
@@ -160,6 +190,29 @@ impl Attention {
         self.push_roots.lock().expect("push roots poisoned").remove(root);
     }
 
+    /// Watch one persona while a page's live stream for it is open; the guard is the claim.
+    pub fn watch_stream(&self, root: &str) -> StreamWatch {
+        *self
+            .stream_roots
+            .lock()
+            .expect("stream roots poisoned")
+            .entry(root.to_string())
+            .or_default() += 1;
+        StreamWatch { root: root.to_string(), stream_roots: self.stream_roots.clone() }
+    }
+
+    /// Nobody listening any more forgets (the module doc): a persona no one watches loses its
+    /// record of what was seen, and its guard, so being watched again starts with a silent first
+    /// look at the very next tick.
+    fn forget_unwatched<S, G>(
+        &self,
+        seen: &mut HashMap<String, S>,
+        guards: &mut HashMap<String, G>,
+    ) {
+        seen.retain(|root, _| self.wanted(root));
+        guards.retain(|root, _| self.wanted(root));
+    }
+
     /// The recorder's alerts for one persona, oldest first - the test rig's read.
     pub fn recorded(&self, root: &str) -> Vec<Alert> {
         self.recorded
@@ -180,6 +233,7 @@ impl Attention {
         self.everyone.load(std::sync::atomic::Ordering::SeqCst)
             || self.window_roots.lock().expect("window roots poisoned").contains(root)
             || self.push_roots.lock().expect("push roots poisoned").contains(root)
+            || self.stream_roots.lock().expect("stream roots poisoned").contains_key(root)
     }
 
     /// Does an embedder listen - someone who will want an alert's picture as a file?
@@ -193,6 +247,7 @@ impl Attention {
         self.everyone.load(std::sync::atomic::Ordering::SeqCst)
             || !self.window_roots.lock().expect("window roots poisoned").is_empty()
             || !self.push_roots.lock().expect("push roots poisoned").is_empty()
+            || !self.stream_roots.lock().expect("stream roots poisoned").is_empty()
     }
 
     fn publish(&self, alert: Alert) {
@@ -223,6 +278,10 @@ pub async fn watch(state: AppState) {
     let mut guards: HashMap<String, (Option<i64>, u64)> = HashMap::new();
     let mut seen: HashMap<String, Seen> = HashMap::new();
     loop {
+        // First, before anything can `continue`: the commonest way to stop listening is the last
+        // tab closing, which leaves nobody listening at all - and both arms below skip the rest of
+        // the loop when nobody is. Forgetting after them never forgot that case.
+        state.attention.forget_unwatched(&mut seen, &mut guards);
         // Which personas might have moved: the tick's guarded set, or the nudge's writer.
         let mut dirty: HashSet<String> = HashSet::new();
         let mut everyone = false;
@@ -754,6 +813,41 @@ mod tests {
         assert!(!a.wanted("mine"), "signed in as someone else");
         a.set_window_account(None);
         assert!(!a.any_wanted());
+    }
+
+    /// An open page hears its persona while its stream is open, and only then: two tabs are two
+    /// claims, and the persona stays watched until the last one closes.
+    #[test]
+    fn a_page_hears_its_persona_while_its_stream_is_open() {
+        let a = Attention::new(false);
+        assert!(!a.any_wanted());
+        let first = a.watch_stream("mine");
+        let second = a.watch_stream("mine");
+        assert!(a.wanted("mine"));
+        assert!(!a.wanted("theirs"), "a stream is for its own persona only");
+        drop(first);
+        assert!(a.wanted("mine"), "one tab closed, the other still open");
+        drop(second);
+        assert!(!a.wanted("mine"), "the last tab closed");
+        assert!(!a.any_wanted());
+    }
+
+    /// The last tab closing forgets what its persona had seen, so the next page opened starts with
+    /// a silent first look instead of replaying everything since, from a stale record.
+    #[test]
+    fn nobody_listening_forgets_what_was_seen() {
+        let a = Attention::new(false);
+        let mut seen: HashMap<String, Seen> = HashMap::new();
+        let mut guards: HashMap<String, (Option<i64>, u64)> = HashMap::new();
+        let tab = a.watch_stream("mine");
+        seen.insert("mine".into(), Seen::default());
+        guards.insert("mine".into(), (Some(1), 1));
+        a.forget_unwatched(&mut seen, &mut guards);
+        assert!(seen.contains_key("mine"), "watched: remembered");
+        drop(tab);
+        assert!(!a.any_wanted(), "nobody listening at all - the case that used to be skipped");
+        a.forget_unwatched(&mut seen, &mut guards);
+        assert!(seen.is_empty() && guards.is_empty(), "nobody listening: forgotten");
     }
 
     fn alert(route: &str, body: &str) -> Alert {

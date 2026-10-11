@@ -68,6 +68,19 @@ const MAGIC_WORDS: [&str; 9] = [
 /// The private register completions are recorded in.
 const CONTRACTS_KV: &str = "contracts";
 
+// ---- gifts (Curtis, 2026-10-11) ----
+//
+// "Give me H$ 1,000,000", in Developer Options (js/developer.js): for a node's administrators, and
+// for everyone on a development build. A gift is a fact on the persona's PRIVATE chain, as a
+// contract's completion is, so every computer of the persona pays the same line from it - a line
+// written straight into one computer's ledger (`credit_for_test`, the rig's) would leave the
+// persona's computers disagreeing about its balance.
+
+/// The private register gifts are recorded in: an id -> "<at_ms> <pennies>".
+const GIFTS_KV: &str = "gifts";
+/// What one press gives.
+const DEV_GIFT: i64 = 1_000_000 * HORSEBUCK;
+
 /// One contract: its id (stable - the key everywhere), its name as the player reads it, its reward,
 /// and the unlocks it needs before the column offers it (UNLOCKS.md, "Contracts").
 pub struct Contract {
@@ -573,6 +586,18 @@ async fn contracts_done(data: &Store) -> Result<HashMap<String, i64>> {
     Ok(recorded
         .into_iter()
         .filter_map(|r| r.value.trim().parse::<i64>().ok().map(|at| (r.key, at)))
+        .collect())
+}
+
+/// The gifts, as the private chain records them: id -> (when, how much).
+async fn gifts_given(data: &Store) -> Result<Vec<(String, i64, BigInt)>> {
+    let (recorded, _) = data.private_registers(GIFTS_KV).all().await?;
+    Ok(recorded
+        .into_iter()
+        .filter_map(|r| {
+            let (at, pennies) = r.value.trim().split_once(' ')?;
+            Some((r.key, at.parse::<i64>().ok()?, pennies.parse::<BigInt>().ok()?))
+        })
         .collect())
 }
 
@@ -1264,6 +1289,13 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
 
+    // Gifts: what the private chain says was given, at the moment it says.
+    for (id, at, pennies) in gifts_given(data).await? {
+        if is_new("gift", &id) {
+            lines.push(Line { kind: "gift", source: id, pennies, at_ms: at, detail: json!({}) });
+        }
+    }
+
     bank(data, lines).await?;
     instruments(data).await
 }
@@ -1649,6 +1681,34 @@ async fn unlock_everything(
     let at = crate::clock::now_ms();
     data.private_registers(UNLOCKS_KV).set(EVERYTHING, &at.to_string()).await?;
     Ok(axum::Json(json!({ "id": EVERYTHING, "bought_ms": at })))
+}
+
+/// POST `/api/identity/{root}/bank/gift` - H$ 1,000,000, from Developer Options: a node
+/// administrator's, or anyone's on a development build. The page offers the button to the same
+/// people (js/developer.js), but this is the gate. Recorded on the private chain, then caught up,
+/// so the answer's balance already holds it.
+pub async fn gift_handler(
+    session: crate::auth::Session,
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(root): axum::extract::Path<String>,
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
+    use crate::error::AppError;
+    if !(state.config.is_dev() || node_admin(&state, &session.account.id).await?) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "bank.only-developers-get-gifts",
+            "only a node administrator, or anyone on a development build, gets gifts"
+        )));
+    }
+    let data = crate::record::store::open(&state, &session.account.id, &root).await?;
+    let at = crate::clock::now_ms();
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    data.private_registers(GIFTS_KV).set(&id, &format!("{at} {DEV_GIFT}")).await?;
+    catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
+    let total = balance(&data).await.map_err(AppError::Internal)?;
+    Ok(axum::Json(json!({
+        "pennies": DEV_GIFT.to_string(),
+        "balance": total.to_string(),
+    })))
 }
 
 /// A line put straight into the ledger, for the test rig only (`/test/credit`): funding a persona,

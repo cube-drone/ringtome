@@ -12,6 +12,7 @@ import htm from 'htm';
 
 import { useLocation } from 'preact-iso';
 import { api, isDevice, saveFile } from './net.js';
+import { mayDevelop } from './developer.js';
 import { takeImportIntent } from './auth.js';
 import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb, flattenToBlob } from './doc/drawing.js';
@@ -723,6 +724,16 @@ export const SettingsList = ({ persona, session }) => {
                         <small>${t('persona.everything-you-are-as-a-zip', 'everything you are here, as one .zip')}</small>
                     </span>
                 </a>
+                ${
+                    mayDevelop(session) &&
+                    html`<a class="persona-menu-item" href=${settingsHref('developer')}>
+                    <span class="persona-menu-icon"><${Icons.developer} /></span>
+                    <span class="persona-menu-label">
+                        <strong>${t('persona.developer-options', 'developer options')}</strong>
+                        <small>${t('persona.try-the-machinery', "try the app's own machinery: toasts, notifications, money")}</small>
+                    </span>
+                </a>`
+                }
                 <button class="persona-menu-item persona-menu-danger" onClick=${logout}>
                     <span class="persona-menu-icon"><${Icons.logout} /></span>
                     <span class="persona-menu-label">

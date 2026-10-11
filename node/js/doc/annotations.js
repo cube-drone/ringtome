@@ -25,7 +25,7 @@ import { bucketHref, docPlacement } from '../pure/naming.js';
 import { docHref } from '../links.js';
 import { fileIntoTree, unfileFromTree } from './tree.js';
 import { forgetLastDoc } from './docapp.js';
-import { noteMoved } from '../buckets.js';
+import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
 
@@ -367,11 +367,16 @@ const NotebookMove = ({ root, docId }) => {
             await fileIntoTree(root, to, docId).catch(() => {});
             await unfileFromTree(root, from, docId).catch(() => {});
             // You stay where you were (Curtis, 2026-10-11: moving a batch, following each one would
-            // wear): the old notebook's list says where it went and offers to follow (buckets.js).
+            // wear): a toast says where it went and offers to follow (plans/TOASTS.md).
             // A document open at its own address would follow on its own - the shell reads its
             // notebook off the row (index.js) - so that page goes back to the list it left, with the
             // document forgotten as the list's last one, or the list would open it again.
-            noteMoved(root, from, to, docId);
+            toast(t('doc.annotations.moved-to', 'moved to {bucket}', { bucket: to }), {
+                action: {
+                    label: t('doc.annotations.open-it', 'open it'),
+                    href: docHref(root, docId),
+                },
+            });
             if (loc.path === docHref(root, docId).split('?')[0]) {
                 forgetLastDoc(root, docId);
                 loc.route(bucketHref(from, roster));

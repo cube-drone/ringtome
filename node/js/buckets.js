@@ -24,9 +24,9 @@ import { api } from './net.js';
 import { openMirror, useLive } from './mirror.js';
 import { appTypeOf, bucketsForApp, DEFAULT_STYLE, RESERVED_BUCKETS } from './pure/apps.js';
 import { bucketHref } from './pure/naming.js';
-import { docHref } from './links.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { toast } from './toasts.js';
 
 const html = htm.bind(h);
 
@@ -112,44 +112,6 @@ export function useBucketChoice({ root, appHere, roster, cozyBucketRow, docSegme
 /// notebooks and the way to move along it.
 export const BucketShelf = createContext(null);
 
-// The last document moved OUT of each notebook (doc/annotations.js, Curtis 2026-10-11), keyed
-// `${root}:${bucket}`: a move leaves you where you were, so the notebook's list says where the
-// document went and offers to follow it - an offer, never a jump, since moving a batch means many.
-// In memory, like the last-open-bucket memory above; a later move out of the same notebook replaces
-// the one before.
-const lastMoveOut = new Map(); // key -> { docId, to }
-const moveListeners = new Set();
-
-/// Note a move, for the old notebook's list to say so.
-export function noteMoved(root, from, to, docId) {
-    lastMoveOut.set(`${root}:${from}`, { docId, to });
-    for (const fn of moveListeners) fn();
-}
-
-/// "moved to X - open it", under the switcher of the notebook it left, until dismissed or followed.
-const MovedNotice = ({ root, bucket }) => {
-    const key = `${root}:${bucket}`;
-    const [, bump] = useState(0);
-    useEffect(() => {
-        const fn = () => bump((n) => n + 1);
-        moveListeners.add(fn);
-        return () => moveListeners.delete(fn);
-    }, []);
-    const moved = lastMoveOut.get(key);
-    if (!moved) return null;
-    const dismiss = () => {
-        lastMoveOut.delete(key);
-        bump((n) => n + 1);
-    };
-    return html`<p class="bucket-moved">
-        ${t('buckets.moved-to', 'moved to {bucket}', { bucket: moved.to })}
-        ${' · '}<a href=${docHref(root, moved.docId)} onClick=${dismiss}>${t('buckets.open-it', 'open it')}</a>
-        <button class="bucket-moved-x" title=${t('buckets.dismiss', 'dismiss')} onClick=${dismiss}>
-            <${Icons.close} />
-        </button>
-    </p>`;
-};
-
 // The bucket switcher: a doc-app is a shelf of notebooks (buckets), and this is how you move
 // along the shelf. It heads the app's list column, above "+ new" (Curtis, 2026-09-30 - it sat in
 // the app header, not an ideal spot): one button, the open folder and the current bucket's name -
@@ -184,12 +146,13 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
         if (!name) return;
         // A reserved name would vanish from every switcher the moment it was made.
         if (RESERVED_BUCKETS.has(name)) {
-            alert(
+            toast(
                 t(
                     'buckets.name-is-reserved',
                     '"{name}" is kept for another app - choose another name',
                     { name },
                 ),
+                { kind: 'error' },
             );
             return;
         }
@@ -200,10 +163,11 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
             });
             onSwitch(name); // it exists empty right away; the roster row follows via the stream
         } catch (e) {
-            alert(
+            toast(
                 t('buckets.couldnt-create-it', "couldn't create it: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };
@@ -236,10 +200,11 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
             });
             onSwitch(app.style); // land back on the shelf's home notebook
         } catch (e) {
-            alert(
+            toast(
                 t('buckets.couldnt-delete-it', "couldn't delete it: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };
@@ -283,6 +248,5 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
             </div>`
             }
         </span>
-        <${MovedNotice} root=${root} bucket=${bucket} />
     `;
 };

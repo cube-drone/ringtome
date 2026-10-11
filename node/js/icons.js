@@ -149,6 +149,7 @@ import {
     Sparkle,
     TextAa,
     Paragraph,
+    Wrench,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -223,6 +224,8 @@ export const Icons = {
     computers: Desktop,
     // Import/export (plans/EXPORT.md): the persona, whole, as one zip.
     exportPersona: Package,
+    // Developer Options (developer.js): the tools for trying the app's own machinery.
+    developer: Wrench,
     logout: HandWaving,
     // editor status + document format (icon-only chips; the tooltip carries the words)
     saved: FloppyDiskBack,

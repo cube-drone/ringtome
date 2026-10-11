@@ -54,6 +54,7 @@ import { useStorage } from '../storage.js';
 import { useGatedFeatures } from '../unlocks.js';
 import { sizeLabel } from '../pure/backups.js';
 import { formatWhen } from '../pure/when.js';
+import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
 
@@ -783,10 +784,11 @@ export const DocsApp = ({
                 bumpTree(); // don't wait for the roster tick
             }
         } catch (e) {
-            alert(
+            toast(
                 t('apps.notes.couldnt-make-a-new-one', "couldn't make a new one: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         } finally {
             setBusy(false);
