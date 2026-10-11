@@ -76,6 +76,7 @@ pub mod pubkey;
 pub mod publinks;
 pub mod publish;
 pub mod publishing;
+pub mod ranged;
 pub mod rate_limit;
 pub mod reaper;
 pub mod rebroadcast;

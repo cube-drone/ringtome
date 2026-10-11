@@ -1964,7 +1964,10 @@ pub async fn public_body_route(
     axum::extract::Query(q): axum::extract::Query<ViaQuery>,
 ) -> Result<Response, AppError> {
     let inm = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await
+    let answer =
+        public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await?;
+    // A sound's length, and seeking, come by ranges (ranged.rs).
+    Ok(crate::ranged::apply(crate::ranged::requested(&headers).as_deref(), answer).await)
 }
 
 /// The decorative-filename twin of the body route: baked embeds mint as
@@ -1978,7 +1981,10 @@ pub async fn public_body_named_route(
     axum::extract::Query(q): axum::extract::Query<ViaQuery>,
 ) -> Result<Response, AppError> {
     let inm = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok());
-    public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await
+    let answer =
+        public_doc_bytes(&state, &session, &seg, &doc_hex, false, inm, q.via.as_deref()).await?;
+    // A sound's length, and seeking, come by ranges (ranged.rs).
+    Ok(crate::ranged::apply(crate::ranged::requested(&headers).as_deref(), answer).await)
 }
 
 pub async fn public_thumb_route(

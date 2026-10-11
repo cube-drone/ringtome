@@ -19892,6 +19892,7 @@ It comes from the `media.duration_ms` every sound's row already carries,
 measured at upload. `playLength` (`node/js/pure/mediakind.js`) does the
 formatting, tested in `integration/test/pure/playlength.cjs`. Checked in
 headless Chrome: the two-second test sound reads "0:02".
+
 ## 2026-10-11: move a document to another notebook
 
 Curtis: "can we also add a button that allows us to change the document's
@@ -19912,3 +19913,26 @@ switcher, an offer and never a jump, and a document open at its own address -
 which would otherwise follow its row into the new notebook - goes back to that
 list, forgotten as its last-open one so the list doesn't reopen it. Existing
 routes only.
+
+## 2026-10-11 (cont.): a sound knows its length when it opens (byte ranges on bodies)
+
+A sound opened in Files sometimes played "a file that gets longer as it goes".
+An `<audio>` element's length can't be set from outside: the browser learns an
+Ogg file's length by asking for its last page with a `Range` request, and seeks
+the same way. No route on the node answered one, so the element knew only what
+it had played.
+
+`node/src/ranged.rs` now answers a single byte range against a body's finished
+answer: `206` with the slice, `416` past the end, and `Accept-Ranges: bytes` on
+every whole answer. Anything it can't read is answered whole. The body is
+already decrypted in memory, so a range is a slice of bytes in hand. It applies
+to the four body routes (private and public, each with its named twin), and
+`public_doc_bytes`, whose internal callers read whole bodies, is untouched.
+
+Tests: unit tests for reading ranges and for the 206/416/whole answers, and
+`integration/test/ranges.cjs` against the real route (a range, the last page
+with `bytes=-64` on the named twin, and a range past the end). In headless
+Chrome on a throttled link, a 20-second sound knew its length (20.017 s) at
+`loadedmetadata` and seeked to 15 s. The same run with the range headers
+stripped in the browser, as the old node answered, loaded with its length
+unknown (`Infinity`).

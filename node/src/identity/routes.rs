@@ -7068,7 +7068,9 @@ async fn docs_body_handler(
     Query(q): Query<BodyVersion>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response, AppError> {
-    docs_body_impl(session, state, root, doc_id, q.v, if_none_match(&headers)).await
+    let answer = docs_body_impl(session, state, root, doc_id, q.v, if_none_match(&headers)).await?;
+    // A sound's length, and seeking, come by ranges (ranged.rs).
+    Ok(crate::ranged::apply(crate::ranged::requested(&headers).as_deref(), answer).await)
 }
 
 /// `?v=<head>` on a body's address (2026-10-07): the version the asker means, as the hex of its head
@@ -7088,7 +7090,9 @@ async fn docs_body_named_handler(
     Query(q): Query<BodyVersion>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response, AppError> {
-    docs_body_impl(session, state, root, doc_id, q.v, if_none_match(&headers)).await
+    let answer = docs_body_impl(session, state, root, doc_id, q.v, if_none_match(&headers)).await?;
+    // A sound's length, and seeking, come by ranges (ranged.rs).
+    Ok(crate::ranged::apply(crate::ranged::requested(&headers).as_deref(), answer).await)
 }
 
 fn if_none_match(headers: &axum::http::HeaderMap) -> Option<String> {
