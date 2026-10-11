@@ -19739,3 +19739,16 @@ one PNG twice and expected two documents, the first marked as a drawing's copy;
 it now uploads two different pictures. Not yet: import folding same-bytes files
 into one document, cover art as sound thumbnails, and backfilling prints for
 files uploaded before today.
+
+## 2026-10-11 (cont.): the front door's tabs, in the order a visitor wants them
+
+Sign in now leads the front page's tabs only for someone who has signed in from
+this browser before. A `signed-in-before` mark in local storage is set the first
+time the browser holds a session, and signing out never clears it. For everyone
+else, sign in comes last. Ahead of it, "new here?" leads where anyone may sign
+up, and download leads where sign-ups are closed or need a password
+(`node/js/auth.js`). The first tab is the one open on arrival. If the visitor
+clicks another before the node says who may sign up, their choice stands, unless
+that tab then disappears. Checked in headless Chrome against a scratch node,
+with the registration answer stubbed for closed and password: all six
+combinations come out in the intended order.

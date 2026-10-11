@@ -27,6 +27,25 @@ export const takeImportIntent = () => {
     return was;
 };
 
+// "Been here before" (Curtis, 2026-10-11): set the first time this browser holds a session, and
+// never cleared - signing out does not make someone new. It only orders the front door's tabs:
+// sign in leads for someone who has signed in here before, and comes last for everyone else.
+const RETURNING = 'signed-in-before';
+const wasHereBefore = () => {
+    try {
+        return localStorage.getItem(RETURNING) === 'yes';
+    } catch {
+        return false;
+    }
+};
+const markHere = () => {
+    try {
+        localStorage.setItem(RETURNING, 'yes');
+    } catch {
+        /* no storage: they meet the newcomer's order next time */
+    }
+};
+
 // The session, as a hook: `account` is null until whoami answers (or 401s).
 // `checking` covers the first paint so we don't flash the login screen at
 // someone who is already signed in.
@@ -36,7 +55,10 @@ export function useSession() {
 
     useEffect(() => {
         api('/api/auth/whoami')
-            .then(setAccount)
+            .then((acct) => {
+                if (acct) markHere();
+                setAccount(acct);
+            })
             .catch(() => setAccount(null))
             .finally(() => setChecking(false));
     }, []);
@@ -46,6 +68,7 @@ export function useSession() {
             method: 'POST',
             body: JSON.stringify({ username, password }),
         });
+        markHere();
         setAccount(acct);
     };
 
@@ -161,7 +184,9 @@ const LinuxNotice = () => {
 };
 
 export const Welcome = ({ session }) => {
-    const [mode, setMode] = useState('login'); // 'login' | 'register' | 'import' | 'recover' | 'download'
+    const [returning] = useState(wasHereBefore);
+    // 'login' | 'register' | 'import' | 'recover' | 'download'; the first tab until answered.
+    const [mode, setMode] = useState(returning ? 'login' : 'register');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [spareKey, setSpareKey] = useState('');
@@ -224,10 +249,32 @@ export const Welcome = ({ session }) => {
         }
     };
 
+    const picked = useRef(false);
     const switchMode = (next) => {
+        picked.current = true;
         setMode(next);
         setError(null);
     };
+    // The tabs' order (Curtis, 2026-10-11): sign in first for someone who has signed in here
+    // before, last for everyone else; ahead of it, "new here?" where anyone may sign up, and
+    // download where sign-ups are closed or need a password. The desktop app is already
+    // downloaded. Until the node says who may sign up, it is taken as open.
+    const signups = signupsClosed ? [] : ['register', 'import'];
+    const download = isDevice() ? [] : ['download'];
+    const rest =
+        registration === 'open' || registration === null
+            ? [...signups, ...download]
+            : [...download, ...signups];
+    const tabs = returning ? ['login', ...rest] : [...rest, 'login'];
+    // The first tab is the one open on arrival, unless the visitor has already picked one that
+    // is still there.
+    const first = tabs[0];
+    const gone = mode !== 'recover' && !tabs.includes(mode);
+    useEffect(() => {
+        if (!picked.current || gone) {
+            setMode(first);
+        }
+    }, [first, gone]);
 
     if (mode === 'recover') {
         return html`
@@ -305,6 +352,19 @@ export const Welcome = ({ session }) => {
         `;
     }
 
+    const tab = (which, icon, label) =>
+        html`<button
+            key=${which}
+            class=${mode === which ? 'tab active' : 'tab'}
+            onClick=${() => switchMode(which)}
+        ><${icon} /> ${label}</button>`;
+    const tabFor = {
+        login: () => tab('login', Icons.signIn, t('auth.sign-in', 'sign in')),
+        register: () => tab('register', Icons.newHere, t('auth.new-here', 'new here?')),
+        import: () => tab('import', Icons.importUser, t('auth.import-user', 'import user')),
+        download: () => tab('download', Icons.download, t('auth.download', 'download')),
+    };
+
     return html`
         <div class="welcome">
             <${LinuxNotice} />
@@ -313,29 +373,7 @@ export const Welcome = ({ session }) => {
             <${LocalServerNotice} />
             <div class="welcome-box">
             <div class="welcome-tabs">
-                <button
-                    class=${mode === 'login' ? 'tab active' : 'tab'}
-                    onClick=${() => switchMode('login')}
-                ><${Icons.signIn} /> ${t('auth.sign-in', 'sign in')}</button>
-                ${
-                    !signupsClosed &&
-                    html`<button
-                    class=${mode === 'register' ? 'tab active' : 'tab'}
-                    onClick=${() => switchMode('register')}
-                ><${Icons.newHere} /> ${t('auth.new-here', 'new here?')}</button>
-                    <button
-                        class=${importing ? 'tab active' : 'tab'}
-                        onClick=${() => switchMode('import')}
-                    ><${Icons.importUser} /> ${t('auth.import-user', 'import user')}</button>`
-                }
-                ${/* The desktop app is already downloaded. */ ''}
-                ${
-                    !isDevice() &&
-                    html`<button
-                    class=${mode === 'download' ? 'tab active' : 'tab'}
-                    onClick=${() => switchMode('download')}
-                ><${Icons.download} /> ${t('auth.download', 'download')}</button>`
-                }
+                ${tabs.map((which) => tabFor[which]())}
             </div>
             ${mode === 'download' && html`<${DownloadPanel} />`}
             ${
