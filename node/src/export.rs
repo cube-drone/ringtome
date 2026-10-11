@@ -466,6 +466,16 @@ async fn build(
     let (sections, others) = notebook_sections(&data, root).await?;
     let claimed = data.annotations().notes_claiming().await.map_err(ae)?;
     let posts = public_posts(&data).await?;
+    // Each published book's notebook, by the book's id: a page says which book it is a page of,
+    // so an import can publish the notebook as a book again rather than every page on its own.
+    let (book_facts, _) = data.private_registers(crate::books::BOOKS_KV).all().await.map_err(ae)?;
+    let book_notebooks: HashMap<String, String> = book_facts
+        .into_iter()
+        .filter_map(|r| {
+            let facts = serde_json::from_str::<serde_json::Value>(&r.value).ok()?;
+            Some((facts.get("published_as_book")?.as_str()?.to_string(), r.key))
+        })
+        .collect();
     // Every document, every post, and the six files after them (profile, lists, contacts, ledger,
     // chats, README).
     const AFTER: usize = 6;
@@ -571,6 +581,12 @@ async fn build(
         }
         if let Some((author, doc)) = &post.reply_to {
             fields.insert("reply_to".to_string(), format!("{author}/{doc}"));
+        }
+        if let Some(book) = post.part_of.map(hex::encode) {
+            if let Some(notebook) = book_notebooks.get(&book) {
+                fields.insert("book".to_string(), notebook.clone());
+            }
+            fields.insert("part_of".to_string(), book);
         }
         let meta = Meta {
             id: id.clone(),

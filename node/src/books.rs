@@ -773,7 +773,7 @@ async fn previous_payload(
 }
 
 /// Every page a payload names, post hex -> title, sections walked.
-fn collect_pages(node: &serde_json::Value, out: &mut BTreeMap<String, String>) {
+pub(crate) fn collect_pages(node: &serde_json::Value, out: &mut BTreeMap<String, String>) {
     if let Some(pages) = node.get("pages").and_then(|p| p.as_array()) {
         for p in pages {
             if let Some(post) = p.get("post").and_then(|x| x.as_str()) {

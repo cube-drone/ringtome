@@ -233,10 +233,15 @@ async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Op
     })
 }
 
-async fn stored(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<(i64, String)>> {
+/// A post's kept bag: its stamp, its words, and whether - a book's - it carries the pages' words.
+async fn stored(
+    node_db: &Db,
+    author_hex: &str,
+    doc_hex: &str,
+) -> Result<Option<(i64, String, i64)>> {
     node_db
         .fetch_optional(
-            "SELECT updated_ms, tokens FROM post_search WHERE author_root = ?1 AND doc_id = ?2",
+            "SELECT updated_ms, tokens, pages FROM post_search WHERE author_root = ?1 AND doc_id = ?2",
             (author_hex, doc_hex),
         )
         .await
@@ -248,8 +253,9 @@ async fn stored(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<
 /// the title. `budget` is the caller's remaining allowance of body reads.
 async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<Option<String>> {
     let kept = stored(&state.node_db, &c.author_root, &c.doc_hex).await?;
-    if let Some((stamp, tokens)) = &kept {
-        if *stamp == c.updated_ms {
+    if let Some((stamp, tokens, pages)) = &kept {
+        // A book's bag from before it carried its pages is read again (node rung 0077).
+        if *stamp == c.updated_ms && (c.kind != "book" || *pages == 1) {
             return Ok(Some(tokens.clone()));
         }
     }
@@ -284,18 +290,36 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
         None
     };
     *budget -= 1;
-    // Prose only: a book's body is its table, media's is bytes; both index by title.
+    // Prose is read; media's body is bytes, and indexes by title. A book's body is its table: it
+    // indexes by every page's title and words (Curtis, 2026-10-10: "banana", on a page of his
+    // book, found nothing - the pages stay off shelves, so the book is the only door to them).
+    let format = crate::record::documents::Format::from_wire(format);
     let prose = matches!(
-        crate::record::documents::Format::from_wire(format),
+        format,
         crate::record::documents::Format::Marquee | crate::record::documents::Format::Plaintext
     );
+    let read = |raw: Vec<u8>, key: Option<[u8; 32]>| match key {
+        Some(k) => crate::record::private::open_post_body(&raw, &k).unwrap_or_default(),
+        None => raw,
+    };
     let body = if prose {
         let raw = state.files.get_public(blob).await.ok().flatten().unwrap_or_default();
-        let plain = match key {
-            Some(k) => crate::record::private::open_post_body(&raw, &k).unwrap_or_default(),
-            None => raw,
-        };
-        String::from_utf8_lossy(&plain).into_owned()
+        String::from_utf8_lossy(&read(raw, key)).into_owned()
+    } else if format == crate::record::documents::Format::Book {
+        let raw = state.files.get_public(blob).await.ok().flatten().unwrap_or_default();
+        let table = serde_json::from_slice::<serde_json::Value>(&read(raw, key)).ok();
+        let mut pages = std::collections::BTreeMap::new();
+        if let Some(table) = &table {
+            crate::books::collect_pages(table, &mut pages);
+        }
+        let mut words = String::new();
+        for (page, title) in pages {
+            words.push_str(&title);
+            words.push('\n');
+            words.push_str(&page_words(state, &c.author_root, &page).await);
+            words.push('\n');
+        }
+        words
     } else {
         String::new()
     };
@@ -309,7 +333,45 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
     };
     let tokens = tokens_of(&title, &body);
     keep_bag(&state.node_db, c, c.updated_ms, &tokens).await?;
+    if format == crate::record::documents::Format::Book {
+        state
+            .node_db
+            .execute(
+                "UPDATE post_search SET pages = 1 WHERE author_root = ?1 AND doc_id = ?2",
+                (c.author_root.as_str(), c.doc_hex.as_str()),
+            )
+            .await
+            .context("marking a book's bag as its pages'")?;
+    }
     Ok(Some(tokens))
+}
+
+/// A book page's words, if this node has them: as a post's are read, a sealed page opened with its
+/// own key from the memo (a trusted book seals each page under its own). Nothing fetched; a page
+/// whose words aren't here adds only its title, which the table already gave.
+async fn page_words(state: &AppState, author_hex: &str, page_hex: &str) -> String {
+    let Some(doc_id) = hex::decode(page_hex).ok().and_then(|b| <[u8; 16]>::try_from(b).ok()) else {
+        return String::new();
+    };
+    let Some(facts) = body_facts(state, author_hex, &doc_id).await else { return String::new() };
+    let blob = iroh_blobs::Hash::from_bytes(facts.file_hash);
+    if !state.files.has(blob).await {
+        return String::new();
+    }
+    let key = if facts.trusted_only {
+        match crate::postkeys::lookup(&state.node_db, author_hex, page_hex).await {
+            Ok(Some(k)) => Some(k),
+            _ => return String::new(),
+        }
+    } else {
+        None
+    };
+    let raw = state.files.get_public(blob).await.ok().flatten().unwrap_or_default();
+    let plain = match key {
+        Some(k) => crate::record::private::open_post_body(&raw, &k).unwrap_or_default(),
+        None => raw,
+    };
+    String::from_utf8_lossy(&plain).into_owned()
 }
 
 /// Keep one post's word bag, stamped (0 for a title alone), and its terms - the inverted index a

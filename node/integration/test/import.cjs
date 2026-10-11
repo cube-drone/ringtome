@@ -14,6 +14,7 @@ const { execFileSync } = require('node:child_process');
 
 const { makeUserFetch } = require('./helpers.cjs');
 const { sql } = require('./fetch.cjs');
+const { beat } = require('./beat.cjs');
 
 const j = (who, p, body, method = 'POST') => who(p, { method, body: JSON.stringify(body) });
 
@@ -395,6 +396,97 @@ describe('imports: additive only', function () {
         const served = await bea(at(photo, 'polaroid.avif'));
         assert.equal(served.status, 200);
         assert.equal(served.headers.get('content-type'), 'image/avif');
+    });
+
+    it('a book comes back as a book: its pages are no posts of their own, and what it left out stays out', async () => {
+        // Curtis, 2026-10-10: imported, every page of his book was published as a post of its own.
+        const dot = await makeUserFetch({ prefix: 'importdot' });
+        const dotRoot = (await (await dot('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await dot(`api/identity/${dotRoot}/serve`, { method: 'POST' });
+        const mk = async (title, body) => {
+            const d = await (
+                await j(dot, `api/identity/${dotRoot}/docs`, { title, body, format: 'marquee' })
+            ).json();
+            await dot(`api/identity/${dotRoot}/docs/${d.doc_id}/buckets/tome`, { method: 'PUT' });
+            return d.doc_id;
+        };
+        const one = await mk('first leaf', 'a banana in the stable');
+        const two = await mk('second leaf', 'oats for the pony');
+        const left = await mk('left out', 'a page the book never showed');
+        await j(
+            dot,
+            `api/identity/${dotRoot}/private/kv/books/tome`,
+            { value: JSON.stringify({ mode: 'book' }) },
+            'PUT',
+        );
+        await j(
+            dot,
+            `api/identity/${dotRoot}/private/kv/book_hidden/doc:${left}`,
+            { value: 'yes' },
+            'PUT',
+        );
+        const rolled = async (who, root) => {
+            for (let i = 0; i < 60; i++) {
+                await beat(undefined, 'book-rollout', root);
+                const r = await (await who(`api/identity/${root}/private/kv/book_rollout`)).json();
+                const row = (r.values || []).find((v) => v.key === 'tome');
+                const plan = row && JSON.parse(row.value);
+                if (plan && plan.status === 'done') return plan;
+                assert.ok(!plan || plan.status !== 'failed', JSON.stringify(plan));
+                await new Promise((res) => setTimeout(res, 300));
+            }
+            throw new Error('the rollout never finished');
+        };
+        assert.equal((await j(dot, `api/identity/${dotRoot}/books/tome/rollout`, {})).status, 200);
+        await rolled(dot, dotRoot);
+
+        await j(dot, `api/identity/${dotRoot}/export`, {});
+        for (let i = 0; i < 200; i++) {
+            const r = await (await dot(`api/identity/${dotRoot}/export`)).json();
+            if (r.status === 'ready') break;
+            await new Promise((res) => setTimeout(res, 250));
+        }
+        const zip = path.join(work, 'book.zip');
+        fs.writeFileSync(
+            zip,
+            Buffer.from(await (await dot(`api/identity/${dotRoot}/export/download`)).arrayBuffer()),
+        );
+
+        const eli = await makeUserFetch({ prefix: 'importeli' });
+        const eliRoot = (await (await eli('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await eli(`api/identity/${eliRoot}/serve`, { method: 'POST' });
+        const log = await imported(eli, eliRoot, zip);
+        assert.ok(
+            log.includes('Page first leaf will be published with its book, tome.'),
+            log.join('\n'),
+        );
+        assert.ok(log.includes('Book tome is being published again: 2 pages.'), log.join('\n'));
+        assert.ok(
+            !log.some((l) => /^Post (first|second) leaf republished/.test(l)),
+            log.join('\n'),
+        );
+        const plan = await rolled(eli, eliRoot);
+        assert.equal(plan.total, 2, 'the two pages, and not the one the book left out');
+        const shelf = (await (await eli(`api/id/${eliRoot}/posts`)).json()).posts || [];
+        assert.deepEqual(
+            shelf.map((p) => p.format),
+            ['book'],
+            `one book, no pages: ${shelf.map((p) => `${p.format}:${p.title}`)}`,
+        );
+        const book = JSON.parse(
+            await (await eli(`id/${eliRoot}/docs/${shelf[0].doc_id}/body`)).text(),
+        );
+        assert.deepEqual(book.pages.map((p) => p.title).sort(), ['first leaf', 'second leaf']);
+        const hidden = await (await eli(`api/identity/${eliRoot}/private/kv/book_hidden`)).json();
+        assert.ok(
+            (hidden.values || []).some((v) => v.key === `doc:${left}` && v.value === 'yes'),
+            JSON.stringify(hidden),
+        );
+        const found = (
+            (await (await eli(`api/id/${eliRoot}/posts?q=banana`)).json()).posts || []
+        ).map((p) => p.doc_id);
+        assert.deepEqual(found, [shelf[0].doc_id], "a page's word finds the book");
+        assert.ok([one, two].every((id) => !shelf.some((p) => p.doc_id === id)));
     });
 
     it('refuses what no document may be: too large, or a drawing that is no drawing', async () => {

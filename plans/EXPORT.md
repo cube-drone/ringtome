@@ -172,6 +172,14 @@ skipped: It already exists!'"
   whose note this persona has already published is skipped. Two kinds are never
   said again, and the report says so: a **reply** (it belonged in somebody
   else's thread) and a **room** (a chat room starts fresh).
+- **A book comes back as a book** (Curtis, 2026-10-10: every page of his came
+  back as a post of its own). Each page is exported saying which book it was a
+  page of and that book's notebook (`part_of`, `book`); the import publishes no
+  page by itself, but switches the notebook to a book and asks for a rollout
+  once every post is through - the pages and then the book, as the Publish
+  column does. The zip carries no hidden marks, so every other note the import
+  put in that notebook is marked hidden: what the book left out stays out. The
+  book is a new one, under a new id; its updates are not said again.
 - **Contacts are re-applied** (Curtis, 2026-10-09): follows, trust and the
   persona's own notes on each person are set again - which, from a new persona,
   reaches each of them as somebody new following them.

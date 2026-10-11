@@ -263,6 +263,22 @@ describe('books: a notebook rolls out as one book', function () {
         assert.ok(!JSON.stringify(body).includes('secret'), 'hidden never publishes');
     });
 
+    it("a page's words find its book, signed in or not; a hidden page's find nothing", async () => {
+        // The pages stay off the shelf, so the book is the only door to them: it is searched by
+        // every page's title and words (Curtis, 2026-10-10: "banana", on a page of his book, found
+        // nothing on his public site).
+        const found = async (who, q) =>
+            (
+                (await (await who(`api/id/${adaRoot}/posts?q=${encodeURIComponent(q)}`)).json())
+                    .posts || []
+            ).map((p) => p.doc_id);
+        assert.deepEqual(await found(ada, 'second words'), [book], "chapter two's words");
+        assert.deepEqual(await found(anon, 'first'), [book], 'a stranger finds it too');
+        assert.deepEqual(await found(anon, 'chapter'), [book], "a page's title");
+        assert.deepEqual(await found(anon, 'never published'), [], "the hidden page's words");
+        assert.deepEqual(await found(anon, 'curtain'), [], 'nor a page under a hidden section');
+    });
+
     it('every page is a real post carrying part_of, with the version it published recorded', async () => {
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
         for (const p of [...body.sections[0].pages, ...body.pages]) {

@@ -765,6 +765,9 @@ const NOT_ANNOTATIONS: &[&str] = &[
     "date",
     "trusted_only",
     "reply_to",
+    "part_of",
+    "book",
+    crate::books::PUBLISHED_VERSION,
     crate::record::store::PUBLISHED_AS,
     crate::record::store::PUBLISHED_FROM,
     crate::record::store::PUBLISHED_HEAD,
@@ -1059,6 +1062,9 @@ async fn run(state: &AppState, root: &str, account: &str, zip: &Path) -> Result<
             say(format!("Post {} couldn't be republished: {e:#}", ctx.title_of(group)));
         }
     }
+    if let Err(e) = ctx.books().await {
+        say(format!("The books couldn't be published again: {e:#}"));
+    }
     if let Err(e) = ctx.profile().await {
         say(format!("The profile couldn't be imported: {e:#}"));
     }
@@ -1107,8 +1113,18 @@ struct Ctx<'a> {
     /// notebook's growing tree made each note slower than the last, 55 ms to 93 over 1,200).
     roster: Option<BTreeSet<String>>,
     members: HashMap<[u8; 16], Vec<Member>>,
+    /// The books the zip's pages were part of, by notebook: published again as books once every
+    /// post is through (`books`), never page by page.
+    books: BTreeMap<String, BookAsk>,
     added: usize,
     skipped: usize,
+}
+
+/// A book to publish again: the notes that were its pages, and whether it was for trusted readers.
+#[derive(Default)]
+struct BookAsk {
+    pages: BTreeSet<[u8; 16]>,
+    trusted_only: bool,
 }
 
 /// One member of a taxonomy, as the import keeps them: whose, and which document.
@@ -1187,6 +1203,7 @@ impl<'a> Ctx<'a> {
             media: HashMap::new(),
             roster: None,
             members: HashMap::new(),
+            books: BTreeMap::new(),
             added: 0,
             skipped: 0,
         })
@@ -1681,6 +1698,73 @@ impl<'a> Ctx<'a> {
         Ok(&self.members[taxonomy])
     }
 
+    /// Each book the zip's pages were part of, published again whole (PROJECT_PLAN's Books): its
+    /// notebook switched to a book, and a rollout asked for, as the Publish column asks - the pages
+    /// and then the book, in the background. The export says which notes were pages; the hidden
+    /// marks that kept the rest out it doesn't, so every other note this import put in the notebook
+    /// is marked hidden here - what was left out of the book stays out of it. Notes the persona had
+    /// already are as it left them.
+    async fn books(&mut self) -> Result<()> {
+        let ae = |e: AppError| anyhow::anyhow!("{e}");
+        if self.books.is_empty() {
+            return Ok(());
+        }
+        let in_buckets = self.data.buckets().all().await.map_err(ae)?;
+        let (facts, _) =
+            self.data.private_registers(crate::books::BOOKS_KV).all().await.map_err(ae)?;
+        let books = std::mem::take(&mut self.books);
+        for (notebook, ask) in &books {
+            for (doc, names) in &in_buckets {
+                if names.iter().any(|n| n == notebook)
+                    && self.created.contains(doc)
+                    && !ask.pages.contains(doc)
+                {
+                    self.data
+                        .private_registers(crate::books::HIDDEN_KV)
+                        .set(&format!("doc:{}", hex::encode(doc)), "yes")
+                        .await
+                        .map_err(ae)?;
+                }
+            }
+            // The persona's own facts about the notebook kept, if it has any; switched on.
+            let mut kept = facts
+                .iter()
+                .find(|r| &r.key == notebook)
+                .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.value).ok())
+                .filter(|v| v.is_object())
+                .unwrap_or_else(|| serde_json::json!({}));
+            kept["mode"] = serde_json::json!("book");
+            self.data
+                .private_registers(crate::books::BOOKS_KV)
+                .set(notebook, &kept.to_string())
+                .await
+                .map_err(ae)?;
+            let plan = serde_json::json!({
+                "by": self.data.leaf_hex(),
+                "status": "pending",
+                "settled": false,
+                "trusted_only": ask.trusted_only,
+                "tz_offset_min": 0,
+                "total": 0,
+                "done": 0,
+            });
+            self.data
+                .private_registers(crate::books::ROLLOUT_KV)
+                .set(notebook, &plan.to_string())
+                .await
+                .map_err(ae)?;
+            let n = ask.pages.len();
+            let pages =
+                if n == 1 { "1 page".to_string() } else { format!("{} pages", thousands(n)) };
+            self.say(format!("Book {notebook} is being published again: {pages}."));
+            self.added += 1;
+        }
+        // Now rather than at the sweep's next turn; a book whose pictures are still being made
+        // finishes there.
+        crate::books::rollout_due(self.state, Some(self.root)).await?;
+        Ok(())
+    }
+
     /// One post: skipped when the persona has it (or has published the note it came from);
     /// otherwise said again, as a post of this persona's own (Curtis, 2026-10-09: "Public posts
     /// should be re-published") - from the note it came from when that's here, or from a note made
@@ -1780,6 +1864,19 @@ impl<'a> Ctx<'a> {
                 id
             }
         };
+        // A page of a book: published with its book, as the book's own rollout publishes it
+        // (Curtis, 2026-10-10: every page of his book came back as a post of its own).
+        if let (true, Some(notebook)) =
+            (details.contains_key("part_of"), details.get("book").map(|d| d.one()))
+        {
+            if self.created.contains(&note) {
+                let ask = self.books.entry(notebook.clone()).or_default();
+                ask.pages.insert(note);
+                ask.trusted_only |= details.get("trusted_only").is_some_and(|d| d.one() == "true");
+                self.say(format!("Page {title} will be published with its book, {notebook}."));
+                return Ok(());
+            }
+        }
         let flags = crate::record::documents::PublishFlags {
             settled: false,
             trusted_only: details.get("trusted_only").is_some_and(|d| d.one() == "true"),

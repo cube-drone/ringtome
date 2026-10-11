@@ -19600,3 +19600,27 @@ page drops the card and the rule under it (idpage.js `searching`), and the
 results - with their label chips and the "searching…" line - come straight under
 the header, headed "matching posts" rather than "recent posts" (posts.js);
 emptying the box brings the person back.
+
+## 2026-10-10 (cont.): books, imported and searched
+
+Two findings from Curtis's own book. Imported into his dev persona, every page
+was republished as a post of its own: the export wrote each page as an ordinary
+post, saying nothing of its book, and the book itself not at all. Now a page
+says which book it was part of and that book's notebook (export.rs `part_of`,
+`book`); the import holds such pages back, and once every post is through it
+switches each notebook to a book, marks hidden every other note it put there -
+the zip has no hidden marks, and what the book left out must stay out - and asks
+for a rollout (import.rs `books`), run at once. Pages already republished one by
+one by an earlier import stay as they are.
+
+And on his public site, "banana" - on a page of that book - found nothing: pages
+stay off shelves, so the book is the only thing a search meets, and its bag held
+its title alone (a book's own body is just its table). A book now indexes every
+page's title and words, a sealed page opened with its own key when the node
+holds it (search.rs `page_words`); node rung 0077 marks a book's bag that
+carries its pages (`post_search.pages`), so the title-only bags already kept are
+read again the next time a search meets them as books, and nothing else is. Two
+claims: a page's words find its book on the shelf, signed in or not, and a
+hidden page's don't (book_posts.cjs); a book exported and imported into a fresh
+persona is one book with two pages, the left-out note hidden, and found by its
+page's word (import.cjs).
