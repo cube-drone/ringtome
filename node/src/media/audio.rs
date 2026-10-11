@@ -170,6 +170,145 @@ pub struct Crushed {
     /// A small AVIF waveform thumbnail (peak envelope). `None` on the passthrough lane - we never
     /// decode Opus, so there is no PCM to draw.
     pub waveform_avif: Option<Vec<u8>>,
+    /// What the file said about itself, for the document's annotations ([`TAG_FIELDS`]): its title,
+    /// artist, album and the like, read from its ID3, Vorbis comments, iTunes atoms or OpusTags.
+    /// Still never written into the output - the stored file stays stripped.
+    pub tags: Vec<(&'static str, String)>,
+}
+
+/// The tags a sound's file may carry that become its document's fields (Curtis, 2026-10-10: "they'd
+/// be an obvious pick to convert into annotations"), each by its field's name. An allowlist: what
+/// says what the recording is, and nothing else - no comments, lyrics, encoder strings or
+/// identifiers, since fields travel with a post when it is published.
+pub const TAG_FIELDS: &[&str] =
+    &["track", "artist", "album", "album artist", "composer", "genre", "year", "track number"];
+
+/// The longest value a tag field keeps: a name or a title, never a paragraph.
+const TAG_VALUE_MAX: usize = 200;
+
+/// A tag's field, by symphonia's standard key - which it fills from ID3, Vorbis comments, iTunes
+/// atoms and RIFF INFO alike.
+fn std_tag_field(key: symphonia::core::meta::StandardTagKey) -> Option<&'static str> {
+    use symphonia::core::meta::StandardTagKey as K;
+    Some(match key {
+        K::TrackTitle => "track",
+        K::Artist => "artist",
+        K::Album => "album",
+        K::AlbumArtist => "album artist",
+        K::Composer => "composer",
+        K::Genre => "genre",
+        K::Date | K::ReleaseDate | K::OriginalDate => "year",
+        K::TrackNumber => "track number",
+        _ => return None,
+    })
+}
+
+/// A tag's field, by a Vorbis comment's own name (`ARTIST=...`) - what an Ogg Opus file's OpusTags
+/// carries, which no decoder reads for us.
+fn vorbis_tag_field(name: &str) -> Option<&'static str> {
+    Some(match name.to_ascii_uppercase().as_str() {
+        "TITLE" => "track",
+        "ARTIST" => "artist",
+        "ALBUM" => "album",
+        "ALBUMARTIST" | "ALBUM ARTIST" => "album artist",
+        "COMPOSER" => "composer",
+        "GENRE" => "genre",
+        "DATE" | "YEAR" => "year",
+        "TRACKNUMBER" => "track number",
+        _ => return None,
+    })
+}
+
+/// Tag fields from `(field, value)` pairs, in order: the first value for a field wins, each one
+/// line of at most [`TAG_VALUE_MAX`] characters, a year its four digits, and an empty one nothing.
+pub fn tag_fields(
+    pairs: impl IntoIterator<Item = (&'static str, String)>,
+) -> Vec<(&'static str, String)> {
+    let mut out: Vec<(&'static str, String)> = Vec::new();
+    for (field, value) in pairs {
+        if out.iter().any(|(f, _)| *f == field) {
+            continue;
+        }
+        let one_line: String = value
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let value = if field == "year" {
+            match one_line.get(..4) {
+                Some(y) if y.bytes().all(|b| b.is_ascii_digit()) => y.to_string(),
+                _ => continue,
+            }
+        } else {
+            one_line.chars().take(TAG_VALUE_MAX).collect()
+        };
+        if !value.is_empty() {
+            out.push((field, value));
+        }
+    }
+    out
+}
+
+/// The tags a decodable file carries, as fields: the probe's own metadata (an ID3v2 block ahead of
+/// the stream) and the container's (Vorbis comments, iTunes atoms, RIFF INFO). A file that can't
+/// be probed has none - the decode reports why.
+fn read_tags(input: &[u8]) -> Vec<(&'static str, String)> {
+    let source = MediaSourceStream::new(Box::new(Cursor::new(input.to_vec())), Default::default());
+    let Ok(mut probed) = symphonia::default::get_probe().format(
+        &Hint::new(),
+        source,
+        &FormatOptions::default(),
+        &MetadataOptions::default(),
+    ) else {
+        return Vec::new();
+    };
+    let mut pairs = Vec::new();
+    let mut take = |tags: &[symphonia::core::meta::Tag]| {
+        for tag in tags {
+            if let Some(field) = tag.std_key.and_then(std_tag_field) {
+                pairs.push((field, tag.value.to_string()));
+            }
+        }
+    };
+    if let Some(meta) = probed.metadata.get() {
+        if let Some(rev) = meta.current() {
+            take(rev.tags());
+        }
+    }
+    if let Some(rev) = probed.format.metadata().current() {
+        take(rev.tags());
+    }
+    tag_fields(pairs)
+}
+
+/// An OpusTags packet's comments as fields (RFC 7845 5.2: the magic, a vendor string, then a count
+/// of `NAME=value` comments, each length-prefixed, little-endian). A malformed one yields what it
+/// held before it went wrong.
+fn opus_tags(packet: &[u8]) -> Vec<(&'static str, String)> {
+    let mut at = 8; // "OpusTags"
+    let read_u32 = |at: &mut usize| -> Option<usize> {
+        let b = packet.get(*at..*at + 4)?;
+        *at += 4;
+        Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    };
+    let mut pairs = Vec::new();
+    let Some(vendor) = read_u32(&mut at) else { return Vec::new() };
+    at = at.saturating_add(vendor);
+    let Some(count) = read_u32(&mut at) else { return Vec::new() };
+    for _ in 0..count.min(256) {
+        let Some(len) = read_u32(&mut at) else { break };
+        let Some(bytes) = packet.get(at..at.saturating_add(len)) else { break };
+        at += len;
+        let comment = String::from_utf8_lossy(bytes);
+        if let Some((name, value)) = comment.split_once('=') {
+            if let Some(field) = vorbis_tag_field(name) {
+                pairs.push((field, value.to_string()));
+            }
+        }
+    }
+    tag_fields(pairs)
 }
 
 /// Why an upload could not be turned into canonical audio.
@@ -314,6 +453,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
 
     let mut packets: Vec<AudioPacket> = Vec::new();
     let mut seen_tags = false;
+    let mut tags = Vec::new();
     while let Some(packet) = reader.read_packet().map_err(map_ogg)? {
         // A hostile blob could interleave other logical streams; only the Opus stream survives.
         if packet.stream_serial() != serial {
@@ -325,6 +465,8 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
             if !packet.data.starts_with(b"OpusTags") {
                 return Err(CrushError::Decode("ogg opus stream missing OpusTags".into()));
             }
+            // Read for the document's fields, never copied into the output.
+            tags = opus_tags(&packet.data);
             continue;
         }
         packets.push(AudioPacket {
@@ -395,6 +537,7 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
         passthrough: true,
         // No decode on this lane means no PCM to draw a waveform from.
         waveform_avif: None,
+        tags,
     })
 }
 
@@ -672,6 +815,7 @@ fn crush_via_decode(
 ) -> Result<Crushed, CrushError> {
     let duration_ms = measure_duration_ms(input, max_ms)?;
     let mut bitrate_bps = fit_bitrate_bps(cap_bytes, duration_ms);
+    let tags = read_tags(input);
 
     // The cap is a promise, not a target. The estimator already budgets for the container and
     // VBR variance, and this loop is the backstop that makes ≤ cap true BY CONSTRUCTION: on
@@ -688,6 +832,7 @@ fn crush_via_decode(
                 bitrate_bps,
                 passthrough: false,
                 waveform_avif: pass.waveform_avif,
+                tags,
             });
         }
         if bitrate_bps <= FLOOR_BITRATE_BPS {
@@ -1270,6 +1415,85 @@ impl WaveformEnvelope {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A sound's own tags come off it as fields, from each container's own kind of tag: ID3 in an
+    /// MP3, Vorbis comments in FLAC and Ogg, RIFF INFO in a WAV (the fixtures carry a title and an
+    /// artist each).
+    #[test]
+    fn a_sounds_tags_are_read_from_every_kind_of_file() {
+        let title = "Big Buck Bunny, Sunflower version";
+        for name in ["buck-audio.mp3", "buck-audio.flac", "buck-audio.ogg", "buck-audio.wav"] {
+            let tags = read_tags(&corpus(name));
+            let field = |f: &str| tags.iter().find(|(k, _)| *k == f).map(|(_, v)| v.as_str());
+            assert_eq!(field("track"), Some(title), "{name}: {tags:?}");
+            assert!(
+                field("artist").is_some_and(|a| a.starts_with("Blender Foundation")),
+                "{name}: {tags:?}"
+            );
+            assert!(
+                tags.iter().all(|(k, _)| TAG_FIELDS.contains(k)),
+                "{name}: only allowed fields"
+            );
+        }
+    }
+
+    /// The encoded file keeps none of them: the tags are the document's, the bytes stay stripped.
+    #[test]
+    fn the_crushed_sound_carries_its_tags_out_but_not_in() {
+        let crushed = crush(&corpus("buck-audio.flac"), CrushOpts::default()).expect("crushes");
+        assert!(crushed.tags.iter().any(|(k, _)| *k == "track"), "{:?}", crushed.tags);
+        let haystack = String::from_utf8_lossy(&crushed.bytes);
+        assert!(!haystack.contains("Big Buck Bunny"), "no title in the stored file");
+        assert!(!haystack.contains("Blender"), "no artist in the stored file");
+    }
+
+    #[test]
+    fn tag_values_are_one_line_bounded_and_a_year_its_four_digits() {
+        let fields = tag_fields([
+            ("artist", "  Two\n  Lines\t ".to_string()),
+            ("artist", "a second artist, ignored".to_string()),
+            ("year", "2013-05-02".to_string()),
+            ("album", "x".repeat(500)),
+            ("genre", "   ".to_string()),
+            ("track number", "3/12".to_string()),
+        ]);
+        assert_eq!(fields[0], ("artist", "Two Lines".to_string()), "first wins, one line");
+        assert_eq!(fields[1], ("year", "2013".to_string()));
+        assert_eq!(fields[2].1.chars().count(), TAG_VALUE_MAX);
+        assert_eq!(fields[3], ("track number", "3/12".to_string()), "an empty genre is nothing");
+        assert_eq!(
+            tag_fields([("year", "circa 1999".to_string())]),
+            Vec::new(),
+            "no year, no field"
+        );
+    }
+
+    /// An Ogg Opus file's OpusTags, read by hand (no decoder reads them for us): the allowed
+    /// comments, by name in any case; a truncated packet keeps what it read.
+    #[test]
+    fn opus_tags_are_read_and_a_truncated_packet_keeps_what_it_held() {
+        let mut packet = b"OpusTags".to_vec();
+        let vendor = b"libopus";
+        packet.extend((vendor.len() as u32).to_le_bytes());
+        packet.extend(vendor);
+        let comments = ["title=Neigh", "ARTIST=Aloha", "ENCODER=whatever", "Date=2021"];
+        packet.extend((comments.len() as u32).to_le_bytes());
+        for c in comments {
+            packet.extend((c.len() as u32).to_le_bytes());
+            packet.extend(c.as_bytes());
+        }
+        assert_eq!(
+            opus_tags(&packet),
+            [
+                ("track", "Neigh".to_string()),
+                ("artist", "Aloha".to_string()),
+                ("year", "2021".to_string())
+            ]
+        );
+        let cut = &packet[..packet.len() - 6];
+        assert_eq!(opus_tags(cut).len(), 2, "the comments before the cut");
+        assert!(opus_tags(b"OpusTags").is_empty());
+    }
 
     fn corpus(name: &str) -> Vec<u8> {
         let path = format!("{}/../sample_media/{name}", env!("CARGO_MANIFEST_DIR"));

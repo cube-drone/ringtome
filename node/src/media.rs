@@ -41,6 +41,9 @@ pub struct Ingested {
     pub duration_ms: Option<u64>,
     /// The bytes were an animated image before the crush (header key 18): a silent loop.
     pub animation: bool,
+    /// A sound's own tags, as the document's fields (audio.rs `TAG_FIELDS`); none for pictures and
+    /// video.
+    pub tags: Vec<(&'static str, String)>,
 }
 
 /// Why an upload could not be crushed - the union of the three lanes' failures. The ingest worker
@@ -149,6 +152,7 @@ impl Ingested {
             width: Some(c.width),
             height: Some(c.height),
             duration_ms: c.duration_ms,
+            tags: Vec::new(),
         }
     }
 
@@ -168,6 +172,7 @@ impl Ingested {
             width: Some(c.width),
             height: Some(c.height),
             duration_ms: Some(c.duration_ms),
+            tags: Vec::new(),
         }
     }
 
@@ -181,6 +186,7 @@ impl Ingested {
             width: None,
             height: None,
             duration_ms: Some(c.duration_ms),
+            tags: c.tags,
         }
     }
 }

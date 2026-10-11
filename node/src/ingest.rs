@@ -281,9 +281,35 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
     )
     .await?;
 
+    // A sound's own tags - artist, album, year... (media/audio.rs `TAG_FIELDS`) - as its fields,
+    // only where it has none of its own: a new version of a sound a person has annotated keeps
+    // what they wrote. A failure here costs the fields, never the upload.
+    if !ingested.tags.is_empty() {
+        if let Err(e) = tag_fields(state, &job.root, &job.doc_id, &ingested.tags).await {
+            tracing::warn!(doc = %hex::encode(job.doc_id), error = %e, "couldn't keep a sound's tags");
+        }
+    }
+
     finish_job(&state.node_db, &job.job_id).await?;
     let _ = tokio::fs::remove_file(&job.quarantine_path).await;
     let _ = tokio::fs::remove_file(sidecar_path(&job.quarantine_path)).await;
+    Ok(())
+}
+
+/// Write a sound's tags as its document's fields, each one the document doesn't already have.
+async fn tag_fields(
+    state: &crate::AppState,
+    root: &str,
+    doc_id: &[u8; 16],
+    tags: &[(&'static str, String)],
+) -> Result<(), AppError> {
+    let data = crate::record::store::open_agented(state, root).await?;
+    let have = data.annotations().fields(doc_id).await?;
+    for (field, value) in tags {
+        if !have.contains_key(*field) {
+            data.annotations().set_field(doc_id, field, value).await?;
+        }
+    }
     Ok(())
 }
 

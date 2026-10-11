@@ -19504,3 +19504,23 @@ the post's own clipped top edge, and a name at its left edge cut a centred
 card's left half off too. Outside a post they open as they did. Seen in a
 headless-Chrome screenshot of a post mock-up with the app's stylesheet, before
 and after.
+
+## 2026-10-10 (cont.): a sound's own tags, kept
+
+Curtis: an uploaded sound's tags - artist, year, album - "currently get lost on
+upload... an obvious pick to convert into annotations". Lost on purpose: the
+audio crush re-encodes, so source metadata never survives into the stored file,
+and the Opus passthrough rewrites a bare OpusTags. That stays; the tags are now
+read on the way through (media/audio.rs `read_tags`, symphonia's probe and
+container metadata - ID3 in an MP3, Vorbis comments in FLAC and Ogg, iTunes
+atoms in M4A, RIFF INFO in a WAV - and `opus_tags`, read by hand from an Ogg
+Opus file's OpusTags) and written as the document's fields by the ingest worker
+(`tag_fields`), each only where the document has none of its own. An allowlist,
+`TAG_FIELDS`: track, artist, album, album artist, composer, genre, year (its
+four digits), track number - nothing else, since fields travel with a published
+post; each value one line, at most 200 characters. Not only MP3s, as first
+thought: the fixtures' FLAC, Ogg and WAV carry tags too, and the tests read
+each. Four unit tests (every kind of file; the stored file still carries none;
+values bounded; OpusTags, truncated too) and the import vault claim, whose MP3
+now arrives with its track and artist. The app shows only description and date
+among fields, so these are kept, exported and readable, but not yet shown.

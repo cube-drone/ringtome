@@ -1486,6 +1486,8 @@ impl Documents<'_> {
             width: head.header.width,
             height: head.header.height,
             duration_ms: head.header.duration_ms,
+            // A copy of a stored version: its tags became the source document's fields at upload.
+            tags: Vec::new(),
         };
         let public = crate::record::documents::save_public_media(
             &self.store.db,

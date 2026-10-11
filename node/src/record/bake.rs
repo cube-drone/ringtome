@@ -1118,6 +1118,8 @@ async fn foreign_twin(
         height: header.height,
         duration_ms: header.duration_ms,
         animation: header.animation,
+        // A stored version, copied: its tags became the source document's fields at upload.
+        tags: Vec::new(),
     })
 }
 

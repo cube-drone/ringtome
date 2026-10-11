@@ -361,6 +361,22 @@ describe('imports: additive only', function () {
         const [photo, squirrel, neigh, trip] = ['polaroid', 'squirrel', 'neigh', 'trip'].map(by);
         for (const d of [photo, squirrel, neigh])
             assert.deepEqual(d.buckets, ['files'], `${d.title} is filed where uploads live`);
+        // The MP3's own ID3 tags became its fields (media/audio.rs TAG_FIELDS, 2026-10-10) - written
+        // a moment after its version, so asked for until they're there.
+        let sounded = {};
+        for (let i = 0; i < 40; i++) {
+            sounded = await (
+                await bea(`api/identity/${beaRoot}/docs/${neigh.doc_id}/annotations`)
+            ).json();
+            if (sounded.fields && sounded.fields.artist) break;
+            await new Promise((res) => setTimeout(res, 250));
+        }
+        assert.equal(
+            sounded.fields.track,
+            'Big Buck Bunny, Sunflower version',
+            JSON.stringify(sounded),
+        );
+        assert.ok(sounded.fields.artist.startsWith('Blender Foundation'), JSON.stringify(sounded));
         const body = (await (await bea(`api/identity/${beaRoot}/docs/${trip.doc_id}`)).json()).body;
         const at = (d, name) => `/api/identity/${beaRoot}/docs/${d.doc_id}/body/${name}`;
         assert.ok(body.includes(`![polaroid](${at(photo, 'polaroid.avif')})`), body);
