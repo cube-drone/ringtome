@@ -19,6 +19,7 @@ import { MarqueeBody } from './marqueebody.js';
 import { decoratedBodyUrl, FileDropper, PendingUpload, isLanding } from './upload.js';
 import { Editor } from './editor.js';
 import { Annotations } from './annotations.js';
+import { SoundTags } from './soundtags.js';
 import { useTurbolinks } from './turbolinks.js';
 import { docHref, shareUrl, writeClipboard } from '../links.js';
 import { featuresOf } from '../pure/apps.js';
@@ -200,7 +201,13 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     } else if (doc.format === 'webm') {
         body = html`<video class="reader-media" controls src=${mediaUrl}></video>`;
     } else if (doc.format === 'opus') {
-        body = html`<audio controls src=${mediaUrl}></audio>`;
+        // The player the whole width, for the most room to seek in; under it, the sound's own
+        // fields (Curtis, 2026-10-11).
+        body = html`<div class="reader-sound">
+            <audio class="reader-sound-player" controls src=${mediaUrl}></audio>
+            <hr class="reader-sound-rule" />
+            <${SoundTags} root=${root} docId=${docId} readOnly=${!!doc.builtin} />
+        </div>`;
     } else {
         body = html`<p class="null-sub">${t('doc.reader.a-document---no-reader', '(a {format} document - no reader for it yet)', { format: doc.format })}</p>`;
     }

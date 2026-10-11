@@ -26,8 +26,9 @@ const DESC_DEBOUNCE_MS = 1200;
 
 // A named annotation field as a shadow buffer (shadow.js). An EMPTY value clears the field, since
 // an absent value is how LWW says "no longer set" - so the save picks its own verb.
-function useField(root, docId, field, mirrorValue, { debounceMs } = {}) {
-    const url = `/api/identity/${root}/docs/${docId}/annotations/fields/${field}`;
+// Exported for the sound's own fields (doc/soundtags.js), whose names have spaces in them.
+export function useField(root, docId, field, mirrorValue, { debounceMs } = {}) {
+    const url = `/api/identity/${root}/docs/${docId}/annotations/fields/${encodeURIComponent(field)}`;
     return useShadowValue(mirrorValue, {
         debounceMs,
         key: docId,

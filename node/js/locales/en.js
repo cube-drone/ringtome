@@ -980,6 +980,16 @@ export default {
     // --- node/js/doc/session.js ---
     'doc.session.embed-removed-over-cap': '(“{alt}” removed — one page holds {cap} embedded files)',
 
+    // --- node/js/doc/soundtags.js ---
+    'doc.soundtags.track': 'track',
+    'doc.soundtags.artist': 'artist',
+    'doc.soundtags.album': 'album',
+    'doc.soundtags.album-artist': 'album artist',
+    'doc.soundtags.composer': 'composer',
+    'doc.soundtags.genre': 'genre',
+    'doc.soundtags.year': 'year',
+    'doc.soundtags.track-number': 'track number',
+
     // --- node/js/doc/texthelpers.js ---
     'texthelpers.rainbow': 'a rainbow running through it',
     'texthelpers.wave': 'ripples like water',

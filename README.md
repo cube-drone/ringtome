@@ -76,6 +76,12 @@ lightly federated, unapologetically Old Internet.
   what the node sees the network doing - drawings, words, reactions positive and
   negative, follows, chat, posts. Horse Financial's second instrument. Built
   2026-10-06.
+- [`DEDUP.md`](plans/DEDUP.md) — one copy of each private file a persona holds:
+  a keyed fingerprint of every private blob, carried in its encrypted header and
+  folded into a per-persona view, so an upload the persona already holds names
+  the existing blob, or returns the existing document. Public and private never
+  share; key rotation doesn't split it. Album cover art as sound thumbnails is
+  the forcing function. A design draft (2026-10-11); nothing built.
 - [`DRAWING.md`](plans/DRAWING.md) — the horse-drawing app: a drawing is a
   versioned document whose body is its strokes, undo is a recorded removal, and
   two histories merge by putting both sets of strokes together (on the node,
