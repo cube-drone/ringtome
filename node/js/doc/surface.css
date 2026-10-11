@@ -324,6 +324,10 @@ video.reader-media {
     font-size: inherit;
 }
 
+.sound-length {
+    font-variant-numeric: tabular-nums;
+}
+
 .sound-date {
     display: flex;
     flex-wrap: wrap;

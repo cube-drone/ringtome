@@ -996,6 +996,7 @@ export default {
     'doc.soundtags.its-own': 'its own',
     'doc.soundtags.a-cover-for-this-sound': 'a cover for this sound',
     'doc.soundtags.tags': 'tags',
+    'doc.soundtags.length': 'length',
     'doc.soundtags.description': 'description',
     'doc.soundtags.date': 'date',
 
@@ -1078,13 +1079,16 @@ export default {
     'doc.upload.describe-audio': 'please provide a detailed description of the sound',
     'doc.upload.describe-image': 'please provide a detailed description of the image',
     'doc.upload.video-is-in-the-market': 'uploading video is unlocked in the hrseBank™ market',
+    'doc.upload.waiting-to-send-name': 'waiting to send {name}…',
     'doc.upload.sending-name': 'sending {name}…',
     'doc.upload.describe-title': "read aloud in the picture's place for people who can't see it, and found by search",
+    'doc.upload.waiting-its-turn': 'waiting its turn…',
     'doc.upload.already-had-it': 'You already had this one: {title}.',
     'doc.upload.uploading-is-in-the-market': 'uploading files is unlocked in the hrseBank™ market',
     'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
-    'doc.upload.drag-a-file-here-or': 'drag a file here, or',
+    'doc.upload.drag-files-or-a-folder-here-or': 'drag files or a folder here, or',
     'doc.upload.upload-a-file': 'upload a file',
+    'doc.upload.upload-a-folder': 'upload a folder',
     'doc.upload.ok-opens-the-file': 'OK opens the file - its page shows how it is getting on.',
 
     // --- node/js/doc/usercard.js ---

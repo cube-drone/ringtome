@@ -19852,3 +19852,43 @@ was made of: `TitleInput`, `TagEditor`, `DescInput`, `DateInputs` and
 same markup as before, and `SoundTags` (`node/js/doc/soundtags.js`) lays three
 of them out as rows of its list. A built-in sound, which is read-only, gets none
 of them. Checked in headless Chrome.
+
+## 2026-10-11 (cont.): a folder of files, uploaded at once
+
+You can now drop a whole folder on the upload window, or pick one with Files'
+new "upload a folder" button. You get its media in the order its listing reads,
+sent three at a time.
+
+- **Opening a folder** (`node/js/doc/dropfiles.js`): a dropped folder arrives as
+  one empty pseudo-file. `droppedFiles` takes the drop's entries while the event
+  runs, then walks every level down. `pickedFolder` does the same for a
+  `webkitdirectory` pick. Both Files' dropper and the editor's drop use it.
+- **What a folder keeps** (`node/js/pure/dropfiles.js`): media by type, or by
+  extension where the platform gives no type. A music folder's cue sheets, logs,
+  playlists, `.DS_Store` and macOS `._` files are passed over quietly. A file
+  dropped on its own is still shown failing when it can't be stored, since
+  someone chose it.
+- **The order:** by path, numbers as numbers, so track 2 comes before track 10
+  and disc 1 before disc 2.
+- **Three at a time** (`pooled`, `SENDING_AT_ONCE` in `node/js/doc/upload.js`):
+  the window used to start every upload at once. Now three send while the rest
+  say "waiting its turn…", or, once the window is folded, "waiting to send
+  {name}…".
+
+The dropper reads "drag files or a folder here, or". Tests: the pure suite
+`integration/test/pure/dropfiles.cjs` covers what's kept, the order, and three
+at a time with a failure stopping nothing. In headless Chrome, a test album
+folder (four tracks, a "disc 2" folder of three, a cue sheet, notes and a
+`.DS_Store`) uploaded through the folder button as seven documents in track
+order. With the upload throttled, four were waiting while three sent. A real
+drag of a folder can't be simulated headless, so that path is untested in a
+browser.
+
+## 2026-10-11 (cont.): a sound's length, in its list
+
+A sound's list of fields now shows its length, read-only, under its cover, as a
+player shows it: `m:ss`, or `h:mm:ss` from an hour, whole seconds rounded down.
+It comes from the `media.duration_ms` every sound's row already carries,
+measured at upload. `playLength` (`node/js/pure/mediakind.js`) does the
+formatting, tested in `integration/test/pure/playlength.cjs`. Checked in
+headless Chrome: the two-second test sound reads "0:02".

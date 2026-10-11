@@ -31,6 +31,8 @@ import { altLabel, bodyUrlFor, crushedReference, withAlt } from '../pure/mediaki
 import { caretThroughSwap } from '../pure/caret.js';
 import { FILES_BUCKET } from '../pure/apps.js';
 import { useUnlocked } from '../unlocks.js';
+import { pooled } from '../pure/dropfiles.js';
+import { droppedFiles, pickedFolder } from './dropfiles.js';
 
 const html = htm.bind(h);
 
@@ -153,6 +155,9 @@ const describePrompt = (file) => {
     return t('doc.upload.describe-image', 'please provide a detailed description of the image');
 };
 
+/// How many files send at once: enough to keep the line busy, few enough that each bar moves.
+const SENDING_AT_ONCE = 3;
+
 const UploadFlow = ({
     root,
     bucket,
@@ -171,7 +176,7 @@ const UploadFlow = ({
 }) => {
     // Video is bought apart from pictures and sounds (plans/UNLOCKS.md: experimental, and said so).
     const video = useUnlocked(root, 'video-upload');
-    // One row per file. `phase`: uploading -> queued -> done | failed.
+    // One row per file. `phase`: waiting -> uploading -> queued -> done | failed (or existing).
     const [rows, setRows] = useState(() =>
         files.map((f) => ({
             file: f,
@@ -182,6 +187,8 @@ const UploadFlow = ({
             phase: 'uploading',
             queueStatus: 'pending',
             error: null,
+            // Its turn to send hasn't come (`SENDING_AT_ONCE`, below).
+            waiting: true,
             // The name the server currently holds for this file. A rename is "pending" whenever
             // the input differs from this; it applies wherever the file is in its life - the
             // queued job while pending, the DOCUMENT record once a version exists.
@@ -257,12 +264,15 @@ const UploadFlow = ({
         // Some platforms hand over files with no type at all; let the server judge those.
         !file.type;
 
-    // Fire every upload once, on mount.
+    // Every upload once, on mount, a few at a time (2026-10-11): a whole album's folder goes up
+    // three tracks abreast, the rest waiting their turn, rather than thirty bars standing at nothing
+    // behind the browser's own few connections.
     const started = useRef(false);
     useEffect(() => {
         if (started.current) return;
         started.current = true;
-        files.forEach(async (file, i) => {
+        pooled(files, SENDING_AT_ONCE, async (file, i) => {
+            patchRow(i, { waiting: false });
             if (/^video\//.test(file.type || '') && !video) {
                 patchRow(i, {
                     phase: 'failed',
@@ -460,7 +470,9 @@ const UploadFlow = ({
                     ${
                         r.phase === 'failed'
                             ? html`<div class="upload-status upload-failed">${r.name}: ${r.error}</div>`
-                            : html`<div class="upload-status">
+                            : r.waiting
+                              ? html`<div class="upload-status">${t('doc.upload.waiting-to-send-name', 'waiting to send {name}…', { name: r.name })}</div>`
+                              : html`<div class="upload-status">
                                   <span class="status-spin"><${Icons.spinner} /></span>
                                   ${t('doc.upload.sending-name', 'sending {name}…', { name: r.name })}
                               </div>
@@ -541,9 +553,11 @@ const UploadFlow = ({
                     }
                     ${
                         r.phase === 'uploading' &&
-                        html`<div class="upload-bar jag-line-2">
+                        (r.waiting
+                            ? html`<div class="upload-status">${t('doc.upload.waiting-its-turn', 'waiting its turn…')}</div>`
+                            : html`<div class="upload-bar jag-line-2">
                         <div class="upload-bar-fill" style=${`width: ${r.pct}%`}></div>
-                    </div>`
+                    </div>`)
                     }
                     ${
                         r.phase === 'queued' &&
@@ -818,7 +832,8 @@ export function useUploadCapture({
         if (files.length) {
             e.preventDefault();
             e.stopPropagation();
-            captureFiles(files);
+            // A folder opens to its media (doc/dropfiles.js), read while the drop is still running.
+            droppedFiles(dt).then((all) => all.length && captureFiles(all));
             return;
         }
         const types = Array.from((dt && dt.types) || []);
@@ -937,6 +952,7 @@ export const FileDropper = ({ root, onOpen }) => {
     const [folded, setFolded] = useState(false); // OK pressed: the window folds to lines
     const [over, setOver] = useState(false);
     const pick = useRef(null);
+    const pickDir = useRef(null);
     // Read by the upload's own callbacks, which are bound when it starts.
     const ids = useRef([]);
     const follow = useRef(false);
@@ -978,14 +994,23 @@ export const FileDropper = ({ root, onOpen }) => {
             onDrop=${(e) => {
                 e.preventDefault();
                 setOver(false);
-                take(e.dataTransfer && e.dataTransfer.files);
+                // A folder opens to its media - a whole album at once (2026-10-11).
+                droppedFiles(e.dataTransfer).then(take);
             }}
         >
             <span class="file-dropper-icon"><${Icons.upload} /></span>
-            <p class="file-dropper-words">${t('doc.upload.drag-a-file-here-or', 'drag a file here, or')}</p>
-            <button class="file-dropper-upload" onClick=${() => pick.current && pick.current.click()}>
-                ${t('doc.upload.upload-a-file', 'upload a file')}
-            </button>
+            <p class="file-dropper-words">${t('doc.upload.drag-files-or-a-folder-here-or', 'drag files or a folder here, or')}</p>
+            <span class="file-dropper-buttons">
+                <button class="file-dropper-upload" onClick=${() => pick.current && pick.current.click()}>
+                    ${t('doc.upload.upload-a-file', 'upload a file')}
+                </button>
+                <button
+                    class="file-dropper-upload"
+                    onClick=${() => pickDir.current && pickDir.current.click()}
+                >
+                    ${t('doc.upload.upload-a-folder', 'upload a folder')}
+                </button>
+            </span>
             <input
                 type="file"
                 multiple
@@ -994,6 +1019,16 @@ export const FileDropper = ({ root, onOpen }) => {
                 onChange=${(e) => {
                     take(e.currentTarget.files);
                     e.currentTarget.value = ''; // so picking the same file again re-fires
+                }}
+            />
+            <input
+                type="file"
+                webkitdirectory
+                hidden
+                ref=${pickDir}
+                onChange=${(e) => {
+                    take(pickedFolder(e.currentTarget.files));
+                    e.currentTarget.value = '';
                 }}
             />
         </div>

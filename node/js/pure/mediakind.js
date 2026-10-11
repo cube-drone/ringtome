@@ -107,3 +107,13 @@ export function mediaResolver(base) {
         return base.media.call(base, target);
     };
 }
+
+/// A sound's or a video's length as a player shows it (2026-10-11): `m:ss`, or `h:mm:ss` from an
+/// hour, whole seconds rounded down. Null for no length.
+export function playLength(ms) {
+    if (ms == null || !(ms >= 0)) return null;
+    const s = Math.floor(ms / 1000);
+    const [h, m, sec] = [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60];
+    const pad = (n) => String(n).padStart(2, '0');
+    return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}

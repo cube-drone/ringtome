@@ -13,6 +13,7 @@ import { DateInputs, DescInput, TagEditor, dateMeaning, useField } from './annot
 import { ImagePickModal } from './imagepick.js';
 import { DrawingThumb, flattenToBlob } from './drawing.js';
 import { readBody } from '../pure/drawing.js';
+import { playLength } from '../pure/mediakind.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 
@@ -151,6 +152,7 @@ export const SoundTags = ({ root, docId, readOnly }) => {
     const fields = (row && row.fields) || {};
     // A built-in sound is nobody's to annotate; it shows its own fields and nothing else.
     const own = !readOnly;
+    const length = playLength(row && row.media && row.media.duration_ms);
     return html`<dl class="sound-tags">
         ${
             own &&
@@ -159,6 +161,16 @@ export const SoundTags = ({ root, docId, readOnly }) => {
             </${DocRow}>`
         }
         <${SoundCover} root=${root} docId=${docId} row=${row} readOnly=${readOnly} />
+        ${
+            /* Its length (2026-10-11), measured at upload and carried on every version: a fact of
+            the sound, so said rather than edited. */ ''
+        }
+        ${
+            length &&
+            html`<${DocRow} label=${t('doc.soundtags.length', 'length')}>
+                <span class="sound-length">${length}</span>
+            </${DocRow}>`
+        }
         ${SOUND_FIELDS().map(
             ([field, label]) => html`<${SoundField}
                 key=${`${docId}:${field}`}
