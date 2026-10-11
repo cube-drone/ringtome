@@ -195,6 +195,31 @@ body {
     margin-bottom: 0.4rem;
 }
 
+/* Under the switcher, after a document moved out of this notebook (buckets.js MovedNotice): where
+   it went, and a link to follow it - an offer, never a jump. */
+.bucket-moved {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0 0 0.4rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.bucket-moved-x {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    margin-left: auto;
+    display: inline-flex;
+}
+
+.bucket-moved-x:hover {
+    color: var(--ink);
+}
+
 .bucket-name {
     display: flex;
     align-items: center;

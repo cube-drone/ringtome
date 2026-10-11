@@ -20,6 +20,14 @@ import { docHref, appHref } from '../links.js';
 // last-open BUCKET memory and the editor's per-document caret.
 const lastDocMemory = new Map();
 
+/// Forget a document as anyone's last one - a move out of its notebook (doc/annotations.js) lands on
+/// the list it left, which would otherwise restore it while the mirror still had it filed there.
+export function forgetLastDoc(root, docId) {
+    for (const [key, id] of lastDocMemory) {
+        if (id === docId && key.startsWith(`${root}:`)) lastDocMemory.delete(key);
+    }
+}
+
 /**
  * The spine. Returns the app's live documents, the open document and how to change it, and the
  * tree-reload bump.

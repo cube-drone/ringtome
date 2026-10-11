@@ -7,9 +7,9 @@
 // dragged page lands, counted WITHOUT the dragged member, and previously unexercised.
 const assert = require('node:assert');
 
-let flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex;
+let flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex, parentsOf;
 before(async () => {
-    ({ flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex } =
+    ({ flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex, parentsOf } =
         await import('../../../js/pure/treewalk.js'));
 });
 
@@ -121,6 +121,27 @@ describe('filedDocIds', () => {
     it('is empty for an empty or absent tree', () => {
         assert.equal(filedDocIds(null).size, 0);
         assert.equal(filedDocIds(sec('root', [])).size, 0);
+    });
+});
+
+describe('parentsOf (what a move out of the notebook leaves)', () => {
+    it('names every section holding the document, a diamond twice over', () => {
+        assert.deepEqual(parentsOf(TREE, 'd1'), ['starters', 'mains']);
+    });
+
+    it('names the root for a document filed at the top', () => {
+        assert.deepEqual(parentsOf(TREE, 'd4'), ['root']);
+    });
+
+    it('finds a document deep in the tree, and nothing for one it does not hold', () => {
+        assert.deepEqual(parentsOf(TREE, 'd2'), ['cold']);
+        assert.deepEqual(parentsOf(TREE, 'nope'), []);
+    });
+
+    it('counts a dangling reference, and does not descend into a stub', () => {
+        const t = sec('root', [dangling('gone'), inTree(stub('starters'))]);
+        assert.deepEqual(parentsOf(t, 'gone'), ['root']);
+        assert.deepEqual(parentsOf(t, 'd1'), []);
     });
 });
 
