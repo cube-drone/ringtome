@@ -19892,6 +19892,7 @@ It comes from the `media.duration_ms` every sound's row already carries,
 measured at upload. `playLength` (`node/js/pure/mediakind.js`) does the
 formatting, tested in `integration/test/pure/playlength.cjs`. Checked in
 headless Chrome: the two-second test sound reads "0:02".
+
 ## 2026-10-11: move a document to another notebook
 
 Curtis: "can we also add a button that allows us to change the document's
@@ -19961,3 +19962,27 @@ as a contract's completion is - HORSE_BASED_CURRENCIES.md, _Gifts_. An
 acceptance claim: two presses, two lines, two register entries, and nothing paid
 twice. Not testable on the rig: the refusal for a non-admin on a prod node,
 since the rig's node is a dev build.
+
+## 2026-10-11 (cont.): bulk actions
+
+Curtis: "BULK ACTIONS! note, file, drawing multi-select" - Shift-click adds to a
+selection, "select all" beside the count takes whatever the list shows, and the
+open document's place becomes a panel to delete all, move all (to a notebook or
+a new one), tag all, take a tag off all (from their combined tags), date all,
+and for the sounds among them set artist, album, album artist, composer, genre,
+year and the cover (plans/BULK.md). Settled with Curtis: a plain click clears
+and opens; the move offers existing notebooks and a new one; in hrseFiles each
+file leaves its own notebook, for one of the same app only; the song's name and
+number are each track's own, never bulk. The decisions are values in
+js/pure/bulk.js with vectors in test/pure/bulk.cjs - among them an invariant
+that a move never leaves a document in no notebook, over every pair of
+notebooks, and the case of a notebook made for the move a moment before the
+roster knows its app (`moveOutOf`'s `toType`; without it a drawing moved into a
+new drawing notebook would never have left its old one). The panel
+(js/doc/bulk.js) writes on the existing routes, four at a time, counts as it
+goes, and sums up in a toast; built-in documents are left alone and said so. The
+tag editor's cleaning rule moved to pure/annotations.js `normalTag`, which bulk
+tagging keeps too. hrseFiles gained a count line, to carry "select all". Rows,
+tiles, the tree and the publish column all open through one click handler now,
+so any plain click ends the selection; "+ new" ends it too. Not browser-tested:
+the panel and the clicks are UI, and STYLE's rule leaves those to a person.

@@ -19,7 +19,7 @@ import { withTagOps, tagOpsSettled } from '../pure/optimistic.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 import { t } from '../i18n.js';
 import { useUnlocked } from '../unlocks.js';
-import { isEmojiTag } from '../pure/annotations.js';
+import { normalTag } from '../pure/annotations.js';
 import { appForStyle, appTypeOf, bucketsForApp, RESERVED_STYLE } from '../pure/apps.js';
 import { bucketHref, docPlacement } from '../pure/naming.js';
 import { docHref } from '../links.js';
@@ -194,15 +194,13 @@ export const TagEditor = ({ root, docId, showImplicit = true }) => {
     };
 
     const addTag = async (raw) => {
-        // 32 characters, the public tag's cap (2026-08-31), so a draft never carries a
-        // tag that publish would have to leave behind.
-        const tag = raw.trim().toLowerCase().slice(0, 32);
+        // Trimmed, lowercased and cut at the public tag's cap, so a draft never carries a tag
+        // publish would leave behind; an emoji refused in words, so it is not mistaken for a slip
+        // (pure/annotations.js `normalTag`, which bulk tagging keeps too).
+        const { tag, refused } = normalTag(raw);
         setTagInput('');
-        if (!tag || shownTags.includes(tag)) return;
-        // A reaction is for somebody else's post (Curtis, 2026-09-27): a tag that is one
-        // emoji never goes on your own document - publish would leave it behind, and every
-        // reader drops one an author says. Refused in words, so it is not mistaken for a slip.
-        if (isEmojiTag(tag)) {
+        if (refused === 'empty' || shownTags.includes(tag)) return;
+        if (refused === 'emoji') {
             setTagRefused(
                 t(
                     'doc.annotations.no-reacting-to-your-own',

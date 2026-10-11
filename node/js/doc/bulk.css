@@ -1,0 +1,110 @@
+/* The bulk panel (doc/bulk.js, plans/BULK.md): in the open document's place while several are
+   selected - a head saying how many, then each action as a group, delete last and apart. It
+   borrows the copy modal's notebook buttons (copyinto.css), the tag chips and the date controls
+   (annotations.css), and the sound's field list (soundtags), so a bulk action looks like the
+   single one it repeats. */
+.bulk {
+    padding: 0.8rem 1rem 1.5rem;
+}
+
+.bulk-head {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.bulk-count {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.bulk-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: none;
+    border: none;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.bulk-clear:hover {
+    color: var(--ink);
+}
+
+.bulk-note,
+.bulk-progress {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+}
+
+.bulk-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.bulk-heading {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: normal;
+    color: var(--muted);
+}
+
+.bulk-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.bulk-input {
+    background-color: var(--surface);
+    --line: var(--border);
+    --j: 3px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.4rem;
+    width: 12rem;
+}
+
+.bulk-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--ink);
+    background: var(--surface);
+    --line: var(--border);
+    --j: 4px;
+    padding: 0.2rem 0.7rem;
+    cursor: pointer;
+}
+
+.bulk-button:hover {
+    --line: var(--border-strong);
+}
+
+.bulk-tag-count {
+    font-size: 0.65rem;
+    opacity: 0.8;
+}
+
+/* Delete stands apart, at the foot, in the danger colour. */
+.bulk-danger {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border);
+}
+
+.bulk-delete {
+    align-self: flex-start;
+    background: var(--coral);
+    color: var(--on-danger);
+    --line: var(--coral);
+}

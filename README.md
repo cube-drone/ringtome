@@ -65,6 +65,11 @@ lightly federated, unapologetically Old Internet.
 - [`plans/`](plans/) — the plans: one design document per app, feature or
   delivery shape, drafts and built alike, plus the signing guide. **A new plan
   is written here.** So far:
+- [`BULK.md`](plans/BULK.md) — doing one thing to many documents in Writer,
+  Drawing and hrseFiles: Shift-click or "select all" beside the count, then
+  delete, move (to a notebook, or a new one), tag, untag from the combined tags,
+  date, and for sounds their artist, album and cover. One request per document
+  on the existing routes, four at a time. Built 2026-10-11.
 - [`CHAT.md`](plans/CHAT.md) — real-time rooms: a room is a post, a message is
   an entry on its author's own chain on the room's lane, live is gossip carrying
   the same entries, history is recent everywhere and whole at the creator's.
