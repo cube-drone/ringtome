@@ -3899,6 +3899,7 @@ mod tests {
                 sealed_title: None,
                 seal_of: None,
                 onward: false,
+                prints: Default::default(),
             };
             chain.append(entry_type::DOC_HEADER, header.encode().unwrap())
         }

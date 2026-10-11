@@ -425,11 +425,13 @@ describe('HorseBucks: the ledger', function () {
             const c = (b.contracts || []).find((x) => x.id === 'upload-an-image');
             return !!(c && c.completed_ms);
         };
-        const upload = async () => {
+        // Each call a picture of its own size: the same bytes twice would be one document
+        // (plans/DEDUP.md) - the second upload handed back the first, the drawing's copy.
+        const upload = async (side) => {
             const pic = await (
                 await lee(`api/identity/${root}/docs/binary?title=a picture`, {
                     method: 'POST',
-                    body: makePng(20, 20),
+                    body: makePng(side, side),
                     file: true,
                 })
             ).json();
@@ -448,7 +450,7 @@ describe('HorseBucks: the ledger', function () {
                 format: 'drawing',
             })
         ).json();
-        const copy = await upload();
+        const copy = await upload(20);
         await j(
             lee,
             `api/identity/${root}/docs/${copy}/annotations/fields/flattened_from`,
@@ -456,7 +458,7 @@ describe('HorseBucks: the ledger', function () {
             'PUT',
         );
         assert.equal(await uploaded(), false, "a drawing's copy is not an upload of your own");
-        await upload();
+        await upload(21);
         assert.equal(await uploaded(), true, 'a picture of your own is');
     });
 

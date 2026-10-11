@@ -32,8 +32,9 @@ pub use entry::{
 };
 pub use error::ProtoError;
 pub use registry::{
-    Anchor, Authorize, Disposition, DocHeaderPlain, KeyEpoch, PostRetraction, PrivateKind,
-    PrivatePlain, PrivateRecord, ProfileSet, PublicAnnotation, PublicEdge, Rebroadcast, Revoke,
+    Anchor, Authorize, ContentPrints, Disposition, DocHeaderPlain, KeyEpoch, PostRetraction,
+    PrivateKind, PrivatePlain, PrivateRecord, ProfileSet, PublicAnnotation, PublicEdge,
+    Rebroadcast, Revoke,
 };
 pub use sync::MemberProof;
 

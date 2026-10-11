@@ -641,6 +641,47 @@ pub struct DocHeaderPlain {
     /// rebroadcast of its own - but never a feed row of its own: the fold keeps parts out of
     /// journals, and the book (and its updates) are what reach feeds. Absent when standalone.
     pub part_of: Option<[u8; 16]>,
+    /// Content prints (plans/DEDUP.md, 2026-10-11): keyed fingerprints of the bytes this version's
+    /// blobs hold, so a persona can tell it already stores a file before encrypting it again.
+    /// Private lane only - a public header never carries one (the writer's rule; a print there
+    /// would answer "does this persona hold that file?"). Keys 24-26, each absent when unset.
+    pub prints: ContentPrints,
+}
+
+/// A private version's content prints: each the [`content_print`] of a blob's plaintext, under
+/// the persona's [`print_key`]. Absent ones were never computed (a version older than prints, a
+/// version with no thumbnail, a document no one uploaded).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ContentPrints {
+    /// Key 24: the body's plaintext - the stored words, or the crushed media.
+    pub body: Option<[u8; 32]>,
+    /// Key 25: the thumbnail's plaintext (its own AVIF bytes: the crush is deterministic -
+    /// media/image.rs `a_crush_is_deterministic`).
+    pub thumb: Option<[u8; 32]>,
+    /// Key 26: the bytes as uploaded, before the crush - the one print a second upload of the
+    /// same file can match, since the crush is lossy.
+    pub source: Option<[u8; 32]>,
+}
+
+impl ContentPrints {
+    fn count(&self) -> u64 {
+        self.body.is_some() as u64 + self.thumb.is_some() as u64 + self.source.is_some() as u64
+    }
+}
+
+/// The key a persona prints its private files under (plans/DEDUP.md, _The fingerprint_): derived
+/// from its epoch-0 key, which every member holds (adoption re-seals the whole history) and
+/// nobody outside ever has - so it is the same in every epoch, and a rotation never splits what
+/// a persona knows it holds.
+pub fn print_key(epoch_0_key: &[u8; 32]) -> [u8; 32] {
+    blake3::derive_key("ringtome-v0/content-print", epoch_0_key)
+}
+
+/// A content print: BLAKE3 keyed by the persona's [`print_key`]. Never a global identifier - the
+/// same bytes print differently for every persona, so a print that escaped could not be looked
+/// up against a list of known files.
+pub fn content_print(print_key: &[u8; 32], bytes: &[u8]) -> [u8; 32] {
+    *blake3::keyed_hash(print_key, bytes).as_bytes()
 }
 
 impl DocHeaderPlain {
@@ -699,7 +740,8 @@ impl DocHeaderPlain {
             + self.dated_ms.is_some() as u64
             + self.animation as u64
             + self.im as u64
-            + self.part_of.is_some() as u64;
+            + self.part_of.is_some() as u64
+            + self.prints.count();
         if self.thread_root.is_some() && self.reply_to.is_none() {
             return Err(ProtoError::BadEntry("a thread root without a parent"));
         }
@@ -808,6 +850,14 @@ impl DocHeaderPlain {
             w.uint(23);
             w.uint(1);
         }
+        for (key, print) in
+            [(24, &self.prints.body), (25, &self.prints.thumb), (26, &self.prints.source)]
+        {
+            if let Some(p) = print {
+                w.uint(key);
+                w.bytes(p);
+            }
+        }
         Ok(w.into_bytes())
     }
 
@@ -831,6 +881,7 @@ impl DocHeaderPlain {
         let mut animation = false;
         let mut im = false;
         let mut part_of: Option<[u8; 16]> = None;
+        let mut prints = ContentPrints::default();
         while let Some(key) = map.next_key()? {
             match key {
                 0 => doc_id = Some(map.bytes_fixed::<16>()?),
@@ -913,6 +964,9 @@ impl DocHeaderPlain {
                 }
                 18 => animation = map.uint()? != 0,
                 19 => part_of = Some(map.bytes_fixed::<16>()?),
+                24 => prints.body = Some(map.bytes_fixed::<32>()?),
+                25 => prints.thumb = Some(map.bytes_fixed::<32>()?),
+                26 => prints.source = Some(map.bytes_fixed::<32>()?),
                 _ => map.skip_value()?,
             }
         }
@@ -942,6 +996,7 @@ impl DocHeaderPlain {
             animation,
             im,
             part_of,
+            prints,
         };
         if out.sealed_title.as_ref().is_some_and(|t| t.len() > Self::MAX_TITLE_LEN + 128) {
             return Err(ProtoError::BadEntry("sealed title too long"));
@@ -1859,6 +1914,7 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         let settled = DocHeaderPlain::decode(&h.encode().unwrap()).unwrap();
         assert!(settled.settled, "the wish survives the wire");
@@ -2175,6 +2231,7 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         let reply = DocHeaderPlain {
             dated_ms: None,
@@ -2231,6 +2288,7 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         assert_eq!(DocHeaderPlain::decode(&base.encode().unwrap()).unwrap(), base);
 
@@ -2313,6 +2371,7 @@ mod tests {
                 sealed_title: None,
                 seal_of: None,
                 onward: false,
+                prints: Default::default(),
             };
             assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         }
@@ -2342,6 +2401,7 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         assert_eq!(DocHeaderPlain::decode(&h.encode().unwrap()).unwrap(), h);
         // A media header: format + dimensions + thumb_hash all present, duration absent (a still).
@@ -2370,8 +2430,30 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         assert_eq!(DocHeaderPlain::decode(&img.encode().unwrap()).unwrap(), img);
+        // Content prints (keys 24-26, plans/DEDUP.md): each round-trips on its own and together,
+        // and none is wire-absence - a print-less header is byte-for-byte what it was before
+        // prints, so old entries and old readers agree.
+        let before = img.encode().unwrap();
+        assert_eq!(
+            DocHeaderPlain { prints: ContentPrints::default(), ..img.clone() }.encode().unwrap(),
+            before
+        );
+        for prints in [
+            ContentPrints { body: Some([1u8; 32]), ..Default::default() },
+            ContentPrints { thumb: Some([2u8; 32]), ..Default::default() },
+            ContentPrints { source: Some([3u8; 32]), ..Default::default() },
+            ContentPrints {
+                body: Some([1u8; 32]),
+                thumb: Some([2u8; 32]),
+                source: Some([3u8; 32]),
+            },
+        ] {
+            let printed = DocHeaderPlain { prints, ..img.clone() };
+            assert_eq!(DocHeaderPlain::decode(&printed.encode().unwrap()).unwrap(), printed);
+        }
         // A video header: dimensions + duration + BOTH sibling-blob hashes (poster + preview).
         let vid = DocHeaderPlain {
             im: false,
@@ -2398,6 +2480,7 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         assert_eq!(DocHeaderPlain::decode(&vid.encode().unwrap()).unwrap(), vid);
     }
@@ -2429,6 +2512,7 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         assert!(base.encode().is_err());
         let too_many = DocHeaderPlain {
@@ -2460,6 +2544,20 @@ mod tests {
         );
         // And it is not the bare BLAKE3 of the body.
         assert_ne!(DocHeaderPlain::body_hash(&[1u8; 16], body), *blake3::hash(body).as_bytes());
+    }
+
+    /// A content print is the same for one persona whatever the document - what lets a persona
+    /// find a file it already holds - and different for every other persona, and never the bare
+    /// BLAKE3 a list of known files would be keyed by (plans/DEDUP.md, _The fingerprint_).
+    #[test]
+    fn content_prints_are_persona_scoped() {
+        let pikachu = b"the surprised pikachu";
+        let (ours, theirs) = (print_key(&[1u8; 32]), print_key(&[2u8; 32]));
+        assert_eq!(content_print(&ours, pikachu), content_print(&ours, pikachu));
+        assert_ne!(content_print(&ours, pikachu), content_print(&theirs, pikachu));
+        assert_ne!(content_print(&ours, pikachu), *blake3::hash(pikachu).as_bytes());
+        // Not the body fingerprint's key either: the two answer different questions.
+        assert_ne!(ours, blake3::derive_key("ringtome-v0/body-hash", &[1u8; 32]));
     }
 
     #[test]

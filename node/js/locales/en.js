@@ -1071,6 +1071,7 @@ export default {
     'doc.upload.video-is-in-the-market': 'uploading video is unlocked in the hrseBank™ market',
     'doc.upload.sending-name': 'sending {name}…',
     'doc.upload.describe-title': "read aloud in the picture's place for people who can't see it, and found by search",
+    'doc.upload.already-had-it': 'You already had this one: {title}.',
     'doc.upload.uploading-is-in-the-market': 'uploading files is unlocked in the hrseBank™ market',
     'doc.upload.one-page-holds-embedded-files': 'this page already embeds {distinct} files, and one page holds {cap} - start another page for the rest',
     'doc.upload.drag-a-file-here-or': 'drag a file here, or',

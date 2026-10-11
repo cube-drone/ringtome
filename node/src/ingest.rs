@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use crate::clock::now_ms;
 use crate::db::Db;
 use crate::media::CrushError;
-use crate::record::documents::{save_version, MediaMeta, Save};
+use crate::record::documents::{save_version, MediaMeta, Printed, Save};
 use crate::AppError;
 
 /// The enqueue handle, stored in `AppState`. Cheap to clone (just the quarantine path).
@@ -202,6 +202,22 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
     // The fallback lane's Ogg Opus sidecar, when the browser pre-encoder shipped one.
     let audio = tokio::fs::read(sidecar_path(&job.quarantine_path)).await.ok();
 
+    // This identity's write keys, via the session-free node path (same as the post-sync body
+    // fetch) - before the crush, which takes the upload's bytes: the node's own leaf for the root, its enc keypair, its unsealed epoch keys.
+    let leaf = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, &job.root)
+        .await?
+        .ok_or_else(|| anyhow!("node does not agent identity {}", job.root))?;
+    let leaf_pub = leaf.verifying_key().to_bytes();
+    let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
+    let db = state.user_dbs.held(&job.root).await?;
+    let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
+    let (epoch, epoch_key) =
+        keys.current().ok_or_else(|| anyhow!("no epoch key to write media under"))?;
+    // The upload's print (header key 26, plans/DEDUP.md): of the bytes as they arrived, before the
+    // lossy crush, so a second upload of the same file can be known for what it is.
+    let print_key = keys.print_key();
+    let source_print = print_key.map(|k| ringtome_proto::registry::content_print(&k, &bytes));
+
     // The crush (AV1/AVIF/Opus encode) is CPU-bound: off the async runtime, on the media pool,
     // one background crush at a time (media::lane). The sidecar-aware door sniffs the upload and routes it to the image, video, or audio lane.
     // The progress callback feeds the shared meter the jobs endpoint reads (the UI's bar).
@@ -227,28 +243,29 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
         }
     };
 
-    // This identity's write keys, via the session-free node path (same as the post-sync body
-    // fetch): the node's own leaf for the root, its enc keypair, its unsealed epoch keys.
-    let leaf = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, &job.root)
-        .await?
-        .ok_or_else(|| anyhow!("node does not agent identity {}", job.root))?;
-    let leaf_pub = leaf.verifying_key().to_bytes();
-    let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
-    let db = state.user_dbs.held(&job.root).await?;
-    let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
-    let (epoch, epoch_key) =
-        keys.current().ok_or_else(|| anyhow!("no epoch key to write media under"))?;
-
     // The thumbnail (when the lane produced one - image thumb, audio waveform; video has none yet)
     // is its own sibling blob, never inline in the header. The body - the crushed AVIF/WebM/APNG/
     // Opus - rides save_version's normal store-and-append path (with blob reuse).
     // Both puts are HELD (`files::Put`) until `save_version` below has appended the header
     // that names them; dropped earlier, the reaper could take them in between.
-    let held_thumb = match &ingested.thumb_avif {
-        Some(thumb) => Some(state.files.put_encrypted(epoch, &epoch_key, thumb).await?),
+    // A thumbnail this persona already stores - the one cover on every track of an album - is
+    // named, not stored again (plans/DEDUP.md): found by its print, which the crush's
+    // determinism makes the same for the same picture.
+    let thumb_print = match (&ingested.thumb_avif, print_key) {
+        (Some(thumb), Some(k)) => Some(ringtome_proto::registry::content_print(&k, thumb)),
+        _ => None,
+    };
+    let stored_thumb = match &thumb_print {
+        Some(print) => {
+            crate::record::documents::held_print(&db, &state.files, Printed::Thumb, print).await?
+        }
         None => None,
     };
-    let thumb_hash = held_thumb.as_ref().map(|p| *p.hash.as_bytes());
+    let held_thumb = match (&ingested.thumb_avif, stored_thumb) {
+        (Some(_), Some(_)) | (None, _) => None,
+        (Some(thumb), None) => Some(state.files.put_encrypted(epoch, &epoch_key, thumb).await?),
+    };
+    let thumb_hash = stored_thumb.or_else(|| held_thumb.as_ref().map(|p| *p.hash.as_bytes()));
 
     // The hover-preview clip (video WebM output only) is likewise its own sibling blob.
     let held_preview = match &ingested.preview_webm {
@@ -276,6 +293,8 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
                 thumb_hash,
                 preview_hash,
                 animation: ingested.animation,
+                thumb_print,
+                source_print,
             }),
         },
     )

@@ -2026,6 +2026,7 @@ mod tests {
                 sealed_title: None,
                 seal_of: None,
                 onward: false,
+                prints: Default::default(),
             },
         }
     }

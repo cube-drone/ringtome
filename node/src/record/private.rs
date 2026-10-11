@@ -112,6 +112,14 @@ impl EpochKeys {
         self.keys.iter().next_back().map(|(epoch, keys)| (*epoch, keys[0]))
     }
 
+    /// The key this persona prints its private files under (plans/DEDUP.md): from epoch 0, which
+    /// every member holds and which no rotation changes. Its lowest key, should a race ever have
+    /// minted two, so every device prints alike. `None` where this node holds no epoch 0 - then
+    /// it writes no prints and finds nothing, which costs storage, never correctness.
+    pub fn print_key(&self) -> Option<[u8; 32]> {
+        self.for_epoch(0).iter().min().map(ringtome_proto::registry::print_key)
+    }
+
     pub fn for_epoch(&self, epoch: u64) -> &[[u8; 32]] {
         self.keys.get(&epoch).map_or(&[], |v| v.as_slice())
     }
@@ -122,6 +130,16 @@ impl EpochKeys {
         let mut keys = std::collections::BTreeMap::new();
         keys.insert(epoch, vec![key]);
         Self { keys }
+    }
+
+    /// A ring of several epochs, for tests that rotate.
+    #[cfg(test)]
+    pub(crate) fn of(pairs: &[(u64, [u8; 32])]) -> Self {
+        let mut keys = Self::default();
+        for (epoch, key) in pairs {
+            keys.insert(*epoch, *key);
+        }
+        keys
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (u64, &[u8; 32])> {

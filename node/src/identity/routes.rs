@@ -6615,6 +6615,25 @@ struct DocQueued {
     status: &'static str,
 }
 
+/// The `200` for an upload this persona already has (plans/DEDUP.md): the same bytes uploaded
+/// before, so no new document - the one it made then, by id and title. Nothing is queued.
+#[derive(Serialize)]
+struct DocExisting {
+    doc_id: String,
+    title: String,
+    status: &'static str,
+}
+
+/// The answer for an upload whose bytes this persona already holds as a live document, if it does.
+async fn existing_upload(
+    data: &store::Store,
+    bytes: &[u8],
+) -> Result<Option<axum::response::Response>, AppError> {
+    Ok(data.documents().already_uploaded(bytes).await?.map(|(doc_id, title)| {
+        Json(DocExisting { doc_id: hex::encode(doc_id), title, status: "existing" }).into_response()
+    }))
+}
+
 /// Upload a binary document (an image): metadata in the query, raw bytes in the body. The bytes
 /// don't enter the record or the blob store synchronously - they're quarantined and queued for
 /// transcode to AVIF. Returns `202 Accepted` with the doc_id immediately; the document has no
@@ -6626,10 +6645,16 @@ async fn docs_create_binary_handler(
     Path(root): Path<String>,
     Query(meta): Query<BinaryMeta>,
     body: Bytes,
-) -> Result<impl IntoResponse, AppError> {
-    store::open(&state, &session.account.id, &root).await?;
+) -> Result<axum::response::Response, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    // An upload this persona already has is that document again, not a copy of it.
+    if let Some(existing) = existing_upload(&data, &body).await? {
+        return Ok(existing);
+    }
     let doc_id = crate::record::documents::new_doc_id();
-    queue_upload(&state, &session, &root, doc_id, &[], &meta.title, &body).await
+    Ok(queue_upload(&state, &session, &root, doc_id, &[], &meta.title, &body)
+        .await?
+        .into_response())
 }
 
 /// Upload a browser-pre-encoded video (the video-ingest intermediary): multipart part `video`
@@ -6643,8 +6668,8 @@ async fn docs_create_video_handler(
     Path(root): Path<String>,
     Query(meta): Query<BinaryMeta>,
     mut parts: axum::extract::Multipart,
-) -> Result<impl IntoResponse, AppError> {
-    store::open(&state, &session.account.id, &root).await?;
+) -> Result<axum::response::Response, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
     let mut video: Option<Bytes> = None;
     let mut audio: Option<Bytes> = None;
     while let Some(field) = parts.next_field().await.map_err(|e| {
@@ -6675,6 +6700,11 @@ async fn docs_create_video_handler(
             "missing `video` part"
         ))
     })?;
+    // The same intermediary again is the same video again (its print is of the `video` part, as
+    // ingest's is).
+    if let Some(existing) = existing_upload(&data, &video).await? {
+        return Ok(existing);
+    }
     let doc_id = crate::record::documents::new_doc_id();
     let job_id = state
         .ingest
@@ -6694,7 +6724,8 @@ async fn docs_create_video_handler(
     Ok((
         StatusCode::ACCEPTED,
         Json(DocQueued { doc_id: hex::encode(doc_id), job_id, status: "pending" }),
-    ))
+    )
+        .into_response())
 }
 
 #[derive(Serialize)]
@@ -9061,6 +9092,7 @@ mod media_info_tests {
                 sealed_title: None,
                 seal_of: None,
                 onward: false,
+                prints: Default::default(),
             },
         }
     }

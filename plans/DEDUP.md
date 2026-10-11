@@ -2,8 +2,8 @@
 
 One copy of each private file a persona holds. Uploading the same surprised
 Pikachu a fiftieth time gives you the Pikachu you already have, and the
-twenty-six tracks of an album share one cover. A design draft (2026-10-11);
-nothing built.
+twenty-six tracks of an album share one cover. Designed 2026-10-11; steps 1-5
+built the same day (_Order of work_, below), cover art and the backfill to come.
 
 ## The ask (Curtis, 2026-10-11)
 
@@ -143,28 +143,21 @@ The private lane only. A public version has no use for prints, since its blobs
 dedup by plain hash already, and must not carry them. A plain print in a public
 header would be the oracle ruling 2 denies.
 
-The view, a migration rung in `migrations/user/`:
+The view (as built): three columns on `doc_versions`, rung
+`0032_content_prints.sql` - `body_print`, `thumb_print`, `source_print`, each
+partially indexed. First drafted as a table of its own; a column beside the
+version it came from is one source of truth instead of two, and a rebuild of the
+view carries it for free. They are folded with the version like every other
+header field (record/documents.rs `fold_header`), and a public-lane row keeps
+none even if a header carried one (`private_print`).
 
-```sql
-CREATE TABLE content_prints (
-    print     BLOB    PRIMARY KEY,  -- keyed fingerprint (header keys 24-26)
-    file_hash BLOB    NOT NULL,     -- the ciphertext in the file layer that holds those bytes
-    doc_id    BLOB,                 -- for a source print: the document it became
-    kind      TEXT    NOT NULL      -- 'body' | 'thumb' | 'source'
-);
-```
-
-It is folded on every `doc_versions` append in the private lane, as the
-document's other derived columns are. A row can outlive its blob, once every
-document naming it is deleted and the reaper has swept. So a hit counts only if
-the store still holds the blob; otherwise it is a miss, and the row is dropped
-then. Re-uploading after that makes a fresh blob, which is right: the persona no
-longer "has" it. A hit must also **hold** the blob until the new version naming
-it has landed, as a fresh put is held (`files::Put`). Otherwise a sweep between
-the lookup and the append could take a blob a moment before it is named again.
-(Whether a deleted document's versions stay in `doc_versions` - and so whether
-"deleted" really frees the blob - is to be checked against the reaper's live set
-before building; the lookup rule above is correct either way.)
+A hit counts only if this node's store holds the blob complete
+(`documents::held_print`): another device's version can name a blob this one
+hasn't fetched yet, and a new version naming it would leave this node without
+its bytes. No hold is needed between the lookup and the append, as the draft
+feared. Every `doc_versions` row is in the reaper's live set (`blob_refs`), and
+a deleted document's versions are kept - deletion is a set element on the
+doc-meta chain, not a dropped row - so a blob a print finds can never be swept.
 
 The preview clip gets no print. It is derived from its video, so a matching
 `source_print` already finds it.
@@ -182,12 +175,12 @@ Invisible to the person, everywhere a private blob is written:
 - Ingest (ingest.rs): the thumbnail and the body alike.
 
 This is what fixes the album. Twenty-six tracks embedding one cover make one
-thumbnail blob, **provided the thumbnail encode is deterministic**: the same
-cover in, the same AVIF bytes out. Settle that with a test before anything else.
-If the encoder isn't deterministic (thread scheduling inside rav1e, say),
-`thumb_print` is taken over the **cover's own bytes** instead of the AVIF's, and
-the rule is written down in the field's comment. Either way, a hit also skips
-the encode.
+thumbnail blob, because the thumbnail encode is deterministic: the same cover
+in, the same AVIF bytes out (media/image.rs `a_crush_is_deterministic`: four
+crushes of one picture at once, body and thumbnail byte-identical). So
+`thumb_print` is the print of the thumbnail's own bytes. A hit doesn't skip the
+encode - the print is of the encoder's output - which costs a thumbnail's encode
+per track, a fraction of a second.
 
 ### 2. Documents: the same upload, one document
 
@@ -196,14 +189,23 @@ video and drawing doors that make media documents) computes `source_print` over
 the bytes as they arrived, before the crush, which is lossy and would give two
 prints for one upload. On a hit against a live document:
 
-- **No new document.** The upload answers with the existing document's id,
-  marked `existing: true`. Nothing is queued for ingest and nothing new is
-  stored.
+- **No new document.** The upload answers
+  `200 { doc_id, title, status: "existing" }` (identity/routes.rs
+  `existing_upload`), where a new one answers `202` and a job to follow. Nothing
+  is queued and nothing new is stored. Built on `docs/binary` and
+  `docs/binary/video`; replacing a document's file (`PUT docs/{id}/binary`) is a
+  new version of that document and never asks.
 - **The editor embeds the existing document.** A post dropping the meme into its
   words embeds the one already held, so fifty posts name one document and the
   Files list shows it once.
-- **The person is told.** A line where the upload landed, like "You already had
-  this one: _surprised pikachu_." Copy to settle when it's built.
+- **The person is told.** The upload's row says "You already had this one:
+  {title}." (doc/upload.js, phase `existing`). A description typed while the
+  bytes were sending isn't written over the document's own; editing the name or
+  the description afterwards applies, as on any finished upload.
+- **Which document:** the oldest live one whose current version came from these
+  bytes (`documents::uploaded_as`). Current version only - a document whose file
+  was since replaced is no longer "that file" - and deleted ones don't count, so
+  the same bytes after a delete make a new document.
 - **Filing:** uploading into a notebook the document isn't in adds it there. A
   document can be in several notebooks already, so nothing is copied.
 - **Titles:** the existing title stands. A different name on the second upload
@@ -214,10 +216,18 @@ prints for one upload. On a hit against a live document:
 A sound's tags (the last entry in HISTORY on them) ride the same rule: a
 duplicate upload adds no fields, because the document already has its own.
 
-Import (import.rs) sees the same thing for free. Re-importing an export into the
-persona it came from finds every picture already held. Import has to treat an
-`existing` answer as "already here" rather than "created", which matters for its
-books step, since a page it didn't create is not its to defer.
+Import (import.rs) is not yet part of it: it enqueues ingest directly rather
+than through the upload door, and already skips any document whose id the
+persona holds - so re-importing an export finds everything held by id, as
+before. What it doesn't do yet is fold two different files with the same bytes
+(an Obsidian vault's picture copied into two folders) into one document; that
+wants its path-to-document table pointed at the existing id, and its books step
+told that a page it didn't create is not its to defer.
+
+A drawing's flattened copy (doc/drawing.js) uploads like any picture, so two
+drawings that flatten to identical pixels share one picture document. Its
+`flattened_from` note then names whichever drawing flattened it last - harmless,
+since the pixels are the same.
 
 ## Cover art as thumbnails: the forcing function
 
@@ -265,20 +275,21 @@ that offers to fold them is possible later.
 
 ## Order of work
 
-1. **The determinism test:** encode one cover to a thumbnail twice, in two
-   threads; compare bytes. Decides `thumb_print`'s definition.
-2. **Prints:** `print_key` and `print()` in proto, and header keys 24-26 with
-   their round-trip tests.
-3. **The view:** the migration rung, the fold on append, and the drop with a
-   version.
-4. **Storage dedup:** `save_version` and ingest look up before encrypting. Unit
-   tests: two documents with one body name one blob; deleting one leaves the
-   other readable; a public version never names a private blob and the reverse;
-   a rotation in between still reuses; a hit on a blob the store no longer holds
-   is a miss.
-5. **Document dedup:** `source_print` on every media door, the `existing`
-   answer, filing, the line in the UI, and import's handling. An acceptance
-   claim: the same picture uploaded twice is one document in Files.
+1. **The determinism test** - built: `a_crush_is_deterministic`.
+2. **Prints** - built: `print_key`, `content_print` and `ContentPrints` (header
+   keys 24-26) in proto/src/registry.rs; `EpochKeys::print_key`; round-trip and
+   per-persona tests.
+3. **The view** - built: rung 0032, the fold, `private_print`.
+4. **Storage dedup** - built: `save_version` (after the in-document reuse),
+   ingest's thumbnail, and a retitle carrying its head's prints forward. Unit
+   tests: two documents with one body name one blob; a rotation in between still
+   finds it; a print whose blob isn't here is a miss; the public lane keeps
+   none.
+5. **Document dedup** - built for the upload doors and the upload window;
+   import's own handling is still to come (above). Acceptance:
+   integration/test/dedup.cjs - the same picture twice is one document under its
+   first title, a delete lets the same bytes make a new one, and another
+   persona's upload is its own.
 6. **Cover art:** read the front cover, thumbnail it, keep the waveform as the
    fallback. A fixture with a cover in it.
 7. **The backfill pass.**

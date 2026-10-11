@@ -229,7 +229,7 @@ const UploadFlow = ({
         const title = namesRef.current[i];
         if (!title || title === row.appliedName) return;
         try {
-            if (row.phase === 'done' && row.docId) {
+            if ((row.phase === 'done' || row.phase === 'existing') && row.docId) {
                 await api(`/api/identity/${root}/docs/${row.docId}/title`, {
                     method: 'PATCH',
                     body: JSON.stringify({ title }),
@@ -315,20 +315,49 @@ const UploadFlow = ({
                         patchRow(i, { pct }),
                     );
                 }
+                // File it into the notebook you're in - membership is doc-meta, so it works the
+                // moment the id exists, long before the transcode lands.
+                const fileIt = () =>
+                    bucket &&
+                    api(
+                        `/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(bucket)}`,
+                        { method: 'PUT' },
+                    ).catch(() => {});
+                // A file this persona already has (plans/DEDUP.md): the node answers with the
+                // document it made of these bytes before, and makes no other. That document is the
+                // upload - filed here, embedded where the file was dropped - under the title it
+                // already has; a description typed while sending isn't written over its own.
+                if (res.status === 'existing') {
+                    namesRef.current[i] = res.title;
+                    patchRow(i, {
+                        docId: res.doc_id,
+                        phase: 'existing',
+                        name: res.title,
+                        appliedName: res.title,
+                        pct: 100,
+                    });
+                    onUploaded && onUploaded(i, file, res.doc_id, res.title);
+                    fileIt();
+                    if (onIngested) {
+                        try {
+                            onIngested(
+                                i,
+                                res.doc_id,
+                                await api(`/api/identity/${root}/docs/${res.doc_id}`),
+                            );
+                        } catch {
+                            /* the reference stays as written */
+                        }
+                    }
+                    return;
+                }
                 landing.add(res.doc_id);
                 patchRow(i, { docId: res.doc_id, jobId: res.job_id, phase: 'queued', pct: 100 });
                 // The doc_id exists: the host swaps this file's in-document placeholder for
                 // the real reference now (the body URL is stable; it self-describes while the
                 // transcode is still running).
                 onUploaded && onUploaded(i, file, res.doc_id, namesRef.current[i]);
-                // File it into the notebook you're in - membership is doc-meta, so it works the
-                // moment the id exists, long before the transcode lands.
-                if (bucket) {
-                    api(
-                        `/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(bucket)}`,
-                        { method: 'PUT' },
-                    ).catch(() => {});
-                }
+                fileIt();
                 // An upload is filed into the NOTEBOOK but never into the tree (Curtis,
                 // 2026-09-05: "if we want a media item in the book we can put it in the
                 // document"): a picture is not a page. Until then every upload joined the
@@ -534,6 +563,12 @@ const UploadFlow = ({
                         r.phase === 'done' &&
                         html`<div class="upload-status upload-done">
                         <${Icons.done} /> processed and stored
+                    </div>`
+                    }
+                    ${
+                        r.phase === 'existing' &&
+                        html`<div class="upload-status upload-done">
+                        <${Icons.done} /> ${t('doc.upload.already-had-it', 'You already had this one: {title}.', { title: r.name })}
                     </div>`
                     }
                     ${

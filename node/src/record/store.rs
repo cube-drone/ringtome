@@ -997,6 +997,25 @@ impl Documents<'_> {
     }
 
     /// The tombstone roster: every deleted document's id. The filter every list read applies.
+    /// The document this persona already made of exactly these uploaded bytes, if it still has
+    /// one - with its title (plans/DEDUP.md, _Documents: the same upload, one document_). `None`
+    /// where nothing matches, where every match is deleted, or where this node holds no epoch 0
+    /// to print with.
+    pub async fn already_uploaded(
+        &self,
+        bytes: &[u8],
+    ) -> Result<Option<([u8; 16], String)>, AppError> {
+        let keys = &self.store.authorship.epoch_keys;
+        let Some(key) = keys.print_key() else { return Ok(None) };
+        let print = ringtome_proto::registry::content_print(&key, bytes);
+        let found = crate::record::documents::uploaded_as(&self.store.db, keys, &print).await?;
+        if found.is_empty() {
+            return Ok(None);
+        }
+        let deleted = self.deleted().await?;
+        Ok(found.into_iter().find(|(id, _)| !deleted.contains(id)))
+    }
+
     pub async fn deleted(&self) -> Result<BTreeSet<[u8; 16]>, AppError> {
         let (elements, _) = private::collection_set_elements(
             &self.store.db,

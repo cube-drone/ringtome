@@ -19698,3 +19698,44 @@ builds), the logs can't say which. The feed's link previews, plain links, always
 opened on the phone. So the script now only drops the link's `target` and lets
 the click go on as a plain link's would. Not yet seen on a phone: it rides the
 next APK.
+
+## 2026-10-11 (cont.): private dedup, steps 1-5
+
+plans/DEDUP.md, begun the day it was written (Curtis: "let's start working on
+it"). A persona now stores each private file once, and an upload it already has
+is the document it already has.
+
+- **Determinism first** (media/image.rs `a_crush_is_deterministic`): four
+  crushes of one picture at once give byte-identical bodies and thumbnails, so a
+  thumbnail's print is of its own bytes and an album's one cover dedups.
+- **Prints** (proto/src/registry.rs): `print_key`, from the persona's epoch-0
+  key - every member holds it, no rotation changes it - and `content_print`, a
+  keyed BLAKE3. Three optional header keys, 24-26 (`ContentPrints`: body,
+  thumbnail, the bytes as uploaded). A print-less header encodes byte for byte
+  as before.
+- **The view**: rung 0032 adds `body_print`, `thumb_print` and `source_print` to
+  `doc_versions` - columns rather than the plan's separate table, one source of
+  truth - and the fold keeps none on the public lane.
+- **Storage**: `save_version` reuses a blob the persona's private lane already
+  holds with the same print (after the old in-document reuse); ingest does the
+  same for thumbnails; a retitle carries its head's prints forward. A match
+  counts only if this node holds the blob complete. Checking the plan's open
+  question settled that no hold is needed: a deleted document's versions are
+  kept, and every version's blobs are in the reaper's live set, so a blob a
+  print finds is never swept.
+- **Uploads**: `docs/binary` and `docs/binary/video` answer bytes the persona
+  already has with `200 { doc_id, title, status: "existing" }` - the oldest live
+  document whose current version came from them - and queue nothing. The upload
+  window says "You already had this one: {title}.", files it into the notebook
+  and embeds it where the file was dropped, under its existing title.
+
+Tests: proto round-trips and per-persona prints; four unit tests in
+record/documents.rs (two documents, one blob; a rotation between still finds it;
+a blob not held here is a miss; no public prints); and
+integration/test/dedup.cjs (the same picture twice is one document; after a
+delete the same bytes make a new one; another persona's is its own). One
+existing claim leaned on the old behaviour: bank.cjs's upload contract uploaded
+one PNG twice and expected two documents, the first marked as a drawing's copy;
+it now uploads two different pictures. Not yet: import folding same-bytes files
+into one document, cover art as sound thumbnails, and backfilling prints for
+files uploaded before today.

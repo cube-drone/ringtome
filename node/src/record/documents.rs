@@ -14,8 +14,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use crate::db::Db;
 use anyhow::anyhow;
 use anyhow::Context;
-use ringtome_proto::registry::{doc_format, entry_type, service};
-use ringtome_proto::{DocHeaderPlain, Payload, PrivateRecord, SignedEntry, SigningKey};
+use ringtome_proto::registry::{content_print, doc_format, entry_type, service};
+use ringtome_proto::{
+    ContentPrints, DocHeaderPlain, Payload, PrivateRecord, SignedEntry, SigningKey,
+};
 
 use crate::error::AppError;
 use crate::files::FileStore;
@@ -392,6 +394,12 @@ pub struct MediaMeta {
     pub preview_hash: Option<[u8; 32]>,
     /// The bytes were an animated image before the crush (header key 18): a silent loop.
     pub animation: bool,
+    /// The thumbnail's content print (header key 25, plans/DEDUP.md), when there is a thumbnail
+    /// and a print key: ingest prints it before storing, to find one already stored.
+    pub thumb_print: Option<[u8; 32]>,
+    /// The print of the bytes as uploaded (header key 26): what a second upload of the same file
+    /// matches, whatever the crush made of them.
+    pub source_print: Option<[u8; 32]>,
 }
 
 /// Save one version of a document: body into the file layer, header onto the notes chain.
@@ -461,6 +469,15 @@ pub async fn save_version(
         .context("looking for this body among the document's versions")
         .map_err(AppError::Internal)?;
     let reused: Option<[u8; 32]> = reused.and_then(|(h,)| h.try_into().ok());
+    // Then anywhere in the persona's private lane (plans/DEDUP.md): the same bytes under another
+    // document - the meme in fifty notes, the cover on every track - name the blob already
+    // stored, found by the body's content print.
+    let body_print = keys.print_key().map(|k| content_print(&k, &save.body));
+    let reused = match (reused, body_print) {
+        (Some(existing), _) => Some(existing),
+        (None, Some(print)) => held_print(db, files, Printed::Body, &print).await?,
+        (None, None) => None,
+    };
     let (file_hash, held_body) = match reused {
         Some(existing) => (existing, None),
         None => {
@@ -494,6 +511,11 @@ pub async fn save_version(
         sealed_title: None,
         seal_of: None,
         onward: false,
+        prints: ContentPrints {
+            body: body_print,
+            thumb: save.media.as_ref().and_then(|m| m.thumb_print),
+            source: save.media.as_ref().and_then(|m| m.source_print),
+        },
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -510,6 +532,73 @@ pub async fn save_version(
     // The row is in; the ledger carries the body from here.
     drop(held_body);
     Ok(*signed.hash())
+}
+
+/// Which of a private version's blobs a content print names (plans/DEDUP.md).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Printed {
+    /// The body: `body_print` → `file_hash`.
+    Body,
+    /// The thumbnail: `thumb_print` → `thumb_hash`.
+    Thumb,
+}
+
+/// A blob this persona already stores with these bytes, by its content print - the private
+/// lane's dedup (plans/DEDUP.md). A match counts only when the blob is complete in this node's
+/// store: another device's version can name a blob this one hasn't fetched yet, and naming it
+/// would leave the new version without its bytes here. No hold is needed for a hit: the row that
+/// matched names the blob, every `doc_versions` row is in the reaper's live set (`blob_refs`),
+/// and a deleted document's versions are kept - so a blob a print finds is never swept.
+pub async fn held_print(
+    db: &Db,
+    files: &FileStore,
+    printed: Printed,
+    print: &[u8; 32],
+) -> Result<Option<[u8; 32]>, AppError> {
+    let sql = match printed {
+        Printed::Body => {
+            "SELECT DISTINCT file_hash FROM doc_versions WHERE body_print = ?1 AND lane = 'private'"
+        }
+        Printed::Thumb => {
+            "SELECT DISTINCT thumb_hash FROM doc_versions
+             WHERE thumb_print = ?1 AND lane = 'private' AND thumb_hash IS NOT NULL"
+        }
+    };
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(sql, (print.to_vec(),))
+        .await
+        .context("looking for a stored file by its print")
+        .map_err(AppError::Internal)?;
+    for (hash,) in rows {
+        let hash = hash32(&hash)?;
+        if files.has(iroh_blobs::Hash::from_bytes(hash)).await {
+            return Ok(Some(hash));
+        }
+    }
+    Ok(None)
+}
+
+/// The live documents whose current version came from an upload of exactly these bytes - by the
+/// upload's content print (header key 26, plans/DEDUP.md) - oldest first. Current version only:
+/// a document whose file was since replaced is no longer "that file". Deleted documents are the
+/// caller's to drop (their versions stay, as every version does).
+pub async fn uploaded_as(
+    db: &Db,
+    keys: &EpochKeys,
+    print: &[u8; 32],
+) -> Result<Vec<([u8; 16], String)>, AppError> {
+    catch_up(db, keys).await?;
+    let rows: Vec<(Vec<u8>, String)> = db
+        .fetch_all(
+            "SELECT h.doc_id, h.title FROM doc_versions v JOIN doc_heads h ON h.entry_hash = v.entry_hash
+             WHERE v.source_print = ?1 AND v.lane = 'private'
+             ORDER BY h.genesis_ms, h.doc_id",
+            (print.to_vec(),),
+        )
+        .await
+        .context("looking for an upload by its print")
+        .map_err(AppError::Internal)?;
+    rows.into_iter().map(|(id, title)| Ok((hash16(&id)?, title))).collect()
 }
 
 /// Retitle a document without touching its words or media: a new version whose header copies
@@ -575,6 +664,7 @@ pub async fn retitle(
         sealed_title: None,
         seal_of: None,
         onward: false,
+        prints: head_prints(db, &head.hash).await?,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -589,6 +679,25 @@ pub async fn retitle(
     )
     .await?;
     Ok(*signed.hash())
+}
+
+/// A stored version's content prints, read off its `doc_versions` row - what a version that
+/// copies another's content pointers (a retitle) carries forward with them, so the newest
+/// version still says what its blobs hold. Not part of [`version_from_row`]'s rehydration,
+/// which only the resolver and readers use.
+async fn head_prints(db: &Db, version: &[u8; 32]) -> Result<ContentPrints, AppError> {
+    type PrintsRow = (Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>);
+    let row: Option<PrintsRow> = db
+        .fetch_optional(
+            "SELECT body_print, thumb_print, source_print FROM doc_versions WHERE entry_hash = ?1",
+            (version.to_vec(),),
+        )
+        .await
+        .context("reading a version's content prints")
+        .map_err(AppError::Internal)?;
+    let Some((body, thumb, source)) = row else { return Ok(ContentPrints::default()) };
+    let print = |p: Option<Vec<u8>>| p.as_deref().map(hash32).transpose();
+    Ok(ContentPrints { body: print(body)?, thumb: print(thumb)?, source: print(source)? })
 }
 
 /// Save a BORN-PUBLIC media document: crushed bytes to the public blob store, plaintext
@@ -674,6 +783,7 @@ pub async fn save_public_media(
         sealed_title,
         seal_of,
         onward,
+        prints: Default::default(),
     };
     let payload = header
         .encode()
@@ -926,6 +1036,7 @@ pub async fn save_public_text(
         part_of: part_of.or(inherited_part_of),
         seal_of,
         onward,
+        prints: Default::default(),
     };
     let payload = header
         .encode()
@@ -1689,6 +1800,11 @@ fn decode_parents(bytes: &[u8]) -> Result<Vec<[u8; 32]>, AppError> {
     Ok(parents)
 }
 
+/// A content print as `doc_versions` keeps it: only on the private lane.
+fn private_print(lane: &str, print: Option<[u8; 32]>) -> Option<Vec<u8>> {
+    print.filter(|_| lane == "private").map(|p| p.to_vec())
+}
+
 /// Fold one decrypted header into `doc_versions`. A version is an immutable fact and its entry
 /// hash is its identity, so the primary key dedups refolds - INSERT OR IGNORE, no LWW - which
 /// is also what makes concurrent catch-ups benign.
@@ -1703,13 +1819,18 @@ async fn fold_header(
            (entry_hash, doc_id, parents, title, body_hash, file_hash, format, width, height,
             duration_ms, thumb_hash, preview_hash, animation, part_of, refs, timestamp_ms, seq, author_pubkey, lane,
             reply_to_root, reply_to_doc, thread_root_root, thread_root_doc, settled, trusted_only,
-            onward, dated_ms)
+            onward, dated_ms, body_print, thumb_print, source_print)
          VALUES (:entry_hash, :doc_id, :parents, :title, :body_hash, :file_hash, :format,
                  :width, :height, :duration_ms, :thumb_hash, :preview_hash, :animation, :part_of, :refs,
                  :timestamp_ms, :seq, :author_pubkey, :lane,
                  :reply_to_root, :reply_to_doc, :thread_root_root, :thread_root_doc, :settled,
-                 :trusted_only, :onward, :dated_ms)",
+                 :trusted_only, :onward, :dated_ms, :body_print, :thumb_print, :source_print)",
         turso::named_params! {
+            // Content prints are the private lane's alone (plans/DEDUP.md, ruling 2): a public
+            // header's would be dropped here even if a writer ever made one.
+            ":body_print": private_print(lane, header.prints.body),
+            ":thumb_print": private_print(lane, header.prints.thumb),
+            ":source_print": private_print(lane, header.prints.source),
             ":settled": i64::from(header.settled),
             ":trusted_only": i64::from(header.trusted_only),
             ":onward": i64::from(header.onward),
@@ -2606,6 +2727,9 @@ fn version_from_row(row: VersionRow) -> Result<([u8; 16], Version), AppError> {
         settled: settled != 0,
         sealed_title: None,
         seal_of: None,
+        // Not rehydrated: the resolver and readers never ask, and the one writer that copies a
+        // version's prints forward (a retitle) reads them off the row (`head_prints`).
+        prints: Default::default(),
     };
     Ok((doc_id, Version { hash, header, timestamp_ms, author }))
 }
@@ -3983,6 +4107,7 @@ mod tests {
             sealed_title: None,
             seal_of: None,
             onward: false,
+            prints: Default::default(),
         };
         crate::record::imaol::append(
             db,
@@ -4135,6 +4260,86 @@ mod tests {
         )
         .await
         .unwrap()
+    }
+
+    /// The file layer's version of `file_hash` of a document's display head.
+    async fn head_file(db: &Db, keys: &EpochKeys, doc_id: &[u8; 16]) -> [u8; 32] {
+        let view = materialize(db, keys).await.unwrap();
+        view.docs.get(doc_id).unwrap().display_head().unwrap().header.file_hash
+    }
+
+    /// Private dedup (plans/DEDUP.md): the same bytes saved into two documents are ONE blob - the
+    /// second names the first's ciphertext, found by the body's content print - and each document
+    /// reads its words back. The print is in the header and the row.
+    #[tokio::test]
+    async fn the_same_body_in_two_documents_is_one_blob() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let (a, b) = (new_doc_id(), new_doc_id());
+        save(&db, &key, &keys, &files, a, vec![], "first", b"the surprised pikachu").await;
+        save(&db, &key, &keys, &files, b, vec![], "second", b"the surprised pikachu").await;
+        let (fa, fb) = (head_file(&db, &keys, &a).await, head_file(&db, &keys, &b).await);
+        assert_eq!(fa, fb, "the second document names the first's blob");
+        let view = materialize(&db, &keys).await.unwrap();
+        let head = view.docs.get(&b).unwrap().display_head().unwrap();
+        assert_eq!(
+            read_body(&files, &keys, head).await.unwrap().unwrap(),
+            b"the surprised pikachu"
+        );
+        let printed: Vec<(Option<Vec<u8>>,)> =
+            db.fetch_all("SELECT body_print FROM doc_versions", ()).await.unwrap();
+        let expect = content_print(&keys.print_key().unwrap(), b"the surprised pikachu");
+        assert!(printed.iter().all(|(p,)| p.as_deref() == Some(expect.as_slice())));
+        // Different bytes are a different blob.
+        let c = new_doc_id();
+        save(&db, &key, &keys, &files, c, vec![], "third", b"a different meme").await;
+        assert_ne!(head_file(&db, &keys, &c).await, fa);
+    }
+
+    /// A key rotation doesn't split dedup (plans/DEDUP.md, ruling 3): the print key is epoch 0's,
+    /// so after a rotation the same bytes still find the blob stored under the old epoch, and a
+    /// reader holding every epoch reads it.
+    #[tokio::test]
+    async fn a_rotation_still_finds_the_old_blob() {
+        let db = test_db().await;
+        let key = signer(1);
+        let before = EpochKeys::single(0, [5u8; 32]);
+        let after = EpochKeys::of(&[(0, [5u8; 32]), (1, [6u8; 32])]);
+        let files = FileStore::memory();
+        let (a, b) = (new_doc_id(), new_doc_id());
+        save(&db, &key, &before, &files, a, vec![], "old", b"the album cover").await;
+        save(&db, &key, &after, &files, b, vec![], "new", b"the album cover").await;
+        assert_eq!(head_file(&db, &after, &a).await, head_file(&db, &after, &b).await);
+        let view = materialize(&db, &after).await.unwrap();
+        let head = view.docs.get(&b).unwrap().display_head().unwrap();
+        assert_eq!(read_body(&files, &after, head).await.unwrap().unwrap(), b"the album cover");
+    }
+
+    /// A print that names a blob this node doesn't hold - another device's, not fetched yet - is
+    /// a miss: the save stores its own copy rather than name bytes it can't serve.
+    #[tokio::test]
+    async fn a_print_whose_blob_is_not_here_is_a_miss() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let (here, elsewhere) = (FileStore::memory(), FileStore::memory());
+        let (a, b) = (new_doc_id(), new_doc_id());
+        save(&db, &key, &keys, &elsewhere, a, vec![], "theirs", b"same bytes").await;
+        save(&db, &key, &keys, &here, b, vec![], "ours", b"same bytes").await;
+        let fb = head_file(&db, &keys, &b).await;
+        assert_ne!(head_file(&db, &keys, &a).await, fb, "a fresh blob, not one this node lacks");
+        assert!(here.has(iroh_blobs::Hash::from_bytes(fb)).await);
+    }
+
+    /// The public lane keeps no prints (plans/DEDUP.md, ruling 2): even a header that carried one
+    /// folds with none, so no public row can answer "does this persona hold that file?".
+    #[test]
+    fn prints_are_the_private_lanes_alone() {
+        assert_eq!(private_print("private", Some([1u8; 32])), Some(vec![1u8; 32]));
+        assert_eq!(private_print("public", Some([1u8; 32])), None);
+        assert_eq!(private_print("private", None), None);
     }
 
     #[tokio::test]
@@ -5858,6 +6063,7 @@ mod tests {
                 sealed_title: None,
                 seal_of: None,
                 onward: false,
+                prints: Default::default(),
             },
         };
         let build = |lane: &str, edit_at: i64| {

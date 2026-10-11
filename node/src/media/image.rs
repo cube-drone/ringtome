@@ -793,6 +793,28 @@ mod corpus {
         bytes.len() > 12 && &bytes[4..8] == b"ftyp"
     }
 
+    /// The same picture crushes to the same bytes, every time and on any thread (plans/DEDUP.md,
+    /// step 1): private dedup finds a file by the fingerprint of what was stored, so a second
+    /// upload of one picture - or the one cover art on every track of an album - must make the
+    /// very bytes the first did, body and thumbnail alike, or it would never be found. Four
+    /// crushes at once, so the encoder's own threads are busy beside each other.
+    #[test]
+    fn a_crush_is_deterministic() {
+        let input = corpus("floppy.png");
+        let runs: Vec<Crushed> = std::thread::scope(|s| {
+            let handles: Vec<_> =
+                (0..4).map(|_| s.spawn(|| crush(&input).expect("crushes"))).collect();
+            handles.into_iter().map(|h| h.join().expect("joins")).collect()
+        });
+        for run in &runs[1..] {
+            assert!(run.avif == runs[0].avif, "the body is the same bytes every time");
+            assert!(
+                run.thumb_avif == runs[0].thumb_avif,
+                "the thumbnail is the same bytes every time"
+            );
+        }
+    }
+
     #[test]
     #[ignore = "diagnostic: prints how each corpus fixture transcodes"]
     fn classify_corpus() {
