@@ -28,6 +28,7 @@ import { publishWithBaking } from './publish.js';
 import { PublishBar } from './publishbar.js';
 import { docStatus, publishedState } from '../pure/feed.js';
 import { api, apiText } from '../net.js';
+import { useNarrow } from '../panes.js';
 import { sameWords } from '../pure/wordsdiff.js';
 import { pageStanding } from '../pure/books.js';
 import { MarqueeBody, marqueeApology, parseError } from './marqueebody.js';
@@ -149,6 +150,7 @@ export const Editor = ({
         icon: Icons.page,
         open: folded === 'file',
         setOpen: opens('file'),
+        always: feat.foldChips,
     });
     const editMenu = useChipMenu({
         word: t('chips.edit', 'edit'),
@@ -156,8 +158,12 @@ export const Editor = ({
         icon: Icons.rename,
         open: folded === 'edit',
         setOpen: opens('edit'),
+        always: feat.foldChips,
     });
-    const narrow = menu.narrow;
+    // `narrow` is the window's; `fold` is whether the chips fold, which an app whose writing column
+    // is narrow on any window asks for at every width (`foldChips`: the feed's, Curtis, 2026-10-11).
+    const narrow = useNarrow();
+    const fold = menu.narrow;
     const publishOpen = folded === 'publish';
     const setPublishOpen = (next) =>
         opens('publish')(typeof next === 'function' ? next(publishOpen) : next);
@@ -734,7 +740,7 @@ export const Editor = ({
     `;
 
     return html`
-        <div class="reader" onDrop=${catchDrop} onDragOver=${allowFileDrag} onPaste=${catchPaste}>
+        <div class=${fold && !narrow ? 'reader reader-folded' : 'reader'} onDrop=${catchDrop} onDragOver=${allowFileDrag} onPaste=${catchPaste}>
             <header class="reader-head">
                 ${
                     mode === 'read'
@@ -767,8 +773,8 @@ export const Editor = ({
                             onClick=${() => setPublishOpen((v) => !v)}
                         />`
                     }
-                    ${narrow ? menu.chip : deck}
-                    ${narrow && tools && editMenu.chip}
+                    ${fold ? menu.chip : deck}
+                    ${fold && tools && editMenu.chip}
                 </span>
                 ${
                     /* Open, the deck is a full-width line of the header, under the title: within the
@@ -860,7 +866,7 @@ export const Editor = ({
             />`
             }
             ${
-                (showTabs || (tools && !narrow)) &&
+                (showTabs || (tools && !fold)) &&
                 html`<div class="editor-tabs">
                 ${
                     showTabs &&
@@ -873,7 +879,7 @@ export const Editor = ({
                     ><${MODE_ICONS[m]} /></button>`,
                     )
                 }
-                ${tools && !narrow && html`<span class="editor-tools">${tools}</span>`}
+                ${tools && !fold && html`<span class="editor-tools">${tools}</span>`}
             </div>`
             }
             ${status === 'error' && html`<p class="form-error">${error}</p>`}

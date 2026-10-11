@@ -19671,3 +19671,15 @@ Android workflow). The node and the desktop shell compile against it; the APK
 builds only in CI, and nothing here has run on a phone yet. The same verifier
 answers every HTTPS call the phone's node makes - relays, revalidation, missing
 bodies - so those were failing alike.
+
+## 2026-10-11: the feed's writer folds its chips at every width
+
+Curtis: the feed's writer column is almost always narrow, so give its chips the
+phone treatment everywhere - the header's behind "file", the writing tools
+behind "edit", each opening as a line of the header. An app's features take
+`foldChips` (pure/apps.js; the feed's is on), which the editor hands its two
+chip menus as `always` (doc/chips.js `useChipMenu`). What else a narrow window
+changes - one editing mode, no mode tabs, the publish bar behind its chip -
+still follows the window; the feed's writer has no publish bar anyway. On a wide
+window the folded chips say their words too (`.reader-folded`), at a mouse's
+size rather than a thumb's.

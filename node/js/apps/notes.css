@@ -858,6 +858,15 @@
     }
 }
 
+/* A writer whose chips fold at every width (pure/apps.js `foldChips`: the feed's, 2026-10-11) says
+   their words on a wide window too - the menu chips are "file" and "edit", and a folded chip is
+   pressed from a list, not recognised in a row. At their wide-window size: a mouse needs no more. */
+.reader-folded .chip-word {
+    display: inline;
+    margin-left: 0.3em;
+    font-size: 0.85em;
+}
+
 .chip-diverged {
     --line: var(--coral);
     color: var(--coral);

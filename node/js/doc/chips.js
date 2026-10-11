@@ -97,9 +97,17 @@ export const NavChips = ({ nav }) => {
 /// The chip says "options" unless the host names it (2026-10-10: Writer's two are "file" and
 /// "edit"): `{ word, title, icon }`. A host whose menus are one set - only one open at a time, as
 /// Writer's file, edit and publish are - holds which is open itself and passes `open` and
-/// `setOpen`; left out, the menu holds its own.
-export function useChipMenu({ word, title, icon, open: heldOpen, setOpen: setHeldOpen } = {}) {
-    const narrow = useNarrow();
+/// `setOpen`; left out, the menu holds its own. `always` folds the row at any width, for a host
+/// whose column is narrow on any window (2026-10-11: the feed's writer column).
+export function useChipMenu({
+    word,
+    title,
+    icon,
+    open: heldOpen,
+    setOpen: setHeldOpen,
+    always = false,
+} = {}) {
+    const narrow = useNarrow() || always;
     const [ownOpen, setOwnOpen] = useState(false);
     const held = typeof setHeldOpen === 'function';
     const open = held ? !!heldOpen : ownOpen;

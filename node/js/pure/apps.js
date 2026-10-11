@@ -76,6 +76,9 @@ export const APPS = [
             // Vim keys are Writer's (Curtis, 2026-10-07: "my private Writer application"); the
             // composer stays an ordinary text box.
             vim: false,
+            // The writer is a narrow column beside the feed on any window, so its chips fold
+            // behind "file" and "edit" at every width, as a phone's do (Curtis, 2026-10-11).
+            foldChips: true,
         },
     },
     {
@@ -222,6 +225,7 @@ const DEFAULT_FEATURES = {
     linkColumn: false, // the Links column (doc/linkcol.js): what links to the open note, and what it links to
     bookColumn: false, // the Publish column (PROJECT_PLAN's Books): a notebook published as a book
     vim: true, // vim keys in the interactive surface, where this browser turns them on (application settings)
+    foldChips: false, // the editor's chips behind "file" and "edit" at every width, not only a narrow window's
 };
 
 /// What ONE thing inside this app's bucket is called, lowercase, for mid-sentence use. Falls back
