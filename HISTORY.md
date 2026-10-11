@@ -19553,3 +19553,40 @@ since the codec crates are compiled optimized even in dev (Cargo.toml). Curtis's
 own export holds 1,745 pictures and 925 notes, which these rates put at minutes
 on a fresh persona, not his half hour; what the rest is - larger pictures,
 importing into a persona that already holds a great deal - is not yet measured.
+
+## 2026-10-10 (cont.): long lists keep their heights
+
+The feed cards' and note rows' off-screen skipping (`content-visibility: auto`)
+felt much snappier, but Curtis found items above the view "disappearing
+entirely", and the main feed, scrolled up a little, leaping to its top. A first
+guess - that the browser forgot each card's real height - was tested in no
+browser and changed nothing in the main feed. Then reproduced: headless Chrome
+driven over its DevTools protocol (the rig's `ws`) against a scratch node of 90
+posts and 120 notes, scrolled with real wheel events. Every feed card off screen
+measured 24px - its padding, nothing else - and each 200px wheel step up moved
+the view six posts; note rows likewise, 16px of 67. The feed's stream and the
+notes list are flex columns, and a skipped item's content counts as nothing
+towards how far it may shrink, so each one shrank past its placeholder to its
+padding (the personal page's cards sit in a plain block, which is why they were
+only "vanishing"). `flex-shrink: 0` on `.feed-entry` and `.note-row`: each wheel
+step up now moves exactly 200px, and the stream's height holds still.
+
+The placeholders were short too, so a card never yet drawn now wears a guess
+from what it will show, inline (`contain-intrinsic-size: auto <guess>`; `auto`
+keeps the real height once seen - checked: the same scroll with and without a
+ResizeObserver keeping heights by hand came out identical, so there is none). A
+card's is `cardHeightGuess` (pure/feed.js, three vectors), from its shown words
+paragraph by paragraph, its pictures at their cap and its "see more" line,
+fitted to the scratch cards: eighteen within 26px. A note row's is notes.js
+`rowGuess`, from the lines it shows: 68px for a 67px row.
+
+Fixed in Chrome and WebKit, Curtis found Firefox still jumping. Driven the same
+way (Firefox's WebDriver BiDi, headless, on a throwaway profile), its cards
+measured 24px again - `flex-shrink` notwithstanding - while a bare div given the
+same placeholder drew at it. Bisected property by property: the card was also a
+size container (`container-type: inline-size`, for its head's narrow layout),
+and Firefox draws a skipped card that is a container at its padding, whatever
+its placeholder. The container is now a frame inside the card holding all of it
+(`.feed-entry-frame`), the same width, so the queries answer as before (three
+head columns at a 766px frame, two at 478px, checked); Firefox's wheel steps up
+move 200px each, the notes list's too, and Chrome's still do.

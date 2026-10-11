@@ -220,6 +220,22 @@ const StatusMark = ({ doc, book }) => {
     return html`<span class=${cls} title=${title}><${icon} /></span> `;
 };
 
+/// How tall a row will draw, in rem, before it ever has (`contain-intrinsic-size: auto` keeps its
+/// real height after): its title line (a picture's thumb is taller than the words), then each line
+/// under it the row will show - the description up to its two-line clamp, a search's snippet, the
+/// date, the tags. The content box only: `contain-intrinsic-size` adds the padding.
+const rowGuess = (doc, feat, hits) => {
+    const pictured = doc.format === 'drawing' || (doc.media && doc.media.has_thumb);
+    const desc = feat.description && doc.fields && doc.fields.description;
+    return (
+        (pictured ? 2 : 1.3) +
+        (desc ? (desc.length > 40 ? 2.1 : 1.1) : 0) +
+        (hits !== null ? 2.6 : 0) +
+        (feat.date || doc.diverged ? 0.9 : 0) +
+        ((doc.tags || []).length > 0 ? 1 : 0)
+    );
+};
+
 // One row in the list: title, and whatever this app has asked to show beneath it. Everything
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
 // description, no date and no tags is one line tall. Memoized below (`NoteRow`).
@@ -238,6 +254,7 @@ const NoteRowBody = ({
     titlePage,
 }) => html`<button
     class=${doc.doc_id === selected ? 'note-row jag-line selected' : 'note-row jag-line'}
+    style=${`contain-intrinsic-size: auto ${rowGuess(doc, feat, hits)}rem`}
     data-settles
     onClick=${() => onSelect(doc.doc_id)}
     draggable=${true}

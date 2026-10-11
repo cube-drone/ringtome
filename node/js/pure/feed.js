@@ -222,6 +222,35 @@ export function postImageCap(interest) {
     return Math.round(POST_IMAGE_MIN + (POST_IMAGE_MAX - POST_IMAGE_MIN) * (n / 4));
 }
 
+/// How tall a card will draw, guessed before it ever has: the placeholder a card off screen is held
+/// at until it is first drawn (`contain-intrinsic-size: auto` keeps its real height after). Close
+/// is the point - a scrollbar that grows as you read is the list moving under you (Curtis,
+/// 2026-10-10). Its frame (the head's name and date, the foot's chips) and its "see more"
+/// line when it has one, a title, each paragraph's lines at the post measure, each picture a
+/// landscape at its cap; all of it in CSS pixels, the words scaled with the card. The content box
+/// only - `contain-intrinsic-size` adds the padding. The frame was fitted to the cards themselves
+/// (a scratch node's ninety, in Chrome): eighteen guesses whose words had arrived, each within
+/// twenty-six pixels after it.
+export function cardHeightGuess(
+    text,
+    { title = '', scale = 1, imageCap = POST_IMAGE_MAX, more = false } = {},
+) {
+    const picture = Math.min(imageCap, POST_IMAGE_MAX) * 0.6;
+    let words = 0;
+    let pictures = 0;
+    for (const para of (text || '').split(/\n[ \t]*\n/)) {
+        const shown = para.replace(EMBED, () => {
+            pictures += 1;
+            return '';
+        });
+        const chars = shown.replace(MARKUP, (m) => m.slice(1, m.indexOf(']'))).trim().length;
+        if (chars > 0) words += Math.ceil(chars / 90) * 24 + 12;
+    }
+    return Math.round(
+        168 + (more ? 26 : 0) + ((title ? 34 : 0) + words) * scale + pictures * (picture + 12),
+    );
+}
+
 /// Character budgets past which an item shows only its lead. Low-interest sources get cut
 /// aggressively; high-interest sources are never cut for length - that is their touch of importance.
 /// Counted in the words a reader reads: a picture's markup, and a link's address, cost nothing

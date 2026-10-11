@@ -517,12 +517,16 @@
 }
 
 /* A row off screen is neither laid out nor painted (Curtis, 2026-10-10: 1,100 notes, sluggish),
-   held at a typical row's height until it scrolls near - `auto` remembers each one's real height
-   once it has been seen. Nothing of a row draws outside it (its outline is clipped to it already),
-   so the paint containment this brings cuts nothing off. */
+   held at the height it was last drawn at (`auto`) - or, never yet drawn, a guess from the lines
+   it shows, which the row sets on itself (notes.js `rowGuess`); this height is only the fallback. Nothing of a row draws outside
+   it (its outline is clipped to it already), so the paint containment this brings cuts nothing
+   off. */
 .note-row {
     content-visibility: auto;
     contain-intrinsic-size: auto 3.2rem;
+    /* The list is a flex column, where a skipped row may shrink past its placeholder to its
+       padding - 16px of a 67px row, measured (as the feed's cards did: persona.css .feed-entry). */
+    flex-shrink: 0;
 }
 
 .note-row.selected {

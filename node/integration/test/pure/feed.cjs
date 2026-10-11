@@ -2,6 +2,7 @@
 const assert = require('node:assert');
 
 let FEED_STYLE,
+    cardHeightGuess,
     publishedState,
     openDraftOf,
     overlayPosted,
@@ -59,6 +60,7 @@ before(async () => {
         mergeRanked,
         REPLY_SORTS,
         replySortParams,
+        cardHeightGuess,
     } = await import('../../../js/pure/feed.js'));
 });
 
@@ -706,5 +708,26 @@ describe('the publish bar states its rows ahead of the stream (2026-10-01)', () 
         assert.equal(f.unpublishedSettled(down), true);
         assert.equal(f.unscheduledSettled(f.withoutSchedule(f.withScheduled(row, 5))), true);
         assert.equal(f.withPublished(undefined, 'p'), undefined);
+    });
+});
+
+describe("a card's height, guessed before it is drawn", () => {
+    it('grows with the words, line by line', () => {
+        const empty = cardHeightGuess('');
+        const line = cardHeightGuess('a horse');
+        const lines = cardHeightGuess('neigh '.repeat(100));
+        assert.ok(empty < line && line < lines, `${empty} ${line} ${lines}`);
+    });
+
+    it('a picture costs its height; its address costs nothing; a link costs only its words', () => {
+        const words = cardHeightGuess('a horse');
+        const pictured = cardHeightGuess(`a horse\n\n![](/id/${'ab'.repeat(16)}/x.avif)`);
+        assert.ok(pictured - words > 300, `${words} ${pictured}`);
+        assert.equal(cardHeightGuess(`[a horse](https://${'x'.repeat(300)}.example)`), words);
+    });
+
+    it('a smaller card guesses smaller, its picture by its own cap', () => {
+        const text = `${'neigh '.repeat(100)}\n\n![](a.avif)`;
+        assert.ok(cardHeightGuess(text, { scale: 0.75, imageCap: 200 }) < cardHeightGuess(text));
     });
 });

@@ -54,6 +54,7 @@ import {
     postImageCap,
     POST_IMAGE_MAX,
     isBackdated,
+    cardHeightGuess,
 } from './pure/feed.js';
 import { appById, featuresOf } from './pure/apps.js';
 import { Editor } from './doc/editor.js';
@@ -1143,21 +1144,25 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                     }
                     ${!!current && !!current.root && !open && item.kind !== 'share' && item.format !== 'room' && html`<${CopyButton} item=${item} current=${current} />`}
     `;
+    // Off screen the card is held at the height it was last drawn at (`contain-intrinsic-size:
+    // auto` remembers it), or, never yet drawn, at a guess from what it will show.
+    const heldAt = `auto ${cardHeightGuess(veiled ? '' : shown, { title, scale, imageCap: imageCap ?? POST_IMAGE_MAX, more: seeMore })}px`;
+
     return html`
         <article
             class=${entryClass}
             ref=${itemRef}
-            style=${
-                [
-                    scale === 1 ? '' : `--post-scale: ${scale}`,
-                    imageCap === null || imageCap >= POST_IMAGE_MAX
-                        ? ''
-                        : `--post-image-cap: ${imageCap}px`,
-                ]
-                    .filter(Boolean)
-                    .join('; ') || undefined
-            }
+            style=${[
+                `contain-intrinsic-size: ${heldAt}`,
+                scale === 1 ? '' : `--post-scale: ${scale}`,
+                imageCap === null || imageCap >= POST_IMAGE_MAX
+                    ? ''
+                    : `--post-image-cap: ${imageCap}px`,
+            ]
+                .filter(Boolean)
+                .join('; ')}
         >
+            <div class="feed-entry-frame">
             ${editing && html`<${BakeModal} items=${editing.baking} />`}
             ${
                 /* Who passed this along, when it arrived by rebroadcast. ABOVE the banner and
@@ -1639,6 +1644,7 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                 ${replyWords && html`<a class="feed-entry-act" href=${href}>${replyWords}</a>`}
             </div>`
             }
+            </div>
         </article>
     `;
 };

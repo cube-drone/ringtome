@@ -1747,13 +1747,18 @@ article:has(.label-emoji-strip) {
 }
 
 /* A card off screen is neither laid out nor painted (2026-10-10, after the notes list's 1,100
-   rows: the feed is the app's longest list), held at a typical card's height until it scrolls near
-   - `auto` remembers each card's real height once seen. The containment this brings clips nothing
-   the card's own jagged clip-path doesn't already; and while one of its popovers is open - the
-   reaction palette, the sharers' roster - the card is drawn as it always was, guard and all. */
+   rows: the feed is the app's longest list), held at the height it was last drawn at (`auto`) - or,
+   never yet drawn, a guess from what it holds, which the card sets on itself (postentry.js); this
+   height is only the fallback. The containment this brings clips nothing the card's own jagged clip-path doesn't
+   already; and while one of its popovers is open - the reaction palette, the sharers' roster - the
+   card is drawn as it always was, guard and all. */
 .feed-entry {
     content-visibility: auto;
     contain-intrinsic-size: auto 14rem;
+    /* The feed's stream is a flex column, and a skipped card's content counts as nothing towards
+       how far it may shrink: let to, every card off screen shrank to its padding, and scrolling
+       up a little leapt a dozen posts (Curtis, 2026-10-10; 24px each, measured). */
+    flex-shrink: 0;
 }
 
 .feed-entry:has(.label-emoji-strip),
@@ -2031,8 +2036,11 @@ article:has(.label-emoji-strip) {
    the date and buttons crowded the name "eventually swallowing them entirely" - a narrow window
    or a wide neighbouring column alike, so the card measures itself), they stack: the author, then
    the title, then the date and the buttons, which wrap if they must. 760px is a full card's content
-   width less a hair, whatever the card's scale. */
-.feed-entry {
+   width less a hair, whatever the card's scale. The container is the card's frame, which holds
+   everything in it, not the card itself: Firefox, finding a card both a container and skipped off
+   screen (content-visibility, above), drew it at its padding whatever its placeholder said - 24px
+   a card, and scrolling up leapt to the top (Curtis, 2026-10-10; Chrome and WebKit were fine). */
+.feed-entry-frame {
     container-type: inline-size;
 }
 
