@@ -23,6 +23,7 @@ import {
     dropIndex,
     filedDocIds,
     flatDocs,
+    parentsOf,
     pathToDoc,
     sectionIdsUnder,
 } from '../pure/treewalk.js';
@@ -57,6 +58,17 @@ export async function fileIntoTree(root, bucket, docId) {
         method: 'PUT',
         body: JSON.stringify({}),
     });
+}
+
+/// Take a document out of its notebook's tree, wherever in it it sits - the other half of a move
+/// (doc/annotations.js), so the old notebook's tree doesn't go on showing a page it no longer holds.
+export async function unfileFromTree(root, bucket, docId) {
+    const rid = await existingTreeRoot(root, bucket);
+    if (!rid) return;
+    const tree = await api(`/api/identity/${root}/taxonomies/${rid}`);
+    for (const pid of parentsOf(tree, docId)) {
+        await api(`/api/identity/${root}/taxonomies/${pid}/members/${docId}`, { method: 'DELETE' });
+    }
 }
 
 export async function ensureTreeRoot(root, bucket) {

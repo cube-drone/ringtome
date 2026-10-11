@@ -278,7 +278,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   ${
                       titleRow &&
                       html`<div class="book-front">
-                          <${Annotations} root=${root} docId=${titleRow.doc_id} features=${{ implicit: false, title: true }} />
+                          <${Annotations} root=${root} docId=${titleRow.doc_id} features=${{ implicit: false, title: true, notebook: false }} />
                           ${frontMoved && html`<p class="book-front-moved"><${Icons.update} /> ${t('doc.bookcol.changed-since-the-last-rollout', 'changed since the last rollout')}</p>`}
                       </div>`
                   }

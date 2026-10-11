@@ -79,6 +79,24 @@ export function filedDocIds(node) {
     return filed;
 }
 
+/// Every section that holds a document directly, by id, the root among them - what a move out of
+/// the notebook takes it out of, every placement at once (a diamond has two). Dangling references
+/// count: the question is where the tree mentions it.
+export function parentsOf(node, docId) {
+    const parents = [];
+    const sweep = (n) => {
+        for (const m of n.members || []) {
+            if (m.taxonomy) {
+                if (m.taxonomy.members) sweep(m.taxonomy);
+            } else if (m.doc_id === docId && !parents.includes(n.taxonomy_id)) {
+                parents.push(n.taxonomy_id);
+            }
+        }
+    };
+    if (node) sweep(node);
+    return parents;
+}
+
 /// The documents that live ONLY inside the given sections - the ones a delete would orphan, and so
 /// the ones that must be re-placed before it. A document also filed elsewhere (a diamond) is left
 /// alone: its other home keeps it in the tree already.

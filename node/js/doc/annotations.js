@@ -11,6 +11,7 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
+import { useLocation } from 'preact-iso';
 import { api } from '../net.js';
 import { useShadowValue } from '../shadow.js';
 import { openMirror, optimisticDoc, useLive } from '../mirror.js';
@@ -19,6 +20,12 @@ import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.j
 import { t } from '../i18n.js';
 import { useUnlocked } from '../unlocks.js';
 import { isEmojiTag } from '../pure/annotations.js';
+import { appForStyle, appTypeOf, bucketsForApp, RESERVED_STYLE } from '../pure/apps.js';
+import { bucketHref, docPlacement } from '../pure/naming.js';
+import { docHref } from '../links.js';
+import { fileIntoTree, unfileFromTree } from './tree.js';
+import { forgetLastDoc } from './docapp.js';
+import { noteMoved } from '../buckets.js';
 
 const html = htm.bind(h);
 
@@ -325,6 +332,80 @@ export const dateMeaning = () =>
         'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
     );
 
+/// The notebook a document is filed in, and a button to move it to another (Curtis, 2026-10-11).
+/// A move is between the notebooks of one app - a note to another writing notebook, a drawing to
+/// another drawing one - and out of the notebook in view only: a document filed in two keeps the
+/// other. Into the new notebook first, then out of the old, so it is never filed nowhere; its
+/// tree goes with it. The shell follows on its own, since a document's notebook is read off its
+/// row (index.js). Nothing shows for a document in no notebook, or in a reserved one (chat, files),
+/// or with nowhere to go.
+const NotebookMove = ({ root, docId }) => {
+    const loc = useLocation();
+    const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
+    const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
+    const [open, setOpen] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    if (!row || !roster) return null;
+    const from = docPlacement(row, roster, loc.query && loc.query.bucket).bucket;
+    if (!from || appTypeOf(from, roster) === RESERVED_STYLE) return null;
+    const app = appForStyle(appTypeOf(from, roster));
+    const held = row.buckets || [];
+    const choices = bucketsForApp(app, roster).filter((n) => !held.includes(n));
+    if (!choices.length) return null;
+    const move = async (to) => {
+        setBusy(true);
+        setError(null);
+        try {
+            await api(`/api/identity/${root}/docs/${docId}/buckets/${encodeURIComponent(to)}`, {
+                method: 'PUT',
+            });
+            await api(`/api/identity/${root}/docs/${docId}/buckets/${encodeURIComponent(from)}`, {
+                method: 'DELETE',
+            });
+            // The trees are tidying, not the move: a failure there leaves the document moved.
+            await fileIntoTree(root, to, docId).catch(() => {});
+            await unfileFromTree(root, from, docId).catch(() => {});
+            // You stay where you were (Curtis, 2026-10-11: moving a batch, following each one would
+            // wear): the old notebook's list says where it went and offers to follow (buckets.js).
+            // A document open at its own address would follow on its own - the shell reads its
+            // notebook off the row (index.js) - so that page goes back to the list it left, with the
+            // document forgotten as the list's last one, or the list would open it again.
+            noteMoved(root, from, to, docId);
+            if (loc.path === docHref(root, docId).split('?')[0]) {
+                forgetLastDoc(root, docId);
+                loc.route(bucketHref(from, roster));
+            }
+            setOpen(false);
+        } catch (e) {
+            setError(e.message || String(e));
+        }
+        setBusy(false);
+    };
+    // The choices open in the panel itself, not a modal: the panel closes on any press outside it
+    // (editor.js, drawing.js), and a modal is rendered at the body - outside - so the press on a
+    // notebook closed the panel and took the button away before its click landed.
+    return html`<div class="annot-row">
+            <label class="annot-label">${t('doc.annotations.notebook', 'notebook')}</label>
+            <span class="annot-notebook">${from}</span>
+            <button class="annot-move" onClick=${() => setOpen((v) => !v)}>
+                ${t('doc.annotations.move', 'move…')}
+            </button>
+        </div>
+        ${
+            open &&
+            html`<div class="copy-buckets">
+                ${choices.map(
+                    (name) =>
+                        html`<button key=${name} class="copy-bucket" disabled=${busy} onClick=${() => move(name)}>
+                            ${name}
+                        </button>`,
+                )}
+                ${error && html`<p class="form-error">${error}</p>`}
+            </div>`
+        }`;
+};
+
 export const Annotations = ({ root, docId, features }) => {
     // Which annotations this app surfaces; absent = show them all (the default app).
     const showDate = !features || features.date !== false;
@@ -335,6 +416,9 @@ export const Annotations = ({ root, docId, features }) => {
     // The title, only where asked (a book's title page, in the Publish column): elsewhere the
     // editor holds it, since a title is a header field and changing it mints a version.
     const showTitle = !!(features && features.title);
+    // The notebook and its move, unless the place says otherwise (a book's title page: the page
+    // IS the book's, and moving it would leave the book without one).
+    const showNotebook = !features || features.notebook !== false;
     return html`
         <div class="annotations">
             ${
@@ -353,6 +437,7 @@ export const Annotations = ({ root, docId, features }) => {
             }
             <${TagEditor} root=${root} docId=${docId} showImplicit=${showImplicit} />
             ${showDesc && html`<${DescInput} root=${root} docId=${docId} />`}
+            ${showNotebook && html`<${NotebookMove} root=${root} docId=${docId} />`}
         </div>
     `;
 };

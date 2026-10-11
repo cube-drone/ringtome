@@ -19852,3 +19852,24 @@ was made of: `TitleInput`, `TagEditor`, `DescInput`, `DateInputs` and
 same markup as before, and `SoundTags` (`node/js/doc/soundtags.js`) lays three
 of them out as rows of its list. A built-in sound, which is read-only, gets none
 of them. Checked in headless Chrome.
+
+## 2026-10-11: move a document to another notebook
+
+Curtis: "can we also add a button that allows us to change the document's
+bucket?" The annotations panel (description, tags, date) gains a notebook row:
+the notebook the document is in, and "move…", which offers the other notebooks
+of the same app - a note to another writing notebook, a drawing to another
+drawing one. A move files the document in the new notebook, then takes it out of
+the one in view (never filed nowhere; a second notebook it was in keeps it), and
+its tree follows: `fileIntoTree` into the new one's, `unfileFromTree` out of
+every placement in the old (`parentsOf`, pure/treewalk.js, four unit tests). No
+row for a document in no notebook, in chat or files, with nowhere to go, or on a
+book's title page. The choices open inside the panel, not in a modal: the panel
+closes on any press outside it, and a modal is drawn at the body, so the first
+cut's notebook buttons vanished under the press that chose one (Curtis: "nothing
+happens"). A move leaves you where you were (Curtis: "users might be moving lots
+of documents"): the old notebook's list says "moved to X · open it" under its
+switcher, an offer and never a jump, and a document open at its own address -
+which would otherwise follow its row into the new notebook - goes back to that
+list, forgotten as its last-open one so the list doesn't reopen it. Existing
+routes only.

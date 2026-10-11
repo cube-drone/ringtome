@@ -457,6 +457,9 @@ export default {
     'auth.lost-your-password': 'lost your password?',
 
     // --- node/js/buckets.js ---
+    'buckets.moved-to': 'moved to {bucket}',
+    'buckets.open-it': 'open it',
+    'buckets.dismiss': 'dismiss',
     'buckets.name-is-reserved': '"{name}" is kept for another app - choose another name',
     'buckets.couldnt-create-it': "couldn't create it: {message}",
     'buckets.couldnt-delete-it': "couldn't delete it: {message}",
@@ -633,6 +636,8 @@ export default {
     'doc.annotations.time-optional': 'time (optional)',
     'doc.annotations.set-a-date-first': 'set a date first',
     'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
+    'doc.annotations.notebook': 'notebook',
+    'doc.annotations.move': 'move…',
     'doc.annotations.title': 'title',
     'doc.annotations.date': 'date',
 
