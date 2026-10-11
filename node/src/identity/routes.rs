@@ -212,7 +212,15 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         // EXTENSION for the renderer's media-kind sniff (`![t](.../body/photo.avif)`); the
         // name is ignored, the response's real Content-Type (nosniff-pinned) is authoritative.
         .route("/api/identity/{root}/docs/{doc_id}/body/{filename}", get(docs_body_named_handler))
-        .route("/api/identity/{root}/docs/{doc_id}/thumb", get(docs_thumb_handler))
+        // Choose a media document's thumbnail (2026-10-11): another document's (`{"from_doc"}`) or a
+        // picture's bytes; DELETE goes back to the one it was made with.
+        .route(
+            "/api/identity/{root}/docs/{doc_id}/thumb",
+            get(docs_thumb_handler)
+                .put(docs_set_thumb_handler)
+                .delete(docs_reset_thumb_handler)
+                .layer(DefaultBodyLimit::max(limits.upload)),
+        )
         .route("/api/identity/{root}/docs/{doc_id}/preview", get(docs_preview_handler))
         // Media ingest progress: the owner's transcode queue for this identity.
         .route("/api/identity/{root}/ingest", get(docs_ingest_status_handler))
@@ -6519,6 +6527,56 @@ async fn docs_retitle_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let version = data.documents().retitle(&doc_id, &req.title).await?;
+    crate::made_with::mark(&session, &data, &doc_id).await?;
+    Ok(Json(DocSaved { version: hex::encode(version) }))
+}
+
+#[derive(Deserialize)]
+struct ThumbFrom {
+    from_doc: String,
+}
+
+/// A media document's thumbnail, chosen: `{"from_doc": id}` lends it that document's own
+/// thumbnail (a picture's, named as it is); any other body is a picture, crushed to one.
+async fn docs_set_thumb_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+) -> Result<Json<DocSaved>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let json = headers
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/json"));
+    let version = if json {
+        let req: ThumbFrom = serde_json::from_slice(&body).map_err(|e| {
+            AppError::BadRequest(crate::msg!(
+                "identity.routes.that-isnt-a-thumbnail-choice",
+                "that isn't a thumbnail choice: {e}",
+                e = e
+            ))
+        })?;
+        let from = hex_fixed::<16>(&req.from_doc, "doc id")?;
+        data.documents().thumb_from(&doc_id, &from).await?
+    } else {
+        data.documents().thumb_bytes(&doc_id, body.to_vec()).await?
+    };
+    crate::made_with::mark(&session, &data, &doc_id).await?;
+    Ok(Json(DocSaved { version: hex::encode(version) }))
+}
+
+/// Back to the thumbnail a media document was made with.
+async fn docs_reset_thumb_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+) -> Result<Json<DocSaved>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let version = data.documents().thumb_reset(&doc_id).await?;
     crate::made_with::mark(&session, &data, &doc_id).await?;
     Ok(Json(DocSaved { version: hex::encode(version) }))
 }

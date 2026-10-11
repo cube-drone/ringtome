@@ -312,6 +312,21 @@ video.reader-media {
     margin: 0;
 }
 
+/* The cover row: the sound's thumbnail, and the choice of another. */
+.sound-cover-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.sound-cover-face {
+    width: 4rem;
+    height: 4rem;
+    object-fit: cover;
+    border: 1px solid var(--border);
+}
+
 .sound-tag-value {
     width: 100%;
     background-color: var(--surface);

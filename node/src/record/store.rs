@@ -857,6 +857,110 @@ impl Documents<'_> {
         .await
     }
 
+    /// Make another document's thumbnail this one's (Curtis, 2026-10-11): a picture's own thumbnail,
+    /// named as it is - one blob, however many documents wear it.
+    pub async fn thumb_from(
+        &self,
+        doc_id: &[u8; 16],
+        from: &[u8; 16],
+    ) -> Result<[u8; 32], AppError> {
+        let keys = &self.store.authorship.epoch_keys;
+        let Some((hash, print)) =
+            crate::record::documents::private_thumb_of(&self.store.db, keys, *from).await?
+        else {
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.that-has-no-thumbnail",
+                "that has no thumbnail to lend"
+            )));
+        };
+        crate::record::documents::rethumb(
+            &self.store.db,
+            &self.store.authorship.signer,
+            keys,
+            *doc_id,
+            Some(hash),
+            print,
+        )
+        .await
+    }
+
+    /// Make a picture's bytes this document's thumbnail: crushed to a thumbnail as an embedded
+    /// cover is, and stored only if this persona doesn't already hold the same one (plans/DEDUP.md).
+    pub async fn thumb_bytes(
+        &self,
+        doc_id: &[u8; 16],
+        bytes: Vec<u8>,
+    ) -> Result<[u8; 32], AppError> {
+        let thumb = crate::media::lane::crush(move || crate::media::image::thumbnail(&bytes))
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("thumbnail crush task: {e}")))?
+            .map_err(|e| {
+                AppError::BadRequest(crate::msg!(
+                    "record.store.that-picture-didnt-work",
+                    "that picture didn't work: {e}",
+                    e = e
+                ))
+            })?;
+        let keys = &self.store.authorship.epoch_keys;
+        let print = keys.print_key().map(|k| ringtome_proto::registry::content_print(&k, &thumb));
+        let stored = match &print {
+            Some(p) => {
+                crate::record::documents::held_print(
+                    &self.store.db,
+                    &self.store.files,
+                    crate::record::documents::Printed::Thumb,
+                    p,
+                )
+                .await?
+            }
+            None => None,
+        };
+        // Held (`files::Put`) until the version naming it has landed, as ingest's are.
+        let held = match stored {
+            Some(_) => None,
+            None => {
+                let (epoch, key) = keys.current().ok_or_else(|| {
+                    AppError::Internal(anyhow::anyhow!("no epoch key to write under"))
+                })?;
+                Some(
+                    self.store
+                        .files
+                        .put_encrypted(epoch, &key, &thumb)
+                        .await
+                        .map_err(AppError::Internal)?,
+                )
+            }
+        };
+        let hash = stored.or_else(|| held.as_ref().map(|p| *p.hash.as_bytes()));
+        let version = crate::record::documents::rethumb(
+            &self.store.db,
+            &self.store.authorship.signer,
+            keys,
+            *doc_id,
+            hash,
+            print,
+        )
+        .await?;
+        drop(held);
+        Ok(version)
+    }
+
+    /// Back to the thumbnail the document was made with: ingest's waveform, poster or cover.
+    pub async fn thumb_reset(&self, doc_id: &[u8; 16]) -> Result<[u8; 32], AppError> {
+        let keys = &self.store.authorship.epoch_keys;
+        let (hash, print) =
+            crate::record::documents::born_thumb(&self.store.db, keys, *doc_id).await?;
+        crate::record::documents::rethumb(
+            &self.store.db,
+            &self.store.authorship.signer,
+            keys,
+            *doc_id,
+            hash,
+            print,
+        )
+        .await
+    }
+
     /// The materialized view: every document, its version DAG, heads, and divergence state.
     pub async fn all(&self) -> Result<crate::record::documents::DocumentsView, AppError> {
         crate::record::documents::materialize(&self.store.db, &self.store.authorship.epoch_keys)

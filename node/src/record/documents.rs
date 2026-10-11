@@ -615,6 +615,80 @@ pub async fn retitle(
     doc_id: [u8; 16],
     title: &str,
 ) -> Result<[u8; 32], AppError> {
+    rewrite_head(db, signer, keys, doc_id, HeadEdit::Title(title)).await
+}
+
+/// What a content-preserving version changes: its title, or its thumbnail - the blob and its print,
+/// both `None` for none.
+pub enum HeadEdit<'a> {
+    Title(&'a str),
+    Thumb { hash: Option<[u8; 32]>, print: Option<[u8; 32]> },
+}
+
+/// A media document's thumbnail, chosen (Curtis, 2026-10-11: a sound's cover picked beside its
+/// fields): a new version like a retitle's, the same content under another thumbnail. Only a media
+/// document has the slot - text and drawings have none to choose.
+pub async fn rethumb(
+    db: &Db,
+    signer: &SigningKey,
+    keys: &EpochKeys,
+    doc_id: [u8; 16],
+    hash: Option<[u8; 32]>,
+    print: Option<[u8; 32]>,
+) -> Result<[u8; 32], AppError> {
+    rewrite_head(db, signer, keys, doc_id, HeadEdit::Thumb { hash, print }).await
+}
+
+/// The thumbnail this document was made with - its first version's, what ingest drew or found -
+/// and that thumbnail's print: what "back to its own" restores.
+pub async fn born_thumb(
+    db: &Db,
+    keys: &EpochKeys,
+    doc_id: [u8; 16],
+) -> Result<(Option<[u8; 32]>, Option<[u8; 32]>), AppError> {
+    catch_up(db, keys).await?;
+    let doc = load_doc(db, &doc_id).await?;
+    let Some(first) = doc.versions.values().find(|v| v.header.parents.is_empty()) else {
+        return Ok((None, None));
+    };
+    Ok((first.header.thumb_hash, head_prints(db, &first.hash).await?.thumb))
+}
+
+/// A private document's current thumbnail and its print - what choosing that document as another's
+/// thumbnail names, blob and all (nothing re-crushed or stored). `None` when it has none, isn't
+/// here, or is on the public lane, whose plaintext blobs a private header can't name.
+pub async fn private_thumb_of(
+    db: &Db,
+    keys: &EpochKeys,
+    doc_id: [u8; 16],
+) -> Result<Option<([u8; 32], Option<[u8; 32]>)>, AppError> {
+    let Some(head) = heads_for(db, keys, &[doc_id]).await?.into_iter().next() else {
+        return Ok(None);
+    };
+    let Some(thumb) = head.thumb_hash else { return Ok(None) };
+    let row: Option<(String, Option<Vec<u8>>)> = db
+        .fetch_optional(
+            "SELECT lane, thumb_print FROM doc_versions WHERE entry_hash = ?1",
+            (head.head.to_vec(),),
+        )
+        .await
+        .context("reading a version's thumbnail")
+        .map_err(AppError::Internal)?;
+    match row {
+        Some((lane, print)) if lane == "private" => {
+            Ok(Some((thumb, print.as_deref().map(hash32).transpose()?)))
+        }
+        _ => Ok(None),
+    }
+}
+
+async fn rewrite_head(
+    db: &Db,
+    signer: &SigningKey,
+    keys: &EpochKeys,
+    doc_id: [u8; 16],
+    edit: HeadEdit<'_>,
+) -> Result<[u8; 32], AppError> {
     let (epoch, epoch_key) =
         keys.current().ok_or_else(|| AppError::Internal(anyhow!("no epoch key to write under")))?;
     // One document's DAG, not the corpus's (see save_version's twin note). Retitle genuinely
@@ -635,8 +709,26 @@ pub async fn retitle(
             "the document has no version yet (still processing?)"
         ))
     })?;
-    // The retitle no-op bounce: same name, nothing diverged to settle - the chain doesn't grow.
-    if head.header.title == title && doc.logical_heads.len() == 1 {
+    let mut prints = head_prints(db, &head.hash).await?;
+    let (title, thumb_hash) = match edit {
+        HeadEdit::Title(title) => (title, head.header.thumb_hash),
+        HeadEdit::Thumb { hash, print } => {
+            let format = Format::from_wire(head.header.format);
+            if format.is_mergeable_text() || format == Format::Drawing {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "record.documents.only-media-has-a-thumbnail",
+                    "only a picture, a sound or a video has a thumbnail to choose"
+                )));
+            }
+            prints.thumb = print;
+            (head.header.title.as_str(), hash)
+        }
+    };
+    // The no-op bounce: nothing changed, nothing diverged to settle - the chain doesn't grow.
+    if head.header.title == title
+        && head.header.thumb_hash == thumb_hash
+        && doc.logical_heads.len() == 1
+    {
         return Ok(head.hash);
     }
     let header = DocHeaderPlain {
@@ -653,7 +745,7 @@ pub async fn retitle(
         width: head.header.width,
         height: head.header.height,
         duration_ms: head.header.duration_ms,
-        thumb_hash: head.header.thumb_hash,
+        thumb_hash,
         preview_hash: head.header.preview_hash,
         animation: head.header.animation,
         part_of: head.header.part_of,
@@ -664,7 +756,7 @@ pub async fn retitle(
         sealed_title: None,
         seal_of: None,
         onward: false,
-        prints: head_prints(db, &head.hash).await?,
+        prints,
     };
     let record = encrypt_doc_header(epoch, &epoch_key, &header)?;
     let payload = record
@@ -4266,6 +4358,82 @@ mod tests {
     async fn head_file(db: &Db, keys: &EpochKeys, doc_id: &[u8; 16]) -> [u8; 32] {
         let view = materialize(db, keys).await.unwrap();
         view.docs.get(doc_id).unwrap().display_head().unwrap().header.file_hash
+    }
+
+    /// A media document as ingest leaves it: its body, and a thumbnail named by hash and print.
+    async fn save_media(
+        db: &Db,
+        key: &SigningKey,
+        keys: &EpochKeys,
+        files: &FileStore,
+        doc_id: [u8; 16],
+        format: Format,
+        thumb: [u8; 32],
+    ) {
+        save_version(
+            db,
+            key,
+            keys,
+            files,
+            Save {
+                doc_id,
+                parents: vec![],
+                title: "media".into(),
+                body: doc_id.to_vec(),
+                format,
+                media: Some(MediaMeta {
+                    width: None,
+                    height: None,
+                    duration_ms: Some(1_000),
+                    thumb_hash: Some(thumb),
+                    preview_hash: None,
+                    animation: false,
+                    thumb_print: Some(thumb),
+                    source_print: None,
+                }),
+                refs: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn head_thumb(db: &Db, keys: &EpochKeys, doc_id: &[u8; 16]) -> Option<[u8; 32]> {
+        let view = materialize(db, keys).await.unwrap();
+        view.docs.get(doc_id).unwrap().display_head().unwrap().header.thumb_hash
+    }
+
+    /// A media document's thumbnail is chosen (2026-10-11) as a new version that changes nothing
+    /// else: a picture's own thumbnail is named, blob and print, and reset goes back to the one the
+    /// document was made with. Text has no thumbnail to choose.
+    #[tokio::test]
+    async fn a_thumbnail_is_chosen_lent_and_reset() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let (sound, picture, note) = (new_doc_id(), new_doc_id(), new_doc_id());
+        save_media(&db, &key, &keys, &files, sound, Format::OggOpus, [1u8; 32]).await;
+        save_media(&db, &key, &keys, &files, picture, Format::Avif, [2u8; 32]).await;
+        save(&db, &key, &keys, &files, note, vec![], "note", b"words").await;
+
+        let (hash, print) = private_thumb_of(&db, &keys, picture).await.unwrap().unwrap();
+        assert_eq!((hash, print), ([2u8; 32], Some([2u8; 32])), "the picture lends its own");
+        rethumb(&db, &key, &keys, sound, Some(hash), print).await.unwrap();
+        assert_eq!(head_thumb(&db, &keys, &sound).await, Some([2u8; 32]));
+        let view = materialize(&db, &keys).await.unwrap();
+        let head = view.docs.get(&sound).unwrap().display_head().unwrap().clone();
+        assert_eq!(head.header.duration_ms, Some(1_000), "nothing else changed");
+        assert_eq!(head.header.title, "media");
+        assert_eq!(head_prints(&db, &head.hash).await.unwrap().thumb, Some([2u8; 32]));
+
+        let (born, born_print) = born_thumb(&db, &keys, sound).await.unwrap();
+        assert_eq!((born, born_print), (Some([1u8; 32]), Some([1u8; 32])));
+        rethumb(&db, &key, &keys, sound, born, born_print).await.unwrap();
+        assert_eq!(head_thumb(&db, &keys, &sound).await, Some([1u8; 32]), "back to its own");
+
+        let refused = rethumb(&db, &key, &keys, note, Some(hash), print).await;
+        assert!(matches!(refused, Err(AppError::BadRequest(_))), "text has no thumbnail");
     }
 
     /// Private dedup (plans/DEDUP.md): the same bytes saved into two documents are ONE blob - the

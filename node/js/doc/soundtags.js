@@ -4,10 +4,16 @@
 // editable in place. Every field shows, filled or not, so an empty one can be filled; clearing one
 // clears it, as the description does (annotations.js `useField`).
 import { h } from 'preact';
+import { useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { openMirror, useLive } from '../mirror.js';
+import { api } from '../net.js';
 import { useField } from './annotations.js';
+import { ImagePickModal } from './imagepick.js';
+import { DrawingThumb, flattenToBlob } from './drawing.js';
+import { readBody } from '../pure/drawing.js';
+import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 
 const html = htm.bind(h);
@@ -45,10 +51,97 @@ const SoundField = ({ root, docId, field, label, value, readOnly }) => {
     </div>`;
 };
 
+/// The sound's cover (Curtis, 2026-10-11): its thumbnail - the art its file carried, or its
+/// waveform - and a choice of another. A picture lends its own thumbnail, named as it is (one blob
+/// however many sounds wear it); a drawing is flattened here and sent as a picture, as the profile
+/// picture does it; "its own" goes back to the one the sound was made with.
+const SoundCover = ({ root, docId, row, readOnly }) => {
+    const [choosing, setChoosing] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const thumbUrl = `/api/identity/${root}/docs/${docId}/thumb`;
+    const send = async (request) => {
+        setBusy(true);
+        setError(null);
+        try {
+            await request();
+        } catch (err) {
+            setError(err.message);
+        }
+        setBusy(false);
+    };
+    const pick = (picked) => {
+        setChoosing(false);
+        return send(async () => {
+            if (picked.format !== 'drawing') {
+                await api(thumbUrl, {
+                    method: 'PUT',
+                    body: JSON.stringify({ from_doc: picked.doc }),
+                });
+                return;
+            }
+            const detail = await api(`/api/identity/${root}/docs/${picked.doc}`);
+            if (detail.body == null)
+                throw new Error(
+                    t(
+                        'doc.soundtags.drawing-not-here-yet',
+                        'that drawing has not reached this computer yet - try again in a moment',
+                    ),
+                );
+            await api(thumbUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'image/png' },
+                body: await flattenToBlob(root, readBody(detail.body)),
+            });
+        });
+    };
+    const reset = () => send(() => api(thumbUrl, { method: 'DELETE' }));
+    const hasThumb = !!(row && row.media && row.media.has_thumb);
+    return html`<div class="sound-tag sound-cover">
+        <dt>${t('doc.soundtags.cover', 'cover')}</dt>
+        <dd>
+            <span class="sound-cover-row">
+                ${
+                    hasThumb &&
+                    html`<img class="sound-cover-face" src=${`${thumbUrl}?v=${row.head}`} alt="" />`
+                }
+                ${
+                    !readOnly &&
+                    html`<button
+                        class="chip chip-button chip-worded"
+                        disabled=${busy}
+                        title=${t('doc.soundtags.choose-a-picture', 'choose a picture')}
+                        onClick=${() => setChoosing(true)}
+                    ><${Icons.addImage} /><span class="chip-word">${t('doc.soundtags.choose-a-picture', 'choose a picture')}</span></button>
+                    <button
+                        class="chip chip-button chip-worded"
+                        disabled=${busy}
+                        title=${t('doc.soundtags.back-to-the-cover-or-waveform', 'back to the cover or waveform it came with')}
+                        onClick=${reset}
+                    ><${Icons.back} /><span class="chip-word">${t('doc.soundtags.its-own', 'its own')}</span></button>`
+                }
+            </span>
+            ${error && html`<p class="form-error">${error}</p>`}
+            ${
+                choosing &&
+                html`<${ImagePickModal}
+                    root=${root}
+                    drawings=${true}
+                    DrawingThumb=${DrawingThumb}
+                    heading=${t('doc.soundtags.a-cover-for-this-sound', 'a cover for this sound')}
+                    onPick=${pick}
+                    onClose=${() => setChoosing(false)}
+                />`
+            }
+        </dd>
+    </div>`;
+};
+
 export const SoundTags = ({ root, docId, readOnly }) => {
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     const fields = (row && row.fields) || {};
     return html`<dl class="sound-tags">
+        <${SoundCover} root=${root} docId=${docId} row=${row} readOnly=${readOnly} />
         ${SOUND_FIELDS().map(
             ([field, label]) => html`<${SoundField}
                 key=${`${docId}:${field}`}

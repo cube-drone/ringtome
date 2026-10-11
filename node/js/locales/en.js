@@ -989,6 +989,12 @@ export default {
     'doc.soundtags.genre': 'genre',
     'doc.soundtags.year': 'year',
     'doc.soundtags.track-number': 'track number',
+    'doc.soundtags.drawing-not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
+    'doc.soundtags.cover': 'cover',
+    'doc.soundtags.choose-a-picture': 'choose a picture',
+    'doc.soundtags.back-to-the-cover-or-waveform': 'back to the cover or waveform it came with',
+    'doc.soundtags.its-own': 'its own',
+    'doc.soundtags.a-cover-for-this-sound': 'a cover for this sound',
 
     // --- node/js/doc/texthelpers.js ---
     'texthelpers.rainbow': 'a rainbow running through it',
@@ -1918,6 +1924,7 @@ export default {
     'identity.routes.those-words-havent-arrived': "those words haven't arrived on this computer yet",
     'identity.routes.a-room-doesnt-copy': "a room can't be copied",
     'identity.routes.a-book-copies-into-a-fresh': 'a book copies whole into a fresh notebook - name a new one',
+    'identity.routes.that-isnt-a-thumbnail-choice': "that isn't a thumbnail choice: {e}",
     'identity.routes.builtin-cant-be-deleted': "that picture comes with the app - it can't be deleted",
     'identity.routes.bad-multipart-body-e': 'bad multipart body: {e}',
     'identity.routes.bad-multipart-part-name-e': 'bad multipart part {name:?}: {e}',
@@ -2040,6 +2047,7 @@ export default {
     // --- node/src/record/documents.rs ---
     'record.documents.no-such-document': 'no such document',
     'record.documents.the-document-has-no-version': 'the document has no version yet (still processing?)',
+    'record.documents.only-media-has-a-thumbnail': 'only a picture, a sound or a video has a thumbnail to choose',
 
     // --- node/src/record/imaol.rs ---
     'record.imaol.this-computers-key-is-no': "this computer's key is no longer part of the persona",
@@ -2058,6 +2066,8 @@ export default {
     'record.store.unknown-profile-field-allowed': 'unknown profile field {field} (allowed: {allowed})',
     'record.store.device-names-are-capped-at': 'that name is too long ({limit} bytes at most)',
     'record.store.too-many-embedded-documents': 'this note embeds {count} documents - one document may hold {cap}. A collection this size wants a notebook, not one page.',
+    'record.store.that-has-no-thumbnail': 'that has no thumbnail to lend',
+    'record.store.that-picture-didnt-work': "that picture didn't work: {e}",
     'record.store.no-such-document': 'no such document',
     'record.store.this-note-is-diverged--': 'save this note once more before publishing',
     'record.store.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",

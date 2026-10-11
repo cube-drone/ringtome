@@ -19807,3 +19807,34 @@ won't attach one). The unit test `a_sounds_cover_art_is_its_thumbnail` covers
 all four formats, and a new claim in `integration/test/dedup.cjs` uploads two
 tracks with one cover and finds both thumbnails are the cover and the storage
 tally counts it once.
+
+## 2026-10-11 (cont.): a sound's cover, chosen
+
+A sound's fields gain a "cover" row at the top: its thumbnail, a button that
+opens the picture picker (the one the profile uses, with drawings and
+upload-from-this-computer), and "its own", which goes back to the cover or
+waveform it came with.
+
+- **Server** (`node/src/record/documents.rs`, `store.rs`, `identity/routes.rs`):
+  `retitle` is now one case of `rewrite_head`, a version that copies the head's
+  content and changes its title or its thumbnail.
+  `PUT /api/identity/{root}/docs/{doc}/thumb` takes either:
+  - `{"from_doc": id}`, which names that private document's own thumbnail blob
+    and print, so nothing is crushed or stored and the blob is shared;
+  - or picture bytes, crushed by `image::thumbnail` and stored only if the
+    persona doesn't already hold the same one.
+
+  `DELETE` restores the first version's thumbnail (`born_thumb`). Only pictures,
+  sounds and videos have the slot; text and drawings get a 400.
+
+- **Page** (`node/js/doc/soundtags.js`): a picture is sent by id. A drawing has
+  no stored thumbnail, so it's flattened in the browser and sent as a PNG, as
+  the profile picture does it.
+
+Tests: the unit test `a_thumbnail_is_chosen_lent_and_reset`, and
+`integration/test/thumbchoice.cjs`, which covers a picture lending its thumbnail
+with the sound's title and body untouched, reset restoring the original cover,
+picture bytes crushed to an AVIF, and refusals for a text document and for bytes
+that aren't a picture. Checked in headless Chrome: picking a picture in the
+modal changed both the sound's cover and its tile in Files. Only sounds have the
+row so far; the route takes videos and pictures as well.
