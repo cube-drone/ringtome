@@ -346,6 +346,10 @@ describe('imports: additive only', function () {
         const log = await imported(bea, beaRoot, vault);
         const said = log.join('\n');
         assert.ok(log.includes("Skipped a file this app doesn't keep: Vault/notes.pdf."), said);
+        // Each says what it is, and the wait for them says how many (2026-10-10).
+        assert.ok(log.includes('Document polaroid added (picture).'), said);
+        assert.ok(log.includes('Document neigh added (sound).'), said);
+        assert.ok(log.includes('Preparing 3 files - this can take a while.'), said);
         assert.ok(!said.includes('.obsidian'), `a hidden folder goes unmentioned: ${said}`);
         assert.ok(
             log.includes("Document trip shows a file the zip doesn't hold: missing.png."),

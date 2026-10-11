@@ -19524,3 +19524,32 @@ each. Four unit tests (every kind of file; the stored file still carries none;
 values bounded; OpusTags, truncated too) and the import vault claim, whose MP3
 now arrives with its track and artist. The app shows only description and date
 among fields, so these are kept, exported and readable, but not yet shown.
+
+## 2026-10-10 (cont.): an import that says it's still going
+
+Curtis's large local import sat on its last "added (its picture is being
+prepared)" line long enough to look stuck - the wait for ingest to make every
+picture (one at a time, a second or more each) wrote nothing unless one failed
+or two minutes passed with none made. Now each media document says what it is -
+"(picture)", "(video)", "(sound)", by its file's ending - and the wait says
+"Preparing 2,412 files - this can take a while." and then, every ten seconds,
+"Prepared 340 of 2,412 files so far (3 couldn't be)." (import.rs
+`MEDIA_PROGRESS_EVERY`, `thousands`). The vault claim reads the new lines; the
+ten-second report itself is too slow for the rig's three files.
+
+## 2026-10-10 (cont.): an import's time, measured
+
+Curtis: a big import "takes... a long time", private documents as much as
+pictures - dev-mode Rust, perhaps. Measured on a scratch node instead of
+guessed. Notes into one notebook: 300 in 16.7 s, 600 in 35.4 s, 1,200 in 86.0 s,
+each note slower than the last (55 ms to 93) - the import re-read the persona's
+notebook roster and the notebook tree's whole, growing member list for every
+note. Both are read once per import now and kept current by its own placings
+(import.rs `roster`, `members`, `members_of`): 1,200 notes in 60.1 s, 46-55 ms
+each, flat. Pictures: a picture this node made comes back through ingest's AVIF
+passthrough - bytes kept, decoded once for its thumbnail - at 135 ms each over
+60 and 104 over 240, no growth; the dev build matters less there than supposed,
+since the codec crates are compiled optimized even in dev (Cargo.toml). Curtis's
+own export holds 1,745 pictures and 925 notes, which these rates put at minutes
+on a fresh persona, not his half hour; what the rest is - larger pictures,
+importing into a persona that already holds a great deal - is not yet measured.

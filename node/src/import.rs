@@ -780,6 +780,22 @@ const BAKE_TRIES: usize = 60;
 /// and only a queue that has stopped moving is given up on.
 const MEDIA_PATIENCE: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// How often the wait for an import's pictures says how far it has got.
+const MEDIA_PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// A count as a person reads it: 2,412.
+fn thousands(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// The notebook every upload lives in (pure/apps.js `FILES_BUCKET`): a picture an import brings
 /// from outside an export is filed there, as one dropped on a note is.
 const FILES_BUCKET: &str = "files";
@@ -1086,9 +1102,17 @@ struct Ctx<'a> {
     /// the top, lowercased: what a note's embeds are resolved against.
     media_paths: HashMap<String, [u8; 16]>,
     media: HashMap<[u8; 16], MediaDoc>,
+    /// The notebooks the persona has, read once and kept current as this import defines more -
+    /// and each taxonomy's members, likewise (2026-10-10, measured: read again for every note, the
+    /// notebook's growing tree made each note slower than the last, 55 ms to 93 over 1,200).
+    roster: Option<BTreeSet<String>>,
+    members: HashMap<[u8; 16], Vec<Member>>,
     added: usize,
     skipped: usize,
 }
+
+/// One member of a taxonomy, as the import keeps them: whose, and which document.
+type Member = ([u8; 32], [u8; 16]);
 
 /// A picture, video or sound the import brought, as its notes will embed it.
 struct MediaDoc {
@@ -1161,6 +1185,8 @@ impl<'a> Ctx<'a> {
             titles,
             media_paths: HashMap::new(),
             media: HashMap::new(),
+            roster: None,
+            members: HashMap::new(),
             added: 0,
             skipped: 0,
         })
@@ -1323,7 +1349,30 @@ impl<'a> Ctx<'a> {
     /// or nothing has been made for [`MEDIA_PATIENCE`].
     async fn await_media(&mut self) {
         let mut last_made = std::time::Instant::now();
+        // A large import waits here a long while - one picture made at a time - so it says how far
+        // it has got every ten seconds rather than nothing until the end (Curtis, 2026-10-10: a vault
+        // of attachments sat on its last "added" line long enough to look stuck).
+        let total = self.media.values().filter(|m| m.made.is_none() && !m.failed).count();
+        if total > 0 {
+            self.say(format!("Preparing {} files - this can take a while.", thousands(total)));
+        }
+        let mut last_said = std::time::Instant::now();
         loop {
+            if total > 0 && last_said.elapsed() >= MEDIA_PROGRESS_EVERY {
+                let left = self.media.values().filter(|m| m.made.is_none() && !m.failed).count();
+                let failed = self.media.values().filter(|m| m.failed).count();
+                let couldnt = if failed > 0 {
+                    format!(" ({} couldn't be)", thousands(failed))
+                } else {
+                    String::new()
+                };
+                self.say(format!(
+                    "Prepared {} of {} files so far{couldnt}.",
+                    thousands(total - left),
+                    thousands(total)
+                ));
+                last_said = std::time::Instant::now();
+            }
             let waiting: Vec<[u8; 16]> = self
                 .media
                 .iter()
@@ -1417,7 +1466,14 @@ impl<'a> Ctx<'a> {
                     )
                     .await
                     .map_err(ae)?;
-                self.say(format!("Document {title} added (its picture is being prepared)."));
+                // What it is, by its file's ending (Curtis, 2026-10-10: "if a document is a picture, it
+                // can just say (picture)"); the wait for it to be made reports on its own.
+                let kind = match guessed_ext(&group.file) {
+                    "webm" => "video",
+                    "ogg" => "sound",
+                    _ => "picture",
+                };
+                self.say(format!("Document {title} added ({kind})."));
             }
             kind => {
                 let format = match kind {
@@ -1519,12 +1575,26 @@ impl<'a> Ctx<'a> {
         }
         let have: BTreeSet<String> =
             self.data.buckets().of(id).await.map_err(ae)?.into_iter().collect();
-        let roster: BTreeSet<String> =
-            self.data.buckets().roster().await.map_err(ae)?.into_iter().map(|b| b.name).collect();
+        if self.roster.is_none() {
+            let names = self
+                .data
+                .buckets()
+                .roster()
+                .await
+                .map_err(ae)?
+                .into_iter()
+                .map(|b| b.name)
+                .collect();
+            self.roster = Some(names);
+        }
         for bucket in &buckets {
             // The files notebook is no notebook of any app's: it is never defined as one.
-            if !roster.contains(bucket) && bucket != FILES_BUCKET {
+            let known = self.roster.as_ref().is_some_and(|r| r.contains(bucket));
+            if !known && bucket != FILES_BUCKET {
                 self.data.buckets().define(bucket, "default").await.map_err(ae)?;
+                if let Some(r) = self.roster.as_mut() {
+                    r.insert(bucket.clone());
+                }
             }
             if !have.contains(bucket) {
                 self.data.buckets().place(id, bucket).await.map_err(ae)?;
@@ -1538,13 +1608,14 @@ impl<'a> Ctx<'a> {
                 .cloned()
                 .unwrap_or_else(|| bucket.to_string());
             let section = self.section(&bucket, &where_.sections).await?;
-            let members = self.data.taxonomies().members(&section).await.map_err(ae)?;
-            if !members.iter().any(|m| m.doc_id == *id && m.root == self.root_bytes) {
+            let mine = (self.root_bytes, *id);
+            if !self.members_of(&section).await?.contains(&mine) {
                 self.data
                     .taxonomies()
                     .place(&section, &self.root_bytes, id, None)
                     .await
                     .map_err(ae)?;
+                self.members.entry(section).or_default().push(mine);
             }
         }
         Ok(())
@@ -1564,16 +1635,18 @@ impl<'a> Ctx<'a> {
             }
         };
         for name in sections {
-            let members = self.data.taxonomies().members(&at).await.map_err(ae)?;
-            let found = members.iter().find(|m| {
-                m.root == self.root_bytes
+            let root = self.root_bytes;
+            self.members_of(&at).await?;
+            let found = self.members[&at].iter().find_map(|(r, doc)| {
+                (*r == root
                     && self
                         .titles
-                        .get(&m.doc_id)
-                        .is_some_and(|t| t == name || crate::export::file_name(t) == *name)
+                        .get(doc)
+                        .is_some_and(|t| t == name || crate::export::file_name(t) == *name))
+                .then_some(*doc)
             });
             at = match found {
-                Some(m) => m.doc_id,
+                Some(doc) => doc,
                 None => {
                     let id = self.data.taxonomies().create(name).await.map_err(ae)?;
                     self.titles.insert(id, name.clone());
@@ -1582,11 +1655,30 @@ impl<'a> Ctx<'a> {
                         .place(&at, &self.root_bytes, &id, None)
                         .await
                         .map_err(ae)?;
+                    self.members.entry(at).or_default().push((root, id));
                     id
                 }
             };
         }
         Ok(at)
+    }
+
+    /// A taxonomy's members, `(root, doc)`: read once per import, then kept by the import's own
+    /// placings.
+    async fn members_of(&mut self, taxonomy: &[u8; 16]) -> Result<&Vec<Member>> {
+        if !self.members.contains_key(taxonomy) {
+            let read = self
+                .data
+                .taxonomies()
+                .members(taxonomy)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?
+                .into_iter()
+                .map(|m| (m.root, m.doc_id))
+                .collect();
+            self.members.insert(*taxonomy, read);
+        }
+        Ok(&self.members[taxonomy])
     }
 
     /// One post: skipped when the persona has it (or has published the note it came from);
@@ -2209,6 +2301,14 @@ mod tests {
             (guessed_ext("a.MP3"), guessed_ext("b.gif"), guessed_ext("c.webm")),
             ("ogg", "avif", "webm")
         );
+    }
+
+    #[test]
+    fn a_count_reads_with_its_thousands() {
+        assert_eq!(thousands(0), "0");
+        assert_eq!(thousands(999), "999");
+        assert_eq!(thousands(2412), "2,412");
+        assert_eq!(thousands(1_234_567), "1,234,567");
     }
 
     #[test]
