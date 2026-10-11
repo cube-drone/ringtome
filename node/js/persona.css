@@ -2023,6 +2023,50 @@ article:has(.label-emoji-strip) {
 
 /* The author's description, under the title in small italics - the post's subtitle, no longer
    an "about" chip among the tags. */
+/* What a search found (foundwords.js, Curtis, 2026-10-10): the stretches of a found post around
+   its hits, above its words - a found book's under each page's name - and the hits marked in
+   them, the title and a tag, in the notes list's highlighter (apps/notes.css .snippet-hit). */
+.found {
+    margin: 0.3em 0 0.6em;
+    padding-left: 0.7em;
+    border-left: 2px solid var(--marker);
+    color: var(--ink-soft);
+    font-size: 0.9em;
+    line-height: 1.45;
+}
+
+.found-line,
+.found-more {
+    margin: 0.15em 0;
+}
+
+.found-more {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.found-page + .found-page {
+    margin-top: 0.4em;
+}
+
+.found-page-title {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.found-hit {
+    background: var(--marker);
+    color: var(--ink);
+    --j: 2px;
+    clip-path: var(--jag-1);
+    padding: 0 1px;
+}
+
+.label-chip.label-chip-found {
+    background: var(--marker);
+    color: var(--ink);
+}
+
 .feed-entry-subtitle {
     font-size: 0.9em;
     font-style: italic;

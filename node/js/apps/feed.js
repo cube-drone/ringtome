@@ -697,6 +697,7 @@ export const FeedStream = ({
                     interest=${emphasisBand(item)}
                     current=${current}
                     editing=${item.mine ? edit(item.doc_id) : null}
+                    found=${search.active ? searchQuery : null}
                 />`,
             )}
             ${

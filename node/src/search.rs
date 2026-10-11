@@ -374,6 +374,88 @@ async fn page_words(state: &AppState, author_hex: &str, page_hex: &str) -> Strin
     String::from_utf8_lossy(&plain).into_owned()
 }
 
+/// One page of a book whose words a search's terms all hit: its post, its title and its words.
+#[derive(serde::Serialize)]
+pub struct PageMatch {
+    pub post: String,
+    pub title: String,
+    pub body: String,
+}
+
+/// The pages of an open book that a search's terms find, in reading order, at most `max` - and how
+/// many found in all: what a found book shows its excerpts from (Curtis, 2026-10-10: "in the case
+/// of the book, excerpts from the book that match"). A sealed book, or a sealed page, shows none:
+/// who may read one is the body door's judgment, never this one's.
+pub async fn book_matches(
+    state: &AppState,
+    author_hex: &str,
+    book: &[u8; 16],
+    terms: &[String],
+    max: usize,
+) -> (Vec<PageMatch>, usize) {
+    let mut out = (Vec::new(), 0);
+    if terms.is_empty() {
+        return out;
+    }
+    let Some(facts) = body_facts(state, author_hex, book).await else { return out };
+    if facts.trusted_only
+        || crate::record::documents::Format::from_wire(facts.format)
+            != crate::record::documents::Format::Book
+    {
+        return out;
+    }
+    let raw = state
+        .files
+        .get_public(iroh_blobs::Hash::from_bytes(facts.file_hash))
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let Ok(table) = serde_json::from_slice::<serde_json::Value>(&raw) else { return out };
+    for (post, title) in pages_in_order(&table) {
+        let Some(doc_id) = hex::decode(&post).ok().and_then(|b| <[u8; 16]>::try_from(b).ok())
+        else {
+            continue;
+        };
+        let Some(page) = body_facts(state, author_hex, &doc_id).await else { continue };
+        if page.trusted_only {
+            continue;
+        }
+        let blob = iroh_blobs::Hash::from_bytes(page.file_hash);
+        if !state.files.has(blob).await {
+            continue;
+        }
+        let bytes = state.files.get_public(blob).await.ok().flatten().unwrap_or_default();
+        let body = String::from_utf8_lossy(&bytes).into_owned();
+        if hits(&tokens_of(&title, &body), terms) {
+            out.1 += 1;
+            if out.0.len() < max {
+                out.0.push(PageMatch { post, title, body });
+            }
+        }
+    }
+    out
+}
+
+/// A book table's pages in reading order: the cover's place, the top-level pages, then each
+/// section's, depth first.
+fn pages_in_order(node: &serde_json::Value) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    fn walk(node: &serde_json::Value, out: &mut Vec<(String, String)>) {
+        for p in node.get("pages").and_then(|p| p.as_array()).into_iter().flatten() {
+            if let Some(post) = p.get("post").and_then(|x| x.as_str()) {
+                let title = p.get("title").and_then(|t| t.as_str()).unwrap_or("");
+                out.push((post.to_string(), title.to_string()));
+            }
+        }
+        for s in node.get("sections").and_then(|s| s.as_array()).into_iter().flatten() {
+            walk(s, out);
+        }
+    }
+    walk(node, &mut out);
+    out
+}
+
 /// Keep one post's word bag, stamped (0 for a title alone), and its terms - the inverted index a
 /// search reads (node rung 0059): the post's old terms go and its new ones come, together.
 async fn keep_bag(db: &Db, c: &Candidate, stamp: i64, tokens: &str) -> Result<()> {
@@ -891,13 +973,16 @@ fn walked() -> &'static std::sync::Mutex<std::collections::HashMap<String, (i64,
 }
 
 fn candidate(r: crate::fanout::FeedRow) -> Candidate {
-    // The kind is the judge's business, not the index's.
+    // The kind is the judge's business, not the index's - but a book's, so a book's bag from
+    // before it carried its pages is read again here too (node rung 0077): the feed's search asks
+    // the terms this pass keeps, and would never meet the book as a book otherwise.
+    let kind = if r.format.as_deref() == Some("book") { "book" } else { "post" };
     Candidate {
         author_root: r.author_root,
         doc_hex: r.doc_id,
         title: r.title,
         updated_ms: r.updated_ms,
-        kind: "post",
+        kind,
     }
 }
 

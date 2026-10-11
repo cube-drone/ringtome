@@ -19624,3 +19624,27 @@ claims: a page's words find its book on the shelf, signed in or not, and a
 hidden page's don't (book_posts.cjs); a book exported and imported into a fresh
 persona is one book with two pages, the left-out note hidden, and found by its
 page's word (import.cjs).
+
+## 2026-10-10 (cont.): what a search found, shown
+
+Curtis: searching the feed or a person's page, show "excerpts of the post that
+contain matching search results, with the search results highlighted" - in the
+title or tags too, and a book's from its pages. A found card now marks its
+title's hits, wears a highlighted chip for a tag a word hits, and shows up to
+three stretches of its words around the hits above them (pure/found.js
+`plainOf`, `excerptsOf`, `marked`, five vectors; foundwords.js; PostEntry's
+`found`, the query as a string so the memoized cards hold still). A word marks
+as the node's index matches it: a token it begins, whole. A post's excerpts come
+from the words the card already reads through its own door; a book's pages never
+reach the browser, so a found book asks
+`GET /api/id/{seg}/posts/{book}/ excerpts?q=` for the pages its words are on -
+three at most, in reading order, and how many in all - and shows each under its
+page's linked name (idface.rs `id_book_excerpts`, search.rs `book_matches`). A
+sealed book or page shows no excerpts there: who may read one is the body door's
+judgment, not this one's. Typed words search a post's title and words, not its
+tags, so a tag lights up only when a word happens to begin it.
+
+Driving it showed the last entry's rung half-done: the feed's search asks the
+term index, which the background pass keeps, and the pass met every row as a
+post - so a book's title-only bag was read again only once a person's page
+searched it. The pass names a book a book now (search.rs `candidate`).

@@ -2959,6 +2959,35 @@ pub async fn id_from(
 /// GET `/api/id/{root}/posts/{doc}` - one post, by id: the permalink's read (2026-08-25).
 /// The same shelf rule as the page, and the same honest 404 for never-was, private, and
 /// taken-down alike - a post that is not on the public shelf is not a post here.
+/// GET `/api/id/{seg}/posts/{book}/excerpts?q=` - the pages of a found book whose words the search
+/// says (Curtis, 2026-10-10): the reader cuts its excerpts from them, as it does from a found post's
+/// own words. At most three pages, and how many in all; a sealed book or page shows none.
+pub async fn id_book_excerpts(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path((seg, doc)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<ExcerptQuery>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    let missing =
+        || AppError::NotFound(crate::msg!("idface.no-such-post-here-3", "no such post here"));
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else { return Err(missing()) };
+    let root_hex = hex::encode(root);
+    if !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(missing());
+    }
+    let book: [u8; 16] =
+        hex::decode(&doc).ok().and_then(|b| b.try_into().ok()).ok_or_else(missing)?;
+    let terms = crate::search::terms(query.q.as_deref().unwrap_or(""));
+    let (pages, found) = crate::search::book_matches(&state, &root_hex, &book, &terms, 3).await;
+    Ok(axum::Json(serde_json::json!({ "pages": pages, "found": found })))
+}
+
+/// The excerpts' query: the search's words.
+#[derive(serde::Deserialize)]
+pub struct ExcerptQuery {
+    pub q: Option<String>,
+}
+
 /// GET `/api/id/{seg}/posts/{doc}/versions` - a post's history (Curtis, 2026-10-02: posts edit
 /// forever, and an edited one says so - "edited {date}" - and opens to every version it has been).
 /// Newest first: each version's moment, title and words, or `held: false` where this node no longer

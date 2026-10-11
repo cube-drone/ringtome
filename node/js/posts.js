@@ -187,6 +187,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
                     key=${`${item.kind || 'post'}:${item.doc_id}`}
                     item=${item}
                     current=${current}
+                    found=${search.active ? searchQuery : null}
                     editing=${mine && item.kind !== 'share' ? editingFor(item.doc_id) : null}
                 />`,
             )}

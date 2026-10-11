@@ -56,6 +56,9 @@ import {
     isBackdated,
     cardHeightGuess,
 } from './pure/feed.js';
+import { FoundExcerpts, Marked } from './foundwords.js';
+import { isHit } from './pure/found.js';
+import { queryWords } from './search.js';
 import { appById, featuresOf } from './pure/apps.js';
 import { Editor } from './doc/editor.js';
 import { useDocDetail } from './doc/detail.js';
@@ -701,7 +704,19 @@ const RoomLinkCard = ({ target }) => {
 };
 registerRoomCard(RoomLinkCard);
 
-const PostEntryBody = ({ item, current, interest, editing, quote, standalone = false }) => {
+const PostEntryBody = ({
+    item,
+    current,
+    interest,
+    editing,
+    quote,
+    standalone = false,
+    // The search this card was found by, when it was (Curtis, 2026-10-10): its words are marked
+    // on the card, and the stretches around them shown above its words. A string, so a memoized
+    // card is unmoved by a fresh array each render.
+    found = null,
+}) => {
+    const foundWords = found ? queryWords(found) : [];
     // What the Market sells on a card (plans/UNLOCKS.md): sharing, pinning, editing a published
     // post, and labels and reactions. Taking a post down, and taking your own label back, never.
     const me = current && current.root;
@@ -1252,8 +1267,8 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                     item.format === 'room' && !item.im
                         ? html`<${RoomTitle}>${title}</${RoomTitle}>`
                         : item.format === 'book'
-                          ? html`<${BookTitle}>${title}</${BookTitle}>`
-                          : title
+                          ? html`<${BookTitle}><${Marked} text=${title} words=${foundWords} /></${BookTitle}>`
+                          : html`<${Marked} text=${title} words=${foundWords} />`
                 }</a></h2>`
             }
             ${!open && !!subtitle && html`<p class="feed-entry-subtitle">${subtitle}</p>`}
@@ -1416,6 +1431,7 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                                 : 'label-chip-theirs',
                             canAgree ? 'label-chip-agree' : '',
                             mine ? 'label-chip-mine' : '',
+                            g.key === 'tag' && isHit(g.value, foundWords) ? 'label-chip-found' : '',
                             glyph ? 'label-chip-icon' : '',
                             tone === 'good'
                                 ? 'label-chip-good'
@@ -1592,6 +1608,12 @@ const PostEntryBody = ({ item, current, interest, editing, quote, standalone = f
                               ${t('postentry.tagged-show-anyway', 'tagged {tags} - show anyway', { tags: warning.tags.join(', ') })}
                           </button>
                       </div>`
+                      }
+                      ${
+                          foundWords.length > 0 &&
+                          !veiled &&
+                          (item.format === 'book' || !!shownBody) &&
+                          html`<${FoundExcerpts} item=${item} body=${shownBody || ''} words=${foundWords} query=${found} />`
                       }
                       ${
                           !!shownBody &&

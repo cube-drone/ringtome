@@ -279,6 +279,29 @@ describe('books: a notebook rolls out as one book', function () {
         assert.deepEqual(await found(anon, 'curtain'), [], 'nor a page under a hidden section');
     });
 
+    it('a found book names the pages its words are on, for the excerpts', async () => {
+        const pagesFor = async (who, q) =>
+            (
+                await who(`api/id/${adaRoot}/posts/${book}/excerpts?q=${encodeURIComponent(q)}`)
+            ).json();
+        const second = await pagesFor(anon, 'second');
+        assert.deepEqual(
+            second.pages.map((p) => p.title),
+            ['chapter two'],
+            JSON.stringify(second),
+        );
+        assert.equal(second.found, 1);
+        assert.ok(second.pages[0].body.includes('the second words'));
+        const words = await pagesFor(ada, 'words');
+        assert.equal(words.found, 3, 'every published page says "words"');
+        assert.deepEqual(
+            words.pages.map((p) => p.title),
+            ['a loose page', 'chapter one', 'chapter two'],
+            'in reading order',
+        );
+        assert.equal((await pagesFor(anon, 'never published')).found, 0, 'never a hidden page');
+    });
+
     it('every page is a real post carrying part_of, with the version it published recorded', async () => {
         const body = JSON.parse(await (await ada(`id/${adaRoot}/docs/${book}/body`)).text());
         for (const p of [...body.sections[0].pages, ...body.pages]) {

@@ -1128,6 +1128,10 @@ export default {
     'facets.kinds': 'show',
     'facets.buckets': 'in',
 
+    // --- node/js/foundwords.js ---
+    'found.one-more-page': 'and 1 more page',
+    'found.more-pages': 'and {n} more pages',
+
     // --- node/js/frontdoor.js ---
     'frontdoor.default-name': 'Horse Drawing Tycoon 2',
     'frontdoor.tagline-draw-and-share': 'finally, a way to draw and share pictures of horses',
