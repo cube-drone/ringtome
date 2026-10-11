@@ -19648,3 +19648,26 @@ Driving it showed the last entry's rung half-done: the feed's search asks the
 term index, which the background pass keeps, and the pass met every row as a
 post - so a book's title-only bag was read again only once a person's page
 searched it. The pass names a book a book now (search.rs `candidate`).
+
+## 2026-10-10 (cont.): link previews on a phone
+
+Curtis: in the APK the feed's turbolinks never expanded - bare links, where
+every other build drew their cards. His `adb logcat` said why at once: every
+unfurl failed its handshake with "invalid peer certificate: Revoked", on half a
+dozen sites no CA had revoked. The verifier's Kotlin half
+(rustls-platform-verifier- android 0.1.1) checked revocation by OCSP and called
+anything it couldn't check revoked, and the CAs most of the web uses - Let's
+Encrypt, Google Trust Services, SSL.com - have dropped OCSP for revocation lists
+(upstream #221). Fixed upstream in rustls-platform-verifier 0.7.1 with the
+Android component's 0.2.0, which fetches the lists - over plain http - and is
+published to a Maven repository on GitHub rather than inside the crate. So: both
+lockfiles at 0.7.1; the app's Gradle build takes the component from that
+repository at the version desktop/Cargo.lock holds, where it dug the .aar out of
+cargo's registry; and the app's network security config, which replaces the one
+the component ships (same resource name), carries the component's 376
+revocation-list hosts beside the loopback rule, written and checked by
+desktop/tools/android-crl-hosts.sh (run by tools/android-project.sh in the
+Android workflow). The node and the desktop shell compile against it; the APK
+builds only in CI, and nothing here has run on a phone yet. The same verifier
+answers every HTTPS call the phone's node makes - relays, revalidation, missing
+bodies - so those were failing alike.

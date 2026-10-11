@@ -69,34 +69,29 @@ dependencies {
 }
 
 // The certificate verifier's Kotlin half (desktop/src/android_tls.rs): rustls-platform-verifier
-// calls into `org.rustls.platformverifier`, shipped as an .aar inside the
-// `rustls-platform-verifier-android` crate rather than on Maven. Found where cargo put it, at build
-// time - the path is each machine's own registry - and handed over as the file itself: as a Maven
-// repository with artifact-only metadata, Gradle looked for a .jar (field-found, 2026-10-08), and
-// the .aar has no dependencies of its own to lose by skipping its .pom.
-val rustlsPlatformVerifierAar: File = run {
-    val metadata = providers.exec {
-        commandLine(
-            "cargo", "metadata", "--format-version", "1",
-            "--filter-platform", "aarch64-linux-android",
-            "--manifest-path", rootProject.file("../../Cargo.toml").path,
-        )
-    }.standardOutput.asText.get()
-    @Suppress("UNCHECKED_CAST")
-    val packages = (groovy.json.JsonSlurper().parseText(metadata) as Map<String, Any>)["packages"]
-        as List<Map<String, Any>>
-    val manifest = packages.firstOrNull { it["name"] == "rustls-platform-verifier-android" }
-        ?.get("manifest_path") as String?
-        ?: error("rustls-platform-verifier-android is not in the Android dependency graph")
-    File(File(manifest).parentFile, "maven").walkTopDown()
-        .filter { it.name.endsWith(".aar") }
-        .sortedBy { it.name }
-        .lastOrNull()
-        ?: error("no .aar in the rustls-platform-verifier-android crate")
+// calls into `org.rustls.platformverifier`, which since 0.2.0 of `rustls-platform-verifier-android`
+// (rustls-platform-verifier 0.7.1) is published to a Maven repository on GitHub, no longer inside
+// the crate - the crate's .aar was found here through `cargo metadata` until then. The version is
+// the one desktop/Cargo.lock holds: the Rust half and the Kotlin half must be the same release.
+// (0.1.1's verifier called every certificate without an OCSP address revoked - most of the web
+// since its CAs moved to revocation lists - and every link preview on a phone failed with
+// "invalid peer certificate: Revoked", field-found 2026-10-10.)
+repositories {
+    maven {
+        url = uri("https://github.com/rustls/rustls-platform-verifier/raw/maven-archive/android-release-support/maven/")
+        content { includeGroup("org.rustls") }
+    }
+}
+
+val rustlsPlatformVerifierVersion: String = run {
+    val lock = rootProject.file("../../Cargo.lock").readLines()
+    val at = lock.indexOfFirst { it.trim() == "name = \"rustls-platform-verifier-android\"" }
+    check(at >= 0) { "rustls-platform-verifier-android is not in desktop/Cargo.lock" }
+    lock.drop(at + 1).first { it.trim().startsWith("version = ") }.substringAfter('"').substringBefore('"')
 }
 
 dependencies {
-    implementation(files(rustlsPlatformVerifierAar))
+    implementation("org.rustls:rustls-platform-verifier:$rustlsPlatformVerifierVersion@aar")
 }
 
 apply(from = "tauri.build.gradle.kts")

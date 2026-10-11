@@ -203,9 +203,17 @@ generated once from Tauri's template by CI (the workflow run by hand with
 `project=true`, which needs the SDK the laptop doesn't hold) and edited as
 ordinary source since - the network security config, and the certificate
 verifier's Kotlin half (`desktop/src/android_tls.rs`) with the shrinker rule
-that keeps it. `desktop/tools/android-project.sh` checks in CI that those
-survive; a Tauri upgrade that changes the template is a merge against a fresh
-`project=true` run.
+that keeps it. That half comes from `rustls-platform-verifier`'s own Maven
+repository on GitHub, at the version `desktop/Cargo.lock` holds (since 0.7.1;
+the crate carried it before). Since its 0.2.0 it checks a site's certificate
+against its authority's revocation list, fetched over plain http, so the network
+security config permits cleartext to those hosts as well - the verifier's own
+list, carried in ours because ours replaces the one its library ships, and
+refreshed by `desktop/tools/android-crl-hosts.sh` after an update (2026-10-10:
+with 0.1.1, every certificate without an OCSP address read as revoked, and every
+link preview on a phone failed). `desktop/tools/android-project.sh` checks in CI
+that those survive; a Tauri upgrade that changes the template is a merge against
+a fresh `project=true` run.
 
 **It builds in CI only** (Curtis: the laptop is already near full with this
 tree's build output). `.github/workflows/android.yml` makes an arm64 APK, signed
