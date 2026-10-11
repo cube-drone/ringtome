@@ -312,6 +312,24 @@ video.reader-media {
     margin: 0;
 }
 
+/* Every document's own annotations, in the sound's list, in its type size. */
+.sound-doc-field .annot-desc {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sound-doc-field .annot-date,
+.sound-doc-field .annot-time,
+.sound-doc-field .annot-desc {
+    font-size: inherit;
+}
+
+.sound-date {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 /* The cover row: the sound's thumbnail, and the choice of another. */
 .sound-cover-row {
     display: flex;

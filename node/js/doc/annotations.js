@@ -62,33 +62,13 @@ function useClaimedDate(root, docId, mirrorValue) {
     };
 }
 
-export const Annotations = ({ root, docId, features }) => {
-    // Which annotations this app surfaces; absent = show them all (the default app).
-    const showDate = !features || features.date !== false;
-    const showDesc = !features || features.description !== false;
-    // The implicit chips, unless the place says they mean nothing there (a book's title page: the
-    // book carries none of them).
-    const showImplicit = !features || features.implicit !== false;
-    // The title, only where asked (a book's title page, in the Publish column): elsewhere the
-    // editor holds it, since a title is a header field and changing it mints a version.
-    const showTitle = !!(features && features.title);
-    // Tagging is bought (plans/UNLOCKS.md, "Reactions, tags & filters"): without it the tags
-    // already there show, and none can be added or taken off.
-    const tagging = useUnlocked(root, 'tags');
+// The panel's parts, each its own component (2026-10-11) so another place can lay them out its own
+// way - a sound's list of fields wears the title and tags at its head and the description and date
+// at its foot. Each reads the mirror's row itself.
+
+/// The title: a header field, so every save mints a version - saved when the field is left.
+export const TitleInput = ({ root, docId }) => {
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
-    const mirrorTags = (row && row.tags) || [];
-    // "image", "video", "audio": the doc carries them for what it holds, not because anyone
-    // said so (Curtis, 2026-10-01) - shown with the others, with nothing to remove.
-    const implicitTags = (row && row.implicit) || [];
-    const hiddenImplicit = showImplicit ? [] : implicitTags;
-    const mirrorDesc = (row && row.fields && row.fields.description) || '';
-    const mirrorDate = (row && row.fields && row.fields[DISPLAY_DATE_FIELD]) || '';
-
-    const desc = useField(root, docId, 'description', mirrorDesc, {
-        debounceMs: DESC_DEBOUNCE_MS,
-    });
-    const claimed = useClaimedDate(root, docId, mirrorDate);
-
     // The title as typed, held until it is left (blur or Enter): every save mints a version, so
     // it saves once per edit, never per keystroke. `null` shows the mirror's.
     const mirrorTitle = (row && row.title) || '';
@@ -117,6 +97,27 @@ export const Annotations = ({ root, docId, features }) => {
         }
     };
 
+    return html`<input
+        class="annot-title jag-field"
+        value=${titleDraft ?? mirrorTitle}
+        placeholder=${t('doc.annotations.untitled', 'untitled')}
+        onInput=${(e) => setTitleDraft(e.currentTarget.value)}
+        onBlur=${saveTitle}
+        onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
+    />`;
+};
+
+/// The tags, the media's implicit ones among them unless `showImplicit` is false.
+export const TagEditor = ({ root, docId, showImplicit = true }) => {
+    // Tagging is bought (plans/UNLOCKS.md, "Reactions, tags & filters"): without it the tags
+    // already there show, and none can be added or taken off.
+    const tagging = useUnlocked(root, 'tags');
+    const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
+    const mirrorTags = (row && row.tags) || [];
+    // "image", "video", "audio": the doc carries them for what it holds, not because anyone
+    // said so (Curtis, 2026-10-01) - shown with the others, with nothing to remove.
+    const implicitTags = (row && row.implicit) || [];
+    const hiddenImplicit = showImplicit ? [] : implicitTags;
     // Tags: render the mirror set, overlaid with in-flight optimistic changes so a click shows
     // immediately. A pending entry clears once the mirror reflects it (echo arrived).
     const [pending, setPending] = useState({}); // tag -> 'adding' | 'removing'
@@ -226,45 +227,7 @@ export const Annotations = ({ root, docId, features }) => {
         }
     };
 
-    return html`
-        <div class="annotations">
-            ${
-                showTitle &&
-                html`<div class="annot-row">
-                <label class="annot-label">${t('doc.annotations.title', 'title')}</label>
-                <input
-                    class="annot-title jag-field"
-                    value=${titleDraft ?? mirrorTitle}
-                    placeholder=${t('doc.annotations.untitled', 'untitled')}
-                    onInput=${(e) => setTitleDraft(e.currentTarget.value)}
-                    onBlur=${saveTitle}
-                    onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                />
-            </div>`
-            }
-            ${
-                showDate &&
-                html`<div class="annot-row">
-                <label class="annot-label" title=${t('doc.annotations.the-date-and-time-this', 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then')}>${t('doc.annotations.date', 'date')}</label>
-                <input
-                    class="annot-date jag-field"
-                    type="date"
-                    value=${claimed.date}
-                    onInput=${claimed.onDate}
-                    onBlur=${claimed.flush}
-                />
-                <input
-                    class="annot-time jag-field"
-                    type="time"
-                    value=${claimed.time}
-                    onInput=${claimed.onTime}
-                    onBlur=${claimed.flush}
-                    disabled=${!claimed.date}
-                    title=${claimed.date ? t('doc.annotations.time-optional', 'time (optional)') : t('doc.annotations.set-a-date-first', 'set a date first')}
-                />
-            </div>`
-            }
-            <div class="annot-tags">
+    return html`<div class="annot-tags">
                 ${
                     /* `tag`, never `t`: the map's parameter once shadowed the i18n t(), so the
                     remove button's title called the TAG STRING as a function and the whole
@@ -312,18 +275,84 @@ export const Annotations = ({ root, docId, features }) => {
                 />`
                 }
                 ${tagRefused && html`<span class="annot-tag-refused">${tagRefused}</span>`}
-            </div>
+            </div>`;
+};
+
+/// The description: a field, saved a beat after the typing stops.
+export const DescInput = ({ root, docId }) => {
+    const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
+    const mirrorDesc = (row && row.fields && row.fields.description) || '';
+    const desc = useField(root, docId, 'description', mirrorDesc, {
+        debounceMs: DESC_DEBOUNCE_MS,
+    });
+    return html`<textarea
+        class="annot-desc jag-field"
+        placeholder=${t('doc.annotations.a-short-description-optional', 'a short description (optional)')}
+        value=${desc.value}
+        onInput=${desc.onInput}
+        onBlur=${desc.flush}
+        rows="2"
+    ></textarea>`;
+};
+
+/// The claimed date and its optional time.
+export const DateInputs = ({ root, docId }) => {
+    const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
+    const mirrorDate = (row && row.fields && row.fields[DISPLAY_DATE_FIELD]) || '';
+    const claimed = useClaimedDate(root, docId, mirrorDate);
+    return html`<input
+            class="annot-date jag-field"
+            type="date"
+            value=${claimed.date}
+            onInput=${claimed.onDate}
+            onBlur=${claimed.flush}
+        />
+        <input
+            class="annot-time jag-field"
+            type="time"
+            value=${claimed.time}
+            onInput=${claimed.onTime}
+            onBlur=${claimed.flush}
+            disabled=${!claimed.date}
+            title=${claimed.date ? t('doc.annotations.time-optional', 'time (optional)') : t('doc.annotations.set-a-date-first', 'set a date first')}
+        />`;
+};
+
+/// What the date means, for its label's title.
+export const dateMeaning = () =>
+    t(
+        'doc.annotations.the-date-and-time-this',
+        'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
+    );
+
+export const Annotations = ({ root, docId, features }) => {
+    // Which annotations this app surfaces; absent = show them all (the default app).
+    const showDate = !features || features.date !== false;
+    const showDesc = !features || features.description !== false;
+    // The implicit chips, unless the place says they mean nothing there (a book's title page: the
+    // book carries none of them).
+    const showImplicit = !features || features.implicit !== false;
+    // The title, only where asked (a book's title page, in the Publish column): elsewhere the
+    // editor holds it, since a title is a header field and changing it mints a version.
+    const showTitle = !!(features && features.title);
+    return html`
+        <div class="annotations">
             ${
-                showDesc &&
-                html`<textarea
-                class="annot-desc jag-field"
-                placeholder=${t('doc.annotations.a-short-description-optional', 'a short description (optional)')}
-                value=${desc.value}
-                onInput=${desc.onInput}
-                onBlur=${desc.flush}
-                rows="2"
-            ></textarea>`
+                showTitle &&
+                html`<div class="annot-row">
+                <label class="annot-label">${t('doc.annotations.title', 'title')}</label>
+                <${TitleInput} root=${root} docId=${docId} />
+            </div>`
             }
+            ${
+                showDate &&
+                html`<div class="annot-row">
+                <label class="annot-label" title=${dateMeaning()}>${t('doc.annotations.date', 'date')}</label>
+                <${DateInputs} root=${root} docId=${docId} />
+            </div>`
+            }
+            <${TagEditor} root=${root} docId=${docId} showImplicit=${showImplicit} />
+            ${showDesc && html`<${DescInput} root=${root} docId=${docId} />`}
         </div>
     `;
 };

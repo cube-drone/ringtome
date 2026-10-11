@@ -624,17 +624,17 @@ export default {
     'crtpref.enable-crt': 'enable CRT',
 
     // --- node/js/doc/annotations.js ---
-    'doc.annotations.no-reacting-to-your-own': "a reaction is for somebody else's post",
-    'doc.annotations.title': 'title',
     'doc.annotations.untitled': 'untitled',
-    'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
-    'doc.annotations.date': 'date',
-    'doc.annotations.time-optional': 'time (optional)',
-    'doc.annotations.set-a-date-first': 'set a date first',
+    'doc.annotations.no-reacting-to-your-own': "a reaction is for somebody else's post",
     'doc.annotations.tagged-for-what-it-holds': 'tagged for what it holds - it comes and goes with the media',
     'doc.annotations.remove-tag': 'remove tag',
     'doc.annotations.tag': '+ tag',
     'doc.annotations.a-short-description-optional': 'a short description (optional)',
+    'doc.annotations.time-optional': 'time (optional)',
+    'doc.annotations.set-a-date-first': 'set a date first',
+    'doc.annotations.the-date-and-time-this': 'the date and time this document is filed and sorted under - your claim, authoritative over the real save date. Published with a future date, it waits: nothing goes out until then',
+    'doc.annotations.title': 'title',
+    'doc.annotations.date': 'date',
 
     // --- node/js/doc/bookcol.js ---
     'doc.bookcol.take-the-book-and-every': 'take the book and every page back off the network',
@@ -995,6 +995,9 @@ export default {
     'doc.soundtags.back-to-the-cover-or-waveform': 'back to the cover or waveform it came with',
     'doc.soundtags.its-own': 'its own',
     'doc.soundtags.a-cover-for-this-sound': 'a cover for this sound',
+    'doc.soundtags.tags': 'tags',
+    'doc.soundtags.description': 'description',
+    'doc.soundtags.date': 'date',
 
     // --- node/js/doc/texthelpers.js ---
     'texthelpers.rainbow': 'a rainbow running through it',

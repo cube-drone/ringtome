@@ -9,7 +9,7 @@ import htm from 'htm';
 
 import { openMirror, useLive } from '../mirror.js';
 import { api } from '../net.js';
-import { useField } from './annotations.js';
+import { DateInputs, DescInput, TagEditor, dateMeaning, useField } from './annotations.js';
 import { ImagePickModal } from './imagepick.js';
 import { DrawingThumb, flattenToBlob } from './drawing.js';
 import { readBody } from '../pure/drawing.js';
@@ -137,10 +137,27 @@ const SoundCover = ({ root, docId, row, readOnly }) => {
     </div>`;
 };
 
+/// One of every document's own annotations, as a row of the list (Curtis, 2026-10-11: "part of
+/// the document system, so we should include them"): the panel's own editor (annotations.js) under
+/// a term.
+const DocRow = ({ label, title = null, children }) =>
+    html`<div class="sound-tag sound-doc-field">
+        <dt title=${title}>${label}</dt>
+        <dd>${children}</dd>
+    </div>`;
+
 export const SoundTags = ({ root, docId, readOnly }) => {
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     const fields = (row && row.fields) || {};
+    // A built-in sound is nobody's to annotate; it shows its own fields and nothing else.
+    const own = !readOnly;
     return html`<dl class="sound-tags">
+        ${
+            own &&
+            html`<${DocRow} label=${t('doc.soundtags.tags', 'tags')}>
+                <${TagEditor} root=${root} docId=${docId} />
+            </${DocRow}>`
+        }
         <${SoundCover} root=${root} docId=${docId} row=${row} readOnly=${readOnly} />
         ${SOUND_FIELDS().map(
             ([field, label]) => html`<${SoundField}
@@ -153,5 +170,14 @@ export const SoundTags = ({ root, docId, readOnly }) => {
                 readOnly=${readOnly}
             />`,
         )}
+        ${
+            own &&
+            html`<${DocRow} label=${t('doc.soundtags.description', 'description')}>
+                <${DescInput} root=${root} docId=${docId} />
+            </${DocRow}>
+            <${DocRow} label=${t('doc.soundtags.date', 'date')} title=${dateMeaning()}>
+                <span class="sound-date"><${DateInputs} root=${root} docId=${docId} /></span>
+            </${DocRow}>`
+        }
     </dl>`;
 };

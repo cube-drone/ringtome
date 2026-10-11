@@ -19838,3 +19838,17 @@ picture bytes crushed to an AVIF, and refusals for a text document and for bytes
 that aren't a picture. Checked in headless Chrome: picking a picture in the
 modal changed both the sound's cover and its tile in Files. Only sounds have the
 row so far; the route takes videos and pictures as well.
+
+## 2026-10-11 (cont.): a sound's list carries every document's own annotations
+
+A sound's list of fields now opens with its tags and closes with its description
+and its date, the annotations every document has, beside the cover and the
+file's own fields. The title isn't repeated there, since it's already editable
+at the top of the document (Curtis).
+
+The annotations panel (`node/js/doc/annotations.js`) is split into the parts it
+was made of: `TitleInput`, `TagEditor`, `DescInput`, `DateInputs` and
+`dateMeaning`, the date label's explanation. `Annotations` composes them in the
+same markup as before, and `SoundTags` (`node/js/doc/soundtags.js`) lays three
+of them out as rows of its list. A built-in sound, which is read-only, gets none
+of them. Checked in headless Chrome.
