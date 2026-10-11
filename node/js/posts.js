@@ -169,7 +169,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
         }
         <section class="public-posts">
             <h2 class="public-posts-head">
-                ${t('posts.recent-posts', 'recent posts')}
+                ${search.active ? t('posts.matching-posts', 'matching posts') : t('posts.recent-posts', 'recent posts')}
             </h2>
             ${
                 search.active &&

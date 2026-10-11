@@ -1545,6 +1545,7 @@ export default {
 
     // --- node/js/posts.js ---
     'posts.pinned': 'pinned',
+    'posts.matching-posts': 'matching posts',
     'posts.recent-posts': 'recent posts',
     'posts.searching': 'searching…',
     'posts.nothing-they-said-says-that': 'nothing they said says that.',

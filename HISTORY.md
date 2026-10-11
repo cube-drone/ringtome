@@ -19590,3 +19590,13 @@ its placeholder. The container is now a frame inside the card holding all of it
 (`.feed-entry-frame`), the same width, so the queries answer as before (three
 head columns at a 766px frame, two at 478px, checked); Firefox's wheel steps up
 move 200px each, the notes list's too, and Chrome's still do.
+
+## 2026-10-10 (cont.): a person's page, searched, is the search
+
+Searching one person's posts left their whole card - banner, name, address, bio,
+heartbeat, settings - between the search box and the posts being searched, so it
+wasn't clear anything had happened (Curtis). With words in the box the person's
+page drops the card and the rule under it (idpage.js `searching`), and the
+results - with their label chips and the "searching…" line - come straight under
+the header, headed "matching posts" rather than "recent posts" (posts.js);
+emptying the box brings the person back.

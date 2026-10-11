@@ -280,8 +280,14 @@ export const IdPage = ({
     // from unreachable, and neither the card nor the posts must fetch it twice.
     // The banner across the top (2026-09-28): theirs, or their identicon tiled until they choose one.
     const banner = ((profile.fields || []).find((f) => f.field === 'banner') || {}).value || '';
+    // Words in the header's search, and the page is the search (Curtis, 2026-10-10: the card,
+    // their address, bio and heartbeat stood between the box and the posts being searched, so it
+    // wasn't clear anything was happening): the person steps aside until the box is empty.
+    const searching = !!searchQuery && searchQuery.trim().length > 0;
     return html`<${Card}>
-        <${PersonCard}
+        ${
+            !searching &&
+            html`<${PersonCard}
             root=${root}
             banner=${bannerStyle(root, banner)}
             current=${current}
@@ -308,12 +314,13 @@ export const IdPage = ({
                 profile.foreign &&
                 html`<${SyncLine} syncedMs=${profile.synced_ms} refreshing=${profile.refreshing} peek=${profile.peek} />`
             }
-        <//>
+        <//>`
+        }
         ${
             /* A rule between the person - their card, settings and address - and what they
             said (Curtis, 2026-09-08). */ ''
         }
-        <hr class="id-rule" />
+        ${!searching && html`<hr class="id-rule" />`}
         <${PublicPosts}
             root=${root}
             posts=${profile.posts}
