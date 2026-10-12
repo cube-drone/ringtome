@@ -1,0 +1,92 @@
+/* Toasts (toasts.js, plans/TOASTS.md): short messages that fade by themselves. They stand above
+   the quickbar, never over it - it runs along the bottom at every width, and its right end holds
+   the clock and HorseBucks - so the stack's foot clears the bar's height and the phone's home bar.
+   Wide: a column at the right. Narrow: across the width, in the lower third, clearing the tiles
+   that poke up out of the bar's middle. The system speaking, so the modal's teal; an error in the
+   danger coral. */
+.toasts {
+    position: fixed;
+    right: 1rem;
+    bottom: calc(3rem + var(--safe-bottom) + 0.75rem);
+    width: min(22rem, calc(100vw - 2rem));
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    z-index: var(--layer-toast);
+    /* The empty region sits over the page: only the toasts themselves take the pointer. */
+    pointer-events: none;
+}
+
+@media (max-width: 900px) {
+    .toasts {
+        left: 0.75rem;
+        right: 0.75rem;
+        width: auto;
+        bottom: calc(3rem + var(--safe-bottom) + 2.5rem);
+    }
+}
+
+.toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem 0.5rem 0.8rem;
+    background: var(--teal-deep);
+    color: var(--dock-text);
+    --line: var(--teal-deep);
+    --j: 0.3em;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    animation: toast-in 160ms ease-out;
+}
+
+.toast-error {
+    background: var(--coral);
+    color: var(--on-danger);
+    --line: var(--coral);
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(0.5rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast {
+        animation: none;
+    }
+}
+
+.toast-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.toast-count {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.toast-action {
+    color: inherit;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.toast-close {
+    display: inline-flex;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0.1rem;
+    opacity: 0.7;
+}
+
+.toast-close:hover {
+    opacity: 1;
+}

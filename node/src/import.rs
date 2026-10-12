@@ -1830,7 +1830,7 @@ impl<'a> Ctx<'a> {
                 self.media
                     .insert(id, MediaDoc { title: title.clone(), name, made: None, failed: false });
                 self.await_media().await;
-                if !self.media.get(&id).is_some_and(|m| m.made.is_some()) {
+                if self.media.get(&id).is_none_or(|m| m.made.is_none()) {
                     self.say(format!(
                         "Post {title} not republished yet: its picture is still being made. Publish it when it's ready."
                     ));

@@ -8507,6 +8507,19 @@ struct StreamMessage {
     /// kind, like the badges.
     #[serde(skip_serializing_if = "Option::is_none")]
     sync: Option<crate::syncstatus::FaceNow>,
+    /// What the attention watcher just said about this persona (plans/TOASTS.md): the words the
+    /// desktop app or Web Push would show, for the open page to show as toasts. Alone on a `live`
+    /// frame, as it happens; never on a snapshot - the first look announces nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alerts: Option<Vec<StreamAlert>>,
+}
+
+/// One alert, as a page shows it: no picture - a toast is words.
+#[derive(Serialize)]
+struct StreamAlert {
+    title: String,
+    body: String,
+    route: String,
 }
 
 impl StreamMessage {
@@ -8530,6 +8543,7 @@ impl StreamMessage {
             unread: None,
             unread_chat: None,
             sync: None,
+            alerts: None,
         }
     }
 }
@@ -9010,6 +9024,11 @@ async fn serve_stream(
     let mut last_face = state.sync_ledger.face(&root, bodies_waiting);
     first.sync = Some(last_face);
     let mut ticks: u64 = 0;
+    // This page listens for its persona's alerts while the socket is open (plans/TOASTS.md);
+    // the claim lets go when this function returns, however it returns. Subscribed before the
+    // first frame, so nothing said between the two is missed.
+    let _watching = state.attention.watch_stream(&root);
+    let mut alerts = state.attention.subscribe();
     socket.send(Message::Text(serde_json::to_string(&first)?.into())).await?;
 
     // A local write pings the write-nudge bus (Db::nudge_sync), so a save reflects in every
@@ -9053,6 +9072,25 @@ async fn serve_stream(
             who = crate::db::await_write_nudge(&mut nudge) => {
                 if who.is_some_and(|w| w != root) { continue; }
                 guard = None;
+            }
+            said = alerts.recv() => {
+                match said {
+                    Ok(alert) if alert.root == root => {
+                        let mut quiet = StreamMessage::quiet("live", stamp.token());
+                        quiet.alerts = Some(vec![StreamAlert {
+                            title: alert.title,
+                            body: alert.body,
+                            route: alert.route,
+                        }]);
+                        socket.send(Message::Text(serde_json::to_string(&quiet)?.into())).await?;
+                        continue;
+                    }
+                    // Someone else's, or a burst this socket fell behind on: the oldest news
+                    // is the least worth showing (`Attention::subscribe`).
+                    Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    // The announcer is gone: the node is shutting down.
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return Ok(()),
+                }
             }
             incoming = socket.recv() => {
                 match incoming {

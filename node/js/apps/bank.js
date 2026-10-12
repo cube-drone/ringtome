@@ -48,6 +48,7 @@ const KINDS = {
     debt_interest: () => t('apps.bank.kind-debt-interest', 'interest on debt'),
     magic_words: () => t('apps.bank.kind-magic-words', 'the magic words'),
     contract: () => t('apps.bank.kind-contract', 'contracts completed'),
+    gift: () => t('apps.bank.kind-gift', 'gifts, from developer options'),
     unlock: () => t('apps.bank.kind-unlock', 'unlocks bought'),
     commodity: () => t('apps.bank.kind-commodity', 'commodities bought'),
     commodity_sale: () => t('apps.bank.kind-commodity-sale', 'commodities sold'),
@@ -220,6 +221,12 @@ const RowWords = ({ row, current }) => {
                   })
                 : t('apps.bank.sold-units-of', 'sold {units} {name}', one);
         }
+        case 'gift':
+            return many
+                ? t('apps.bank.n-gifts', '{count} gifts, from developer options', {
+                      count: row.count,
+                  })
+                : t('apps.bank.a-gift', 'a gift, from developer options');
         case 'unlock':
             return html`${t('apps.bank.unlocked', 'unlocked')} ${namesOf(row, unlockName)}`;
         default:

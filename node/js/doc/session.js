@@ -16,6 +16,7 @@ import { keepaliveOk } from '../pure/keepalive.js';
 import { parse } from '@cube-drone/marquee-react-renderer';
 import { overCapTargets, replaceTargets, EMBED_CAP } from '../pure/embedcap.js';
 import { t } from '../i18n.js';
+import { toast } from '../toasts.js';
 
 const AUTOSAVE_MS = 10_000;
 
@@ -260,10 +261,11 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
         try {
             await going;
         } catch (e) {
-            alert(
+            toast(
                 t('doc.session.couldnt-delete', "couldn't delete it: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };

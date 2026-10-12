@@ -30,6 +30,7 @@ import { DrawingSurface } from './drawing.js';
 import { useStorage } from '../storage.js';
 import { useGatedFeatures } from '../unlocks.js';
 import { sizeLabel } from '../pure/backups.js';
+import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
 
@@ -153,10 +154,11 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
         try {
             await going;
         } catch (e) {
-            alert(
+            toast(
                 t('doc.session.couldnt-delete', "couldn't delete it: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };

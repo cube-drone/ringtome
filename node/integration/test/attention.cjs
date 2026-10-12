@@ -21,6 +21,7 @@ const assert = require('node:assert');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const dns = require('node:dns');
+const WebSocket = require('ws');
 dns.setDefaultResultOrder('ipv4first');
 
 const { makeUserFetch, makePng } = require('./helpers.cjs');
@@ -181,6 +182,47 @@ const roomRoute = async (author, doc) =>
                 before + 1,
                 'exactly one new alert for exactly one new line',
             );
+        });
+
+        it('an open page hears the alert down its live stream, and opening it replays nothing (plans/TOASTS.md)', async () => {
+            // The page's own session: the socket's upgrade needs the cookie itself.
+            const login = await fetch(`http://${HOST}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: ada.username, password: ada.password }),
+            });
+            assert.equal(login.status, 200);
+            const cookie = login.headers.get('set-cookie').split(';')[0];
+            const ws = new WebSocket(`ws://${HOST}/api/identity/${adaRoot}/stream`, {
+                headers: { Cookie: cookie },
+            });
+            const heard = [];
+            ws.on('message', (data) => heard.push(...(JSON.parse(data.toString()).alerts || [])));
+            await new Promise((resolve, reject) => {
+                ws.on('open', resolve);
+                ws.on('error', reject);
+            });
+            try {
+                assert.equal((await say(bea, beaRoot, 'anyone for toast')).status, 200);
+                assert.ok(await heldOnAda('anyone for toast'), "ada's node holds the line");
+                for (let i = 0; i < 40 && !heard.some((a) => a.body === 'anyone for toast'); i++) {
+                    await wait(250);
+                }
+                const alert = heard.find((a) => a.body === 'anyone for toast');
+                assert.ok(alert, `the stream carried the alert: ${JSON.stringify(heard)}`);
+                assert.match(alert.title, / in # the kitchen$/, 'in the words the desktop shows');
+                assert.equal(
+                    alert.route,
+                    await roomRoute(adaRoot, kitchen),
+                    'pointing at the room',
+                );
+                assert.ok(
+                    !heard.some((a) => a.body === 'is the oven on' || a.body === "bread's done"),
+                    `what was announced before the page opened stays said: ${JSON.stringify(heard)}`,
+                );
+            } finally {
+                ws.close();
+            }
         });
 
         it("a picture said in a room arrives as words and a picture - the twin's path, and a PNG for the desktop", async () => {

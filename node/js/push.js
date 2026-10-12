@@ -35,8 +35,9 @@ async function currentSubscription() {
 }
 
 /// "Notify me in this browser" for one persona. Renders nothing in the desktop app, which
-/// notifies natively.
-export const PushToggle = ({ root }) => {
+/// notifies natively. `withTest` adds "send a test" beside it - Developer Options only (Curtis,
+/// 2026-10-11): hrseNags offers the switch, and the diagnostic belongs to the people debugging it.
+export const PushToggle = ({ root, withTest = false }) => {
     const [state, setState] = useState(support());
     const [on, setOn] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -154,7 +155,7 @@ export const PushToggle = ({ root }) => {
         <button class="push-button jag-line" disabled=${busy} onClick=${on ? turnOff : turnOn}>
             ${on ? t('push.stop-notifying', 'stop notifying this browser') : t('push.notify-this-browser', 'notify me in this browser')}
         </button>
-        ${on && html`<button class="push-button jag-line" disabled=${busy} onClick=${sendTest}>${t('push.send-a-test', 'send a test')}</button>`}
+        ${withTest && on && html`<button class="push-button jag-line" disabled=${busy} onClick=${sendTest}>${t('push.send-a-test', 'send a test')}</button>`}
         ${error && html`<span class="push-error">${error}</span>`}
         ${
             report &&

@@ -182,6 +182,17 @@ the same records hold the same lines. The fold reaches back into everything
 already on the record ("whatever is easiest": there's no ship-date cutoff to
 keep).
 
+**Gifts.** _Settled_ (Curtis, 2026-10-11): Developer Options, in the settings,
+has a "give me H$ 1,000,000" button for a node's administrators, and for
+everyone on a development build. The node checks the same two conditions itself
+(`bank.rs` `gift_handler`); the hidden button is not the gate. A gift is the one
+amount nothing else on the record shows, so it gets a record of its own: a
+private register, `gifts` (an id, then when and how much), paid as one `gift`
+line per entry. That's the same shape as a contract's completion, and it keeps
+every computer holding the same lines. The test rig's `/test/credit` writes a
+line into one computer's ledger instead, which is fine for a test and wrong for
+a person with two computers.
+
 ## hrseBank™
 
 A new app whose only job is the persona's horse capital:

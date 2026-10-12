@@ -54,6 +54,9 @@ import { useStorage } from '../storage.js';
 import { useGatedFeatures } from '../unlocks.js';
 import { sizeLabel } from '../pure/backups.js';
 import { formatWhen } from '../pure/when.js';
+import { toast } from '../toasts.js';
+import { BulkPanel } from '../doc/bulk.js';
+import { pruneSelection, selectAll, toggleSelection } from '../pure/bulk.js';
 
 const html = htm.bind(h);
 
@@ -239,6 +242,12 @@ const rowGuess = (doc, feat, hits) => {
 // One row in the list: title, and whatever this app has asked to show beneath it. Everything
 // conditional here is a `features` flag or a piece of the document's own filing - a row with no
 // description, no date and no tags is one line tall. Memoized below (`NoteRow`).
+/// Shift-click selects (plans/BULK.md) - and in a browser it also stretches a text selection from
+/// the last click to this one, painting half the list blue. Kept from starting, on the press.
+const noShiftSelect = (e) => {
+    if (e.shiftKey) e.preventDefault();
+};
+
 const NoteRowBody = ({
     doc,
     root,
@@ -252,11 +261,14 @@ const NoteRowBody = ({
     onToggleTag,
     book,
     titlePage,
+    picked,
+    bulk,
 }) => html`<button
-    class=${doc.doc_id === selected ? 'note-row jag-line selected' : 'note-row jag-line'}
+    class=${(bulk ? picked : doc.doc_id === selected) ? 'note-row jag-line selected' : 'note-row jag-line'}
     style=${`contain-intrinsic-size: auto ${rowGuess(doc, feat, hits)}rem`}
     data-settles
-    onClick=${() => onSelect(doc.doc_id)}
+    onMouseDown=${noShiftSelect}
+    onClick=${(e) => onSelect(doc.doc_id, e)}
     draggable=${true}
     onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
 >
@@ -345,6 +357,7 @@ const NoteRowBody = ({
 ///     table moves, which an autosave does every few seconds while you type;
 ///   - `selected`, the open document's id, which every row is handed: a row cares only whether
 ///     it is the one selected.
+/// (`picked` and `bulk`, the bulk selection's, are booleans, so identity is enough for them.)
 const sameRow = (a, b) => {
     for (const k of Object.keys(b)) {
         if (k === 'selected' || k === 'doc') continue;
@@ -365,15 +378,16 @@ const NoteRow = memo(NoteRowBody, sameRow);
 // hrseFiles™ laid out as the picture picker is (Curtis, 2026-09-29): the notebooks, then the tags,
 // then every file as a square tile - a picture or a drawing as itself, words as their icon and
 // title. The same chips as the picker, so the two read as one design.
-const FileTile = ({ doc, root, bucket, bytes, selected, onSelect, onFollowHome }) => {
+const FileTile = ({ doc, root, bucket, bytes, selected, onSelect, onFollowHome, picked, bulk }) => {
     const picture = doc.format === 'drawing' || (doc.media && doc.media.has_thumb);
     const Kind = formatIcon(doc.format) || Icons.page;
     return html`<li class="files-tile-slot">
         <button
-            class=${doc.doc_id === selected ? 'files-tile selected' : 'files-tile'}
+            class=${(bulk ? picked : doc.doc_id === selected) ? 'files-tile selected' : 'files-tile'}
             title=${bytes > 0 ? `${doc.title || t('apps.notes.untitled', 'untitled')} — ${sizeLabel(bytes)}` : doc.title || ''}
             data-settles
-            onClick=${() => onSelect(doc.doc_id)}
+            onMouseDown=${noShiftSelect}
+            onClick=${(e) => onSelect(doc.doc_id, e)}
             draggable=${true}
             onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
         >
@@ -433,6 +447,8 @@ const FileBrowser = ({
     onSelect,
     onFollowHome,
     empty,
+    pickedSet,
+    onSelectAll,
 }) => html`<div
     class="files-browser"
 >
@@ -495,6 +511,13 @@ const FileBrowser = ({
     />`
     }
     ${
+        browse.files.length > 0 &&
+        html`<p class="notes-count">
+            ${t('apps.notes.files-count', '{n} files', { n: browse.files.length })}
+            ${' · '}<button class="notes-select-all" onClick=${onSelectAll}>${t('apps.notes.select-all', 'select all')}</button>
+        </p>`
+    }
+    ${
         browse.files.length > 0
             ? html`<ul class="files-grid">
               ${browse.files.map(
@@ -507,6 +530,8 @@ const FileBrowser = ({
                       selected=${selected}
                       onSelect=${onSelect}
                       onFollowHome=${onFollowHome}
+                      picked=${pickedSet.has(d.doc_id)}
+                      bulk=${pickedSet.size > 0}
                   />`,
               )}
           </ul>`
@@ -571,6 +596,36 @@ export const DocsApp = ({
         bucket,
         { resume: !missing },
     );
+    // The bulk selection (plans/BULK.md): Shift-click and "select all" fill it, and while it holds
+    // anything the bulk panel stands where the open document would. The list's own, never the
+    // address's - gone with a reload, as a file manager's is.
+    const [picked, setPicked] = useState([]);
+    const pickedSet = useMemo(() => new Set(picked), [picked]);
+    // The row's click, stable for the memoized rows (`NoteRow`): Shift adds or takes away, the open
+    // document along with the first; a plain click clears the selection and opens the one clicked
+    // (Curtis, 2026-10-11).
+    const openNow = useRef(selected);
+    openNow.current = selected;
+    const choose = useCallback(
+        (id, e) => {
+            if (e && e.shiftKey) {
+                setPicked((p) => toggleSelection(p, id, openNow.current));
+                return;
+            }
+            setPicked([]);
+            select(id);
+        },
+        [select],
+    );
+    // Escape lets go, unless a modal is up - its own Escape is closing it.
+    useEffect(() => {
+        if (!picked.length) return undefined;
+        const onKey = (e) => {
+            if (e.key === 'Escape' && !document.querySelector('.modal-scrim')) setPicked([]);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [picked.length]);
     // A tag filter for a tag no document carries any more goes (Curtis, 2026-10-10: deleting the
     // last note with a tag left it picked - kept, now, across the remount - over a list showing
     // nothing). Judged once the mirror holds the documents, never on the empty first read.
@@ -674,6 +729,12 @@ export const DocsApp = ({
             : undefined,
     );
     const list = browse ? browse.files : ordered;
+    // What leaves the list leaves the selection: deleted, moved out of the notebook in view, or
+    // narrowed away by a search or a tag (pure/bulk.js `pruneSelection`).
+    const listIds = list.map((d) => d.doc_id).join(' ');
+    useEffect(() => {
+        setPicked((p) => pruneSelection(p, listIds ? listIds.split(' ') : []));
+    }, [listIds]);
     // Back to where the list was scrolled, once there are rows to scroll (`listViews`, above): before
     // paint, so it never shows from the top first.
     useLayoutEffect(() => {
@@ -710,6 +771,12 @@ export const DocsApp = ({
     useEffect(() => {
         if (selected) settle();
     }, [selected, settle]);
+    // "select all": what the list shows now. A narrow window then shows the panel, as choosing one
+    // shows the document.
+    const pickAll = () => {
+        setPicked(selectAll(list));
+        settle();
+    };
     const tagsTucked = tucked.has('tags');
     const treeTucked = tucked.has('tree');
     const publishTucked = tucked.has('publish');
@@ -747,6 +814,7 @@ export const DocsApp = ({
     // `:enew` - makes it 'untitled'.
     const createNew = async (title) => {
         const named = typeof title === 'string' && title.trim() ? title.trim() : 'untitled';
+        setPicked([]); // the new one opens, which the bulk panel would stand in front of
         setBusy(true);
         try {
             // New items are Marquee by default - the interactive editor is the front door;
@@ -783,10 +851,11 @@ export const DocsApp = ({
                 bumpTree(); // don't wait for the roster tick
             }
         } catch (e) {
-            alert(
+            toast(
                 t('apps.notes.couldnt-make-a-new-one', "couldn't make a new one: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         } finally {
             setBusy(false);
@@ -815,8 +884,10 @@ export const DocsApp = ({
                         tags=${tagFilter}
                         onToggleTag=${toggleTag}
                         selected=${selected}
-                        onSelect=${select}
+                        onSelect=${choose}
                         onFollowHome=${followHome}
+                        pickedSet=${pickedSet}
+                        onSelectAll=${pickAll}
                         empty=${!docs ? '' : hits === null ? t('apps.notes.nothing-here-yet', 'nothing here yet.') : t('apps.notes.nothing-matches', 'nothing matches.')}
                     />
                     ${/* The persona in all, held at the column's foot (Curtis, 2026-10-02). */ ''}
@@ -857,6 +928,10 @@ export const DocsApp = ({
                                           things: holding === 1 ? noun : nouns,
                                       })
                             }
+                            ${
+                                list.length > 0 &&
+                                html`${' · '}<button class="notes-select-all" onClick=${pickAll}>${t('apps.notes.select-all', 'select all')}</button>`
+                            }
                         </p>`
                     }
                     ${
@@ -891,8 +966,10 @@ export const DocsApp = ({
                             searchQuery=${searchQuery}
                             hits=${hits}
                             tagFilter=${tagFilter}
-                            onSelect=${select}
+                            onSelect=${choose}
                             onToggleTag=${toggleTag}
+                            picked=${pickedSet.has(d.doc_id)}
+                            bulk=${picked.length > 0}
                         />`,
                     )}
                     ${
@@ -934,7 +1011,7 @@ export const DocsApp = ({
                           root=${root}
                           bucket=${bucket}
                           selected=${selected}
-                          onSelect=${select}
+                          onSelect=${choose}
                           searchQuery=${searchQuery}
                           searchKind=${searchKind}
                           reloadKey=${treeReload}
@@ -963,10 +1040,25 @@ export const DocsApp = ({
                           facts=${bookFacts}
                           tree=${bookTree}
                           onTuck=${() => toggleTuck('publish')}
-                          onSelect=${select}
+                          onSelect=${choose}
                       />${resizer('publish')}`)
                 }
-                <${RightColumn}
+                ${
+                    picked.length > 0
+                        ? html`<${BulkPanel}
+                    root=${root}
+                    app=${app}
+                    bucket=${app.everything ? '' : bucket}
+                    docs=${picked.map((id) => (docs || []).find((d) => d.doc_id === id)).filter(Boolean)}
+                    onClear=${() => setPicked([])}
+                    onDeleted=${(ids) => {
+                        ids.forEach(forget);
+                        if (ids.includes(selected)) select(null);
+                        bumpTree();
+                    }}
+                    onMoved=${bumpTree}
+                />`
+                        : html`<${RightColumn}
                     root=${root}
                     docId=${selected}
                     missing=${missing && !selected}
@@ -993,7 +1085,8 @@ export const DocsApp = ({
                         select(null);
                         bumpTree();
                     }}
-                />
+                />`
+                }
             </div>
         </div>
     `;

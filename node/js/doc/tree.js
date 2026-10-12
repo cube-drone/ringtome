@@ -32,6 +32,7 @@ import { pageStanding } from '../pure/books.js';
 import { isTextDoc } from '../pure/feed.js';
 import { PaneHead } from '../panes.js';
 import { t } from '../i18n.js';
+import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
 
@@ -522,11 +523,12 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(
+            toast(
                 t('doc.tree.couldnt-start-the', "couldn't start the {itemNoun}: {message}", {
                     itemNoun,
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };
@@ -546,10 +548,11 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(
+            toast(
                 t('doc.tree.couldnt-create-the-section', "couldn't create the section: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };
@@ -565,10 +568,11 @@ export const WikiTree = ({
             });
             refetch();
         } catch (e) {
-            alert(
+            toast(
                 t('doc.tree.couldnt-rename-it', "couldn't rename it: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };
@@ -612,10 +616,11 @@ export const WikiTree = ({
             }
             refetch();
         } catch (e) {
-            alert(
+            toast(
                 t('doc.tree.couldnt-delete-it', "couldn't delete it: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };
@@ -673,10 +678,11 @@ export const WikiTree = ({
             }
             refetch();
         } catch (e) {
-            alert(
+            toast(
                 t('doc.tree.couldnt-move-that', "couldn't move that: {message}", {
                     message: e.message,
                 }),
+                { kind: 'error' },
             );
         }
     };

@@ -19983,3 +19983,75 @@ the feed's; a cycle refused, a rename, and a delete that keeps documents; an
 upload link filing into a notebook's tree; and the hour key working, writing
 "ai-agent", refusing to make keys, stopping at three, and ending with its
 parent. `RINGTOME_TEST_GREP=MCP just integration`: 50 passing.
+## 2026-10-11 (cont.): toasts
+
+Curtis: "This is an utterly toastless system... Can we talk about introducing a
+toast system, displaying temporary messages to the user - either trapped in the
+bottom-right on desktop or the bottom third of the page in mobile?" Designed and
+built in one pass (plans/TOASTS.md). `toast(text, { kind, action, key })` from
+anywhere (js/toasts.js); the rules are values in js/pure/toasts.js with vectors
+in test/pure/toasts.cjs - merging a repeat by key ("×3"), at most three, fading
+(info 5 s, error 10 s - Curtis: errors "fade like everything else, but slower
+and an angrier color"), held under the pointer, and an invariant over random
+sequences that the stack never passes the cap nor holds one key twice. Drawn
+above the quickbar - which owns the bottom-right corner on a desktop (the clock,
+HorseBucks) - at the right on a wide window and across the lower third on a
+narrow one, above modals; `--layer-toast` is tokens.css's first shared layer.
+The twelve error `alert()`s (buckets, tree, session, reader, notes, feed) are
+toasts now, and the move to another notebook says "moved to X · open it" in one,
+retiring the line under the switcher. Chat and the bell: the live stream is the
+attention watcher's fourth listener (attention.rs `watch_stream`, a claim per
+open socket, let go on drop), and each alert rides down it as `alerts` on a
+frame; the page shows it unless hidden, already there, or a room that has had
+its say - one per room until you look (Curtis). An acceptance claim reads an
+alert off a real socket and that opening it replays nothing; two unit tests on
+the claim count and on forgetting. Found in review: the watcher forgot a persona
+nobody watched only after an early `continue` that fires when nobody watches
+anyone - the last tab closing - so reopening would have replayed the backlog
+from a stale record; the forgetting runs first in the loop now. Also: local
+clippy 1.96 refused a `!is_some_and` in import.rs that CI's toolchain passed,
+rewritten as clippy asked (`is_none_or`, same meaning).
+
+## 2026-10-11 (cont.): Developer Options
+
+Curtis: "a 'Developer Options' setting group, sitting above log out, which
+includes 'Pop an example toast', 'Pop an example error', from hrseNags, 'Notify
+me in the Browser', and a generous 'Give me 1,000,000 H$'" - for node admins, or
+everyone on a dev build. A settings page of its own (js/developer.js,
+`/ringtome/settings/developer`), its entry above "log out" in the settings list;
+`mayDevelop` offers it to an account tagged `node_admin` or a page whose node
+said `dev` - in the new `app-environment` meta (html/index.html: `$ENVIRONMENT$`
+was being filled in a page that no longer carried it). The push switch is in
+both places (Curtis: "Notify me in this browser should be in both places, 'Test
+notification' only in developer options"): `PushToggle`'s "send a test" is
+`withTest` now, off in hrseNags. The million is a gift (bank.rs `gift_handler`,
+`POST …/bank/gift`), gated by the node on the same two conditions, recorded on
+the private chain (`gifts`) and paid as a `gift` line by every computer's fold,
+as a contract's completion is - HORSE_BASED_CURRENCIES.md, _Gifts_. An
+acceptance claim: two presses, two lines, two register entries, and nothing paid
+twice. Not testable on the rig: the refusal for a non-admin on a prod node,
+since the rig's node is a dev build.
+
+## 2026-10-11 (cont.): bulk actions
+
+Curtis: "BULK ACTIONS! note, file, drawing multi-select" - Shift-click adds to a
+selection, "select all" beside the count takes whatever the list shows, and the
+open document's place becomes a panel to delete all, move all (to a notebook or
+a new one), tag all, take a tag off all (from their combined tags), date all,
+and for the sounds among them set artist, album, album artist, composer, genre,
+year and the cover (plans/BULK.md). Settled with Curtis: a plain click clears
+and opens; the move offers existing notebooks and a new one; in hrseFiles each
+file leaves its own notebook, for one of the same app only; the song's name and
+number are each track's own, never bulk. The decisions are values in
+js/pure/bulk.js with vectors in test/pure/bulk.cjs - among them an invariant
+that a move never leaves a document in no notebook, over every pair of
+notebooks, and the case of a notebook made for the move a moment before the
+roster knows its app (`moveOutOf`'s `toType`; without it a drawing moved into a
+new drawing notebook would never have left its old one). The panel
+(js/doc/bulk.js) writes on the existing routes, four at a time, counts as it
+goes, and sums up in a toast; built-in documents are left alone and said so. The
+tag editor's cleaning rule moved to pure/annotations.js `normalTag`, which bulk
+tagging keeps too. hrseFiles gained a count line, to carry "select all". Rows,
+tiles, the tree and the publish column all open through one click handler now,
+so any plain click ends the selection; "+ new" ends it too. Not browser-tested:
+the panel and the clicks are UI, and STYLE's rule leaves those to a person.

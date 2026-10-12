@@ -124,3 +124,17 @@ export const MAX_TAG_CHARS = 32;
 export function isEmojiTag(value) {
     return typeof value === 'string' && ONE_EMOJI.test(value);
 }
+
+/// A tag typed for your own document, as it is kept: trimmed, lowercased, cut at `MAX_TAG_CHARS` -
+/// or refused, with why: `empty`, or `emoji` (Curtis, 2026-09-27: a reaction is for somebody
+/// else's post - publish would leave it behind, and every reader drops one an author says). The tag
+/// editor's rule and bulk tagging's (doc/bulk.js), so the two can't drift.
+export function normalTag(raw) {
+    const tag = String(raw || '')
+        .trim()
+        .toLowerCase()
+        .slice(0, MAX_TAG_CHARS);
+    if (!tag) return { tag: '', refused: 'empty' };
+    if (isEmojiTag(tag)) return { tag, refused: 'emoji' };
+    return { tag, refused: null };
+}

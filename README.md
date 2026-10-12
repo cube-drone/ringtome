@@ -65,6 +65,11 @@ lightly federated, unapologetically Old Internet.
 - [`plans/`](plans/) — the plans: one design document per app, feature or
   delivery shape, drafts and built alike, plus the signing guide. **A new plan
   is written here.** So far:
+- [`BULK.md`](plans/BULK.md) — doing one thing to many documents in Writer,
+  Drawing and hrseFiles: Shift-click or "select all" beside the count, then
+  delete, move (to a notebook, or a new one), tag, untag from the combined tags,
+  date, and for sounds their artist, album and cover. One request per document
+  on the existing routes, four at a time. Built 2026-10-11.
 - [`CHAT.md`](plans/CHAT.md) — real-time rooms: a room is a post, a message is
   an entry on its author's own chain on the room's lane, live is gossip carrying
   the same entries, history is recent everywhere and whole at the creator's.
@@ -140,6 +145,11 @@ lightly federated, unapologetically Old Internet.
   and blocks (a quote on every line, a starter table), each acting on the
   selection - or on "text", inserted and selected - and changing a span already
   there rather than nesting another. Built 2026-10-10.
+- [`TOASTS.md`](plans/TOASTS.md) — short messages that fade by themselves, above
+  the quickbar at the right on a desktop and across the lower third on a phone:
+  errors that were `alert()`s, "moved to X · open it", and chat and bell alerts
+  while you're in the app, carried down the live stream from the node's
+  attention watcher, one per room until you look. Built 2026-10-11.
 - [`UNLOCKS.md`](plans/UNLOCKS.md) — the paywall as tutorial: a new player
   starts with Drawing, the Bank and Nags and buys the rest from the Market with
   HorseBucks; unlocks on the private chain as ledger spends, gates in the client

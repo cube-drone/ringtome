@@ -1152,3 +1152,39 @@ describe('HorseBucks: commodities', function () {
         );
     });
 });
+
+/*
+    A gift, from Developer Options (Curtis, 2026-10-11): "Give me H$ 1,000,000", for a node's
+    administrators and for everyone on a development build - which the rig's node is, so any
+    account may press it here. A gift is a fact on the private chain, paid as a ledger line from it,
+    so every computer of the persona agrees about the balance.
+*/
+describe('HorseBucks: a gift from developer options', function () {
+    this.timeout(60000);
+
+    it('pays H$ 1,000,000 a press, as a gift line, recorded on the private chain', async () => {
+        const gus = await makeUserFetch({ prefix: 'giftgus' });
+        const root = (await (await gus('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const bank = async () => (await gus(`api/identity/${root}/bank`)).json();
+        const before = BigInt((await bank()).balance);
+
+        const press = await gus(`api/identity/${root}/bank/gift`, { method: 'POST' });
+        assert.equal(press.status, 200, await press.clone().text());
+        const answer = await press.json();
+        assert.equal(answer.pennies, '100000000', 'H$ 1,000,000, in horsepennies');
+        assert.ok(BigInt(answer.balance) >= before + 100000000n, 'the answer already holds it');
+
+        await gus(`api/identity/${root}/bank/gift`, { method: 'POST' });
+        const b = await bank();
+        const gifts = b.lines.filter((l) => l.kind === 'gift');
+        assert.deepEqual(
+            gifts.map((l) => l.pennies),
+            ['100000000', '100000000'],
+            'two presses, two gifts - each its own line',
+        );
+        const kv = await (await gus(`api/identity/${root}/private/kv/gifts`)).json();
+        assert.equal((kv.values || []).length, 2, 'both recorded on the private chain');
+        const again = await bank();
+        assert.equal(again.balance, b.balance, 'asking again pays nothing twice');
+    });
+});

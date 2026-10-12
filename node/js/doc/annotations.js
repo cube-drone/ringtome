@@ -19,13 +19,13 @@ import { withTagOps, tagOpsSettled } from '../pure/optimistic.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 import { t } from '../i18n.js';
 import { useUnlocked } from '../unlocks.js';
-import { isEmojiTag } from '../pure/annotations.js';
+import { normalTag } from '../pure/annotations.js';
 import { appForStyle, appTypeOf, bucketsForApp, RESERVED_STYLE } from '../pure/apps.js';
 import { bucketHref, docPlacement } from '../pure/naming.js';
 import { docHref } from '../links.js';
 import { fileIntoTree, unfileFromTree } from './tree.js';
 import { forgetLastDoc } from './docapp.js';
-import { noteMoved } from '../buckets.js';
+import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
 
@@ -194,15 +194,13 @@ export const TagEditor = ({ root, docId, showImplicit = true }) => {
     };
 
     const addTag = async (raw) => {
-        // 32 characters, the public tag's cap (2026-08-31), so a draft never carries a
-        // tag that publish would have to leave behind.
-        const tag = raw.trim().toLowerCase().slice(0, 32);
+        // Trimmed, lowercased and cut at the public tag's cap, so a draft never carries a tag
+        // publish would leave behind; an emoji refused in words, so it is not mistaken for a slip
+        // (pure/annotations.js `normalTag`, which bulk tagging keeps too).
+        const { tag, refused } = normalTag(raw);
         setTagInput('');
-        if (!tag || shownTags.includes(tag)) return;
-        // A reaction is for somebody else's post (Curtis, 2026-09-27): a tag that is one
-        // emoji never goes on your own document - publish would leave it behind, and every
-        // reader drops one an author says. Refused in words, so it is not mistaken for a slip.
-        if (isEmojiTag(tag)) {
+        if (refused === 'empty' || shownTags.includes(tag)) return;
+        if (refused === 'emoji') {
             setTagRefused(
                 t(
                     'doc.annotations.no-reacting-to-your-own',
@@ -367,11 +365,16 @@ const NotebookMove = ({ root, docId }) => {
             await fileIntoTree(root, to, docId).catch(() => {});
             await unfileFromTree(root, from, docId).catch(() => {});
             // You stay where you were (Curtis, 2026-10-11: moving a batch, following each one would
-            // wear): the old notebook's list says where it went and offers to follow (buckets.js).
+            // wear): a toast says where it went and offers to follow (plans/TOASTS.md).
             // A document open at its own address would follow on its own - the shell reads its
             // notebook off the row (index.js) - so that page goes back to the list it left, with the
             // document forgotten as the list's last one, or the list would open it again.
-            noteMoved(root, from, to, docId);
+            toast(t('doc.annotations.moved-to', 'moved to {bucket}', { bucket: to }), {
+                action: {
+                    label: t('doc.annotations.open-it', 'open it'),
+                    href: docHref(root, docId),
+                },
+            });
             if (loc.path === docHref(root, docId).split('?')[0]) {
                 forgetLastDoc(root, docId);
                 loc.route(bucketHref(from, roster));
