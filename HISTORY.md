@@ -20813,3 +20813,15 @@ voice. The rate is picked per channel count once the encode knows it. Fit-to-cap
 is unchanged, bounded now by the stereo rate. Songs already uploaded keep their
 old rate. Covered by a new `mono_gets_49_and_stereo_98` test, and the corpus
 test checks each sample against its own house rate.
+
+**Station weights made exact (Curtis, same day).** He asked about three lists
+feeding a station: short and high-weight, medium, and huge and low-weight. The
+per-list loops were already right: each slice cycles its own songs. The flaw was
+the station-wide memory. A slice whose next songs were all recent sat its turn
+out and handed it on, and a 5-song list at 60% beside a 2,000-song list lost
+most of its turns.
+
+Now a slice chosen by weight always plays. The memory only picks which of its
+songs plays, and never the same song twice running where the list has another. A
+new vector holds 5/40/2,000 songs at 60/30/10 to within a few percent of their
+weights, with each 5-song loop whole and no immediate repeats.

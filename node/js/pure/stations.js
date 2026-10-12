@@ -2,8 +2,12 @@
 // MUSIC APPS SUPPORT IT"): a station is a pie - slices, each a saved filter, a mixtape, everything,
 // or another station, at a weight. Playing one picks each next song in two steps: a slice, by
 // weight (a station's slice passes the pick down to its own); then a song from that slice's own
-// shuffle, so a slice plays all its songs before it repeats one, however often it comes up. A
-// short memory of what just played keeps a song or an artist from coming round again too soon.
+// shuffle, so a slice plays all its songs before it repeats one, however often it comes up - each
+// slice looping on its own, a short list sooner and a huge one later. The weights are exact: a
+// slice chosen always plays (Curtis, 2026-10-12: a short list at a high weight must not lose its
+// turns to a huge one). A short memory of what just played only chooses WHICH of the slice's songs
+// - not one heard through another slice a moment ago, not a recent artist, where the slice has
+// another to offer.
 //
 // Stations are kept like saved filters: one register each in the persona's private
 // `amp_stations`, keyed by a random id; a register emptied is one deleted. Pure, with the random
@@ -176,22 +180,16 @@ export class StationRun {
         return song;
     }
 
-    /// One new song: a leaf by chance, then its bag's first song the memory allows. A leaf with
-    /// nothing allowed sits this pick out and the others' chances stand in; if none has anything
-    /// allowed, the artist rule goes, then the song rule, so a station never stops for its memory.
+    /// One new song: a leaf by chance, and it plays - the memory decides only which of its songs.
+    /// Its bag's first song with neither a recent song nor a recent artist; else the first that
+    /// isn't a recent song; else its first. A leaf never hands its turn to another (the first
+    /// version did, and a short heavy list lost most of its turns to the memory - Curtis,
+    /// 2026-10-12).
     pick() {
         const leaves = this.leaves().filter((l) => (this.leafSongs.get(l.path) || []).length);
         if (!leaves.length) return null;
-        for (const strict of [2, 1, 0]) {
-            const open = [...leaves];
-            while (open.length) {
-                const leaf = this.chooseLeaf(open);
-                const song = this.fromBag(leaf, strict);
-                if (song) return song;
-                open.splice(open.indexOf(leaf), 1);
-            }
-        }
-        return null;
+        const leaf = this.chooseLeaf(leaves);
+        return this.fromBag(leaf, 2) || this.fromBag(leaf, 1) || this.fromBag(leaf, 0);
     }
 
     chooseLeaf(open) {
@@ -205,8 +203,9 @@ export class StationRun {
     }
 
     /// The first song in the leaf's bag that `strict` allows (2: neither a recent song nor a recent
-    /// artist; 1: not a recent song; 0: anything), taken out of the bag. An empty bag is refilled
-    /// with a fresh cycle of the leaf's songs.
+    /// artist; 1: not a recent song; 0: anything but the song that just played, where the bag has
+    /// another), taken out of the bag. An empty bag is refilled with a fresh cycle of the leaf's
+    /// songs.
     fromBag(leaf, strict) {
         const { keyOf, artistOf, albumOf, random } = this.opts;
         const songs = this.leafSongs.get(leaf.path) || [];
@@ -218,11 +217,14 @@ export class StationRun {
         const last = (n) => (n > 0 ? this.history.slice(-n) : []);
         const recent = last(this.memory.songs).map(keyOf);
         const recentArtists = last(this.memory.artists).map(artistOf).filter(Boolean);
+        const lastKey = this.history.length ? keyOf(this.history[this.history.length - 1]) : null;
         const allowed = (s) =>
             strict === 0 ||
             (!recent.includes(keyOf(s)) &&
                 (strict === 1 || !artistOf(s) || !recentArtists.includes(artistOf(s))));
-        const at = bag.findIndex(allowed);
+        let at = bag.findIndex(allowed);
+        // The loosest pick still won't play one song twice running when the bag holds another.
+        if (strict === 0 && at === 0 && keyOf(bag[0]) === lastKey && bag.length > 1) at = 1;
         if (at < 0) {
             this.bags.set(leaf.path, bag);
             return null;

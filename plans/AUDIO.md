@@ -734,11 +734,15 @@ feed's saved feeds do the same.
   a nested station's leaves scaled by its share; then the first song in that
   leaf's bag the memory allows - the bag a fresh artist-spreading cycle of the
   leaf's songs (`spreadOrder`), so a slice plays everything before repeating.
-  The memory is half the station's songs (up to twenty) and half its artists (up
-  to three); a leaf with nothing allowed sits out, and if none has anything, the
-  artist rule goes, then the song rule, so a station never stops for it. On a
-  tiny station the memory gives a light slice more turns than its weight - the
-  price of not repeating.
+  Each slice loops on its own - a short list sooner, a huge one later - and the
+  weights are exact: a slice chosen always plays (Curtis, 2026-10-12: the first
+  version let the memory hand a turn to another slice, so a short list at a high
+  weight lost most of its turns to a huge one). The memory - half the station's
+  songs, up to twenty, and up to three artists - only chooses which of the
+  chosen slice's songs plays: not one just heard through another slice, not a
+  recent artist, where the slice has another; and never the same song twice
+  running where it has a second. A short heavy list repeats, audibly - which is
+  what its slider asks for.
 - **A filter's slice is its picks, whose tags and its words, over the library as
   hrseAmp has it** - at hrseAmp's own curiosity dial, not the one the filter was
   saved with, since the library is fetched at one stop.

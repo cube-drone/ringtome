@@ -151,4 +151,41 @@ describe("hrseAmp's radio stations (plans/AUDIO.md)", () => {
         assert.ok(!st.wouldLoop(stations, 'a', 'c'));
         assert.ok(!st.wouldLoop(stations, 'c', 'a'));
     });
+
+    it('honours the weights exactly: a short heavy list keeps its share beside a huge one (2026-10-12)', () => {
+        // Five songs at 60, forty at 30, two thousand at 10: the memory (twenty songs) is always
+        // full of the short list's five, and once made the short list sit its turns out.
+        const lists = {
+            short: songs('s', 5, 5),
+            medium: songs('m', 20, 40),
+            huge: songs('h', 200, 2000),
+        };
+        const station = {
+            id: 'x',
+            name: 'x',
+            slices: [
+                { kind: 'filter', id: 'short', weight: 60 },
+                { kind: 'filter', id: 'medium', weight: 30 },
+                { kind: 'filter', id: 'huge', weight: 10 },
+            ],
+        };
+        const run = new st.StationRun(station, opts(lists, [], 17));
+        const picks = play(run, 3000).map((s) => s.key[0]);
+        const share = (x) => picks.filter((p) => p === x).length / picks.length;
+        assert.ok(Math.abs(share('s') - 0.6) < 0.04, `short: ${share('s')}`);
+        assert.ok(Math.abs(share('m') - 0.3) < 0.04, `medium: ${share('m')}`);
+        assert.ok(Math.abs(share('h') - 0.1) < 0.03, `huge: ${share('h')}`);
+        // Each loops on its own: from the start, the short list's every five plays are its five.
+        const fresh = new st.StationRun(station, opts(lists, [], 23));
+        const shortKeys = play(fresh, 300)
+            .filter((s) => s.key[0] === 's')
+            .map((s) => s.key);
+        for (let k = 0; k + 5 <= shortKeys.length; k += 5) {
+            assert.equal(new Set(shortKeys.slice(k, k + 5)).size, 5, `loop ${k / 5}`);
+        }
+        // And nothing plays twice running where its list has another.
+        const keys = play(run, 500).map((s) => s.key);
+        for (let k = 1; k < keys.length; k++)
+            assert.notEqual(keys[k], keys[k - 1], `twice at ${k}`);
+    });
 });
