@@ -20,7 +20,10 @@ static VM: AtomicPtr<jni::sys::JavaVM> = AtomicPtr::new(std::ptr::null_mut());
 
 /// Android's hook as it loads the library: the one moment the JVM is handed over unasked.
 #[no_mangle]
-pub extern "system" fn JNI_OnLoad(vm: *mut jni::sys::JavaVM, _reserved: *mut c_void) -> jni::sys::jint {
+pub extern "system" fn JNI_OnLoad(
+    vm: *mut jni::sys::JavaVM,
+    _reserved: *mut c_void,
+) -> jni::sys::jint {
     VM.store(vm, Ordering::SeqCst);
     jni::sys::JNI_VERSION_1_6
 }

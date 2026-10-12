@@ -42,12 +42,19 @@ fn pictures_dir() -> std::path::PathBuf {
 }
 
 /// Listen for the node's alerts for the life of the app.
-pub fn start(app: AppHandle, mut alerts: tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>) {
+pub fn start(
+    app: AppHandle,
+    mut alerts: tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>,
+) {
     // macOS attributes a notification to the bundle it names; a dev run has no bundle of its
     // own, so it borrows Terminal's, as the plugin did.
     #[cfg(target_os = "macos")]
     {
-        let identifier = if tauri::is_dev() { "com.apple.Terminal".to_string() } else { app.config().identifier.clone() };
+        let identifier = if tauri::is_dev() {
+            "com.apple.Terminal".to_string()
+        } else {
+            app.config().identifier.clone()
+        };
         let _ = notify_rust::set_application(&identifier);
     }
     let _ = std::fs::remove_dir_all(pictures_dir());
@@ -85,7 +92,8 @@ fn show(app: &AppHandle, alert: ringtome_node::attention::Alert) {
         WAITING.fetch_sub(1, Ordering::SeqCst);
     }
     // Only a notification we wait on can have its picture file cleared away afterwards.
-    let picture = alert.picture_png.as_deref().filter(|_| follow).and_then(|png| write_picture(png));
+    let picture =
+        alert.picture_png.as_deref().filter(|_| follow).and_then(|png| write_picture(png));
     if let Some(path) = &picture {
         notification.image_path(&path.to_string_lossy());
     }
@@ -118,7 +126,8 @@ fn show(app: &AppHandle, alert: ringtome_node::attention::Alert) {
 fn write_picture(png: &[u8]) -> Option<std::path::PathBuf> {
     let dir = pictures_dir();
     std::fs::create_dir_all(&dir).ok()?;
-    let path = dir.join(format!("{}-{}.png", std::process::id(), PICTURES.fetch_add(1, Ordering::SeqCst)));
+    let path =
+        dir.join(format!("{}-{}.png", std::process::id(), PICTURES.fetch_add(1, Ordering::SeqCst)));
     match std::fs::write(&path, png) {
         Ok(()) => Some(path),
         Err(e) => {
@@ -138,7 +147,9 @@ fn open_at(app: &AppHandle, route: &str) {
     }
     let Some(window) = app.get_webview_window("main") else { return };
     let route = serde_json::to_string(route).expect("a string is JSON");
-    let script = format!("history.pushState(null, '', {route}); dispatchEvent(new PopStateEvent('popstate'));");
+    let script = format!(
+        "history.pushState(null, '', {route}); dispatchEvent(new PopStateEvent('popstate'));"
+    );
     if let Err(e) = window.eval(&script) {
         tracing::warn!(error = %e, "could not follow a notification's route");
     }
@@ -146,9 +157,8 @@ fn open_at(app: &AppHandle, route: &str) {
 
 /// Is the window visible AND focused - is somebody looking at the badges right now?
 fn in_front(app: &AppHandle) -> bool {
-    app.get_webview_window("main").is_some_and(|w| {
-        w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false)
-    })
+    app.get_webview_window("main")
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
 }
 
 #[cfg(windows)]
@@ -157,5 +167,8 @@ fn running_from_target() -> bool {
     std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|d| d.display().to_string()))
-        .is_some_and(|dir| dir.ends_with(&format!("{sep}target{sep}debug")) || dir.ends_with(&format!("{sep}target{sep}release")))
+        .is_some_and(|dir| {
+            dir.ends_with(&format!("{sep}target{sep}debug"))
+                || dir.ends_with(&format!("{sep}target{sep}release"))
+        })
 }

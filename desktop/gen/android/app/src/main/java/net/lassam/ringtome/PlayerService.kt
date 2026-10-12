@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import com.google.common.util.concurrent.SettableFuture
 import java.util.concurrent.Executors
 
 /**
@@ -39,8 +40,14 @@ import java.util.concurrent.Executors
 class PlayerService : MediaLibraryService() {
   private var session: MediaLibrarySession? = null
 
+  // The node, up (section 10's cold start): booted here when the car or a headphone button woke the
+  // app with no window, or found already up when the window came first. Plays wait for it.
+  private val nodeUp: SettableFuture<Boolean> = SettableFuture.create()
+
   override fun onCreate() {
     super.onCreate()
+    Thread({ nodeUp.set(runCatching { NodeBoot.ensure(applicationContext) }.getOrDefault(false)) }, "node-boot")
+      .start()
     // Every request the player makes to the node carries the page's sign-in: Android's cookie store
     // is the web view's. Read per request, so a sign-in after the service started still counts.
     val http = DefaultHttpDataSource.Factory()
@@ -138,19 +145,34 @@ class PlayerService : MediaLibraryService() {
     }
 
     // An item from a controller, made playable: its address from its request metadata (what
-    // crosses from the page's bridge), or the library's own for a browsed one.
+    // crosses from the page's bridge), or the library's own for a browsed one - pointed at the node
+    // as it booted, should a cold start have found the remembered port taken.
     private fun playable(item: MediaItem): MediaItem {
-      if (item.localConfiguration != null) return item
-      item.requestMetadata.mediaUri?.let { return item.buildUpon().setUri(it).build() }
-      return AutoLibrary.expand(this@PlayerService, item.mediaId)?.let { (songs, at) -> songs[at] } ?: item
+      val found = when {
+        item.localConfiguration != null -> item
+        item.requestMetadata.mediaUri != null -> item.buildUpon().setUri(item.requestMetadata.mediaUri).build()
+        else -> AutoLibrary.expand(this@PlayerService, item.mediaId)?.let { (songs, at) -> songs[at] } ?: item
+      }
+      return atNode(found)
     }
+
+    private fun atNode(item: MediaItem): MediaItem {
+      val uri = item.localConfiguration?.uri ?: return item
+      val origin = NodeBoot.origin() ?: return item
+      if (uri.host != "127.0.0.1" && uri.host != "localhost") return item
+      val moved = android.net.Uri.parse(origin + (uri.encodedPath ?: "") + (uri.encodedQuery?.let { "?$it" } ?: ""))
+      return item.buildUpon().setUri(moved).build()
+    }
+
+    // Nothing plays before the node is up to serve it.
+    private fun <T> whenUp(answer: () -> T): ListenableFuture<T> =
+      Futures.transform(nodeUp, { answer() }, MoreExecutors.directExecutor())
 
     override fun onAddMediaItems(
       mediaSession: MediaSession,
       controller: MediaSession.ControllerInfo,
       mediaItems: MutableList<MediaItem>,
-    ): ListenableFuture<MutableList<MediaItem>> =
-      Futures.immediateFuture(mediaItems.map(::playable).toMutableList())
+    ): ListenableFuture<MutableList<MediaItem>> = whenUp { mediaItems.map(::playable).toMutableList() }
 
     // A list picked in the car plays from its top; a song picked plays with the rest of its list
     // after it, as a person picking one song from an album expects.
@@ -161,14 +183,14 @@ class PlayerService : MediaLibraryService() {
       startIndex: Int,
       startPositionMs: Long,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-      if (mediaItems.size == 1) {
-        AutoLibrary.expand(this@PlayerService, mediaItems[0].mediaId)?.let { (songs, at) ->
-          return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(songs, at, startPositionMs))
+      return whenUp {
+        val picked = if (mediaItems.size == 1) AutoLibrary.expand(this@PlayerService, mediaItems[0].mediaId) else null
+        if (picked != null) {
+          MediaSession.MediaItemsWithStartPosition(picked.first.map(::atNode), picked.second, startPositionMs)
+        } else {
+          MediaSession.MediaItemsWithStartPosition(mediaItems.map(::playable), startIndex, startPositionMs)
         }
       }
-      return Futures.immediateFuture(
-        MediaSession.MediaItemsWithStartPosition(mediaItems.map(::playable), startIndex, startPositionMs)
-      )
     }
   }
 }
