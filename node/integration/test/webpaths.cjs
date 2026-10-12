@@ -161,6 +161,34 @@ describe('web addresses: a post lives at a readable path', function () {
         assert.ok(named.includes('"path":"grimoire/part-one/chapter-one"'), named);
     });
 
+    it('a backfill gives what was published before paths existed its address, oldest first', async () => {
+        const older = await publish(await draft('Twin Peaks', 'first'));
+        await wait(20);
+        const newer = await publish(await draft('Twin Peaks', 'second'));
+        // As if published before paths existed: both labels taken back.
+        for (const [post, path] of [
+            [older, 'twin-peaks'],
+            [newer, `twin-peaks-${newer.slice(0, 6)}`],
+        ]) {
+            assert.equal(await pathOf(post), path);
+            const r = await ada(
+                `api/identity/${root}/public-annotations/${root}/${post}/path/${path}`,
+                {
+                    method: 'DELETE',
+                },
+            );
+            assert.equal(r.status, 200, await r.clone().text());
+            assert.equal(await pathOf(post), null);
+        }
+        await beat(undefined, 'web-path-backfill', root);
+        assert.equal(await pathOf(older), 'twin-peaks', 'the older post keeps the plain path');
+        assert.equal(await pathOf(newer), `twin-peaks-${newer.slice(0, 6)}`);
+        assert.equal(await at('twin-peaks'), older);
+        // And again changes nothing: a post that has a path keeps it.
+        await beat(undefined, 'web-path-backfill', root);
+        assert.equal(await pathOf(older), 'twin-peaks');
+    });
+
     it("under the persona's @name: answered, but handed out only where the node has a public URL", async () => {
         // The rig's nodes declare no public URL: an @name there would mean nothing at any other
         // address (Curtis, 2026-10-11), so nothing hands it out and the identity form is canonical.

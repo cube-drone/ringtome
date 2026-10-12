@@ -812,6 +812,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(20)
     };
     loops::periodic("book-rollout", rollout_beat, state.clone(), books::pass);
+    // Web addresses for what was published before them (plans/WEB_ADDRESSES.md): once per
+    // persona, the first beat after it's hosted here; a cheap read of a note every beat after.
+    loops::periodic(
+        "web-path-backfill",
+        std::time::Duration::from_secs(600),
+        state.clone(),
+        |state| async move { identity::backfill_paths(&state, None, false).await.map(|_| ()) },
+    );
     // WAL maintenance (db::checkpoint_pass): truncate node.db's and every open user db's log
     // on a slow beat - the policy and its reasoning live beside Db::checkpoint.
     loops::periodic(

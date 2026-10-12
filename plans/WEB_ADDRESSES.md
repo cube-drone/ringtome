@@ -303,7 +303,15 @@ natural next slice after this.
    - A pasted one becomes our card for the post (`turbolinks.js` `atPlugin`),
      falling back to the web's card.
    - The People app's paste box opens a post's address, `/ringtome/` or another
-     node's `@name`, where it had taken only people.
+     node's `@name`, where it had taken only people. 3b. **The backfill** -
+     _built 2026-10-11_ (Curtis: "I have hundreds of posts up already and I'd
+     like them to have proper addresses"). Every open post, book and book page
+     published before paths existed gets the one its publish would have given
+     it, oldest first so on a clash the earlier post keeps the plain path
+     (`identity::backfill_paths`, a loop that runs at startup and every ten
+     minutes). It runs once per persona, on the node that acts for it, and notes
+     so in the private register `web_paths` (`backfilled-v1`, versioned so a
+     later fix can run it again).
 4. **Renaming and retiring**: a path editor in the publish panel, former paths
    redirecting, a takedown releasing them.
 5. _(Later, separate)_ the words in the HTML for crawlers.

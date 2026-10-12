@@ -175,6 +175,13 @@ pub async fn beat(
         }
         ("journal-fill", _) => crate::fanout::fill_pass(state.clone()).await,
         ("search-index", _) => crate::search::index_pass(state.clone()).await,
+        // Web addresses for what was published before them, NOW and again (forced past the
+        // once-per-persona note), for one persona or all.
+        ("web-path-backfill", scope) => {
+            let n = crate::identity::backfill_paths(&state, scope, true).await?;
+            tracing::info!(given = n, "TEST BEAT: web-path-backfill");
+            Ok(())
+        }
         ("book-rollout", scope) => {
             let n = crate::books::rollout_due(&state, scope).await?;
             tracing::info!(touched = n, "TEST BEAT: book-rollout");

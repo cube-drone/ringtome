@@ -20300,3 +20300,26 @@ refused. In headless Chrome with two scratch nodes (Ada's with a public URL):
 - clicking the inline link opened Ada's post on Bea's node, with its reply box,
   and the address switched to her path;
 - pasting the address into People opened it there.
+
+## 2026-10-11 (cont.): web addresses for what was already published
+
+Curtis: "Even though it's just me, I have hundreds of posts up already and I'd
+like them to have proper addresses." `identity::backfill_paths` gives every open
+post, book and book page that has no path the one its publish would have given
+it, by the same rules: `post_path` for posts and pages (the notebooks and words
+of the note named in `published_from`, or the post's own public notebook label
+when there's no note), and the notebook's folder for a book. It works oldest
+first, so on a clash the earlier post keeps the plain path. Replies, rooms and
+sealed posts are skipped, as at publish.
+
+It runs as a loop (`web-path-backfill`) that fires at startup and every ten
+minutes after, once per persona, on the node that acts for it. When a persona is
+done it notes so in a private register (`web_paths`, `backfilled-v1`, a version
+a later fix can bump to run it again). The rig rings it with `/test/beat`
+(`web-path-backfill`), forced past the note.
+
+Test: in `webpaths.cjs`, two posts titled alike have their paths retracted, as
+if published before paths existed. The backfill gives the older one `twin-peaks`
+and the newer one `twin-peaks-<its id>`, and a second run changes nothing. Not
+tried on a real archive: Curtis's lives on his server, and the first startup
+after a deploy is where it will run.

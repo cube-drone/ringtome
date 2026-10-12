@@ -5497,6 +5497,134 @@ async fn post_path(
     .map_err(AppError::Internal)
 }
 
+/// Where a persona's backfill of web addresses notes it's done (plans/WEB_ADDRESSES.md), and the
+/// note: versioned, so a later fix to the backfill can run it again.
+const WEB_PATHS_KV: &str = "web_paths";
+const WEB_PATHS_BACKFILLED: &str = "backfilled-v1";
+
+/// Web addresses for what a persona published before they existed (Curtis, 2026-10-11: "I have
+/// hundreds of posts up already and I'd like them to have proper addresses"): every open post,
+/// book and book page without a path is given the one its publish would have given it - the same
+/// rules (`post_path`, and a book its notebook's folder) - oldest first, so on a clash the earlier
+/// post keeps the plain path. Replies, rooms and sealed posts get none, as at publish. Once per
+/// persona, on the node that acts for it, unless `force`d (the test rig). Returns how many paths
+/// were given.
+pub(crate) async fn backfill_paths(
+    state: &AppState,
+    only_root: Option<&str>,
+    force: bool,
+) -> anyhow::Result<usize> {
+    let roots: Vec<String> = match only_root {
+        Some(r) => vec![r.to_string()],
+        None => crate::identity::hosted_roots(&state.node_db).await?,
+    };
+    let mut given = 0usize;
+    for root in roots {
+        if !crate::identity::is_agented(&state.node_db, &root).await.unwrap_or(false) {
+            continue;
+        }
+        let data = match store::open_agented(state, &root).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::debug!(root = %root, error = ?e, "path backfill: could not open");
+                continue;
+            }
+        };
+        if !force {
+            let (noted, _) = data.private_registers(WEB_PATHS_KV).all().await?;
+            if noted.iter().any(|r| r.key == WEB_PATHS_BACKFILLED && r.value == "yes") {
+                continue;
+            }
+        }
+        let n = backfill_persona(&data, &root).await?;
+        data.private_registers(WEB_PATHS_KV).set(WEB_PATHS_BACKFILLED, "yes").await?;
+        if n > 0 {
+            tracing::info!(root = %root, paths = n, "gave published posts their web addresses");
+        }
+        given += n;
+    }
+    Ok(given)
+}
+
+/// One persona's backfill (`backfill_paths`).
+async fn backfill_persona(data: &store::Store, root: &str) -> Result<usize, AppError> {
+    use ringtome_proto::registry::doc_format;
+    let self_root = hex_fixed::<32>(root, "root")?;
+    // The whole public shelf - posts, books and their pages - oldest first.
+    const PAGE: i64 = 500;
+    let mut posts = Vec::new();
+    let mut after = None;
+    loop {
+        let page = crate::record::documents::public_docs(data.db(), after, PAGE).await?;
+        let full = page.len() as i64 == PAGE;
+        after = page.last().map(|p| (p.display_ms(), p.doc_id));
+        posts.extend(page);
+        if !full {
+            break;
+        }
+    }
+    posts.reverse();
+    let drafts = bucket_map(data).await?;
+    let mut given = 0usize;
+    for post in posts {
+        if post.trusted_only || post.reply_to.is_some() || post.format == Some(doc_format::ROOM) {
+            continue;
+        }
+        let labels = data.public_annotations().of(root, &post.doc_id).await?;
+        // Already given one - or sealed, whose labels are ciphertext and whose title isn't public.
+        if labels
+            .iter()
+            .any(|r| r.key == crate::webpath::PATH_KEY || r.key == crate::annotations::SEALED_KEY)
+        {
+            continue;
+        }
+        let said_notebooks: Vec<String> =
+            labels.iter().filter(|r| r.key == "bucket").map(|r| r.value.clone()).collect();
+        let path = if post.format == Some(doc_format::BOOK) {
+            // A book is its notebook's folder (ruling 6).
+            let Some(folder) = crate::webpath::folder_of(&said_notebooks) else { continue };
+            let db = data.db();
+            let book = post.doc_id;
+            crate::webpath::unique(&[], &folder, &book, |path| async move {
+                let holders = crate::record::imaol::path_holders(db, &path)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                Ok(holders.iter().any(|d| *d != book))
+            })
+            .await
+            .map_err(AppError::Internal)?
+        } else {
+            // The note it was published from, when its `published_from` says: its notebooks
+            // and its words, as at publish. Without one, the post's own public notebook.
+            let draft = labels
+                .iter()
+                .find(|r| r.key == store::PUBLISHED_FROM)
+                .and_then(|r| hex_fixed::<16>(&r.value, "draft").ok())
+                .unwrap_or(post.doc_id);
+            let notebooks = drafts
+                .get(&hex::encode(draft))
+                .filter(|n| !n.is_empty())
+                .cloned()
+                .unwrap_or(said_notebooks);
+            post_path(
+                data,
+                &self_root,
+                &draft,
+                &post.doc_id,
+                post.part_of.is_some(),
+                post.display_ms(),
+                &notebooks,
+            )
+            .await?
+        };
+        data.public_annotations()
+            .say(&self_root, &post.doc_id, crate::webpath::PATH_KEY, &path, true)
+            .await?;
+        given += 1;
+    }
+    Ok(given)
+}
+
 async fn replicate_annotations(
     state: &AppState,
     data: &store::Store,
