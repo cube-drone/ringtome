@@ -52,6 +52,9 @@ struct Link {
     root: String,
     doc_id: [u8; 16],
     title: String,
+    /// A notebook to file the upload in as well (2026-10-11, an agent's batch of uploads into
+    /// one notebook): filed at the top of its tree too, when it has one.
+    notebook: Option<String>,
     expires_ms: i64,
     /// What the upload was made with (made_with.rs), from the request that minted the link.
     made_with: Option<&'static str>,
@@ -106,6 +109,9 @@ pub struct MintRequest {
     /// What the file is called, as its document's title. Defaults to "picture".
     #[serde(default)]
     title: Option<String>,
+    /// A notebook to file it in, beside the files notebook every upload lives in.
+    #[serde(default)]
+    notebook: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -146,6 +152,10 @@ pub async fn mint_handler(
             root,
             doc_id,
             title,
+            notebook: asked
+                .notebook
+                .map(|n| n.trim().to_string())
+                .filter(|n| !n.is_empty() && n != FILES_BUCKET),
             expires_ms,
             made_with: session.made_with(),
         },
@@ -222,12 +232,40 @@ pub async fn upload_handler(
     // Filed where uploads live, and marked as an agent's, as the app's upload and an agent's
     // writes are - both annotations, which may come before the picture they describe.
     data.buckets().place(&link.doc_id, FILES_BUCKET).await?;
+    if let Some(notebook) = &link.notebook {
+        data.buckets().place(&link.doc_id, notebook).await?;
+        file_into_tree(&data, notebook, &link.doc_id).await?;
+    }
     if let Some(tag) = link.made_with {
         data.annotations().tag(&link.doc_id, tag).await?;
     }
     let answer = made(&state, &data, &link).await;
     let code = if answer.status == "pending" { StatusCode::ACCEPTED } else { StatusCode::OK };
     Ok((code, Json(answer)))
+}
+
+/// File a document at the end of its notebook's tree, when the notebook has one - as the app
+/// files a document copied into a notebook (js/doc/tree.js `fileIntoTree`): the tree is the
+/// taxonomy titled `wiki:<notebook>` (pure/naming.js `rootTitleFor`), the lowest id winning a
+/// tie two computers minted at once.
+async fn file_into_tree(
+    data: &crate::record::store::Store,
+    notebook: &str,
+    doc_id: &[u8; 16],
+) -> Result<(), AppError> {
+    let title = format!("wiki:{notebook}");
+    let tree = data
+        .taxonomies()
+        .all()
+        .await?
+        .into_iter()
+        .filter(|t| t.title == title)
+        .map(|t| t.taxonomy_id)
+        .min();
+    if let Some(tree) = tree {
+        data.taxonomies().place(&tree, &data.root(), doc_id, None).await?;
+    }
+    Ok(())
 }
 
 /// Wait for ingest to make the upload: ready, with its embed; failed, with why; or still pending
@@ -302,6 +340,7 @@ mod tests {
             root: "r".into(),
             doc_id: [1; 16],
             title: "t".into(),
+            notebook: None,
             expires_ms,
             made_with: None,
         }

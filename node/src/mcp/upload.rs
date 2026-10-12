@@ -15,7 +15,7 @@ use rmcp::{schemars, tool, tool_router, ErrorData};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::{answer, finish, when, Answer, Tools};
+use super::{answer, finish, stop, when, Answer, Tools};
 
 #[derive(Deserialize, schemars::JsonSchema)]
 pub struct UploadLinkArgs {
@@ -25,6 +25,9 @@ pub struct UploadLinkArgs {
     /// What to call the file - its title in the persona's files, and the words a screen reader
     /// says in its place. Defaults to "picture".
     title: Option<String>,
+    /// A Writer notebook to file it in too, by name (list_notebooks) - at the top of its tree, if
+    /// it has one. Every upload is in the persona's files whatever this says.
+    notebook: Option<String>,
 }
 
 #[tool_router(router = upload_tools, vis = "pub(super)")]
@@ -58,12 +61,26 @@ impl Tools {
     async fn upload_link_answer(&self, parts: &Parts, args: UploadLinkArgs) -> Answer {
         let persona = self.persona(parts, args.persona.as_deref()).await?;
         self.require(parts, &persona.root, "file-upload").await?;
+        let notebook = match args.notebook.as_deref() {
+            Some(named) => {
+                let notebook = self.notebook(parts, &persona.root, named).await?;
+                super::notebooks::fileable(&notebook)?;
+                if notebook.kind != super::notebooks::Kind::Writing {
+                    return Err(stop(
+                        "a sketchbook holds drawings only: a file goes in a Writer notebook",
+                    ));
+                }
+                self.require(parts, &persona.root, "private-notes").await?;
+                Some(notebook.name)
+            }
+            None => None,
+        };
         let minted = self
             .call(
                 parts,
                 Method::POST,
                 &format!("/api/identity/{}/upload-links", persona.root),
-                Some(json!({ "title": args.title })),
+                Some(json!({ "title": args.title, "notebook": notebook })),
             )
             .await?;
         let path = minted.get("path").and_then(Value::as_str).unwrap_or_default();
@@ -82,7 +99,7 @@ impl Tools {
 
     /// The address this node is reached at, for a link the agent hands on: its public URL when it
     /// has one, else the address the agent itself connected to (nodeface.rs `public_base`).
-    fn base(&self, parts: &Parts) -> String {
+    pub(super) fn base(&self, parts: &Parts) -> String {
         if let Some(url) = self.public_url.as_deref().filter(|u| !u.is_empty()) {
             return url.trim_end_matches('/').to_string();
         }

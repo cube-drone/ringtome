@@ -106,10 +106,11 @@ impl FromRequestParts<AppState> for Session {
         // human at the keyboard.
         if let Some(key) = bearer_key(&parts.headers) {
             return match super::keys::account_for_key(&state.node_db, &key).await? {
-                Some((account, key_id)) => Ok(Session {
-                    account,
-                    key: Some(key_id),
-                    by_agent: parts.extensions.get::<ByAgent>().is_some(),
+                Some(opened) => Ok(Session {
+                    account: opened.account,
+                    key: Some(opened.id),
+                    // Through `/mcp`, or with an hour's key an agent asked for there (keys.rs).
+                    by_agent: opened.by_agent || parts.extensions.get::<ByAgent>().is_some(),
                 }),
                 None => Err(AppError::Unauthorized(crate::msg!(
                     "auth.extractor.key-not-valid",

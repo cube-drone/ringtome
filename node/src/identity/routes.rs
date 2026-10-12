@@ -6710,9 +6710,11 @@ async fn docs_create_binary_handler(
         return Ok(existing);
     }
     let doc_id = crate::record::documents::new_doc_id();
-    Ok(queue_upload(&state, &session, &root, doc_id, &[], &meta.title, &body)
-        .await?
-        .into_response())
+    let queued = queue_upload(&state, &session, &root, doc_id, &[], &meta.title, &body).await?;
+    // What it was made with, as an upload link's upload says (uploadlink.rs) - an annotation,
+    // which may come before the file it describes.
+    crate::made_with::mark(&session, &data, &doc_id).await?;
+    Ok(queued.into_response())
 }
 
 /// Upload a browser-pre-encoded video (the video-ingest intermediary): multipart part `video`

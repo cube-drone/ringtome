@@ -115,8 +115,9 @@ lightly federated, unapologetically Old Internet.
   last, its token an ordinary `rtk_` key. A design draft with rulings
   (2026-10-06); Built (2026-10-06), but for drawing, struck: `/mcp` answers,
   with the reading and writing tools, chat and the bank, the guide, the
-  provenance tags, OAuth for claude.ai and its kind, and a page in settings
-  saying how to connect one.
+  provenance tags, OAuth for claude.ai and its kind, a page in settings saying
+  how to connect one, and (2026-10-11) notebooks, their trees, and an hour's API
+  key for what the tools don't reach.
 - [`RSS.md`](plans/RSS.md) — hrseRSS, a feed reader: subscriptions on the
   private chain, items fetched once per node into a shared cache and translated
   to Marquee (never rendered as HTML), images through the node, a merged

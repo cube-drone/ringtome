@@ -964,7 +964,7 @@ const ApiKeys = () => {
                     <button class="chip chip-button chip-worded chip-delete" title=${t('persona.revoke-key', 'revoke this key')} onClick=${() => revoke(k)}><${Icons.trash} /><span class="chip-word">${t('chips.revoke', 'revoke')}</span></button>
                     <span class="settings-key-name">${k.name}</span>
                     <span class="settings-key-when">
-                        ${t('persona.key-made', 'made {when}', { when: when(k.created_ms) })}${' · '}${k.last_used_ms ? t('persona.key-last-used', 'last used {when}', { when: when(k.last_used_ms) }) : t('persona.key-never-used', 'never used')}
+                        ${t('persona.key-made', 'made {when}', { when: when(k.created_ms) })}${' · '}${k.last_used_ms ? t('persona.key-last-used', 'last used {when}', { when: when(k.last_used_ms) }) : t('persona.key-never-used', 'never used')}${k.expires_ms ? html`${' · '}${t('persona.key-until', 'works until {when}', { when: when(k.expires_ms) })}` : ''}
                     </span>
                 </li>`,
             )}

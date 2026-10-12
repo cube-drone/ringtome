@@ -67,6 +67,14 @@ and what they keep private, not their balance.
     base64 in an argument - and that what an upload is for is a note's or a
     post's embed: not the avatar or banner, not a picture posted on its own
     (_Pictures_, below).
+12. **Notebooks, and an hour's key** (2026-10-11, after "an MCP agent tried to
+    run a large upload task, but couldn't using exclusively the MCP tools"). The
+    tools file documents in notebooks and arrange a notebook's tree
+    (_Notebooks_, below). An agent may also give itself **an hour's API key**
+    for work the tools don't cover. Asked how that squares with "a stolen key
+    can't mint itself company" (auth/keys.rs), Curtis chose a child key: it
+    stops working after an hour or when the key that made it is revoked, and it
+    can't make keys itself.
 
 ## What MCP is, and why not just a spec
 
@@ -541,6 +549,59 @@ public URL, else the address the agent connected to.
   upload not yet made says it is still being made, or why it couldn't be.
 - **Publishing does the rest**: a post whose words embed it carries its own
   public copy, as one written in the app does.
+
+## Notebooks (built 2026-10-11)
+
+Ruling 12. A notebook is a bucket, and a Writer notebook's tree is the taxonomy
+titled `wiki:<notebook>`, with its sections nested inside it (js/doc/tree.js).
+`mcp/notebooks.rs` does what the switcher, the notebook row and the tree's drags
+do, through the same doors and in the same order. A document goes into the new
+notebook (or section) before it leaves the old one, so a failure halfway leaves
+it in two places, never in none.
+
+- **`list_notebooks`**, **`read_notebook`**: the notebooks, each with its kind
+  ("writing", "drawing", "feed", "files") and how many documents it holds.
+  `read_notebook` gives the tree, with sections (id, title, contents) and
+  documents in order, plus `unfiled`: what's in the notebook but not in the
+  tree. `list_documents` takes a `notebook` and shows each document's notebooks.
+- **`make_notebook`**: a Writer notebook or a sketchbook. The apps' own names
+  are refused.
+- **`file_document`**: into a notebook, optionally at a `section` and
+  `position`. With `from` it's a move; with `remove` it comes out of the
+  notebook and its tree. The feed's, files' and chat's notebooks belong to their
+  apps and are refused. A drawing goes only in a sketchbook, and a sketchbook
+  takes only drawings, as the app's own move works.
+- **`make_section`**, **`arrange_section`**: add a section, rename it, move it
+  (never into itself), or delete it and the sections inside it. Its documents
+  stay in the notebook, unfiled, as when the tree deletes a section in Writer.
+- **`write_document`** takes `notebook` and `section` for a new note. A new note
+  with no notebook named now goes in Writer's own notebook (`default`), where
+  one the person wrote would. Before, it went in none and appeared only in
+  hrseFiles. **`upload_link`** takes `notebook`: the upload goes there as well
+  as in the files notebook, at the top of the notebook's tree.
+- A section is named by its id or by its title, in any case, when no other
+  section has that title. "top" means the top level.
+- Gates: a Writer notebook needs Private notes, and anything about the tree
+  needs Taxonomy & tree publication. Filing at the top of an existing tree, as
+  the app does when it copies a note into a notebook, needs neither.
+
+**`hour_key`** (auth/keys.rs `hour_handler`, `POST /api/auth/keys/hour`): a key,
+made with a key, that expires an hour after it's made (migration 0078:
+`parent_id`, `expires_ms`, `by_agent`).
+
+- Revoking its parent revokes it: the revoke deletes the children, and a child
+  whose parent is gone doesn't open.
+- It can't make keys, an hour's or a lasting one.
+- One key may have three working at a time, and they don't count toward the
+  account's 25.
+- One asked for through `/mcp` writes "ai-agent", as the tools do.
+- Settings lists it with when it stops working.
+- The answer points at the source (`github.com/cube-drone/ringtome`, the route
+  table in `node/src/identity/routes.rs`) and says how to upload a file
+  directly.
+- Uploads through `POST /docs/binary` now carry their provenance label, as an
+  upload link's do. Without it, the promise that an hour's key writes as the
+  agent didn't hold for files.
 
 ## Open questions
 

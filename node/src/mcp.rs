@@ -40,6 +40,7 @@
 
 mod bank;
 mod chat;
+mod notebooks;
 mod read;
 mod upload;
 mod write;
@@ -81,6 +82,10 @@ const GUIDE_URI: &str = "ringtome://guide";
 /// What Horse Drawing Tycoon 2 is, for an agent that has never heard of it (plans/MCP.md,
 /// _Resources_).
 const GUIDE: &str = include_str!("mcp/guide.md");
+
+/// Where the node's source is read (Curtis, 2026-10-11: "would it be helpful for the MCP to point
+/// to the repo?"): the doors an hour's key reaches are written down there and nowhere else.
+const SOURCE: &str = "https://github.com/cube-drone/ringtome";
 
 /// The most of a door's answer a tool reads. The doors a tool calls answer in JSON well under
 /// this; a document body, the largest, is capped at ~10MB (identity/routes.rs's body limits).
@@ -466,9 +471,53 @@ impl Tools {
     ) -> Result<CallToolResult, ErrorData> {
         finish(self.whoami_answer(&parts).await)
     }
+
+    #[tool(
+        description = "An API key that works for one hour, for work these tools don't do - many \
+            uploads in a row, say, straight to the node's HTTP doors from a shell. It stops \
+            working after an hour, or as soon as the person revokes the key this connection \
+            uses, and it can't make keys itself. What it writes is labelled ai-agent, as \
+            everything you write here is. The answer says where the doors are written down. \
+            It's a secret: use it in your own shell, and never put it in a note, a post or a \
+            message.",
+        annotations(
+            title = "Get an hour's API key",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false
+        )
+    )]
+    async fn hour_key(
+        &self,
+        Extension(parts): Extension<Parts>,
+    ) -> Result<CallToolResult, ErrorData> {
+        finish(self.hour_key_answer(&parts).await)
+    }
 }
 
 impl Tools {
+    async fn hour_key_answer(&self, parts: &Parts) -> Answer {
+        let made = self.call(parts, Method::POST, "/api/auth/keys/hour", None).await?;
+        let base = self.base(parts);
+        answer(json!({
+            "key": made.get("key"),
+            "expires": when(made.get("expires_ms").and_then(Value::as_i64)),
+            "node": base,
+            "use": format!("send it as a header: curl -H 'Authorization: Bearer <key>' {base}/api/auth/whoami"),
+            "doors": {
+                "source": SOURCE,
+                "routes": format!("{SOURCE}/blob/main/node/src/identity/routes.rs - most \
+                    take a persona's root: /api/identity/<root>/..."),
+                "uploading a file": "POST /api/identity/<root>/docs/binary?title=<title> with \
+                    the file as the body: answers 202 and the new document's doc_id, which \
+                    file_document then files in a notebook",
+                "the guide": format!("{base}{GUIDE_PATH}"),
+            },
+            "careful": "the key is a secret: keep it in your shell, never in a note, a post or a \
+                message. It stops working within the hour.",
+        }))
+    }
+
     async fn whoami_answer(&self, parts: &Parts) -> Answer {
         let account = self.call(parts, Method::GET, "/api/auth/whoami", None).await?;
         let mut personas = Vec::new();
@@ -508,12 +557,13 @@ impl Tools {
 }
 
 impl Tools {
-    /// Every tool there is: the account's, and read.rs's, write.rs's, upload.rs's, chat.rs's and
-    /// bank.rs's.
+    /// Every tool there is: the account's, and read.rs's, write.rs's, notebooks.rs's,
+    /// upload.rs's, chat.rs's and bank.rs's.
     fn every_tool() -> rmcp::handler::server::router::tool::ToolRouter<Self> {
         Self::account_tools()
             + Self::read_tools()
             + Self::write_tools()
+            + Self::notebook_tools()
             + Self::upload_tools()
             + Self::chat_tools()
             + Self::bank_tools()

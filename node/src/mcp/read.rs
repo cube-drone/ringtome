@@ -135,6 +135,8 @@ pub struct DocumentsArgs {
     tag: Option<String>,
     /// Only documents whose title has these words in it, in any case.
     search: Option<String>,
+    /// Only documents in this notebook, by name (list_notebooks).
+    notebook: Option<String>,
     /// Only published documents (true), or only unpublished ones (false).
     published: Option<bool>,
     /// Just how many documents match - no list.
@@ -559,6 +561,10 @@ impl Tools {
             }
             None => format!("/api/identity/{}/docs", persona.root),
         };
+        let notebook = match args.notebook.as_deref() {
+            Some(named) => Some(self.notebook(parts, &persona.root, named).await?.name),
+            None => None,
+        };
         let listing = self.call(parts, Method::GET, &path, None).await?;
         let mut docs = listing.get("docs").and_then(Value::as_array).cloned().unwrap_or_default();
         // Newest change first, the order a page continues in; ties by id, so a page boundary
@@ -587,6 +593,16 @@ impl Tools {
                 locked_kinds.insert(kind);
                 continue;
             }
+            let notebooks: Vec<&str> = doc
+                .get("buckets")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            if notebook.as_deref().is_some_and(|n| !notebooks.contains(&n)) {
+                continue;
+            }
             let published = doc.get("fields").and_then(|f| f.get("published_as")).is_some();
             if args.published.is_some_and(|want| want != published) {
                 continue;
@@ -606,6 +622,7 @@ impl Tools {
                 "updated": when(doc.get("updated_ms").and_then(Value::as_i64)),
                 "created": when(doc.get("created_ms").and_then(Value::as_i64)),
                 "tags": doc.get("tags"),
+                "notebooks": notebooks,
                 "published": published,
                 "pinned": doc.get("pinned"),
             }));
@@ -992,7 +1009,8 @@ impl Tools {
 
     #[tool(
         description = "The persona's own documents: notes (Writer), drawings, and files - each \
-            with its id, title, kind, dates, tags, and whether it's been published. Kinds whose \
+            with its id, title, kind, dates, tags, notebooks, and whether it's been published - \
+            all of them, or one notebook's. Kinds whose \
             app the persona hasn't unlocked aren't listed.",
         annotations(title = "List documents", read_only_hint = true)
     )]

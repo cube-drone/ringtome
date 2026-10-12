@@ -1277,3 +1277,271 @@ describe('MCP: pictures, through an upload link', function () {
         assert.match(read.stopped || '', /couldn't be made/, JSON.stringify(read));
     });
 });
+
+describe('MCP: notebooks, their trees, and an hour of key', function () {
+    this.timeout(180000);
+
+    let me, root, agent;
+    before(async () => {
+        ({ me, root, agent } = await keyed('mcpnotebook'));
+    });
+
+    const notebooksOf = async (doc) =>
+        (await (await me(`api/identity/${root}/docs`)).json()).docs.find((d) => d.doc_id === doc)
+            .buckets;
+    // A section's contents in a read_notebook tree, by its title.
+    const sectionIn = (tree, title) => {
+        for (const row of tree) {
+            if (row.section && row.title === title) return row;
+            if (Array.isArray(row.contents)) {
+                const found = sectionIn(row.contents, title);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    it('lists its tools: looking at notebooks only looks, deleting a section warns', async () => {
+        const { tools } = await request(agent, 'tools/list');
+        const by = Object.fromEntries(tools.map((t) => [t.name, t]));
+        for (const name of ['list_notebooks', 'read_notebook'])
+            assert.equal(by[name].annotations.readOnlyHint, true, `${name} only looks`);
+        for (const name of ['make_notebook', 'file_document', 'make_section', 'hour_key'])
+            assert.equal(by[name].annotations.destructiveHint, false, `${name} takes nothing away`);
+        assert.equal(by.arrange_section.annotations.destructiveHint, true);
+        assert.ok(by.write_document.inputSchema.properties.notebook);
+        assert.ok(by.upload_link.inputSchema.properties.notebook);
+    });
+
+    it("a new note goes in Writer's own notebook, or the one named; a name that's none makes nothing", async () => {
+        const plain = await tool(agent, 'write_document', { title: 'loose', words: 'x' });
+        assert.equal(plain.notebook, 'default', JSON.stringify(plain));
+        assert.deepEqual(await notebooksOf(plain.document), ['default']);
+
+        const before = (await (await me(`api/identity/${root}/docs`)).json()).docs.length;
+        const nowhere = await tool(agent, 'write_document', {
+            title: 'lost',
+            words: 'x',
+            notebook: 'Nowhere',
+        });
+        assert.match(
+            nowhere.stopped || '',
+            /no notebook "Nowhere".*"default"/,
+            JSON.stringify(nowhere),
+        );
+        assert.equal((await (await me(`api/identity/${root}/docs`)).json()).docs.length, before);
+
+        const made = await tool(agent, 'make_notebook', { name: 'Recipes' });
+        assert.equal(made.made, true, JSON.stringify(made));
+        const again = await tool(agent, 'make_notebook', { name: 'recipes' });
+        assert.match(again.stopped || '', /already/);
+        const kept = await tool(agent, 'make_notebook', { name: 'files' });
+        assert.match(kept.stopped || '', /kept for one of the apps/);
+        const { notebooks } = await tool(agent, 'list_notebooks');
+        const recipes = notebooks.find((n) => n.name === 'Recipes');
+        assert.equal(recipes.kind, 'writing');
+
+        const bread = await tool(agent, 'write_document', {
+            title: 'Bread',
+            words: 'flour, water',
+            notebook: 'recipes',
+        });
+        assert.equal(bread.notebook, 'Recipes', 'named in any case');
+        assert.deepEqual(await notebooksOf(bread.document), ['Recipes']);
+        const listed = await tool(agent, 'list_documents', { notebook: 'Recipes' });
+        assert.deepEqual(
+            listed.documents.map((d) => d.title),
+            ['Bread'],
+        );
+        assert.deepEqual(listed.documents[0].notebooks, ['Recipes']);
+    });
+
+    it('sections: made, written into, read back as a tree, with the unfiled beside it', async () => {
+        const soups = await tool(agent, 'make_section', { notebook: 'Recipes', title: 'Soups' });
+        assert.match(soups.section, /^[0-9a-f]{32}$/, JSON.stringify(soups));
+        const cold = await tool(agent, 'make_section', {
+            notebook: 'Recipes',
+            title: 'Cold',
+            inside: 'soups',
+        });
+        assert.equal(cold.inside, '"Soups"');
+        const leek = await tool(agent, 'write_document', {
+            title: 'Leek',
+            words: 'leeks',
+            notebook: 'Recipes',
+            section: 'Soups',
+        });
+        assert.equal(leek.in_the_tree_at, '"Soups"', JSON.stringify(leek));
+
+        const read = await tool(agent, 'read_notebook', { notebook: 'Recipes' });
+        const inSoups = sectionIn(read.tree, 'Soups');
+        assert.ok(inSoups, JSON.stringify(read));
+        assert.deepEqual(
+            inSoups.contents.map((r) => r.title),
+            ['Cold', 'Leek'],
+        );
+        // Bread went in before the notebook had a tree, so it's unfiled.
+        assert.deepEqual(
+            read.unfiled.map((d) => d.title),
+            ['Bread'],
+        );
+    });
+
+    it('file_document: into the tree at a place, moved between notebooks, taken out', async () => {
+        const docs = (await tool(agent, 'list_documents', { notebook: 'Recipes' })).documents;
+        const bread = docs.find((d) => d.title === 'Bread').document;
+        const leek = docs.find((d) => d.title === 'Leek').document;
+
+        const filed = await tool(agent, 'file_document', {
+            document: bread,
+            notebook: 'Recipes',
+            section: 'Soups',
+            position: 0,
+        });
+        assert.equal(filed.in_the_tree_at, '"Soups"', JSON.stringify(filed));
+        let read = await tool(agent, 'read_notebook', { notebook: 'Recipes' });
+        assert.deepEqual(
+            sectionIn(read.tree, 'Soups').contents.map((r) => r.title),
+            ['Bread', 'Cold', 'Leek'],
+        );
+        assert.deepEqual(read.unfiled, []);
+
+        // Out of Soups, to the top: a move within the tree leaves it in one place.
+        await tool(agent, 'file_document', {
+            document: bread,
+            notebook: 'Recipes',
+            section: 'top',
+        });
+        read = await tool(agent, 'read_notebook', { notebook: 'Recipes' });
+        assert.ok(read.tree.some((r) => r.title === 'Bread'));
+        assert.ok(!sectionIn(read.tree, 'Soups').contents.some((r) => r.title === 'Bread'));
+
+        const loose = (await tool(agent, 'list_documents', { notebook: 'default' })).documents[0];
+        const moved = await tool(agent, 'file_document', {
+            document: loose.document,
+            notebook: 'Recipes',
+            from: 'default',
+        });
+        assert.equal(moved.moved_from, 'default', JSON.stringify(moved));
+        assert.deepEqual(await notebooksOf(loose.document), ['Recipes']);
+        assert.equal(moved.in_the_tree_at, 'the top', 'filed in the tree as the app files a copy');
+
+        const out = await tool(agent, 'file_document', {
+            document: leek,
+            notebook: 'Recipes',
+            remove: true,
+        });
+        assert.equal(out.removed, true);
+        assert.deepEqual(await notebooksOf(leek), []);
+        read = await tool(agent, 'read_notebook', { notebook: 'Recipes' });
+        assert.ok(!JSON.stringify(read).includes(leek), 'and out of the tree');
+
+        const feed = await tool(agent, 'file_document', { document: bread, notebook: 'feed' });
+        assert.match(feed.stopped || '', /feed app's/);
+    });
+
+    it('arrange_section: renamed, never inside itself, deleted with its documents kept', async () => {
+        const loop = await tool(agent, 'arrange_section', {
+            notebook: 'Recipes',
+            section: 'Soups',
+            inside: 'Cold',
+        });
+        assert.match(loop.stopped || '', /inside itself/);
+        const renamed = await tool(agent, 'arrange_section', {
+            notebook: 'Recipes',
+            section: 'Cold',
+            title: 'Chilled',
+        });
+        assert.equal(renamed.title, 'Chilled', JSON.stringify(renamed));
+        const docs = (await tool(agent, 'list_documents', { notebook: 'Recipes' })).documents;
+        const bread = docs.find((d) => d.title === 'Bread').document;
+        await tool(agent, 'file_document', {
+            document: bread,
+            notebook: 'Recipes',
+            section: 'Chilled',
+        });
+
+        const gone = await tool(agent, 'arrange_section', {
+            notebook: 'Recipes',
+            section: 'Soups',
+            delete: true,
+        });
+        assert.equal(gone.deleted, 2, JSON.stringify(gone));
+        const read = await tool(agent, 'read_notebook', { notebook: 'Recipes' });
+        assert.equal(sectionIn(read.tree, 'Soups'), null);
+        assert.ok(
+            read.unfiled.some((d) => d.title === 'Bread'),
+            'its documents stay in the notebook',
+        );
+    });
+
+    it('an upload link files its upload in the notebook named, and its tree', async () => {
+        const fs = require('node:fs');
+        const path = require('node:path');
+        const picture = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'sample_media', 'its_webp.webp'),
+        );
+        const link = await tool(agent, 'upload_link', { title: 'a loaf', notebook: 'Recipes' });
+        assert.ok(!link.stopped, link.stopped);
+        const sent = await makeFetch()(new URL(link.url).pathname.slice(1), {
+            method: 'POST',
+            body: picture,
+            file: true,
+        });
+        assert.equal(sent.status, 200, await sent.clone().text());
+        assert.deepEqual((await notebooksOf(link.document)).sort(), ['Recipes', 'files']);
+        const read = await tool(agent, 'read_notebook', { notebook: 'Recipes' });
+        assert.ok(
+            read.tree.some((r) => r.document === link.document),
+            JSON.stringify(read.tree),
+        );
+    });
+
+    it("an hour's key: works, writes as the agent, makes no keys, ends with the key that made it", async () => {
+        // The key `agent` connects with, by id, for revoking it later.
+        const keys = (await (await me('api/auth/keys')).json()).keys;
+        const parent = keys.find((k) => k.name === 'my agent');
+
+        const hour = await tool(agent, 'hour_key');
+        assert.match(hour.key || '', /^rtk_[0-9a-f]{64}$/, JSON.stringify(hour));
+        assert.ok(hour.doors.source.includes('github.com'), 'it says where the doors are');
+        const shell = program(hour.key);
+        assert.equal((await shell('api/auth/whoami')).status, 200);
+
+        const listed = (await (await me('api/auth/keys')).json()).keys;
+        const child = listed.find((k) => k.name === "an hour's key from my agent");
+        assert.ok(child, JSON.stringify(listed));
+        const hourLeft = child.expires_ms - Date.now();
+        assert.ok(hourLeft > 59 * 60 * 1000 && hourLeft <= 60 * 60 * 1000, `${hourLeft}`);
+
+        // What it writes says an agent made it, as the tools' own writes do.
+        const made = await (
+            await j(shell, `api/identity/${root}/docs`, {
+                title: 'by shell',
+                body: 'x',
+                format: 'marquee',
+            })
+        ).json();
+        const tags = await (
+            await me(`api/identity/${root}/docs/${made.doc_id}/annotations`)
+        ).json();
+        assert.ok(tags.tags.includes('ai-agent'), JSON.stringify(tags));
+
+        // It makes no keys: not an hour's, not a lasting one.
+        const grandchild = await tool(program(hour.key), 'hour_key');
+        assert.match(grandchild.stopped || '', /can't make another/);
+        assert.equal((await j(shell, 'api/auth/keys', { name: 'more' })).status, 403);
+
+        // Three at once from one key, and no more.
+        await tool(agent, 'hour_key');
+        await tool(agent, 'hour_key');
+        const fourth = await tool(agent, 'hour_key');
+        assert.match(fourth.stopped || '', /already/);
+
+        // Revoking the key that made it ends it.
+        assert.equal((await me(`api/auth/keys/${parent.id}`, { method: 'DELETE' })).status, 200);
+        assert.equal((await shell('api/auth/whoami')).status, 401);
+        const after = (await (await me('api/auth/keys')).json()).keys;
+        assert.ok(!after.some((k) => k.name.startsWith("an hour's key")), JSON.stringify(after));
+    });
+});

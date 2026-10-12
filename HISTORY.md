@@ -19936,3 +19936,50 @@ Chrome on a throttled link, a 20-second sound knew its length (20.017 s) at
 `loadedmetadata` and seeked to 15 s. The same run with the range headers
 stripped in the browser, as the old node answered, loaded with its length
 unknown (`Infinity`).
+
+## 2026-10-11 (cont.): MCP notebooks, their trees, and an hour's key
+
+Curtis: "An MCP agent tried to run a large upload task, but couldn't using
+exclusively the MCP tools." He asked for a notebook argument on
+`write_document`, a way to place a document in a notebook, ways to arrange a
+notebook's tree, and an hour-long API key an agent can give itself. Asked how
+the key fits auth/keys.rs's "a stolen key can't mint itself company", he chose a
+child key (plans/MCP.md, ruling 12 and _Notebooks_).
+
+- **`mcp/notebooks.rs`** adds six tools. `list_notebooks` and `read_notebook`
+  show the notebooks and a Writer notebook's tree (sections with ids, documents
+  in order, and the `unfiled`). `make_notebook` makes one. `file_document` files
+  a document at a section and position, moves it between notebooks with `from`,
+  or takes it out with `remove`. `make_section` and `arrange_section` add,
+  rename, move and delete sections. They use the same doors in the same order as
+  the app's switcher, notebook row and tree drags: into the new place before out
+  of the old. They're gated as the app is (Private notes, and Taxonomy & tree
+  publication for the tree).
+- **`write_document`** takes `notebook` and `section` for a new note. With no
+  notebook named, a new note now goes in Writer's own notebook; before, it went
+  in none. **`upload_link`** takes `notebook` (uploadlink.rs files the upload
+  there and at the top of its tree). **`list_documents`** filters by notebook
+  and shows each document's notebooks.
+- **`hour_key`**: `POST /api/auth/keys/hour`, made with a key. The new key
+  expires after an hour, ends when its parent is revoked, and can't make keys.
+  Each key may have three working at a time, and they don't count toward the
+  account's 25. One made through `/mcp` writes "ai-agent". Migration 0078 adds
+  `parent_id`, `expires_ms` and `by_agent` to `api_keys`, and settings shows
+  when each one stops working.
+- **Pointing at the repo** (Curtis's last question): `hour_key`'s answer and the
+  guide's new _Beyond the tools_ section point at the public source and its
+  route table. A key is useful only if the agent knows the doors. The guide also
+  gains a _Notebooks_ section.
+- **Uploads through `POST /docs/binary` carry their label** (`api-key`, or
+  `ai-agent` with an agent's hour key), as an upload link's do. Before, a file
+  uploaded with a key said nothing about how it was made.
+
+Tests: unit tests for reading a tree (places, nesting, naming a section, a
+notebook's kind, rendering). In `mcp.cjs`, a new describe covers notebooks and
+the hour key: tool hints; a new note's notebook, and a wrong name making
+nothing; sections written into and read back with the unfiled; filing at a
+position, moving within the tree and between notebooks, removing, and refusing
+the feed's; a cycle refused, a rename, and a delete that keeps documents; an
+upload link filing into a notebook's tree; and the hour key working, writing
+"ai-agent", refusing to make keys, stopping at three, and ending with its
+parent. `RINGTOME_TEST_GREP=MCP just integration`: 50 passing.

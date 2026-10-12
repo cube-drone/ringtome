@@ -54,6 +54,14 @@ pub struct WriteArgs {
     /// its tags. Posting the note restates them on the post. Needs the "Reactions, tags &
     /// filters" unlock.
     tags: Option<Vec<String>>,
+    /// For a new note: the Writer notebook it goes in, by name (list_notebooks). Leave it out
+    /// for Writer's own notebook, "default". To move a note that's already written, use
+    /// file_document.
+    notebook: Option<String>,
+    /// For a new note: where in the notebook's tree it goes - a section, by its id or title from
+    /// read_notebook, or "top". Leave it out to put it at the top of the tree, if the notebook
+    /// has one. Needs the "Taxonomy & tree publication" unlock.
+    section: Option<String>,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -236,6 +244,26 @@ impl Tools {
             let Some(words) = args.words else {
                 return Err(stop("a new note needs its words"));
             };
+            // Filed where the person's own would be (Curtis, 2026-10-11): the notebook asked
+            // for, else Writer's own - settled before the note is made, so a wrong name makes
+            // nothing.
+            let notebook = self
+                .notebook(
+                    parts,
+                    &persona.root,
+                    args.notebook.as_deref().unwrap_or(super::notebooks::WRITER_HOME),
+                )
+                .await?;
+            super::notebooks::fileable(&notebook)?;
+            if notebook.kind != super::notebooks::Kind::Writing {
+                return Err(stop(format!(
+                    "\"{}\" is a sketchbook: a note goes in a Writer notebook",
+                    notebook.name
+                )));
+            }
+            if args.section.is_some() {
+                self.require(parts, &persona.root, "taxonomy").await?;
+            }
             let made = self
                 .call(
                     parts,
@@ -249,12 +277,35 @@ impl Tools {
                 )
                 .await?;
             let id = made.get("doc_id").and_then(Value::as_str).unwrap_or_default().to_string();
-            let mut answered = json!({ "document": id, "written": "a new note" });
+            self.call(
+                parts,
+                Method::PUT,
+                &format!(
+                    "/api/identity/{}/docs/{id}/buckets/{}",
+                    persona.root,
+                    escape(&notebook.name)
+                ),
+                None,
+            )
+            .await?;
+            let mut answered =
+                json!({ "document": id, "written": "a new note", "notebook": notebook.name });
+            if let Some(at) = self
+                .file_in_tree(parts, &persona.root, &notebook, &id, args.section.as_deref(), None)
+                .await?
+            {
+                answered["in_the_tree_at"] = json!(at);
+            }
             if let Some(tags) = &args.tags {
                 answered["tags"] = json!(self.retag(parts, &persona.root, &id, tags).await?);
             }
             return answer(answered);
         };
+        if args.notebook.is_some() || args.section.is_some() {
+            return Err(stop(
+                "`notebook` and `section` are for a new note: file_document files one already written",
+            ));
+        }
         let path = format!("/api/identity/{}/docs/{}", persona.root, escape(document));
         let doc = self.call(parts, Method::GET, &path, None).await?;
         let format = doc.get("format").and_then(Value::as_str).unwrap_or_default();
@@ -628,8 +679,9 @@ impl Tools {
     #[tool(
         description = "Write a note (in Writer): a new one, or new words for one the persona has \
             - the whole text, replacing what was there; the old version is kept - and/or set its \
-            tags (the whole set; tags need the Reactions, tags & filters unlock). Notes are \
-            private until posted. Needs the Private notes unlock.",
+            tags (the whole set; tags need the Reactions, tags & filters unlock). A new note goes \
+            in a notebook - Writer's own, or the one named - and its tree, if it has one. Notes \
+            are private until posted. Needs the Private notes unlock.",
         annotations(title = "Write a note", read_only_hint = false, destructive_hint = false)
     )]
     async fn write_document(

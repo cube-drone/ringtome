@@ -74,6 +74,39 @@ shows the picture when it's in a note's or a post's words. If it says `pending`,
 the picture is still being made: `read_document` on its `document` gives `embed`
 once it is. Any common format works; it needs File upload.
 
+## Notebooks
+
+Documents live in **notebooks**. Writer's are for notes, and its own is called
+"default"; drawings go in **sketchbooks**. A document can be in several
+notebooks at once. `list_notebooks` lists them, `read_notebook` shows what's in
+one, and `make_notebook` makes a new one. A new note from `write_document` goes
+in Writer's own notebook unless you name another, and `upload_link` can put a
+file in a notebook as well as in the persona's files. `file_document` puts a
+document already made into a notebook, moves it between notebooks (`from`), or
+takes it out (`remove`).
+
+A Writer notebook can be arranged as a **tree**: sections, sections inside
+sections, and documents in order within them. `read_notebook` shows the tree,
+each section with its id, plus `unfiled`: what's in the notebook but not yet in
+the tree. `make_section` adds a section, `arrange_section` renames, moves or
+deletes one (deleting keeps its documents, which become unfiled), and
+`file_document` with `section` and `position` places a document. Sections need
+the Taxonomy & tree publication unlock.
+
+## Beyond the tools
+
+For work these tools don't cover, such as a long run of uploads from a shell,
+`hour_key` gives you an API key that works for an hour. Send it as
+`Authorization: Bearer <key>`. It stops working when the hour is up or when the
+person revokes the key you're connected with. It can't make keys, and what you
+write with it is labelled ai-agent like everything else you write here. Keep it
+in your shell, never in a note, a post or a message.
+
+The node's HTTP doors are written down in its source, which is public:
+<https://github.com/cube-drone/ringtome>. Its routes are listed in
+`node/src/identity/routes.rs` (most of them). Prefer the tools where one fits:
+they check the persona's unlocks and file things where the app would.
+
 ## Chat
 
 **Rooms** are chats: one person starts one, and anyone who can read it can talk

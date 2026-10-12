@@ -1395,6 +1395,7 @@ export default {
     'persona.key-made': 'made {when}',
     'persona.key-last-used': 'last used {when}',
     'persona.key-never-used': 'never used',
+    'persona.key-until': 'works until {when}',
     'persona.key-name-placeholder': "what it's for - my backup script",
     'persona.make-a-key': 'make a key',
     'persona.drawing-not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
@@ -1784,6 +1785,9 @@ export default {
     'auth.keys.identity-by-browser': "a persona's keys and homes are changed from a signed-in browser, not with an API key",
     'auth.keys.name-the-key': 'give the key a name, up to 80 characters',
     'auth.keys.too-many-keys': "that's 25 keys already - revoke one first",
+    'auth.keys.hour-from-a-key': "an hour's key is made with a key; a browser makes keys in settings",
+    'auth.keys.hour-makes-none': "an hour's key can't make another",
+    'auth.keys.hour-too-many': "this key has {n} hour's keys working already - use one of them",
 
     // --- node/src/auth/routes.rs ---
     'auth.routes.no-account': 'no account "{username}"',
