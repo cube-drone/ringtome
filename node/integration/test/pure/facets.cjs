@@ -12,7 +12,28 @@ before(async () => {
         authorChips,
         picksFromQuery,
         queryWithPicks,
+        withBase,
+        keepsBase,
+        beyondBase,
     } = await import('../../../js/pure/facets.js'));
+});
+
+let withBase, keepsBase, beyondBase;
+describe("a notebook folder's picks (plans/WEB_ADDRESSES.md, ruling 7)", () => {
+    const base = { buckets: ['Recipes'] };
+    it("starts from the folder's notebook, with whatever the address adds", () => {
+        const picks = withBase(base, { tags: ['bread'], buckets: ['Recipes'] });
+        assert.deepEqual(picks.buckets, ['Recipes'], 'never twice');
+        assert.deepEqual(picks.tags, ['bread']);
+        assert.deepEqual(withBase(base, {}).buckets, ['Recipes']);
+    });
+    it('says only what is beyond the folder, and knows when the folder is let go', () => {
+        const picks = { buckets: ['Recipes', 'Bread'], tags: ['x'] };
+        assert.ok(keepsBase(base, picks));
+        assert.deepEqual(beyondBase(base, picks).buckets, ['Bread']);
+        assert.deepEqual(beyondBase(base, picks).tags, ['x']);
+        assert.ok(!keepsBase(base, { buckets: ['Bread'] }), 'its notebook unpicked');
+    });
 });
 
 describe('the picks in an address (2026-10-11)', () => {

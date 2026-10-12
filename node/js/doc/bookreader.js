@@ -13,21 +13,21 @@ import { t } from '../i18n.js';
 import { parseBook, neighbours, bookTags, filterBook } from '../pure/books.js';
 import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
-import { postHref } from '../links.js';
+import { pathHref, postHref, useSlugOf } from '../links.js';
 import { useArrowNav } from './docapp.js';
 import { EpubButton } from './epubbutton.js';
 
 const html = htm.bind(h);
 
-/// In-place navigation for the reader's own links (Curtis, 2026-09-04: links reloaded the
-/// page while the buttons did not): the shell's LocationProvider intercepts only `/home`
-/// anchors, by design, so `/id/…` anchors route here by hand. A modifier-click or a
-/// middle-click keeps the browser's own behaviour.
-const soft = (loc) => (e) => {
+/// A page's link: its web address when the book says one (plans/WEB_ADDRESSES.md) - what a hover, a
+/// middle-click or a copy gets - while a plain click turns the page in place, by its id.
+const pageLink = (root, book, p, slug) =>
+    p.path ? pathHref(root, p.path, slug) : postHref(root, book, p.post);
+const turnTo = (loc, root, book, p) => (e) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
         return;
     e.preventDefault();
-    loc.route(e.currentTarget.getAttribute('href'));
+    loc.route(postHref(root, book, p.post));
 };
 
 const Tree = ({
@@ -37,18 +37,19 @@ const Tree = ({
     page,
     depth,
     loc,
+    slug,
 }) => html`<ul class=${depth === 0 ? 'book-reader-list book-reader-list-top' : 'book-reader-list'}>
     ${section.pages.map(
         (
             p,
         ) => html`<li class=${p.post === page ? 'book-reader-page book-reader-page-current' : 'book-reader-page'} key=${p.post}>
-            <a href=${postHref(root, book, p.post)} onClick=${soft(loc)}>${p.title || t('doc.bookreader.untitled-page', 'untitled page')}</a>
+            <a href=${pageLink(root, book, p, slug)} onClick=${turnTo(loc, root, book, p)}>${p.title || t('doc.bookreader.untitled-page', 'untitled page')}</a>
         </li>`,
     )}
     ${section.sections.map(
         (s, i) => html`<li class="book-reader-section" key=${`${depth}-${i}`}>
             <span class="book-reader-section-title"><${Icons.section} /> ${s.title || t('doc.bookreader.untitled-section', '(untitled section)')}</span>
-            <${Tree} section=${s} root=${root} book=${book} page=${page} depth=${depth + 1} loc=${loc} />
+            <${Tree} section=${s} root=${root} book=${book} page=${page} depth=${depth + 1} loc=${loc} slug=${slug} />
         </li>`,
     )}
 </ul>`;
@@ -125,6 +126,28 @@ export const BookReader = ({ root, book, page: asked, title }) => {
         page || null,
         go,
     );
+    // The open page's web address in the address bar (plans/WEB_ADDRESSES.md): the reader turns pages
+    // by id, so the address it lands on is the long form - said as the page's path instead, the
+    // shortest this node can vouch for, once the author's @name is known.
+    const slug = useSlugOf(root);
+    useEffect(() => {
+        if (!walk || walk.index === undefined || walk.index < 0 || slug === undefined) return;
+        const entry = walk.order[walk.index];
+        if (!entry || !entry.path) return;
+        const shortest = pathHref(root, entry.path, slug);
+        const here = decodeURIComponent(window.location.pathname);
+        const ours =
+            here.includes(`/post/${book}`) ||
+            here.includes(`/post/${entry.post}`) ||
+            here.endsWith(`/${entry.path}`);
+        if (here === shortest || !ours) return;
+        try {
+            history.replaceState(history.state, '', `${shortest}${window.location.search}`);
+        } catch {
+            /* an address the browser won't take: the longer one stands */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [payload, page, slug]);
     if (payload === undefined)
         return html`<p class="postpage-loading">${t('doc.bookreader.opening-the-book', 'opening the book…')}</p>`;
     if (payload === null)
@@ -150,7 +173,7 @@ export const BookReader = ({ root, book, page: asked, title }) => {
             <div class="book-reader-epub">
                 <${EpubButton} path=${`/ringtome/user/${root}/post/${book}/epub`} fallback="book.epub" className="book-reader-step" />
             </div>
-            <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} />
+            <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} slug=${slug} />
             ${
                 picked.size > 0 &&
                 shownBook.pages.length === 0 &&

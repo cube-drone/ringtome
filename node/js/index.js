@@ -173,10 +173,13 @@ const SearchOptions = ({ kind, onKind }) => {
 /// A first segment that starts with `@` is a node slug (PROJECT_PLAN's The node's public face, ruling 6): the
 /// router cannot say `/@:slug` - a parameter is a whole segment - so this route takes the
 /// segment and dispatches, handing anything else to the shell's own default.
-const AtRoute = ({ at, fallback: Fallback, ...props }) =>
-    at && at.startsWith('@')
-        ? html`<${SlugPage} slug=${at.slice(1)} ...${props} />`
-        : html`<${Fallback} ...${props} />`;
+const AtRoute = ({ at, fallback: Fallback, ...props }) => {
+    const loc = useLocation();
+    if (!at || !at.startsWith('@')) return html`<${Fallback} ...${props} />`;
+    // A post's web address or a folder under the name (plans/WEB_ADDRESSES.md): `/@name/<path>`.
+    const rest = loc.path.slice(at.length + 1).replace(/^\/+|\/+$/g, '');
+    return html`<${SlugPage} slug=${at.slice(1)} rest=${rest} ...${props} />`;
+};
 
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
 // persona is open, routing takes over. The whole internal UI lives under /ringtome (since
@@ -690,6 +693,7 @@ const Inside = ({ session }) => {
             <${LegacyHome} path="/home/*" current=${persona.current} />
             <${LegacyHome} path="/in/*" current=${persona.current} />
             <${AtRoute} path="/:at" fallback=${NotFound} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
+            <${AtRoute} path="/:at/*" fallback=${NotFound} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${NotFound} default />
         </${Router}>
     `;
@@ -1072,6 +1076,7 @@ const Outside = ({ session }) => {
                 <${LegacyId} path="/id/:seg" />
                 <${LegacyId} path="/id/:seg/*" />
                 <${AtRoute} path="/:at" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
+                <${AtRoute} path="/:at/*" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
                 <${FrontDoor} default session=${session} />
             </${Router}>
         </div>

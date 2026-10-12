@@ -305,6 +305,60 @@ pub async fn slug_resolve(
     }
 }
 
+/// `GET /api/node/slug-of/{root}`: the short name a post's address may wear (plans/WEB_ADDRESSES.md,
+/// section 4) - what a card copying a link, the book reader and the post page's address bar ask
+/// for. Only on a node with a public URL (Curtis, 2026-10-11): `/ringtome/...` is looked up in the
+/// network wherever it's opened, but `/@jeff/...` means something only at this node's own address,
+/// so on `localhost` it would mean nothing anywhere else. Without one, the answer is none, and they
+/// hand out the identity form, which travels.
+pub async fn slug_of(
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let root = root.to_ascii_lowercase();
+    let public = state.config.public_url.as_deref().is_some_and(|u| !u.trim().is_empty());
+    let slug = if public && decode_root(&root).is_some() {
+        crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?.0
+    } else {
+        None
+    };
+    Ok(Json(serde_json::json!({ "slug": slug })))
+}
+
+/// `GET /@{slug}/{*rest}`: a post's web address under the persona's short name
+/// (plans/WEB_ADDRESSES.md): its own head when the path names a post, else the person's; the last
+/// slug sends the reader on to the current, the path kept.
+pub async fn slug_path_page(
+    State(state): State<AppState>,
+    Path((slug, rest)): Path<(String, String)>,
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
+    match crate::slugs::resolve(&state.node_db, &slug).await.map_err(AppError::Internal)? {
+        Some((root, current)) => {
+            let Some(key) = decode_root(&root) else {
+                return slug_page(State(state), Path(slug)).await;
+            };
+            if !current {
+                if let Some(c) = crate::slugs::of_root(&state.node_db, &root)
+                    .await
+                    .map_err(AppError::Internal)?
+                    .0
+                {
+                    let to = format!("/@{c}/{}", rest.trim_matches('/'));
+                    return Ok(axum::response::Redirect::temporary(&to).into_response());
+                }
+            }
+            if let Some(doc) = crate::idface::post_named(&state, &key, &rest).await {
+                if let Some(page) = crate::idface::post_page(&state, key, doc).await? {
+                    return Ok(page);
+                }
+            }
+            crate::idface::persona_page(&state, key).await
+        }
+        None => slug_page(State(state), Path(slug)).await,
+    }
+}
+
 /// `GET /@{slug}`: the persona's page under its short name (ruling 6); the last slug sends
 /// the reader on to the current; an unknown one is the app under a 404, which says so.
 pub async fn slug_page(

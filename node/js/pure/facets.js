@@ -135,6 +135,32 @@ export function queryWithPicks(search, picks) {
     return q ? `?${q}` : '';
 }
 
+/// A folder's picks (plans/WEB_ADDRESSES.md, ruling 7): a notebook's folder is the person's page
+/// narrowed to the notebook, so the page starts from `base` - picks the address doesn't spell out -
+/// and the address carries only what's picked beyond it. `withBase` is the page's picks from an
+/// address's; `keepsBase`, whether picks still hold the folder (unpicking its notebook leaves the
+/// folder for the person's page); `beyondBase`, what the address says while it does.
+const rowsOf = (picks, row) => (picks && picks[row]) || [];
+export function withBase(base, picks) {
+    const out = {};
+    for (const row of [...Object.keys(LEFT_OUT), ...Object.values(LEFT_OUT)]) {
+        out[row] = [...new Set([...rowsOf(base, row), ...rowsOf(picks, row)])];
+    }
+    if (picks && picks.me !== undefined) out.me = picks.me;
+    return out;
+}
+export const keepsBase = (base, picks) =>
+    Object.keys(LEFT_OUT).every((row) =>
+        rowsOf(base, row).every((v) => rowsOf(picks, row).includes(v)),
+    );
+export function beyondBase(base, picks) {
+    const out = { ...picks };
+    for (const row of Object.keys(LEFT_OUT)) {
+        out[row] = rowsOf(picks, row).filter((v) => !rowsOf(base, row).includes(v));
+    }
+    return out;
+}
+
 /// The fewest posts a notebook needs to be a chip on the strip (Curtis, 2026-10-11: "a lot of
 /// 1-item buckets (books)"): a book is a notebook of its own, and each one's pages made a chip of
 /// one. A picked one stays whatever its count, so it can be clicked back.

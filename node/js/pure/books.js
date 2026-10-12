@@ -62,6 +62,8 @@ export function parseBook(text) {
                       post: String(p.post),
                       title: String(p.title || ''),
                       tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
+                      // Its web address (plans/WEB_ADDRESSES.md), when the book says one.
+                      path: typeof p.path === 'string' && p.path ? p.path : null,
                   }))
             : [],
         sections: Array.isArray(s && s.sections) ? s.sections.map(section) : [],
@@ -166,7 +168,13 @@ export function readingOrder(book) {
     const out = [];
     const walk = (section, trail) => {
         for (const p of section.pages)
-            out.push({ post: p.post, title: p.title, tags: p.tags || [], trail });
+            out.push({
+                post: p.post,
+                title: p.title,
+                tags: p.tags || [],
+                path: p.path || null,
+                trail,
+            });
         for (const s of section.sections) walk(s, [...trail, s.title]);
     };
     if (book) walk({ pages: book.pages, sections: book.sections }, []);

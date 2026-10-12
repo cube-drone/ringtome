@@ -28,7 +28,19 @@ const html = htm.bind(h);
 /// The stream on a person's page: what they have said in public, newest first, and as far
 /// back as the reader cares to go. The profile brought the first page; each further one is
 /// asked for by hand, because reading someone's whole history is a decision, not a default.
-export const PublicPosts = ({ root, posts, pinned, more, current, fields, searchQuery }) => {
+/// `folder`: the notebook a folder address narrows the page to (plans/WEB_ADDRESSES.md, ruling 7),
+/// and `home` the person's own address, where unpicking it goes.
+export const PublicPosts = ({
+    root,
+    posts,
+    pinned,
+    more,
+    current,
+    fields,
+    searchQuery,
+    folder = null,
+    home = null,
+}) => {
     // The page already knows who this is - its profile answer carries the name and the
     // face - and its cards must not fall back to the browser's own mirror, which knows only
     // the people the reader follows (Curtis, 2026-09-05: "Dart Green" on the page, their
@@ -132,7 +144,11 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
     // query is open. Hooks before the early return below, as always.
-    const [picks, setPicks] = usePicks(root ? `id:${root}` : null, !current, { inUrl: true });
+    const [picks, setPicks] = usePicks(root ? `id:${root}` : null, !current, {
+        inUrl: true,
+        base: folder ? { buckets: [folder] } : null,
+        home,
+    });
     const viewer = current ? `?as=${current.root}` : '';
     // The picks thin the lists (Curtis, 2026-09-27; search.rs facet_sets) - the words stay out.
     const pickQuery = narrowParams('', picks);

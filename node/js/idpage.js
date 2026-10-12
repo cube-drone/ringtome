@@ -139,6 +139,7 @@ export const IdPage = ({
     onTitle,
     searchQuery,
     hidden = false,
+    folder = null,
 }) => {
     const loc = useLocation();
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
@@ -329,6 +330,8 @@ export const IdPage = ({
             more=${profile.posts_more}
             current=${current}
             searchQuery=${searchQuery}
+            folder=${folder}
+            home=${folder ? loc.path.replace(/\/[^/]+\/?$/, '') : null}
         />
     <//>`;
 };

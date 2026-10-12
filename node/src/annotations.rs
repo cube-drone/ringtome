@@ -596,6 +596,41 @@ pub async fn post_at_path(node_db: &Db, author_hex: &str, path: &str) -> Result<
     Ok(row.map(|(post,)| post))
 }
 
+/// The notebook a folder of an author's paths stands for (ruling 7): the one, among the notebooks
+/// a post under `folder/` was filed from, whose folder `folder` is - or None when nothing of
+/// theirs lives under it.
+pub async fn folder_notebook(
+    node_db: &Db,
+    author_hex: &str,
+    folder: &str,
+) -> Result<Option<String>> {
+    // Every path under `folder/`: from `folder/` up to, not including, `folder0` - `0` follows `/`.
+    let row: Option<(String,)> = node_db
+        .fetch_optional(
+            "SELECT target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
+             WHERE key = ?1 AND value >= ?2 AND value < ?3 AND target_author = ?4 AND annotator = ?4
+               AND sealed = 0
+             LIMIT 1",
+            (crate::webpath::PATH_KEY, format!("{folder}/"), format!("{folder}0"), author_hex),
+        )
+        .await
+        .context("reading a folder's posts")?;
+    let Some((doc,)) = row else { return Ok(None) };
+    let notebooks: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT value FROM doc_annotations
+             WHERE target_author = ?1 AND target_doc = ?2 AND annotator = ?1 AND key = 'bucket'
+               AND sealed = 0",
+            (author_hex, doc.as_str()),
+        )
+        .await
+        .context("reading a folder's notebook")?;
+    Ok(notebooks
+        .into_iter()
+        .map(|(n,)| n)
+        .find(|n| crate::webpath::folder(n).as_deref() == Some(folder)))
+}
+
 /// A post's path, as its author said it and this node holds it.
 pub async fn path_of(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<String>> {
     let row: Option<(String,)> = node_db

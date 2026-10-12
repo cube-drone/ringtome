@@ -127,6 +127,19 @@ describe("books: the payload (PROJECT_PLAN's Books, slice 2)", () => {
         assert.equal(parseBook('not json'), null);
         assert.equal(parseBook('[]'), null);
     });
+
+    it("keeps a page's web address, and reads none as none (plans/WEB_ADDRESSES.md)", () => {
+        const book = parseBook(
+            '{"title":"g","pages":[{"post":"p1","title":"one","path":"g/one"},{"post":"p2","title":"two"}],"sections":[]}',
+        );
+        assert.deepEqual(
+            readingOrder(book).map((p) => [p.post, p.path]),
+            [
+                ['p1', 'g/one'],
+                ['p2', null],
+            ],
+        );
+    });
 });
 
 describe("books: reading order (PROJECT_PLAN's Books, slice 4)", () => {

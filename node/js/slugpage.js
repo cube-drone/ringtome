@@ -7,12 +7,15 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
+import { PathPost } from './pathpage.js';
 import { IdPage } from './idpage.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
 
-export const SlugPage = ({ slug, current, persona, session, onTitle, searchQuery }) => {
+/// `rest`: anything after the name - a post's web address, `/@cube-drone/recipes/sourdough-loaf`
+/// (plans/WEB_ADDRESSES.md), or a notebook's folder.
+export const SlugPage = ({ slug, rest = '', current, persona, session, onTitle, searchQuery }) => {
     const loc = useLocation();
     const [who, setWho] = useState(undefined);
     useEffect(() => {
@@ -22,14 +25,15 @@ export const SlugPage = ({ slug, current, persona, session, onTitle, searchQuery
             .then((r) => {
                 if (!live) return;
                 // The last slug sends the reader on to the current one (ruling 7).
-                if (r && r.slug && !r.current) loc.route(`/@${r.slug}`, true);
+                if (r && r.slug && !r.current)
+                    loc.route(`/@${r.slug}${rest ? `/${rest}` : ''}`, true);
                 else setWho(r);
             })
             .catch(() => live && setWho(null));
         return () => {
             live = false;
         };
-    }, [slug, loc]);
+    }, [slug, rest, loc]);
     if (who === undefined)
         return html`<div class="persona-page id-page"><p class="id-quiet">${t('slugpage.looking', 'looking…')}</p></div>`;
     if (who === null || !who.speakable) {
@@ -38,5 +42,7 @@ export const SlugPage = ({ slug, current, persona, session, onTitle, searchQuery
             <p>${t('slugpage.a-name-is-this-nodes', 'short names only work on this site. A real address starts with /ringtome/user/.')}</p>
         </div>`;
     }
+    if (rest)
+        return html`<${PathPost} seg=${who.speakable} path=${rest} current=${current} persona=${persona} session=${session} onTitle=${onTitle} searchQuery=${searchQuery} />`;
     return html`<${IdPage} seg=${who.speakable} current=${current} persona=${persona} session=${session} onTitle=${onTitle} searchQuery=${searchQuery} />`;
 };

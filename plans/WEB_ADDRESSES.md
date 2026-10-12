@@ -1,6 +1,6 @@
 # Web addresses - a post's place on the public web
 
-A design draft (2026-10-11), with rulings. Slice 1 built the same day.
+A design draft (2026-10-11), with rulings. Slices 1 and 2 built the same day.
 
 ## The ask (Curtis, 2026-10-11)
 
@@ -270,13 +270,22 @@ natural next slice after this.
    card resolves it), and the person page stays alive under a path as under a
    post. The card hides the `path` label.
 
-2. **The canonical address**: `/@name/<path>` answered where the persona has an
-   @name, and the shortest form wherever slice 1 now uses the identity form (the
-   head's canonical and `og:url`, the address bar). Folder pages (ruling 7):
-   `/@name/recipes` as the person page narrowed to the notebook. Copy-link
-   handing out the path. A book's reader linking its pages by path (it still
-   links `post/<book>/page/<id>`, and the address bar keeps that form for a page
-   reached that way).
+2. **The canonical address** - _built 2026-10-11._ The node answers
+   `/@name/<path>` (`nodeface::slug_path_page`) with the post's head, and sends
+   an old name on to the current one with the path kept. The head's canonical
+   address and `og:url` take the @name form where the persona has one. The
+   client routes `/@name/<path>` through `SlugPage`. The address bar takes the
+   shortest form, from the id form or the identity path form, once the author's
+   profile says their @name. Folder pages (ruling 7): `/api/id/<seg>/at` answers
+   a one-segment folder with the notebook a post under it was filed from
+   (`annotations::folder_notebook`), and the person page narrows to it
+   (`usePicks`'s `base`). The address carries only the picks beyond the folder,
+   and unpicking the notebook goes to the person's page. "copy link" hands out
+   the shortest form; a card learns the author's @name ahead of the press
+   (`GET /api/node/slug-of/<root>`, `links.js` `useSlugOf`). The book's payload
+   names each page's path, the reader's links carry it, and turning a page
+   (still by id, so the reader doesn't remount) puts the page's path in the
+   address bar.
 3. **The way back**: `GET /api/node/at/@name/<path>`, and the paste rewrite
    resolving a pretty URL to the identity path.
 4. **Renaming and retiring**: a path editor in the publish panel, former paths

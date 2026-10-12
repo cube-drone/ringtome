@@ -919,6 +919,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/personas", get(nodeface::node_personas))
         .route("/api/node/slugs/{slug}", get(nodeface::slug_resolve))
         .route("/@{slug}", get(nodeface::slug_page))
+        .route("/@{slug}/{*rest}", get(nodeface::slug_path_page))
+        .route("/api/node/slug-of/{root}", get(nodeface::slug_of))
         .route("/api/identity/{root}/slug", get(nodeface::slug_get).put(nodeface::slug_put))
         .route("/api/identity/{root}/listed", get(nodeface::listed_get).put(nodeface::listed_put))
         .route("/api/unfurl", get(unfurl_handler))

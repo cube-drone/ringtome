@@ -20,8 +20,10 @@ const html = htm.bind(h);
 const RETRIES = 4;
 const RETRY_MS = 1500;
 
-/// The post a path names, then its page. `undefined` while looking, `null` for nothing there.
-const PathPost = ({ seg, path, current, onTitle }) => {
+/// The post a path names, then its page - or, for a notebook's folder, the person's page narrowed
+/// to the notebook (ruling 7). `undefined` while looking, `null` for nothing there.
+export const PathPost = ({ seg, path, ...props }) => {
+    const { current, onTitle } = props;
     const [post, setPost] = useState(undefined);
     useEffect(() => {
         let live = true;
@@ -29,7 +31,7 @@ const PathPost = ({ seg, path, current, onTitle }) => {
         setPost(undefined);
         const ask = (tries) =>
             api(`/api/id/${seg}/at/${path}`)
-                .then((r) => live && setPost(r.post))
+                .then((r) => live && setPost(r))
                 .catch(() => {
                     if (!live) return;
                     if (tries > 0) timer = setTimeout(() => ask(tries - 1), RETRY_MS);
@@ -49,7 +51,8 @@ const PathPost = ({ seg, path, current, onTitle }) => {
         return html`<p class="postpage-loading">${t('pathpage.looking', 'looking for the post…')}</p>`;
     if (post === null)
         return html`<p class="postpage-missing">${t('pathpage.nothing-here', 'nothing lives at this address - it may have been taken down, or never existed')}</p>`;
-    return html`<${PostPage} seg=${seg} doc=${post} current=${current} onTitle=${onTitle} />`;
+    if (post.folder) return html`<${IdPage} ...${props} seg=${seg} folder=${post.bucket} />`;
+    return html`<${PostPage} seg=${seg} doc=${post.post} current=${current} onTitle=${onTitle} />`;
 };
 
 /// Everything under a person's address that isn't one of its own routes: the person's page when
@@ -61,5 +64,5 @@ export const PersonOrPath = (props) => {
         ? loc.path.slice(prefix.length).replace(/^\/+|\/+$/g, '')
         : '';
     if (!rest) return html`<${IdPage} ...${props} />`;
-    return html`<${PathPost} seg=${props.seg} path=${rest} current=${props.current} onTitle=${props.onTitle} />`;
+    return html`<${PathPost} ...${props} path=${rest} />`;
 };

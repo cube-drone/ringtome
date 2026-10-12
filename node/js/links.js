@@ -28,6 +28,38 @@ export const personHref = (rootHex, via = []) => {
 /// A public post, or one page of a book (`page` is the page's own post id).
 export const postHref = (rootHex, doc, page = null) =>
     ringtomePath({ seg: seg(rootHex), kind: 'post', doc, page });
+/// A post at its web address (plans/WEB_ADDRESSES.md): under the author's @name when `slug` is the
+/// one this node gave them, else under their real address. `path` is the author's own `path` label.
+export const pathHref = (rootHex, path, slug = null) =>
+    slug ? `/@${slug}/${path}` : ringtomePath({ seg: seg(rootHex), kind: 'path', at: path });
+
+/// The short name this node gave a persona, or null - asked once per persona per page load.
+const slugsAsked = new Map();
+export function slugOf(rootHex) {
+    if (!slugsAsked.has(rootHex))
+        slugsAsked.set(
+            rootHex,
+            api(`/api/node/slug-of/${rootHex}`)
+                .then((r) => (r && r.slug) || null)
+                .catch(() => null),
+        );
+    return slugsAsked.get(rootHex);
+}
+
+/// `slugOf` for a component: undefined while it's asked, and nothing asked unless `wanted`.
+export function useSlugOf(rootHex, wanted = true) {
+    const [slug, setSlug] = useState(undefined);
+    useEffect(() => {
+        if (!rootHex || !wanted) return undefined;
+        let live = true;
+        slugOf(rootHex).then((s) => live && setSlug(s));
+        return () => {
+            live = false;
+        };
+    }, [rootHex, wanted]);
+    return slug;
+}
+
 /// A post's history (2026-10-02): every version it has been, where its "edited" mark leads.
 export const postHistoryHref = (rootHex, doc) => `${postHref(rootHex, doc)}/history`;
 

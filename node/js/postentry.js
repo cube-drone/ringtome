@@ -136,7 +136,15 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
 // surfaces that always found them here.
 import { publishWithBaking, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
-import { postHref, docHref, roomHref, CopyLinkChip, postHistoryHref } from './links.js';
+import {
+    postHref,
+    docHref,
+    roomHref,
+    CopyLinkChip,
+    postHistoryHref,
+    pathHref,
+    useSlugOf,
+} from './links.js';
 import { RoomTitle, BookTitle } from './roomtitle.js';
 import { formatWhen } from './pure/when.js';
 export { publishWithBaking, BakeModal };
@@ -825,6 +833,14 @@ const PostEntryBody = ({
     // permalink's profile-visit-first load keeps the fresh-sync the author-page link used
     // to buy.
     const href = postHref(item.author, item.doc_id);
+    // What "link" hands out (plans/WEB_ADDRESSES.md): the post's web address when its author gave it
+    // one, in the shortest form - under their @name where this node gave them one. The @name is asked
+    // ahead of the press, since a copy that waits on the network may lose the clipboard.
+    const pathLabel = (item.annotations || []).find(
+        (a) => a.annotator === item.author && a.key === 'path',
+    );
+    const slug = useSlugOf(item.author, !!pathLabel);
+    const shareHref = pathLabel ? pathHref(item.author, pathLabel.value, slug) : href;
     // The words as shown: after an in-place edit, the buffer the user just confirmed - not a
     // refetch of what they typed. The item prop's copies are snapshots; a page refresh
     // reconciles everything against the canonical fold anyway.
@@ -1151,7 +1167,7 @@ const PostEntryBody = ({
                         does, and for nobody else. */ ''
                     }
                     ${!open && item.format === 'book' && html`<${EpubChip} path=${`/ringtome/user/${item.author}/post/${item.doc_id}/epub`} />`}
-                    ${!open && html`<${CopyLinkChip} path=${href} />`}
+                    ${!open && html`<${CopyLinkChip} path=${shareHref} />`}
                     ${
                         /* Copy into private notes, last on every card (Curtis, 2026-09-08: the
                         same seat on your own posts and other people's). */ ''

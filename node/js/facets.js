@@ -24,9 +24,12 @@ import {
     fitCount,
     LEFT_OUT,
     OPEN_LINES,
+    beyondBase,
+    keepsBase,
     pickState,
     picksFromQuery,
     queryWithPicks,
+    withBase,
     tagFamily,
     tagRows,
     wrapLines,
@@ -396,11 +399,18 @@ const writePicks = (key, picks) => {
 /// page, the node's feed); the reader's own feed keeps its picks to itself, and keeps them in its
 /// saved feeds. An address that names picks outranks the tab's memory, and a pick replaces the
 /// address rather than pushing one, so the back button leaves the page rather than unpicking.
-export function usePicks(key, free = false, { inUrl = false } = {}) {
+///
+/// `base` and `home` (plans/WEB_ADDRESSES.md, ruling 7): a notebook's folder is the person's page
+/// narrowed to it - `base` the picks the folder stands for, which the address doesn't spell out,
+/// and `home` the person's own address, where unpicking the folder's notebook goes. A folder's
+/// picks aren't the tab's memory of the person's page, so they're never kept as it.
+export function usePicks(key, free = false, { inUrl = false, base = null, home = null } = {}) {
     const loc = useLocation();
     const search = inUrl ? (loc.url.split('?')[1] ?? '') : '';
+    const baseKey = base ? JSON.stringify(base) : '';
     const initial = () => {
         const named = inUrl && picksFromQuery(search);
+        if (base) return { ...NO_PICKS, ...withBase(base, named || NO_PICKS) };
         if (named) return { ...NO_PICKS, ...named };
         return key ? readPicks(key) : NO_PICKS;
     };
@@ -409,13 +419,18 @@ export function usePicks(key, free = false, { inUrl = false } = {}) {
         setPicksState(initial());
         // A link followed to this same page with other picks in it.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key, search]);
+    }, [key, search, baseKey]);
     const setPicks = (next) => {
         setPicksState(next);
-        if (key) writePicks(key, next);
+        if (key && !base) writePicks(key, next);
         if (inUrl) {
+            if (base && home && !keepsBase(base, next)) {
+                // The folder's notebook unpicked: the person's page, with whatever else is picked.
+                loc.route(`${home}${queryWithPicks('', next)}`);
+                return;
+            }
             const path = loc.url.split('?')[0];
-            const query = queryWithPicks(search, next);
+            const query = queryWithPicks(search, base ? beyondBase(base, next) : next);
             if (`${path}${query}` !== loc.url) loc.route(`${path}${query}`, true);
         }
     };

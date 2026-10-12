@@ -20208,3 +20208,53 @@ naming the post. Full `just ci` is green.
 
 Not yet (slice 2): the `@name` form, folder pages, copy-link handing out the
 path, and a book's reader linking pages by path.
+
+## 2026-10-11 (cont.): web addresses, slice 2 - the @name, folders, copy-link and books
+
+Curtis: "on to step 2". In `plans/WEB_ADDRESSES.md`:
+
+- **`/@name/<path>`**: the node answers it with the post's own head
+  (`nodeface::slug_path_page`), and an old name sends the reader on to the
+  current one with the path kept. Where the persona has an @name, the head's
+  canonical address and `og:url` use that form. In the app, `SlugPage` takes the
+  rest of the address and resolves it as a path. A post reached by its id or by
+  the identity path form puts the shortest form in the address bar.
+- **Folder pages** (ruling 7): `/@name/recipes` (or the identity form) is the
+  person's page narrowed to the Recipes notebook. The node names the notebook
+  from a post under the folder (`annotations::folder_notebook`). The page starts
+  from that pick (`usePicks`'s new `base`), and the address carries only picks
+  beyond it. Unpicking the notebook leaves the folder for the person's page.
+- **"copy link"** hands out the post's path in its shortest form. Each card
+  learns its author's @name ahead of the press through a small anonymous door,
+  `GET /api/node/slug-of/<root>`, asked once per author per page load, because a
+  copy that waits on the network can lose the clipboard.
+- **Books**: the book's payload names each page's path. The reader's links carry
+  it, so a hover, middle-click or copy gets the path, while a plain click still
+  turns the page in place by id. The address bar then shows the page's path.
+
+Tests: pure tests for the folder's picks (`withBase`, `keepsBase`, `beyondBase`)
+and for `parseBook` keeping a page's path. In `webpaths.cjs`: a book's payload
+naming its pages' paths; the @name form as canonical, with an old name
+redirecting with the path kept; and a folder naming its notebook. In headless
+Chrome:
+
+- a stranger opened `/@name/on-boats`, and the id form switched to it;
+- a card's "link" copied `…/@name/recipes/leek-soup`;
+- `/@name/recipes` showed only the two Recipes posts, and unpicking the notebook
+  went to `/@name`;
+- the book reader's links read `/@name/grimoire/chapter-one`, and turning to
+  chapter two put `/@name/grimoire/chapter-two` in the address bar.
+
+- **The @name form only on a node with a public URL** (Curtis: "a /ringtome URL
+  could be passed around the network ... that obviously doesn't work for
+  @jeff/postymosty, which is why I think it only works with a FQDN"). Slice 2
+  had handed out `/@name/...` wherever the persona had a name, `localhost`
+  included, where it means nothing at any other address. Now
+  `GET /api/node/slug-of` answers a name only when the node declares a public
+  URL, and the post page reads it from there instead of the profile, so cards,
+  the book reader and the address bar all fall back to the identity path form.
+  The page head's canonical address has the same gate. `/@name/<path>` still
+  answers on any node. Ruling 8 in the plan. In headless Chrome, the same node
+  without and with `RINGTOME_PUBLIC_URL`: the address bar, the copied link and
+  the canonical address were `/ringtome/user/…/postymosty` without, and
+  `/@jeff…/postymosty` with. The rig's claim now checks the fallback.

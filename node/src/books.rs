@@ -155,6 +155,9 @@ struct PagePayload {
     /// table of contents and filters the table by them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<String>,
+    /// The page's web address (plans/WEB_ADDRESSES.md, ruling 6): the reader links it by its path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -438,11 +441,30 @@ async fn rollout(
         tags.dedup();
         page_tags.insert(*doc_id, tags);
     }
+    // Every page's web address, as its publish said it (`identity::post_path`).
+    let mut page_paths: BTreeMap<[u8; 16], String> = BTreeMap::new();
+    for (doc_id, post_hex) in &published {
+        let Some(post_id) =
+            hex::decode(post_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+        else {
+            continue;
+        };
+        if let Some(label) = data
+            .public_annotations()
+            .of(root, &post_id)
+            .await?
+            .into_iter()
+            .find(|r| r.key == crate::webpath::PATH_KEY)
+        {
+            page_paths.insert(*doc_id, label.value);
+        }
+    }
     let page_payload = |d: &[u8; 16]| -> Option<PagePayload> {
         published.get(d).map(|post| PagePayload {
             post: post.clone(),
             title: titles.get(d).cloned().unwrap_or_default(),
             tags: page_tags.get(d).cloned().unwrap_or_default(),
+            path: page_paths.get(d).cloned(),
         })
     };
     let cover = cover_doc.and_then(|d| page_payload(&d));

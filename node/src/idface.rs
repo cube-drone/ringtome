@@ -156,7 +156,7 @@ pub async fn idface_deep(
 
 /// The public post a deeper path names: `post/<doc>`, a book's `post/<book>/page/<doc>` (the page's
 /// own post), or `doc/<note>` once the note is published (its author's `published_from` label).
-async fn post_named(state: &AppState, root: &[u8; 32], rest: &str) -> Option<[u8; 16]> {
+pub(crate) async fn post_named(state: &AppState, root: &[u8; 32], rest: &str) -> Option<[u8; 16]> {
     let parts: Vec<&str> = rest.trim_matches('/').split('/').collect();
     let hex_id = match parts.as_slice() {
         ["post", doc] | ["post", _, "page", doc] => doc.to_string(),
@@ -192,7 +192,7 @@ const HEAD_EXCERPT_CHARS: usize = 200;
 /// for; `None` - the person's head instead - for anyone else, for a post that is not on the public
 /// shelf, and for a SEALED post, whose title and words are for trusted readers and never for an
 /// unfurler.
-async fn post_page(
+pub(crate) async fn post_page(
     state: &AppState,
     root: [u8; 32],
     doc_id: [u8; 16],
@@ -229,9 +229,19 @@ async fn post_page(
         .ok()
         .flatten()
         .filter(|p| crate::webpath::well_formed(p));
-    let url = match &path {
-        Some(path) => format!("{base}/ringtome/user/{short}/{path}"),
-        None => format!("{base}/ringtome/user/{short}/post/{doc_hex}"),
+    // The shortest form this node can vouch for (plans/WEB_ADDRESSES.md, section 4): under the
+    // persona's @name here when it has one and this node has a public URL - an @name means
+    // something only at the node's own address, never on `localhost` - else under its real
+    // address, which any node looks up in the network.
+    let slug = if base.trim().is_empty() {
+        None
+    } else {
+        crate::slugs::of_root(&state.node_db, &root_hex).await.ok().and_then(|(c, _)| c)
+    };
+    let url = match (&path, &slug) {
+        (Some(path), Some(slug)) => format!("{base}/@{slug}/{path}"),
+        (Some(path), None) => format!("{base}/ringtome/user/{short}/{path}"),
+        (None, _) => format!("{base}/ringtome/user/{short}/post/{doc_hex}"),
     };
     let mut head = format!(
         "<title>{} - {}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"article\">\n<meta property=\"og:url\" content=\"{}\">\n<meta property=\"og:site_name\" content=\"{}\">",
@@ -2995,13 +3005,23 @@ pub async fn id_at(
     if !crate::webpath::well_formed(&path) || !shelf_readable(&state, &session, &root_hex).await? {
         return Err(missing());
     }
-    match crate::annotations::post_at_path(&state.node_db, &root_hex, &path)
+    if let Some(post) = crate::annotations::post_at_path(&state.node_db, &root_hex, &path)
         .await
         .map_err(AppError::Internal)?
     {
-        Some(post) => Ok(axum::Json(serde_json::json!({ "post": post, "path": path }))),
-        None => Err(missing()),
+        return Ok(axum::Json(serde_json::json!({ "post": post, "path": path })));
     }
+    // A notebook's folder (ruling 7): the person's page, narrowed to the notebook - named by the
+    // notebook a post under the folder was filed from.
+    if !path.contains('/') {
+        if let Some(bucket) = crate::annotations::folder_notebook(&state.node_db, &root_hex, &path)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            return Ok(axum::Json(serde_json::json!({ "folder": path, "bucket": bucket })));
+        }
+    }
+    Err(missing())
 }
 
 /// GET `/api/id/{root}/from/{doc}` - which public post a document of theirs became (2026-09-28,

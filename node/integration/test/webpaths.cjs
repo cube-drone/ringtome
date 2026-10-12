@@ -153,5 +153,51 @@ describe('web addresses: a post lives at a readable path', function () {
         const read = await (await stranger(`api/id/${root}/posts/${chapterPost}`)).json();
         assert.equal(read.part_of, plan.book, "and it is the book's page");
         assert.ok(await at('grimoire/the-title-page'), 'a page at the top of the book');
+        // The reader links its pages by path (slice 2): the book's payload names each one's.
+        const payload = JSON.parse(
+            await (await stranger(`id/${root}/docs/${plan.book}/body`)).text(),
+        );
+        const named = JSON.stringify(payload);
+        assert.ok(named.includes('"path":"grimoire/part-one/chapter-one"'), named);
+    });
+
+    it("under the persona's @name: answered, but handed out only where the node has a public URL", async () => {
+        // The rig's nodes declare no public URL: an @name there would mean nothing at any other
+        // address (Curtis, 2026-10-11), so nothing hands it out and the identity form is canonical.
+        // The public case was seen on a scratch node with RINGTOME_PUBLIC_URL (HISTORY).
+        const name = `paths${Date.now() % 1000000}`;
+        const claim = await j(ada, `api/identity/${root}/slug`, { slug: name }, 'PUT');
+        assert.equal(claim.status, 200, await claim.clone().text());
+        assert.deepEqual(await (await stranger(`api/node/slug-of/${root}`)).json(), { slug: null });
+        const page = await (await stranger(`@${name}/cybergamer-canada--ad-viewmagic`)).text();
+        assert.ok(
+            page.includes('property="og:title" content="CyberGamer Canada: Ad ViewMagic"'),
+            'it answers',
+        );
+        assert.match(
+            page,
+            /<link rel="canonical" href="[^"]*\/ringtome\/user\/[^/"]+\/cybergamer-canada--ad-viewmagic">/,
+            'and names the form that travels',
+        );
+        // A new name: the old one sends on, the path kept.
+        const renamed = `${name}x`;
+        await j(ada, `api/identity/${root}/slug`, { slug: renamed }, 'PUT');
+        const old = await stranger(`@${name}/cybergamer-canada--ad-viewmagic`, {
+            redirect: 'manual',
+        });
+        assert.equal(old.status, 307);
+        assert.ok(
+            (old.headers.get('location') || '').endsWith(
+                `/@${renamed}/cybergamer-canada--ad-viewmagic`,
+            ),
+            old.headers.get('location'),
+        );
+    });
+
+    it("a notebook's folder names its notebook, for the person's page to narrow to", async () => {
+        const r = await stranger(`api/id/${root}/at/recipes`);
+        assert.equal(r.status, 200, await r.clone().text());
+        assert.deepEqual(await r.json(), { folder: 'recipes', bucket: 'Recipes' });
+        assert.equal((await stranger(`api/id/${root}/at/nothing-filed`)).status, 404);
     });
 });

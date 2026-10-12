@@ -42,7 +42,7 @@ const CopyChain = ({ author, annotations }) => {
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 import { BookReader } from './doc/bookreader.js';
-import { postHref } from './links.js';
+import { postHref, useSlugOf } from './links.js';
 import { useUnlocked } from './unlocks.js';
 
 const html = htm.bind(h);
@@ -121,28 +121,33 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
         };
     }, [root, doc, via, viewer]);
 
-    // Its web address in the address bar (plans/WEB_ADDRESSES.md): reached by its id, a post that
-    // has a path says the path instead, so the address a reader copies is the readable one. The
-    // page stays as it is - only the address changes - and a page of a book keeps the book's.
+    const slug = useSlugOf(root);
+    // Its web address in the address bar (plans/WEB_ADDRESSES.md): reached by its id, or by its path
+    // under the author's real address, a post that has a path says the shortest form instead -
+    // under the author's @name when this node gave them one - so the address a reader copies is
+    // the readable one. Only the address changes; a page of a book keeps the book's.
     useEffect(() => {
         if (!post || page) return;
         const named = (post.annotations || []).find(
             (a) => a.annotator === root && a.key === 'path',
         );
         if (!named) return;
-        const here = `/ringtome/user/${seg}/post/${doc}`;
-        if (window.location.pathname !== here) return;
+        // The @name only where the node has a public URL (`slugOf` says none otherwise).
+        if (slug === undefined) return;
+        const shortest = slug ? `/@${slug}/${named.value}` : `/ringtome/user/${seg}/${named.value}`;
+        const longer = [
+            `/ringtome/user/${seg}/post/${doc}`,
+            `/ringtome/user/${seg}/${named.value}`,
+        ];
+        const here = decodeURIComponent(window.location.pathname);
+        if (here === shortest || !longer.includes(here)) return;
         try {
-            history.replaceState(
-                history.state,
-                '',
-                `/ringtome/user/${seg}/${named.value}${window.location.search}`,
-            );
+            history.replaceState(history.state, '', `${shortest}${window.location.search}`);
         } catch {
-            /* an address the browser won't take: the long one stands */
+            /* an address the browser won't take: the longer one stands */
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [post]);
+    }, [post, slug]);
 
     useEffect(() => {
         if (onTitle) onTitle(post && post.title ? post.title : t('postpage.a-post', 'a post'));
