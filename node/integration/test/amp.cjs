@@ -22,7 +22,12 @@ describe('hrseAmp: the library of sound in your feed', function () {
     this.timeout(300000);
 
     let ada, adaRoot, bea, beaRoot;
-    let alone, aloneSound, embedded, written, twin, silent, mine;
+    let alone, aloneSound, embedded, written, writtenNote, twin, silent, mine;
+    const setField = (who, root, doc, field, value) =>
+        who(`api/identity/${root}/docs/${doc}/annotations/fields/${encodeURIComponent(field)}`, {
+            method: value ? 'PUT' : 'DELETE',
+            body: value ? JSON.stringify({ value }) : undefined,
+        });
 
     const persona = async (prefix) => {
         const who = await makeUserFetch({ prefix });
@@ -91,11 +96,17 @@ describe('hrseAmp: the library of sound in your feed', function () {
             await written_(bea, beaRoot, 'Buck', embed(aloneSound)),
         );
         embedded = await uploaded(bea, beaRoot, 'second buck', 'buck-audio.mp3');
-        written = await published(
-            bea,
-            beaRoot,
-            await written_(bea, beaRoot, 'Noises', `listen\n\n${embed(embedded)}`),
-        );
+        // Its fields, as bea set them on her own sound: they travel to its twin (slice 4).
+        for (const [field, value] of [
+            ['track', 'Second Buck'],
+            ['artist', 'The Bucks'],
+            ['album', 'Meadow'],
+        ]) {
+            const r = await setField(bea, beaRoot, embedded, field, value);
+            assert.equal(r.status, 200, await r.text());
+        }
+        writtenNote = await written_(bea, beaRoot, 'Noises', `listen\n\n${embed(embedded)}`);
+        written = await published(bea, beaRoot, writtenNote);
         // Words alone: no row.
         silent = await published(
             bea,
@@ -221,5 +232,53 @@ describe('hrseAmp: the library of sound in your feed', function () {
         }
         assert.equal(rows.length, 1, JSON.stringify(rows));
         assert.equal(rows[0].post, again);
+    });
+
+    it("an embedded sound's fields travel to its twin, and a republish keeps them current (slice 4)", async () => {
+        // By the sound: an earlier claim posted it again, so its row is the newest post's.
+        const row = async () => (await library()).sounds.find((s) => s.doc === twin);
+        const first = await row();
+        assert.deepEqual(
+            [first.fields.track, first.fields.artist, first.fields.album],
+            ['Second Buck', 'The Bucks', 'Meadow'],
+            JSON.stringify(first.fields),
+        );
+        // Bea renames the artist and clears the album, then publishes the post again.
+        await setField(bea, beaRoot, embedded, 'artist', 'Bucks Unlimited');
+        await setField(bea, beaRoot, embedded, 'album', '');
+        assert.equal(await published(bea, beaRoot, writtenNote), written, 'the same post');
+        let now = null;
+        for (let i = 0; i < 30; i++) {
+            await beat(HOST, 'fold', beaRoot);
+            now = await row();
+            if (now.fields.artist === 'Bucks Unlimited' && !now.fields.album) break;
+            await wait(300);
+        }
+        assert.equal(now.fields.artist, 'Bucks Unlimited');
+        assert.equal(now.fields.album, undefined, 'a cleared field is taken back');
+        assert.equal(now.fields.track, 'Second Buck');
+    });
+
+    it("a copied sound carries its author's fields onto the copy", async () => {
+        // Ada embeds bea's public sound in a post of her own: publishing copies it into ada's twin.
+        const note = await written_(
+            ada,
+            adaRoot,
+            'Heard',
+            `![buck](/id/${beaRoot}/docs/${twin}/body/buck.opus)\n`,
+        );
+        const post = await published(ada, adaRoot, note);
+        const words = await (await ada(`id/${adaRoot}/docs/${post}/body`)).text();
+        const copy = (words.match(/\/doc\/([0-9a-f]{32})\//) || [])[1];
+        assert.ok(copy, `the post embeds ada's own copy: ${words}`);
+        let said = [];
+        for (let i = 0; i < 30; i++) {
+            const r = await ada(`api/identity/${adaRoot}/public-annotations/${adaRoot}/${copy}`);
+            said = ((await r.json()).items || []).map((a) => `${a.key}=${a.value}`);
+            if (said.includes('artist=Bucks Unlimited')) break;
+            await wait(300);
+        }
+        assert.ok(said.includes('track=Second Buck'), JSON.stringify(said));
+        assert.ok(said.includes('artist=Bucks Unlimited'), JSON.stringify(said));
     });
 });

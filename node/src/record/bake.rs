@@ -659,6 +659,8 @@ pub async fn publish_reporting(
     }
     let mut swaps: Vec<(String, String)> = Vec::new();
     let mut baked: Vec<[u8; 16]> = Vec::new();
+    // The sounds among them, each with where its fields come from (plans/AUDIO.md, slice 4).
+    let mut sound_twins: Vec<(SoundSource, [u8; 16])> = Vec::new();
     let mut items: Vec<BakeItem> = Vec::new();
     let mut blocked = false;
     // A picture that names nothing - not the author's, not in this build (a built-in whose file
@@ -730,6 +732,9 @@ pub async fn publish_reporting(
                             public_media_target(root_hex, &public, fmt, anim),
                         ));
                         baked.push(public);
+                        if fmt == crate::record::documents::Format::OggOpus {
+                            sound_twins.push((SoundSource::Own(*media), public));
+                        }
                         items.push(BakeItem {
                             source: target.clone(),
                             kind: "private",
@@ -789,6 +794,16 @@ pub async fn publish_reporting(
                             public_media_target(root_hex, &public, fmt, animation),
                         ));
                         baked.push(public);
+                        if fmt == crate::record::documents::Format::OggOpus {
+                            if let Some((author, theirs)) = twin_address(target)
+                                .filter(|_| matches!(r, MediaRef::Foreign { .. }))
+                            {
+                                sound_twins.push((
+                                    SoundSource::Copied(hex::encode(author), hex::encode(theirs)),
+                                    public,
+                                ));
+                            }
+                        }
                         items.push(BakeItem {
                             source: target.clone(),
                             kind,
@@ -831,6 +846,14 @@ pub async fn publish_reporting(
     // finally knowable. Checked HERE rather than at upload: a single upload under the per-file
     // cap says nothing about a post that embeds forty of them.
     media_budget(state, data, &baked).await?;
+    // Each sound's fields, said on its twin (plans/AUDIO.md, slice 4): a reader's hrseAmp shows a
+    // song's title, artist and album from them. Best-effort, like every label: they must not
+    // unsay the post.
+    for (source, twin) in &sound_twins {
+        if let Err(e) = sound_fields_on_twin(state, data, root_hex, source, twin, post_key).await {
+            tracing::warn!(error = ?e, "a sound's fields stayed off its twin; the post stands");
+        }
+    }
     // Whose pictures these were (2026-09-28): a copied picture's author joins the note's
     // provenance, which publication states about the post - the credit travels with the copy.
     let copied: Vec<String> = refs
@@ -873,6 +896,60 @@ pub async fn publish_reporting(
         )
         .await?,
     ))
+}
+
+/// Where a sound's fields come from when its twin is said: the author's own private sound, or
+/// someone else's public one copied into the post (`author`, `twin`, in hex).
+enum SoundSource {
+    Own([u8; 16]),
+    Copied(String, String),
+}
+
+/// A sound's fields (media/audio.rs `TAG_FIELDS`), said as the author's public labels on its
+/// public twin (plans/AUDIO.md, slice 4: "twins carry their sound's fields"). The fields are the
+/// private sound's own, or - for a copy - what its author said on theirs, so the credits travel
+/// with it. Every other label on the twin stands; a field the sound no longer has is taken back;
+/// a sealed post's twin says them under its key.
+async fn sound_fields_on_twin(
+    state: &AppState,
+    data: &crate::record::store::Store,
+    root_hex: &str,
+    source: &SoundSource,
+    twin: &[u8; 16],
+    post_key: Option<[u8; 32]>,
+) -> Result<(), AppError> {
+    use crate::media::audio::TAG_FIELDS;
+    let fields: std::collections::BTreeMap<String, String> = match source {
+        SoundSource::Own(media) => data.annotations().fields(media).await?,
+        SoundSource::Copied(author, theirs) => {
+            let asked = [(author.clone(), theirs.clone())];
+            crate::annotations::for_posts(state, &asked, None)
+                .await
+                .map_err(AppError::Internal)?
+                .remove(&asked[0])
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|a| &a.annotator == author)
+                .map(|a| (a.key, a.value))
+                .collect()
+        }
+    };
+    let self_root = <[u8; 32]>::try_from(hex::decode(root_hex).unwrap_or_default().as_slice())
+        .map_err(|_| AppError::Internal(anyhow!("the author's root is not 32 bytes")))?;
+    let mut desired: std::collections::BTreeSet<(String, String)> = Default::default();
+    for held in data.public_annotations().of(root_hex, twin).await? {
+        if held.key != crate::annotations::SEALED_KEY && !TAG_FIELDS.contains(&held.key.as_str()) {
+            desired.insert((held.key, held.value));
+        }
+    }
+    for field in TAG_FIELDS {
+        let value = fields.get(*field).map(|v| v.trim()).unwrap_or_default();
+        if !value.is_empty() && value.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN {
+            desired.insert((field.to_string(), value.to_string()));
+        }
+    }
+    crate::identity::restate_labels(data, &self_root, twin, &desired, post_key).await?;
+    Ok(())
 }
 
 /// What one post's embedded media may total, once baked.

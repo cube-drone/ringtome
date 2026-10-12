@@ -110,6 +110,27 @@ A design draft (2026-10-12), with rulings and no open questions. Nothing built.
     just ME and it's at worst about 10-100MB total." Storage budgets stay
     PROJECT_PLAN's open item.
 
+Rights (Curtis, 2026-10-12; section 8). He'd love to run a peer-to-peer
+SoundCloud, and would be a lot less happy running a peer-to-peer Napster: a
+published song with its title, artist and album filled in is the shape of the
+second. It's an open protocol and a free app, so in the end it's the user's
+choice; what the system can do is say how it wants to be used, and let an
+operator say "not from my server".
+
+15. **A tagged song is one whose artist or album is set.** A title alone is how
+    a voice memo or a field recording gets named.
+16. **The warning is a sign, not a fence**: "Keep Out; Or Enter, I'm a Sign".
+    The app asks every time a person publishes something carrying a tagged song;
+    an agent or the API publishing isn't asked - it's a speed bump, and a speed
+    bump only needs to be where people drive.
+17. **The operator's opt-out is total, over public chains**: a node can refuse
+    tagged audio altogether - neither published by its people nor carried for
+    anyone else. Private uploads are untouched: "I'm only concerned with users'
+    public chains here."
+18. **No record of who asserted what.** "Somebody else already asserted
+    ownership of this" is unverifiable at scale, and "any time we're at risk of
+    reinventing NFTs, it's probably time to look at our priorities."
+
 ## What's already here
 
 - **Sounds as documents.** An upload becomes Ogg Opus (`media/audio.rs`), with
@@ -356,6 +377,48 @@ media too:
 Offline, the player skips what isn't on this computer and moves on, rather than
 stopping. And skip is just "next".
 
+### 8. Rights: a sign and a fence
+
+**The sign** (rulings 15, 16). Publishing a post that carries a tagged song -
+your own, or someone else's copied into your post, which republishes it - opens
+a dialog first, every time:
+
+> You're publishing a song that names its artist or album. You may not have the
+> right to publish it. Nothing here hides where it comes from: it will be served
+> from {node} and from the computers of the people who follow you. Do you have
+> the right to publish this file?
+>
+> [Yes, publish it] [No, don't publish this]
+
+The wording says what's true for the person reading it: on a hosted node like
+horsedrawingtycoon.com it's the server's address that's out there, not their
+home's, and either way other people's computers carry the file. The dialog lives
+in the app only - the composer's publish, scheduling (asked when the time is
+set, not when it comes round), and a book's rollout (once, for every page that
+carries one). The node doesn't check: agents and the API publish as they do
+today (ruling 16). Nothing is recorded (ruling 18). The app knows a song is
+tagged from its own sound's fields, and a copied song's from the fields its
+author said on its twin (slice 4).
+
+**The fence** (ruling 17). A setting in the server's customization, beside the
+search policy: "tagged audio - not from this server". With it on:
+
+- **Publishing**: the bake pass refuses a post carrying a tagged song - your own
+  or a copy - with words that say it's this node's choice, for everyone, agents
+  included. This is the same point where slice 4 says a sound's fields on its
+  twin, so the fields are in hand.
+- **Carrying**: the node neither fetches, keeps nor serves another node's tagged
+  audio. A twin is tagged when its author's labels on it set artist or album -
+  the node's label memo knows, so the check costs no database. The posts still
+  arrive and read as usual; the song in them says "not carried on this server",
+  in the post and in hrseAmp, and its body door answers as for something not
+  held. Switching it on stops the serving at once, and the reaper drops the
+  bytes already held.
+- **What it can't see**: a song published untagged, or before slice 4, says no
+  artist or album, so it passes. The fence is the operator's word on what
+  they'll host, not a detector, and stripping tags walks around it - as it walks
+  around the sign.
+
 ### Stretch goals
 
 - **Posting a mixtape** (ruling 7), published as a book is, for someone else to
@@ -379,12 +442,20 @@ stopping. And skip is just "next".
    expanded mode.
 3. **Filters** - built 2026-10-12: the strip over the library, whose tags,
    saving, and the Playlists column with "all".
-4. **Twins carry their sound's fields**: publishing states them on the twin, and
-   a backfill for twins already published.
+4. **Twins carry their sound's fields** - built 2026-10-12: publishing states
+   them on the twin. No backfill (Curtis: nothing has gone live yet).
 5. **Mixtapes**: the taxonomy, "add to mixtape", their order in the table.
 6. **Radio stations**: the editor, nesting, and the picker.
 7. **The unlock**: hrseAmp in the Market after File upload, H$ 5,000, marked
    experimental (ruling 2) - in the first slice that ships to people, really.
+8. **The sign** (section 8): the rights dialog in the composer, scheduling and
+   book rollouts.
+9. **The fence, publishing**: the operator's setting, and the bake refusing a
+   tagged song.
+10. **The fence, carrying**: no fetching, keeping or serving another node's
+    tagged audio; "not carried on this server" in the post and in hrseAmp; the
+    reaper's part. Sync, the body sweeps and the serving doors all move, so this
+    one wants its own careful pass.
 
 ### What building slices 1 and 2 found
 
@@ -402,8 +473,7 @@ stopping. And skip is just "next".
   stayed 0 until the reader had opened "best".
 - **Every feed sound is a twin today.** There is no publishing a sound document
   by itself: a post that is only a sound still embeds it, so its public copy is
-  a twin, and every feed row shows a title and a length but no fields until
-  slice 4.
+  a twin, and a feed row's fields are the ones said on its twin (slice 4).
 - **A sound with no cover shows its waveform.** A thumbnail is always there - an
   embedded cover, else the waveform the ingest draws - so the player's thumbnail
   is never empty, though a waveform at 36 pixels reads as a dark square.
@@ -415,7 +485,7 @@ stopping. And skip is just "next".
   the feed's (`pure/ampfilters.js`), and nothing goes to the node per click.
 - **"From" is the via row**, the column's own word, with "me" leading it (ruling
   8). Artist and genre are the folded columns' values, so feed songs join those
-  rows with slice 4.
+  rows as their twins say their fields (slice 4).
 - **hrseAmp's dial is its own.** It starts at the feed's stop and is kept in
   `amp_selectivity`, so moving it here doesn't move the feed. A saved filter
   carries its stop and whose tags.
@@ -465,14 +535,14 @@ another encoding, or from someone else, is a second one: Curtis found three
 copies of one track, all within five seconds of one another. A "probable
 duplicates" chip on the strip shows only songs with a probable copy - the same
 title once case, punctuation, a track number in front and a file extension are
-set aside; the same artist where both say one (a feed song says none until slice
-4); and lengths within five seconds - each set of copies together in the table,
-so the ones to keep and the ones to delete sit side by side. A second press
-leaves the copies out, as a tag's chip does (Curtis, 2026-10-12): one of each
-stays - your own copy over someone else's, then one that says its artist, then
-the first in the table - so a list or a shuffle plays a song once. A third shows
-everything. It's saved with a filter like any pick. Copies are found across the
-whole library, so a song whose copy another pick hides still shows.
+set aside; the same artist where both say one (a song published before slice 4
+says none); and lengths within five seconds - each set of copies together in the
+table, so the ones to keep and the ones to delete sit side by side. A second
+press leaves the copies out, as a tag's chip does (Curtis, 2026-10-12): one of
+each stays - your own copy over someone else's, then one that says its artist,
+then the first in the table - so a list or a shuffle plays a song once. A third
+shows everything. It's saved with a filter like any pick. Copies are found
+across the whole library, so a song whose copy another pick hides still shows.
 
 ### Saving into a filter (Curtis, 2026-10-12)
 
@@ -480,6 +550,24 @@ The filter last chosen in Playlists is remembered: once the strip differs from
 it, "save to "name"" writes the strip back into it, beside "save as new". The
 feed's saved feeds do the same.
 
+### What building slice 4 found
+
+- **Said at the bake.** The publish's bake pass is where a private sound and its
+  public twin are both in hand, so that's where the sound's fields (media/
+  audio.rs `TAG_FIELDS`) become the author's public labels on the twin
+  (`bake.rs` `sound_fields_on_twin`). Every publish restates them, so a
+  republish carries an edited field, takes back a cleared one, and a twin reused
+  by a later post is brought up to date by it. A sealed post's twin says them
+  under its key, as its other labels are.
+- **Copies keep their credits.** Someone else's public sound embedded in your
+  post is copied into your own twin, and its fields come with it: what its
+  author said on theirs, restated on your copy.
+- **No backfill** (Curtis, 2026-10-12): nothing has gone live, so twins
+  published before this simply say their fields the next time their post is
+  published.
+
 ## Questions for Curtis
 
-None open (2026-10-12). Smaller ones will come up as slices are built.
+None open (2026-10-12). Answered the same day: the fence is about public chains
+only - a person's private uploads are their own business, tagged or not - and
+the sign's words in section 8 stand.

@@ -20583,3 +20583,38 @@ saved filter last chosen in their column. Once the strip differs from it, a
 beside "save as new". A new save becomes the remembered filter. "all", or
 forgetting the filter, lets go of it. Checked in headless Chrome in both apps:
 an adjusted filter saved back into its own register, one entry each.
+
+## 2026-10-12 (cont.): hrseAmp slice 4, twins carry their sound's fields
+
+A sound's fields are now said on its public twin, so a feed song in someone's
+library has its title, artist and album. That's what the folded columns, the
+artist and genre rows and probable duplicates read.
+
+- **Where.** The publish's bake pass (`record/bake.rs`, `sound_fields_on_twin`)
+  is where the private sound and its twin are both in hand. There the sound's
+  `TAG_FIELDS` become the author's public labels on the twin.
+- **Republishing.** Each publish restates them through `restate_labels`, so a
+  republish carries an edited field and takes back a cleared one. The twin's
+  other labels stand, and a sealed post's twin says them under its key.
+- **Copies.** A copy of someone else's sound carries what its author said on
+  theirs.
+- **No backfill:** nothing has gone live (Curtis).
+
+Verified by two new claims in `integration/test/amp.cjs`:
+
+- a sound's fields reach the reader's library, and after a republish an edited
+  artist shows and a cleared album is gone;
+- a copied sound's twin says the original author's fields.
+
+**Rights, planned (Curtis, same day).** A peer-to-peer SoundCloud, not a
+Napster. `plans/AUDIO.md` gains rulings 15 to 18 and section 8:
+
+- **The sign.** A dialog asks every time a person publishes a song whose artist
+  or album is set. It's a sign, not a fence: agents and the API aren't asked,
+  and nothing is recorded.
+- **The fence.** An operator's setting refuses tagged audio altogether. It is
+  neither published by the node's people nor fetched, kept or served for anyone
+  else.
+
+The work is slices 8 to 10. One question is open: whether the fence also covers
+private uploads.
