@@ -29,3 +29,8 @@
 -keepclassmembers class net.lassam.ringtome.MainActivity$* {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# hrseAmp's player bridge (PlayerBridge.kt, `__ringtomePlayer`), called by name the same way.
+-keepclassmembers class net.lassam.ringtome.PlayerBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

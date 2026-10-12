@@ -127,6 +127,7 @@ export default {
     'amp.make-it': 'make it',
     'amp.added-to-mixtape': 'added {n} to "{name}"',
     'amp.forget-mixtape': 'Forget the mixtape "{name}"? Its songs stay where they are.',
+    'amp.everything-shuffled': 'everything, shuffled',
     'amp.station-silent': 'nothing to play - its slices hold no songs yet',
     'amp.couldnt-save-station': "couldn't save the station: {message}",
     'amp.new-station-title': 'a new radio station',

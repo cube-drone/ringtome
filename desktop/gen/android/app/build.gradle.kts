@@ -63,6 +63,12 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
+    // hrseAmp on the phone (plans/AUDIO.md, section 10): Media3's player and media session - the
+    // notification and lock-screen player, headphone buttons, Android Auto, and playing on in the
+    // background (PlayerService.kt).
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-session:1.8.0")
+    implementation("com.google.guava:guava:33.4.8-android")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")

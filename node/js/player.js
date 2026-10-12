@@ -72,8 +72,36 @@ const SHUFFLE = {
     albumOf: (r) => (r.album ? `${r.artist}/${r.album}` : ''),
 };
 
+/// The phone's own player (plans/AUDIO.md, section 10): on Android the page hands its queue to the
+/// native player (desktop/gen/android, PlayerBridge.kt) - which holds the notification, the lock
+/// screen, the headphones and the car, and plays on with the screen off - instead of playing it in
+/// an `<audio>`. Everywhere else, null.
+const nativePlayer = () => (typeof window !== 'undefined' && window.__ringtomePlayer) || null;
+
+/// A song as the phone's player takes it (PlayerBridge.kt, AutoLibrary.kt): where it is on this
+/// phone's own node, and what it is.
+export function songForPhone(row, me) {
+    const origin = typeof location !== 'undefined' ? location.origin : '';
+    return {
+        key: row.key,
+        url: `${origin}${soundSrc(row, me)}`,
+        title: row.title || '',
+        artist: row.artist || '',
+        album: row.album || '',
+        art: row.thumb ? `${origin}${soundThumb(row, me)}` : '',
+        durationMs: row.lengthMs || 0,
+    };
+}
+
+/// How far ahead the phone's player is handed songs: it plays on through them while the page sleeps.
+const NATIVE_AHEAD = 50;
+
 export const PlayerProvider = ({ me, children }) => {
-    const audio = useMemo(() => (typeof Audio === 'undefined' ? null : new Audio()), []);
+    const native = useMemo(nativePlayer, []);
+    const audio = useMemo(
+        () => (native || typeof Audio === 'undefined' ? null : new Audio()),
+        [native],
+    );
     const [current, setCurrent] = useState(null);
     const [playing, setPlaying] = useState(false);
     const [shuffle, setShuffleState] = useState(false);
@@ -105,6 +133,10 @@ export const PlayerProvider = ({ me, children }) => {
     const stationId = useRef(null);
     const pending = useRef(null); // { id, rows, pos }
     const [station, setStation] = useState(null);
+    // What the phone's player holds (native mode): `rows` as handed over, `base` the model's place of
+    // the first of them (the list's index, the shuffle's or the station's position), and `offset` the
+    // player's index of the first - so the player's index says where the model is.
+    const nq = useRef({ rows: [], base: 0, offset: 0 });
 
     const persist = () => {
         if (!me) return;
@@ -146,7 +178,49 @@ export const PlayerProvider = ({ me, children }) => {
         );
     };
 
+    // The model's place, and the songs from it on - what the phone's player is handed.
+    const modelPos = () =>
+        stationId.current && stationRun.current
+            ? stationRun.current.pos
+            : shuffleRef.current && run.current
+              ? run.current.pos
+              : index.current;
+    const setModelPos = (p) => {
+        if (stationId.current && stationRun.current) stationRun.current.pos = p;
+        else if (shuffleRef.current && run.current) run.current.pos = p;
+        else index.current = p;
+    };
+    const fromModel = () => {
+        if (stationId.current) {
+            const r = stationRun.current;
+            if (!r) return [];
+            r.ahead(NATIVE_AHEAD);
+            return r.history.slice(r.pos);
+        }
+        if (shuffleRef.current && run.current) {
+            const r = run.current;
+            while (r.items.length && r.order.length - 1 - r.pos < NATIVE_AHEAD) r.extend();
+            return r.order.slice(r.pos);
+        }
+        return list.current.slice(Math.max(0, index.current));
+    };
+    const handed = (rows) => JSON.stringify(rows.map((r) => songForPhone(r, me)));
+
     const load = (row, { play = true } = {}) => {
+        if (native) {
+            setCurrent(row);
+            currentRef.current = row;
+            persist();
+            if (!row) {
+                native.stop();
+                setPlaying(false);
+                return;
+            }
+            const rows = fromModel();
+            nq.current = { rows, base: modelPos(), offset: 0 };
+            native.play(handed(rows), 0, 0, play);
+            return;
+        }
         if (!audio) return;
         setCurrent(row);
         currentRef.current = row;
@@ -164,6 +238,11 @@ export const PlayerProvider = ({ me, children }) => {
     };
 
     const step = (forward) => {
+        // The phone's player walks its own queue; the page follows what it says (below).
+        if (native) {
+            if (!currentRef.current) return load(fromModel()[0] || null);
+            return forward ? native.next() : native.previous();
+        }
         if (stationId.current) {
             // Rebuilt by the page after a refresh; until then the song in hand is all there is.
             if (!stationRun.current) return undefined;
@@ -181,6 +260,23 @@ export const PlayerProvider = ({ me, children }) => {
         }
         index.current = Math.max(0, next);
         return load(list.current[index.current]);
+    };
+
+    // The phone's player told what comes after the song playing, after a re-sort or a shuffle
+    // switched: the model's songs from here on, in place of what it held.
+    const handUpcoming = () => {
+        if (!native || !currentRef.current) return;
+        const rows = fromModel();
+        // Only when the model holds the song the phone is playing, at its head: a table still
+        // loading (empty, or not yet holding it) must never cut the phone's queue mid-drive.
+        if (!rows.length || rows[0].key !== currentRef.current.key) return;
+        const playingAt = nq.current.rows.findIndex((r) => r.key === currentRef.current.key);
+        nq.current = {
+            rows,
+            base: modelPos(),
+            offset: (playingAt >= 0 ? playingAt : 0) + nq.current.offset,
+        };
+        native.upcoming(handed(rows.slice(1)));
     };
 
     // Out of station mode, into a list.
@@ -228,6 +324,7 @@ export const PlayerProvider = ({ me, children }) => {
             if (run.current) run.current.replaceItems(rows);
             if (current) index.current = rows.findIndex((r) => r.key === current.key);
             persist();
+            handUpcoming();
         },
         /// Play a radio station: `stationRunObj` (pure/stations.js `StationRun`) picks every song.
         playStation(id, stationRunObj) {
@@ -254,12 +351,20 @@ export const PlayerProvider = ({ me, children }) => {
         /// The run playing now, so the page can tell it the library changed.
         stationRun: () => stationRun.current,
         toggle() {
+            if (native) {
+                if (!currentRef.current) return step(true);
+                return native.toggle();
+            }
             if (!audio) return;
             if (!current) return step(true);
             if (audio.paused) audio.play().catch(() => {});
             else audio.pause();
         },
         stop() {
+            if (native) {
+                native.stop();
+                return;
+            }
             if (!audio) return;
             audio.pause();
             audio.currentTime = 0;
@@ -268,6 +373,7 @@ export const PlayerProvider = ({ me, children }) => {
         next: () => step(true),
         /// Back a song - or, a few seconds in, to this song's start, as every player does.
         prev() {
+            if (native) return step(false);
             if (audio && audio.currentTime > 3) {
                 audio.currentTime = 0;
                 return;
@@ -289,8 +395,10 @@ export const PlayerProvider = ({ me, children }) => {
                 if (current) index.current = list.current.findIndex((r) => r.key === current.key);
             }
             persist();
+            handUpcoming();
         },
         seek(seconds) {
+            if (native && Number.isFinite(seconds)) native.seek(Math.round(seconds * 1000));
             if (audio && Number.isFinite(seconds)) audio.currentTime = seconds;
         },
         setVolume(v) {
@@ -320,9 +428,57 @@ export const PlayerProvider = ({ me, children }) => {
     // volume alone, so no Web Audio, and nothing to stop the music when the screen locks.
     const gain = levelling && current ? levelGain(current.loudness) : 1;
     useEffect(() => {
+        const level = Math.max(0, Math.min(1, volume * gain));
+        if (native) native.volume(level);
         if (!audio) return undefined;
-        audio.volume = Math.max(0, Math.min(1, volume * gain));
-    }, [audio, volume, gain]);
+        audio.volume = level;
+    }, [audio, native, volume, gain]);
+
+    // What the phone's player says (PlayerBridge.kt): the song it's on, whether it plays, where it
+    // is. The page follows - its model moved to the song the player reached, more songs handed over
+    // as it nears the end of what it holds - so the bar, the compact player and the cassette show
+    // the phone's truth, even after the page has slept through several songs.
+    useEffect(() => {
+        if (!native || typeof window === 'undefined') return undefined;
+        const hear = (state) => {
+            if (!state || typeof state !== 'object') return;
+            setPlaying(!!state.playing);
+            setPosition((state.position || 0) / 1000);
+            setDuration((state.duration || 0) / 1000);
+            const q = nq.current;
+            const at = (state.index ?? -1) - q.offset;
+            const row = at >= 0 ? q.rows[at] : null;
+            if (row && state.key === row.key) {
+                if (!currentRef.current || currentRef.current.key !== row.key) {
+                    setModelPos(q.base + at);
+                    currentRef.current = row;
+                    setCurrent(row);
+                    persist();
+                }
+                // Near the end of what it holds: a shuffle's next cycle, a station's next picks.
+                if (q.rows.length - at <= 8 && (shuffleRef.current || stationId.current)) {
+                    const more = fromModel().slice(q.rows.length - at);
+                    if (more.length) {
+                        q.rows = q.rows.concat(more);
+                        native.append(handed(more));
+                    }
+                }
+            } else if (!state.key && state.title) {
+                // A song the car picked from its own lists: shown as what it is.
+                setCurrent({ key: `car:${state.title}`, title: state.title, artist: state.artist });
+            }
+        };
+        window.__ringtomePlayerEvent = hear;
+        try {
+            hear(JSON.parse(native.state()));
+        } catch {
+            /* nothing said yet */
+        }
+        return () => {
+            if (window.__ringtomePlayerEvent === hear) delete window.__ringtomePlayerEvent;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [native, me]);
 
     useEffect(() => {
         if (!audio) return undefined;
@@ -377,7 +533,7 @@ export const PlayerProvider = ({ me, children }) => {
     // was, and the shuffle on or off with its order and its place - so previous walks back over the
     // same songs. Nothing plays until asked (a browser won't let a page start sound on its own).
     useEffect(() => {
-        if (!audio || !me) return undefined;
+        if ((!audio && !native) || !me) return undefined;
         const state = readPlayerState(kept(STATE_KEY(me)));
         if (!state) return undefined;
         if (state.station) {
@@ -402,6 +558,47 @@ export const PlayerProvider = ({ me, children }) => {
         } catch {
             /* from the start, then */
         }
+        if (native) {
+            // The phone's player may have played on while the page was away - several songs on,
+            // with the screen off. Whatever it holds, the page joins it there and never interrupts
+            // it; only a player holding nothing is handed the saved song, paused where it was.
+            let phone = null;
+            try {
+                phone = JSON.parse(native.state());
+            } catch {
+                /* nothing said yet */
+            }
+            if (phone && phone.count > 0) {
+                currentRef.current = row;
+                const rows = fromModel();
+                const j = phone.key ? rows.findIndex((r) => r.key === phone.key) : -1;
+                if (j >= 0) {
+                    setModelPos(modelPos() + j);
+                    currentRef.current = rows[j];
+                    setCurrent(rows[j]);
+                    nq.current = {
+                        rows: rows.slice(j),
+                        base: modelPos(),
+                        offset: phone.index ?? 0,
+                    };
+                    if (rows.length > j + 1) native.upcoming(handed(rows.slice(j + 1)));
+                } else {
+                    setCurrent(
+                        phone.title
+                            ? {
+                                  key: `car:${phone.title}`,
+                                  title: phone.title,
+                                  artist: phone.artist,
+                              }
+                            : row,
+                    );
+                }
+                return undefined;
+            }
+            load(row, { play: false });
+            if (at > 0) native.seek(Math.round(at * 1000));
+            return undefined;
+        }
         load(row, { play: false });
         if (at > 0) {
             const seek = () => {
@@ -413,9 +610,10 @@ export const PlayerProvider = ({ me, children }) => {
         }
         return undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [audio, me]);
+    }, [audio, native, me]);
 
-    // The persona changed, or the app closed: the music stops with it.
+    // The persona changed, or the app closed: the music stops with it. (Not the phone's player: on
+    // Android the music outlives the page, which is the point of it.)
     useEffect(
         () => () => {
             if (audio) audio.pause();
@@ -426,7 +624,8 @@ export const PlayerProvider = ({ me, children }) => {
     // The computer's own controls: media keys, the lock screen, the phone's notification shade.
     useEffect(() => {
         const session = typeof navigator !== 'undefined' && navigator.mediaSession;
-        if (!session) return;
+        // On Android the phone's player holds the real media session (PlayerService.kt).
+        if (!session || native) return;
         if (!current) {
             session.metadata = null;
             return;
@@ -446,7 +645,7 @@ export const PlayerProvider = ({ me, children }) => {
         } catch {
             /* a browser with half a Media Session: the page's own controls still work */
         }
-    }, [current, me]);
+    }, [current, me, native]);
 
     return html`<${Player.Provider} value=${api}>${children}</${Player.Provider}>`;
 };

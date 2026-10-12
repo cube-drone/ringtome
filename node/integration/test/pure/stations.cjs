@@ -188,4 +188,18 @@ describe("hrseAmp's radio stations (plans/AUDIO.md)", () => {
         for (let k = 1; k < keys.length; k++)
             assert.notEqual(keys[k], keys[k - 1], `twice at ${k}`);
     });
+
+    it('picks ahead for a player that plays on alone, and next walks those picks', () => {
+        const lists = { all: songs('a', 10, 30) };
+        const station = { id: 'x', name: 'x', slices: [{ kind: 'all', weight: 1 }] };
+        const run = new st.StationRun(station, opts(lists, [], 31));
+        const first = run.next();
+        const ahead = run.ahead(5);
+        assert.equal(ahead.length, 5);
+        assert.equal(run.current().key, first.key, 'picking ahead moves nothing');
+        assert.deepEqual(
+            play(run, 5).map((s) => s.key),
+            ahead.map((s) => s.key),
+        );
+    });
 });
