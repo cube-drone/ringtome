@@ -20129,3 +20129,23 @@ the bikes post. On the persona's own feed, the "by" row read "me".
   `--chip-on-ink` and `--chip-on-count` default to the old ink and muted
   colours, so other colourways are unchanged. Seen in headless Chrome in
   terminal and terminal-white.
+## 2026-10-11 (cont.): the face that never came
+
+CI on `main` went red once on idface's "names AND faces": B never served A's
+avatar thumbnail, though it waited twelve seconds. The rig logs CI keeps on
+failure (`gh run download <id> -n rig-logs`) showed the face asked for at once
+and "still on its way" until the end; nothing ever fetched it. Two intakes
+raced. The peek's shelf (idface.rs `peek_shelf`) wants a fragment's body,
+thumbnail and preview; the public door, asked for a document a peek doesn't
+hold, fetches it on demand (fragments.rs `fetch_post`), wanting the body alone.
+When the page's ask won, the shelf found the fragment held and skipped it, and
+nothing ever wanted the thumbnail - for good, since the sweep retries only what
+was wanted. Four of the five fragment intakes wanted the body alone; only
+`fetch_cover` knew better. One rule now, `fragments::want_bytes` over
+`fragment_blobs`, for all five and the peek. A new claim makes the losing order
+certain - a LOCAL_TEST shelf stall (`/test/shelf-stall`) slows A's shelf door
+past the peek's wait - and was red before the fix, green after. Its avatar is a
+picture of its own: the claims' shared `polaroid.jpg` makes one content-
+addressed thumbnail, which already being on B fooled the first attempt at a
+proof (a reordering of `peek_shelf` that this session wrote, disproved and took
+back before finding the logs).

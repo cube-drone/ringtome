@@ -32,6 +32,33 @@ pub struct Fragment {
     pub format: Option<String>,
 }
 
+/// Every blob a fragment's header names - its body, its thumbnail, its preview: what a reader of
+/// it may ask this node to serve.
+pub fn fragment_blobs(header: &ringtome_proto::registry::DocHeaderPlain) -> Vec<[u8; 32]> {
+    let mut blobs = vec![header.file_hash];
+    blobs.extend(header.thumb_hash);
+    blobs.extend(header.preview_hash);
+    blobs
+}
+
+/// Note every blob a fragment names as wanted ([`fragment_blobs`]), for `net::bodies` to fetch and
+/// its sweep to retry. One rule for every intake (2026-10-11): four of them wanted the body alone,
+/// so a fragment that arrived by one of those - a face asked for through the public door before
+/// the peek's shelf had fetched it (`fetch_post`), which the shelf then skipped as held - never
+/// wanted its thumbnail, and served "still on its way" for good. CI's idface "names AND faces"
+/// claim went red on exactly that race; "a face asked for before the shelf fetches it still
+/// arrives" makes the order certain.
+pub async fn want_bytes(
+    db: &Db,
+    author_root: &str,
+    header: &ringtome_proto::registry::DocHeaderPlain,
+) -> Result<()> {
+    for hash in fragment_blobs(header) {
+        crate::net::bodies::want(db, author_root, &hash).await?;
+    }
+    Ok(())
+}
+
 /// Remember a verified fragment, or refresh what we already knew of it.
 ///
 /// The version is allowed to move: an author editing (at any age - posts edit forever) re-signs the header,
@@ -447,9 +474,7 @@ pub async fn fetch_post(
                     "could not store a door-learned reply");
                 return;
             }
-            let _ =
-                crate::net::bodies::want(&state.node_db, &author_root, &verified.header.file_hash)
-                    .await;
+            let _ = want_bytes(&state.node_db, &author_root, &verified.header).await;
             if let Some(ep) = &served_by {
                 let _ = note_deliverer(&state.node_db, &author_root, ep).await;
             }
@@ -489,14 +514,8 @@ async fn fetch_cover(
                     "could not store a covered media fragment");
                 return;
             }
-            // The bytes an image needs are more than a post's: body, thumbnail, preview -
-            // whichever the signed header names.
-            let mut blobs = vec![verified.header.file_hash];
-            blobs.extend(verified.header.thumb_hash);
-            blobs.extend(verified.header.preview_hash);
-            for hash in blobs {
-                let _ = crate::net::bodies::want(&state.node_db, author_root, &hash).await;
-            }
+            // Body, thumbnail, preview - whichever the signed header names.
+            let _ = want_bytes(&state.node_db, author_root, &verified.header).await;
             if let Some(ep) = &served_by {
                 let _ = note_deliverer(&state.node_db, author_root, ep).await;
             }
@@ -1438,10 +1457,7 @@ pub async fn journalable(
             // followed author's bodies do: note the shortfall and let `net::bodies` heal it.
             // A row whose body has not landed renders as "still arriving", which is a state the
             // feed already knows how to show.
-            if let Err(e) =
-                crate::net::bodies::want(&state.node_db, author_root, &verified.header.file_hash)
-                    .await
-            {
+            if let Err(e) = want_bytes(&state.node_db, author_root, &verified.header).await {
                 tracing::debug!(author = %author_root, error = ?e, "could not note a fragment body");
             }
             if let Some(ep) = &served_by {
@@ -1693,9 +1709,7 @@ async fn revalidate_one(
                 &verified.header.title,
             )
             .await?;
-            let _ =
-                crate::net::bodies::want(&state.node_db, author_hex, &verified.header.file_hash)
-                    .await;
+            let _ = want_bytes(&state.node_db, author_hex, &verified.header).await;
             if let Some(ep) = &served_by {
                 let _ = note_deliverer(&state.node_db, author_hex, ep).await;
             }
@@ -1881,12 +1895,7 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
             crate::net::fragment::Fetched::Have(verified, entry, auth_path, served_by) => {
                 remember(&state.node_db, &origin_root, &author_hex, &verified, &entry, &auth_path)
                     .await?;
-                let _ = crate::net::bodies::want(
-                    &state.node_db,
-                    &author_hex,
-                    &verified.header.file_hash,
-                )
-                .await;
+                let _ = want_bytes(&state.node_db, &author_hex, &verified.header).await;
                 if let Some(ep) = &served_by {
                     let _ = note_deliverer(&state.node_db, &author_hex, ep).await;
                 }
