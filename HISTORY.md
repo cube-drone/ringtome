@@ -20204,7 +20204,14 @@ lives there, and the bare person address was still their page.
 
 Two claims in `idface.cjs` held that a post's head names `post/<id>` as its
 address. They now expect the path its title made, and the `ringtome:post` meta
-naming the post. Full `just ci` is green.
+naming the post. Two more expected test changes along the way: `rss.cjs` now
+expects a person's RSS to link posts by their path. One full run went red once
+on `fanout.cjs` ("byline from the cache, no db per face"), a claim about the
+byline cache this work doesn't touch. It passed three runs out of three on its
+own, and the next full run was green: a timing flake, seen once, not yet
+explained.
+
+Full `just ci` is green.
 
 Not yet (slice 2): the `@name` form, folder pages, copy-link handing out the
 path, and a book's reader linking pages by path.
@@ -20323,3 +20330,65 @@ if published before paths existed. The backfill gives the older one `twin-peaks`
 and the newer one `twin-peaks-<its id>`, and a second run changes nothing. Not
 tried on a real archive: Curtis's lives on his server, and the first startup
 after a deploy is where it will run.
+
+## 2026-10-11 (cont.): the public site, readable by search engines
+
+Curtis: "how do we make this whole (public) site comfortably crawlable by search
+engines?", then "just crack through the whole thing". It's a new plan,
+`plans/CRAWLING.md`, with rulings:
+
+1. the plain copy is hidden from browsers by script, not pushed off-screen;
+2. indexed by default, with a person's opt-out and a server's;
+3. people off the front page aren't indexed;
+4. a node-wide feed, with feeds kept to the recent window and the sitemap
+   carrying the archive.
+
+Built:
+
+- **Right answers**: 404 for an address under a person that names nothing
+  (before, the person's page under a 200, a "soft 404"), 410 for a post taken
+  down, and 308 for an old @name. Structured data (`SocialMediaPosting`,
+  `ProfilePage`) in the head, and a canonical address on every person's page.
+  `<html lang>` is left out on purpose: the node knows the interface's language,
+  not the language people write in.
+- **Reading copies** (`reading.rs`): each public page's content as plain HTML in
+  its body:
+  - a post's words, with its author, date, tags, and its book or contents;
+  - a person's posts as links, 30 a page with `rel="next"`, and a folder's;
+  - the front page and the people page.
+
+  Browsers that run scripts never show it (`html.js`), and the app removes it
+  before drawing.
+
+- **Being found** (`crawl.rs`): `robots.txt`, a sitemap index with one sitemap
+  per person, and `/feed.xml`. Who is indexed: a node with a public URL, not
+  opted out by its server (Server app, node migration 0079) or by the person
+  (`search = no` on their profile, in application settings), and listed on the
+  front page. That setting now exists in the app, beside the search one; the
+  node had the switch but nothing set it. Anything else answers `noindex`.
+- **One canonical address**: `webpath::post_address` and `person_address`, used
+  by every head, the sitemap, both feeds and the copies. A person's RSS now
+  links posts by their path.
+
+Found while checking: without scripts the app's empty shell took the whole
+screen and pushed the copy below the fold, and after mounting the copy stayed in
+the page, hidden. Both fixed.
+
+Tests:
+
+- unit tests for structured data never closing its own script, dates, rendering
+  words, and the paging cursor;
+- `crawling.cjs`: a post's copy and structured data, a person's paged list, 404
+  and 410, the front page, people and the feed, and robots and sitemap with no
+  public URL;
+- `webpaths.cjs` now expects the 308.
+
+On a scratch node with `RINGTOME_PUBLIC_URL`:
+
+- `robots.txt` names the sitemap, and the sitemap lists the person and the post
+  at their `@name` addresses;
+- a person's opt-out, unlisting, and the server's switch each bring `noindex`;
+  the server switch also turns `robots.txt` away and empties the sitemap;
+- with JavaScript off, a post reads as a plain page; with it on, the copy never
+  shows;
+- the settings section saves `search = no`.

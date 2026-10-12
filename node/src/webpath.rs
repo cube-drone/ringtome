@@ -216,6 +216,57 @@ pub fn well_formed(path: &str) -> bool {
         })
 }
 
+/// A persona's address segment in its short form (bare base58), as every address is minted.
+pub fn short_of(root: &[u8; 32]) -> String {
+    let speak = crate::speakable::speakable(root);
+    speak.rsplit('-').next().unwrap_or(&speak).to_string()
+}
+
+/// Does this node have a public URL (`RINGTOME_PUBLIC_URL`)? Only then does an @name mean anything
+/// outside it (ruling 8), and only then can it hand a search engine absolute addresses.
+pub fn has_public_url(state: &crate::AppState) -> bool {
+    state.config.public_url.as_deref().is_some_and(|u| !u.trim().is_empty())
+}
+
+/// The node's public URL, without a trailing slash, or "".
+pub fn public_url(state: &crate::AppState) -> String {
+    state.config.public_url.as_deref().unwrap_or("").trim().trim_end_matches('/').to_string()
+}
+
+/// The @name a persona's addresses may wear here: its current one, and only on a node with a
+/// public URL (ruling 8: `/@jeff/...` means something only at its node's own address).
+pub async fn public_slug(state: &crate::AppState, root_hex: &str) -> Option<String> {
+    if !has_public_url(state) {
+        return None;
+    }
+    crate::slugs::of_root(&state.node_db, root_hex).await.ok().and_then(|(c, _)| c)
+}
+
+/// A persona's canonical address, as a path: under its @name where it may wear one, else its real
+/// address. One answer for every place that names it - its head, the sitemap, the feeds, the
+/// reading copies - so they never disagree.
+pub async fn person_address(state: &crate::AppState, root: &[u8; 32]) -> String {
+    match public_slug(state, &hex::encode(root)).await {
+        Some(slug) => format!("/@{slug}"),
+        None => format!("/ringtome/user/{}", short_of(root)),
+    }
+}
+
+/// A post's canonical address, as a path: its web address in the shortest form this node can vouch
+/// for (section 4), or `post/<id>` for a post with no path.
+pub async fn post_address(state: &crate::AppState, root: &[u8; 32], doc_hex: &str) -> String {
+    let root_hex = hex::encode(root);
+    let path = crate::annotations::path_of(&state.node_db, &root_hex, doc_hex)
+        .await
+        .ok()
+        .flatten()
+        .filter(|p| well_formed(p));
+    match path {
+        Some(path) => format!("{}/{path}", person_address(state, root).await),
+        None => format!("/ringtome/user/{}/post/{doc_hex}", short_of(root)),
+    }
+}
+
 /// How long another node's answer about one of its addresses is kept.
 const WEB_ADDRESS_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 /// The most of another node's answer read.

@@ -1448,6 +1448,22 @@ pub async fn public_replies(
     Ok(out)
 }
 
+/// Was this document published and then taken down here (`public_retractions`)? A page asked for
+/// it answers "gone" rather than "never was" (plans/CRAWLING.md: a 410, so a search engine lets
+/// the address go).
+pub async fn was_retracted(db: &Db, doc_id: &[u8; 16]) -> Result<bool, AppError> {
+    catch_up_public_lane(db).await?;
+    let row: Option<(i64,)> = db
+        .fetch_optional(
+            "SELECT 1 FROM public_retractions WHERE doc_id = ?1 LIMIT 1",
+            (doc_id.as_slice(),),
+        )
+        .await
+        .context("reading whether a document was taken down")
+        .map_err(AppError::Internal)?;
+    Ok(row.is_some())
+}
+
 pub async fn public_docs(
     db: &Db,
     after: Option<(i64, [u8; 16])>,

@@ -189,6 +189,13 @@ pub async fn homepage(State(state): State<AppState>) -> Html<String> {
 /// and the OpenGraph meta a crawler or a link unfurler reads, with the app taking the body -
 /// one rendering path for signed-in readers and strangers alike.
 pub fn app_page(state: &AppState, head: &str) -> String {
+    app_page_with(state, head, "")
+}
+
+/// `app_page`, with a reading copy of the page in its body (plans/CRAWLING.md): the page's content
+/// as plain HTML, for a crawler and a reader without JavaScript - the app replaces it on mounting,
+/// and a browser that runs scripts never shows it (the template's `html.js`).
+pub fn app_page_with(state: &AppState, head: &str, body: &str) -> String {
     let version = &state.config.app_version;
     let environment = if state.config.is_dev() { "dev" } else { "prod" };
     // A dev node names the branch it was run from, which the version label shows in place of a
@@ -203,6 +210,11 @@ pub fn app_page(state: &AppState, head: &str) -> String {
     } else {
         String::new()
     };
+    let body = if body.is_empty() {
+        String::new()
+    } else {
+        format!("<div class=\"reading-copy\">{body}</div>")
+    };
     HOME_PAGE
         .replace("$HEAD$", head)
         .replace("$VERSION$", version)
@@ -211,6 +223,8 @@ pub fn app_page(state: &AppState, head: &str) -> String {
         // The upload cap (`RINGTOME_MAX_UPLOAD_BYTES`), so the page can say a file is too large
         // before sending it, rather than watch the connection drop (net.js `xhrUpload`).
         .replace("$MAX_UPLOAD$", &state.config.max_upload_bytes.to_string())
+        // Last: the copy is a person's words, and words may say `$VERSION$`.
+        .replace("$BODY$", &body)
 }
 
 /// The checkout this dev node was built from - the repository above the node crate.

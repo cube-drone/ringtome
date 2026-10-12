@@ -81,6 +81,10 @@ lightly federated, unapologetically Old Internet.
   what the node sees the network doing - drawings, words, reactions positive and
   negative, follows, chat, posts. Horse Financial's second instrument. Built
   2026-10-06.
+- [`CRAWLING.md`](plans/CRAWLING.md) — the public site readable by search
+  engines: a server-written reading copy in every public page's body, a
+  `robots.txt` and sitemap, the right status codes, and a choice of who is
+  indexed. A design draft (2026-10-11); nothing built.
 - [`DEDUP.md`](plans/DEDUP.md) — one copy of each private file a persona holds:
   a keyed fingerprint of every private blob, carried in its encrypted header and
   folded into a per-persona view, so an upload the persona already holds names

@@ -1,6 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <script>
+        // A browser that runs this will run the app (plans/CRAWLING.md, ruling 1): it shows
+        // "Loading…" until the app arrives, and the reading copy below - the page's words, for a
+        // crawler and a reader without JavaScript - stays out of its way.
+        document.documentElement.classList.add('js');
+    </script>
+    <style>
+        html.js .reading-copy { display: none; }
+        html:not(.js) .app-main { display: none; }
+        .reading-copy { max-width: 44rem; margin: 2rem auto; padding: 0 1rem; color: var(--ink); line-height: 1.5; }
+        .reading-copy img { max-width: 100%; height: auto; }
+        .reading-copy a { color: var(--sea); }
+        .reading-copy nav, .reading-copy footer { margin: 1.5rem 0; }
+        .reading-copy li { margin: 0.3rem 0; }
+    </style>
     $HEAD$
     <meta name="app-version" content="$VERSION$">$BRANCH$
     <meta name="app-max-upload" content="$MAX_UPLOAD$">
@@ -60,6 +75,7 @@
                 <p>Loading&hellip;</p>
             </div>
         </div>
+        $BODY$
     </div>
 
     <script src="/static/$VERSION$/app.js"></script>

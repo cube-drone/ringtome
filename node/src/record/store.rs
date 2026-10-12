@@ -99,8 +99,10 @@ pub const AUDIENCE: &str = "audience";
 
 /// Profile fields settable in v0. A closed set: the profile is a schema, not a junk drawer.
 /// `colorway` (2026-09-30) is the persona's colourway for the app - public, so a visitor to their
-/// page sees it in it (js/colorway.js).
-pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar", "banner", "colorway"];
+/// page sees it in it (js/colorway.js). `search` (2026-10-11, plans/CRAWLING.md ruling 2) is their
+/// word to search engines: `no` keeps their pages out of every index, and is public because it is
+/// said to every crawler anyway, as each page's `noindex`.
+pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar", "banner", "colorway", "search"];
 
 /// Write credentials for one identity on this node: the leaf signing key and the private-chain
 /// epoch keys it can open.

@@ -140,18 +140,87 @@ pub async fn idface_deep(
     session: Option<Session>,
     state: State<AppState>,
     Path((seg, rest)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
 ) -> Result<Response, AppError> {
-    // A post's address wears the POST's head (slice 4 of the `/ringtome/` links, 2026-09-28) - what
-    // an unfurler outside Ringtome shows for a pasted link - and so does a published note's; any
-    // other deeper path, or a post this node cannot vouch for, wears the person's.
     if let Some(Parsed::Ok(root)) = speakable::parse(&seg) {
-        if let Some(doc) = post_named(&state, &root, &rest).await {
-            if let Some(page) = post_page(&state, root, doc).await? {
-                return Ok(page);
+        return deep_page(&state, root, &rest, query.as_deref()).await;
+    }
+    idface(session, state, Path(seg), RawQuery(query)).await
+}
+
+/// "Older posts", as a reading copy's link asks for them (`?before=<ms>.<doc>`).
+fn before_of(query: Option<&str>) -> Option<(i64, [u8; 16])> {
+    url::form_urlencoded::parse(query.unwrap_or("").as_bytes())
+        .find(|(k, _)| k == "before")
+        .and_then(|(_, v)| crate::reading::parse_cursor(&v))
+}
+
+/// The page for an address under a person - `/ringtome/user/<them>/<rest>` or `/@name/<rest>`: the
+/// post it names, with its own head; a notebook's folder (plans/WEB_ADDRESSES.md, ruling 7); or the
+/// person's page, which the app reads the rest of. And the right answer for a search engine
+/// (plans/CRAWLING.md): 410 for a post taken down, 404 for an address that names nothing - never
+/// the person's page under a 200, which a search engine counts as a "soft 404".
+pub(crate) async fn deep_page(
+    state: &AppState,
+    root: [u8; 32],
+    rest: &str,
+    query: Option<&str>,
+) -> Result<Response, AppError> {
+    let before = before_of(query);
+    if let Some(doc) = post_named(state, &root, rest).await {
+        if let Some(page) = post_page(state, root, doc).await? {
+            return Ok(page);
+        }
+        // Named, but no page of its own here: taken down, sealed, or never a post at all.
+        let status = match state.user_dbs.get(&hex::encode(root)).await {
+            Ok(Some(db)) => {
+                if crate::record::documents::was_retracted(&db, &doc).await? {
+                    StatusCode::GONE
+                } else if crate::record::documents::public_doc(&db, &doc).await?.is_some() {
+                    StatusCode::OK // sealed: its page is the app's to show its trusted readers
+                } else {
+                    StatusCode::NOT_FOUND
+                }
             }
+            _ => StatusCode::NOT_FOUND,
+        };
+        return persona_page_with(
+            state,
+            root,
+            PersonAsk { status: Some(status), ..Default::default() },
+        )
+        .await;
+    }
+    let rest = rest.trim_matches('/');
+    let first = rest.split('/').next().unwrap_or("");
+    // One of the person's own routes - a document, a room, a post's history - the app's to read.
+    if rest.is_empty() || crate::webpath::RESERVED.contains(&first) {
+        return persona_page_with(state, root, PersonAsk { before, ..Default::default() }).await;
+    }
+    if !rest.contains('/') {
+        if let Some(notebook) =
+            crate::annotations::folder_notebook(&state.node_db, &hex::encode(root), rest)
+                .await
+                .map_err(AppError::Internal)?
+        {
+            return persona_page_with(
+                state,
+                root,
+                PersonAsk {
+                    before,
+                    folder: Some((rest.to_string(), notebook)),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
     }
-    idface(session, state, Path(seg)).await
+    persona_page_with(
+        state,
+        root,
+        PersonAsk { status: Some(StatusCode::NOT_FOUND), ..Default::default() },
+    )
+    .await
 }
 
 /// The public post a deeper path names: `post/<doc>`, a book's `post/<book>/page/<doc>` (the page's
@@ -222,27 +291,10 @@ pub(crate) async fn post_page(
     let title = said.title;
 
     let base = state.config.public_url.clone().unwrap_or_default();
-    // Its web address when it has one (plans/WEB_ADDRESSES.md): the canonical address, what an
-    // unfurler and a search engine are told; the long form stays an address it answers at.
-    let path = crate::annotations::path_of(&state.node_db, &root_hex, &doc_hex)
-        .await
-        .ok()
-        .flatten()
-        .filter(|p| crate::webpath::well_formed(p));
-    // The shortest form this node can vouch for (plans/WEB_ADDRESSES.md, section 4): under the
-    // persona's @name here when it has one and this node has a public URL - an @name means
-    // something only at the node's own address, never on `localhost` - else under its real
-    // address, which any node looks up in the network.
-    let slug = if base.trim().is_empty() {
-        None
-    } else {
-        crate::slugs::of_root(&state.node_db, &root_hex).await.ok().and_then(|(c, _)| c)
-    };
-    let url = match (&path, &slug) {
-        (Some(path), Some(slug)) => format!("{base}/@{slug}/{path}"),
-        (Some(path), None) => format!("{base}/ringtome/user/{short}/{path}"),
-        (None, _) => format!("{base}/ringtome/user/{short}/post/{doc_hex}"),
-    };
+    // Its canonical address (plans/WEB_ADDRESSES.md, section 4): its web address in the shortest
+    // form this node can vouch for - what an unfurler and a search engine are told; the long form
+    // stays an address it answers at.
+    let url = format!("{base}{}", crate::webpath::post_address(state, &root, &doc_hex).await);
     let mut head = format!(
         "<title>{} - {}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"article\">\n<meta property=\"og:url\" content=\"{}\">\n<meta property=\"og:site_name\" content=\"{}\">",
         esc(&title),
@@ -263,8 +315,8 @@ pub(crate) async fn post_page(
         None => profile_value(&fields, "avatar")
             .map(|avatar| format!("{base}/id/{short}/docs/{avatar}/thumb")),
     };
-    if let Some(picture) = picture {
-        head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}\">", esc(&picture)));
+    if let Some(picture) = &picture {
+        head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}\">", esc(picture)));
     }
     // The canonical address, and what the post is on the network whatever address it's read at:
     // its author and its id, for an unfurler or another node to take back to the identity path.
@@ -275,11 +327,34 @@ pub(crate) async fn post_page(
         doc_hex
     ));
     head.push_str(&colorway_meta(&fields));
+    // For search engines (plans/CRAWLING.md): `noindex` for a person who isn't indexed, the post as
+    // structured data, and its words in the body as a reading copy.
+    if !crate::crawl::indexable(state, &root_hex, &fields).await {
+        head.push_str(crate::crawl::NOINDEX);
+    }
+    let person = format!("{base}{}", crate::webpath::person_address(state, &root).await);
+    let mut post_ld = serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "SocialMediaPosting",
+        "headline": title,
+        "url": url,
+        "datePublished": crate::crawl::iso(post.display_ms()),
+        "dateModified": crate::crawl::iso(post.head_ms),
+        "author": { "@type": "Person", "name": author, "url": person },
+    });
+    if !excerpt.is_empty() {
+        post_ld["description"] = serde_json::json!(excerpt);
+    }
+    if let Some(picture) = &picture {
+        post_ld["image"] = serde_json::json!(picture);
+    }
+    head.push_str(&crate::crawl::json_ld(&post_ld));
+    let body = crate::reading::post_copy(state, &db, &root, &post, &title, &author).await;
     Ok(Some(
         (
             StatusCode::OK,
             [(header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
-            axum::response::Html(crate::ui::app_page(state, &head)),
+            axum::response::Html(crate::ui::app_page_with(state, &head, &body)),
         )
             .into_response(),
     ))
@@ -424,6 +499,7 @@ pub async fn idface(
     _session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
+    RawQuery(query): RawQuery,
 ) -> Result<Response, AppError> {
     let Some(parsed) = speakable::parse(&seg) else {
         return Ok(face(
@@ -462,17 +538,37 @@ pub async fn idface(
             ));
         }
     };
-    persona_page(&state, root).await
+    persona_page_with(
+        &state,
+        root,
+        PersonAsk { before: before_of(query.as_deref()), ..Default::default() },
+    )
+    .await
+}
+
+/// What a person's page is asked for, past who they are (plans/CRAWLING.md): which page of their
+/// posts its reading copy lists, a notebook's folder to narrow to (`(folder, notebook)`), and a
+/// status the caller knows better than the person does - a 404 for an address under them that
+/// names nothing, a 410 for a post taken down.
+#[derive(Default)]
+pub(crate) struct PersonAsk {
+    pub before: Option<(i64, [u8; 16])>,
+    pub folder: Option<(String, String)>,
+    pub status: Option<StatusCode>,
 }
 
 /// The persona's page: the app with a meta head (PROJECT_PLAN's The node's public face, ruling 8). The server's part
 /// is the head - the title and the OpenGraph meta a crawler or a link unfurler reads, the
-/// URL carrying the via hints that say where this persona can be reached - and the app takes
-/// the body, signed in or not. A hosted persona is 200; anything else is the same page under
-/// a 404, since nothing about it is served here and the app says so. Served at `/id/<addr>`
-/// and, for a hosted persona with a slug, at `/@<slug>` (ruling 6). The raw card page
-/// retired here on 2026-09-15.
-pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Response, AppError> {
+/// URL carrying the via hints that say where this persona can be reached - and, since
+/// plans/CRAWLING.md, a reading copy of their posts in the body, which the app replaces. A hosted
+/// persona is 200 unless `ask` says otherwise; anything else is the same page under a 404, since
+/// nothing about it is served here and the app says so. Served at `/ringtome/user/<addr>` and, for
+/// a hosted persona with a slug, at `/@<slug>` (ruling 6).
+pub(crate) async fn persona_page_with(
+    state: &AppState,
+    root: [u8; 32],
+    ask: PersonAsk,
+) -> Result<Response, AppError> {
     let root_hex = hex::encode(root);
     let speak = speakable::speakable(&root);
     let words = speak.rsplit_once('-').map(|x| x.0).unwrap_or("").to_string();
@@ -525,10 +621,15 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
     } else {
         format!("{base}/ringtome/user/{short}?via={}", via.join(","))
     };
+    // A folder's page wears its notebook's name before the person's.
+    let title = match &ask.folder {
+        Some((_, notebook)) => format!("{notebook} - {name}"),
+        None => name.clone(),
+    };
     let mut head = format!(
         "<title>{}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"profile\">\n<meta property=\"og:url\" content=\"{}\">",
-        esc(&name),
-        esc(&name),
+        esc(&title),
+        esc(&title),
         esc(&url)
     );
     if !bio.is_empty() {
@@ -550,11 +651,50 @@ pub(crate) async fn persona_page(state: &AppState, root: [u8; 32]) -> Result<Res
         ));
     }
     head.push_str(&colorway_meta(&fields));
-    let status = if hosted { StatusCode::OK } else { StatusCode::NOT_FOUND };
+    let status = match (hosted, ask.status) {
+        (false, _) => StatusCode::NOT_FOUND,
+        (true, Some(status)) => status,
+        (true, None) => StatusCode::OK,
+    };
+    // For search engines (plans/CRAWLING.md): the canonical address - a folder's own, or the
+    // person's, never a page of "older posts" - structured data, and `noindex` for anyone who
+    // isn't indexed, or a page that isn't one.
+    let mut body = String::new();
+    if hosted {
+        let person = format!("{base}{}", crate::webpath::person_address(state, &root).await);
+        let canonical = match &ask.folder {
+            Some((folder, _)) => format!("{person}/{folder}"),
+            None => person.clone(),
+        };
+        head.push_str(&format!("\n<link rel=\"canonical\" href=\"{}\">", esc(&canonical)));
+        if status != StatusCode::OK || !crate::crawl::indexable(state, &root_hex, &fields).await {
+            head.push_str(crate::crawl::NOINDEX);
+        }
+        let mut person_ld = serde_json::json!({ "@type": "Person", "name": name, "url": person });
+        if !bio.is_empty() {
+            person_ld["description"] = serde_json::json!(bio);
+        }
+        if let Some(doc) = profile_value(&fields, "avatar") {
+            person_ld["image"] = serde_json::json!(format!("{base}/id/{speak}/docs/{doc}/thumb"));
+        }
+        head.push_str(&crate::crawl::json_ld(&serde_json::json!({
+            "@context": "https://schema.org",
+            "@type": "ProfilePage",
+            "mainEntity": person_ld,
+        })));
+        if status == StatusCode::OK {
+            if let Ok(Some(db)) = state.user_dbs.get(&root_hex).await {
+                let folder = ask.folder.as_ref().map(|(f, n)| (f.as_str(), n.as_str()));
+                body =
+                    crate::reading::person_copy(state, &db, &root, &name, &bio, ask.before, folder)
+                        .await;
+            }
+        }
+    }
     Ok((
         status,
         [(header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
-        axum::response::Html(crate::ui::app_page(state, &head)),
+        axum::response::Html(crate::ui::app_page_with(state, &head, &body)),
     )
         .into_response())
 }

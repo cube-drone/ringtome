@@ -316,11 +316,9 @@ pub async fn slug_of(
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let root = root.to_ascii_lowercase();
-    let public = state.config.public_url.as_deref().is_some_and(|u| !u.trim().is_empty());
-    let slug = if public && decode_root(&root).is_some() {
-        crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?.0
-    } else {
-        None
+    let slug = match decode_root(&root) {
+        Some(_) => crate::webpath::public_slug(&state, &root).await,
+        None => None,
     };
     Ok(Json(serde_json::json!({ "slug": slug })))
 }
@@ -401,12 +399,13 @@ pub async fn at_name_answer(
 pub async fn slug_path_page(
     State(state): State<AppState>,
     Path((slug, rest)): Path<(String, String)>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Result<axum::response::Response, AppError> {
     use axum::response::IntoResponse;
     match crate::slugs::resolve(&state.node_db, &slug).await.map_err(AppError::Internal)? {
         Some((root, current)) => {
             let Some(key) = decode_root(&root) else {
-                return slug_page(State(state), Path(slug)).await;
+                return slug_page(State(state), Path(slug), axum::extract::RawQuery(None)).await;
             };
             if !current {
                 if let Some(c) = crate::slugs::of_root(&state.node_db, &root)
@@ -415,17 +414,12 @@ pub async fn slug_path_page(
                     .0
                 {
                     let to = format!("/@{c}/{}", rest.trim_matches('/'));
-                    return Ok(axum::response::Redirect::temporary(&to).into_response());
+                    return Ok(axum::response::Redirect::permanent(&to).into_response());
                 }
             }
-            if let Some(doc) = crate::idface::post_named(&state, &key, &rest).await {
-                if let Some(page) = crate::idface::post_page(&state, key, doc).await? {
-                    return Ok(page);
-                }
-            }
-            crate::idface::persona_page(&state, key).await
+            crate::idface::deep_page(&state, key, &rest, query.as_deref()).await
         }
-        None => slug_page(State(state), Path(slug)).await,
+        None => slug_page(State(state), Path(slug), axum::extract::RawQuery(None)).await,
     }
 }
 
@@ -434,7 +428,9 @@ pub async fn slug_path_page(
 pub async fn slug_page(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    query: axum::extract::RawQuery,
 ) -> Result<axum::response::Response, AppError> {
+    let axum::extract::RawQuery(query) = query;
     use axum::response::IntoResponse;
     match crate::slugs::resolve(&state.node_db, &slug).await.map_err(AppError::Internal)? {
         Some((root, true)) => {
@@ -444,14 +440,14 @@ pub async fn slug_page(
                     "nobody on this node goes by that name"
                 )));
             };
-            crate::idface::persona_page(&state, key).await
+            crate::idface::deep_page(&state, key, "", query.as_deref()).await
         }
         Some((root, false)) => {
             let (current, _) =
                 crate::slugs::of_root(&state.node_db, &root).await.map_err(AppError::Internal)?;
             match current {
                 Some(c) => {
-                    Ok(axum::response::Redirect::temporary(&format!("/@{c}")).into_response())
+                    Ok(axum::response::Redirect::permanent(&format!("/@{c}")).into_response())
                 }
                 None => Err(AppError::NotFound(crate::msg!(
                     "nodeface.nobody-here-by-that-name",

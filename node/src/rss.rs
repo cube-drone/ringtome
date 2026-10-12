@@ -31,7 +31,7 @@ fn xml(s: &str) -> String {
 }
 
 /// Milliseconds since the epoch as RFC 822, the date RSS speaks: `Wed, 30 Sep 2026 14:05:09 GMT`.
-fn rfc822(ms: i64) -> String {
+pub(crate) fn rfc822(ms: i64) -> String {
     const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"]; // 1970-01-01 was a Thursday
     const MONTHS: [&str; 12] =
         ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -94,7 +94,8 @@ pub async fn rss_handler(
     {
         let doc_hex = hex::encode(post.doc_id);
         let said = crate::idface::post_words(&state, &db, &root_hex, post, &name).await?;
-        let link = format!("{page}/post/{doc_hex}");
+        // Its canonical address (plans/WEB_ADDRESSES.md): its path, where it has one.
+        let link = format!("{base}{}", crate::webpath::post_address(&state, &root, &doc_hex).await);
         // The picture it carries: its own, for a picture or a drawing, else the first its words embed.
         let picture = if post.thumb_hash.is_some() {
             Some(format!("{page}/doc/{doc_hex}/thumb"))

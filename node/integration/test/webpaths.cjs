@@ -213,7 +213,11 @@ describe('web addresses: a post lives at a readable path', function () {
         const old = await stranger(`@${name}/cybergamer-canada--ad-viewmagic`, {
             redirect: 'manual',
         });
-        assert.equal(old.status, 307);
+        assert.equal(
+            old.status,
+            308,
+            'permanent, so a search engine moves its index to the new name',
+        );
         assert.ok(
             (old.headers.get('location') || '').endsWith(
                 `/@${renamed}/cybergamer-canada--ad-viewmagic`,

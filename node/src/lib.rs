@@ -34,6 +34,7 @@ pub mod chat;
 pub mod clock;
 pub mod commodities;
 pub mod config;
+pub mod crawl;
 pub mod db;
 pub mod downloads;
 pub mod drawing;
@@ -78,6 +79,7 @@ pub mod publish;
 pub mod publishing;
 pub mod ranged;
 pub mod rate_limit;
+pub mod reading;
 pub mod reaper;
 pub mod rebroadcast;
 pub mod record;
@@ -865,9 +867,18 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // The public face arrived (PROJECT_PLAN's The node's public face, 2026-09-15): root is the app, which shows a
         // stranger the node's front page and sends a signed-in reader on to /home.
         .route("/", get(ui::homepage))
-        .route("/people", get(ui::homepage))
+        .route("/people", get(crawl::people_page))
         // The node's public feed, since the front page became the sign-in (2026-09-28).
-        .route("/feed", get(ui::homepage))
+        .route("/feed", get(crawl::front_page))
+        // Crawling (crawl.rs, plans/CRAWLING.md): what a search engine reads besides the pages.
+        .route("/robots.txt", get(crawl::robots_handler))
+        .route("/sitemap.xml", get(crawl::sitemap_index_handler))
+        .route("/sitemap/{name}", get(crawl::sitemap_handler))
+        .route("/feed.xml", get(crawl::node_feed_handler))
+        .route(
+            "/api/admin/search-policy",
+            get(crawl::policy_handler).put(crawl::set_policy_handler),
+        )
         .route("/home", get(ui::homepage))
         // The /id surface: one URL, two audiences (idface.rs). The wildcard form covers
         // deeper resource paths; the segment parser only reads the first segment for now.

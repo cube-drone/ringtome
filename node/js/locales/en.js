@@ -272,6 +272,8 @@ export default {
     'device.add': 'add',
     'device.allow-imports': 'allow users to import',
     'device.allow-imports-why': "An import brings a whole persona's zip onto this server - every note and picture, and the work of reading them in. Leave it off and people can still export from here to a computer of their own, which is the way things should flow.",
+    'device.let-search-engines-in': 'let search engines index this server',
+    'device.search-engines-why': 'Off, every page asks search engines to stay away, and the sitemap is empty. Each person can also keep themselves out, in their own settings.',
     'device.a-backup-holds-everything': 'A backup is a copy of everything here - every account, and the keys that unlock them. Whoever has one has all of it, so keep it as safe as this place itself.',
     'device.backing-up': 'backing up…',
     'device.make-a-backup-now': 'make a backup now',
@@ -287,6 +289,7 @@ export default {
     'device.front-page-name': "the front page's name",
     'device.taglines-one-per-line': 'taglines, one to a line, scrolling under the sign-in',
     'device.back-to-the-apps-own': "back to the app's own",
+    'device.search-engines': 'search engines',
 
     // --- node/js/apps/feed.js ---
     'apps.feed.stop-explorer': 'explorer',
@@ -1452,6 +1455,10 @@ export default {
     'persona.settings-this-browser': 'these settings are for this browser',
     'persona.version': 'version',
     'persona.every-release': 'every release',
+    'persona.on-the-public-web': 'On the public web',
+    'persona.let-search-engines-find-me': 'let search engines find my public posts',
+    'persona.list-me-on-the-front-page': "list me on this server's front page",
+    'persona.public-web-why': "Your public posts can be read by anyone with their address either way. Off the front page, search engines aren't pointed at you either.",
     'persona.copied': 'copied',
     'persona.copy': 'copy',
     'persona.use-with-an-ai-assistant': 'Use with an AI assistant',
@@ -1929,6 +1936,10 @@ export default {
     'commodities.no-such-lot': 'no such lot',
     'commodities.held-two-days': 'a lot sells two days after it was bought, at the earliest',
     'commodities.not-that-many': "that lot doesn't hold that many",
+
+    // --- node/src/crawl.rs ---
+    'crawl.no-sitemap': 'this node keeps no sitemap',
+    'crawl.no-such-sitemap': 'no such sitemap',
 
     // --- node/src/epub.rs ---
     'epub.nothing-to-read': 'that notebook has nothing to read yet',

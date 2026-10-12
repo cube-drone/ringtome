@@ -796,6 +796,7 @@ const AppSettingsFor = ({ root }) => {
                 ${t('persona.vim-keys', 'vim keys in hrseWriter™ (the interactive editor)')}
             </label>
             <p class="null-sub">${t('persona.settings-this-browser', 'these settings are for this browser')}</p>
+            <${PublicWeb} root=${root} />
             <${AiAssistants} />
             <${ApiKeys} />
             ${
@@ -808,6 +809,76 @@ const AppSettingsFor = ({ root }) => {
             </p>
         </div>
     `;
+};
+
+/// This persona on the public web (plans/CRAWLING.md, rulings 2 and 3): whether search engines may
+/// index their public posts - their profile's `search` field, `no` to say no, so it's the persona's
+/// and every node they're on says it - and whether they're on this node's front page, which search
+/// engines follow too. Only on a node with a public URL: anywhere else there's no public web to be
+/// found on.
+const PublicWeb = ({ root }) => {
+    const [state, setState] = useState(null); // { search, listed }
+    const [error, setError] = useState('');
+    useEffect(() => {
+        let live = true;
+        (async () => {
+            const config = await api('/api/config').catch(() => ({}));
+            if (!(config.public_url || '').trim()) return;
+            const [fields, listing] = await Promise.all([
+                api(`/api/identity/${root}/profile`).catch(() => []),
+                api(`/api/identity/${root}/listed`).catch(() => ({ listed: true })),
+            ]);
+            const field = (fields || []).find((f) => f.field === 'search');
+            if (live)
+                setState({
+                    search: !field || field.value !== 'no',
+                    listed: listing.listed !== false,
+                });
+        })();
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    if (!state) return null;
+    const setSearch = async (on) => {
+        setError('');
+        try {
+            await api(`/api/identity/${root}/profile`, {
+                method: 'POST',
+                body: JSON.stringify({ field: 'search', value: on ? '' : 'no' }),
+            });
+            setState((s) => ({ ...s, search: on }));
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    const setListed = async (on) => {
+        setError('');
+        try {
+            await api(`/api/identity/${root}/listed`, {
+                method: 'PUT',
+                body: JSON.stringify({ listed: on }),
+            });
+            setState((s) => ({ ...s, listed: on }));
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    return html`<section class="settings-keys">
+        <h2 class="settings-section-title"><${Icons.feed} /> ${t('persona.on-the-public-web', 'On the public web')}</h2>
+        <label class="profile-setting">
+            <input type="checkbox" checked=${state.search} onChange=${(e) => setSearch(e.currentTarget.checked)} />
+            ${t('persona.let-search-engines-find-me', 'let search engines find my public posts')}
+        </label>
+        <label class="profile-setting">
+            <input type="checkbox" checked=${state.listed} onChange=${(e) => setListed(e.currentTarget.checked)} />
+            ${t('persona.list-me-on-the-front-page', "list me on this server's front page")}
+        </label>
+        <p class="null-sub">
+            ${t('persona.public-web-why', "Your public posts can be read by anyone with their address either way. Off the front page, search engines aren't pointed at you either.")}
+        </p>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </section>`;
 };
 
 /// Using Horse Drawing Tycoon 2 from an AI assistant (plans/MCP.md, Slice 6): the node's `/mcp`

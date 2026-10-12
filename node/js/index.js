@@ -1189,6 +1189,10 @@ function main() {
     // (1em, so the containers' existing font-size rules size the glyphs), in currentColor. The
     // provider value REPLACES Phosphor's defaults rather than merging, so size lives here too; the
     // `ph` class is the hook the stylesheet uses to seat the glyphs on the text baseline.
+    // The page's reading copy (plans/CRAWLING.md) is for crawlers and readers without scripts; the
+    // app shows the same thing, so the copy goes before the app draws - one copy of the words in
+    // the page, never a hidden second.
+    for (const copy of document.querySelectorAll('.reading-copy')) copy.remove();
     render(
         html`<${IconContext.Provider}
             value=${{ weight: 'duotone', size: '1em', className: 'ph' }}

@@ -394,6 +394,40 @@ const ImportPolicy = () => {
         ${error && html`<p class="form-error">${error}</p>`}`;
 };
 
+/// Whether search engines are welcome on this server (plans/CRAWLING.md, ruling 2): yes until its
+/// administrator says no. Only on a server with a public URL - anywhere else, nothing is indexed.
+const SearchPolicy = () => {
+    const [policy, setPolicy] = useState(null);
+    const [error, setError] = useState('');
+    useEffect(() => {
+        api('/api/admin/search-policy')
+            .then(setPolicy)
+            .catch((e) => setError(e.message));
+    }, []);
+    const change = async (on) => {
+        setError('');
+        try {
+            const r = await api('/api/admin/search-policy', {
+                method: 'PUT',
+                body: JSON.stringify({ indexed: on }),
+            });
+            setPolicy((p) => ({ ...p, indexed: r.indexed }));
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    if (!policy) return error ? html`<p class="form-error">${error}</p>` : null;
+    if (!policy.public) return null;
+    return html`<label class="profile-setting">
+            <input type="checkbox" checked=${policy.indexed} onChange=${(e) => change(e.currentTarget.checked)} />
+            ${t('device.let-search-engines-in', 'let search engines index this server')}
+        </label>
+        <p class="null-sub">
+            ${t('device.search-engines-why', 'Off, every page asks search engines to stay away, and the sitemap is empty. Each person can also keep themselves out, in their own settings.')}
+        </p>
+        ${error && html`<p class="form-error">${error}</p>`}`;
+};
+
 const Backups = () => {
     const [archives, setArchives] = useState(null);
     const [ticket, setTicket] = useState(null);
@@ -563,6 +597,8 @@ const Customization = () => {
                     ${t('device.back-to-the-apps-own', "back to the app's own")}
                 </button>
             </div>
+            <h3 class="computers-subtitle">${t('device.search-engines', 'search engines')}</h3>
+            <${SearchPolicy} />
         </div>
     `;
 };

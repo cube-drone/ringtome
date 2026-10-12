@@ -35,8 +35,8 @@ describe("a person's RSS", function () {
     });
 
     it('carries their open posts, newest first, and never a sealed one', async () => {
-        const first = await publish('hay & oats', 'the first post, about hay & oats');
-        const second = await publish('a canter', 'the second post');
+        await publish('hay & oats', 'the first post, about hay & oats');
+        await publish('a canter', 'the second post');
         await publish('for my people', 'quiet words', { trusted_only: true });
 
         const res = await stranger(`ringtome/user/${root}/rss.xml`);
@@ -55,8 +55,9 @@ describe("a person's RSS", function () {
             ['a canter', 'hay &amp; oats'],
             'newest first, and no sealed post',
         );
+        // By its web address since 2026-10-11 (plans/WEB_ADDRESSES.md): the path its title made.
         assert.ok(
-            xml.includes(`/post/${second}</link>`) && xml.includes(`/post/${first}</link>`),
+            xml.includes('/a-canter</link>') && xml.includes('/hay-oats</link>'),
             "each links to its post's page",
         );
         assert.ok(!xml.includes('quiet words'), "a sealed post's words never either");
