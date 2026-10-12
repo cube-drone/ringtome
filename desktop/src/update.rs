@@ -100,9 +100,7 @@ pub fn start(app: AppHandle) {
                 pending && hidden.is_some_and(|since| since.elapsed() >= QUIET_BEFORE_RESTART)
             };
             if quiet {
-                tracing::info!(
-                    "the window has been hidden a while: installing the update and restarting"
-                );
+                tracing::info!("the window has been hidden a while: installing the update and restarting");
                 install_pending(&app);
                 app.restart();
             }
@@ -123,10 +121,15 @@ async fn check_once(app: &AppHandle) -> anyhow::Result<()> {
     };
     let version = update.version.clone();
     tracing::info!(%version, current = %update.current_version, "an update is available; downloading");
-    let bytes = update.download(|_chunk, _total| {}, || {}).await?;
+    let bytes = update
+        .download(|_chunk, _total| {}, || {})
+        .await?;
     tracing::info!(%version, bytes = bytes.len(), "update downloaded and verified; it installs when the app quits");
-    *app.state::<Waiting>().pending.lock().unwrap() =
-        Some(Pending { version: version.clone(), bytes, update });
+    *app.state::<Waiting>().pending.lock().unwrap() = Some(Pending {
+        version: version.clone(),
+        bytes,
+        update,
+    });
 
     // Nobody to ask while the window is hidden: the quiet restart takes it from here.
     if app.state::<Waiting>().hidden_since.lock().unwrap().is_some() {

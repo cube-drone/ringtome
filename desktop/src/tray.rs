@@ -109,9 +109,7 @@ fn try_build(app: &AppHandle, url: &str) -> tauri::Result<()> {
                 let now_on = launch.is_enabled().unwrap_or(false);
                 let result = if now_on { launch.disable() } else { launch.enable() };
                 match result {
-                    Ok(()) => {
-                        tracing::info!(enabled = !now_on, "start at login changed from the tray")
-                    }
+                    Ok(()) => tracing::info!(enabled = !now_on, "start at login changed from the tray"),
                     Err(e) => tracing::warn!(error = %e, "could not change start at login"),
                 }
                 let _ = autostart.set_checked(launch.is_enabled().unwrap_or(false));

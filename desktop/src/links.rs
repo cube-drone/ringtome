@@ -66,9 +66,7 @@ const EMBEDS: [(&str, &str); 3] = [
 /// Is `url` a player a post embeds?
 pub fn is_embed(url: &Url) -> bool {
     url.scheme() == "https"
-        && EMBEDS
-            .iter()
-            .any(|(host, path)| url.host_str() == Some(*host) && url.path().starts_with(path))
+        && EMBEDS.iter().any(|(host, path)| url.host_str() == Some(*host) && url.path().starts_with(path))
 }
 
 /// A navigation inside the window: allow ours (and the blank page a webview uses internally), and
@@ -109,9 +107,7 @@ fn hand_out(app: &AppHandle, url: &Url) {
             tauri::async_runtime::spawn_blocking(move || {
                 match app.opener().open_url(url.as_str(), None::<&str>) {
                     Ok(()) => tracing::info!(%url, "opened a link in the system browser"),
-                    Err(e) => {
-                        tracing::warn!(error = %e, %url, "could not open a link in the system browser")
-                    }
+                    Err(e) => tracing::warn!(error = %e, %url, "could not open a link in the system browser"),
                 }
             });
         }
@@ -127,14 +123,8 @@ mod tests {
     fn ours_is_the_node_exactly() {
         let origin = Url::parse("http://127.0.0.1:6305/").unwrap();
         assert!(is_ours(&Url::parse("http://127.0.0.1:6305/home/chat/a/b").unwrap(), &origin));
-        assert!(
-            !is_ours(&Url::parse("http://127.0.0.1:6306/home").unwrap(), &origin),
-            "another port is another node"
-        );
-        assert!(
-            !is_ours(&Url::parse("http://localhost:6305/home").unwrap(), &origin),
-            "another host spelling is another origin"
-        );
+        assert!(!is_ours(&Url::parse("http://127.0.0.1:6306/home").unwrap(), &origin), "another port is another node");
+        assert!(!is_ours(&Url::parse("http://localhost:6305/home").unwrap(), &origin), "another host spelling is another origin");
         assert!(!is_ours(&Url::parse("https://github.com/cube-drone/ringtome").unwrap(), &origin));
     }
 
@@ -144,19 +134,10 @@ mod tests {
         assert!(yes("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"));
         assert!(yes("https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC"));
         assert!(yes("https://www.openstreetmap.org/export/embed.html?bbox=1,2,3,4&layer=mapnik"));
-        assert!(
-            !yes("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-            "the watch page is the web: handed out"
-        );
-        assert!(
-            !yes("https://www.youtube-nocookie.com/watch?v=dQw4w9WgXcQ"),
-            "only the embed path"
-        );
+        assert!(!yes("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "the watch page is the web: handed out");
+        assert!(!yes("https://www.youtube-nocookie.com/watch?v=dQw4w9WgXcQ"), "only the embed path");
         assert!(!yes("http://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"), "https only");
         assert!(!yes("https://evil.example/embed/x"));
-        assert!(
-            !yes("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"),
-            "a track page is the web"
-        );
+        assert!(!yes("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"), "a track page is the web");
     }
 }

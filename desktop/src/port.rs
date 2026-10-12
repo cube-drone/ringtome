@@ -41,7 +41,11 @@ pub fn pick_another(data_dir: &Path) -> anyhow::Result<u16> {
 }
 
 fn remembered(data_dir: &Path) -> Option<u16> {
-    std::fs::read_to_string(port_file(data_dir)).ok()?.trim().parse().ok()
+    std::fs::read_to_string(port_file(data_dir))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn remember(data_dir: &Path, port: u16) -> anyhow::Result<()> {

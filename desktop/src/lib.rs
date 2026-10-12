@@ -82,9 +82,6 @@ pub fn run() {
             // system browser came from here. NOT the query string all the same: a URL lands in
             // history, in a log, in a screenshot.
             let token = ringtome_node::auth::mint_launch_token();
-            // Before the node, whose first HTTPS request would otherwise panic (android_tls.rs).
-            // Said once the node's logging is up, below - a failure here is a phone that can sync
-            // with peers and reach no web server, not one that can't start.
             #[cfg(desktop)]
             let (url, attention, requests) = start_node(&data_dir, token.clone())?;
             // On a phone the node may already be up: hrseAmp's media service boots it when the car

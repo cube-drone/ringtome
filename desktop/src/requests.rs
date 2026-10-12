@@ -18,11 +18,7 @@ use tauri_plugin_opener::OpenerExt;
 use ringtome_node::shell::ShellRequest;
 
 /// Act on the node's requests for the life of the app.
-pub fn start(
-    app: AppHandle,
-    mut requests: tokio::sync::broadcast::Receiver<ShellRequest>,
-    node_url: String,
-) {
+pub fn start(app: AppHandle, mut requests: tokio::sync::broadcast::Receiver<ShellRequest>, node_url: String) {
     tauri::async_runtime::spawn(async move {
         loop {
             let request = match requests.recv().await {
