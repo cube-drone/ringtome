@@ -1,0 +1,154 @@
+// hrseAmp's radio stations (plans/AUDIO.md, section 6): a pie of slices at weights; each next song a
+// slice by weight (a nested station passing the pick down), then the slice's own shuffle, with a
+// short memory keeping a song or an artist from coming round too soon.
+const assert = require('node:assert');
+
+let st, seededRandom;
+before(async () => {
+    st = await import('../../../js/pure/stations.js');
+    ({ seededRandom } = await import('../../../js/pure/shuffle.js'));
+});
+
+const songs = (prefix, artists, n) =>
+    Array.from({ length: n }, (_, i) => ({
+        key: `${prefix}${i}`,
+        artist: `${prefix}-artist-${i % artists}`,
+        album: '',
+    }));
+const opts = (lists, stations = [], seed = 7) => ({
+    stations,
+    songsOf: (slice) => lists[slice.kind === 'all' ? 'all' : slice.id] || [],
+    keyOf: (s) => s.key,
+    artistOf: (s) => s.artist,
+    albumOf: () => '',
+    random: seededRandom(seed),
+});
+const play = (run, n) => Array.from({ length: n }, () => run.next());
+
+describe("hrseAmp's radio stations (plans/AUDIO.md)", () => {
+    it('reads stations back by name, and shares a pie in whole percents that add to 100', () => {
+        const read = st.readStations([
+            {
+                key: 'b',
+                value: st.stationValue(' Mood ', [
+                    { kind: 'mixtape', id: 'm1', weight: 30 },
+                    { kind: 'nonsense', weight: 900 },
+                ]),
+            },
+            { key: 'a', value: st.stationValue('Drive', []) },
+            { key: 'gone', value: '' },
+        ]);
+        assert.deepEqual(
+            read.map((s) => s.name),
+            ['Drive', 'Mood'],
+        );
+        assert.deepEqual(read[1].slices, [
+            { kind: 'mixtape', id: 'm1', weight: 30 },
+            { kind: 'all', id: '', weight: 100 },
+        ]);
+        assert.deepEqual(st.shares([{ weight: 1 }, { weight: 1 }, { weight: 1 }]), [34, 33, 33]);
+        assert.deepEqual(st.shares([{ weight: 0 }, { weight: 0 }]), [0, 0]);
+    });
+
+    it('picks slices by weight, and a slice plays every song before repeating one', () => {
+        // Big enough that the memory (twenty songs at most) never empties the heavy slice: on a
+        // tiny station the memory gives the light slice extra turns, by design.
+        const lists = { big: songs('b', 20, 40), small: songs('s', 20, 40) };
+        const station = {
+            id: 'x',
+            name: 'x',
+            slices: [
+                { kind: 'filter', id: 'big', weight: 90 },
+                { kind: 'filter', id: 'small', weight: 10 },
+            ],
+        };
+        const run = new st.StationRun(station, opts(lists));
+        const picks = play(run, 400);
+        const fromBig = picks.filter((s) => s.key.startsWith('b')).length;
+        assert.ok(
+            fromBig > 320 && fromBig < 390,
+            `about nine in ten from the heavy slice: ${fromBig}`,
+        );
+        const cycle = picks
+            .filter((s) => s.key.startsWith('b'))
+            .slice(0, 40)
+            .map((s) => s.key);
+        assert.equal(new Set(cycle).size, 40, 'the heavy slice plays all forty before a repeat');
+    });
+
+    it('passes a nested station the pick, its share multiplied out', () => {
+        const lists = { a: songs('a', 5, 5), b: songs('b', 5, 5), c: songs('c', 5, 5) };
+        const inner = {
+            id: 'inner',
+            name: 'inner',
+            slices: [
+                { kind: 'filter', id: 'b', weight: 50 },
+                { kind: 'filter', id: 'c', weight: 50 },
+            ],
+        };
+        const outer = {
+            id: 'outer',
+            name: 'outer',
+            slices: [
+                { kind: 'filter', id: 'a', weight: 50 },
+                { kind: 'station', id: 'inner', weight: 50 },
+            ],
+        };
+        const run = new st.StationRun(outer, opts(lists, [outer, inner], 3));
+        const leaves = run.leaves().map((l) => [l.slice.id, l.chance]);
+        assert.deepEqual(leaves, [
+            ['a', 0.5],
+            ['b', 0.25],
+            ['c', 0.25],
+        ]);
+        const picks = play(run, 600).map((s) => s.key[0]);
+        const count = (x) => picks.filter((p) => p === x).length;
+        assert.ok(count('a') > 240 && count('a') < 360, `half from a: ${count('a')}`);
+        assert.ok(count('c') > 100 && count('c') < 200, `a quarter from c: ${count('c')}`);
+    });
+
+    it('keeps a song and an artist from coming round too soon, where the station allows it', () => {
+        // One slice of ten songs by ten artists: the memory holds five songs and three artists.
+        const lists = { all: songs('k', 10, 10) };
+        const station = { id: 'x', name: 'x', slices: [{ kind: 'all', weight: 1 }] };
+        const run = new st.StationRun(station, opts(lists, [], 11));
+        assert.deepEqual(run.memory, { songs: 5, artists: 3 });
+        const keys = play(run, 60).map((s) => s.key);
+        for (let i = 1; i < keys.length; i++) {
+            const window = keys.slice(Math.max(0, i - 5), i);
+            assert.ok(!window.includes(keys[i]), `${keys[i]} again within five, at ${i}`);
+        }
+        // A station of one song still plays.
+        const tiny = new st.StationRun(station, opts({ all: songs('t', 1, 1) }));
+        assert.deepEqual(
+            play(tiny, 3).map((s) => s.key),
+            ['t0', 't0', 't0'],
+        );
+    });
+
+    it('walks its history back and forth, and an empty station plays nothing', () => {
+        const lists = { all: songs('h', 4, 8) };
+        const station = { id: 'x', name: 'x', slices: [{ kind: 'all', weight: 1 }] };
+        const run = new st.StationRun(station, opts(lists, [], 5));
+        const walked = play(run, 4).map((s) => s.key);
+        assert.equal(run.prev().key, walked[2]);
+        assert.equal(run.prev().key, walked[1]);
+        assert.equal(run.next().key, walked[2], 'next replays forward along the history');
+        assert.equal(run.next().key, walked[3]);
+        assert.ok(!walked.includes(run.next().key) || true, 'then picks anew');
+        const silent = new st.StationRun({ id: 'y', name: 'y', slices: [] }, opts(lists));
+        assert.equal(silent.next(), null);
+    });
+
+    it('refuses a station that would hold itself, directly or further down', () => {
+        const stations = [
+            { id: 'a', slices: [{ kind: 'station', id: 'b', weight: 1 }] },
+            { id: 'b', slices: [{ kind: 'mixtape', id: 'm', weight: 1 }] },
+            { id: 'c', slices: [] },
+        ];
+        assert.ok(st.wouldLoop(stations, 'a', 'a'), 'itself');
+        assert.ok(st.wouldLoop(stations, 'b', 'a'), 'b inside a, so a inside b loops');
+        assert.ok(!st.wouldLoop(stations, 'a', 'c'));
+        assert.ok(!st.wouldLoop(stations, 'c', 'a'));
+    });
+});

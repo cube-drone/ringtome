@@ -112,6 +112,30 @@
     color: var(--ink);
 }
 
+.modal-ask-body {
+    color: var(--ink);
+    line-height: 1.45;
+}
+
+.modal-ask-body p {
+    margin: 0 0 0.6rem;
+}
+
+/* Under a song in a post that this server doesn't carry (rights.js, the fence). */
+.rights-uncarried {
+    margin: 0.2rem 0 0.6rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+/* The songs a rights question is about (rights.js). */
+.rights-songs {
+    margin: 0 0 0.6rem;
+    padding-left: 1.2rem;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+}
+
 .modal-ask-buttons {
     display: flex;
     justify-content: flex-end;

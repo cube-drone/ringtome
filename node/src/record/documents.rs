@@ -3457,6 +3457,9 @@ pub async fn fetch_missing_bodies(
         // old key-gated bail sat above this walk and starved it (field-found 2026-08-03:
         // names crossed, faces didn't).
         catch_up_public_lane(&db).await?;
+        // Tagged songs' audio, on a node whose operator refuses it (rights.rs, the fence): never
+        // fetched. Their thumbnails still are.
+        let fenced = crate::rights::fenced_hashes(state, root_hex, Some(&db)).await?;
         type BodyRefs = (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
         let public_rows: Vec<BodyRefs> = db
             .fetch_all(
@@ -3469,6 +3472,9 @@ pub async fn fetch_missing_bodies(
         for (file, thumb, preview) in public_rows {
             for bytes in [Some(file), thumb, preview].into_iter().flatten() {
                 if let Ok(h) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                    if fenced.contains(&h) {
+                        continue;
+                    }
                     let hash = iroh_blobs::Hash::from_bytes(h);
                     if !missing.contains(&hash) && !state.files.has(hash).await {
                         missing.push(hash);

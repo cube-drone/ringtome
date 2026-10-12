@@ -16,6 +16,7 @@
 pub mod audio;
 pub mod image;
 pub mod lane;
+pub mod loudness;
 pub mod video;
 
 use crate::record::documents::Format;
@@ -186,7 +187,14 @@ impl Ingested {
             width: None,
             height: None,
             duration_ms: Some(c.duration_ms),
-            tags: c.tags,
+            // How loud it is joins what the file said about itself, as one more of its fields.
+            tags: {
+                let mut tags = c.tags;
+                if let Some(lufs) = c.loudness_lufs {
+                    tags.push((self::loudness::FIELD, self::loudness::field_value(lufs)));
+                }
+                tags
+            },
         }
     }
 }

@@ -11,6 +11,7 @@ import { openMirror, useLive } from '../mirror.js';
 import { Icons } from '../icons.js';
 import { PaneHead } from '../panes.js';
 import { Modal } from '../modal.js';
+import { rightsCheck } from '../rights.js';
 import { t } from '../i18n.js';
 import { rootTitleFor } from '../pure/naming.js';
 import {
@@ -216,8 +217,12 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
         </${Modal}>`
         }`;
     const rollOut = async () => {
+        // The sign, once for the whole book: any page carrying a song that names its artist or
+        // album (plans/AUDIO.md, section 8).
+        const stopped = await rightsCheck(root, { bucket });
+        setAskError(stopped);
+        if (stopped) return;
         setAsking(true);
-        setAskError(null);
         try {
             await api(`/api/identity/${root}/books/${encodeURIComponent(bucket)}/rollout`, {
                 method: 'POST',

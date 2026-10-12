@@ -155,6 +155,7 @@ import {
     CassetteTape,
     DotsSixVertical,
     MusicNotes,
+    Radio,
     SkipBack,
     SkipForward,
     Pause,
@@ -173,6 +174,7 @@ export const Icons = {
     // hrseAmp (plans/AUDIO.md).
     cassette: CassetteTape,
     dragHandle: DotsSixVertical,
+    radio: Radio,
     music: MusicNotes,
     skipBack: SkipBack,
     skipForward: SkipForward,

@@ -88,6 +88,7 @@ pub mod registration;
 pub mod replies;
 pub mod request_context;
 pub mod revalidate;
+pub mod rights;
 pub mod rss;
 pub mod scheduled;
 pub mod score;
@@ -880,6 +881,11 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             "/api/admin/search-policy",
             get(crawl::policy_handler).put(crawl::set_policy_handler),
         )
+        // Whether tagged audio is published here (plans/AUDIO.md, section 8 - the fence).
+        .route(
+            "/api/admin/audio-policy",
+            get(rights::policy_handler).put(rights::set_policy_handler),
+        )
         .route("/home", get(ui::homepage))
         // The /id surface: one URL, two audiences (idface.rs). The wildcard form covers
         // deeper resource paths; the segment parser only reads the first segment for now.
@@ -978,6 +984,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/slug-of/{root}", get(nodeface::slug_of))
         // hrseAmp (plans/AUDIO.md): the sound in a reader's feed.
         .route("/api/identity/{root}/amp/library", get(amp::library_handler))
+        // The tagged songs a draft carries, for the app's rights warning (section 8 - the sign).
+        .route("/api/identity/{root}/tagged-songs", axum::routing::post(rights::tagged_handler))
         .route("/api/node/at/{slug}", get(nodeface::at_name))
         .route("/api/node/at/{slug}/{*path}", get(nodeface::at_name_path))
         .route("/api/web-address", get(web_address_handler))

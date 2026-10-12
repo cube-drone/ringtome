@@ -95,5 +95,15 @@ async fn live_set(state: &AppState) -> Result<HashSet<Hash>> {
         }
     }
 
+    // A tagged song's audio is not kept where the operator refuses it (rights.rs, the fence):
+    // whatever still points at it, the next round collects it.
+    if crate::rights::fenced(state).await {
+        for author in crate::annotations::tagged_authors(&state.node_db).await? {
+            for hash in crate::rights::fenced_hashes(state, &author, None).await? {
+                live.remove(&Hash::from_bytes(hash));
+            }
+        }
+    }
+
     Ok(live)
 }

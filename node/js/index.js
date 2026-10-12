@@ -47,6 +47,10 @@ import { SettingsApp } from './apps/settings.js';
 import { BankApp } from './apps/bank.js';
 import { AmpApp } from './apps/amp.js';
 import { PlayerProvider, MiniPlayer } from './player.js';
+import { watchUncarried } from './rights.js';
+
+// A song in a post this server won't carry says why, wherever it's drawn (rights.js).
+watchUncarried();
 import { ChatApp } from './apps/chat.js';
 import { appsFor, appById, appLabel } from './pure/apps.js';
 import { nextSearchKind } from './pure/doclist.js';

@@ -648,6 +648,9 @@ pub async fn publish_reporting(
     // image would be the leak this whole design exists to close - refuse with words.
     // Once sealed, always sealed: a draft that already holds a key seals again whether or
     // not this request says trusted-only (the edit flow never does).
+    // A server whose operator refuses tagged audio refuses the post before a byte is baked
+    // (plans/AUDIO.md, section 8 - the fence; rights.rs).
+    crate::rights::refuse_if_fenced(state, data, &refs).await?;
     let post_key = docs.post_key_if(doc_id, trusted_only).await?;
     if post_key.is_some()
         && refs.iter().any(|r| matches!(r, MediaRef::External { .. } | MediaRef::Foreign { .. }))
@@ -905,7 +908,7 @@ enum SoundSource {
     Copied(String, String),
 }
 
-/// A sound's fields (media/audio.rs `TAG_FIELDS`), said as the author's public labels on its
+/// A sound's fields (media/audio.rs `SOUND_FIELDS`), said as the author's public labels on its
 /// public twin (plans/AUDIO.md, slice 4: "twins carry their sound's fields"). The fields are the
 /// private sound's own, or - for a copy - what its author said on theirs, so the credits travel
 /// with it. Every other label on the twin stands; a field the sound no longer has is taken back;
@@ -918,7 +921,7 @@ async fn sound_fields_on_twin(
     twin: &[u8; 16],
     post_key: Option<[u8; 32]>,
 ) -> Result<(), AppError> {
-    use crate::media::audio::TAG_FIELDS;
+    use crate::media::audio::SOUND_FIELDS;
     let fields: std::collections::BTreeMap<String, String> = match source {
         SoundSource::Own(media) => data.annotations().fields(media).await?,
         SoundSource::Copied(author, theirs) => {
@@ -938,11 +941,12 @@ async fn sound_fields_on_twin(
         .map_err(|_| AppError::Internal(anyhow!("the author's root is not 32 bytes")))?;
     let mut desired: std::collections::BTreeSet<(String, String)> = Default::default();
     for held in data.public_annotations().of(root_hex, twin).await? {
-        if held.key != crate::annotations::SEALED_KEY && !TAG_FIELDS.contains(&held.key.as_str()) {
+        if held.key != crate::annotations::SEALED_KEY && !SOUND_FIELDS.contains(&held.key.as_str())
+        {
             desired.insert((held.key, held.value));
         }
     }
-    for field in TAG_FIELDS {
+    for field in SOUND_FIELDS {
         let value = fields.get(*field).map(|v| v.trim()).unwrap_or_default();
         if !value.is_empty() && value.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN {
             desired.insert((field.to_string(), value.to_string()));

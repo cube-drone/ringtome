@@ -7,6 +7,7 @@ import htm from 'htm';
 import { api } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
+import { rightsCheck } from '../rights.js';
 
 const html = htm.bind(h);
 
@@ -21,6 +22,10 @@ const html = htm.bind(h);
  * out. Resolves to the response with `post_id`, or throws after a failed bake round.
  */
 export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
+    // The sign (plans/AUDIO.md, section 8): a song that names its artist or album is asked about
+    // first, every time - once, before the first round.
+    const stopped = await rightsCheck(root, { docs: [privDocId] });
+    if (stopped) throw new Error(stopped);
     for (;;) {
         // `extraBody` rides every round (a reply's `reply_to` - PROJECT_PLAN's Replies): the re-POST
         // is the idempotent "how's it going?", and the links must be there whichever

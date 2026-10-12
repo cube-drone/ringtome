@@ -35,6 +35,11 @@ Godot/Tauri process-spawning support on mobile is absent anyway — so in-proces
 is the answer there too. Doze and the background-process reaper impose the same
 foreground-only shape, and the only sanctioned escape is a foreground service
 with a permanent notification, which is the wrong thing for this app to hold.
+**Except music** (Curtis, 2026-10-12): playing hrseAmp is what Android's
+media-playback foreground service is for, and its notification is the player,
+there only while music plays - so the app holds one then, and keeps the node
+alive and syncing for as long. The design is in [AUDIO.md](AUDIO.md),
+section 10.
 
 ## There is no middle option
 

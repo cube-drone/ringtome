@@ -1976,6 +1976,14 @@ pub(crate) async fn public_doc_bytes(
             "no such public document here"
         )));
     };
+    // A tagged song, on a node whose operator refuses them (plans/AUDIO.md, the fence): its sound
+    // isn't served here, its thumbnail still is.
+    if !thumb && crate::rights::is_fenced_sound(state, &root_hex, doc_hex, format).await {
+        return Err(AppError::NotFound(crate::msg!(
+            "rights.not-carried-here",
+            "this song isn't carried on this server - its operator's choice"
+        )));
+    }
     // The trusted-readers gate (PROJECT_PLAN's Post visibility slice 2). The BODY is the gated thing; the
     // thumbnail is the post's public face by ruling, with the title and the date. A reader
     // qualifies when any persona on their session is the author, or holds any published

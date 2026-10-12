@@ -107,3 +107,35 @@ const AskText = ({ title, label, placeholder, initial, ok, onDone }) => {
         </form>
     <//>`;
 };
+
+/// A yes or a no, asked in the house modal instead of the browser's `confirm()`. `body` is what the
+/// question says (words or markup); resolves true for `yes`, false for `no`, the [x], or Escape.
+export function askYes({ title, body, yes, no }) {
+    if (typeof document === 'undefined') return Promise.resolve(false);
+    return new Promise((resolve) => {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const done = (value) => {
+            render(null, host);
+            host.remove();
+            resolve(value);
+        };
+        render(
+            html`<${Modal} title=${title} onClose=${() => done(false)}>
+                <div class="modal-ask">
+                    <div class="modal-ask-body">${body}</div>
+                    <div class="modal-ask-buttons">
+                        <button type="button" class="copy-bucket" onClick=${() => done(false)}>${no}</button>
+                        <button
+                            type="button"
+                            class="copy-bucket modal-ask-ok"
+                            ref=${(el) => el && !el.dataset.focused && ((el.dataset.focused = '1'), el.focus())}
+                            onClick=${() => done(true)}
+                        >${yes}</button>
+                    </div>
+                </div>
+            <//>`,
+            host,
+        );
+    });
+}

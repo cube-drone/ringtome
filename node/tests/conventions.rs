@@ -211,7 +211,11 @@ fn user_db_opens_are_deliberate() {
         // reach the open. The notifications.rs shape, for the same reason.
         ("edgegraph.rs", 1),
         ("amp.rs", 1), // hrseAmp's library reads a post's sound from its author's database once per version of the post, into the node's memo (amp_sounds) - never once per request (plans/AUDIO.md)
-        ("crawl.rs", 1), // a person's sitemap reads their shelf, once per sitemap asked for (plans/CRAWLING.md); the node-wide feed reads the node's memo, never a person's database
+        ("crawl.rs", 1),
+        // The fence, carrying (plans/AUDIO.md, slice 10): a tagged song's audio hash, read from its
+        // author's chain where the caller hasn't it open - once per author per healing pass, and
+        // per author with a tagged song per reaper round, only while the operator refuses them.
+        ("rights.rs", 1), // a person's sitemap reads their shelf, once per sitemap asked for (plans/CRAWLING.md); the node-wide feed reads the node's memo, never a person's database
         // A public book's ePub reads its author's database once per request (epub.rs).
         ("epub.rs", 1),
         ("net/resync.rs", 1),

@@ -13,7 +13,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { ShuffleRun } from './pure/shuffle.js';
-import { clock, readPlayerState, slimRow } from './pure/amp.js';
+import { clock, levelGain, readPlayerState, slimRow } from './pure/amp.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 
@@ -26,6 +26,8 @@ export const usePlayer = () => useContext(Player);
 export const AMP_PATH = '/ringtome/amp';
 
 const VOLUME_KEY = 'amp-volume';
+/// Loudness levelling's switch, per computer (plans/AUDIO.md, section 9): on unless turned off.
+const LEVEL_KEY = 'amp-level';
 /// The list, the song, the shuffle and where it stands, per persona, durable across a refresh
 /// (Curtis, 2026-10-12); and where in the song, kept apart since it's written every few seconds.
 const STATE_KEY = (me) => `amp-player:${me}`;
@@ -79,6 +81,13 @@ export const PlayerProvider = ({ me, children }) => {
     const [duration, setDuration] = useState(0);
     const [volume, setVolumeState] = useState(readVolume);
     const [expanded, setExpanded] = useState(false);
+    const [levelling, setLevellingState] = useState(() => {
+        try {
+            return localStorage.getItem(LEVEL_KEY) !== 'off';
+        } catch {
+            return true;
+        }
+    });
     // The list and where we are in it, kept out of render state: the audio element's events read
     // them, and a re-render must never lose the shuffle (stable within a session, ruling).
     const list = useRef([]);
@@ -89,9 +98,38 @@ export const PlayerProvider = ({ me, children }) => {
     const currentRef = useRef(null);
     const shuffleRef = useRef(false);
     const savedAt = useRef(0);
+    // A radio station playing (plans/AUDIO.md, section 6): its run picks every song, and its id is
+    // what the page shows as playing. After a refresh the station comes back as its history alone
+    // (`pending`) until hrseAmp, which holds the library a station picks from, rebuilds the run.
+    const stationRun = useRef(null);
+    const stationId = useRef(null);
+    const pending = useRef(null); // { id, rows, pos }
+    const [station, setStation] = useState(null);
 
     const persist = () => {
         if (!me) return;
+        if (stationId.current) {
+            const history = stationRun.current
+                ? stationRun.current.history
+                : (pending.current && pending.current.rows) || [];
+            const at = stationRun.current
+                ? stationRun.current.pos
+                : pending.current
+                  ? pending.current.pos
+                  : -1;
+            // The last two hundred songs are history enough to walk back through.
+            const kept = history.slice(-200);
+            keep(
+                STATE_KEY(me),
+                JSON.stringify({
+                    station: stationId.current,
+                    rows: kept.map(slimRow),
+                    pos: at - (history.length - kept.length),
+                    current: currentRef.current ? currentRef.current.key : null,
+                }),
+            );
+            return;
+        }
         if (!list.current.length) {
             keep(STATE_KEY(me), null);
             keep(AT_KEY(me), null);
@@ -126,6 +164,11 @@ export const PlayerProvider = ({ me, children }) => {
     };
 
     const step = (forward) => {
+        if (stationId.current) {
+            // Rebuilt by the page after a refresh; until then the song in hand is all there is.
+            if (!stationRun.current) return undefined;
+            return load(forward ? stationRun.current.next() : stationRun.current.prev());
+        }
         if (!list.current.length) return load(null);
         if (shuffleRef.current && run.current) {
             return load(forward ? run.current.next() : run.current.prev());
@@ -140,10 +183,19 @@ export const PlayerProvider = ({ me, children }) => {
         return load(list.current[index.current]);
     };
 
+    // Out of station mode, into a list.
+    const leaveStation = () => {
+        stationRun.current = null;
+        stationId.current = null;
+        pending.current = null;
+        setStation(null);
+    };
+
     const api = {
         current,
         playing,
         shuffle,
+        station,
         position,
         duration,
         volume,
@@ -151,6 +203,7 @@ export const PlayerProvider = ({ me, children }) => {
         me,
         /// Play `rows`, from `row` (or the first, or the shuffle's first).
         play(rows, row = null) {
+            leaveStation();
             list.current = rows;
             failures.current = 0;
             if (shuffleRef.current) {
@@ -169,11 +222,37 @@ export const PlayerProvider = ({ me, children }) => {
         /// The list changed under a playing song (a filter, a sort): keep playing, carry on through
         /// the new list from where this song sits in it.
         relist(rows) {
+            // A station picks from its own slices, whatever the table shows.
+            if (stationId.current) return;
             list.current = rows;
             if (run.current) run.current.replaceItems(rows);
             if (current) index.current = rows.findIndex((r) => r.key === current.key);
             persist();
         },
+        /// Play a radio station: `stationRunObj` (pure/stations.js `StationRun`) picks every song.
+        playStation(id, stationRunObj) {
+            list.current = [];
+            index.current = -1;
+            run.current = null;
+            stationRun.current = stationRunObj;
+            stationId.current = id;
+            pending.current = null;
+            setStation(id);
+            failures.current = 0;
+            load(stationRunObj.next());
+        },
+        /// The station that was playing before a refresh, as its history - for the page to rebuild
+        /// its run from - or null.
+        pendingStation: () => (stationId.current && !stationRun.current ? pending.current : null),
+        /// The page rebuilt the station's run; it carries on from here.
+        resumeStation(stationRunObj) {
+            if (!stationId.current) return;
+            stationRun.current = stationRunObj;
+            pending.current = null;
+            persist();
+        },
+        /// The run playing now, so the page can tell it the library changed.
+        stationRun: () => stationRun.current,
         toggle() {
             if (!audio) return;
             if (!current) return step(true);
@@ -223,15 +302,27 @@ export const PlayerProvider = ({ me, children }) => {
             }
         },
         setExpanded,
+        levelling,
+        setLevelling(on) {
+            setLevellingState(on);
+            try {
+                localStorage.setItem(LEVEL_KEY, on ? 'on' : 'off');
+            } catch {
+                /* the switch lives for the page */
+            }
+        },
     };
     // The audio element's events call through this, so they always see the latest list and mode.
     const live = useRef(api);
     live.current = api;
 
+    // The volume, and a loud song brought down to the rest (ruling 20) - a multiplier on the
+    // volume alone, so no Web Audio, and nothing to stop the music when the screen locks.
+    const gain = levelling && current ? levelGain(current.loudness) : 1;
     useEffect(() => {
         if (!audio) return undefined;
-        audio.volume = volume;
-    }, [audio, volume]);
+        audio.volume = Math.max(0, Math.min(1, volume * gain));
+    }, [audio, volume, gain]);
 
     useEffect(() => {
         if (!audio) return undefined;
@@ -259,7 +350,8 @@ export const PlayerProvider = ({ me, children }) => {
             // never round and round a list that won't play at all.
             error: () => {
                 failures.current += 1;
-                if (failures.current <= list.current.length) live.current.next();
+                const bound = stationId.current ? 20 : list.current.length;
+                if (failures.current <= bound) live.current.next();
                 else setPlaying(false);
             },
         };
@@ -288,7 +380,12 @@ export const PlayerProvider = ({ me, children }) => {
         if (!audio || !me) return undefined;
         const state = readPlayerState(kept(STATE_KEY(me)));
         if (!state) return undefined;
-        list.current = state.rows;
+        if (state.station) {
+            stationId.current = state.station;
+            pending.current = { id: state.station, rows: state.rows, pos: state.pos };
+            setStation(state.station);
+            list.current = [];
+        } else list.current = state.rows;
         shuffleRef.current = state.shuffle;
         setShuffleState(state.shuffle);
         run.current =
@@ -375,8 +472,9 @@ export const PlayerBar = ({ list = [] }) => {
             <button class="player-button" title=${t('player.next', 'next')} onClick=${p.next}><${Icons.skipForward} /></button>
             <button class="player-button" title=${t('player.stop', 'stop')} onClick=${p.stop}><${Icons.stop} /></button>
             <button
-                class=${shuffle ? 'player-button player-on' : 'player-button'}
-                title=${shuffle ? t('player.shuffle-on', 'shuffle: on') : t('player.shuffle-off', 'shuffle: off')}
+                class=${shuffle && !p.station ? 'player-button player-on' : 'player-button'}
+                title=${p.station ? t('player.station-picks', 'a station picks its own order') : shuffle ? t('player.shuffle-on', 'shuffle: on') : t('player.shuffle-off', 'shuffle: off')}
+                disabled=${!!p.station}
                 onClick=${() => p.setShuffle(!shuffle)}
             ><${Icons.shuffle} /></button>
         </span>
@@ -403,6 +501,11 @@ export const PlayerBar = ({ list = [] }) => {
             <${volume === 0 ? Icons.speakerOff : Icons.speaker} />
             <input type="range" min="0" max="1" step="0.05" value=${volume} onInput=${(e) => p.setVolume(Number(e.currentTarget.value))} />
         </span>
+        <button
+            class=${p.levelling ? 'player-button player-on' : 'player-button'}
+            title=${p.levelling ? t('player.levelling-on', 'levelling: on - loud songs are turned down to match the rest') : t('player.levelling-off', 'levelling: off - every song plays as loud as it was made')}
+            onClick=${() => p.setLevelling(!p.levelling)}
+        ><${Icons.mediaAudio} /></button>
         <button
             class="player-button"
             title=${p.expanded ? t('player.shrink', 'back to the list') : t('player.expand', 'fill the page')}

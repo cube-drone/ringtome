@@ -128,9 +128,23 @@ pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::Endpoint
             .fetch_all("SELECT blob_hash FROM missing_bodies WHERE root_pubkey = ?1", (root_hex,))
             .await
             .context("reading wanted bodies")?;
+        // A tagged song's audio, where the operator refuses it (rights.rs): not fetched, and no
+        // longer wanted.
+        let fenced = crate::rights::fenced_hashes(state, root_hex, None).await?;
         let mut hashes: Vec<iroh_blobs::Hash> = Vec::new();
         for (bytes,) in rows {
             if let Ok(h) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                if fenced.contains(&h) {
+                    state
+                        .node_db
+                        .execute(
+                            "DELETE FROM missing_bodies WHERE root_pubkey = ?1 AND blob_hash = ?2",
+                            (root_hex, h.to_vec()),
+                        )
+                        .await
+                        .context("forgetting a refused body")?;
+                    continue;
+                }
                 let hash = iroh_blobs::Hash::from_bytes(h);
                 if !state.files.has(hash).await {
                     hashes.push(hash);

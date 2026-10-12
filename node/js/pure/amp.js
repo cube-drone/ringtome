@@ -102,8 +102,29 @@ function row({ author, doc, own, docTitle, fields, layer, ...rest }) {
         genre: value('genre'),
         fields: fields || {},
         layer: layer || {},
+        // How loud it is, in LUFS, as the ingest measured it (plans/AUDIO.md, section 9); null when
+        // it never was.
+        loudness: loudnessOf(fields),
         ...rest,
     };
+}
+
+/// A sound's loudness from its fields: the number in its `loudness` field, or null.
+export function loudnessOf(fields) {
+    const n = parseFloat(fields && fields.loudness);
+    return Number.isFinite(n) ? n : null;
+}
+
+/// Where loudness levelling brings a loud song down to (section 9): -14 LUFS, as the streaming
+/// services level.
+export const LEVEL_TARGET_LUFS = -14;
+
+/// The volume multiplier levelling gives a song (ruling 20): a song louder than the target, turned
+/// down to it; a quieter one, or one never measured, left as it is - never turned up, since that
+/// would want a limiter.
+export function levelGain(loudness, target = LEVEL_TARGET_LUFS) {
+    if (loudness === null || loudness === undefined || !Number.isFinite(loudness)) return 1;
+    return loudness > target ? 10 ** ((target - loudness) / 20) : 1;
 }
 
 /// Your own sound, from its mirror row (`format: 'opus'`).
@@ -149,6 +170,9 @@ export function feedRow(sound, layer = {}) {
         dateMs: sound.arrived_ms || sound.published_ms || 0,
         score: sound.score || 0,
         reactions: reactionsOf(sound.tag_counts),
+        // Whether this server carries its sound (rights.rs, the fence): false only where the
+        // operator refuses tagged songs and this is one.
+        carried: sound.carried !== false,
         thumb: !!sound.thumb,
     });
 }
@@ -262,6 +286,7 @@ export const slimRow = (row) => ({
     album: row.album || '',
     lengthMs: row.lengthMs || null,
     thumb: !!row.thumb,
+    loudness: row.loudness ?? null,
 });
 
 /// The player's state as kept (Curtis, 2026-10-12: the list, the song, the shuffle and where it
@@ -282,5 +307,8 @@ export function readPlayerState(raw) {
         current,
         shuffle: !!v.shuffle,
         run: v.run && Array.isArray(v.run.order) ? v.run : null,
+        // A station playing (section 6): its id, and where in its history (`rows`) the song is.
+        station: typeof v.station === 'string' && v.station ? v.station : null,
+        pos: Number.isInteger(v.pos) ? v.pos : -1,
     };
 }

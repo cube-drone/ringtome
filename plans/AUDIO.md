@@ -131,6 +131,29 @@ operator say "not from my server".
     ownership of this" is unverifiable at scale, and "any time we're at risk of
     reinventing NFTs, it's probably time to look at our priorities."
 
+Sound (Curtis, 2026-10-12; section 9). Casual listeners turn to an equalizer to
+make up for poor speakers, to fit the music to the moment - his own furthest
+reach was a dinner-party playlist with the "human speech" frequencies turned
+down, so it sat behind the conversation - and for the look of it.
+
+19. **No crossfade.** "I've never heard it done subtly enough to justify its
+    effort and I wouldn't have it enabled, so I wouldn't build it."
+20. **Loudness levelling, yes**: "a pretty easy slam dunk".
+21. **A small equalizer, at the end**: "if anything, the WinAmpiness of it
+    appeals more than the practicality."
+
+Playing on Android (Curtis, 2026-10-12; section 10): on the phone, from Android
+Auto, through wireless headphones, and on in the background while it plays -
+"This is a huge priority, being able to play and sync my car tunes would be Very
+Cool, here."
+
+22. **Android playback is a priority**, and Tauri's web view can't carry it: it
+    needs a native piece (section 10).
+23. **A foreground service while music plays is right** - the media-playback
+    kind, whose notification is the player itself and goes when the music does.
+    MOBILE.md's "the wrong thing for this app to hold" stands for everything
+    else.
+
 ## What's already here
 
 - **Sounds as documents.** An upload becomes Ogg Opus (`media/audio.rs`), with
@@ -419,6 +442,107 @@ search policy: "tagged audio - not from this server". With it on:
   they'll host, not a detector, and stripping tags walks around it - as it walks
   around the sign.
 
+### 9. Sound: levelling, and an equalizer
+
+**Loudness levelling** (ruling 20). A library made of other people's uploads
+swings in volume - a 1970s rip beside a loud modern master beside a phone
+recording - and a shuffle or a station makes the jumps jarring. So:
+
+- **Measured once, at the ingest.** The ingest already decodes every upload to
+  samples before it encodes Opus (media/audio.rs, symphonia), so it measures the
+  song's integrated loudness (EBU R128, in LUFS) on the way through; a file that
+  arrives as Opus already is decoded once for the measure. It's carried on the
+  sound as its length is, and said on the twin with the other fields (slice 4),
+  so a feed song brings its loudness with it.
+- **Applied as volume, downward only.** The player turns a song louder than the
+  target down to it - a multiplier on the volume it already sets, so no Web
+  Audio, and nothing to break the app-wide, screen-locked playing of ruling 1. A
+  quiet song is left as it is rather than boosted (boosting would need a
+  limiter, which is Web Audio). A song with no measure - from before this, or
+  from a node without it - plays as it is.
+- **One switch**, on by default, in the player's corner of hrseAmp; nothing to
+  tune.
+
+**A small equalizer** (ruling 21), for the Winamp of it as much as the use: ten
+sliders in Winamp's bands, a handful of presets - "background" among them, the
+dinner-party one, the voices' frequencies (about 1 to 4 kHz) turned down - kept
+per computer. It means routing the sound through Web Audio, and on iOS Safari a
+Web Audio context is suspended in the background, which can stop the music when
+the screen locks. So it's off until someone turns it on, routes through Web
+Audio only while on, and says plainly that it may stop background playing on
+some phones.
+
+### 10. Playing on Android: the pocket, the headphones, the car
+
+**What the web view can't do.** Tauri v2 on Android draws the app in the Android
+System WebView, and the WebView doesn't hand the page's Media Session to
+Android's own - the browser Chrome does that, the WebView doesn't. So from the
+web view alone: no player in the notification shade or on the lock screen; the
+headphones' buttons go to whichever app last held Android's media session, not
+to us; Android Auto never sees the app, because Auto only talks to an app that
+declares a media browsing service in its manifest and gives it a tree to browse;
+and once the app is in the background, Android's battery rules and its process
+reaper stop the music before long - and the node with it, since it runs in the
+same process.
+
+**What it takes: a native player, in a small Tauri plugin**, on Media3
+(Android's media library):
+
+- **ExoPlayer plays the songs**, straight from the node at `127.0.0.1` as the
+  page does, with the session the web view signed in with (Android's cookie
+  store is shared, so the player's requests carry it).
+- **The queue comes from the page.** hrseAmp's player (`player.js`) keeps the
+  list, the order and the shuffle (section 4, `pure/shuffle.js`) - a shuffle is
+  only an order - and on Android hands the native player the queue in order,
+  with where to start, instead of playing it in an `<audio>`. The native player
+  says back what it's playing, where it is, and when a song ends, and the bar,
+  the compact player and the cassette show that. A press on the page's buttons
+  is a command to the native player. A shuffle hands over two cycles ahead, and
+  the native player asks for more as it nears the end; if the page is asleep and
+  doesn't answer, it plays the cycle it has again rather than stopping.
+- **A media service** (Media3's `MediaLibraryService`) holds Android's media
+  session: the player in the notification shade and on the lock screen, the
+  headphones' buttons, and the car's controls.
+- **A foreground service while it plays** (ruling 23): the media-playback kind,
+  its notification the player. It keeps the app, and the node in it, alive while
+  music plays - so the node goes on syncing on the drive - and stops a little
+  after the music is paused or stopped, as music apps do.
+
+**Android Auto.** The media service answers Auto's browsing with a small tree:
+
+- **Mixtapes**, each a playable list, in its order. The node knows them (they're
+  taxonomies), so the service reads them from the node's own HTTP API.
+- **Everything**, the whole library, shuffled.
+- **Saved filters**, each a playable list. A filter is narrowed in the page
+  (`pure/ampfilters.js`), so the page hands each saved filter's list to the
+  native player whenever hrseAmp is open, and Auto plays the last one handed
+  over - a little stale at worst. (The alternative, the node narrowing filters
+  itself, is a port of the filter logic to Rust; worth it only if stale lists
+  bite.)
+- **Radio stations**, when slice 6 has them.
+
+Voice search ("play Giorgio by Moroder") is Auto's next ask, and can wait.
+
+**Cold starts.** Auto, or a headphone's play button, can start the media service
+with the app closed, and the service needs the node to play anything. MOBILE.md
+already names the node booting on Android's main thread as a risk of a "not
+responding" kill; for this it has to boot off the main thread first.
+
+**Offline in the car.** Songs from people you follow are on the phone already
+(ruling 14); in a dead zone the player plays what's here and skips what isn't
+(section 7). Section 7's option 2 - your mixtapes kept and fetched ahead - is
+the car's natural offline set, if storage ever asks for a budget.
+
+**Elsewhere, less sure.** The desktop app bundles Chromium (DESKTOP.md); if its
+window is Chromium, the Media Session hrseAmp already sets should reach media
+keys and the system's now-playing panel as Chrome does - one test to make sure.
+iOS, if it comes: WKWebView can play in the background with the audio background
+mode, but CarPlay, like Auto, needs native code and Apple's entitlement.
+
+**Testing.** The Android build is CI-only, so each round trip is slow: a real
+phone for the shade, the lock screen and the headphones, and Google's Desktop
+Head Unit (Auto on a laptop) for the car.
+
 ### Stretch goals
 
 - **Posting a mixtape** (ruling 7), published as a book is, for someone else to
@@ -446,17 +570,28 @@ search policy: "tagged audio - not from this server". With it on:
    them on the twin. No backfill (Curtis: nothing has gone live yet).
 5. **Mixtapes** - built 2026-10-12: the taxonomy, "add to mixtape", their order
    in the table.
-6. **Radio stations**: the editor, nesting, and the picker.
+6. **Radio stations** - built 2026-10-12: the editor, nesting, and the picker.
 7. **The unlock**: hrseAmp in the Market after File upload, H$ 5,000, marked
    experimental (ruling 2) - in the first slice that ships to people, really.
-8. **The sign** (section 8): the rights dialog in the composer, scheduling and
-   book rollouts.
-9. **The fence, publishing**: the operator's setting, and the bake refusing a
-   tagged song.
-10. **The fence, carrying**: no fetching, keeping or serving another node's
-    tagged audio; "not carried on this server" in the post and in hrseAmp; the
-    reaper's part. Sync, the body sweeps and the serving doors all move, so this
-    one wants its own careful pass.
+8. **The sign** - built 2026-10-12 (section 8): the rights dialog in the
+   composer, scheduling and book rollouts.
+9. **The fence, publishing** - built 2026-10-12: the operator's setting, and the
+   bake refusing a tagged song.
+10. **The fence, carrying** - built 2026-10-12: no fetching, keeping or serving
+    another node's tagged audio; "not carried on this server" in the post and in
+    hrseAmp; the reaper's part. Sync, the body sweeps and the serving doors all
+    move, so this one wants its own careful pass.
+11. **Loudness levelling** - built 2026-10-12 (section 9): measured at the
+    ingest, said on the twin, applied as volume downward only, one switch.
+12. **The equalizer** (section 9): Winamp's ten bands and a few presets,
+    "background" among them, through Web Audio only while it's on.
+13. **Playing on Android** (section 10, a priority - ruling 22; still last,
+    after a mobile usability pass of the UI, which it calls for - Curtis,
+    2026-10-12), in steps: the node booting off the main thread; the plugin with
+    Media3's session, the native player taking the page's queue, the foreground
+    service while it plays, and the shade, lock screen and headphones; then
+    Android Auto's tree
+    - mixtapes, everything, saved filters - and stations once they exist.
 
 ### What building slices 1 and 2 found
 
@@ -586,6 +721,109 @@ feed's saved feeds do the same.
   mixtape, "out of" it. Forgetting a mixtape leaves its songs where they are.
 - **The strip's "mixtape" row**: a mixtape's name behaves as a tag, three-state
   like the rest, and a saved filter keeps it.
+
+### What building slice 6 found
+
+- **A slice is a saved filter, a mixtape, everything, or another station**, at a
+  weight from 0 to 100; the pie and the shares are the weights normalised to
+  whole percents. A new station starts as everything at half, so it plays while
+  its slices are chosen. Adding a station that would hold itself, directly or
+  further down, isn't offered; a loop two devices make anyway is cut where it
+  closes.
+- **The picker** (`pure/stations.js` `StationRun`): a leaf slice by its chance,
+  a nested station's leaves scaled by its share; then the first song in that
+  leaf's bag the memory allows - the bag a fresh artist-spreading cycle of the
+  leaf's songs (`spreadOrder`), so a slice plays everything before repeating.
+  The memory is half the station's songs (up to twenty) and half its artists (up
+  to three); a leaf with nothing allowed sits out, and if none has anything, the
+  artist rule goes, then the song rule, so a station never stops for it. On a
+  tiny station the memory gives a light slice more turns than its weight - the
+  price of not repeating.
+- **A filter's slice is its picks, whose tags and its words, over the library as
+  hrseAmp has it** - at hrseAmp's own curiosity dial, not the one the filter was
+  saved with, since the library is fetched at one stop.
+- **The player has a station mode.** Next and previous walk the station's
+  history; the shuffle button rests, since a station picks its own order; the
+  table's changes leave it alone. It survives a refresh as its history: the same
+  song comes back, and once hrseAmp has the library, next carries on along the
+  history and then picks anew. Until hrseAmp is opened after a refresh, next
+  from elsewhere waits for it.
+- **The view** replaces the table while a station is open: the pie, a slider per
+  slice with its share and its trash, "add a slice…", the play button (lit while
+  it's on the air), and what played lately. The station on the air wears a radio
+  in Playlists.
+
+### What building slice 11 found
+
+- **Our own meter** (`media/loudness.rs`): BS.1770's K-weighting at 48 kHz, 400
+  ms blocks stepping 100 ms, the -70 LUFS and relative gates. It reads a
+  full-scale 1 kHz tone at -3.01 LUFS, the standard's own check. The decode lane
+  meters the 48 kHz samples it encodes; the passthrough lane decodes its packets
+  once with the libopus decoder (contained like the encoder's glue) for the
+  measure alone, and both lanes agree on a sound to within half a decibel.
+- **Kept as a field**, `loudness` ("-9.4"), as the file's own tags are - no
+  migration - written at every new version, since it's a fact of the file. It
+  travels to the twin with the other fields: `SOUND_FIELDS`, the tag fields and
+  loudness, is what the bake restates and what the library door reads.
+- **The target is -14 LUFS**, where the streaming services level. A song louder
+  than that is turned down by the difference, as a multiplier on the volume; a
+  quieter one, or one never measured, plays as it is.
+- **The switch** sits beside the volume, on by default, kept per computer.
+
+### What building slices 8 and 9 found
+
+- **One question, asked two ways** (`rights.rs`): which tagged songs a draft
+  carries - the author's own sounds by their fields, someone else's copied in by
+  what their author said on theirs; media from the open web has no fields and
+  passes. The bake asks it to refuse (the fence); a door,
+  `POST /api/identity/{root}/tagged-songs`, answers it for the app (the sign),
+  for a list of drafts or a notebook's pages.
+- **The fence refuses before anything is baked**, so a refused post leaves no
+  public copies of its songs behind, and its words say it's the operator's
+  choice. The operator's switch is in the Server app's customization, beside the
+  search engines (`audio_policy`, node rung 81).
+- **The sign** asks in the house modal (`askYes`, beside `askText` in
+  `modal.js`), from the one door every publish in the app goes through - the
+  composer, the post page, Writer and scheduling - and once for a book's
+  rollout. It names the songs, and where the file will be served from: the
+  server's name, or "this computer" in the desktop app. Where the fence is up,
+  the app says so instead of asking. Rooms and messages publish no songs, and
+  aren't asked.
+
+### What building slice 10 found
+
+- **Not holding is not serving.** Blobs are served by hash to anyone who asks,
+  ungated, so the way not to serve a song over the network is not to hold it.
+  One rule, everyone's songs alike - this node's own people's published ones
+  too: where the fence is up, a tagged song's audio file (a sound twin whose
+  author's own label sets artist or album, read from the label memo) is
+  - **not fetched**: the body walk after every sync, and the healer working the
+    wanted ledger, both pass it by (and forget a want for it);
+  - **not kept**: the reaper's mark phase takes it out of the live set, so the
+    next round collects the bytes - half-hourly on a server; until then a peer
+    already holding the hash could still fetch it from here;
+  - **not served over HTTP**, at once: the public body door answers "this song
+    isn't carried on this server - its operator's choice".
+- **Only the sound goes.** The post and its words, the song's thumbnail, and an
+  untagged song all carry as ever. A "tagged" label on something that isn't a
+  sound changes nothing. Private files are untouched (ruling 17).
+- **Said where it shows**: hrseAmp keeps the row, muted, with "not carried
+  here", and never hands it to the player or a station; a post's player says the
+  same sentence under itself, from one listener for the page that asks a failed
+  `<audio>`'s door why.
+- **The fence down** and the song is fetched again behind the next sync.
+
+### How loud and how good: the house bitrate (Curtis, 2026-10-12)
+
+A loved instrumental came out "absolutely flattened" at the ingest's old 48 kbps
+stereo Opus - where the encoder narrows the stereo image and thins the top end.
+The house rate is now **98 kbps for stereo and 49 for mono** (a voice or a field
+recording, nearly always): sevens, for the septagon. 98 is transparent to most
+ears on most music; YouTube's everyday Opus runs about 130-160. The 10 MB
+document cap squeezes a stereo song past about 14 minutes now (29 before), and
+nothing goes below today's floor. Songs already uploaded keep the rate they were
+encoded at - lossy can't be unlossed - and an upload that arrives as Opus keeps
+its own.
 
 ## Questions for Curtis
 

@@ -158,6 +158,10 @@ pub async fn library_handler(
         .await
         .map_err(AppError::Internal)?;
 
+    // On a node whose operator refuses tagged songs, a tagged one isn't carried (rights.rs): the
+    // row stays, saying so, and the player passes it by.
+    let fenced = crate::rights::fenced(&state).await;
+    let mut tagged_of: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
     let mut sounds = Vec::with_capacity(found.len());
     for (author, row, media) in found {
         let sound_hex = media.sound_doc.clone();
@@ -169,7 +173,8 @@ pub async fn library_handler(
         // them), else on its post.
         let mut fields: HashMap<String, String> = HashMap::new();
         for a in on_post.iter().chain(on_sound.iter()) {
-            if a.annotator == author && crate::media::audio::TAG_FIELDS.contains(&a.key.as_str()) {
+            if a.annotator == author && crate::media::audio::SOUND_FIELDS.contains(&a.key.as_str())
+            {
                 fields.insert(a.key.clone(), a.value.clone());
             }
         }
@@ -222,6 +227,15 @@ pub async fn library_handler(
             "published_ms": row.dated_ms.unwrap_or(row.published_ms),
             "score": score,
             "kept": kept.contains(&(author.clone(), sound_hex.clone())),
+            "carried": !fenced || {
+                if !tagged_of.contains_key(&author) {
+                    let tagged = crate::annotations::tagged_docs(&state.node_db, &author)
+                        .await
+                        .unwrap_or_default();
+                    tagged_of.insert(author.clone(), tagged);
+                }
+                !tagged_of[&author].contains(&sound_hex)
+            },
         }));
     }
     // Who made them and who they came through, by name, for the By and From columns.

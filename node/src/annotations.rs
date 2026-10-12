@@ -595,6 +595,39 @@ pub async fn sound_posts(node_db: &Db) -> Result<std::collections::HashSet<(Stri
     Ok(rows.into_iter().collect())
 }
 
+/// The documents an author has said an artist or album of, as this node's memo holds it: the
+/// tagged songs of plans/AUDIO.md's ruling 15 (rights.rs). Only the author's own word, and only in
+/// the open - a sealed post's twin isn't read here.
+pub async fn tagged_docs(
+    node_db: &Db,
+    author_hex: &str,
+) -> Result<std::collections::HashSet<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT DISTINCT target_doc FROM doc_annotations
+             WHERE target_author = ?1 AND annotator = ?1 AND key IN ('artist', 'album')
+               AND value <> '' AND sealed = 0",
+            (author_hex,),
+        )
+        .await
+        .context("reading an author's tagged songs")?;
+    Ok(rows.into_iter().map(|(d,)| d).collect())
+}
+
+/// Every author with a tagged song in the memo - the reaper's worklist when the fence is up.
+pub async fn tagged_authors(node_db: &Db) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT DISTINCT target_author FROM doc_annotations
+             WHERE annotator = target_author AND key IN ('artist', 'album')
+               AND value <> '' AND sealed = 0",
+            (),
+        )
+        .await
+        .context("reading who has tagged songs")?;
+    Ok(rows.into_iter().map(|(a,)| a).collect())
+}
+
 /// The post an author's `path` names (webpath.rs, plans/WEB_ADDRESSES.md): their own `path =
 /// <path>` label on one of their own posts, as this node holds it - for a peek too, which carries
 /// the whole annotations chain. Only the author's word counts.

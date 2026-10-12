@@ -144,6 +144,7 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
             'doc',
             'key',
             'lengthMs',
+            'loudness',
             'own',
             'thumb',
             'title',
@@ -162,5 +163,17 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
         assert.deepEqual(state.run.order, [slim.key]);
         assert.equal(amp.readPlayerState('not json'), null);
         assert.equal(amp.readPlayerState(JSON.stringify({ rows: [] })), null);
+    });
+
+    it('levels a loud song down to -14 LUFS, and never turns a quiet one up', () => {
+        assert.equal(amp.loudnessOf({ loudness: '-9.4' }), -9.4);
+        assert.equal(amp.loudnessOf({}), null);
+        assert.equal(amp.loudnessOf({ loudness: 'loud' }), null);
+        assert.ok(Math.abs(amp.levelGain(-8) - 10 ** (-6 / 20)) < 1e-9, 'six over: down six dB');
+        assert.equal(amp.levelGain(-20), 1, 'quieter than the target: as it is');
+        assert.equal(amp.levelGain(null), 1, 'never measured: as it is');
+        const row = amp.feedRow({ author: them, doc: 'd', fields: { loudness: '-7.5' } });
+        assert.equal(row.loudness, -7.5, 'a feed song brings its loudness');
+        assert.equal(amp.slimRow(row).loudness, -7.5, 'and the player keeps it across a refresh');
     });
 });

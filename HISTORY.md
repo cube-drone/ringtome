@@ -20657,3 +20657,159 @@ and forgot the mixtape with its songs still in the library.
 Checked in headless Chrome with `prompt()` set to throw: each of the three names
 went through the house modal. A drop in the empty table moved the first song to
 the end, and a drop on the header moved the last to the start.
+
+**Sound, planned (Curtis, same day).** `plans/AUDIO.md` gains rulings 19 to 21
+and section 9:
+
+- **No crossfade.**
+- **Loudness levelling.** Each song's integrated loudness is measured at ingest
+  and said on its twin. The player turns loud songs down to a common level as a
+  plain volume multiplier, with no Web Audio, so playing with the screen locked
+  is safe.
+- **A small Winamp-style equalizer at the end**, with a "background" preset that
+  turns the voices' frequencies down. It routes through Web Audio only while on,
+  with the iOS background-playing caveat said plainly.
+
+These are slices 11 and 12.
+
+**Playing on Android, planned (Curtis, same day: "a huge priority").** Tauri's
+Android web view doesn't hand the page's Media Session to Android's. On its own
+the app gets no player in the notification shade, no headphone buttons, no
+Android Auto, and playback that stops once it's in the background. So the plan
+has a native Media3 plugin, in `plans/AUDIO.md` section 10, slice 13, and
+rulings 22 to 23:
+
+- **The native player** (ExoPlayer) plays from the node at `127.0.0.1`, taking
+  the page's queue in order. The shuffle stays in `pure/shuffle.js`.
+- **A media service** holds the session for the shade, the lock screen, the
+  headphones and the car.
+- **A foreground service runs while music plays.** It keeps the node syncing on
+  the drive. `plans/MOBILE.md` records this as the exception to its
+  no-foreground-service rule.
+- **Auto's browse tree** offers mixtapes, everything, and saved filters (the
+  page hands over each filter's list).
+- **First, the node boots off Android's main thread,** so a cold start from the
+  car isn't killed.
+
+## 2026-10-12 (cont.): hrseAmp slice 6, radio stations
+
+Curtis's favourite way to keep music: a station is a pie of slices at weights.
+Each slice is a saved filter, a mixtape, everything, or another station. They
+are kept in `amp_stations`.
+
+**The picker** (`pure/stations.js` `StationRun`):
+
+- **Which slice.** A leaf slice is picked by its chance, a nested station's
+  leaves scaled by its share.
+- **Which song.** It's the first song in that leaf's own artist-spreading cycle
+  that the memory allows, so a slice plays all its songs before repeating one.
+- **The memory.** It holds half the station's songs (up to twenty) and half its
+  artists (up to three), and it relaxes rather than stopping.
+- **The history.** Previous and next walk it.
+
+**The player** gained a station mode. The shuffle rests while a station plays,
+and the history survives a refresh, with hrseAmp rebuilding the run once the
+library is in. **The station view** shows the pie, a slider per slice, "add a
+slice…" without the stations that would loop, the play button, and what played
+lately. Playlists has a "radio stations" group with a new-station button that
+opens the house modal.
+
+Checked by vectors (the weights, a full cycle before a repeat, nested shares
+multiplied out, the memory, history, loop refusal) and in headless Chrome: a
+station of everything and a mixtape at 33/67, played and walked back. A reload
+brought back the same song, then next continued the history and picked anew.
+
+## 2026-10-12 (cont.): hrseAmp slice 11, loudness levelling
+
+**Measuring.** Every sound's integrated loudness is now measured at ingest by
+our own EBU R128 meter (`media/loudness.rs`). It reads the standard's 1 kHz
+reference at -3.01 LUFS.
+
+- **Decode lane:** meters the 48 kHz samples it encodes.
+- **Opus passthrough lane:** decodes its packets once with the bundled libopus
+  decoder. Its `unsafe` is contained like the encoder's, and it's used for the
+  measure only.
+- **Agreement:** both lanes agree within half a decibel.
+
+**Storing.** The result is kept as a `loudness` field, so no migration was
+needed, and it's rewritten on every new version. It travels to the public twin
+with the other `SOUND_FIELDS`.
+
+**Playing.** The player turns a song louder than -14 LUFS down to that level, as
+a plain volume multiplier with no Web Audio. Quieter or unmeasured songs play as
+they are. A switch beside the volume turns it off, kept per computer.
+
+Verified by:
+
+- the meter's unit tests;
+- a two-lane test on the sample WAV;
+- the `pure/amp.cjs` vectors;
+- the library claim that a feed song carries its loudness;
+- headless Chrome: with levelling on, a song set to -6 LUFS played at 0.8 ×
+  10^(-8/20).
+
+## 2026-10-12 (cont.): hrseAmp slices 8 and 9, the sign and the fence (publishing)
+
+Both rest on one question in `rights.rs`: which tagged songs (artist or album
+set) does a draft carry? Your own sounds count by their fields, and someone
+else's copied in by what their author said on theirs.
+
+- **The fence.** An operator's switch in the Server app's customization
+  (`audio_policy`, node rung 81) makes the bake refuse such a post. It refuses
+  before anything is baked, for everyone, agents included, with words naming the
+  operator's choice.
+- **The sign.** `publishWithBaking`, the one door every publish in the app goes
+  through, and a book's rollout ask the node (`POST .../tagged-songs`). If
+  there's a tagged song, they show Curtis's wording in the house modal
+  (`askYes`), naming the songs and where they'll be served from. "No" leaves the
+  draft unpublished. Where the fence is up, the app says so instead of asking.
+  Agents and the API aren't asked (ruling 16).
+
+Verified by:
+
+- `integration/test/rights.cjs`: a title alone isn't tagged; a notebook's pages
+  are checked; the sign doesn't stop the API; the fence refuses only a tagged
+  song and lifts cleanly; only an administrator sets it; a copied song counts;
+- a unit test of the rule;
+- headless Chrome: the dialog named "Giorgio by Moroder - Daft Punk"; "no" left
+  the draft private; the switch turned the fence on; publishing then said only
+  the operator's reason.
+
+The first browser pass caught a fenced publish also saying "you chose not to".
+The check now returns its reason, so the caller says the true one.
+
+## 2026-10-12 (cont.): hrseAmp slice 10, the fence (carrying)
+
+Where an operator refuses tagged songs, a tagged song's audio file is neither
+fetched, kept nor served, whoever's it is, this node's own people included. A
+song is tagged when its author's own label sets artist or album, as the label
+memo has it. Blobs serve by hash, ungated, so not holding them is the only real
+way not to serve them.
+
+- **Not fetched:** the body walk and the wanted-ledger healer skip it, and
+  forget a want for it.
+- **Not kept:** the reaper's live set leaves it out, so the bytes go at the next
+  round.
+- **Not served over HTTP:** the public body door answers "this song isn't
+  carried on this server - its operator's choice" straight away.
+
+The post, its thumbnail and untagged songs are untouched, and so are private
+files. hrseAmp keeps the row, muted with "not carried here", and never plays it.
+A post's player says the same, from one page-wide listener that asks a failed
+`<audio>`'s door why. `api()` errors now keep the server's message key for that.
+Turning the fence down fetches the song again.
+
+Verified by `integration/test/carrying.cjs` across two nodes: before, fenced
+(audio 404 with the key, while thumbnail, post and untagged song serve; the
+library row says `carried: false`), the reaper dropping the bytes with no
+refetch, and lifted again. Also checked in headless Chrome: the pill, no play on
+double-click, and the note under the post's player.
+
+**A better house bitrate (Curtis, same day).** An instrumental was "absolutely
+flattened" by the ingest's 48 kbps stereo Opus, where the encoder narrows the
+stereo image and thins the top end. The house rate is now 98 kbps stereo and 49
+kbps mono, multiples of seven for the septagon. A mono file is nearly always a
+voice. The rate is picked per channel count once the encode knows it. Fit-to-cap
+is unchanged, bounded now by the stereo rate. Songs already uploaded keep their
+old rate. Covered by a new `mono_gets_49_and_stereo_98` test, and the corpus
+test checks each sample against its own house rate.

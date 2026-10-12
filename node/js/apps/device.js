@@ -428,6 +428,40 @@ const SearchPolicy = () => {
         ${error && html`<p class="form-error">${error}</p>`}`;
 };
 
+/// Whether this server publishes songs that name their artist or album (plans/AUDIO.md, section 8,
+/// ruling 17 - the fence): yes until its administrator says no. Off, a post carrying one is refused
+/// at publish, for everyone here, agents included.
+const AudioPolicy = () => {
+    const [policy, setPolicy] = useState(null);
+    const [error, setError] = useState('');
+    useEffect(() => {
+        api('/api/admin/audio-policy')
+            .then(setPolicy)
+            .catch((e) => setError(e.message));
+    }, []);
+    const change = async (on) => {
+        setError('');
+        try {
+            const r = await api('/api/admin/audio-policy', {
+                method: 'PUT',
+                body: JSON.stringify({ tagged: on }),
+            });
+            setPolicy({ tagged: r.tagged });
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    if (!policy) return error ? html`<p class="form-error">${error}</p>` : null;
+    return html`<label class="profile-setting">
+            <input type="checkbox" checked=${policy.tagged} onChange=${(e) => change(e.currentTarget.checked)} />
+            ${t('device.publish-tagged-audio', 'publish songs that name their artist or album')}
+        </label>
+        <p class="null-sub">
+            ${t('device.tagged-audio-why', "Off, nobody on this server can publish a song whose artist or album is set - their own, or someone else's copied into a post. A song without them still goes out: this is your word on what you'll host, not a detector.")}
+        </p>
+        ${error && html`<p class="form-error">${error}</p>`}`;
+};
+
 const Backups = () => {
     const [archives, setArchives] = useState(null);
     const [ticket, setTicket] = useState(null);
@@ -599,6 +633,8 @@ const Customization = () => {
             </div>
             <h3 class="computers-subtitle">${t('device.search-engines', 'search engines')}</h3>
             <${SearchPolicy} />
+            <h3 class="computers-subtitle">${t('device.tagged-audio', 'tagged songs')}</h3>
+            <${AudioPolicy} />
         </div>
     `;
 };

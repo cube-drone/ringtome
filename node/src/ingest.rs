@@ -325,7 +325,9 @@ async fn tag_fields(
     let data = crate::record::store::open_agented(state, root).await?;
     let have = data.annotations().fields(doc_id).await?;
     for (field, value) in tags {
-        if !have.contains_key(*field) {
+        // Its loudness is a fact of the file, not something a person writes: a new version says
+        // its own.
+        if !have.contains_key(*field) || *field == crate::media::loudness::FIELD {
             data.annotations().set_field(doc_id, field, value).await?;
         }
     }

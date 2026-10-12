@@ -46,10 +46,13 @@ use ogg::PacketReader;
 // The reference libopus, c2rust-transpiled. Raw C-shaped API; all unsafe stays inside the
 // LibopusEncoder/tests glue below (the rav1d precedent).
 use unsafe_libopus::{
-    opus_encode_float, opus_encoder_create, opus_encoder_ctl_impl, opus_encoder_destroy, varargs,
+    opus_decode_float, opus_decoder_create, opus_decoder_destroy, opus_encode_float,
+    opus_encoder_create, opus_encoder_ctl_impl, opus_encoder_destroy, varargs, OpusDecoder,
     OpusEncoder, OPUS_APPLICATION_AUDIO, OPUS_GET_LOOKAHEAD_REQUEST, OPUS_SET_BITRATE_REQUEST,
     OPUS_SET_COMPLEXITY_REQUEST,
 };
+
+use crate::media::loudness;
 
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::audioadapter_buffers::owned::InterleavedOwned;
@@ -75,10 +78,24 @@ const OPUS_SAMPLE_RATE: u32 = 48_000;
 /// Samples per channel per Opus frame: 20 ms at 48 kHz, the codec's sweet-spot frame size.
 const OPUS_FRAME_SAMPLES: usize = 960;
 
-/// The house bitrate: what a short clip gets. 48 kbps stereo Opus is comfortably transparent-ish
-/// for speech and respectable for music - the audio sibling of the q18 AVIF crush: good enough,
-/// small on purpose.
-const HOUSE_BITRATE_BPS: u32 = 48_000;
+/// The house bitrate: what a song gets when the cap leaves room. 98 kbps stereo Opus is
+/// transparent to most ears on most music (Curtis, 2026-10-12: an instrumental "absolutely
+/// flattened" at the old 48 kbps, which is where Opus narrows the stereo and thins the top) - and
+/// a multiple of seven, for the septagon. YouTube's everyday Opus runs ~130-160.
+const HOUSE_STEREO_BPS: u32 = 98_000;
+
+/// The house bitrate for one channel: a mono file is nearly always a voice or a field recording,
+/// and 49 kbps is generous for either.
+const HOUSE_MONO_BPS: u32 = 49_000;
+
+/// The house bitrate for a sound of `channels` (after the downmix to at most two).
+fn house_bitrate_bps(channels: usize) -> u32 {
+    if channels <= 1 {
+        HOUSE_MONO_BPS
+    } else {
+        HOUSE_STEREO_BPS
+    }
+}
 
 /// The floor bitrate: fit-to-cap never goes below this. 12 kbps Opus is crunchy but intelligible
 /// speech; below it there is no point shipping the audio at all.
@@ -178,6 +195,10 @@ pub struct Crushed {
     /// artist, album and the like, read from its ID3, Vorbis comments, iTunes atoms or OpusTags.
     /// Still never written into the output - the stored file stays stripped.
     pub tags: Vec<(&'static str, String)>,
+    /// How loud it is, in LUFS (media/loudness.rs; plans/AUDIO.md, section 9): measured on the
+    /// way through the encode, or by one decode on the passthrough lane. None for a sound too
+    /// short or too quiet to measure.
+    pub loudness_lufs: Option<f64>,
 }
 
 /// The tags a sound's file may carry that become its document's fields (Curtis, 2026-10-10: "they'd
@@ -186,6 +207,20 @@ pub struct Crushed {
 /// identifiers, since fields travel with a post when it is published.
 pub const TAG_FIELDS: &[&str] =
     &["track", "artist", "album", "album artist", "composer", "genre", "year", "track number"];
+
+/// The fields that travel with a sound when it's published (record/bake.rs, plans/AUDIO.md slice
+/// 4): what the file said about itself, and how loud it is (section 9).
+pub const SOUND_FIELDS: &[&str] = &[
+    "track",
+    "artist",
+    "album",
+    "album artist",
+    "composer",
+    "genre",
+    "year",
+    "track number",
+    loudness::FIELD,
+];
 
 /// The longest value a tag field keeps: a name or a title, never a paragraph.
 const TAG_VALUE_MAX: usize = 200;
@@ -452,14 +487,15 @@ fn effective_max_duration_ms(cap_bytes: u64) -> u64 {
 }
 
 /// The fit-to-cap bitrate: spend the byte budget over the whole duration - MINUS the container's
-/// per-second cost, and derated for VBR variance - clamped into [FLOOR, HOUSE]. Callers have
+/// per-second cost, and derated for VBR variance - clamped into [FLOOR, the stereo house rate]; a
+/// mono sound is brought down to its own house rate once its channels are known. Callers have
 /// already rejected durations past the floor-meets-cap point, and [`crush_via_decode`]'s encode
 /// loop re-encodes lower in the rare case the estimate still overshoots: the cap is a promise,
 /// not a target.
 fn fit_bitrate_bps(cap_bytes: u64, duration_ms: u64) -> u32 {
     let gross = cap_bytes.saturating_mul(8_000) / duration_ms.max(1);
     let fit = gross.saturating_sub(OGG_OVERHEAD_BPS) * VBR_HEADROOM_PCT / 100;
-    (fit.min(u64::from(HOUSE_BITRATE_BPS)) as u32).max(FLOOR_BITRATE_BPS)
+    (fit.min(u64::from(HOUSE_STEREO_BPS)) as u32).max(FLOOR_BITRATE_BPS)
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +597,9 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
         )));
     }
 
+    // How loud it is: the one decode this lane makes, for the measure alone (section 9).
+    let loudness_lufs = opus_loudness(packets.iter().map(|p| p.data.as_slice()), channels as usize);
+
     // Re-mux: OpusHead verbatim, a minimal OpusTags of our own, then the audio packets with the
     // source's page boundaries and granule positions reproduced.
     let byte_len = |n: usize| n as u64; // for the bitrate arithmetic below
@@ -602,7 +641,23 @@ fn passthrough_ogg_opus(input: &[u8], cap_bytes: u64, max_ms: u64) -> Result<Cru
         waveform_avif: None,
         cover_avif: cover.and_then(|bytes| crate::media::image::thumbnail(&bytes).ok()),
         tags,
+        loudness_lufs,
     })
+}
+
+/// An Ogg Opus stream's loudness, decoded packet by packet into the meter - None if a packet won't
+/// decode, or there's nothing to measure. The output is the input's own bytes either way.
+fn opus_loudness<'a>(packets: impl Iterator<Item = &'a [u8]>, channels: usize) -> Option<f64> {
+    let channels = channels.clamp(1, 2);
+    let mut decoder = LibopusDecoder::new(channels).ok()?;
+    let mut meter = loudness::Meter::new(channels);
+    // The longest Opus frame: 120 ms at 48 kHz.
+    let mut pcm = vec![0f32; 5_760 * channels];
+    for packet in packets {
+        let frames = decoder.decode(packet, &mut pcm).ok()?;
+        meter.push(&pcm[..frames * channels]);
+    }
+    meter.integrated()
 }
 
 /// Validate an OpusHead and pull out (channels, pre_skip). Layout per RFC 7845 §5.1:
@@ -892,6 +947,7 @@ fn crush_via_decode(
     for _ in 0..3 {
         let pass =
             encode_pass(input, max_ms, duration_ms, bitrate_bps, cover_avif.is_none(), progress)?;
+        bitrate_bps = pass.bitrate_bps;
         if pass.bytes.len() as u64 <= cap_bytes {
             return Ok(Crushed {
                 bytes: pass.bytes,
@@ -902,6 +958,7 @@ fn crush_via_decode(
                 waveform_avif: pass.waveform_avif,
                 cover_avif,
                 tags,
+                loudness_lufs: pass.loudness,
             });
         }
         if bitrate_bps <= FLOOR_BITRATE_BPS {
@@ -923,7 +980,10 @@ struct EncodedPass {
     bytes: Vec<u8>,
     duration_ms: u64,
     channels: u8,
+    /// The rate the pass encoded at: the one asked for, or a mono sound's house rate under it.
+    bitrate_bps: u32,
     waveform_avif: Option<Vec<u8>>,
+    loudness: Option<f64>,
 }
 
 /// One full decode → resample → encode → mux pass at a fixed bitrate. Split from
@@ -948,6 +1008,7 @@ fn encode_pass(
         resampler: StreamResampler,
         opus: OpusSink,
         waveform: WaveformEnvelope,
+        meter: loudness::Meter,
     }
     let mut pipeline: Option<Pipeline> = None;
 
@@ -957,8 +1018,13 @@ fn encode_pass(
             None => pipeline.insert(Pipeline {
                 out_channels: chunk.channels,
                 resampler: StreamResampler::new(chunk.rate, chunk.channels)?,
-                opus: OpusSink::new(chunk.channels, bitrate_bps)?,
+                // A mono sound's own house rate, below the stereo one the fit was bounded by.
+                opus: OpusSink::new(
+                    chunk.channels,
+                    bitrate_bps.min(house_bitrate_bps(chunk.channels)),
+                )?,
                 waveform: WaveformEnvelope::new(duration_ms, chunk.rate),
+                meter: loudness::Meter::new(chunk.channels),
             }),
         };
         stages.waveform.update(chunk.samples, stages.out_channels);
@@ -970,6 +1036,8 @@ fn encode_pass(
             progress(pct);
         }
         let resampled = stages.resampler.feed(chunk.samples)?;
+        // Measured as stored: at 48 kHz, in the channels the file keeps.
+        stages.meter.push(&resampled);
         stages.opus.push(&resampled)
     })?;
 
@@ -977,6 +1045,7 @@ fn encode_pass(
         return Err(CrushError::Decode("input contained no audio".into()));
     };
     let tail = stages.resampler.finish()?;
+    stages.meter.push(&tail);
     stages.opus.push(&tail)?;
     let encoded = stages.opus.finish()?;
     if encoded.total_samples == 0 {
@@ -990,7 +1059,9 @@ fn encode_pass(
         bytes,
         duration_ms: out_duration_ms,
         channels: stages.out_channels as u8,
+        bitrate_bps: bitrate_bps.min(house_bitrate_bps(stages.out_channels)),
         waveform_avif,
+        loudness: stages.meter.integrated(),
     })
 }
 
@@ -1266,6 +1337,55 @@ impl Drop for LibopusEncoder {
     fn drop(&mut self) {
         // SAFETY: `st` came from opus_encoder_create and is destroyed here, exactly once.
         unsafe { opus_encoder_destroy(self.st) };
+    }
+}
+
+/// The contained unsafe glue over the transpiled libopus decoder, for the passthrough lane's one
+/// measuring decode. All unsafe stays inside this impl; the state is destroyed on drop.
+struct LibopusDecoder {
+    st: *mut OpusDecoder,
+    channels: usize,
+}
+
+impl LibopusDecoder {
+    fn new(channels: usize) -> Result<Self, CrushError> {
+        let mut err = 0i32;
+        // SAFETY: 48 kHz and 1-2 channels satisfy opus_decoder_create's contract; the error
+        // out-pointer is a live local; the state is null-checked and owned by Self (destroyed
+        // exactly once, in Drop).
+        let st = unsafe { opus_decoder_create(OPUS_SAMPLE_RATE as i32, channels as i32, &mut err) };
+        if st.is_null() || err != 0 {
+            return Err(CrushError::Decode(format!("opus decoder init failed (code {err})")));
+        }
+        Ok(LibopusDecoder { st, channels })
+    }
+
+    /// One packet into `out` (interleaved, room for the longest frame): the frames decoded.
+    fn decode(&mut self, packet: &[u8], out: &mut [f32]) -> Result<usize, CrushError> {
+        let room = (out.len() / self.channels) as i32;
+        // SAFETY: `st` is live; `packet` is valid for `len` bytes; `out` holds `room` frames of
+        // `channels` samples, which is the frame_size contract.
+        let frames = unsafe {
+            opus_decode_float(
+                self.st,
+                packet.as_ptr(),
+                packet.len() as i32,
+                out.as_mut_ptr(),
+                room,
+                0,
+            )
+        };
+        if frames < 0 {
+            return Err(CrushError::Decode(format!("opus decode failed (code {frames})")));
+        }
+        Ok(frames as usize)
+    }
+}
+
+impl Drop for LibopusDecoder {
+    fn drop(&mut self) {
+        // SAFETY: `st` came from opus_decoder_create and is destroyed here, exactly once.
+        unsafe { opus_decoder_destroy(self.st) };
     }
 }
 
@@ -1870,7 +1990,11 @@ mod tests {
 
             assert!(!out.passthrough, "{name} takes the decode lane");
             assert_eq!(out.channels, 2, "{name} is stereo");
-            assert_eq!(out.bitrate_bps, HOUSE_BITRATE_BPS, "{name} gets house bitrate");
+            assert_eq!(
+                out.bitrate_bps,
+                house_bitrate_bps(usize::from(out.channels)),
+                "{name} gets its house bitrate"
+            );
 
             let parsed = parse_ogg_opus(&out.bytes);
             let (channels, _) = parse_opus_head(&parsed.head).unwrap();
@@ -1946,6 +2070,21 @@ mod tests {
         );
     }
 
+    /// Both lanes say how loud a sound is (plans/AUDIO.md, section 9): the decode lane from the
+    /// samples it encodes, the passthrough lane by one decode of the packets it keeps - and a sound
+    /// crushed and then uploaded again as Opus measures the same, give or take the codec.
+    #[test]
+    fn both_lanes_measure_the_same_loudness() {
+        let decoded = crush(&corpus("buck-audio.wav"), CrushOpts::default()).expect("crush");
+        assert!(!decoded.passthrough);
+        let lufs = decoded.loudness_lufs.expect("a song has a loudness");
+        assert!((-40.0..-3.0).contains(&lufs), "a plausible loudness: {lufs}");
+        let again = crush(&decoded.bytes, CrushOpts::default()).expect("passes through");
+        assert!(again.passthrough);
+        let measured = again.loudness_lufs.expect("measured by one decode");
+        assert!((measured - lufs).abs() < 0.5, "{lufs} encoded, {measured} decoded");
+    }
+
     /// A cap between floor and house engages fit-to-cap: the bitrate lands on cap/duration, not
     /// the house rate, and the output actually fits (VBR averages to the target).
     #[test]
@@ -1956,7 +2095,7 @@ mod tests {
         assert!(!out.passthrough);
         let expected = fit_bitrate_bps(cap, out.duration_ms);
         assert!(
-            out.bitrate_bps < HOUSE_BITRATE_BPS && out.bitrate_bps > FLOOR_BITRATE_BPS,
+            out.bitrate_bps < HOUSE_STEREO_BPS && out.bitrate_bps > FLOOR_BITRATE_BPS,
             "bitrate {} sits strictly between floor and house",
             out.bitrate_bps
         );
@@ -2096,5 +2235,44 @@ mod tests {
             dur.abs_diff(1_000 * u64::from(seconds)) <= 150,
             "granule duration ≈2 s (got {dur} ms)"
         );
+    }
+
+    /// A 48 kHz PCM16 WAV of a 440 Hz tone, `channels` wide, `seconds` long.
+    fn tone_wav(channels: u16, seconds: u32) -> Vec<u8> {
+        let rate: u32 = 48_000;
+        let mut pcm = Vec::new();
+        for i in 0..rate * seconds {
+            let t = i as f32 / rate as f32;
+            let s = ((t * 440.0 * std::f32::consts::TAU).sin() * 0.5 * 32767.0) as i16;
+            for _ in 0..channels {
+                pcm.extend_from_slice(&s.to_le_bytes());
+            }
+        }
+        let block = 2 * channels;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        wav.extend_from_slice(&channels.to_le_bytes());
+        wav.extend_from_slice(&rate.to_le_bytes());
+        wav.extend_from_slice(&(rate * u32::from(block)).to_le_bytes());
+        wav.extend_from_slice(&block.to_le_bytes());
+        wav.extend_from_slice(&16u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&pcm);
+        wav
+    }
+
+    /// The house rates (Curtis, 2026-10-12): 98 kbps for a stereo song, 49 for a mono voice -
+    /// sevens, for the septagon - when the cap leaves room.
+    #[test]
+    fn mono_gets_49_and_stereo_98() {
+        let mono = crush(&tone_wav(1, 3), CrushOpts::default()).expect("mono crushes");
+        assert_eq!((mono.channels, mono.bitrate_bps), (1, 49_000));
+        let stereo = crush(&tone_wav(2, 3), CrushOpts::default()).expect("stereo crushes");
+        assert_eq!((stereo.channels, stereo.bitrate_bps), (2, 98_000));
     }
 }

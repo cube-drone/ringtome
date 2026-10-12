@@ -38,6 +38,14 @@ import { t } from '../i18n.js';
 import { askText } from '../modal.js';
 import { FacetRow } from '../facets.js';
 import {
+    AMP_STATIONS,
+    StationRun,
+    readStations,
+    shares,
+    stationValue,
+    wouldLoop,
+} from '../pure/stations.js';
+import {
     dropIndex,
     inMixtapeOrder,
     isMixtape,
@@ -150,7 +158,12 @@ function cell(row, key, names) {
 
 /// The cells drawn as more than words (Curtis, 2026-10-12): tags as bubbles, and the reactions a
 /// song has collected, each with how many said it. Anything else, its words (`cell`).
+/// What the player may play: a song this server carries (rights.rs, the fence).
+const playable = (rows) => rows.filter((r) => r.carried !== false);
+
 function richCell(row, key) {
+    if (key === 'title' && row.carried === false)
+        return html`${row.title}<span class="amp-uncarried" title=${t('rights.not-carried', "this song isn't carried on this server - its operator's choice")}>${t('amp.not-carried-here', 'not carried here')}</span>`;
     if (key === 'tags')
         return wordTags(row.tags).map(
             (tag) => html`<span key=${tag} class="amp-tag">${tag}</span>`,
@@ -616,6 +629,12 @@ const Playlists = ({
     openTape,
     onOpenTape,
     onForgetTape,
+    stations,
+    openStation,
+    playingStation,
+    onOpenStation,
+    onForgetStation,
+    onNewStation,
 }) => html`<aside class="amp-playlists">
     <${PaneHead} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onTuck=${onTuck} />
     <p class="amp-playlists-group">${t('amp.filters', 'filters')}</p>
@@ -655,7 +674,173 @@ const Playlists = ({
             <button class="feed-saved-name" onClick=${() => onOpenTape(tape)}>${tape.name}</button>
         </div>`,
     )}
+    ${
+        /* Radio stations (section 6): each a pie of filters, mixtapes and stations, opened to edit
+        and play. */ ''
+    }
+    <p class="amp-playlists-group amp-playlists-group-new">
+        ${t('amp.radio-stations', 'radio stations')}
+        <button class="amp-playlists-new" title=${t('amp.new-station', 'a new radio station')} aria-label=${t('amp.new-station', 'a new radio station')} onClick=${onNewStation}><${Icons.plus} /></button>
+    </p>
+    ${stations.map(
+        (
+            st,
+        ) => html`<div key=${st.id} class=${openStation === st.id ? 'feed-saved-row active' : 'feed-saved-row'}>
+            <button
+                class="feed-saved-forget"
+                title=${t('amp.forget-this-station', 'forget this station')}
+                aria-label=${t('amp.forget-this-station', 'forget this station')}
+                onClick=${() => onForgetStation(st)}
+            ><${Icons.trash} /></button>
+            <button class="feed-saved-name" onClick=${() => onOpenStation(st)}>
+                ${playingStation === st.id && html`<span class="amp-on-air" title=${t('amp.on-air', 'playing now')}><${Icons.radio} /></span>`}
+                ${st.name}
+            </button>
+        </div>`,
+    )}
 </aside>`;
+
+/// A slice's colour, the pie's and its swatch's alike (apps/amp.css), by its place in the station.
+const SLICE_CLASSES = [
+    'amp-slice-0',
+    'amp-slice-1',
+    'amp-slice-2',
+    'amp-slice-3',
+    'amp-slice-4',
+    'amp-slice-5',
+    'amp-slice-6',
+    'amp-slice-7',
+];
+const sliceClass = (i) => SLICE_CLASSES[i % SLICE_CLASSES.length];
+
+/// The station as a pie (section 6): each slice its share of the circle.
+const Pie = ({ slices }) => {
+    const parts = shares(slices);
+    const c = 50;
+    const r = 46;
+    const at = (turn) => [
+        c + r * Math.cos(2 * Math.PI * turn - Math.PI / 2),
+        c + r * Math.sin(2 * Math.PI * turn - Math.PI / 2),
+    ];
+    let turn = 0;
+    const drawn = parts.map((p, i) => {
+        if (!p) return null;
+        if (p >= 100)
+            return html`<circle key=${i} class=${sliceClass(i)} cx=${c} cy=${c} r=${r} />`;
+        const [x1, y1] = at(turn);
+        turn += p / 100;
+        const [x2, y2] = at(turn);
+        return html`<path key=${i} class=${sliceClass(i)} d=${`M${c} ${c} L${x1} ${y1} A${r} ${r} 0 ${p > 50 ? 1 : 0} 1 ${x2} ${y2} Z`} />`;
+    });
+    return html`<svg class="amp-pie" viewBox="0 0 100 100" role="img" aria-label=${t('amp.station-pie', 'the station, as a pie')}>
+        ${parts.some((p) => p > 0) ? drawn : html`<circle class="amp-pie-empty" cx=${c} cy=${c} r=${r} />`}
+    </svg>`;
+};
+
+/// A radio station, opened (section 6): the pie; a slider per slice, its share beside it, and its
+/// trash first; a slice to add - everything, a saved filter, a mixtape, or another station that
+/// wouldn't hold this one - and the button that plays it, with what it played lately.
+const StationView = ({ station, stations, filters, tapes, playing, history, onChange, onPlay }) => {
+    const parts = shares(station.slices);
+    const nameOf = (sl) => {
+        if (sl.kind === 'all') return t('amp.everything', 'everything');
+        const found =
+            sl.kind === 'filter'
+                ? filters.find((f) => f.id === sl.id)
+                : sl.kind === 'mixtape'
+                  ? tapes.find((x) => x.id === sl.id)
+                  : stations.find((x) => x.id === sl.id);
+        return found ? found.name : t('amp.slice-gone', '(gone)');
+    };
+    const kindIcon = {
+        all: Icons.music,
+        filter: Icons.filter,
+        mixtape: Icons.cassette,
+        station: Icons.radio,
+    };
+    const setSlices = (slices, now = false) => onChange({ ...station, slices }, now);
+    const add = (value) => {
+        const [kind, id] = value.split(':');
+        if (kind === 'station' && wouldLoop(stations, station.id, id)) {
+            toast(t('amp.station-loop', "a station can't hold itself, even further down"), {
+                kind: 'error',
+            });
+            return;
+        }
+        setSlices([...station.slices, { kind, id: id || '', weight: 50 }], true);
+    };
+    const others = stations.filter(
+        (x) => x.id !== station.id && !wouldLoop(stations, station.id, x.id),
+    );
+    return html`<div class="amp-station">
+        <h2 class="amp-panel-title">${station.name}</h2>
+        <div class="amp-panel-actions">
+            <button class=${playing ? 'bulk-button jag-line amp-station-play amp-station-playing' : 'bulk-button jag-line amp-station-play'} onClick=${onPlay}>
+                <${Icons.radio} /> ${playing ? t('amp.station-on-air', 'on the air - start again') : t('amp.play-station', 'play the station')}
+            </button>
+        </div>
+        <div class="amp-station-body">
+            <${Pie} slices=${station.slices} />
+            <div class="amp-station-slices">
+                ${station.slices.map(
+                    (sl, i) => html`<div class="amp-slice-row" key=${`${i}:${sl.kind}:${sl.id}`}>
+                        <button
+                            class="feed-saved-forget"
+                            title=${t('amp.remove-slice', 'take this slice out')}
+                            aria-label=${t('amp.remove-slice', 'take this slice out')}
+                            onClick=${() =>
+                                setSlices(
+                                    station.slices.filter((_, k) => k !== i),
+                                    true,
+                                )}
+                        ><${Icons.trash} /></button>
+                        <span class=${`amp-slice-swatch ${sliceClass(i)}`}></span>
+                        <span class="amp-slice-name"><${kindIcon[sl.kind]} /> ${nameOf(sl)}</span>
+                        <input
+                            class="amp-slice-weight"
+                            type="range"
+                            min="0"
+                            max="100"
+                            value=${sl.weight}
+                            title=${t('amp.slice-weight', 'how often this slice comes up')}
+                            onInput=${(e) =>
+                                setSlices(
+                                    station.slices.map((x, k) =>
+                                        k === i
+                                            ? { ...x, weight: Number(e.currentTarget.value) }
+                                            : x,
+                                    ),
+                                )}
+                        />
+                        <span class="amp-slice-share">${parts[i]}%</span>
+                    </div>`,
+                )}
+                <select
+                    class="jag-field amp-slice-add"
+                    value=""
+                    onChange=${(e) => {
+                        const v = e.currentTarget.value;
+                        e.currentTarget.value = '';
+                        if (v) add(v);
+                    }}
+                >
+                    <option value="">${t('amp.add-slice', 'add a slice…')}</option>
+                    <option value="all:">${t('amp.everything', 'everything')}</option>
+                    ${filters.length > 0 && html`<optgroup label=${t('amp.filters', 'filters')}>${filters.map((f) => html`<option key=${f.id} value=${`filter:${f.id}`}>${f.name}</option>`)}</optgroup>`}
+                    ${tapes.length > 0 && html`<optgroup label=${t('amp.mixtapes', 'mixtapes')}>${tapes.map((x) => html`<option key=${x.id} value=${`mixtape:${x.id}`}>${x.name}</option>`)}</optgroup>`}
+                    ${others.length > 0 && html`<optgroup label=${t('amp.radio-stations', 'radio stations')}>${others.map((x) => html`<option key=${x.id} value=${`station:${x.id}`}>${x.name}</option>`)}</optgroup>`}
+                </select>
+            </div>
+        </div>
+        ${
+            history.length > 0 &&
+            html`<h3 class="amp-panel-sub">${t('amp.lately', 'lately on the air')}</h3>
+            <ol class="amp-station-lately">
+                ${history.map((r, i) => html`<li key=${`${i}:${r.key}`}>${r.title}${r.artist ? html` <span class="amp-station-artist">${r.artist}</span>` : ''}</li>`)}
+            </ol>`
+        }
+    </div>`;
+};
 
 /// "Add to mixtape" (section 5), and inside an open one "take out of" it: for one song or many, in
 /// the file panel's actions. Adding appends, and a song already in the mixtape keeps its place.
@@ -775,6 +960,22 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         );
     }, [root, tapeIds, tapesAt]);
     const tape = tapes.find((x) => x.id === openTape) || null;
+    // Radio stations (section 6): read from their registers, the one open to edit, and the saving
+    // of a slider's move a moment after it settles.
+    const [stations, setStations] = useState([]);
+    const [stationsRead, setStationsRead] = useState(false);
+    const [openStation, setOpenStation] = useState(null);
+    const openStationObj = stations.find((x) => x.id === openStation) || null;
+    const stationSave = useRef(null);
+    useEffect(() => {
+        if (!root) return;
+        setStations([]);
+        setStationsRead(false);
+        api(`/api/identity/${root}/private/kv/${AMP_STATIONS}`)
+            .then((r) => setStations(readStations(r && r.values)))
+            .catch(() => {})
+            .finally(() => setStationsRead(true));
+    }, [root]);
     // A drag in an open mixtape: the song lifted, and where it would land.
     const dragKey = useRef(null);
     const [dropAt, setDropAt] = useState(null); // { key, after }
@@ -921,6 +1122,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         settle();
         setLoadedId(f ? f.id : null);
         setOpenTape(null);
+        setOpenStation(null);
         if (!f) {
             setPicks(NO_AMP_PICKS);
             if (onSearch) onSearch('');
@@ -935,6 +1137,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     // A mixtape opened from Playlists: the table in its order, the strip and the search cleared.
     const openMixtape = (x) => {
         settle();
+        setOpenStation(null);
         setLoadedId(null);
         setPicks(NO_AMP_PICKS);
         if (onSearch) onSearch('');
@@ -1043,11 +1246,132 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const i = Math.floor(y);
         return { key: shown[i].key, after: y - i >= 0.5 };
     };
+    // --- radio stations ---
+    // A slice's songs, as they stand: everything, a mixtape's, or a saved filter's - its picks,
+    // whose tags and its words, over the library as this page has it.
+    // Only what this server carries: a song refused here (rights.rs, the fence) is never picked.
+    const songsOf = (sl) => {
+        if (sl.kind === 'all') return playable(rows);
+        if (sl.kind === 'mixtape') {
+            const x = tapes.find((y) => y.id === sl.id);
+            return x ? playable(inMixtapeOrder(rows, x)) : [];
+        }
+        if (sl.kind === 'filter') {
+            const f = filters.find((y) => y.id === sl.id);
+            return f ? playable(searched(narrowedSongs(rows, f.picks, f.scope), f.q)) : [];
+        }
+        return [];
+    };
+    const runFor = (st) =>
+        new StationRun(st, {
+            stations,
+            songsOf,
+            keyOf: (r) => r.key,
+            artistOf: (r) => r.artist,
+            albumOf: (r) => (r.album ? `${r.artist}/${r.album}` : ''),
+            random: Math.random,
+        });
+    const playStation = (st) => {
+        if (!player) return;
+        const run = runFor(st);
+        if (!run.leaves().some((l) => (run.leafSongs.get(l.path) || []).length)) {
+            toast(t('amp.station-silent', 'nothing to play - its slices hold no songs yet'));
+            return;
+        }
+        player.playStation(st.id, run);
+    };
+    // The station playing hears when the library, a filter, a mixtape or a station changes; one
+    // that came back from a refresh as its history alone is rebuilt here, once the library's in.
+    useEffect(() => {
+        if (!player || !player.station || !stationsRead) return;
+        const st = stations.find((x) => x.id === player.station);
+        if (!st) return;
+        const live = player.stationRun();
+        if (live) {
+            live.station = st;
+            live.opts = { ...live.opts, stations, songsOf };
+            live.refresh();
+            return;
+        }
+        const waiting = player.pendingStation();
+        if (!waiting || loading) return;
+        const run = runFor(st);
+        const byKey = new Map(rows.map((r) => [r.key, r]));
+        run.history = waiting.rows.map((r) => byKey.get(r.key) || r);
+        run.pos = Math.min(waiting.pos, run.history.length - 1);
+        player.resumeStation(run);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, filters, tapes, stations, stationsRead, loading, player && player.station]);
+    const putStation = (st) =>
+        api(`/api/identity/${root}/private/kv/${AMP_STATIONS}/${st.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: stationValue(st.name, st.slices) }),
+        }).catch((e) =>
+            toast(
+                t('amp.couldnt-save-station', "couldn't save the station: {message}", {
+                    message: e.message,
+                }),
+                {
+                    kind: 'error',
+                },
+            ),
+        );
+    // A change to a station: on screen at once; kept a moment after a slider settles, or now.
+    const changeStation = (st, now = false) => {
+        setStations((have) => have.map((x) => (x.id === st.id ? st : x)));
+        clearTimeout(stationSave.current);
+        if (now) putStation(st);
+        else stationSave.current = setTimeout(() => putStation(st), 600);
+    };
+    const newStation = async () => {
+        const name = await askText({
+            title: t('amp.new-station-title', 'a new radio station'),
+            label: t('amp.new-station-name', 'A name for the new station:'),
+            ok: t('amp.make-it', 'make it'),
+        });
+        if (!name) return;
+        const bytes = new Uint8Array(8);
+        crypto.getRandomValues(bytes);
+        const id = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+        // It starts as everything at half: something to hear while its slices are chosen.
+        const st = { id, name, slices: [{ kind: 'all', id: '', weight: 50 }] };
+        setStations((have) => [...have, st].sort((a, b) => a.name.localeCompare(b.name)));
+        await putStation(st);
+        openStationView(st);
+    };
+    const forgetStation = async (st) => {
+        if (!confirm(t('amp.forget-station', 'Forget the station "{name}"?', { name: st.name })))
+            return;
+        try {
+            await api(`/api/identity/${root}/private/kv/${AMP_STATIONS}/${st.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: '' }),
+            });
+            setStations((have) => have.filter((x) => x.id !== st.id));
+            if (openStation === st.id) setOpenStation(null);
+        } catch (e) {
+            failed(e);
+        }
+    };
+    function openStationView(st) {
+        settle();
+        setOpenTape(null);
+        setOpenStation(st.id);
+    }
+    // What the open station played lately, newest first - while it's the one on the air.
+    const liveRun =
+        player && player.station && openStation === player.station ? player.stationRun() : null;
+    const lately = liveRun
+        ? liveRun.history
+              .slice(0, liveRun.pos + 1)
+              .slice(-10)
+              .reverse()
+        : [];
     const keys = useMemo(() => shown.map((r) => r.key), [shown]);
 
     // The player carries on through the table as it now stands.
     useEffect(() => {
-        if (player && player.current) player.relist(shown);
+        if (player && player.current) player.relist(playable(shown));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [shown]);
 
@@ -1178,7 +1502,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     ? html`<${Rail} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onClick=${() => toggleTuck('playlists')} />`
                     : html`${tab('playlists', Icons.music, t('amp.playlists', 'playlists'))}<${Playlists}
                           filters=${filters}
-                          now=${tape ? null : settingsNow}
+                          now=${tape || openStation ? null : settingsNow}
                           onAll=${() => applyFilter(null)}
                           onPick=${applyFilter}
                           onForget=${forgetFilter}
@@ -1187,6 +1511,12 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           openTape=${openTape}
                           onOpenTape=${openMixtape}
                           onForgetTape=${forgetTape}
+                          stations=${stations}
+                          openStation=${openStation}
+                          playingStation=${player ? player.station : null}
+                          onOpenStation=${openStationView}
+                          onForgetStation=${forgetStation}
+                          onNewStation=${newStation}
                       />${resizer('playlists')}`
             }
             ${
@@ -1195,6 +1525,19 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             }
             ${fileColumn}
             <div class="amp-list">
+                ${
+                    openStationObj
+                        ? html`<${StationView}
+                              station=${openStationObj}
+                              stations=${stations}
+                              filters=${filters}
+                              tapes=${tapes}
+                              playing=${!!player && player.station === openStationObj.id}
+                              history=${lately}
+                              onChange=${changeStation}
+                              onPlay=${() => playStation(openStationObj)}
+                          />`
+                        : html`
                 ${
                     stop &&
                     html`<${FilterStrip}
@@ -1266,6 +1609,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                     'amp-row',
                                     picked.has(r.key) ? 'amp-row-picked' : '',
                                     playingKey === r.key ? 'amp-row-playing' : '',
+                                    r.carried === false ? 'amp-row-uncarried' : '',
                                     dropAt && dropAt.key === r.key
                                         ? dropAt.after
                                             ? 'amp-row-drop-after'
@@ -1274,7 +1618,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                 ].join(' ')}
                                 style=${`top: ${(first + i) * ROW_HEIGHT}px; grid-template-columns: 2rem ${template}`}
                                 onClick=${(e) => select(r, e)}
-                                onDblClick=${() => player && player.play(shown, r)}
+                                onDblClick=${() => player && r.carried !== false && player.play(playable(shown), r)}
                                 draggable=${!!tape}
                                 onDragStart=${(e) => {
                                     if (!tape) return;
@@ -1297,9 +1641,11 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     </div>
                     ${!loading && shown.length === 0 && html`<p class="null-sub amp-empty">${tape && !searchQuery && !anyAmpPicks(picks) ? t('amp.empty-mixtape', 'nothing on this mixtape yet - add songs from the file column.') : searchQuery || anyAmpPicks(picks) ? t('amp.nothing-matches', 'nothing matches that.') : t('amp.no-music-yet', 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.')}</p>`}
                 </div>
+`
+                }
             </div>
         </div>`
         }
-        <${PlayerBar} list=${shown} />
+        <${PlayerBar} list=${playable(shown)} />
     </div>`;
 };

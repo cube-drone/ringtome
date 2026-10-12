@@ -119,6 +119,8 @@ export async function api(path, options = {}) {
                 : body.message || `request failed (${res.status})`,
         );
         err.status = res.status;
+        // Which sentence it was (error.rs `key`), for a caller that answers one refusal its own way.
+        err.key = body.key;
         // The server's structural discriminator, when it sent one (error.rs `code`). One code
         // matters enough to announce globally: "revoked-signer" means this computer is no
         // longer part of the persona - any surface can hit it mid-write, and the farewell

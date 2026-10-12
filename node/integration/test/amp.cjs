@@ -257,6 +257,8 @@ describe('hrseAmp: the library of sound in your feed', function () {
         assert.equal(now.fields.artist, 'Bucks Unlimited');
         assert.equal(now.fields.album, undefined, 'a cleared field is taken back');
         assert.equal(now.fields.track, 'Second Buck');
+        // And how loud it is (section 9): measured at the ingest, said on the twin with the rest.
+        assert.ok(Number(now.fields.loudness) < 0, `a loudness in LUFS: ${now.fields.loudness}`);
     });
 
     it("a copied sound carries its author's fields onto the copy", async () => {
