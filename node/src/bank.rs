@@ -203,7 +203,7 @@ const fn unlock(
 }
 
 /// Every unlock, in the order the Market lists them.
-pub const UNLOCKS: [Unlock; 27] = [
+pub const UNLOCKS: [Unlock; 28] = [
     unlock("friends", "Friends", 1_000, &[]),
     unlock("social", "Social", 1_000, &[]),
     unlock("private-notes", "Private notes", 2_500, &[]),
@@ -222,6 +222,9 @@ pub const UNLOCKS: [Unlock; 27] = [
     unlock("horse-financial", "Horse Financial", 500, &[]),
     // Last, and dearest: experimental, and said so (Curtis, 2026-10-05).
     unlock("video-upload", "Video upload", 10_000, &["file-upload"]),
+    // hrseAmp (Curtis, 2026-10-12, plans/AUDIO.md ruling 2): music, after File upload, and
+    // experimental as video is.
+    unlock("music", "hrseAmp", 5_000, &["file-upload"]),
     // The colourways (Curtis, 2026-10-05): cosmetic, each sold alone - horse-relax and witchlight
     // stay free - and not meant to be reachable on contract money: something to keep playing for.
     // The Market shows them in a section of their own (`colorway-` is the client's word for it).

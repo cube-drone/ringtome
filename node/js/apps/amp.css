@@ -1,0 +1,443 @@
+/* hrseAmp (plans/AUDIO.md): the table, the file panel beside it, and the player. */
+
+.amp-app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    gap: 0.5rem;
+}
+
+.amp-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 1rem;
+}
+
+.amp-list {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.amp-count {
+    margin: 0 0 0.4rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.amp-table {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    position: relative;
+    border: 1px solid var(--border);
+}
+
+/* The header stays as the rows scroll under it, and a row is exactly as wide as its columns:
+   past the table's width, the table scrolls sideways rather than squeezing. */
+.amp-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: grid;
+    width: max-content;
+    min-width: 100%;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+}
+
+.amp-th {
+    position: relative;
+    padding: 0.35rem 0.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    user-select: none;
+}
+
+.amp-th-sorts {
+    cursor: pointer;
+}
+
+.amp-th-sorts:hover {
+    color: var(--ink);
+}
+
+.amp-th-dir {
+    margin-left: 0.25rem;
+    color: var(--sea);
+}
+
+/* A column's right edge: drag it. */
+.amp-th-edge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+}
+
+.amp-th-edge:hover {
+    background: var(--border-strong);
+}
+
+.amp-columns {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.amp-columns-button {
+    background: none;
+    border: 0;
+    color: var(--ink-soft);
+    cursor: pointer;
+    font: inherit;
+}
+
+.amp-columns-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    white-space: nowrap;
+}
+
+.amp-rows {
+    position: relative;
+    min-width: 100%;
+}
+
+/* Rows are placed by the page as they scroll into view (apps/amp.js): each one absolute, 30px. */
+.amp-row {
+    position: absolute;
+    left: 0;
+    height: 30px;
+    display: grid;
+    align-items: center;
+    width: max-content;
+    min-width: 100%;
+    font-size: 0.85rem;
+    color: var(--ink);
+    cursor: default;
+    border-bottom: 1px solid var(--border);
+}
+
+.amp-row:hover {
+    background: var(--surface-2);
+}
+
+.amp-row-picked,
+.amp-row-picked:hover {
+    background: var(--chip-on);
+    color: var(--chip-on-ink);
+}
+
+.amp-row-playing .amp-td-title {
+    color: var(--sea);
+    font-weight: 600;
+}
+
+/* Nothing wraps: what doesn't fit is cut, and the whole of it is in the hover (ruling, section 2). */
+.amp-td {
+    padding: 0 0.5rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.amp-td-numeric {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.amp-empty {
+    padding: 1rem;
+}
+
+.amp-panel {
+    width: 22rem;
+    flex-shrink: 0;
+    overflow-y: auto;
+    min-height: 0;
+    border-left: 1px solid var(--border);
+    padding-left: 1rem;
+}
+
+.amp-panel-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+    overflow-wrap: anywhere;
+}
+
+.amp-panel-sub {
+    font-size: 0.95rem;
+    margin: 1rem 0 0.4rem;
+}
+
+.amp-reaction {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.amp-layer {
+    margin: 0;
+}
+
+.amp-layer-row {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.3rem 0;
+}
+
+.amp-layer-row dt {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.amp-layer-row dd {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.amp-layer-theirs {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- the player (player.js) ---- */
+
+.player-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    background: var(--surface-2);
+    border-top: 1px solid var(--border-strong);
+    flex-shrink: 0;
+}
+
+.player-buttons {
+    display: flex;
+    gap: 0.15rem;
+}
+
+.player-button {
+    background: none;
+    border: 0;
+    color: var(--ink);
+    font-size: 1.15rem;
+    padding: 0.2rem;
+    cursor: pointer;
+    display: inline-flex;
+}
+
+.player-button:hover {
+    color: var(--sea);
+}
+
+.player-on {
+    color: var(--sea);
+}
+
+.player-play {
+    font-size: 1.5rem;
+}
+
+.player-thumb,
+.player-mini-thumb {
+    width: 2.2rem;
+    height: 2.2rem;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.player-thumb-none {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    background: var(--surface);
+}
+
+.player-now {
+    display: flex;
+    flex-direction: column;
+    min-width: 6rem;
+    max-width: 16rem;
+    overflow: hidden;
+}
+
+.player-title,
+.player-artist {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.player-title {
+    font-size: 0.9rem;
+    color: var(--ink);
+}
+
+.player-artist {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.player-track {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 6rem;
+}
+
+.player-scrub {
+    flex: 1;
+    min-width: 0;
+}
+
+.player-time {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+}
+
+.player-volume {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--ink-soft);
+}
+
+.player-volume input {
+    width: 5rem;
+}
+
+/* Anywhere else in the app, above the dock on the left - the toasts take the right. */
+.player-mini {
+    position: fixed;
+    left: 1rem;
+    bottom: calc(3rem + var(--safe-bottom) + 0.75rem);
+    z-index: var(--layer-toast);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: min(22rem, calc(100vw - 2rem));
+    padding: 0.3rem 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+}
+
+.player-mini-now {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: none;
+    border: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+/* Expanded: a cassette over the song's cover, blurred. */
+.player-expanded {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-2);
+}
+
+.player-backdrop {
+    position: absolute;
+    inset: -2rem;
+    width: calc(100% + 4rem);
+    height: calc(100% + 4rem);
+    object-fit: cover;
+    filter: blur(18px);
+    opacity: 0.55;
+}
+
+.cassette {
+    position: relative;
+    width: min(80%, 38rem);
+    height: auto;
+}
+
+.cassette-body {
+    fill: var(--surface);
+    stroke: var(--border-strong);
+    stroke-width: 3;
+}
+
+.cassette-label {
+    fill: var(--paper);
+    stroke: var(--border);
+}
+
+.cassette-text {
+    fill: var(--ink);
+    font-size: 15px;
+}
+
+.cassette-text-small {
+    fill: var(--muted);
+    font-size: 11px;
+}
+
+.cassette-window {
+    fill: var(--ink-soft);
+    opacity: 0.35;
+}
+
+.cassette-hub {
+    fill: var(--paper);
+    stroke: var(--border-strong);
+    stroke-width: 2;
+}
+
+.cassette-tooth {
+    fill: var(--border-strong);
+}
+
+.cassette-foot {
+    fill: var(--surface-2);
+    stroke: var(--border);
+}
+
+@keyframes cassette-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.cassette-playing .cassette-reel {
+    animation: cassette-spin 2.4s linear infinite;
+}

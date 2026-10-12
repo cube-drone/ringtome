@@ -20392,6 +20392,7 @@ On a scratch node with `RINGTOME_PUBLIC_URL`:
 - with JavaScript off, a post reads as a plain page; with it on, the copy never
   shows;
 - the settings section saves `search = no`.
+
 ## 2026-10-11 (cont.): the crowd serves, a plan
 
 Curtis asked whether horsedrawingtycoon.com would fold if 100,000 people joined
@@ -20409,5 +20410,47 @@ holders, the author's node and its busy refusal refer askers to them, holders
 relay moves, the wake pass asks a holder first and the author now and then. One
 finding rides it for a ruling: the serve door already answers strangers for a
 QUIETLY followed persona, which a probe can read as node-level interest. Ruled
-the same day: the door narrows to published follows, unless the node serves
-more than 10 personas - a crowd to hide in.
+the same day: the door narrows to published follows, unless the node serves more
+than 10 personas - a crowd to hide in.
+
+## 2026-10-12: hrseAmp, the library and the player
+
+Curtis asked for a music app - Winamp and iTunes in hrseAmp's clothes - and
+ruled the plan's questions the same day ([`plans/AUDIO.md`](plans/AUDIO.md),
+rulings 1-14). Slices 1 and 2 are built.
+
+**The library.** One table of every sound a person can see: their own, from the
+browser's mirror; and the sound in their feed at the curiosity dial's stop, from
+a new door, `GET /api/identity/<root>/amp/library`. The door narrows the
+reader's journal to posts with the public `audio` tag, then reads the node's new
+`amp_sounds` memo (migration 0080) for which documents the sound is, with title,
+length and thumbnail. An author's database is opened only for a post the memo
+hasn't read at its current version. The convention test holds `amp.rs` to that
+one open. Rows are one per sound, from the newest post it came in. Each carries
+the post's score, brought up to the reader's dials first as "best" does; a
+browser check found scores stuck at 0 without that. Columns fold Title and
+Artist (ruling 5), sort, resize, hide, and remember per device. Rows draw only
+as they scroll into view. Selecting one shows a file panel: the author's fields
+for your own sound, or your private layer over theirs for someone else's, kept
+in the `amp_layer` register. Selecting several shows the bulk panel.
+
+**The player** belongs to the shell, so music plays across apps: the bar in
+hrseAmp, a compact one everywhere else, and Media Session for the keyboard and
+lock screen. An expanded mode shows a cassette whose reels turn while it plays.
+Shuffle (`pure/shuffle.js`) plays every song once a cycle. It keeps an artist
+and an album from following themselves wherever the counts allow, keeps the last
+five out of the next cycle's first five, and walks back and forth over the same
+songs. hrseAmp is an unlock after File upload, H$ 5,000, marked experimental.
+
+**Found while building.** Every feed sound is a twin today, since there's no
+publishing a sound document by itself, so feed rows have a title and length but
+no fields until slice 4. The same bytes uploaded twice are one document, which
+is why the library dedupes by sound.
+
+Verified by `integration/test/amp.cjs` (both kinds of post, words-only and
+own-sound exclusions, the public door, the score, the memo answering instead of
+the database, a repost as one row) and the pure vectors for the library and the
+shuffle. On a scratch node in headless Chrome, three followed sounds and an own
+one listed and selected, double-click played with Media Session's title set, and
+the cassette turned. Shuffle and next moved on, and the compact player kept
+playing on another route.

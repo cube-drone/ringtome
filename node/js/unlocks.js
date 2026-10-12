@@ -206,6 +206,7 @@ const NAMES = {
     pins: () => t('unlocks.pins', 'Pins'),
     'post-editing': () => t('unlocks.post-editing', 'Public post editing'),
     'video-upload': () => t('unlocks.video-upload', 'Video upload'),
+    music: () => t('unlocks.music', 'hrseAmp'),
     sharing: () => t('unlocks.sharing', 'Sharing'),
     links: () => t('unlocks.links', 'Links'),
     'chats-for-two': () => t('unlocks.chats-for-two', 'Chats for two'),
@@ -272,6 +273,11 @@ const ABOUT = {
         ),
     'video-upload': () =>
         t('unlocks.video-upload-about', 'Upload video, maybe. It might not work.'),
+    music: () =>
+        t(
+            'unlocks.music-about',
+            'Unlocks hrseAmp™: every sound you and the people you follow have posted, in one sortable table, with a player that keeps playing wherever you go in the app.',
+        ),
     sharing: () =>
         t('unlocks.sharing-about', "Share someone else's post with the people who follow you."),
     links: () =>
@@ -293,6 +299,11 @@ const ABOUT = {
 
 /// The warning a card carries, for the unlocks that need one.
 const WARNINGS = {
+    music: () =>
+        t(
+            'unlocks.music-warning',
+            "Experimental: hrseAmp is new, and some of what's planned for it isn't here yet.",
+        ),
     'video-upload': () =>
         t(
             'unlocks.video-upload-warning',
@@ -312,6 +323,7 @@ const ICONS = {
     pins: Icons.pin,
     'post-editing': Icons.update,
     'video-upload': Icons.fileVideo,
+    music: Icons.music,
     sharing: Icons.colRebroadcast,
     links: Icons.link,
     'chats-for-two': Icons.room,

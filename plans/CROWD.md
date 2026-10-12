@@ -110,8 +110,8 @@ These are proposals. Each one is marked with the question it needs answered.
 
 2. **Finding holders: the author's node refers.** A follower that wants to serve
    says so in its Hello (`holds: true`, a new trailing field: older Hellos
-   decode it as false, the way `wanted`, `ceiling` and `instances` arrived).
-   The responder records it on the `identity_demand` row. When the author's node
+   decode it as false, the way `wanted`, `ceiling` and `instances` arrived). The
+   responder records it on the `identity_demand` row. When the author's node
    answers, a new trailing field in its Hello carries up to 8 recent holders for
    the persona. The follower keeps them in a per-persona `holders` memo in
    `node.db`, with the same 7-day retention as demand.
@@ -129,10 +129,10 @@ These are proposals. Each one is marked with the question it needs answered.
 4. **The ladder's new rung: holders, before the household.** The order is the
    persona's own machinery, then holders, then household. The own rung still
    races first and wins when it answers. `last_via` keeps meaning "the author's
-   authority" and is never written by a holder (`fetch_foreign_with` explains why
-   that matters: replies, the shelf and bodies behind a ceiling ask `last_via`
-   next). A fetch won by a holder is recorded as served by the crowd, not as an
-   authority.
+   authority" and is never written by a holder (`fetch_foreign_with` explains
+   why that matters: replies, the shelf and bodies behind a ceiling ask
+   `last_via` next). A fetch won by a holder is recorded as served by the crowd,
+   not as an authority.
 
 5. **Holders pass moves on.** A holder whose public frontier for a persona moves
    pushes to its own askers, as the author does: capped at 16, recent askers
@@ -146,9 +146,9 @@ These are proposals. Each one is marked with the question it needs answered.
 6. **The wake pass asks a holder first, and the author now and then.** For a
    persona with a holders memo, the staleness pull goes to a holder. Holders can
    only hold back, never forge. A holder that is behind gives you less, and a
-   retraction it hasn't heard of stays visible a little longer. So every Nth pass
-   (or once the author has gone a few hours unasked) goes to the persona's own
-   machinery. That puts a ceiling on how long a mirror can go without the
+   retraction it hasn't heard of stays visible a little longer. So every Nth
+   pass (or once the author has gone a few hours unasked) goes to the persona's
+   own machinery. That puts a ceiling on how long a mirror can go without the
    author's word. _Open: N, or a time._
 
 7. **Bodies.** The holders memo becomes a candidate source in `bodies.rs` (the
@@ -167,9 +167,9 @@ These are proposals. Each one is marked with the question it needs answered.
    off for a node: it stops sending `holds` and its door stops answering
    strangers for personas it only follows. The household path is unaffected. A
    node on a metered link or a phone may want it off. Only the operator gets
-   this switch. A person doesn't get one of their own, at least for now
-   (Curtis, 2026-10-11: "I don't think that a personal off switch is worth
-   building yet").
+   this switch. A person doesn't get one of their own, at least for now (Curtis,
+   2026-10-11: "I don't think that a personal off switch is worth building
+   yet").
 
 ## What it costs
 

@@ -65,6 +65,11 @@ lightly federated, unapologetically Old Internet.
 - [`plans/`](plans/) — the plans: one design document per app, feature or
   delivery shape, drafts and built alike, plus the signing guide. **A new plan
   is written here.** So far:
+- [`AUDIO.md`](plans/AUDIO.md) — hrseAmp, for music: a sortable, filterable
+  table of every sound you can see (your own and the feed's), a player with a
+  shuffle that spreads artists and albums, saved filters, mixtapes (a taxonomy
+  per mixtape) and radio stations (weighted pies of filters, mixtapes and other
+  stations). A design draft (2026-10-12); nothing built.
 - [`BULK.md`](plans/BULK.md) — doing one thing to many documents in Writer,
   Drawing and hrseFiles: Shift-click or "select all" beside the count, then
   delete, move (to a notebook, or a new one), tag, untag from the combined tags,

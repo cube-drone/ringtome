@@ -1812,6 +1812,39 @@ pub async fn public_genesis(db: &Db, doc_id: &[u8; 16]) -> Result<Option<i64>, A
     Ok(row.map(|(g,)| g))
 }
 
+/// What hrseAmp needs of a public document (plans/AUDIO.md): its format, title, length, whether it
+/// has a thumbnail, and the documents its words embed - one read of its public head.
+pub struct PublicMedia {
+    pub format: Option<u64>,
+    pub title: String,
+    pub duration_ms: Option<i64>,
+    pub has_thumb: bool,
+    pub refs: Vec<[u8; 16]>,
+}
+
+pub async fn public_media(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicMedia>, AppError> {
+    catch_up_public_lane(db).await?;
+    type Row = (Option<i64>, String, Option<i64>, Option<Vec<u8>>, Option<Vec<u8>>);
+    let row: Option<Row> = db
+        .fetch_optional(
+            "SELECT h.format, h.title, v.duration_ms, h.thumb_hash, v.refs FROM doc_heads h
+             JOIN doc_versions v ON v.entry_hash = h.entry_hash AND v.doc_id = h.doc_id
+             WHERE h.doc_id = ?1 AND h.lane = 'public'
+               AND h.doc_id NOT IN (SELECT doc_id FROM public_retractions)",
+            (doc_id.to_vec(),),
+        )
+        .await
+        .context("reading a public document's media")
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(format, title, duration_ms, thumb, refs)| PublicMedia {
+        format: format.map(|f| f as u64),
+        title,
+        duration_ms,
+        has_thumb: thumb.is_some(),
+        refs: refs.as_deref().map(decode_refs).unwrap_or_default(),
+    }))
+}
+
 pub async fn public_head(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicHead>, AppError> {
     catch_up_public_lane(db).await?;
     // A retracted document has no public head, full stop (filter added 2026-08-14, when the

@@ -22,6 +22,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 // was written as a binary's innards, where `pub` meant nothing. What an embedder actually
 // calls is four names - `run`, `Config`, `init_tracing`, `inspect` - and a reader asking
 // "what may I call from outside" should read those rather than the tree.
+pub mod amp;
 pub mod annotations;
 pub mod attention;
 pub mod auth;
@@ -975,6 +976,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/@{slug}", get(nodeface::slug_page))
         .route("/@{slug}/{*rest}", get(nodeface::slug_path_page))
         .route("/api/node/slug-of/{root}", get(nodeface::slug_of))
+        // hrseAmp (plans/AUDIO.md): the sound in a reader's feed.
+        .route("/api/identity/{root}/amp/library", get(amp::library_handler))
         .route("/api/node/at/{slug}", get(nodeface::at_name))
         .route("/api/node/at/{slug}/{*path}", get(nodeface::at_name_path))
         .route("/api/web-address", get(web_address_handler))

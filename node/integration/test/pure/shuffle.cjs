@@ -1,0 +1,121 @@
+// hrseAmp's shuffle (plans/AUDIO.md, section 4): every song once a cycle, artists and albums spread
+// apart where the list allows it, five songs kept apart across the seam, and stable to walk back and
+// forth.
+const assert = require('node:assert');
+
+let spreadOrder, ShuffleRun, seededRandom, SEAM;
+before(async () => {
+    ({ spreadOrder, ShuffleRun, seededRandom, SEAM } = await import('../../../js/pure/shuffle.js'));
+});
+
+const songs = (spec) =>
+    spec.flatMap(([artist, album, n]) =>
+        Array.from({ length: n }, (_, i) => ({ key: `${artist}/${album}/${i}`, artist, album })),
+    );
+const opts = (seed) => ({
+    keyOf: (s) => s.key,
+    artistOf: (s) => s.artist,
+    albumOf: (s) => `${s.artist}/${s.album}`,
+    random: seededRandom(seed),
+});
+const clashes = (order) =>
+    order.slice(1).filter((s, i) => s.artist === order[i].artist || s.album === order[i].album)
+        .length;
+
+describe("hrseAmp's shuffle (plans/AUDIO.md)", () => {
+    it('plays every song once a cycle', () => {
+        const list = songs([
+            ['a', 'x', 7],
+            ['b', 'y', 3],
+            ['c', 'z', 5],
+        ]);
+        for (let seed = 1; seed < 30; seed++) {
+            const order = spreadOrder(list, opts(seed));
+            assert.deepEqual(order.map((s) => s.key).sort(), list.map((s) => s.key).sort());
+        }
+    });
+
+    it('keeps an artist from following itself where the list allows it', () => {
+        const list = songs([
+            ['a', 'x', 4],
+            ['b', 'y', 4],
+            ['c', 'z', 4],
+            ['d', 'w', 4],
+        ]);
+        for (let seed = 1; seed < 50; seed++) {
+            assert.equal(clashes(spreadOrder(list, opts(seed))), 0, `seed ${seed}`);
+        }
+    });
+
+    it("spreads one artist's albums apart too", () => {
+        const list = songs([
+            ['a', 'one', 3],
+            ['a', 'two', 3],
+            ['b', 'x', 3],
+            ['c', 'y', 3],
+        ]);
+        for (let seed = 1; seed < 30; seed++) {
+            const order = spreadOrder(list, opts(seed));
+            const sameAlbum = order
+                .slice(1)
+                .filter((s, i) => s.album === order[i].album && s.artist === order[i].artist);
+            assert.equal(sameAlbum.length, 0, `seed ${seed}`);
+        }
+    });
+
+    it("keeps the last five out of the next cycle's first five", () => {
+        const list = songs([
+            ['a', 'x', 8],
+            ['b', 'y', 8],
+            ['c', 'z', 8],
+        ]);
+        for (let seed = 1; seed < 20; seed++) {
+            const run = new ShuffleRun(list, opts(seed));
+            const firstCycle = [];
+            for (let i = 0; i < list.length; i++) firstCycle.push(run.next().key);
+            const next = [];
+            for (let i = 0; i < SEAM; i++) next.push(run.next().key);
+            const tail = new Set(firstCycle.slice(-SEAM));
+            assert.ok(!next.some((k) => tail.has(k)), `seed ${seed}`);
+            // ...and the seam doesn't undo the spreading.
+            for (let i = SEAM; i < list.length; i++) run.next();
+            const second = run.order.slice(list.length, 2 * list.length);
+            assert.equal(clashes(second), 0, `seed ${seed}: the second cycle`);
+        }
+    });
+
+    it('is stable walking back and forth, and a small list still plays', () => {
+        const run = new ShuffleRun(
+            songs([
+                ['a', 'x', 4],
+                ['b', 'y', 4],
+            ]),
+            opts(7),
+        );
+        const walked = [run.next(), run.next(), run.next(), run.next()].map((s) => s.key);
+        assert.equal(run.prev().key, walked[2]);
+        assert.equal(run.prev().key, walked[1]);
+        assert.equal(run.next().key, walked[2]);
+        assert.equal(run.next().key, walked[3]);
+        const tiny = new ShuffleRun(songs([['a', 'x', 2]]), opts(3));
+        const keys = [tiny.next(), tiny.next(), tiny.next(), tiny.next()].map((s) => s.key);
+        assert.equal(new Set(keys.slice(0, 2)).size, 2, 'both before either again');
+    });
+
+    it('starts with the song chosen, and keeps what was played when the list changes', () => {
+        const list = songs([
+            ['a', 'x', 5],
+            ['b', 'y', 5],
+        ]);
+        const chosen = list[7];
+        const run = new ShuffleRun(list, opts(11), chosen);
+        assert.equal(run.next().key, chosen.key);
+        const played = [chosen.key, run.next().key, run.next().key];
+        run.replaceItems([...list, ...songs([['c', 'z', 3]])]);
+        assert.equal(run.current().key, played[2], 'still where it was');
+        const rest = [];
+        for (let i = 0; i < list.length + 3 - 3; i++) rest.push(run.next().key);
+        assert.ok(!rest.some((k) => played.includes(k)), 'nothing played again this cycle');
+        assert.equal(new Set(rest).size, rest.length);
+    });
+});

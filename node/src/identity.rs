@@ -19,6 +19,7 @@ pub(crate) mod serving;
 
 pub(crate) use routes::after_posted;
 pub(crate) use routes::backfill_paths;
+pub(crate) use routes::feed_filter;
 pub(crate) use routes::own_keys_leg;
 pub(crate) use routes::restate_labels;
 pub use routes::{router, BodyLimits};

@@ -210,6 +210,7 @@ fn user_db_opens_are_deliberate() {
         // overwhelming majority of moves (posts, from people who publish no edges) never
         // reach the open. The notifications.rs shape, for the same reason.
         ("edgegraph.rs", 1),
+        ("amp.rs", 1), // hrseAmp's library reads a post's sound from its author's database once per version of the post, into the node's memo (amp_sounds) - never once per request (plans/AUDIO.md)
         ("crawl.rs", 1), // a person's sitemap reads their shelf, once per sitemap asked for (plans/CRAWLING.md); the node-wide feed reads the node's memo, never a person's database
         // A public book's ePub reads its author's database once per request (epub.rs).
         ("epub.rs", 1),

@@ -45,6 +45,8 @@ import { NotificationsApp } from './apps/notifications.js';
 import { DeviceApp } from './apps/device.js';
 import { SettingsApp } from './apps/settings.js';
 import { BankApp } from './apps/bank.js';
+import { AmpApp } from './apps/amp.js';
+import { PlayerProvider, MiniPlayer } from './player.js';
 import { ChatApp } from './apps/chat.js';
 import { appsFor, appById, appLabel } from './pure/apps.js';
 import { nextSearchKind } from './pure/doclist.js';
@@ -598,9 +600,9 @@ const Inside = ({ session }) => {
         html`<div class="app-frame">
             ${appHeader}
             <div class="app-frame-inner">${content}</div>
-        </div>${bar}<${LedgerPoll} root=${root} /><${Toasts} />`;
+        </div>${bar}<${LedgerPoll} root=${root} /><${MiniPlayer} /><${Toasts} />`;
     const stage = (content) =>
-        html`<div class="app-stage">${content}</div>${bar}<${LedgerPoll} root=${root} /><${Toasts} />`;
+        html`<div class="app-stage">${content}</div>${bar}<${LedgerPoll} root=${root} /><${MiniPlayer} /><${Toasts} />`;
 
     // The persona lifecycle preempts routing - you can't reach any app without an open persona,
     // whatever the URL says. These onboarding flows aren't apps either, so they ride the stage.
@@ -671,6 +673,7 @@ const Inside = ({ session }) => {
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
+            <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} />
             <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} />
             <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} />
             <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
@@ -701,9 +704,11 @@ const Inside = ({ session }) => {
     `;
     // A node administrator on a server may super-pin posts to its front page (frontdoor.js).
     // The notebook shelf, for the switcher heading an app's list column (buckets.js).
-    return html`<${SuperPinner.Provider} value=${nodeAdmin && !isDevice()}><${BucketShelf.Provider} value=${{ roster, onSwitch: switchBucket }}
+    // The player (player.js) wraps every app, so the music keeps going from one to the next
+    // (plans/AUDIO.md, ruling 1).
+    return html`<${PlayerProvider} me=${root}><${SuperPinner.Provider} value=${nodeAdmin && !isDevice()}><${BucketShelf.Provider} value=${{ roster, onSwitch: switchBucket }}
         >${inApp ? shell(lockedBy ? html`<${LockedApp} id=${lockedBy} known=${ledger.known} />` : routed) : stage(routed)}</${BucketShelf.Provider}
-    ></${SuperPinner.Provider}>`;
+    ></${SuperPinner.Provider}></${PlayerProvider}>`;
 };
 
 /// The feed's address: a kept page (`Inside`, keptpage.js).

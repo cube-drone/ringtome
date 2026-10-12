@@ -184,6 +184,19 @@ export const APPS = [
         itemNoun: 'file',
     },
     {
+        // hrseAmp (plans/AUDIO.md, 2026-10-12): music - every sound you can see, in a table, and a
+        // player that keeps playing across the app (player.js). Bought after File upload, and
+        // experimental as video is (ruling 2).
+        id: 'amp',
+        name: 'hrseAmp™',
+        icon: 'music',
+        live: true,
+        unlock: 'music',
+        searchable: true,
+        plainSearch: true,
+        itemNoun: 'song',
+    },
+    {
         id: 'bank',
         name: 'hrseBank™',
         icon: 'bank',

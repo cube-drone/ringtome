@@ -580,6 +580,21 @@ pub async fn emoji_noted_between(
         .context("listing emoji labels noted in a window")
 }
 
+/// Every post on this node that carries sound, as its author said it: the implicit `audio` tag that
+/// publishing restates in public (identity/routes.rs `replicate_annotations`) - what hrseAmp's
+/// library narrows a reader's journal to (plans/AUDIO.md), without opening anyone's database.
+pub async fn sound_posts(node_db: &Db) -> Result<std::collections::HashSet<(String, String)>> {
+    let rows: Vec<(String, String)> = node_db
+        .fetch_all(
+            "SELECT DISTINCT target_author, target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
+             WHERE key = 'tag' AND value = 'audio' AND annotator = target_author",
+            (),
+        )
+        .await
+        .context("reading the posts that carry sound")?;
+    Ok(rows.into_iter().collect())
+}
+
 /// The post an author's `path` names (webpath.rs, plans/WEB_ADDRESSES.md): their own `path =
 /// <path>` label on one of their own posts, as this node holds it - for a peek too, which carries
 /// the whole annotations chain. Only the author's word counts.

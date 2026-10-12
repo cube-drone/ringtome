@@ -150,11 +150,35 @@ import {
     TextAa,
     Paragraph,
     Wrench,
+    // hrseAmp (plans/AUDIO.md): the app's tile and the player's controls.
+    MusicNotes,
+    SkipBack,
+    SkipForward,
+    Pause,
+    Play,
+    Stop,
+    Shuffle,
+    SpeakerHigh,
+    SpeakerX,
+    CornersIn,
+    CornersOut,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
 
 export const Icons = {
+    // hrseAmp (plans/AUDIO.md).
+    music: MusicNotes,
+    skipBack: SkipBack,
+    skipForward: SkipForward,
+    pause: Pause,
+    play: Play,
+    stop: Stop,
+    shuffle: Shuffle,
+    speaker: SpeakerHigh,
+    speakerOff: SpeakerX,
+    cornersIn: CornersIn,
+    cornersOut: CornersOut,
     // The corner cloud's faces (plans/SYNC_STATUS.md, piece 3; synccloud.js).
     syncIdle: Cloud,
     syncDown: CloudArrowDown,

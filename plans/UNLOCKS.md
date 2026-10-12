@@ -52,6 +52,10 @@ other financial instruments" - second to last in the Market, with **Video upload
 last**. A bond already held stays in the portfolio, and sells there in debt: the
 way out of debt is never for sale.
 
+A fourth (Curtis, 2026-10-12, plans/AUDIO.md ruling 2): **hrseAmp**, H$ 5,000,
+opens the music app, after File upload, with Video upload's kind of warning: it
+is new and experimental.
+
 Pins need both Private notes and Social (Curtis, 2026-10-05): a note and a post
 are the two things a pin pins.
 

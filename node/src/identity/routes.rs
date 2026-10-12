@@ -2661,7 +2661,7 @@ async fn feed_handler(
 
 /// The journal filter a feed request asks for: the reader's own posts or not, a window or not, and
 /// the dial's stop with the reader's dials in it.
-async fn feed_filter<'a>(
+pub(crate) async fn feed_filter<'a>(
     state: &AppState,
     facts: &crate::selectivity::Facts,
     root: &'a str,
