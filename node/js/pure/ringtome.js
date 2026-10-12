@@ -174,6 +174,39 @@ export function rehome(text) {
     return parts ? parts.path : null;
 }
 
+/// An address under a node's short name, `https://horsedrawingtycoon.com/@cube-drone/recipes/loaf`
+/// (plans/WEB_ADDRESSES.md, slice 3): `{ origin, slug, rest }`, or null. Only a whole URL: the name is
+/// that node's, so without its origin it names nothing. `rest` is what follows the name, decoded,
+/// '' for the person.
+const SLUG = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+export function parseAtAddress(text) {
+    const m = /^(https?:\/\/[^/?#\s]+)\/@([^/?#\s]+)(\/[^?#\s]*)?(?:[?#]\S*)?$/i.exec(
+        (text || '').trim(),
+    );
+    if (!m) return null;
+    const slug = m[2].toLowerCase();
+    if (!SLUG.test(slug)) return null;
+    let rest;
+    try {
+        rest = decodeURIComponent((m[3] || '').replace(/^\/+|\/+$/g, ''));
+    } catch {
+        return null;
+    }
+    if (rest && (!AT_PATH.test(rest) || ROUTES.has(rest.split('/')[0]))) return null;
+    return { origin: m[1].toLowerCase(), slug, rest };
+}
+
+/// Where a node's answer about one of its addresses (`/api/web-address`) opens here: the post, by
+/// id - which any node can fetch, a peek included, and whose page then says its path - or the
+/// folder, or the person, each with the answering node's key as the `via` that reaches them.
+export function localOfAnswer(answer, seg) {
+    if (!answer || !seg) return null;
+    const via = answer.via ? `?via=${encodeURIComponent(answer.via)}` : '';
+    if (answer.post) return `${ringtomePath({ seg, kind: 'post', doc: answer.post })}${via}`;
+    if (answer.folder) return `${ringtomePath({ seg, kind: 'path', at: answer.folder })}${via}`;
+    return `${ringtomePath({ seg })}${via}`;
+}
+
 /// An address the old way (`/id/<seg>`, `/id/<seg>/post/<book>[/<page doc>]`) - the prefix before
 /// `/ringtome/` - as its `/ringtome/` path, or null. Only ever a PATH or this node's own URL: `/id/`
 /// is ambiguous at a foreign origin, which is why the new prefix exists.

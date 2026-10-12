@@ -58,7 +58,7 @@ import { DeveloperOptions } from './developer.js';
 import { Version } from './version.js';
 import { openMirror, useLive } from './mirror.js';
 import { resolveSlugPath } from './doc/address.js';
-import { fromLegacyId, rehome, parseRingtome } from './pure/ringtome.js';
+import { fromLegacyId, rehome, parseRingtome, parseAtAddress } from './pure/ringtome.js';
 import {
     postHref,
     personHref,
@@ -67,6 +67,8 @@ import {
     appHref,
     settingsHref,
     LAUNCHER,
+    webAddress,
+    webAddressKnown,
 } from './links.js';
 import { parseSpeakable } from './speakable.js';
 import { api } from './net.js';
@@ -1128,13 +1130,48 @@ const App = () => {
 /// app's localhost - is this node's own address for the same thing (pure/ringtome.js; 2026-09-28).
 /// Pointed at, focused or clicked, it takes the local path, before the router reads it: so following
 /// it stays here, and so does opening it in a new tab. Anything that is not an address is untouched.
+///
+/// Another node's `@name` address too (plans/WEB_ADDRESSES.md, slice 3; Curtis, 2026-10-11: people
+/// should "pull links from horsedrawingtycoon and comment on them from their own apps"): that node is
+/// asked what it names, on the first point or focus, and the link takes the local address once it
+/// answers. A plain click before then waits for the answer - and follows the link as written if
+/// there is none. A link that opens in a new tab, or with a modifier held, is left as it is.
 function rehomeLink(e) {
     const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
     if (!a) return;
     const href = a.getAttribute('href');
     if (!href || href.startsWith('/')) return;
     const local = rehome(href);
-    if (local) a.setAttribute('href', local);
+    if (local) {
+        a.setAttribute('href', local);
+        return;
+    }
+    const at = parseAtAddress(href);
+    if (!at || at.origin === window.location.origin.toLowerCase()) return;
+    const known = webAddressKnown(href);
+    const inApp = (to) => {
+        a.setAttribute('href', to);
+        a.removeAttribute('target'); // it opens here now, like any address of ours
+    };
+    if (known) {
+        inApp(known);
+        return;
+    }
+    if (known === null) return; // that node named nothing: the link stays the web's
+    const asked = webAddress(href);
+    if (e.type !== 'click') return;
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+        return;
+    e.preventDefault();
+    e.stopPropagation();
+    asked.then((to) => {
+        if (to) {
+            inApp(to);
+            a.click();
+        } else {
+            window.location.assign(href);
+        }
+    });
 }
 
 function main() {

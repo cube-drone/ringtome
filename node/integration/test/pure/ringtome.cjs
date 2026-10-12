@@ -225,3 +225,42 @@ describe('a post by its web address (plans/WEB_ADDRESSES.md, 2026-10-11)', () =>
         );
     });
 });
+
+describe("another node's @name address (plans/WEB_ADDRESSES.md, slice 3)", () => {
+    it('reads a whole URL under a name, and nothing without its origin', () => {
+        assert.deepEqual(
+            r.parseAtAddress('https://Horsedrawingtycoon.com/@Cube-Drone/recipes/leek-soup?x=1'),
+            {
+                origin: 'https://horsedrawingtycoon.com',
+                slug: 'cube-drone',
+                rest: 'recipes/leek-soup',
+            },
+        );
+        assert.equal(r.parseAtAddress('https://h.example/@cube-drone').rest, '', 'the person');
+        assert.equal(
+            r.parseAtAddress('/@cube-drone/x'),
+            null,
+            'a name means nothing without its node',
+        );
+        assert.equal(
+            r.parseAtAddress('https://h.example/@cube-drone/post/abc'),
+            null,
+            'a route, not a path',
+        );
+        assert.equal(r.parseAtAddress('https://h.example/@a/x'), null, 'not a name');
+        assert.equal(r.parseAtAddress('https://h.example/people'), null);
+    });
+
+    it("opens the answer here: the post by id, a folder by its path, or the person, with the node's key", () => {
+        assert.equal(
+            r.localOfAnswer({ post: DOC, via: 'K' }, SEG),
+            `/ringtome/user/${SEG}/post/${DOC}?via=K`,
+        );
+        assert.equal(
+            r.localOfAnswer({ folder: 'recipes', via: 'K' }, SEG),
+            `/ringtome/user/${SEG}/recipes?via=K`,
+        );
+        assert.equal(r.localOfAnswer({}, SEG), `/ringtome/user/${SEG}`);
+        assert.equal(r.localOfAnswer(null, SEG), null);
+    });
+});

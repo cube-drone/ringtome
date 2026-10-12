@@ -325,6 +325,76 @@ pub async fn slug_of(
     Ok(Json(serde_json::json!({ "slug": slug })))
 }
 
+/// `GET /api/node/at/{slug}[/{*path}]`: what an address under this node's short name names
+/// (plans/WEB_ADDRESSES.md, slice 3, "the way back"): the persona, and the post or notebook folder
+/// the path names - with this node's own key, the `via` hint another node reaches them by. Asked
+/// by a reader's node that was handed `https://this.node/@name/...`, so its reader can open the post
+/// in their own app, and comment on it there (Curtis, 2026-10-11). Anonymous: it says nothing the
+/// page at that address doesn't.
+pub async fn at_name(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    at_name_answer(&state, &slug, "").await.map(Json)
+}
+
+/// `at_name`, with a path after the name.
+pub async fn at_name_path(
+    State(state): State<AppState>,
+    Path((slug, path)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    at_name_answer(&state, &slug, &path).await.map(Json)
+}
+
+/// The answer for `@slug/path` on this node, or a 404 naming nothing.
+pub async fn at_name_answer(
+    state: &AppState,
+    slug: &str,
+    path: &str,
+) -> Result<serde_json::Value, AppError> {
+    let nothing = || {
+        AppError::NotFound(crate::msg!(
+            "nodeface.nothing-at-that-name",
+            "nothing lives at that address"
+        ))
+    };
+    let Some((root, _current)) =
+        crate::slugs::resolve(&state.node_db, slug).await.map_err(AppError::Internal)?
+    else {
+        return Err(nothing());
+    };
+    let mut answer = serde_json::json!({
+        "root": root,
+        "endpoint": state.endpoint.id().to_string(),
+    });
+    let path = path.trim_matches('/');
+    if path.is_empty() {
+        return Ok(answer);
+    }
+    if !crate::webpath::well_formed(path) {
+        return Err(nothing());
+    }
+    if let Some(post) = crate::annotations::post_at_path(&state.node_db, &root, path)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        answer["post"] = serde_json::json!(post);
+        answer["path"] = serde_json::json!(path);
+        return Ok(answer);
+    }
+    if !path.contains('/') {
+        if let Some(bucket) = crate::annotations::folder_notebook(&state.node_db, &root, path)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            answer["folder"] = serde_json::json!(path);
+            answer["bucket"] = serde_json::json!(bucket);
+            return Ok(answer);
+        }
+    }
+    Err(nothing())
+}
+
 /// `GET /@{slug}/{*rest}`: a post's web address under the persona's short name
 /// (plans/WEB_ADDRESSES.md): its own head when the path names a post, else the person's; the last
 /// slug sends the reader on to the current, the path kept.

@@ -10,6 +10,8 @@ import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
 import { parseIdReference, parseSpeakable, speakable } from '../speakable.js';
+import { parseAtAddress, parseRingtome } from '../pure/ringtome.js';
+import { webAddress } from '../links.js';
 import { PersonRow } from '../person.js';
 import { api } from '../net.js';
 import {
@@ -46,6 +48,25 @@ export const PeopleLookup = ({ query, onQuery }) => {
     const loc = useLocation();
 
     const take = (value) => {
+        // A post's address goes to the post (plans/WEB_ADDRESSES.md, slice 3): by its id or its path
+        // anywhere, or under another node's `@name` - copied off someone's site, opened here to
+        // comment on. A person's address goes to the person, as ever.
+        const thing = parseRingtome(value || '');
+        if (thing && thing.kind && thing.kind !== 'doc') {
+            onQuery('');
+            loc.route(thing.path);
+            return;
+        }
+        const at = parseAtAddress(value || '');
+        if (at && at.origin !== window.location.origin.toLowerCase()) {
+            onQuery(value);
+            webAddress(value.trim()).then((local) => {
+                if (!local) return; // nothing there: the words stay a filter
+                onQuery('');
+                loc.route(local);
+            });
+            return;
+        }
         const ref = parseIdReference(value || '');
         if (ref && parseSpeakable(ref.seg)) {
             onQuery(''); // the address was a destination, never a filter to come back to

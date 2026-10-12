@@ -8,7 +8,7 @@ import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { toBase58 } from './speakable.js';
-import { ringtomePath, withHints, PREFIX } from './pure/ringtome.js';
+import { ringtomePath, withHints, PREFIX, localOfAnswer } from './pure/ringtome.js';
 import { bucketHref, bucketHint } from './pure/naming.js';
 import { api } from './net.js';
 import { Chip } from './doc/chips.js';
@@ -59,6 +59,36 @@ export function useSlugOf(rootHex, wanted = true) {
     }, [rootHex, wanted]);
     return slug;
 }
+
+/// Another node's `@name` address, opened here (plans/WEB_ADDRESSES.md, slice 3): this node asks that
+/// one what it names, and the answer becomes a local address - so a link copied off someone's site
+/// opens in the reader's own app, where they can comment. `place` is the public post the link sits
+/// in, for a reader who isn't signed in. Asked once per address per page load; null when it names
+/// nothing, or can't be asked.
+const webAddresses = new Map(); // url -> { asked: Promise, local: undefined | string | null }
+export function webAddress(url, place = null) {
+    let entry = webAddresses.get(url);
+    if (!entry) {
+        entry = { local: undefined };
+        const query = `url=${encodeURIComponent(url)}${place ? `&in=${encodeURIComponent(place)}` : ''}`;
+        entry.asked = api(`/api/web-address?${query}`)
+            .then((answer) =>
+                localOfAnswer(
+                    { ...answer, via: answer.endpoint ? toBase58(answer.endpoint) : null },
+                    seg(answer.root),
+                ),
+            )
+            .catch(() => null)
+            .then((local) => (entry.local = local));
+        webAddresses.set(url, entry);
+    }
+    return entry.asked;
+}
+/// What `webAddress` already knows, without asking: the local address, null, or undefined.
+export const webAddressKnown = (url) => {
+    const entry = webAddresses.get(url);
+    return entry ? entry.local : undefined;
+};
 
 /// A post's history (2026-10-02): every version it has been, where its "edited" mark leads.
 export const postHistoryHref = (rootHex, doc) => `${postHref(rootHex, doc)}/history`;

@@ -216,6 +216,110 @@ pub fn well_formed(path: &str) -> bool {
         })
 }
 
+/// How long another node's answer about one of its addresses is kept.
+const WEB_ADDRESS_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+/// The most of another node's answer read.
+const WEB_ADDRESS_MAX_BYTES: usize = 16 * 1024;
+
+/// What an address under a node's short name names (plans/WEB_ADDRESSES.md, slice 3, "the way
+/// back"): `https://horsedrawingtycoon.com/@cube-drone/recipes/leek-soup` as the persona, the post
+/// (or the notebook folder), and the key of the node that answered, for reaching them - so a link
+/// copied off one node's website opens in a reader's own app, where they can comment. This node's
+/// own addresses are answered here; another node's are asked of its `/api/node/at/...`, through
+/// the unfurler's guarded fetch (public addresses only, pinned, no redirects inward), and kept an
+/// hour. None for anything that isn't such an address, or that names nothing.
+pub async fn web_address(state: &crate::AppState, raw: &str) -> Option<serde_json::Value> {
+    let url = url::Url::parse(raw.trim()).ok()?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return None;
+    }
+    let rest = url.path().strip_prefix("/@")?;
+    let (slug, after) = rest.split_once('/').unwrap_or((rest, ""));
+    let slug = crate::slugs::normalise(slug)?;
+    let after = percent_decoded(after.trim_matches('/'))?;
+    if !after.is_empty() && !well_formed(&after) {
+        return None;
+    }
+    let own = state
+        .config
+        .public_url
+        .as_deref()
+        .and_then(|u| url::Url::parse(u).ok())
+        .is_some_and(|mine| mine.origin() == url.origin());
+    if own {
+        return crate::nodeface::at_name_answer(state, &slug, &after).await.ok();
+    }
+    static ASKED: std::sync::OnceLock<moka::future::Cache<String, serde_json::Value>> =
+        std::sync::OnceLock::new();
+    let asked = ASKED.get_or_init(|| {
+        moka::future::Cache::builder().max_capacity(4096).time_to_live(WEB_ADDRESS_TTL).build()
+    });
+    let origin = url.origin().ascii_serialization();
+    let lookup = if after.is_empty() {
+        format!("{origin}/api/node/at/{slug}")
+    } else {
+        format!(
+            "{origin}/api/node/at/{slug}/{}",
+            url.path().trim_start_matches('/').split_once('/').map(|x| x.1).unwrap_or("")
+        )
+    };
+    if let Some(hit) = asked.get(&lookup).await {
+        return Some(hit);
+    }
+    let bytes = crate::net::unfurl::fetch_media_bytes(
+        &lookup,
+        WEB_ADDRESS_MAX_BYTES,
+        state.config.local_test,
+    )
+    .await
+    .ok()?;
+    let said: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    // Only what an answer may say, each checked for shape: it's another node's word.
+    let hex_of = |key: &str, len: usize| {
+        said.get(key)
+            .and_then(|v| v.as_str())
+            .filter(|v| v.len() == len && v.chars().all(|c| c.is_ascii_hexdigit()))
+            .map(|v| v.to_ascii_lowercase())
+    };
+    let root = hex_of("root", 64)?;
+    let endpoint = said.get("endpoint").and_then(|v| v.as_str()).filter(|e| e.len() <= 128)?;
+    let mut answer = serde_json::json!({ "root": root, "endpoint": endpoint });
+    if let Some(post) = hex_of("post", 32) {
+        answer["post"] = serde_json::json!(post);
+        if let Some(path) = said.get("path").and_then(|v| v.as_str()).filter(|p| well_formed(p)) {
+            answer["path"] = serde_json::json!(path);
+        }
+    } else if let (Some(folder), Some(bucket)) = (
+        said.get("folder").and_then(|v| v.as_str()).filter(|f| well_formed(f)),
+        said.get("bucket").and_then(|v| v.as_str()).filter(|b| b.len() <= 256),
+    ) {
+        answer["folder"] = serde_json::json!(folder);
+        answer["bucket"] = serde_json::json!(bucket);
+    } else if !after.is_empty() {
+        return None; // a path that names nothing there
+    }
+    asked.insert(lookup, answer.clone()).await;
+    Some(answer)
+}
+
+/// `%XX` escapes undone, as UTF-8 - or None for an escape that isn't one.
+fn percent_decoded(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = s.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,6 +380,14 @@ mod tests {
         assert_eq!(free, "recipes/soups-stews/leek");
         let taken = unique(&[], "leek", &id, |p| async move { Ok(p == "leek") }).await.unwrap();
         assert_eq!(taken, "leek-a04aa2");
+    }
+
+    #[test]
+    fn an_escaped_path_reads_as_its_letters() {
+        assert_eq!(percent_decoded("r%C3%A9sum%C3%A9").as_deref(), Some("résumé"));
+        assert_eq!(percent_decoded("plain/path").as_deref(), Some("plain/path"));
+        assert_eq!(percent_decoded("bad%zz"), None);
+        assert_eq!(percent_decoded("cut%4"), None);
     }
 
     #[test]

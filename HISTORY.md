@@ -20258,3 +20258,45 @@ Chrome:
   without and with `RINGTOME_PUBLIC_URL`: the address bar, the copied link and
   the canonical address were `/ringtome/user/…/postymosty` without, and
   `/@jeff…/postymosty` with. The rig's claim now checks the fallback.
+
+## 2026-10-11 (cont.): web addresses, slice 3 - the way back
+
+Curtis: "I want people to be able to pull links from horsedrawingtycoon and
+comment on them from their own apps." A link to another node's
+`https://horsedrawingtycoon.com/@cube-drone/postymosty`, shown in someone's own
+app, now opens there instead of on the website, so they can reply. It's done
+when the link is shown, not when it's pasted, so the author's words are never
+rewritten.
+
+- **The website's node says what an address names**:
+  `GET /api/node/at/<name>[/<path>]` (`nodeface::at_name`) answers with the
+  persona, the post or notebook folder, and the node's own key, which another
+  node uses as its `via` hint to reach them. It's anonymous, and says nothing
+  the page itself doesn't.
+- **The reader's node asks it**: `GET /api/web-address?url=`
+  (`webpath::web_address`) answers its own addresses locally and asks another
+  node's lookup through the unfurler's guarded fetch (public addresses only, DNS
+  pinned, no inward redirects, a byte cap). Each answer's fields are checked for
+  shape, and kept for an hour. Who may ask follows the unfurler's rule.
+- **In the app**:
+  - **Clicks:** `rehomeLink` asks about another node's `@name` link on hover or
+    focus, and points it in-app once answered, at the post by id with that
+    node's key as `via` (a peek can fetch that; the post's page then shows its
+    path). A plain click before the answer waits for it, and follows the link as
+    written if there is none.
+  - **Link cards:** a pasted one becomes our card for the post (`turbolinks.js`
+    `atPlugin`), or the web's card if the node names nothing.
+  - **People:** the paste box opens a post's address (`/ringtome/` or another
+    node's `@name`), where before it took only people.
+
+Tests: pure tests for `parseAtAddress` and `localOfAnswer`; a unit test for the
+percent-decoding; and in `webpaths.cjs`, two nodes. Ada's node answers for her
+name and path, and Bea's node resolves `http://<Ada's node>/@ada…/postymosty`
+and reads the post without ever having followed her; a stranger to Bea's node is
+refused. In headless Chrome with two scratch nodes (Ada's with a public URL):
+
+- the link in Bea's post rendered as Ada's post card, pointing in-app with Ada's
+  node as `via`;
+- clicking the inline link opened Ada's post on Bea's node, with its reply box,
+  and the address switched to her path;
+- pasting the address into People opened it there.

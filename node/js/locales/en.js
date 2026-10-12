@@ -2104,6 +2104,9 @@ export default {
     'lib.unfurl-needs-a-session-or-a-post': 'sign in, or say which public post the link is in',
     'lib.unfurl-not-on-this-node': 'no public post here links there',
     'lib.the-nodes-unfurl-budget-is': 'link previews are paused for now',
+    'lib.web-address-needs-a-session-or-a-post': 'sign in, or say which public post the link is in',
+    'lib.web-address-not-on-this-node': 'no public post here links there',
+    'lib.web-address-names-nothing': 'that address names nothing this node could find',
 
     // --- node/src/made_with.rs ---
     'made-with.only-a-person-removes-it': 'only a person can take the "{tag}" tag off, from a signed-in browser',
@@ -2126,6 +2129,7 @@ export default {
     'nodeface.somebody-here-already-has-that-name': 'somebody on this node already has that name',
     'nodeface.a-name-is-three-to-thirty-two': 'a name is three to thirty-two lowercase letters, digits and hyphens',
     'nodeface.nobody-here-by-that-name': 'nobody on this node goes by that name',
+    'nodeface.nothing-at-that-name': 'nothing lives at that address',
 
     // --- node/src/oauth/routes.rs ---
     'oauth.this-assistant-cant-connect': "this assistant can't connect: {why}",

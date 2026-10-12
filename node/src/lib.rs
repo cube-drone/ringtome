@@ -321,6 +321,41 @@ async fn unfurl_handler(
     }
 }
 
+/// GET `/api/web-address?url=<url>[&in=<author/doc>]` - what another node's `@name` address names
+/// (plans/WEB_ADDRESSES.md, slice 3, "the way back"; Curtis, 2026-10-11: "I want people to be able
+/// to pull links from horsedrawingtycoon and comment on them from their own apps"): the persona,
+/// the post or folder, and the node's key to reach them by - asked of that node's own
+/// `/api/node/at/...`, or answered here for this node's own. Who may ask is the unfurler's rule, as
+/// the fetch is the same kind of thing: this node's own users about anything, a stranger only about
+/// a link a public post here holds.
+async fn web_address_handler(
+    session: Option<auth::Session>,
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<UnfurlQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if session.is_none() {
+        let Some(place) = q.in_post.as_deref() else {
+            return Err(AppError::Unauthorized(crate::msg!(
+                "lib.web-address-needs-a-session-or-a-post",
+                "sign in, or say which public post the link is in"
+            )));
+        };
+        if !linked_publicly(&state, place, &q.url).await {
+            return Err(AppError::Forbidden(crate::msg!(
+                "lib.web-address-not-on-this-node",
+                "no public post here links there"
+            )));
+        }
+    }
+    match webpath::web_address(&state, &q.url).await {
+        Some(answer) => Ok(Json(answer)),
+        None => Err(AppError::NotFound(crate::msg!(
+            "lib.web-address-names-nothing",
+            "that address names nothing this node could find"
+        ))),
+    }
+}
+
 /// The words a public post on this node shows a stranger, the same door `/id/.../body` is, hold
 /// `url`. A stranger's read: what this node would hand anyone (a sealed post's words are
 /// ciphertext here, so its links never match), and nothing it would not (a post not held here is
@@ -921,6 +956,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/@{slug}", get(nodeface::slug_page))
         .route("/@{slug}/{*rest}", get(nodeface::slug_path_page))
         .route("/api/node/slug-of/{root}", get(nodeface::slug_of))
+        .route("/api/node/at/{slug}", get(nodeface::at_name))
+        .route("/api/node/at/{slug}/{*path}", get(nodeface::at_name_path))
+        .route("/api/web-address", get(web_address_handler))
         .route("/api/identity/{root}/slug", get(nodeface::slug_get).put(nodeface::slug_put))
         .route("/api/identity/{root}/listed", get(nodeface::listed_get).put(nodeface::listed_put))
         .route("/api/unfurl", get(unfurl_handler))

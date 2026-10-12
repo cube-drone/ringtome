@@ -1,6 +1,6 @@
 # Web addresses - a post's place on the public web
 
-A design draft (2026-10-11), with rulings. Slices 1 and 2 built the same day.
+A design draft (2026-10-11), with rulings. Slices 1, 2 and 3 built the same day.
 
 ## The ask (Curtis, 2026-10-11)
 
@@ -286,8 +286,24 @@ natural next slice after this.
    names each page's path, the reader's links carry it, and turning a page
    (still by id, so the reader doesn't remount) puts the page's path in the
    address bar.
-3. **The way back**: `GET /api/node/at/@name/<path>`, and the paste rewrite
-   resolving a pretty URL to the identity path.
+3. **The way back** - _built 2026-10-11_ (Curtis: "I want people to be able to
+   pull links from horsedrawingtycoon and comment on them from their own apps").
+   Built at render time rather than paste time: the words stay as the author
+   wrote them, and the link becomes in-app when it's shown.
+   - The website's node answers `GET /api/node/at/<name>[/<path>]` with the
+     persona, the post or folder, and its own key (`nodeface::at_name`).
+   - The reader's node answers `GET /api/web-address?url=`
+     (`webpath::web_address`): its own addresses here, another node's asked
+     through the unfurler's guarded fetch and kept an hour. It's gated as the
+     unfurler is.
+   - In the app, a link to another node's `/@name/...` is asked about on hover
+     or focus, and opens here
+     (`/ringtome/user/<them>/post/<id>?via=<their node>`). A plain click before
+     the answer waits for it, and follows the link as written if there's none.
+   - A pasted one becomes our card for the post (`turbolinks.js` `atPlugin`),
+     falling back to the web's card.
+   - The People app's paste box opens a post's address, `/ringtome/` or another
+     node's `@name`, where it had taken only people.
 4. **Renaming and retiring**: a path editor in the publish panel, former paths
    redirecting, a takedown releasing them.
 5. _(Later, separate)_ the words in the HTML for crawlers.

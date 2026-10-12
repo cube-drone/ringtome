@@ -11,7 +11,7 @@ const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
 const { makeUserFetch } = require('./helpers.cjs');
-const { makeFetch } = require('./fetch.cjs');
+const { makeFetch, HOST, HOST_B } = require('./fetch.cjs');
 const { beat } = require('./beat.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
@@ -201,3 +201,77 @@ describe('web addresses: a post lives at a readable path', function () {
         assert.equal((await stranger(`api/id/${root}/at/nothing-filed`)).status, 404);
     });
 });
+
+(HOST_B ? describe : describe.skip)(
+    "web addresses: the way back, from another node's @name",
+    function () {
+        this.timeout(600000);
+
+        let ada, adaRoot, bea, name, post;
+
+        before(async () => {
+            ada = await makeUserFetch({ prefix: 'wayada' });
+            adaRoot = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+            await ada(`api/identity/${adaRoot}/serve`, { method: 'POST' });
+            name = `way${Date.now() % 1000000}`;
+            await j(ada, `api/identity/${adaRoot}/slug`, { slug: name }, 'PUT');
+            const d = await (
+                await j(ada, `api/identity/${adaRoot}/docs`, {
+                    title: 'Postymosty',
+                    body: 'comment on me',
+                    format: 'marquee',
+                })
+            ).json();
+            post = JSON.parse(
+                await (await j(ada, `api/identity/${adaRoot}/docs/${d.doc_id}/publish`, {})).text(),
+            ).post_id;
+            bea = await makeUserFetch({ prefix: 'waybea', host: HOST_B });
+            const beaRoot = (await (await bea('api/identity', { method: 'POST' })).json())
+                .root_pubkey;
+            await bea(`api/identity/${beaRoot}/serve`, { method: 'POST' });
+        });
+
+        it("Ada's node says what her address names, and her key to reach her by", async () => {
+            let answer = null;
+            for (let i = 0; i < 20 && !answer; i++) {
+                const r = await makeFetch()(`api/node/at/${name}/postymosty`);
+                if (r.status === 200) answer = await r.json();
+                else await wait(250);
+            }
+            assert.ok(answer, 'answered');
+            assert.equal(answer.root, adaRoot);
+            assert.equal(answer.post, post);
+            assert.ok(answer.endpoint, "its node's key");
+            assert.equal((await makeFetch()(`api/node/at/${name}/nothing-here`)).status, 404);
+        });
+
+        it("Bea's node asks Ada's, and Bea reads the post in her own app, never having followed Ada", async () => {
+            const url = `http://${HOST}/@${name}/postymosty`;
+            const r = await bea(`api/web-address?url=${encodeURIComponent(url)}`);
+            assert.equal(r.status, 200, await r.clone().text());
+            const answer = await r.json();
+            assert.equal(answer.root, adaRoot);
+            assert.equal(answer.post, post);
+            const { toBase58 } = await import('../../js/speakable.js');
+            const via = toBase58(answer.endpoint);
+            await bea(`api/id/${adaRoot}/profile?via=${via}`);
+            let read = null;
+            for (let i = 0; i < 40 && !read; i++) {
+                const p = await bea(`api/id/${adaRoot}/posts/${post}`);
+                if (p.status === 200) read = await p.json();
+                else {
+                    await bea(`api/id/${adaRoot}/profile?via=${via}`);
+                    await wait(500);
+                }
+            }
+            assert.ok(read, "the post, on Bea's node");
+            assert.equal(read.title, 'Postymosty');
+            // A stranger to Bea's node may ask only about a link a public post there holds.
+            const anon = makeFetch(HOST_B);
+            assert.equal(
+                (await anon(`api/web-address?url=${encodeURIComponent(url)}`)).status,
+                401,
+            );
+        });
+    },
+);

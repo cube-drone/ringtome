@@ -26,7 +26,8 @@ import { parseBook } from '../pure/books.js';
 import { mediaPath } from '../pure/ringtome.js';
 import { ownMediaKind, OWN_MEDIA_KINDS } from '../pure/mediakind.js';
 import { excerpt } from '../pure/excerpt.js';
-import { parseRingtome, ringtomePath } from '../pure/ringtome.js';
+import { parseAtAddress, parseRingtome, ringtomePath } from '../pure/ringtome.js';
+import { webAddress } from '../links.js';
 import { parseSpeakable, wordsFor } from '../speakable.js';
 import { identiconUri } from '../pure/identicon.js';
 import { t } from '../i18n.js';
@@ -352,9 +353,32 @@ const ringtomePlugin = {
     render: (target, { level, data }) => renderRingtome(data, level),
 };
 
+/// Another node's `@name` address (plans/WEB_ADDRESSES.md, slice 3): that node says what it names,
+/// and the card is ours for the thing, linking into this app - a link copied off someone's site is
+/// somewhere the reader can comment. One that names nothing, or can't be asked, is the web's card.
+const atPlugin = {
+    name: 'ringtome-at',
+    match: (target) => {
+        const at = parseAtAddress(target);
+        return (
+            !!at &&
+            (typeof window === 'undefined' || at.origin !== window.location.origin.toLowerCase())
+        );
+    },
+    resolve: async (target) => {
+        const local = await webAddress(target, placeOf.get(target));
+        if (local) return { at: await resolveRingtome(local).catch(() => ({ private: true })) };
+        return { web: await ogPlugin.resolve(target) };
+    },
+    render: (target, ctx) =>
+        ctx.data && ctx.data.at
+            ? renderRingtome(ctx.data.at, ctx.level)
+            : ogPlugin.render(target, { ...ctx, data: ctx.data && ctx.data.web }),
+};
+
 // Ours first: a `/ringtome/` address must never fall through to the OpenGraph fetcher, which
-// would draw the author's page head rather than the thing.
-const plugins = [ringtomePlugin, ...defaultPlugins, ogPlugin];
+// would draw the author's page head rather than the thing - nor another node's `@name` address.
+const plugins = [ringtomePlugin, atPlugin, ...defaultPlugins, ogPlugin];
 
 // One stylesheet for the whole chain, injected once - turbolinkStyles collects each
 // plugin's declared skin plus the standard card's baseline.
