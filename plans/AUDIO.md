@@ -187,11 +187,11 @@ instantly there, and "select all" means "all that match" with no round trip.
 ### 2. The table
 
 - **Columns**: Title, Artist, Album, #, Year, Genre, Length, Tags, Notebook,
-  Posted by, Via, Date, Score. Shown by default: Title, Artist, Album, Length,
-  Tags (Curtis, 2026-10-12). Hidden by default: the rest. Sortable: all but Tags
-  and #. Sorting by Album keeps each album in track order. Posted by and Via
-  (first drafted as "By" and "From", which Curtis found easy to mix up) say in
-  their headers' hover what each means.
+  Posted by, Via, Date added, Score. Shown by default: Title, Artist, Album,
+  Length, Tags, Date added, Score (Curtis, 2026-10-12). Hidden by default: the
+  rest. Sortable: all but Tags and #. Sorting by Album keeps each album in track
+  order. Posted by and Via (first drafted as "By" and "From", which Curtis found
+  easy to mix up) say in their headers' hover what each means.
 - **Widths** drag at a header's edge and are kept per device. A cell never
   wraps: what doesn't fit is cut with an ellipsis, and the whole value shows on
   hover.
@@ -377,8 +377,8 @@ stopping. And skip is just "next".
 2. **The player** - built 2026-10-12: owned by the shell, the bar in hrseAmp and
    the compact one elsewhere, Media Session, shuffle with its rules, and
    expanded mode.
-3. **Filters**: the strip over the library, whose tags, saving, and the
-   Playlists column with "all".
+3. **Filters** - built 2026-10-12: the strip over the library, whose tags,
+   saving, and the Playlists column with "all".
 4. **Twins carry their sound's fields**: publishing states them on the twin, and
    a backfill for twins already published.
 5. **Mixtapes**: the taxonomy, "add to mixtape", their order in the table.
@@ -407,6 +407,78 @@ stopping. And skip is just "next".
 - **A sound with no cover shows its waveform.** A thumbnail is always there - an
   embedded cover, else the waveform the ingest draws - so the player's thumbnail
   is never empty, though a waveform at 36 pixels reads as a dark square.
+
+### What building slice 3 found
+
+- **The strip counts in the browser.** The whole library is already there, so
+  each row is counted over what the other rows' picks leave, as the node counts
+  the feed's (`pure/ampfilters.js`), and nothing goes to the node per click.
+- **"From" is the via row**, the column's own word, with "me" leading it (ruling
+  8). Artist and genre are the folded columns' values, so feed songs join those
+  rows with slice 4.
+- **hrseAmp's dial is its own.** It starts at the feed's stop and is kept in
+  `amp_selectivity`, so moving it here doesn't move the feed. A saved filter
+  carries its stop and whose tags.
+- **Whose tags** needs the door to say which are the author's and the reader's:
+  each feed row carries `tags` and `our_tags`. Reactions are tags, so a friend's
+  like is one of everyone's tags, as on the feed's strip.
+- **No tagging someone else's song yet.** Ruling 6 makes a tag on another
+  author's song a public label, but the file panel offers only your private
+  fields there, so "author's and mine" differs from everyone's only by other
+  people's labels until the panel can tag.
+- **Not gated on "Reactions, tags & filters".** The feed's strip is; hrseAmp's
+  is part of the app its own unlock buys.
+
+### After using slices 1 to 3 (Curtis, 2026-10-12)
+
+- A filter keeps the header's search words with its picks, and choosing it puts
+  them back in the box; "all" clears them. Saved feeds do the same.
+- The Tags column draws tags as bubbles, without reactions, which the Score
+  column shows instead: each emoji the song has collected, with how many people
+  said it (`tag_counts` from the door). The column still sorts by the score.
+- Delete sits at the head of the file panel, trash first, for one song or
+  several; it deletes only your own. The bulk panel inside hrseAmp has no "move
+  all to" (notebooks are another app's business here) and no header of its own.
+- The cassette is a compact cassette: corner screws, a label round the window
+  with the title on its top line and the artist under the window in Caveat, the
+  reels high in the window, and the tapered edge with its holes.
+
+### And after more use (Curtis, 2026-10-12)
+
+- The file panel is a column of the house's kind (`panes.js`), left of the table
+  beside Playlists: as wide as it's dragged, tucked to a rail by its head, and a
+  tab in a narrow window. Its heading is ruled off, delete sits under it, and
+  your like and dislike are its list's "score" row.
+- The player keeps its list, its song, where in the song, and the shuffle with
+  its order and place, per persona on this computer, so a refresh comes back
+  paused where it was and previous walks back over the same songs. hrseAmp
+  handing the same songs back keeps the shuffle's order.
+- Filters take a year range and a length range ("3:30", or minutes); a song with
+  no year is outside any year range.
+- "date" is "date added", and it and Score are default columns. A table whose
+  columns were already kept on this computer keeps its own choice.
+
+### Probable duplicates (Curtis, 2026-10-12)
+
+The same bytes uploaded twice are one document already, but the same song in
+another encoding, or from someone else, is a second one: Curtis found three
+copies of one track, all within five seconds of one another. A "probable
+duplicates" chip on the strip shows only songs with a probable copy - the same
+title once case, punctuation, a track number in front and a file extension are
+set aside; the same artist where both say one (a feed song says none until slice
+4); and lengths within five seconds - each set of copies together in the table,
+so the ones to keep and the ones to delete sit side by side. A second press
+leaves the copies out, as a tag's chip does (Curtis, 2026-10-12): one of each
+stays - your own copy over someone else's, then one that says its artist, then
+the first in the table - so a list or a shuffle plays a song once. A third shows
+everything. It's saved with a filter like any pick. Copies are found across the
+whole library, so a song whose copy another pick hides still shows.
+
+### Saving into a filter (Curtis, 2026-10-12)
+
+The filter last chosen in Playlists is remembered: once the strip differs from
+it, "save to "name"" writes the strip back into it, beside "save as new". The
+feed's saved feeds do the same.
 
 ## Questions for Curtis
 

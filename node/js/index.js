@@ -638,7 +638,7 @@ const Inside = ({ session }) => {
         keptPath === FEED_PATH
             ? owns('social') &&
               html`<${KeptLayer} key=${kept.url} visible=${kept.visible} fill=${true}>
-                  <${FeedApp} current=${persona.current} searchQuery=${query} />
+                  <${FeedApp} current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
               </${KeptLayer}>`
             : keptPerson &&
               html`<${KeptLayer} key=${kept.url} visible=${kept.visible}>
@@ -673,7 +673,7 @@ const Inside = ({ session }) => {
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
-            <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} />
+            <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
             <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} />
             <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} />
             <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />

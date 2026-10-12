@@ -145,14 +145,26 @@ pub async fn library_handler(
                 fields.insert(a.key.clone(), a.value.clone());
             }
         }
+        // Every tag this reader can see on it, and the author's and their own among them - the
+        // filter strip's "whose tags" chip (ruling 12) narrows to the second.
         let mut tags: Vec<String> = Vec::new();
+        let mut our_tags: Vec<String> = Vec::new();
+        // How many people said each tag - the Score column shows the reactions among them, with
+        // their counts (Curtis, 2026-10-12).
+        let mut said: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
         for a in on_sound.iter().chain(on_post.iter()) {
-            if a.key == "tag"
-                && !crate::search::MEDIA_TAGS.contains(&a.value.as_str())
-                && !crate::search::SIZE_TAGS.contains(&a.value.as_str())
-                && !tags.contains(&a.value)
+            if a.key != "tag"
+                || crate::search::MEDIA_TAGS.contains(&a.value.as_str())
+                || crate::search::SIZE_TAGS.contains(&a.value.as_str())
             {
+                continue;
+            }
+            if !tags.contains(&a.value) {
                 tags.push(a.value.clone());
+            }
+            said.entry(a.value.clone()).or_default().insert(a.annotator.clone());
+            if (a.annotator == author || a.annotator == root) && !our_tags.contains(&a.value) {
+                our_tags.push(a.value.clone());
             }
         }
         let notebook = on_post
@@ -173,6 +185,8 @@ pub async fn library_handler(
             "title": media.title,
             "fields": fields,
             "tags": tags,
+            "our_tags": our_tags,
+            "tag_counts": said.iter().map(|(v, who)| (v.clone(), who.len())).collect::<BTreeMap<_, _>>(),
             "notebook": notebook,
             "duration_ms": media.duration_ms,
             "thumb": media.has_thumb,

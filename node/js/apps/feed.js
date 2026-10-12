@@ -85,19 +85,9 @@ import { tagCounts } from '../pure/contacttags.js';
 import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
 import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
+import { STOP_WORDS } from '../curiosity.js';
 
 const html = htm.bind(h);
-
-/// The curiosity dial's stops (pure/selectivity.js keeps the keys), in words a translation can
-/// carry - Curtis's design, verbatim, in English.
-const STOP_WORDS = {
-    explorer: () => t('apps.feed.stop-explorer', 'explorer'),
-    'highly-speculative': () => t('apps.feed.stop-highly-speculative', 'highly speculative'),
-    speculative: () => t('apps.feed.stop-speculative', 'speculative'),
-    interest: () => t('apps.feed.stop-interest', 'interest only'),
-    medium: () => t('apps.feed.stop-medium', 'medium interest only'),
-    high: () => t('apps.feed.stop-high', 'high interest only'),
-};
 
 /// The feed's orders (pure/feed.js keeps the keys), in words.
 const SORT_WORDS = {
@@ -297,6 +287,8 @@ export const FeedStream = ({
     onSave = null,
     applied = null,
     onSettings = null,
+    onSearch = null,
+    loaded = null,
 }) => {
     const feedDoor = feedUrl || (root ? `/api/identity/${root}/feed` : null);
     const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
@@ -521,13 +513,17 @@ export const FeedStream = ({
     // its order, all at once - each written where a hand on the strip would write it.
     useEffect(() => {
         if (!applied) return;
-        // "all" (Curtis, 2026-10-11) is "clear all": the picks go, the curiosity and order stay.
+        // "all" (Curtis, 2026-10-11) is "clear all": the picks and the search words go, the
+        // curiosity and order stay.
         if (applied.all) {
             setPicks(NO_PICKS);
+            if (onSearch) onSearch('');
             return;
         }
-        const { picks: next, stop: nextStop, sort: nextSort } = applied.settings;
+        const { picks: next, stop: nextStop, sort: nextSort, q } = applied.settings;
         setPicks({ ...NO_PICKS, ...next });
+        // The search words saved with it (Curtis, 2026-10-12), into the header's box.
+        if (onSearch) onSearch(q || '');
         if (dial && nextStop && SELECTIVITY_STOPS.some((s) => s.key === nextStop))
             moveStop(nextStop);
         if (sortable && nextSort && FEED_SORTS.includes(nextSort)) moveSort(nextSort);
@@ -611,7 +607,12 @@ export const FeedStream = ({
     ].filter(Boolean);
 
     // What the feed is set to now, for the Feeds column to know a saved one when it's on screen.
-    const settingsNow = feedSettings(picks, dial ? stop : null, sortable ? sort : null);
+    const settingsNow = feedSettings(
+        picks,
+        dial ? stop : null,
+        sortable ? sort : null,
+        searchQuery,
+    );
     const settingsKey = JSON.stringify(settingsNow);
     useEffect(() => {
         if (onSettings && (!dial || stop !== null) && (!sortable || sort !== null))
@@ -619,13 +620,17 @@ export const FeedStream = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [settingsKey]);
     // Save filter (Curtis, 2026-10-11): this pile, by a name, into the Feeds column.
-    const save = async () => {
-        const name = (
-            prompt(t('apps.feed.save-filter-name', 'A name for this feed:')) || ''
-        ).trim();
+    // Saving back into the feed that was chosen (Curtis, 2026-10-12: adjusting a saved filter and
+    // saving it again "just wants to create a new filter"): `loaded`, the saved feed last chosen in
+    // the Feeds column, takes the feed as it now stands under its own name; "save as new" asks a name.
+    const save = async (asNew) => {
+        const into = asNew ? null : loaded;
+        const name = into
+            ? into.name
+            : (prompt(t('apps.feed.save-filter-name', 'A name for this feed:')) || '').trim();
         if (!name) return;
         try {
-            await onSave(name, settingsNow);
+            await onSave(name, settingsNow, into ? into.id : null);
             toast(t('apps.feed.saved-as', 'saved as "{name}"', { name }));
         } catch (e) {
             toast(
@@ -725,11 +730,21 @@ export const FeedStream = ({
                 }
                 ${
                     onSave &&
+                    loaded &&
+                    !sameFeed(loaded, settingsNow) &&
+                    html`<button
+                    class="facet-more feed-save"
+                    title=${t('apps.feed.save-into-title', 'keep these settings in "{name}", in place of what it held', { name: loaded.name })}
+                    onClick=${() => save(false)}
+                >${t('apps.feed.save-into', 'save to "{name}"', { name: loaded.name })}</button>`
+                }
+                ${
+                    onSave &&
                     html`<button
                     class="facet-more feed-save"
                     title=${t('apps.feed.save-filter-title', 'keep these settings as a feed of their own, in the Feeds column')}
-                    onClick=${save}
-                >${t('apps.feed.save-filter', 'save filter')}</button>`
+                    onClick=${() => save(true)}
+                >${loaded ? t('apps.feed.save-as-new', 'save as new') : t('apps.feed.save-filter', 'save filter')}</button>`
                 }
                 ${
                     sortable &&
@@ -823,7 +838,7 @@ export const FeedStream = ({
     `;
 };
 
-export const FeedApp = ({ current, searchQuery }) => {
+export const FeedApp = ({ current, searchQuery, onSearch }) => {
     const loc = useLocation();
     const root = current && current.root;
     const [posting, setPosting] = useState(false);
@@ -862,14 +877,21 @@ export const FeedApp = ({ current, searchQuery }) => {
         loadSaved();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root]);
-    const saveFeed = async (name, settings) => {
-        const bytes = new Uint8Array(8);
-        crypto.getRandomValues(bytes);
-        const id = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+    // The saved feed last chosen, by id: "save" puts the feed back into it (Curtis, 2026-10-12).
+    const [loadedId, setLoadedId] = useState(null);
+    const loaded = saved.find((f) => f.id === loadedId) || null;
+    const saveFeed = async (name, settings, into = null) => {
+        let id = into;
+        if (!id) {
+            const bytes = new Uint8Array(8);
+            crypto.getRandomValues(bytes);
+            id = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+        }
         await api(`/api/identity/${root}/private/kv/${SAVED_FEEDS}/${id}`, {
             method: 'PUT',
             body: JSON.stringify({ value: savedValue(name, settings) }),
         });
+        setLoadedId(id);
         await loadSaved();
     };
     const forgetFeed = async (feed) => {
@@ -886,6 +908,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                 body: JSON.stringify({ value: '' }),
             });
             setSaved((have) => have.filter((f) => f.id !== feed.id));
+            if (loadedId === feed.id) setLoadedId(null);
         } catch (e) {
             toast(
                 t('apps.feed.couldnt-forget-it', "couldn't forget it: {message}", {
@@ -1173,13 +1196,14 @@ export const FeedApp = ({ current, searchQuery }) => {
                               all" leaves it - lit while nothing is picked. Nobody's to forget, so a
                               blank where the trash would be keeps the names in line. */ ''
                           }
-                          <div class=${settingsNow && !anyPicks(settingsNow.picks) ? 'feed-saved-row active' : 'feed-saved-row'}>
+                          <div class=${settingsNow && !anyPicks(settingsNow.picks) && !settingsNow.q ? 'feed-saved-row active' : 'feed-saved-row'}>
                               <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
                               <button
                                   class="feed-saved-name"
                                   title=${t('apps.feed.clear-all-title', 'show everything again - every type and tag back to unpicked')}
                                   onClick=${() => {
                                       setApplied({ all: true, at: Date.now() });
+                                      setLoadedId(null);
                                       settle();
                                   }}
                               >${t('apps.feed.all', 'all')}</button>
@@ -1199,6 +1223,7 @@ export const FeedApp = ({ current, searchQuery }) => {
                                       class="feed-saved-name"
                                       onClick=${() => {
                                           setApplied({ settings: feed, at: Date.now() });
+                                          setLoadedId(feed.id);
                                           settle();
                                       }}
                                   >${feed.name}</button>
@@ -1296,8 +1321,10 @@ export const FeedApp = ({ current, searchQuery }) => {
                     scheduled=${scheduledItems}
                     editingFor=${editingFor}
                     searchQuery=${searchQuery}
+                    onSearch=${onSearch}
                     onSave=${saveFeed}
                     applied=${applied}
+                    loaded=${loaded}
                     onSettings=${setSettingsNow}
                 />
             </div>

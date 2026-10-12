@@ -5,6 +5,7 @@
 // Pure: the vectors are in integration/test/pure/amp.cjs.
 
 import { createdMs } from './docdate.js';
+import { isEmojiTag } from './annotations.js';
 
 /// The sound fields a file carries (media/audio.rs `TAG_FIELDS`), in that order.
 export const SOUND_FIELDS = [
@@ -18,7 +19,8 @@ export const SOUND_FIELDS = [
     'track number',
 ];
 
-/// The table's columns (section 2, ruling 11): each with whether it sorts, whether it shows before
+/// The table's columns (section 2, ruling 11; shown by default since 2026-10-12: title, artist,
+/// album, length, tags, date added and score): each with whether it sorts, whether it shows before
 /// anyone says otherwise, and its width to start with, in pixels.
 export const COLUMNS = [
     { key: 'title', sortable: true, shown: true, width: 280 },
@@ -32,8 +34,8 @@ export const COLUMNS = [
     { key: 'notebook', sortable: true, shown: false, width: 130 },
     { key: 'by', sortable: true, shown: false, width: 130 },
     { key: 'from', sortable: true, shown: false, width: 130 },
-    { key: 'date', sortable: true, shown: false, width: 110 },
-    { key: 'score', sortable: true, shown: false, width: 64 },
+    { key: 'date', sortable: true, shown: true, width: 110 },
+    { key: 'score', sortable: true, shown: true, width: 120 },
 ];
 
 export const COLUMN_MIN = 36;
@@ -69,6 +71,19 @@ export function trackNumber(raw) {
 
 /// A reaction's weight on your own sound's score, in the node's thousandths (score.rs).
 const REACTION_MILLI = { up: 1000, down: -1000 };
+/// Your reaction to your own sound, as the emoji the Score column shows.
+const REACTION_EMOJI = { up: '\u{1F44D}', down: '\u{1F44E}' };
+
+/// The reactions a song has collected, `[[emoji, count]]`, the most said first (Curtis, 2026-10-12:
+/// the Score column shows them). `counts` is how many people said each of its tags.
+export function reactionsOf(counts) {
+    return Object.entries(counts || {})
+        .filter(([value, n]) => n > 0 && isEmojiTag(value))
+        .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+}
+
+/// A song's tags for the Tags column: the words, not the reactions, which the Score column shows.
+export const wordTags = (tags) => (tags || []).filter((tag) => !isEmojiTag(tag));
 
 /// One row, from the author's fields, your layer over them, and what the row is.
 function row({ author, doc, own, docTitle, fields, layer, ...rest }) {
@@ -106,9 +121,12 @@ export function ownRow(docRow, me, layer = {}) {
         from: me,
         lengthMs: (docRow.media && docRow.media.duration_ms) || null,
         tags: (docRow.tags || []).filter((t) => t !== 'audio'),
+        // Your own sound's tags are all yours.
+        ourTags: (docRow.tags || []).filter((t) => t !== 'audio'),
         notebook,
         dateMs: createdMs(docRow),
         score: REACTION_MILLI[mine.reaction] || 0,
+        reactions: REACTION_EMOJI[mine.reaction] ? [[REACTION_EMOJI[mine.reaction], 1]] : [],
         thumb: !!(docRow.media && docRow.media.has_thumb),
     });
 }
@@ -126,9 +144,11 @@ export function feedRow(sound, layer = {}) {
         from: sound.via || sound.author,
         lengthMs: sound.duration_ms || null,
         tags: sound.tags || [],
+        ourTags: sound.our_tags || sound.tags || [],
         notebook: sound.notebook || '',
         dateMs: sound.arrived_ms || sound.published_ms || 0,
         score: sound.score || 0,
+        reactions: reactionsOf(sound.tag_counts),
         thumb: !!sound.thumb,
     });
 }
@@ -229,4 +249,38 @@ export function clickSelect(picked, key, ordered, anchor, { shift = false, toggl
         return next;
     }
     return new Set([key]);
+}
+
+/// What the player keeps of a song across a refresh: enough to play it and say what it is.
+export const slimRow = (row) => ({
+    key: row.key,
+    author: row.author,
+    doc: row.doc,
+    own: !!row.own,
+    title: row.title || '',
+    artist: row.artist || '',
+    album: row.album || '',
+    lengthMs: row.lengthMs || null,
+    thumb: !!row.thumb,
+});
+
+/// The player's state as kept (Curtis, 2026-10-12: the list, the song, the shuffle and where it
+/// stands, durable across a refresh), read back: null for anything that isn't one.
+export function readPlayerState(raw) {
+    let v;
+    try {
+        v = JSON.parse(raw || 'null');
+    } catch {
+        return null;
+    }
+    if (!v || !Array.isArray(v.rows)) return null;
+    const rows = v.rows.filter((r) => r && typeof r.key === 'string' && r.author && r.doc);
+    if (!rows.length) return null;
+    const current = rows.find((r) => r.key === v.current) || null;
+    return {
+        rows,
+        current,
+        shuffle: !!v.shuffle,
+        run: v.run && Array.isArray(v.run.order) ? v.run : null,
+    };
 }

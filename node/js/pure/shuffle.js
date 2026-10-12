@@ -168,10 +168,40 @@ export class ShuffleRun {
         return this.current();
     }
 
+    /// Where the run stands, as keys - to be kept across a refresh (Curtis, 2026-10-12: the shuffle
+    /// should be durable) and handed back to `restore`.
+    snapshot() {
+        const { keyOf } = this.opts;
+        return { order: this.order.map(keyOf), pos: this.pos, cycleStart: this.cycleStart };
+    }
+
+    /// A run picked up where `snap` left it, over `items`: the order kept for every song still in
+    /// the list, and the place in it. A snapshot that names none of them starts a new run.
+    static restore(items, opts, snap) {
+        const byKey = new Map(items.map((item) => [opts.keyOf(item), item]));
+        const order = ((snap && snap.order) || []).map((k) => byKey.get(k)).filter(Boolean);
+        if (!order.length) return new ShuffleRun(items, opts);
+        const run = Object.create(ShuffleRun.prototype);
+        run.opts = opts;
+        run.items = items;
+        run.order = order;
+        run.pos = Math.min(Math.max(-1, Number(snap.pos) || 0), order.length - 1);
+        run.cycleStart = Math.min(Math.max(0, Number(snap.cycleStart) || 0), order.length);
+        return run;
+    }
+
     /// The list changed while playing: what's been played this cycle stays, and the rest of the
-    /// cycle is the new list's songs not yet played, shuffled afresh.
+    /// cycle is the new list's songs not yet played, shuffled afresh. The same songs over again -
+    /// a page that loaded and handed the list back - keep the order they had.
     replaceItems(items) {
         const { keyOf } = this.opts;
+        const had = new Set(this.items.map(keyOf));
+        if (items.length === had.size && items.every((item) => had.has(keyOf(item)))) {
+            const byKey = new Map(items.map((item) => [keyOf(item), item]));
+            this.items = items;
+            this.order = this.order.map((item) => byKey.get(keyOf(item)) || item);
+            return;
+        }
         const played = new Set(this.order.slice(this.cycleStart, this.pos + 1).map(keyOf));
         this.items = items;
         const rest = spreadOrder(

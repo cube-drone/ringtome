@@ -16,6 +16,46 @@
     gap: 1rem;
 }
 
+/* The Playlists column (plans/AUDIO.md, section 3): its rows wear the feed's saved-feed look
+   (persona.css), grouped - filters now; mixtapes and radio stations in their slices. */
+.amp-playlists {
+    width: var(--w-playlists, 180px);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.amp-playlists-group {
+    margin: 0.4rem 0 0.1rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: lowercase;
+}
+
+/* The filter strip over the table: the chip, and what is picked beside it while it's folded. */
+.amp-filters {
+    margin-bottom: 0.4rem;
+}
+
+.amp-range-row {
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.amp-range-box {
+    width: 5.5rem;
+}
+
+.amp-filters-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 .amp-list {
     flex: 1;
     min-width: 0;
@@ -190,17 +230,40 @@
     padding: 1rem;
 }
 
+/* The file column: left of the table, as wide as it's dragged (2026-10-12). */
 .amp-panel {
-    width: 22rem;
+    width: var(--w-file, 22rem);
+    min-width: 260px; /* the JS floor's CSS twin, for the moment before prefs load */
     flex-shrink: 0;
     overflow-y: auto;
     min-height: 0;
-    border-left: 1px solid var(--border);
-    padding-left: 1rem;
 }
 
+.amp-panel-body {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Under the heading, the actions: delete first, then whatever the panel adds. */
+.amp-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.6rem;
+}
+
+/* Delete, in the colourway's danger colour. */
+.chip.amp-delete {
+    background: var(--coral);
+    color: var(--on-danger);
+    --line: var(--coral);
+}
+
+/* What's selected, as a heading ruled off underneath (Curtis, 2026-10-12). */
 .amp-panel-title {
     margin: 0 0 0.5rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border-strong);
     font-size: 1.1rem;
     overflow-wrap: anywhere;
 }
@@ -211,7 +274,7 @@
 }
 
 .amp-reaction {
-    display: flex;
+    display: inline-flex;
     gap: 0.4rem;
 }
 
@@ -278,8 +341,13 @@
     color: var(--sea);
 }
 
-.player-on {
-    color: var(--sea);
+/* The shuffle, on (Curtis, 2026-10-12: "more prominent"): a solid accent tile, its glyph in the
+   accent's own ink - a rule that outranks the hover's colour. */
+.player-button.player-on,
+.player-button.player-on:hover {
+    background: var(--teal);
+    color: var(--on-accent);
+    border-radius: 3px;
 }
 
 .player-play {
@@ -417,34 +485,68 @@
     stroke-width: 3;
 }
 
+.cassette-screw {
+    fill: var(--surface-2);
+    stroke: var(--border-strong);
+    stroke-width: 1.5;
+}
+
+.cassette-screw-slot {
+    stroke: var(--muted);
+    stroke-width: 1.2;
+}
+
+/* The label: paper, with the stripes a cassette's label carries, round the window. */
 .cassette-label {
     fill: var(--paper);
     stroke: var(--border);
 }
 
+.cassette-stripe {
+    fill: var(--peach);
+    opacity: 0.7;
+}
+
+.cassette-line {
+    stroke: var(--border-strong);
+    stroke-width: 1;
+}
+
+/* Written on the label by hand. */
 .cassette-text {
     fill: var(--ink);
-    font-size: 15px;
+    font-family: 'Caveat', cursive;
+    font-size: 22px;
 }
 
 .cassette-text-small {
-    fill: var(--muted);
-    font-size: 11px;
+    font-size: 15px;
 }
 
 .cassette-window {
     fill: var(--ink-soft);
     opacity: 0.35;
+    stroke: var(--border-strong);
+    stroke-width: 1.5;
+}
+
+.cassette-tape {
+    fill: var(--ink);
+    opacity: 0.45;
 }
 
 .cassette-hub {
     fill: var(--paper);
     stroke: var(--border-strong);
-    stroke-width: 2;
+    stroke-width: 1.5;
+}
+
+.cassette-hole {
+    fill: var(--ink-soft);
 }
 
 .cassette-tooth {
-    fill: var(--border-strong);
+    fill: var(--paper);
 }
 
 .cassette-foot {
@@ -460,4 +562,30 @@
 
 .cassette-playing .cassette-reel {
     animation: cassette-spin 2.4s linear infinite;
+}
+
+/* The Tags column's bubbles, and the Score column's reactions with their counts (2026-10-12). */
+.amp-tag {
+    display: inline-block;
+    margin-right: 0.25rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface-2);
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.amp-row-picked .amp-tag {
+    border-color: currentColor;
+    background: transparent;
+}
+
+.amp-reacted {
+    margin-right: 0.5rem;
+}
+
+.amp-reacted-count {
+    margin-left: 0.1rem;
+    font-size: 0.75rem;
 }

@@ -13,7 +13,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { ShuffleRun } from './pure/shuffle.js';
-import { clock } from './pure/amp.js';
+import { clock, readPlayerState, slimRow } from './pure/amp.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 
@@ -26,6 +26,25 @@ export const usePlayer = () => useContext(Player);
 export const AMP_PATH = '/ringtome/amp';
 
 const VOLUME_KEY = 'amp-volume';
+/// The list, the song, the shuffle and where it stands, per persona, durable across a refresh
+/// (Curtis, 2026-10-12); and where in the song, kept apart since it's written every few seconds.
+const STATE_KEY = (me) => `amp-player:${me}`;
+const AT_KEY = (me) => `amp-player-at:${me}`;
+const keep = (key, value) => {
+    try {
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+    } catch {
+        /* no storage, or full: the player lives for the page */
+    }
+};
+const kept = (key) => {
+    try {
+        return localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+};
 
 /// A song's address: your own through your private door, anyone else's through their public one.
 export const soundSrc = (row, me) =>
@@ -66,10 +85,35 @@ export const PlayerProvider = ({ me, children }) => {
     const index = useRef(-1);
     const run = useRef(null);
     const failures = useRef(0);
+    // The song and the mode as the last call left them, for `persist` - render state lags a call.
+    const currentRef = useRef(null);
+    const shuffleRef = useRef(false);
+    const savedAt = useRef(0);
 
-    const load = (row) => {
+    const persist = () => {
+        if (!me) return;
+        if (!list.current.length) {
+            keep(STATE_KEY(me), null);
+            keep(AT_KEY(me), null);
+            return;
+        }
+        keep(
+            STATE_KEY(me),
+            JSON.stringify({
+                rows: list.current.map(slimRow),
+                current: currentRef.current ? currentRef.current.key : null,
+                shuffle: shuffleRef.current,
+                run: run.current ? run.current.snapshot() : null,
+            }),
+        );
+    };
+
+    const load = (row, { play = true } = {}) => {
         if (!audio) return;
         setCurrent(row);
+        currentRef.current = row;
+        persist();
+        keep(AT_KEY(me), null);
         if (!row) {
             audio.pause();
             audio.removeAttribute('src');
@@ -78,12 +122,12 @@ export const PlayerProvider = ({ me, children }) => {
             return;
         }
         audio.src = soundSrc(row, me);
-        audio.play().catch(() => {});
+        if (play) audio.play().catch(() => {});
     };
 
     const step = (forward) => {
         if (!list.current.length) return load(null);
-        if (shuffle && run.current) {
+        if (shuffleRef.current && run.current) {
             return load(forward ? run.current.next() : run.current.prev());
         }
         const next = index.current + (forward ? 1 : -1);
@@ -109,7 +153,7 @@ export const PlayerProvider = ({ me, children }) => {
         play(rows, row = null) {
             list.current = rows;
             failures.current = 0;
-            if (shuffle) {
+            if (shuffleRef.current) {
                 run.current = new ShuffleRun(rows, { ...SHUFFLE, random: Math.random }, row);
                 load(run.current.next());
             } else {
@@ -128,6 +172,7 @@ export const PlayerProvider = ({ me, children }) => {
             list.current = rows;
             if (run.current) run.current.replaceItems(rows);
             if (current) index.current = rows.findIndex((r) => r.key === current.key);
+            persist();
         },
         toggle() {
             if (!audio) return;
@@ -152,6 +197,7 @@ export const PlayerProvider = ({ me, children }) => {
         },
         setShuffle(on) {
             setShuffleState(on);
+            shuffleRef.current = on;
             if (on) {
                 run.current = new ShuffleRun(
                     list.current,
@@ -163,6 +209,7 @@ export const PlayerProvider = ({ me, children }) => {
                 run.current = null;
                 if (current) index.current = list.current.findIndex((r) => r.key === current.key);
             }
+            persist();
         },
         seek(seconds) {
             if (audio && Number.isFinite(seconds)) audio.currentTime = seconds;
@@ -191,7 +238,18 @@ export const PlayerProvider = ({ me, children }) => {
         const on = {
             play: () => setPlaying(true),
             pause: () => setPlaying(false),
-            timeupdate: () => setPosition(audio.currentTime || 0),
+            timeupdate: () => {
+                setPosition(audio.currentTime || 0);
+                // Where in the song, every few seconds, for a refresh to pick up from.
+                const now = Date.now();
+                if (me && now - savedAt.current > 4000 && currentRef.current) {
+                    savedAt.current = now;
+                    keep(
+                        AT_KEY(me),
+                        JSON.stringify({ key: currentRef.current.key, at: audio.currentTime }),
+                    );
+                }
+            },
             durationchange: () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0),
             playing: () => {
                 failures.current = 0;
@@ -205,11 +263,60 @@ export const PlayerProvider = ({ me, children }) => {
                 else setPlaying(false);
             },
         };
+        // And exactly where, on a pause and as the page goes - a refresh lands on the second.
+        const keepAt = () => {
+            if (me && currentRef.current && audio.currentTime > 0)
+                keep(
+                    AT_KEY(me),
+                    JSON.stringify({ key: currentRef.current.key, at: audio.currentTime }),
+                );
+        };
+        audio.addEventListener('pause', keepAt);
+        window.addEventListener('pagehide', keepAt);
         for (const [kind, fn] of Object.entries(on)) audio.addEventListener(kind, fn);
         return () => {
             for (const [kind, fn] of Object.entries(on)) audio.removeEventListener(kind, fn);
+            audio.removeEventListener('pause', keepAt);
+            window.removeEventListener('pagehide', keepAt);
         };
-    }, [audio]);
+    }, [audio, me]);
+
+    // A refresh picks up where the last page left off: the same list, the same song, paused where it
+    // was, and the shuffle on or off with its order and its place - so previous walks back over the
+    // same songs. Nothing plays until asked (a browser won't let a page start sound on its own).
+    useEffect(() => {
+        if (!audio || !me) return undefined;
+        const state = readPlayerState(kept(STATE_KEY(me)));
+        if (!state) return undefined;
+        list.current = state.rows;
+        shuffleRef.current = state.shuffle;
+        setShuffleState(state.shuffle);
+        run.current =
+            state.shuffle && state.run
+                ? ShuffleRun.restore(state.rows, { ...SHUFFLE, random: Math.random }, state.run)
+                : null;
+        const row = state.current;
+        if (!row) return undefined;
+        index.current = state.rows.findIndex((r) => r.key === row.key);
+        let at = 0;
+        try {
+            const where = JSON.parse(kept(AT_KEY(me)) || 'null');
+            if (where && where.key === row.key && Number.isFinite(where.at)) at = where.at;
+        } catch {
+            /* from the start, then */
+        }
+        load(row, { play: false });
+        if (at > 0) {
+            const seek = () => {
+                audio.currentTime = at;
+            };
+            audio.addEventListener('loadedmetadata', seek, { once: true });
+            keep(AT_KEY(me), JSON.stringify({ key: row.key, at }));
+            return () => audio.removeEventListener('loadedmetadata', seek);
+        }
+        return undefined;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [audio, me]);
 
     // The persona changed, or the app closed: the music stops with it.
     useEffect(
@@ -306,28 +413,68 @@ export const PlayerBar = ({ list = [] }) => {
 
 /// Expanded (section 4): the page is a cassette whose reels turn while it plays, over the song's
 /// cover, blurred.
+/// Words cut to fit a cassette's label, as a pen would run out of room.
+const onLabel = (words, room) =>
+    !words ? '' : words.length > room ? `${words.slice(0, room - 1).trimEnd()}…` : words;
+
+/// A compact cassette (Curtis, 2026-10-12): screws in the four corners; a paper label wrapped round
+/// the window, the song's title written on its top line and the artist on its bottom one, in a hand
+/// (Caveat); the two reels high in the window, turning while it plays, with the tape wound on them
+/// showing through; and the tapered edge below, with its capstan and guide holes.
 export const Cassette = () => {
     const p = usePlayer();
     if (!p) return null;
     const { current, playing, me } = p;
+    const reels = [100, 220];
     return html`<div class="player-expanded">
         ${current && current.thumb && html`<img class="player-backdrop" src=${soundThumb(current, me)} alt="" />`}
         <svg class=${playing ? 'cassette cassette-playing' : 'cassette'} viewBox="0 0 320 200" role="img" aria-label=${t('player.a-cassette', 'a cassette')}>
-            <rect class="cassette-body" x="4" y="4" width="312" height="192" rx="14" />
-            <rect class="cassette-label" x="28" y="22" width="264" height="58" rx="6" />
-            <text class="cassette-text" x="160" y="48" text-anchor="middle">${(current && current.title) || ''}</text>
-            <text class="cassette-text cassette-text-small" x="160" y="68" text-anchor="middle">${(current && current.artist) || ''}</text>
-            <rect class="cassette-window" x="70" y="96" width="180" height="60" rx="28" />
-            ${[110, 210].map(
-                (cx) => html`<g class="cassette-reel" style=${`transform-origin: ${cx}px 126px`}>
-                    <circle class="cassette-hub" cx=${cx} cy="126" r="22" />
+            <defs>
+                <clipPath id="cassette-window-clip">
+                    <rect x="70" y="72" width="180" height="40" rx="20" />
+                </clipPath>
+            </defs>
+            <rect class="cassette-body" x="4" y="4" width="312" height="192" rx="12" />
+            ${[
+                [16, 16],
+                [304, 16],
+                [16, 184],
+                [304, 184],
+            ].map(
+                ([x, y]) => html`<g key=${`${x}-${y}`}>
+                    <circle class="cassette-screw" cx=${x} cy=${y} r="5" />
+                    <path class="cassette-screw-slot" d=${`M${x - 3} ${y} H${x + 3} M${x} ${y - 3} V${y + 3}`} />
+                </g>`,
+            )}
+            <rect class="cassette-label" x="26" y="12" width="268" height="130" rx="6" />
+            <rect class="cassette-stripe" x="26" y="54" width="268" height="6" />
+            <rect class="cassette-stripe" x="26" y="122" width="268" height="4" />
+            <text class="cassette-text" x="40" y="40">${onLabel(current && current.title, 30)}</text>
+            <path class="cassette-line" d="M38 46 H282" />
+            <rect class="cassette-window" x="70" y="72" width="180" height="40" rx="20" />
+            <g clip-path="url(#cassette-window-clip)">
+                <circle class="cassette-tape" cx=${reels[0]} cy="92" r="34" />
+                <circle class="cassette-tape" cx=${reels[1]} cy="92" r="24" />
+            </g>
+            ${reels.map(
+                (
+                    cx,
+                ) => html`<g key=${cx} class="cassette-reel" style=${`transform-origin: ${cx}px 92px`}>
+                    <circle class="cassette-hub" cx=${cx} cy="92" r="14" />
+                    <circle class="cassette-hole" cx=${cx} cy="92" r="8" />
                     ${[0, 60, 120, 180, 240, 300].map(
                         (deg) =>
-                            html`<rect class="cassette-tooth" x=${cx - 2} y="106" width="4" height="10" style=${`transform: rotate(${deg}deg); transform-origin: ${cx}px 126px`} />`,
+                            html`<rect key=${deg} class="cassette-tooth" x=${cx - 1.5} y="84" width="3" height="4" style=${`transform: rotate(${deg}deg); transform-origin: ${cx}px 92px`} />`,
                     )}
                 </g>`,
             )}
-            <path class="cassette-foot" d="M60 196 L84 166 L236 166 L260 196 Z" />
+            <text class="cassette-text cassette-text-small" x="160" y="136" text-anchor="middle">${onLabel(current && current.artist, 40)}</text>
+            <path class="cassette-foot" d="M58 196 L78 152 L242 152 L262 196 Z" />
+            <circle class="cassette-hole" cx="96" cy="180" r="5" />
+            <circle class="cassette-hole" cx="224" cy="180" r="5" />
+            <rect class="cassette-hole" x="134" y="174" width="10" height="10" rx="2" />
+            <rect class="cassette-hole" x="176" y="174" width="10" height="10" rx="2" />
+            <rect class="cassette-hole" x="154" y="164" width="12" height="6" rx="2" />
         </svg>
     </div>`;
 };

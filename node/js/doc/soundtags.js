@@ -147,13 +147,16 @@ const DocRow = ({ label, title = null, children }) =>
         <dd>${children}</dd>
     </div>`;
 
-export const SoundTags = ({ root, docId, readOnly }) => {
+/// `score`, when the host has one to say (hrseAmp's like and dislike - Curtis, 2026-10-12): a row of
+/// its own at the head of the list.
+export const SoundTags = ({ root, docId, readOnly, score = null }) => {
     const row = useLive(() => openMirror(root).docs.get(docId), [root, docId]);
     const fields = (row && row.fields) || {};
     // A built-in sound is nobody's to annotate; it shows its own fields and nothing else.
     const own = !readOnly;
     const length = playLength(row && row.media && row.media.duration_ms);
     return html`<dl class="sound-tags">
+        ${score && html`<${DocRow} label=${t('doc.soundtags.score', 'score')}>${score}</${DocRow}>`}
         ${
             own &&
             html`<${DocRow} label=${t('doc.soundtags.tags', 'tags')}>

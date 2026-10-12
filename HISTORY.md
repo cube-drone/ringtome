@@ -20462,3 +20462,124 @@ scroll it away. By and From are now "posted by" and "via", with a hover saying
 which is which. The playing row shows a speaker in that first column and keeps
 the picked row's ink when it's also picked, so it stays readable. The default
 columns are Title, Artist, Album, Length and Tags. Checked in headless Chrome.
+
+## 2026-10-12 (cont.): hrseAmp's filters
+
+Slice 3 of [`plans/AUDIO.md`](plans/AUDIO.md). A strip over the table works like
+the feed's: a "filters" chip that folds it away, leaving what's picked in a
+line, with each chip still cycling. Open, it holds:
+
+- hrseAmp's own curiosity dial, kept in `amp_selectivity`, so moving it doesn't
+  move the feed's;
+- a chip narrowing tags to the author's and your own (ruling 12);
+- "clear all" and "save filter";
+- three-state chip rows for via (with "me" first), artist, genre and tags.
+
+The library is all in the browser, so `pure/ampfilters.js` narrows and counts
+there, each row counted over what the other rows leave. For whose tags, the
+library door now sends `our_tags` beside `tags`. A saved filter is a register in
+`amp_filters`, holding the picks, the dial and whose tags. The new Playlists
+column lists "all" first, then each saved filter, with the one on screen lit and
+a trash button on each. `STOP_WORDS` moved to `js/curiosity.js` so the feed and
+hrseAmp share the dial's words without one app importing another.
+
+Verified by the `pure/ampfilters.cjs` vectors and a whose-tags claim in
+`integration/test/amp.cjs`. A friend's like is in `tags`, not `our_tags`. In
+headless Chrome on a scratch node: "me" narrowed 4 songs to 1, then left it out;
+save filter lit the new filter; "all" and the filter each put the table back;
+and the trash emptied its register.
+
+Two gaps are recorded in the plan. The file panel can't yet tag someone else's
+song. And the strip isn't gated on "Reactions, tags & filters", since it's part
+of hrseAmp.
+
+**After using it (Curtis, same day).**
+
+- **Search words saved with filters.** A saved filter keeps the header's search
+  words, in hrseAmp and in the feed's saved feeds alike. Choosing it puts them
+  back in the box, and "all" clears them.
+- **bosc selections.** Bosc draws a chosen chip and a picked row in its accent
+  blue with white words; they were grey on grey.
+- **The file panel.** Its head now has a delete, trash first, for one song or
+  several, deleting only your own. Inside hrseAmp the bulk panel drops "move all
+  to" and its second header.
+- **Tags and Score columns.** Tags are bubbles. The Score column shows the
+  reactions a song has collected, with counts, from the door's new `tag_counts`.
+- **Songs vanishing after the cassette.** Leaving the expanded cassette no
+  longer leaves rows undrawn. The table came back as a new element while the
+  page kept the old one's scroll offset and height watcher, so most rows went
+  undrawn. The table now re-measures when it returns.
+- **The cassette redrawn** as a compact cassette: corner screws, a label
+  wrapping the window, the title and artist handwritten in Caveat, the reels
+  higher, and the tapered edge with its holes.
+
+Checked in headless Chrome on a scratch node: bosc colours, bubbles, reaction
+counts, no "move" in the bulk panel, a saved search round trip in both apps,
+every row drawn after the cassette, and a delete.
+
+**More from using it (Curtis, same day).**
+
+- **The file panel** is now a resizable column left of the table.
+- **The player survives a refresh.** It keeps its list, its song, the second
+  it's at, and the shuffle's order and place, per persona in this browser. A
+  refresh comes back paused where it was, and "previous" walks back over the
+  same songs. The catch: hrseAmp hands the list back on load, and `replaceItems`
+  used to reshuffle the rest of the cycle. The same songs now keep their order,
+  with `ShuffleRun.snapshot`/`restore` and vectors for both.
+- **Ranges.** The filter strip takes a minimum and maximum year and length. They
+  are saved with filters and shown as one clearable chip when the strip is
+  folded.
+- **The boxes commit on leaving or Enter.** This build's `onChange` fires per
+  keystroke, which would refilter and remount the box mid-typing.
+- **Small fixes:**
+  - shuffle-on is a solid accent tile;
+  - the thumbs stay lit (they used `chip-on`, a class nothing styles);
+  - delete wears the danger colour;
+  - in hrseAmp's bulk panel, rules replace "the {n} sounds among them" and part
+    the tags from the date;
+  - the column menu closes on a press elsewhere;
+  - "date" is "date added", and it and Score are default columns again.
+
+Checked in headless Chrome on a scratch node: all ten, including a refresh
+landing on the same song at the same second with shuffle still on.
+
+**Then the file column joined the house's columns (Curtis, same day).** It is
+now a `panes.js` column, as Playlists already was, so it tucks to a rail by its
+head and is a tab in a narrow window. `hrseAmp`'s row wears `.panes`, so a
+narrow window shows one open column or the table. The title is ruled off with
+delete under it, and the like and dislike are the `score` row of the sound's
+list (`SoundTags` takes a `score` row). Year and length are separate rows of the
+filter stack. Checked in headless Chrome at 1280px (open, tucked, back) and at
+760px (rails, then the file tab open).
+
+**Probable duplicates (Curtis, same day).** Uploading the same bytes twice
+already gives one document. But Curtis found three copies of "Giorgio by
+Moroder" in different encodings, all within five seconds of one another in
+length. The strip now has a "probable duplicates" chip that shows only songs
+with a probable copy, each set together in the table.
+
+A probable copy:
+
+- has the same title once case, punctuation, a leading track number and a file
+  extension are ignored;
+- has the same artist where both copies say one;
+- runs within five seconds of the other.
+
+It's in `pure/ampfilters.js` (`duplicateGroups`, `byDuplicateGroup`) with
+vectors, and saved with filters. Checked in headless Chrome: three own songs
+titled three ways were grouped, and the feed songs dropped out.
+
+The chip then became three-state like a tag's (Curtis): only the probable
+duplicates, then one of each, then everything. "Left out" keeps one copy of each
+song, not none: dropping every copy would remove the song itself. The copy kept
+is your own first, then one that says its artist, then the first in the table.
+Copies the other picks hide never take the kept copy's place. Checked in
+headless Chrome: the second press left one "Giorgio by Moroder" beside the rest.
+
+**Saving back into a filter (Curtis, same day).** Adjusting a saved filter and
+saving again used to make a new one. Both the feed and hrseAmp now remember the
+saved filter last chosen in their column. Once the strip differs from it, a
+"save to "name"" button writes the strip back into that filter's register,
+beside "save as new". A new save becomes the remembered filter. "all", or
+forgetting the filter, lets go of it. Checked in headless Chrome in both apps:
+an adjusted filter saved back into its own register, one entry each.

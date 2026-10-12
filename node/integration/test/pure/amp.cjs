@@ -94,8 +94,8 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
         const fresh = amp.readTableSettings(null);
         assert.deepEqual(
             fresh.hidden.sort(),
-            ['by', 'date', 'from', 'genre', 'notebook', 'number', 'score', 'year'].sort(),
-            'title, artist, album, length and tags show to begin with',
+            ['by', 'from', 'genre', 'notebook', 'number', 'year'].sort(),
+            'title, artist, album, length, tags, date added and score show to begin with',
         );
         assert.deepEqual(fresh.sort, { column: 'date', down: true });
         const kept = amp.readTableSettings(
@@ -108,5 +108,59 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
         assert.equal(kept.widths.title, 280, 'too narrow: the default');
         assert.equal(kept.widths.album, 300);
         assert.deepEqual(kept.sort, { column: 'date', down: true }, 'tags never sort');
+    });
+
+    it('shows the reactions a song collected with their counts, and its tags without them', () => {
+        assert.deepEqual(
+            amp.reactionsOf({ '\u{1F44D}': 1, chill: 3, '\u{2764}\u{FE0F}': 2, '\u{1F44E}': 0 }),
+            [
+                ['\u{2764}\u{FE0F}', 2],
+                ['\u{1F44D}', 1],
+            ],
+            'emoji only, the most said first, none said none shown',
+        );
+        assert.deepEqual(amp.wordTags(['chill', '\u{1F44D}', 'loud']), ['chill', 'loud']);
+        const theirs = amp.feedRow({ author: them, doc: 'd', tag_counts: { '\u{1F434}': 4 } });
+        assert.deepEqual(theirs.reactions, [['\u{1F434}', 4]]);
+        const mine = amp.ownRow({ doc_id: 'e', title: 'x' }, me, {
+            [amp.rowKey(me, 'e')]: { reaction: 'up' },
+        });
+        assert.deepEqual(mine.reactions, [['\u{1F44D}', 1]], 'your own like of your own sound');
+    });
+
+    it("keeps what the player needs of a song, and reads the player's state back", () => {
+        const row = amp.feedRow({
+            author: them,
+            doc: 'd1',
+            title: 'Buck',
+            duration_ms: 2000,
+            thumb: true,
+        });
+        const slim = amp.slimRow(row);
+        assert.deepEqual(Object.keys(slim).sort(), [
+            'album',
+            'artist',
+            'author',
+            'doc',
+            'key',
+            'lengthMs',
+            'own',
+            'thumb',
+            'title',
+        ]);
+        const state = amp.readPlayerState(
+            JSON.stringify({
+                rows: [slim, { key: 'broken' }],
+                current: slim.key,
+                shuffle: true,
+                run: { order: [slim.key], pos: 0, cycleStart: 0 },
+            }),
+        );
+        assert.equal(state.rows.length, 1, 'a row with nothing to play is dropped');
+        assert.equal(state.current.key, slim.key);
+        assert.equal(state.shuffle, true);
+        assert.deepEqual(state.run.order, [slim.key]);
+        assert.equal(amp.readPlayerState('not json'), null);
+        assert.equal(amp.readPlayerState(JSON.stringify({ rows: [] })), null);
     });
 });

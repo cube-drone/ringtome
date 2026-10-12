@@ -172,6 +172,11 @@ describe('hrseAmp: the library of sound in your feed', function () {
             if (!score) await wait(300);
         }
         assert.ok(score > 0, `a like lifts it: ${score}`);
+        // Whose tags (ruling 12): the friend's like is a tag ada can see, but not the author's or hers.
+        const row = (await library()).sounds.find((s) => s.post === alone);
+        assert.ok(row.tags.includes('\u{1F44D}'), JSON.stringify(row.tags));
+        assert.ok(!row.our_tags.includes('\u{1F44D}'), JSON.stringify(row.our_tags));
+        assert.equal(row.tag_counts['\u{1F44D}'], 1, 'how many said it, for the Score column');
     });
 
     it("reads an author's database once per version of a post, into the node's memo", async () => {

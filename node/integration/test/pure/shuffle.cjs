@@ -118,4 +118,31 @@ describe("hrseAmp's shuffle (plans/AUDIO.md)", () => {
         assert.ok(!rest.some((k) => played.includes(k)), 'nothing played again this cycle');
         assert.equal(new Set(rest).size, rest.length);
     });
+
+    it('picks up where it was from a snapshot, and the same list handed back keeps its order', () => {
+        const list = songs([
+            ['a', 'x', 3],
+            ['b', 'y', 3],
+            ['c', 'z', 3],
+        ]);
+        const run = new ShuffleRun(list, opts(21));
+        const walked = [run.next(), run.next(), run.next()];
+        const snap = JSON.parse(JSON.stringify(run.snapshot()));
+        // As a refresh would: new objects for the same songs.
+        const again = list.map((s) => ({ ...s }));
+        const back = ShuffleRun.restore(again, opts(99), snap);
+        assert.equal(back.current().key, walked[2].key, 'the same song');
+        assert.equal(back.prev().key, walked[1].key, 'and previous walks back over the same ones');
+        const ahead = run.next().key;
+        back.next();
+        assert.equal(back.next().key, ahead, 'and next goes where it would have');
+        // The page hands the same songs back: the order stands.
+        const before = run.snapshot().order;
+        run.replaceItems(list.map((s) => ({ ...s })));
+        assert.deepEqual(run.snapshot().order, before);
+        // A snapshot naming none of the songs starts afresh.
+        const fresh = ShuffleRun.restore(list, opts(5), { order: ['gone'], pos: 0 });
+        assert.equal(fresh.current(), null);
+        assert.ok(fresh.next());
+    });
 });

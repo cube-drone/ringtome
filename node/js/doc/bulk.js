@@ -85,8 +85,28 @@ const writeField = (root, docId, field, value) =>
  * @param bucket    the notebook in view ('' in hrseFiles, which views them all)
  * @param onClear   drop the selection
  * @param onDeleted after a delete, with the ids that went (the open one among them closes)
+ * @param moves     whether "move all to" shows: hrseAmp leaves it out (Curtis, 2026-10-12: notebooks
+ *                  are another app's business there, and it confused)
+ * @param deletes   whether "delete all" shows: hrseAmp puts its own at the panel's head
+ * @param head      whether its own count and "clear" show: hrseAmp's panel says them once, for its
+ *                  songs and other people's together
+ * @param ruled     hrseAmp's (Curtis, 2026-10-12): every one is a sound there, so a rule parts the
+ *                  sound fields from the rest instead of words counting the sounds, and another
+ *                  parts the tags from the date
  */
-export const BulkPanel = ({ root, app, bucket, docs, onClear, onDeleted, onMoved }) => {
+export const BulkPanel = ({
+    root,
+    app,
+    bucket,
+    docs,
+    onClear,
+    onDeleted,
+    onMoved,
+    moves = true,
+    deletes = true,
+    head = true,
+    ruled = false,
+}) => {
     const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
     const tagging = useUnlocked(root, 'tags');
     // The action under way, and how far: `{ label, done, of }`, or null when idle.
@@ -343,12 +363,15 @@ export const BulkPanel = ({ root, app, bucket, docs, onClear, onDeleted, onMoved
         });
 
     return html`<section class="reader bulk">
-        <header class="bulk-head">
+        ${
+            head &&
+            html`<header class="bulk-head">
             <h2 class="bulk-count">${t('doc.bulk.n-selected', '{n} selected', { n: docs.length })}</h2>
             <button class="bulk-clear" onClick=${onClear} title=${t('doc.bulk.clear-title', 'clear the selection (Escape)')}>
                 <${Icons.close} /> ${t('doc.bulk.clear', 'clear')}
             </button>
-        </header>
+        </header>`
+        }
         ${
             leftAlone > 0 &&
             html`<p class="bulk-note">
@@ -357,7 +380,9 @@ export const BulkPanel = ({ root, app, bucket, docs, onClear, onDeleted, onMoved
         }
         ${progress && html`<p class="bulk-progress" role="status">${progress}</p>`}
 
-        <div class="bulk-group">
+        ${
+            moves &&
+            html`<div class="bulk-group">
             <h3 class="bulk-heading">${t('doc.bulk.move-all', 'move all to')}</h3>
             <div class="copy-buckets">
                 ${targets.map(
@@ -378,7 +403,8 @@ export const BulkPanel = ({ root, app, bucket, docs, onClear, onDeleted, onMoved
                     </button>
                 </form>
             </div>
-        </div>
+        </div>`
+        }
 
         ${
             tagging &&
@@ -418,6 +444,7 @@ export const BulkPanel = ({ root, app, bucket, docs, onClear, onDeleted, onMoved
         }
 
         <div class="bulk-group">
+            ${ruled && html`<hr class="bulk-rule" />`}
             <h3 class="bulk-heading">${t('doc.bulk.date-all', 'date all')}</h3>
             <div class="bulk-row">
                 <input class="annot-date jag-field" type="date" value=${date} onInput=${(e) => setDate(e.currentTarget.value)} />
@@ -441,9 +468,13 @@ export const BulkPanel = ({ root, app, bucket, docs, onClear, onDeleted, onMoved
         ${
             sounds.length > 0 &&
             html`<div class="bulk-group">
-                <h3 class="bulk-heading">
+                ${
+                    ruled
+                        ? html`<hr class="bulk-rule" />`
+                        : html`<h3 class="bulk-heading">
                     ${t('doc.bulk.sounds', 'the {n} sounds among them', { n: sounds.length })}
-                </h3>
+                </h3>`
+                }
                 <dl class="sound-tags">
                     ${BULK_SOUND_FIELDS.map(
                         (field) => html`<div class="sound-tag" key=${field}>
@@ -488,10 +519,13 @@ export const BulkPanel = ({ root, app, bucket, docs, onClear, onDeleted, onMoved
             </div>`
         }
 
-        <div class="bulk-group bulk-danger">
+        ${
+            deletes &&
+            html`<div class="bulk-group bulk-danger">
             <button class="bulk-button bulk-delete jag-line" disabled=${busy || !mine.length} onClick=${deleteAll}>
                 <${Icons.trash} /> ${t('doc.bulk.delete-all', 'delete all {n}', { n: mine.length })}
             </button>
-        </div>
+        </div>`
+        }
     </section>`;
 };

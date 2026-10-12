@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from '../net.js';
-import { openMirror, useLive } from '../mirror.js';
+import { openMirror, optimisticDoc, useLive } from '../mirror.js';
 import { usePref } from '../mirror/prefs.js';
 import { appById } from '../pure/apps.js';
 import {
@@ -24,6 +24,7 @@ import {
     readTableSettings,
     searched,
     sorted,
+    wordTags,
 } from '../pure/amp.js';
 import { formatWhen } from '../pure/when.js';
 import { speakable } from '../speakable.js';
@@ -34,6 +35,32 @@ import { postHref } from '../links.js';
 import { Icons } from '../icons.js';
 import { toast } from '../toasts.js';
 import { t } from '../i18n.js';
+import { FacetRow } from '../facets.js';
+import { Chip } from '../doc/chips.js';
+import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { STOP_WORDS } from '../curiosity.js';
+import { SELECTIVITY_STOPS, DEFAULT_STOP } from '../pure/selectivity.js';
+import {
+    AMP_FILTERS,
+    FILTER_ROWS,
+    LEFT_OUT,
+    NO_AMP_PICKS,
+    ampPickState,
+    anyAmpPicks,
+    anyRange,
+    byDuplicateGroup,
+    cycleDupes,
+    dupeMode,
+    duplicateGroups,
+    readLength,
+    cycleAmpPick,
+    filterSettings,
+    filterValue,
+    narrowedSongs,
+    readFilters,
+    sameFilter,
+    songFacets,
+} from '../pure/ampfilters.js';
 
 const html = htm.bind(h);
 
@@ -58,7 +85,7 @@ const COLUMN_WORDS = {
     notebook: () => t('amp.col-notebook', 'notebook'),
     by: () => t('amp.col-by', 'posted by'),
     from: () => t('amp.col-from', 'via'),
-    date: () => t('amp.col-date', 'date'),
+    date: () => t('amp.col-date', 'date added'),
     score: () => t('amp.col-score', 'score'),
 };
 
@@ -82,7 +109,7 @@ const FIELD_WORDS = {
 };
 
 /// A cell's class: numbers line up on the right, and the title wears the playing song's colour.
-const NUMERIC = new Set(['length', 'score', 'number']);
+const NUMERIC = new Set(['length', 'number']);
 const cellClass = (key) =>
     key === 'title' ? 'amp-td amp-td-title' : NUMERIC.has(key) ? 'amp-td amp-td-numeric' : 'amp-td';
 
@@ -90,18 +117,12 @@ const cellClass = (key) =>
 const nameOf = (names, root) =>
     names[root] || (root ? speakable(root).split('-').slice(0, 2).join('-') : '');
 
-/// A score in whole likes, as the feed reckons it (score.rs's thousandths).
-const likes = (milli) => {
-    const n = (milli || 0) / 1000;
-    return n === 0 ? '' : Number.isInteger(n) ? String(n) : n.toFixed(1);
-};
-
 function cell(row, key, names) {
     switch (key) {
         case 'length':
             return clock(row.lengthMs);
         case 'tags':
-            return row.tags.join(', ');
+            return wordTags(row.tags).join(', ');
         case 'by':
             return nameOf(names, row.author);
         case 'from':
@@ -109,12 +130,27 @@ function cell(row, key, names) {
         case 'date':
             return row.dateMs ? formatWhen(row.dateMs, Date.now(), { time: false }) : '';
         case 'score':
-            return likes(row.score);
+            return (row.reactions || []).map(([emoji, n]) => `${emoji} ${n}`).join('  ');
         case 'number':
             return row.number == null ? '' : String(row.number);
         default:
             return row[key] || '';
     }
+}
+
+/// The cells drawn as more than words (Curtis, 2026-10-12): tags as bubbles, and the reactions a
+/// song has collected, each with how many said it. Anything else, its words (`cell`).
+function richCell(row, key) {
+    if (key === 'tags')
+        return wordTags(row.tags).map(
+            (tag) => html`<span key=${tag} class="amp-tag">${tag}</span>`,
+        );
+    if (key === 'score')
+        return (row.reactions || []).map(
+            ([emoji, n]) =>
+                html`<span key=${emoji} class="amp-reacted">${emoji}<span class="amp-reacted-count">${n}</span></span>`,
+        );
+    return null;
 }
 
 /// Your layer of fields on someone else's song (ruling 6): each of theirs beside a box for yours,
@@ -179,13 +215,71 @@ const Reaction = ({ root, row, onLayer }) => {
         ).catch(() => {});
         onLayer([row], 'reaction', next);
     };
-    return html`<p class="amp-reaction">
-        <button class=${now === 'up' ? 'chip chip-button chip-on' : 'chip chip-button'} onClick=${() => set('up')} title=${t('amp.like', 'like')}>👍</button>
-        <button class=${now === 'down' ? 'chip chip-button chip-on' : 'chip chip-button'} onClick=${() => set('down')} title=${t('amp.dislike', 'dislike')}>👎</button>
-    </p>`;
+    return html`<span class="amp-reaction">
+        <button class=${now === 'up' ? 'chip chip-button chip-open' : 'chip chip-button'} onClick=${() => set('up')} title=${t('amp.like', 'like')}>👍</button>
+        <button class=${now === 'down' ? 'chip chip-button chip-open' : 'chip chip-button'} onClick=${() => set('down')} title=${t('amp.dislike', 'dislike')}>👎</button>
+    </span>`;
 };
 
-/// What's selected, beside the table: one of your sounds, its own panel; one of someone else's, its
+/// Delete your own songs among `rows` (Curtis, 2026-10-12: one or many, from the panel's head): out
+/// of every list at once, and back if the node refuses, as hrseFiles deletes. Someone else's songs
+/// aren't yours to delete, and the ones that came with the app stay.
+async function deleteSongs(root, rows, onDeleted) {
+    const own = rows.filter((r) => r.own && !r.builtin);
+    if (!own.length) return;
+    const sure =
+        own.length === 1
+            ? confirm(
+                  t('amp.delete-one', 'Delete "{title}"? It leaves every list right away.', {
+                      title: own[0].title,
+                  }),
+              )
+            : confirm(
+                  t('amp.delete-many', 'Delete your {n} songs? They leave every list right away.', {
+                      n: own.length,
+                  }),
+              );
+    if (!sure) return;
+    let failed = 0;
+    for (const r of own) {
+        try {
+            await optimisticDoc(
+                root,
+                r.doc,
+                () => null,
+                (d) => !d,
+                () => api(`/api/identity/${root}/docs/${r.doc}`, { method: 'DELETE' }),
+            );
+        } catch {
+            failed += 1;
+        }
+    }
+    if (failed) {
+        toast(t('amp.n-not-deleted', "{n} couldn't be deleted", { n: failed }), { kind: 'error' });
+    } else {
+        toast(t('amp.deleted-n', 'deleted {n}', { n: own.length }));
+    }
+    onDeleted();
+}
+
+/// The panel's head (Curtis, 2026-10-12): what's selected, as a heading ruled off underneath, and
+/// under it the actions - delete first, in the danger colour (the house's order for a row of
+/// actions), then whatever else the panel adds.
+const PanelHead = ({ root, rows, title, onDeleted, children = null }) => {
+    const own = rows.filter((r) => r.own && !r.builtin);
+    const del =
+        own.length > 0 &&
+        html`<button
+            class="chip chip-button amp-delete"
+            title=${rows.length === 1 ? t('amp.delete-this-song', 'delete this song') : t('amp.delete-your-n', 'delete your {n} of these', { n: own.length })}
+            aria-label=${t('amp.delete', 'delete')}
+            onClick=${() => deleteSongs(root, rows, onDeleted)}
+        ><${Icons.trash} /></button>`;
+    return html`<h2 class="amp-panel-title">${title}</h2>
+        ${(del || children) && html`<div class="amp-panel-actions">${del}${children}</div>`}`;
+};
+
+/// What's selected, in the file column: one of your sounds, its own panel; one of someone else's, its
 /// fields beside yours; several, the bulk panel for yours and your layer for theirs.
 const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted }) => {
     const own = rows.filter((r) => r.own && !r.builtin);
@@ -193,9 +287,9 @@ const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted }) 
     const files = appById('lost-found');
     if (rows.length === 1) {
         const r = rows[0];
-        return html`<aside class="amp-panel">
-            <h2 class="amp-panel-title">${r.title}</h2>
-            ${r.own && !r.builtin && html`<${Reaction} root=${root} row=${r} onLayer=${onLayer} /><${SoundTags} root=${root} docId=${r.doc} />`}
+        return html`<div class="amp-panel-body">
+            <${PanelHead} root=${root} rows=${rows} title=${r.title} onDeleted=${onDeleted} />
+            ${r.own && !r.builtin && html`<${SoundTags} root=${root} docId=${r.doc} score=${html`<${Reaction} root=${root} row=${r} onLayer=${onLayer} />`} />`}
             ${r.builtin && html`<${SoundTags} root=${root} docId=${r.doc} readOnly=${true} />`}
             ${
                 !r.own &&
@@ -205,11 +299,12 @@ const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted }) 
                 </p>
                 <${LayerFields} root=${root} rows=${[r]} layer=${layer} onLayer=${onLayer} />`
             }
-        </aside>`;
+        </div>`;
     }
-    return html`<aside class="amp-panel">
-        <h2 class="amp-panel-title">${t('amp.n-selected', '{n} selected', { n: rows.length })}</h2>
-        <p><button class="chip chip-button" onClick=${onClear}>${t('amp.clear', 'clear')}</button></p>
+    return html`<div class="amp-panel-body">
+        <${PanelHead} root=${root} rows=${rows} title=${t('amp.n-selected', '{n} selected', { n: rows.length })} onDeleted=${onDeleted}>
+            <button class="chip chip-button" onClick=${onClear}>${t('amp.clear', 'clear')}</button>
+        <//>
         ${
             own.length > 0 &&
             html`<${BulkPanel}
@@ -220,6 +315,10 @@ const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted }) 
                 onClear=${onClear}
                 onDeleted=${onDeleted}
                 onMoved=${() => {}}
+                moves=${false}
+                deletes=${false}
+                head=${false}
+                ruled=${true}
             />`
         }
         ${
@@ -227,13 +326,317 @@ const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted }) 
             html`<h3 class="amp-panel-sub">${t('amp.n-of-other-peoples', "{n} of other people's: your fields", { n: theirs.length })}</h3>
             <${LayerFields} root=${root} rows=${theirs} layer=${layer} onLayer=${onLayer} />`
         }
-    </aside>`;
+    </div>`;
 };
+
+/// The strip's rows, in words.
+const ROW_WORDS = {
+    from: () => t('amp.row-from', 'via'),
+    artists: () => t('amp.row-artists', 'artist'),
+    genres: () => t('amp.row-genres', 'genre'),
+    tags: () => t('amp.row-tags', 'tags'),
+};
+
+const CHIP_CLASS = { only: 'facet-chip facet-chip-on', out: 'facet-chip facet-chip-out' };
+
+/// The picks this tab keeps (as the feed's are kept: a refresh finds them picked), per persona.
+const PICKS_KEY = (root) => `amp-picks:${root}`;
+const readPicks = (root) => {
+    try {
+        const p = JSON.parse(sessionStorage.getItem(PICKS_KEY(root)) || 'null');
+        return p && typeof p === 'object' ? { ...NO_AMP_PICKS, ...p } : NO_AMP_PICKS;
+    } catch {
+        return NO_AMP_PICKS;
+    }
+};
+const writePicks = (root, picks) => {
+    try {
+        if (anyAmpPicks(picks)) sessionStorage.setItem(PICKS_KEY(root), JSON.stringify(picks));
+        else sessionStorage.removeItem(PICKS_KEY(root));
+    } catch {
+        /* no storage: the picks live for the page */
+    }
+};
+
+/// "Probable duplicates", three-state as a tag's chip (Curtis, 2026-10-12): a press shows only the
+/// songs with a probable copy, each set together; another leaves the copies out, one of each
+/// staying; a third shows everything again.
+const DupesChip = ({ picks, onPicks }) => {
+    const mode = dupeMode(picks);
+    const title =
+        mode === 'only'
+            ? t(
+                  'amp.dupes-only-title',
+                  'showing only probable duplicates - click to keep one of each instead',
+              )
+            : mode === 'out'
+              ? t(
+                    'amp.dupes-out-title',
+                    'one of each: probable copies left out, your own copy kept first - click to show everything again',
+                )
+              : t(
+                    'amp.dupes-title',
+                    'songs that look like copies of one another - the same title, the same artist where both say one, and within five seconds. Click to show only them; click again to keep one of each',
+                );
+    return html`<button
+        class=${mode === 'only' ? 'facet-chip facet-chip-on' : mode === 'out' ? 'facet-chip facet-chip-out' : 'facet-chip'}
+        title=${title}
+        onClick=${() => onPicks(cycleDupes(picks))}
+    >${t('amp.dupes-chip', 'probable duplicates')}</button>`;
+};
+
+/// The ranges' boxes (Curtis, 2026-10-12): a year from and to, and a length from and to - typed as
+/// "3:30" or a number of minutes. Each takes effect as it's left, or on Enter.
+const RangeBoxes = ({ picks, onPicks }) => {
+    const set = (key, value) => onPicks({ ...picks, [key]: value });
+    // Enter takes it, as leaving the box does.
+    const enter = (e) => e.key === 'Enter' && e.currentTarget.blur();
+    const year = (key, placeholder) => html`<input
+        class="jag-field amp-range-box"
+        type="number"
+        inputmode="numeric"
+        placeholder=${placeholder}
+        key=${`${key}:${picks[key] ?? ''}`}
+        defaultValue=${picks[key] ?? ''}
+        onKeyDown=${enter}
+        onBlur=${(e) => {
+            const v = parseInt(e.currentTarget.value, 10);
+            const next = Number.isFinite(v) ? v : null;
+            if (next !== (picks[key] ?? null)) set(key, next);
+        }}
+    />`;
+    const length = (key, placeholder) => html`<input
+        class="jag-field amp-range-box"
+        placeholder=${placeholder}
+        key=${`${key}:${picks[key] ?? ''}`}
+        defaultValue=${picks[key] != null ? clock(picks[key] * 1000) : ''}
+        title=${t('amp.length-title', 'minutes and seconds, as 3:30 - or just minutes')}
+        onKeyDown=${enter}
+        onBlur=${(e) => {
+            const next = readLength(e.currentTarget.value);
+            if (next !== (picks[key] ?? null)) set(key, next);
+        }}
+    />`;
+    // A row of the stack each, as the chip rows are (Curtis, 2026-10-12).
+    return html`<div class="facet-row amp-range-row">
+            <span class="facet-row-label">${t('amp.year', 'year')}</span>
+            ${year('yearMin', t('amp.from', 'from'))}–${year('yearMax', t('amp.to', 'to'))}
+        </div>
+        <div class="facet-row amp-range-row">
+            <span class="facet-row-label">${t('amp.length', 'length')}</span>
+            ${length('lengthMin', t('amp.at-least', 'at least'))}–${length('lengthMax', t('amp.at-most', 'at most'))}
+        </div>`;
+};
+
+/// The ranges in words, for the folded strip: "year 1990–1999", "length 2:00–", or nothing.
+const rangeWords = (picks) => {
+    const span = (a, b) => `${a ?? ''}–${b ?? ''}`;
+    const out = [];
+    if (picks.yearMin != null || picks.yearMax != null)
+        out.push(
+            t('amp.year-range', 'year {range}', { range: span(picks.yearMin, picks.yearMax) }),
+        );
+    if (picks.lengthMin != null || picks.lengthMax != null)
+        out.push(
+            t('amp.length-range', 'length {range}', {
+                range: span(
+                    picks.lengthMin != null ? clock(picks.lengthMin * 1000) : null,
+                    picks.lengthMax != null ? clock(picks.lengthMax * 1000) : null,
+                ),
+            }),
+        );
+    return out;
+};
+
+/// The filter strip (plans/AUDIO.md, section 3): folded, a line of what is picked, each chip still
+/// cycling; open, the curiosity dial, whose tags count, "clear all" and "save filter", then a row
+/// of chips each for who it came through, artist, genre and tags. `wordOf(row, value)` says a value;
+/// `iconOf(row, value)` names its icon, if any.
+const FilterStrip = ({
+    songs,
+    picks,
+    onPicks,
+    stop,
+    onStop,
+    scope,
+    onScope,
+    onSave,
+    loaded,
+    now,
+    wordOf,
+    iconOf,
+    me,
+}) => {
+    const [open, setOpen] = useState(false);
+    const facets = useMemo(() => songFacets(songs, picks, scope), [songs, picks, scope]);
+    const narrowed = anyAmpPicks(picks);
+    const glyph = (row, v) => {
+        const role = iconOf(row, v);
+        return role && Icons[role] ? html`<${Icons[role]} />` : null;
+    };
+    const picked = FILTER_ROWS.flatMap((row) =>
+        [...(picks[row] || []), ...(picks[LEFT_OUT[row]] || [])].map((v) => [row, v]),
+    );
+    const words = [
+        html`<span key="stop" class="facets-picked-word">${t('apps.feed.feed-curiosity', 'feed curiosity:')} ${STOP_WORDS[stop] ? STOP_WORDS[stop]() : ''}</span>`,
+        scope === 'ours' &&
+            html`<span key="scope" class="facets-picked-word">${t('amp.scope-ours', "only the author's tags and yours")}</span>`,
+    ].filter(Boolean);
+    return html`<div class="amp-filters">
+        <div class="amp-filters-head">
+            <${Chip}
+                title=${t('amp.filters', 'filters')}
+                on=${open}
+                modifier=${narrowed ? 'feed-options-chip feed-options-narrowed' : 'feed-options-chip'}
+                onClick=${() => setOpen((o) => !o)}
+            ><${Icons.filter} /><span>${t('amp.filters', 'filters')}</span><//>
+            ${
+                !open &&
+                html`<div class="facets-picked">
+                ${words}
+                ${
+                    anyRange(picks) &&
+                    html`<button
+                        class="facet-chip facet-chip-on"
+                        title=${t('amp.clear-ranges', 'clear the year and length ranges')}
+                        onClick=${() => onPicks({ ...picks, yearMin: null, yearMax: null, lengthMin: null, lengthMax: null })}
+                    >${rangeWords(picks).join(', ')} ×</button>`
+                }
+                ${dupeMode(picks) && html`<${DupesChip} picks=${picks} onPicks=${onPicks} />`}
+                ${picked.map(
+                    ([row, v]) => html`<button
+                        key=${`${row}:${v}`}
+                        class=${CHIP_CLASS[ampPickState(picks, row, v)]}
+                        onClick=${() => onPicks(cycleAmpPick(picks, row, v))}
+                    >${glyph(row, v)}${wordOf(row, v)}</button>`,
+                )}
+            </div>`
+            }
+        </div>
+        ${
+            open &&
+            html`<div class="feed-options jag-line">
+            <div class="feed-top">
+                <label class="feed-selectivity" title=${t('apps.feed.how-far-past-the-people', 'how far past the people you chose this feed may reach')}>
+                    <span class="feed-selectivity-name">${t('apps.feed.feed-curiosity', 'feed curiosity:')}</span>
+                    <input
+                        type="range"
+                        min="0"
+                        max=${SELECTIVITY_STOPS.length - 1}
+                        value=${SELECTIVITY_STOPS.findIndex((s) => s.key === stop)}
+                        onInput=${(e) => onStop(SELECTIVITY_STOPS[Number(e.currentTarget.value)].key)}
+                    />
+                    <span class="feed-selectivity-label">${STOP_WORDS[stop] ? STOP_WORDS[stop]() : ''}</span>
+                </label>
+                <button
+                    class=${scope === 'ours' ? 'facet-chip facet-chip-on' : 'facet-chip'}
+                    title=${t('amp.scope-title', "count only the tags the song's author put on it, and your own - not everyone's you can see")}
+                    onClick=${() => onScope(scope === 'ours' ? 'all' : 'ours')}
+                >${t('amp.scope-ours-chip', "author's and mine")}</button>
+                <${DupesChip} picks=${picks} onPicks=${onPicks} />
+                <button
+                    class="facet-more feed-clear"
+                    disabled=${!narrowed}
+                    title=${t('amp.clear-all-title', 'show every song again - every chip back to unpicked')}
+                    onClick=${() => onPicks(NO_AMP_PICKS)}
+                >${t('apps.feed.clear-all', 'clear all')}</button>
+                ${
+                    loaded &&
+                    !sameFilter(loaded, now) &&
+                    html`<button
+                        class="facet-more feed-save"
+                        title=${t('amp.save-into-title', 'keep these settings in "{name}", in place of what it held', { name: loaded.name })}
+                        onClick=${() => onSave(false)}
+                    >${t('apps.feed.save-into', 'save to "{name}"', { name: loaded.name })}</button>`
+                }
+                <button
+                    class="facet-more feed-save"
+                    title=${t('amp.save-filter-title', 'keep these settings as a filter of their own, in the Playlists column')}
+                    onClick=${() => onSave(true)}
+                >${loaded ? t('apps.feed.save-as-new', 'save as new') : t('apps.feed.save-filter', 'save filter')}</button>
+            </div>
+            <div class="facets">
+                ${FILTER_ROWS.map((row) => {
+                    // "me" leads the via row, as it leads the feed's "by" (ruling 8: "only mine").
+                    const items =
+                        row === 'from'
+                            ? [
+                                  ...facets.from.filter((f) => f.value === me),
+                                  ...facets.from.filter((f) => f.value !== me),
+                              ]
+                            : facets[row];
+                    const chosen = [...(picks[row] || []), ...(picks[LEFT_OUT[row]] || [])];
+                    if (!items.length && !chosen.length) return null;
+                    const names = {};
+                    for (const f of items) names[f.value] = () => wordOf(row, f.value);
+                    for (const v of chosen) names[v] = () => wordOf(row, v);
+                    return html`<${FacetRow}
+                        key=${row}
+                        label=${ROW_WORDS[row]()}
+                        items=${items}
+                        picked=${picks[row]}
+                        out=${picks[LEFT_OUT[row]]}
+                        onToggle=${(v) => onPicks(cycleAmpPick(picks, row, v))}
+                        names=${names}
+                        icons=${(v) => iconOf(row, v)}
+                    />`;
+                })}
+                <${RangeBoxes} picks=${picks} onPicks=${onPicks} />
+            </div>
+        </div>`
+        }
+    </div>`;
+};
+
+/// The Playlists column (section 3): filters - "all" first, always there, then each saved one, lit
+/// while it is what the table shows. Mixtapes and radio stations join it in their slices.
+const Playlists = ({
+    filters,
+    now,
+    onAll,
+    onPick,
+    onForget,
+    onTuck,
+}) => html`<aside class="amp-playlists">
+    <${PaneHead} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onTuck=${onTuck} />
+    <p class="amp-playlists-group">${t('amp.filters', 'filters')}</p>
+    <div class=${now && !anyAmpPicks(now.picks) && !now.q ? 'feed-saved-row active' : 'feed-saved-row'}>
+        <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
+        <button
+            class="feed-saved-name"
+            title=${t('amp.all-title', 'every song you can see - every chip back to unpicked')}
+            onClick=${onAll}
+        >${t('apps.feed.all', 'all')}</button>
+    </div>
+    ${filters.map(
+        (
+            f,
+        ) => html`<div key=${f.id} class=${sameFilter(f, now) ? 'feed-saved-row active' : 'feed-saved-row'}>
+            <button
+                class="feed-saved-forget"
+                title=${t('amp.forget-this-filter', 'forget this filter')}
+                aria-label=${t('amp.forget-this-filter', 'forget this filter')}
+                onClick=${() => onForget(f)}
+            ><${Icons.trash} /></button>
+            <button class="feed-saved-name" onClick=${() => onPick(f)}>${f.name}</button>
+        </div>`,
+    )}
+</aside>`;
 
 /// The column menu: every column, ticked if shown.
 const ColumnMenu = ({ hidden, onToggle }) => {
     const [open, setOpen] = useState(false);
-    return html`<span class="amp-columns">
+    const box = useRef(null);
+    // A press anywhere else closes it (Curtis, 2026-10-12).
+    useEffect(() => {
+        if (!open) return undefined;
+        const away = (e) => {
+            if (box.current && !box.current.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener('pointerdown', away);
+        return () => document.removeEventListener('pointerdown', away);
+    }, [open]);
+    return html`<span class="amp-columns" ref=${box}>
         <button class="amp-columns-button" title=${t('amp.columns', 'columns')} onClick=${() => setOpen(!open)}><${Icons.menu} /></button>
         ${
             open &&
@@ -249,7 +652,7 @@ const ColumnMenu = ({ hidden, onToggle }) => {
     </span>`;
 };
 
-export const AmpApp = ({ current, searchQuery }) => {
+export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const root = current && current.root;
     const player = usePlayer();
     const docs = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
@@ -267,18 +670,51 @@ export const AmpApp = ({ current, searchQuery }) => {
     const body = useRef(null);
     // When a column's edge was last let go: the click that ends a drag isn't a sort.
     const resizedAt = useRef(0);
+    // The strip (section 3): the curiosity dial's stop - hrseAmp's own, starting from the feed's -
+    // whose tags count, and the picks.
+    const [stop, setStop] = useState(null);
+    const [scope, setScope] = useState('all');
+    const [picks, setPicksState] = useState(NO_AMP_PICKS);
+    const setPicks = (next) => {
+        setPicksState(next);
+        writePicks(root, next);
+    };
+    const [filters, setFilters] = useState([]);
+    // The filter last chosen in the Playlists column, by id: "save" puts the strip back into it.
+    const [loadedId, setLoadedId] = useState(null);
+    const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'amp');
+    // The Playlists column and the file column, each as wide as it was dragged (panes.js).
+    const { resizer, colStyle } = useColWidths(root, 'amp', ['playlists', 'file'], { file: 260 });
 
-    const load = async () => {
+    const loadFilters = () =>
+        root &&
+        api(`/api/identity/${root}/private/kv/${AMP_FILTERS}`)
+            .then((r) => setFilters(readFilters(r && r.values)))
+            .catch(() => {});
+    // The layer, the filters and the dial's stop, once per persona: hrseAmp's stop if it has one,
+    // else the feed's.
+    useEffect(() => {
         if (!root) return;
-        setLoading(true);
-        const [layerAnswer, dial] = await Promise.all([
+        setPicksState(readPicks(root));
+        setFilters([]);
+        loadFilters();
+        Promise.all([
             api(`/api/identity/${root}/private/kv/${LAYER}`).catch(() => ({ values: [] })),
+            api(`/api/identity/${root}/private/kv/amp_selectivity`).catch(() => ({ values: [] })),
             api(`/api/identity/${root}/private/kv/feed_selectivity`).catch(() => ({ values: [] })),
-        ]);
-        setLayerRows(layerAnswer.values || []);
-        const stop = ((dial.values || []).find((v) => v.key === 'stop') || {}).value;
+        ]).then(([layerAnswer, own, feedDial]) => {
+            setLayerRows(layerAnswer.values || []);
+            const stopOf = (a) => ((a.values || []).find((v) => v.key === 'stop') || {}).value;
+            const key = stopOf(own) || stopOf(feedDial);
+            setStop(SELECTIVITY_STOPS.some((s) => s.key === key) ? key : DEFAULT_STOP);
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root]);
+    const load = async () => {
+        if (!root || !stop) return;
+        setLoading(true);
         const answer = await api(
-            `/api/identity/${root}/amp/library${stop ? `?stop=${encodeURIComponent(stop)}` : ''}`,
+            `/api/identity/${root}/amp/library?stop=${encodeURIComponent(stop)}`,
         ).catch(() => ({ sounds: [], names: {} }));
         setFeed({ sounds: answer.sounds || [], names: answer.names || {} });
         setLoading(false);
@@ -286,7 +722,14 @@ export const AmpApp = ({ current, searchQuery }) => {
     useEffect(() => {
         load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root]);
+    }, [root, stop]);
+    const moveStop = (key) => {
+        setStop(key);
+        api(`/api/identity/${root}/private/kv/amp_selectivity/stop`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: key }),
+        }).catch(() => {});
+    };
 
     const layer = useMemo(() => readLayer(layerRows), [layerRows]);
     const docRows = useMemo(() => new Map((docs || []).map((d) => [d.doc_id, d])), [docs]);
@@ -300,10 +743,90 @@ export const AmpApp = ({ current, searchQuery }) => {
         () => ({ ...feed.names, [root]: t('amp.you', 'you') }),
         [feed.names, root],
     );
-    const shown = useMemo(
-        () => sorted(searched(rows, searchQuery), settings.sort, names),
-        [rows, searchQuery, settings.sort, names],
-    );
+    const shown = useMemo(() => {
+        const list = sorted(
+            searched(narrowedSongs(rows, picks, scope), searchQuery),
+            settings.sort,
+            names,
+        );
+        // Probable duplicates: each set of copies together, where its first stands in the order.
+        return dupeMode(picks) === 'only' ? byDuplicateGroup(list, duplicateGroups(list)) : list;
+    }, [rows, picks, scope, searchQuery, settings.sort, names]);
+    const settingsNow = filterSettings(picks, stop, scope, searchQuery);
+
+    // A value on the strip, in words: "me", a person's name, or the value itself.
+    const wordOf = (row, v) =>
+        row === 'from' ? (v === root ? t('facets.me', 'me') : nameOf(names, v)) : v;
+    const iconOf = (row, v) => (row === 'from' && v === root ? 'me' : null);
+    // Save filter: the strip as it stands, by a name, into the Playlists column.
+    // Save filter: the strip as it stands - into the filter last chosen (Curtis, 2026-10-12: saving
+    // an adjusted filter "just wants to create a new filter"), or as a new one, by a name.
+    const loaded = filters.find((f) => f.id === loadedId) || null;
+    const saveFilter = async (asNew) => {
+        const into = asNew ? null : loaded;
+        const name = into
+            ? into.name
+            : (prompt(t('amp.save-filter-name', 'A name for this filter:')) || '').trim();
+        if (!name) return;
+        let id = into && into.id;
+        if (!id) {
+            const bytes = new Uint8Array(8);
+            crypto.getRandomValues(bytes);
+            id = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+        }
+        try {
+            await api(`/api/identity/${root}/private/kv/${AMP_FILTERS}/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: filterValue(name, settingsNow) }),
+            });
+            setLoadedId(id);
+            await loadFilters();
+            toast(t('apps.feed.saved-as', 'saved as "{name}"', { name }));
+        } catch (e) {
+            toast(
+                t('apps.feed.couldnt-save-it', "couldn't save it: {message}", {
+                    message: e.message,
+                }),
+                { kind: 'error' },
+            );
+        }
+    };
+    const forgetFilter = async (f) => {
+        if (!confirm(t('amp.forget-filter', 'Forget the filter "{name}"?', { name: f.name })))
+            return;
+        try {
+            // A register emptied is one deleted (pure/ampfilters.js).
+            await api(`/api/identity/${root}/private/kv/${AMP_FILTERS}/${f.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: '' }),
+            });
+            setFilters((have) => have.filter((x) => x.id !== f.id));
+            if (loadedId === f.id) setLoadedId(null);
+        } catch (e) {
+            toast(
+                t('amp.couldnt-forget-it', "couldn't forget it: {message}", {
+                    message: e.message,
+                }),
+                { kind: 'error' },
+            );
+        }
+    };
+    // A filter chosen: its picks, its whose-tags, its curiosity and its search words, at once.
+    // "all" clears the picks and the words and leaves the rest, as the feed's does.
+    const applyFilter = (f) => {
+        settle();
+        setLoadedId(f ? f.id : null);
+        if (!f) {
+            setPicks(NO_AMP_PICKS);
+            if (onSearch) onSearch('');
+            return;
+        }
+        setPicks({ ...NO_AMP_PICKS, ...f.picks });
+        setScope(f.scope || 'all');
+        if (onSearch) onSearch(f.q || '');
+        if (f.stop && f.stop !== stop && SELECTIVITY_STOPS.some((s) => s.key === f.stop))
+            moveStop(f.stop);
+    };
     const keys = useMemo(() => shown.map((r) => r.key), [shown]);
 
     // The player carries on through the table as it now stands.
@@ -320,14 +843,23 @@ export const AmpApp = ({ current, searchQuery }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keys]);
 
+    // The table's height, watched - and again whenever the table comes back: the cassette takes its
+    // place while it shows, and the table it returns to is a new element, scrolled to the top
+    // (Curtis, 2026-10-12: songs went missing after the cassette, the rows still drawn for the old
+    // scroll). It goes back to where it was.
+    const expanded = !!(player && player.expanded);
     useEffect(() => {
         const el = body.current;
-        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        if (!el) return undefined;
+        el.scrollTop = scrollTop;
+        setScrollTop(el.scrollTop);
+        setHeight(el.clientHeight);
+        if (typeof ResizeObserver === 'undefined') return undefined;
         const watch = new ResizeObserver(() => setHeight(el.clientHeight));
         watch.observe(el);
-        setHeight(el.clientHeight);
         return () => watch.disconnect();
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [expanded]);
 
     const save = (next) =>
         setRawSettings(
@@ -398,12 +930,68 @@ export const AmpApp = ({ current, searchQuery }) => {
     const last = Math.min(shown.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + OVERSCAN);
     const playingKey = player && player.current ? player.current.key : null;
 
+    // The file column (Curtis, 2026-10-12): the house's kind, as Playlists is - tucked to a rail by
+    // its head, a tab in a narrow window - there while something is selected.
+    const fileOpen = !tucked.has('file');
+    const fileColumn =
+        selectedRows.length === 0
+            ? null
+            : fileOpen
+              ? html`${tab('file', Icons.fileAudio, t('amp.file', 'file'))}<aside class="amp-panel">
+                    <${PaneHead} icon=${Icons.fileAudio} label=${t('amp.file', 'file')} onTuck=${() => toggleTuck('file')} />
+                    <${FilePanel}
+                        root=${root}
+                        rows=${selectedRows}
+                        docRows=${docRows}
+                        layer=${layer}
+                        onLayer=${onLayer}
+                        onClear=${() => setPicked(new Set())}
+                        onDeleted=${() => setPicked(new Set())}
+                    />
+                </aside>${resizer('file')}`
+              : html`<${Rail} icon=${Icons.fileAudio} label=${t('amp.file', 'file')} onClick=${() => toggleTuck('file')} />`;
+
     return html`<div class=${player && player.expanded ? 'amp-app amp-expanded' : 'amp-app'}>
         ${
             player && player.expanded
                 ? html`<${Cassette} />`
-                : html`<div class="amp-main">
+                : html`<div class="amp-main panes" style=${colStyle}>
+            ${
+                tucked.has('playlists')
+                    ? html`<${Rail} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onClick=${() => toggleTuck('playlists')} />`
+                    : html`${tab('playlists', Icons.music, t('amp.playlists', 'playlists'))}<${Playlists}
+                          filters=${filters}
+                          now=${settingsNow}
+                          onAll=${() => applyFilter(null)}
+                          onPick=${applyFilter}
+                          onForget=${forgetFilter}
+                          onTuck=${() => toggleTuck('playlists')}
+                      />${resizer('playlists')}`
+            }
+            ${
+                /* What's selected, in a column of its own left of the table (Curtis, 2026-10-12),
+                as wide as it's dragged - there while something is. */ ''
+            }
+            ${fileColumn}
             <div class="amp-list">
+                ${
+                    stop &&
+                    html`<${FilterStrip}
+                    songs=${rows}
+                    picks=${picks}
+                    onPicks=${setPicks}
+                    stop=${stop}
+                    onStop=${moveStop}
+                    scope=${scope}
+                    onScope=${setScope}
+                    onSave=${saveFilter}
+                    loaded=${loaded}
+                    now=${settingsNow}
+                    wordOf=${wordOf}
+                    iconOf=${iconOf}
+                    me=${root}
+                />`
+                }
                 <p class="amp-count">
                     ${loading ? t('amp.looking', 'looking for music…') : t('amp.n-songs', '{n} songs', { n: shown.length })}
                     ${' · '}
@@ -440,26 +1028,14 @@ export const AmpApp = ({ current, searchQuery }) => {
                                 <span class="amp-td-lead">${playingKey === r.key && html`<${Icons.speaker} />`}</span>
                                 ${columns.map((c) => {
                                     const v = cell(r, c.key, names);
-                                    return html`<span key=${c.key} class=${cellClass(c.key)} title=${v}>${v}</span>`;
+                                    return html`<span key=${c.key} class=${cellClass(c.key)} title=${v}>${richCell(r, c.key) || v}</span>`;
                                 })}
                             </div>`,
                         )}
                     </div>
-                    ${!loading && shown.length === 0 && html`<p class="null-sub amp-empty">${searchQuery ? t('amp.nothing-matches', 'nothing matches that.') : t('amp.no-music-yet', 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.')}</p>`}
+                    ${!loading && shown.length === 0 && html`<p class="null-sub amp-empty">${searchQuery || anyAmpPicks(picks) ? t('amp.nothing-matches', 'nothing matches that.') : t('amp.no-music-yet', 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.')}</p>`}
                 </div>
             </div>
-            ${
-                selectedRows.length > 0 &&
-                html`<${FilePanel}
-                    root=${root}
-                    rows=${selectedRows}
-                    docRows=${docRows}
-                    layer=${layer}
-                    onLayer=${onLayer}
-                    onClear=${() => setPicked(new Set())}
-                    onDeleted=${() => setPicked(new Set())}
-                />`
-            }
         </div>`
         }
         <${PlayerBar} list=${shown} />

@@ -41,4 +41,14 @@ describe('saved feeds (2026-10-11)', () => {
         );
         assert.ok(sameFeed(saved[0], settings));
     });
+
+    it('keeps the search words too (Curtis, 2026-10-12), and a feed with other words is another feed', () => {
+        const a = feedSettings({ tags: ['art'] }, 'medium', 'new', '  horses ');
+        assert.equal(a.q, 'horses', 'trimmed');
+        assert.equal(feedSettings({}, null, null, '   ').q, null, 'blank is none');
+        assert.ok(sameFeed(a, feedSettings({ tags: ['art'] }, 'medium', 'new', 'horses')));
+        assert.ok(!sameFeed(a, feedSettings({ tags: ['art'] }, 'medium', 'new')), 'no words');
+        const [back] = readSaved([{ key: '1', value: savedValue('h', a) }]);
+        assert.equal(back.q, 'horses');
+    });
 });
