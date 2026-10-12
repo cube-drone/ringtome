@@ -693,10 +693,14 @@ describe("a post's own head, for the unfurlers outside", function () {
         assert.ok(head.includes('<title>On Boats - Head Tester</title>'), head);
         assert.ok(head.includes('property="og:title" content="On Boats"'));
         assert.ok(head.includes('property="og:type" content="article"'));
+        // Its web address, short form (plans/WEB_ADDRESSES.md, 2026-10-11): the path its title
+        // made, where it had been `post/<id>` - and the id still rides, as what the post is.
         assert.ok(
-            head.includes(`/ringtome/user/${short}/post/${post}"`),
+            head.includes(`property="og:url" content="`) &&
+                head.includes(`/ringtome/user/${short}/on-boats"`),
             'its own short-form address',
         );
+        assert.ok(head.includes(`<meta name="ringtome:post" content="${root}/${post}">`));
         assert.ok(
             head.includes('property="og:description" content="boats are good, actually"'),
             'the words, markup dropped',
@@ -750,7 +754,11 @@ describe("a post's own head, for the unfurlers outside", function () {
         const { note, post } = await publish('From A Note', 'said once, in private first');
         const head = await headOf(`ringtome/user/${short}/doc/${note}`);
         assert.ok(head.includes('property="og:title" content="From A Note"'), head);
-        assert.ok(head.includes(`/post/${post}"`), "and names the post's address");
+        assert.ok(
+            head.includes(`/ringtome/user/${short}/from-a-note"`) &&
+                head.includes(`content="${root}/${post}"`),
+            "and names the post's address, and the post",
+        );
     });
 
     it('a post that is just a picture: that picture is its image - a text post has no thumbnail of its own', async function () {

@@ -102,6 +102,7 @@ pub mod syncstatus;
 pub mod test_endpoints;
 pub mod ui;
 pub mod uploadlink;
+pub mod webpath;
 pub mod webpush;
 
 use config::{Config, PublicConfig};
@@ -859,6 +860,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/id/{seg}/posts/{doc}/versions", get(idface::id_post_versions))
         .route("/api/id/{seg}/posts/{doc}/excerpts", get(idface::id_book_excerpts))
         .route("/api/id/{seg}/from/{doc}", get(idface::id_from))
+        .route("/api/id/{seg}/at/{*path}", get(idface::id_at))
         .route("/api/id/{seg}/posts/{doc}/replies", get(idface::id_post_replies))
         .route("/api/id/{seg}/posts/{doc}/dossier", get(idface::id_post_dossier))
         .route("/api/directory", get(idface::directory))

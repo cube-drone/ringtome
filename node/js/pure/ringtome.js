@@ -7,6 +7,9 @@
 //   /ringtome/user/<root>/post/<book>/page/<doc>       a book's page (the page's own post id)
 //   /ringtome/user/<root>/doc/<doc>                    any other document, private or public
 //   /ringtome/user/<root>/room/<doc>[/line/<hash>]     a chat room, or one line in it
+//   /ringtome/user/<root>/<path>                       a post by its web address, `recipes/loaf`
+//                                                      (plans/WEB_ADDRESSES.md): the author's own
+//                                                      `path` label names it
 //
 // Two query hints ride any of them, and only these two: `?via=` (where the person can be reached)
 // and, on a document filed in more than one notebook, `?bucket=` (the notebook it was opened in -
@@ -25,13 +28,38 @@ const DOC_ID = /^[0-9a-f]{32}$/;
 // a query or a fragment.
 const SEG = /^[A-Za-z0-9-]{16,}$/;
 const LINE = /^[0-9a-f]{8,}$/;
+// A web address after the person (webpath.rs `well_formed`): lowercase segments of letters,
+// digits and hyphens, in any script.
+const AT_PATH = /^[\p{Ll}\p{Lo}\p{N}-]+(\/[\p{Ll}\p{Lo}\p{N}-]+)*$/u;
+// The routes a person's address already has: a path's first segment is never one (webpath.rs
+// `RESERVED`).
+const ROUTES = new Set([
+    'post',
+    'doc',
+    'docs',
+    'room',
+    'book',
+    'page',
+    'line',
+    'history',
+    'diff',
+    'ui-demo',
+    'from',
+    'at',
+    'profile',
+    'posts',
+    'labels',
+    'thumb',
+    'body',
+]);
 
 /// The path for a thing, from its parts. `seg` is the person's address segment (already spelled);
 /// `doc` a 32-hex document id; `kind` one of post, doc, room.
-export function ringtomePath({ seg, kind, doc, page, line }) {
+export function ringtomePath({ seg, kind, doc, page, line, at }) {
     if (!seg) return '';
     const who = `${USER}${seg}`;
     if (!kind) return who;
+    if (kind === 'path') return `${who}/${at}`;
     if (kind === 'post') return page ? `${who}/post/${doc}/page/${page}` : `${who}/post/${doc}`;
     if (kind === 'room') return line ? `${who}/room/${doc}/line/${line}` : `${who}/room/${doc}`;
     return `${who}/doc/${doc}`;
@@ -66,7 +94,28 @@ export function parseRingtome(text) {
         .filter((p, i, all) => p !== '' || i < all.length - 1);
     if (parts.length && parts[parts.length - 1] === '') parts.pop();
     const [seg, kind, doc, sub, subValue, ...rest] = parts;
-    if (!seg || !SEG.test(seg) || rest.length) return null;
+    if (!seg || !SEG.test(seg)) return null;
+    // A post by its web address: everything after the person, when it isn't one of their routes.
+    if (kind !== undefined && !ROUTES.has(kind)) {
+        let at;
+        try {
+            at = decodeURIComponent(parts.slice(1).join('/'));
+        } catch {
+            return null;
+        }
+        if (!AT_PATH.test(at)) return null;
+        return withPath({
+            seg,
+            kind: 'path',
+            doc: null,
+            page: null,
+            line: null,
+            at,
+            via: viaOf(search),
+            bucket: bucketOf(search),
+        });
+    }
+    if (rest.length) return null;
     const out = {
         seg,
         kind: null,

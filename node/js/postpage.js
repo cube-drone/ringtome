@@ -121,6 +121,29 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
         };
     }, [root, doc, via, viewer]);
 
+    // Its web address in the address bar (plans/WEB_ADDRESSES.md): reached by its id, a post that
+    // has a path says the path instead, so the address a reader copies is the readable one. The
+    // page stays as it is - only the address changes - and a page of a book keeps the book's.
+    useEffect(() => {
+        if (!post || page) return;
+        const named = (post.annotations || []).find(
+            (a) => a.annotator === root && a.key === 'path',
+        );
+        if (!named) return;
+        const here = `/ringtome/user/${seg}/post/${doc}`;
+        if (window.location.pathname !== here) return;
+        try {
+            history.replaceState(
+                history.state,
+                '',
+                `/ringtome/user/${seg}/${named.value}${window.location.search}`,
+            );
+        } catch {
+            /* an address the browser won't take: the long one stands */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [post]);
+
     useEffect(() => {
         if (onTitle) onTitle(post && post.title ? post.title : t('postpage.a-post', 'a post'));
     }, [post, onTitle]);

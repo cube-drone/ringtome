@@ -740,6 +740,39 @@ async fn restate_book_labels(
     if bucket.len() <= ringtome_proto::PublicAnnotation::MAX_VALUE_LEN {
         desired.insert(("bucket".into(), bucket.to_string()));
     }
+    // Its web address (plans/WEB_ADDRESSES.md, ruling 6): the notebook's folder, since the
+    // notebook is the book and its pages live under it - kept once given, and never for a sealed
+    // book, whose title is for trusted readers.
+    if book_key.is_none() {
+        let had = data
+            .public_annotations()
+            .of(root, book)
+            .await?
+            .into_iter()
+            .find(|r| r.key == crate::webpath::PATH_KEY)
+            .map(|r| r.value);
+        let path = match had {
+            Some(path) => Some(path),
+            None => match crate::webpath::folder(bucket) {
+                Some(folder) => {
+                    let db = data.db();
+                    Some(
+                        crate::webpath::unique(&[], &folder, book, |path| async move {
+                            let holders = crate::record::imaol::path_holders(db, &path)
+                                .await
+                                .map_err(|e| anyhow!("{e}"))?;
+                            Ok(holders.iter().any(|d| d != book))
+                        })
+                        .await?,
+                    )
+                }
+                None => None,
+            },
+        };
+        if let Some(path) = path {
+            desired.insert((crate::webpath::PATH_KEY.into(), path));
+        }
+    }
     crate::identity::restate_labels(data, &root_key, book, &desired, book_key)
         .await
         .map_err(|e| anyhow!("{e}"))?;

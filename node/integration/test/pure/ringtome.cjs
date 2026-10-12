@@ -90,7 +90,9 @@ describe('a ringtome address', () => {
             'https://example.com/some/page',
             `https://example.com/id/${SEG}/post/${DOC}`,
             `/ringtome/user/${SEG}/post/nothex`,
-            `/ringtome/user/${SEG}/shoe/${DOC}`,
+            // `/shoe/<doc>` was here: since 2026-10-11 a lowercase path under a person is a post's web
+            // address (plans/WEB_ADDRESSES.md), so the unknown route is spelled unreadably instead.
+            `/ringtome/user/${SEG}/Shoe/${DOC}`,
             `/ringtome/user/${SEG}/post/${DOC}/page/3`,
             `/ringtome/user/${SEG}/doc/${DOC}/line/abcdef0123`,
             `/ringtome/user/${SEG}/post/${DOC}/extra/bits/here`,
@@ -178,6 +180,48 @@ describe("a picture's address (2026-09-28)", () => {
             media(`https://x.example/ringtome/user/${SEG}/doc/${TWIN}/body/media.avif`).url,
             `/ringtome/user/${SEG}/doc/${TWIN}/body/media.avif`,
             'drawn from this node',
+        );
+    });
+});
+
+describe('a post by its web address (plans/WEB_ADDRESSES.md, 2026-10-11)', () => {
+    it('reads anything under a person that is not one of their routes as a path', () => {
+        const ref = r.parseRingtome(
+            `https://elsewhere.example/ringtome/user/${SEG}/recipes/sourdough-loaf?via=k`,
+        );
+        assert.equal(ref.kind, 'path');
+        assert.equal(ref.at, 'recipes/sourdough-loaf');
+        assert.equal(
+            ref.path,
+            `/ringtome/user/${SEG}/recipes/sourdough-loaf?via=k`,
+            'rehomed, hints kept',
+        );
+        assert.equal(
+            r.parseRingtome(`/ringtome/user/${SEG}/2026-10-11-a04aa2`).at,
+            '2026-10-11-a04aa2',
+        );
+        assert.equal(
+            r.parseRingtome(`/ringtome/user/${SEG}/r%C3%A9sum%C3%A9`).at,
+            'résumé',
+            'any script, as the address bar spells it',
+        );
+    });
+
+    it('leaves the routes as they were, and refuses what no path could be', () => {
+        assert.equal(r.parseRingtome(`/ringtome/user/${SEG}/post/${DOC}`).kind, 'post');
+        assert.equal(
+            r.parseRingtome(`/ringtome/user/${SEG}/post/nothex`),
+            null,
+            'a route stays strict',
+        );
+        assert.equal(r.parseRingtome(`/ringtome/user/${SEG}/Recipes`), null, 'paths are lowercase');
+        assert.equal(r.parseRingtome(`/ringtome/user/${SEG}/a b`), null);
+    });
+
+    it('is minted back the same way', () => {
+        assert.equal(
+            r.ringtomePath({ seg: SEG, kind: 'path', at: 'recipes/loaf' }),
+            `/ringtome/user/${SEG}/recipes/loaf`,
         );
     });
 });

@@ -154,6 +154,12 @@ lightly federated, unapologetically Old Internet.
   starts with Drawing, the Bank and Nags and buys the rest from the Market with
   HorseBucks; unlocks on the private chain as ledger spends, gates in the client
   only, contracts hidden until their unlock is owned. Built 2026-10-05.
+- [`WEB_ADDRESSES.md`](plans/WEB_ADDRESSES.md) — a post's place on the public
+  web: `node.tld/@name/<path>`, the node's @name in front of the author's own
+  path for the post, made from its title at first publish and kept stable. The
+  path travels with the persona and works on every node; the @name only shortens
+  the identity half where one is claimed. With the way back from it to the
+  identity path. A design draft (2026-10-11); nothing built.
 - **The delivery-shape trio** — what kind of application this is, one document
   per candidate surface. Their relationship to canon differs and each says which
   at the top: **DESKTOP is canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri,

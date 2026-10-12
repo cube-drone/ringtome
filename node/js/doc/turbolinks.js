@@ -153,8 +153,14 @@ async function resolveRingtome(target) {
     const who = { root, name: field('name'), avatar: field('avatar') };
     if (!ref.kind) return { ...who, kind: 'person', href: ref.path, title: field('bio') };
     if (ref.kind === 'room') return resolveRoom(ref, who);
-    // A post - or a document that is one: the public read answers for both.
-    const doc = ref.page || ref.doc;
+    // A post - or a document that is one: the public read answers for both. A web address names
+    // its post through the author's `path` label (plans/WEB_ADDRESSES.md).
+    let doc = ref.page || ref.doc;
+    if (ref.kind === 'path') {
+        const named = await api(`/api/id/${ref.seg}/at/${ref.at}`).catch(() => null);
+        if (!named) return { private: true };
+        doc = named.post;
+    }
     try {
         const post = await api(`/api/id/${ref.seg}/posts/${doc}`);
         const { preview, cover } = await previewOf(ref.seg, root, doc, post);

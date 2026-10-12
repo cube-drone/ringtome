@@ -580,6 +580,37 @@ pub async fn emoji_noted_between(
         .context("listing emoji labels noted in a window")
 }
 
+/// The post an author's `path` names (webpath.rs, plans/WEB_ADDRESSES.md): their own `path =
+/// <path>` label on one of their own posts, as this node holds it - for a peek too, which carries
+/// the whole annotations chain. Only the author's word counts.
+pub async fn post_at_path(node_db: &Db, author_hex: &str, path: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = node_db
+        .fetch_optional(
+            "SELECT target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
+             WHERE key = ?1 AND value = ?2 AND target_author = ?3 AND annotator = ?3 AND sealed = 0
+             ORDER BY noted_ms LIMIT 1",
+            (crate::webpath::PATH_KEY, path, author_hex),
+        )
+        .await
+        .context("reading which post a path names")?;
+    Ok(row.map(|(post,)| post))
+}
+
+/// A post's path, as its author said it and this node holds it.
+pub async fn path_of(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = node_db
+        .fetch_optional(
+            "SELECT value FROM doc_annotations
+             WHERE target_author = ?1 AND target_doc = ?2 AND annotator = ?1 AND key = ?3
+               AND sealed = 0
+             ORDER BY noted_ms LIMIT 1",
+            (author_hex, doc_hex, crate::webpath::PATH_KEY),
+        )
+        .await
+        .context("reading a post's path")?;
+    Ok(row.map(|(path,)| path))
+}
+
 pub async fn published_from(
     node_db: &Db,
     author_hex: &str,

@@ -1338,6 +1338,10 @@ export default {
     'panes.tags': 'tags',
     'panes.no-tags-yet': 'no tags yet',
 
+    // --- node/js/pathpage.js ---
+    'pathpage.looking': 'looking for the post…',
+    'pathpage.nothing-here': 'nothing lives at this address - it may have been taken down, or never existed',
+
     // --- node/js/person.js ---
     'person.active-today': 'active today',
     'person.active-yesterday': 'active yesterday',
@@ -2071,6 +2075,7 @@ export default {
     'idface.no-such-persona-here-2': 'no such persona here',
     'idface.no-such-persona-here-3': 'no such persona here',
     'idface.that-cursor-isnt-a-document': "that cursor isn't a document id",
+    'idface.nothing-at-that-address': 'nothing lives at that address',
     'idface.that-document-is-private': 'that document is private',
     'idface.no-such-post-here-3': 'no such post here',
     'idface.for-trusted-readers-only-2': 'the author shares these words only with people they trust',

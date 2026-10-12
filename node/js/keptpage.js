@@ -13,8 +13,10 @@ import htm from 'htm';
 
 const html = htm.bind(h);
 
-/// A post's page - the one place a kept page stays alive under.
-export const POST_PATH = /^\/ringtome\/user\/[^/]+\/post\//;
+/// A post's page - the one place a kept page stays alive under: by its id, or by its web address
+/// (plans/WEB_ADDRESSES.md), which is anything under a person that isn't one of their other routes.
+export const POST_PATH =
+    /^\/ringtome\/user\/[^/]+\/(post\/|(?!(doc|docs|room|ui-demo)(\/|$))[^/]+)/;
 /// A person's own page, `/ringtome/user/<seg>`, and nothing under it.
 export const PERSON_PATH = /^\/ringtome\/user\/([^/]+)\/?$/;
 

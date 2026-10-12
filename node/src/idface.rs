@@ -168,7 +168,17 @@ async fn post_named(state: &AppState, root: &[u8; 32], rest: &str) -> Option<[u8
         .await
         .ok()
         .flatten()?,
-        _ => return None,
+        // A web address (plans/WEB_ADDRESSES.md): the author's own `path` label names the post.
+        _ => {
+            let path = parts.join("/");
+            if !crate::webpath::well_formed(&path) {
+                return None;
+            }
+            crate::annotations::post_at_path(&state.node_db, &hex::encode(root), &path)
+                .await
+                .ok()
+                .flatten()?
+        }
     };
     hex::decode(hex_id).ok().and_then(|b| <[u8; 16]>::try_from(b).ok())
 }
@@ -212,7 +222,17 @@ async fn post_page(
     let title = said.title;
 
     let base = state.config.public_url.clone().unwrap_or_default();
-    let url = format!("{base}/ringtome/user/{short}/post/{doc_hex}");
+    // Its web address when it has one (plans/WEB_ADDRESSES.md): the canonical address, what an
+    // unfurler and a search engine are told; the long form stays an address it answers at.
+    let path = crate::annotations::path_of(&state.node_db, &root_hex, &doc_hex)
+        .await
+        .ok()
+        .flatten()
+        .filter(|p| crate::webpath::well_formed(p));
+    let url = match &path {
+        Some(path) => format!("{base}/ringtome/user/{short}/{path}"),
+        None => format!("{base}/ringtome/user/{short}/post/{doc_hex}"),
+    };
     let mut head = format!(
         "<title>{} - {}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"article\">\n<meta property=\"og:url\" content=\"{}\">\n<meta property=\"og:site_name\" content=\"{}\">",
         esc(&title),
@@ -236,6 +256,14 @@ async fn post_page(
     if let Some(picture) = picture {
         head.push_str(&format!("\n<meta property=\"og:image\" content=\"{}\">", esc(&picture)));
     }
+    // The canonical address, and what the post is on the network whatever address it's read at:
+    // its author and its id, for an unfurler or another node to take back to the identity path.
+    head.push_str(&format!(
+        "\n<link rel=\"canonical\" href=\"{}\">\n<meta name=\"ringtome:post\" content=\"{}/{}\">",
+        esc(&url),
+        root_hex,
+        doc_hex
+    ));
     head.push_str(&colorway_meta(&fields));
     Ok(Some(
         (
@@ -2942,6 +2970,38 @@ fn post_json(p: &crate::record::documents::PublicDoc, replies: i64) -> serde_jso
         "updated_ms": p.head_ms,
         "thumb": p.thumb_hash.map(hex::encode),
     })
+}
+
+/// GET `/api/id/{seg}/at/{*path}` - the post a web address names (plans/WEB_ADDRESSES.md):
+/// `{ "post": <hex> }`, from the author's own `path` label as this node holds it - a peek's
+/// included, since it carries the whole annotations chain - or the same 404 as an unknown post.
+/// The reader then reads the post by id, as any permalink does.
+pub async fn id_at(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    Path((seg, path)): Path<(String, String)>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    let missing = || {
+        AppError::NotFound(crate::msg!(
+            "idface.nothing-at-that-address",
+            "nothing lives at that address"
+        ))
+    };
+    let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
+        return Err(missing());
+    };
+    let root_hex = hex::encode(root);
+    let path = path.trim_matches('/').to_string();
+    if !crate::webpath::well_formed(&path) || !shelf_readable(&state, &session, &root_hex).await? {
+        return Err(missing());
+    }
+    match crate::annotations::post_at_path(&state.node_db, &root_hex, &path)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        Some(post) => Ok(axum::Json(serde_json::json!({ "post": post, "path": path }))),
+        None => Err(missing()),
+    }
 }
 
 /// GET `/api/id/{root}/from/{doc}` - which public post a document of theirs became (2026-09-28,

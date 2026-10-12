@@ -3732,6 +3732,10 @@ pub(crate) async fn after_posted(
     let doc_id = *draft_id;
     let state = state.clone();
     let root = root.to_string();
+    // A web address (plans/WEB_ADDRESSES.md) for a post a reader arrives at from the web: not a
+    // reply, a room, a line said in one, or a sealed post, whose title is for trusted readers.
+    let pathed = (reply.is_none() && !flags.room && !flags.im && !flags.trusted_only)
+        .then(|| flags.dated_ms.unwrap_or_else(crate::clock::now_ms));
     // The pins: a reply IS a recommendation (PROJECT_PLAN's Replies, Curtis's ruling) - the
     // parent and the thread root are shared outright, ordinary pointers, crowd
     // counts and all. Deduped when the parent is the root; your OWN posts pin
@@ -3811,8 +3815,16 @@ pub(crate) async fn after_posted(
     // slice 1) - best-effort, like the pins: a label must not unsay the words.
     {
         let self_root = hex_fixed::<32>(&root, "root")?;
-        match replicate_annotations(&state, data, &self_root, &doc_id, &post_id, flags.seal_of)
-            .await
+        match replicate_annotations(
+            &state,
+            data,
+            &self_root,
+            &doc_id,
+            &post_id,
+            flags.seal_of,
+            pathed,
+        )
+        .await
         {
             Ok(mentions) => mention_notices(&state, data, &root, mentions).await,
             Err(e) => tracing::warn!(error = ?e, "annotation replication failed; the post stands"),
@@ -5419,6 +5431,72 @@ pub(crate) async fn restate_labels(
     Ok(fresh)
 }
 
+/// A post's web address (plans/WEB_ADDRESSES.md): the path it was given at first publish, kept
+/// (ruling 2: only a person changes it), else one made now from its title, or its date and first
+/// words, under the folder of the notebook it came from - and, for a book's page, the book's
+/// sections (ruling 6) - unique among the author's posts by the post's own id (webpath.rs).
+async fn post_path(
+    data: &store::Store,
+    self_root: &[u8; 32],
+    draft_id: &[u8; 16],
+    post_id: &[u8; 16],
+    in_book: bool,
+    date_ms: i64,
+    notebooks: &[String],
+) -> Result<String, AppError> {
+    let self_hex = hex::encode(self_root);
+    if let Some(had) = data
+        .public_annotations()
+        .of(&self_hex, post_id)
+        .await?
+        .into_iter()
+        .find(|r| r.key == crate::webpath::PATH_KEY)
+    {
+        return Ok(had.value);
+    }
+    let title = crate::record::documents::public_head(data.db(), post_id)
+        .await?
+        .map(|h| h.title)
+        .unwrap_or_default();
+    let words = if crate::webpath::slug(&title).is_empty() {
+        let docs = data.documents();
+        match docs.one(draft_id).await? {
+            Some(doc) => match docs.resolved(&doc).await?.body {
+                Some(body) => {
+                    crate::record::bake::plain_words(&body, &|_| "(media)".into()).unwrap_or(body)
+                }
+                None => String::new(),
+            },
+            None => String::new(),
+        }
+    } else {
+        String::new()
+    };
+    let leaf = crate::webpath::leaf(&title, &words, date_ms, post_id);
+    let mut names: Vec<&String> = notebooks.iter().collect();
+    names.sort();
+    let mut folders: Vec<String> = Vec::new();
+    if let Some(notebook) = names.into_iter().find(|n| crate::webpath::folder(n).is_some()) {
+        folders.push(notebook.clone());
+        if in_book {
+            folders.extend(
+                crate::webpath::sections_of(data, notebook, draft_id)
+                    .await
+                    .map_err(AppError::Internal)?,
+            );
+        }
+    }
+    let db = data.db();
+    crate::webpath::unique(&folders, &leaf, post_id, |path| async move {
+        let holders = crate::record::imaol::path_holders(db, &path)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(holders.iter().any(|d| d != post_id))
+    })
+    .await
+    .map_err(AppError::Internal)
+}
+
 async fn replicate_annotations(
     state: &AppState,
     data: &store::Store,
@@ -5426,6 +5504,8 @@ async fn replicate_annotations(
     draft_id: &[u8; 16],
     post_id: &[u8; 16],
     seal_of: Option<([u8; 32], [u8; 16])>,
+    // When the post gets a web address: the date an untitled one's path starts with.
+    pathed: Option<i64>,
 ) -> Result<Vec<(String, ringtome_proto::SignedEntry)>, AppError> {
     // Refuse, never truncate (2026-08-31): a label past its cap is skipped with a warning
     // rather than quietly shortened - the draft's word is the author's word or nothing.
@@ -5571,6 +5651,17 @@ async fn replicate_annotations(
                     }
                 }
             }
+        }
+    }
+    // Its web address (webpath.rs): the one it was given, or one made now - best-effort, like
+    // every label here: an address must not unsay the words.
+    if let Some(date_ms) = pathed.filter(|_| post_key.is_none()) {
+        let notebooks = buckets.get(&hex::encode(draft_id)).cloned().unwrap_or_default();
+        match post_path(data, self_root, draft_id, post_id, in_book, date_ms, &notebooks).await {
+            Ok(path) => {
+                desired.insert((crate::webpath::PATH_KEY.into(), path));
+            }
+            Err(e) => tracing::warn!(error = ?e, "no web address for this post"),
         }
     }
     let fresh = restate_labels(data, self_root, post_id, &desired, post_key).await?;

@@ -650,6 +650,23 @@ pub async fn pins(db: &Db) -> Result<Vec<Pin>, AppError> {
         .collect())
 }
 
+/// The posts of the author's that hold `path` (webpath.rs), as their path now or as one they
+/// were given before - a path, once said, is the author's to give again only to the same post.
+/// The database is the author's own: every statement in it is theirs.
+pub async fn path_holders(db: &Db, path: &str) -> Result<Vec<[u8; 16]>, AppError> {
+    catch_up_annotations(db).await?;
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT DISTINCT target_doc FROM public_annotations
+             WHERE key = ?1 AND value = ?2 AND present = 1",
+            (crate::webpath::PATH_KEY, path),
+        )
+        .await
+        .context("reading which posts hold a path")
+        .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().filter_map(|(d,)| <[u8; 16]>::try_from(d.as_slice()).ok()).collect())
+}
+
 async fn annotation_rows(
     db: &Db,
     (author, doc): (&str, &[u8; 16]),

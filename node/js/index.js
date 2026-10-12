@@ -82,6 +82,7 @@ import { SuperPinner, useFront, frontName } from './frontdoor.js';
 import { setTurbolinkReader } from './doc/turbolinks.js';
 import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
+import { PersonOrPath } from './pathpage.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
 import { usePerson, faceOf } from './person.js';
 import { useNarrow } from './panes.js';
@@ -220,7 +221,9 @@ const Inside = ({ session }) => {
     // An address under /ringtome/user/ (pure/ringtome.js): a person's or a post's page wears the
     // person header; a room and your own document are apps, placed below.
     const ref = parseRingtome(loc.url);
-    const inId = (!!ref && (ref.kind === null || ref.kind === 'post')) || loc.path.startsWith('/@');
+    const inId =
+        (!!ref && (ref.kind === null || ref.kind === 'post' || ref.kind === 'path')) ||
+        loc.path.startsWith('/@');
     const [idTitle, setIdTitle] = useState(null);
 
     // Which app the shell is showing (from `/home/<app>/<doc?>`), and whether a document is open
@@ -676,7 +679,7 @@ const Inside = ({ session }) => {
             <${PostHistory} path="/ringtome/user/:seg/post/:doc/history" />
             <${DocRoute} path="/ringtome/user/:seg/doc/:doc" current=${persona.current} appHere=${appHere} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${KeptRoute} path="/ringtome/user/:seg" />
-            <${IdPage} path="/ringtome/user/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
+            <${PersonOrPath} path="/ringtome/user/:seg/*" current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
             <${AppRoute} path="/ringtome/:app" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${AppRoute} path="/ringtome/:app/notebook/:notebook" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
             <${AppRoute} path="/ringtome/:app/:doc" current=${persona.current} searchQuery=${query} searchKind=${searchKind} bucket=${bucket} />
@@ -1065,7 +1068,7 @@ const Outside = ({ session }) => {
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc" />
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc/line/:line" />
                 <${KeptRoute} path="/ringtome/user/:seg" />
-                <${IdPage} path="/ringtome/user/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${PersonOrPath} path="/ringtome/user/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
                 <${LegacyId} path="/id/:seg" />
                 <${LegacyId} path="/id/:seg/*" />
                 <${AtRoute} path="/:at" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />

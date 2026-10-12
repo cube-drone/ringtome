@@ -1048,6 +1048,9 @@ const PostEntryBody = ({
         // Which note the post came from (2026-09-28) is how a link to that note finds the post -
         // machinery, never a chip.
         .filter((a) => a.key !== 'published_from')
+        // Its web address (plans/WEB_ADDRESSES.md) is where it lives, said in the address bar -
+        // never a chip.
+        .filter((a) => a.key !== 'path')
         // The room's own word (Contact tags, ruling 5): "@mentioned", said by the author as
         // a sealed label so the people in the room see why they are there - it dresses
         // the wish chip below, never a chip of its own.

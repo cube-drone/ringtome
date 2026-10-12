@@ -20129,6 +20129,7 @@ the bikes post. On the persona's own feed, the "by" row read "me".
   `--chip-on-ink` and `--chip-on-count` default to the old ink and muted
   colours, so other colourways are unchanged. Seen in headless Chrome in
   terminal and terminal-white.
+
 ## 2026-10-11 (cont.): the face that never came
 
 CI on `main` went red once on idface's "names AND faces": B never served A's
@@ -20149,3 +20150,61 @@ picture of its own: the claims' shared `polaroid.jpg` makes one content-
 addressed thumbnail, which already being on B fooled the first attempt at a
 proof (a reordering of `peek_shelf` that this session wrote, disproved and took
 back before finding the logs).
+
+## 2026-10-11 (cont.): web addresses, slice 1 - a post lives at a readable path
+
+Curtis: links to posts outside the app look like
+`/ringtome/user/HVnm…/post/a04aa229…`, which does "little good" for finding
+anything on the public web. The design was settled in conversation, with
+rulings, in a new plan, `plans/WEB_ADDRESSES.md`:
+
+- the node's @name in front of a path the author owns;
+- notebooks as folders, and a book's sections too;
+- a path changes only by hand;
+- an untitled post gets the date and its first words (the first draft said a
+  counter; Curtis: "VERY likely to accumulate clashes across disparate
+  services");
+- paths are labels on each post, which keeps peeks working;
+- no redirect from the long form.
+
+The first slice is built:
+
+- **Made at publish** (`webpath.rs`, called from `identity/routes.rs`
+  `post_path`). A title like "CyberGamer Canada: Ad ViewMagic" becomes
+  `cybergamer-canada--ad-viewmagic`. An untitled post becomes
+  `2026-10-11-today-i-drew-a-horse`, or the date and the start of its id when it
+  has no words. A post filed in its own notebook goes under that notebook's
+  folder, and a book's pages under the book and its sections. A clash adds the
+  start of the post's id, never a counter. Reserved words (the existing routes
+  under a person) can't be a path. Sealed posts, replies and rooms get none.
+  Once given, a path is carried through every republish, so a retitle keeps it.
+  A book's own path is its notebook's folder.
+- **Said as a public `path` label**, so it travels with the persona. Any node
+  holding them answers it, a peek included, through the node-wide label table
+  (`annotations::post_at_path`). The new door is `GET /api/id/<seg>/at/<path>`.
+- **The post's page head** at a path address, with `<link rel="canonical">` and
+  `og:url` naming the path, and a `ringtome:post` meta naming the post's network
+  identity.
+- **The client**: `pathpage.js` shows the post page for a path under a person. A
+  post opened by its id switches the address bar to its path. The URL parser
+  reads a `path` kind, so a pasted path is recognised and a link card resolves
+  it. The person page stays alive beneath a path as beneath a post, and the card
+  doesn't show `path` as a chip.
+
+Tests: unit tests for the slug, untitled posts, folders, clashes and
+well-formedness; pure tests for parsing paths (one old claim, that
+`/<root>/shoe/<id>` is no address, now spells its unknown route in capitals,
+since a lowercase path is a post's address); and `webpaths.cjs`. That file
+covers a titled post resolving for a stranger with a canonical head, a retitle
+keeping its path, a clash taking the id, an untitled post, a notebook folder, a
+sealed post getting none, and a book with a page under its section. In headless
+Chrome, a stranger opening a path got the post with no path chip, the same post
+opened by id switched its address to the path, an unknown path said nothing
+lives there, and the bare person address was still their page.
+
+Two claims in `idface.cjs` held that a post's head names `post/<id>` as its
+address. They now expect the path its title made, and the `ringtome:post` meta
+naming the post. Full `just ci` is green.
+
+Not yet (slice 2): the `@name` form, folder pages, copy-link handing out the
+path, and a book's reader linking pages by path.
