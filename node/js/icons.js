@@ -150,7 +150,9 @@ import {
     TextAa,
     Paragraph,
     Wrench,
-    // hrseAmp (plans/AUDIO.md): the app's tile and the player's controls.
+    // hrseAmp (plans/AUDIO.md): the app's tile (a cassette - Curtis, 2026-10-12) and the player's
+    // controls.
+    CassetteTape,
     MusicNotes,
     SkipBack,
     SkipForward,
@@ -168,6 +170,7 @@ export { IconContext } from '@phosphor-icons/react';
 
 export const Icons = {
     // hrseAmp (plans/AUDIO.md).
+    cassette: CassetteTape,
     music: MusicNotes,
     skipBack: SkipBack,
     skipForward: SkipForward,

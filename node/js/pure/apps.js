@@ -189,7 +189,7 @@ export const APPS = [
         // experimental as video is (ruling 2).
         id: 'amp',
         name: 'hrseAmp™',
-        icon: 'music',
+        icon: 'cassette',
         live: true,
         unlock: 'music',
         searchable: true,

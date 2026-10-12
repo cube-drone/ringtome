@@ -323,7 +323,7 @@ const ICONS = {
     pins: Icons.pin,
     'post-editing': Icons.update,
     'video-upload': Icons.fileVideo,
-    music: Icons.music,
+    music: Icons.cassette,
     sharing: Icons.colRebroadcast,
     links: Icons.link,
     'chats-for-two': Icons.room,
