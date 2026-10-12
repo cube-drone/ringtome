@@ -983,10 +983,7 @@ async fn peek_shelf(state: &AppState, root_hex: &str, endpoint_id: &str) -> usiz
                                 .await;
                     }
                     // The words, the thumbnail and the preview alike: a face is its thumbnail.
-                    let mut hashes = vec![verified.header.file_hash];
-                    hashes.extend(verified.header.thumb_hash);
-                    hashes.extend(verified.header.preview_hash);
-                    return Some((index, hashes));
+                    return Some((index, crate::fragments::fragment_blobs(&verified.header)));
                 }
             }
             None

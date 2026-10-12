@@ -605,6 +605,20 @@ pub struct RevalidationModeRequest {
     pub mode: String,
 }
 
+#[derive(Deserialize)]
+pub struct ShelfStallRequest {
+    /// How long the shelf door waits before answering; 0 puts it back.
+    pub ms: u64,
+}
+
+/// Make this node's shelf door slow (`net::fragment::SHELF_STALL_MS`): a loaded machine on demand,
+/// for the peek that must still fetch the face when the shelf misses its wait.
+pub async fn shelf_stall(Json(req): Json<ShelfStallRequest>) -> Json<Value> {
+    crate::net::fragment::SHELF_STALL_MS.store(req.ms, std::sync::atomic::Ordering::Relaxed);
+    tracing::warn!(ms = req.ms, "LOCAL_TEST shelf stall");
+    Json(serde_json::json!({ "ms": req.ms }))
+}
+
 /// Override which lane fragment revalidation takes, for the duration of the process (or until
 /// set back to "default"). Exists so ONE booted harness can prove the same cascade through both
 /// lanes - the boot env can pin only one, and whichever it pins, the other rots unexercised.

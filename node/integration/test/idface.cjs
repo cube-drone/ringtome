@@ -586,6 +586,56 @@ describe('the banner (a profile field beside the avatar)', function () {
         assert.equal(thumb.headers.get('content-type'), 'image/avif');
         assert.ok((await thumb.arrayBuffer()).byteLength > 0);
     });
+
+    // The claim above went red on CI (2026-10-11) and its rig logs said how: the page asked for the
+    // face before the peek's shelf had fetched it, so the door fetched the avatar's fragment on
+    // demand (fragments.rs `fetch_post`) - wanting its words and not its thumbnail - and the shelf,
+    // finding the fragment held, skipped it. Nothing ever wanted the face, and it never came. Here
+    // that order is made certain: A's shelf door is slowed past the peek's wait, so the page's ask
+    // comes first, every time. A picture of its own, too: the claim above and this one would
+    // otherwise share a thumbnail blob, content-addressed, and the face would already be here.
+    it('a face asked for before the shelf fetches it still arrives', async () => {
+        const { makePng } = require('./helpers.cjs');
+        const who = await makeUserFetch({ prefix: 'earlyface' });
+        const earlyRoot = (await (await who('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        const form = new FormData();
+        const w = 300 + Math.floor(Math.random() * 400);
+        form.append('image', new Blob([makePng(w, 211)], { type: 'image/png' }), 'face.png');
+        const made = await who(`api/identity/${earlyRoot}/avatar`, {
+            method: 'POST',
+            body: form,
+            file: true,
+        });
+        assert.equal(made.status, 200, await made.clone().text());
+        const face = (await made.json()).doc_id;
+        const aEndpoint = (await (await who('api/node')).json()).endpoint_id;
+        const stall = (ms) =>
+            anon('test/shelf-stall', { method: 'POST', body: JSON.stringify({ ms }) });
+        assert.equal((await stall(8000)).status, 200);
+        try {
+            const bMember = await makeUserFetch({ prefix: 'earlyface_b', host: HOST_B });
+            const prof = await (
+                await bMember(`api/id/${earlyRoot}/profile?via=${aEndpoint}`)
+            ).json();
+            assert.ok(
+                prof.fields.some((f) => f.field === 'avatar' && f.value === face),
+                'the name crossed',
+            );
+            let thumb = await bMember(`id/${earlyRoot}/docs/${face}/thumb`);
+            for (let i = 0; i < 30 && thumb.status !== 200; i++) {
+                await new Promise((r) => setTimeout(r, 400));
+                thumb = await bMember(`id/${earlyRoot}/docs/${face}/thumb`);
+            }
+            assert.equal(
+                thumb.status,
+                200,
+                'the face came, though the page asked before the shelf',
+            );
+        } finally {
+            await stall(0);
+        }
+    });
 });
 
 /*

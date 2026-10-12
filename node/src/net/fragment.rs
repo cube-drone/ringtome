@@ -624,6 +624,10 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
 /// and a speculative mirror answers nothing, for the reasons `from_held_chain` gives. A
 /// node holding no chain answers an empty shelf: "nothing to say" is a fact, not a fault.
 async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentMessage {
+    let stall = SHELF_STALL_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if stall > 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(stall)).await;
+    }
     let author_hex = hex::encode(author);
     let limit = limit.clamp(1, ringtome_proto::fragment::MAX_SHELF_IDS as u64) as i64;
     let (posts, pinned) = match state.user_dbs.get(&author_hex).await {
@@ -831,6 +835,12 @@ pub enum Fetched {
 /// test shape: proving a death arrived by the CURSOR and not the queue, which needs the queue
 /// provably parked. The reap is untouched by it.
 pub static REVALIDATION_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// How long this node's shelf door sits before answering, in milliseconds - zero, always, outside
+/// the rig, which sets it through LOCAL_TEST's `/test/shelf-stall`. A loaded machine's slow shelf,
+/// on demand: what proved a peek's face no longer waits on its shelf (idface.rs `peek_shelf`,
+/// 2026-10-11).
+pub static SHELF_STALL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub(crate) fn tree_only() -> bool {
     match REVALIDATION_MODE.load(std::sync::atomic::Ordering::Relaxed) {
