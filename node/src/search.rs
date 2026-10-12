@@ -90,6 +90,10 @@ pub struct Narrow {
     pub not_buckets: Vec<String>,
     pub not_tags: Vec<String>,
     pub not_kinds: Vec<String>,
+    /// The authors row (Curtis, 2026-10-11: "filtering by authors"): roots, `author=` and
+    /// `not_author=`, three-state like the rest.
+    pub authors: Vec<String>,
+    pub not_authors: Vec<String>,
 }
 
 /// The tag families, each its own row on the strip (Curtis, 2026-10-02): a post's SIZE (`micro`
@@ -140,6 +144,8 @@ impl Narrow {
                 "not_bucket" => n.not_buckets.push(v.to_string()),
                 "not_tag" => n.not_tags.push(v.to_string()),
                 "not_kind" if KINDS.contains(&v) => n.not_kinds.push(v.to_string()),
+                "author" if is_root(v) => n.authors.push(v.to_ascii_lowercase()),
+                "not_author" if is_root(v) => n.not_authors.push(v.to_ascii_lowercase()),
                 _ => {}
             }
         }
@@ -152,7 +158,17 @@ impl Narrow {
 
     /// Whether any chip is picked, either way.
     pub fn picks_any(&self) -> bool {
-        self.picks_labels() || !self.kinds.is_empty() || !self.not_kinds.is_empty()
+        self.picks_labels()
+            || !self.kinds.is_empty()
+            || !self.not_kinds.is_empty()
+            || !self.authors.is_empty()
+            || !self.not_authors.is_empty()
+    }
+
+    /// The author half of the judgment.
+    pub fn authors_admit(&self, author: &str) -> bool {
+        (self.authors.is_empty() || self.authors.iter().any(|a| a == author))
+            && !self.not_authors.iter().any(|a| a == author)
     }
 
     /// Whether the judgment needs the posts' labels: a bucket or tag picked, either way.
@@ -172,7 +188,11 @@ impl Narrow {
     /// Words and labels judge posts only; a share has neither, so it answers the kind
     /// row alone - and a label left out is one a share doesn't carry, so it stays.
     pub fn only_kinds(&self) -> bool {
-        self.terms.is_empty() && self.buckets.is_empty() && self.tags.is_empty()
+        self.terms.is_empty()
+            && self.buckets.is_empty()
+            && self.tags.is_empty()
+            && self.authors.is_empty()
+            && self.not_authors.is_empty()
     }
 
     /// The label half of the judgment, given the author's own buckets and tags on a post.
@@ -596,7 +616,7 @@ async fn admitted(
     let mut budget = INDEX_PER_QUERY;
     let mut out = Vec::new();
     for (i, c) in candidates.iter().enumerate() {
-        if !narrow.kinds_admit(c.kind) {
+        if !narrow.kinds_admit(c.kind) || !narrow.authors_admit(&c.author_root) {
             continue;
         }
         if let Some(known) = &labelled {
@@ -647,11 +667,13 @@ async fn admitted(
 pub struct FacetSets {
     pub kinds: Vec<usize>,
     pub buckets: Vec<usize>,
+    pub authors: Vec<usize>,
     /// Per tag family (`tag_family`): each judged with only its OWN family's picks set aside, so a
     /// size chip's count honours a picked medium (2026-10-02).
     pub tags: [Vec<usize>; 3],
     pub kinds_out: Option<Vec<usize>>,
     pub buckets_out: Option<Vec<usize>>,
+    pub authors_out: Option<Vec<usize>>,
     pub tags_out: [Option<Vec<usize>>; 3],
 }
 
@@ -674,9 +696,11 @@ pub async fn facet_sets(
         return Ok(FacetSets {
             kinds: all.clone(),
             buckets: all.clone(),
+            authors: all.clone(),
             tags: [all.clone(), all.clone(), all],
             kinds_out: None,
             buckets_out: None,
+            authors_out: None,
             tags_out: [None, None, None],
         });
     }
@@ -690,6 +714,13 @@ pub async fn facet_sets(
         true => None,
         false => Some(
             judge(Narrow { buckets: Vec::new(), not_buckets: Vec::new(), ..narrow.clone() })
+                .await?,
+        ),
+    };
+    let authors_out = match narrow.not_authors.is_empty() {
+        true => None,
+        false => Some(
+            judge(Narrow { authors: Vec::new(), not_authors: Vec::new(), ..narrow.clone() })
                 .await?,
         ),
     };
@@ -723,9 +754,11 @@ pub async fn facet_sets(
     Ok(FacetSets {
         kinds: judge(Narrow { kinds: Vec::new(), ..narrow.clone() }).await?,
         buckets: judge(Narrow { buckets: Vec::new(), ..narrow.clone() }).await?,
+        authors: judge(Narrow { authors: Vec::new(), ..narrow.clone() }).await?,
         tags,
         kinds_out,
         buckets_out,
+        authors_out,
         tags_out,
     })
 }
@@ -816,12 +849,45 @@ pub async fn facets_json_with(
         tags.extend(counted);
     }
     tags.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    // Who wrote them (Curtis, 2026-10-11), most first: each named, for the chip.
+    let authors_of = |set: &[usize]| {
+        let mut n: std::collections::BTreeMap<String, i64> = Default::default();
+        for &i in set {
+            *n.entry(candidates[i].author_root.clone()).or_insert(0) += 1;
+        }
+        let mut v: Counts = n.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        v
+    };
+    let mut authors = authors_of(&sets.authors);
+    if let Some(out) = &sets.authors_out {
+        restore_left_out(&mut authors, &authors_of(out), &narrow.not_authors);
+    }
+    let roots: Vec<String> = authors.iter().map(|(root, _)| root.clone()).collect();
+    let names = crate::profiles::bylines(&state.node_db, &roots).await?;
+    let authors: Vec<serde_json::Value> = authors
+        .into_iter()
+        .map(|(value, count)| {
+            let name = names.get(&value).and_then(|b| b.name.clone());
+            serde_json::json!({ "value": value, "count": count, "name": name })
+        })
+        .collect();
     let facet = |v: Vec<(String, i64)>| -> Vec<serde_json::Value> {
         v.into_iter()
             .map(|(value, count)| serde_json::json!({ "value": value, "count": count }))
             .collect()
     };
-    Ok(serde_json::json!({ "kinds": facet(kinds), "buckets": facet(buckets), "tags": facet(tags) }))
+    Ok(serde_json::json!({
+        "kinds": facet(kinds),
+        "buckets": facet(buckets),
+        "tags": facet(tags),
+        "authors": authors,
+    }))
+}
+
+/// A persona's root as the authors row takes it: 64 hex characters.
+fn is_root(v: &str) -> bool {
+    v.len() == 64 && v.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// One facet row's counts: `(value, how many posts)`, most frequent first.
@@ -1173,6 +1239,19 @@ mod tests {
             "one tag left out drops it"
         );
         assert!(!out.labels_admit(&s(&["drafts"]), &[]), "a bucket left out drops it");
+        let ada = "a".repeat(64);
+        let bo = "b".repeat(64);
+        let by = Narrow::parse(Some(&format!("author={ada}&not_author={bo}&author=nobody")), None);
+        assert_eq!(by.authors, vec![ada.clone()], "a root, and nothing that isn't one");
+        assert!(by.picks_any() && !by.only_kinds(), "an author is a pick, and no kind");
+        assert!(
+            by.authors_admit(&ada) && !by.authors_admit(&bo) && !by.authors_admit(&"c".repeat(64))
+        );
+        let without = Narrow::parse(Some(&format!("not_author={bo}")), None);
+        assert!(
+            without.authors_admit(&ada) && !without.authors_admit(&bo),
+            "only the one left out goes"
+        );
         let both = Narrow::parse(Some("tag=bread&not_tag=slow"), None);
         assert!(
             both.labels_admit(&[], &s(&["bread"]))

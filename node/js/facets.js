@@ -8,12 +8,16 @@ import { h } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
+import { useLocation } from 'preact-iso';
+
 import { api } from './net.js';
 import { t } from './i18n.js';
 import { useOwns } from './unlocks.js';
 import { Icons } from './icons.js';
 import { KIND_ICON, tagIconRole } from './pure/tagicons.js';
 import {
+    authorChips,
+    bucketChips,
     cycleMe,
     cyclePick,
     facetSlice,
@@ -21,6 +25,8 @@ import {
     LEFT_OUT,
     OPEN_LINES,
     pickState,
+    picksFromQuery,
+    queryWithPicks,
     tagFamily,
     tagRows,
     wrapLines,
@@ -230,9 +236,16 @@ export const FacetRow = ({
 /// A row of tags to narrow by - a `FacetRow`, shown once tags are owned (plans/UNLOCKS.md).
 export const TagFacetRow = (props) => (useOwns('tags') ? html`<${FacetRow} ...${props} />` : null);
 
-/// The strip: `labels` from `useLabels`, `picks` as `{ kinds, buckets, tags }` (each row's "only"
-/// values) with `notKinds`, `notBuckets`, `notTags` (its left-out ones) and `me`, and `onPicks`
-/// with the next picks. Every chip cycles the same way (Curtis, 2026-10-01): left alone, only,
+/// An author's chip words: the name the node knows, else the start of their root.
+const authorNamer = (authors) => {
+    const names = {};
+    for (const a of authors || []) names[a.value] = () => a.name || `${a.value.slice(0, 8)}…`;
+    return names;
+};
+
+/// The strip: `labels` from `useLabels`, `picks` as `{ kinds, buckets, tags, authors }` (each row's
+/// "only" values) with `notKinds`, `notBuckets`, `notTags`, `notAuthors` (its left-out ones) and
+/// `me`, and `onPicks` with the next picks. `self` is the reader's own root, whose chip is "me". Every chip cycles the same way (Curtis, 2026-10-01): left alone, only,
 /// left out - "only" picks in one row widen to either, the rows narrow together.
 export const LabelFacets = ({
     labels,
@@ -241,6 +254,7 @@ export const LabelFacets = ({
     meChip = false,
     note = null,
     free = false,
+    self = null,
 }) => {
     // Filters are bought with tags (plans/UNLOCKS.md, "Reactions, tags & filters") - by a persona.
     // Someone who isn't signed in has none to buy them with, and reads a person's page or the
@@ -273,8 +287,20 @@ export const LabelFacets = ({
             same semantics as the rows below it: nothing picked shows everything, a pick
             narrows to just those. "posts" is what is none of the other kinds. */ ''
         }
-        <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} out=${picks[LEFT_OUT.kinds]} onToggle=${toggle('kinds')} names=${KIND_NAMES} extra=${me} icons=${(v) => KIND_ICON[v]} />
-        <${FacetRow} label=${t('facets.buckets', 'in')} items=${labels && labels.buckets} picked=${picks.buckets} out=${picks[LEFT_OUT.buckets]} onToggle=${toggle('buckets')} />
+        <${FacetRow} label=${t('facets.kinds', 'show')} items=${(labels && labels.kinds) || []} picked=${picks.kinds} out=${picks[LEFT_OUT.kinds]} onToggle=${toggle('kinds')} names=${KIND_NAMES} icons=${(v) => KIND_ICON[v]} />
+        <${FacetRow} label=${t('facets.buckets', 'in')} items=${bucketChips(labels && labels.buckets)} picked=${picks.buckets} out=${picks[LEFT_OUT.buckets]} onToggle=${toggle('buckets')} />
+        ${
+            /* Who wrote it (Curtis, 2026-10-11), the most prolific first - when there is a choice:
+            two authors, or one already picked. On the reader's own feed "me" leads it, where it had
+            sat in the kind row (Curtis, the same day: "now there's definitely a location for 'me'"),
+            and the row is always there to hold it. */ ''
+        }
+        ${(() => {
+            const authors = authorChips(labels && labels.authors, self);
+            const chosen = [...(picks.authors || []), ...(picks[LEFT_OUT.authors] || [])];
+            if (!me && authors.length < 2 && !chosen.length) return null;
+            return html`<${FacetRow} label=${t('facets.authors', 'by')} items=${authors} picked=${picks.authors} out=${picks[LEFT_OUT.authors]} onToggle=${toggle('authors')} names=${authorNamer(labels && labels.authors)} extra=${me} />`;
+        })()}
         ${
             /* The tag row split three ways (Curtis, 2026-10-02): a post's size, its media, and every
             other tag - each row only when it has something to pick, and each a row like the
@@ -296,8 +322,8 @@ export const LabelFacets = ({
 /// and order), then every chip that isn't left alone, in the strip's order - me, kinds, buckets,
 /// tags - each in its strip look, and a press cycles it as the strip would. Nothing to say, nothing
 /// drawn.
-export const PickedFacets = ({ picks, onPicks, lead = null }) => {
-    const owned = useOwns('tags');
+export const PickedFacets = ({ picks, onPicks, lead = null, labels = null, free = false }) => {
+    const owned = useOwns('tags') || free;
     const chips = [];
     const chip = (key, state, glyph, word, onClick) =>
         chips.push(
@@ -310,9 +336,11 @@ export const PickedFacets = ({ picks, onPicks, lead = null }) => {
                 onPicks({ ...picks, me: cycleMe(picks.me) }),
             );
         const icon = (role) => (role && Icons[role] ? html`<${Icons[role]} />` : null);
+        const names = authorNamer(labels && labels.authors);
         const rows = [
             ['kinds', (v) => icon(KIND_ICON[v]), (v) => (KIND_NAMES[v] ? KIND_NAMES[v]() : v)],
             ['buckets', () => null, (v) => v],
+            ['authors', () => null, (v) => (names[v] ? names[v]() : `${v.slice(0, 8)}…`)],
             ['tags', (v) => icon(tagIconRole(v)), (v) => v],
         ];
         for (const [row, glyph, word] of rows) {
@@ -331,9 +359,11 @@ export const NO_PICKS = {
     kinds: [],
     buckets: [],
     tags: [],
+    authors: [],
     notKinds: [],
     notBuckets: [],
     notTags: [],
+    notAuthors: [],
 };
 
 /// The picks, kept for the browser session (Curtis, 2026-09-08): a refresh of the feed
@@ -360,14 +390,34 @@ const writePicks = (key, picks) => {
     }
 };
 /// `free` as `LabelFacets`' own: someone not signed in narrows without owning filters.
-export function usePicks(key, free = false) {
-    const [picks, setPicksState] = useState(() => (key ? readPicks(key) : NO_PICKS));
+///
+/// `inUrl` (Curtis, 2026-10-11): the picks live in the page's address too, so a narrowed page is
+/// a link to hand on - "just my books" is `?kind=book`. Only on pages anyone may open (a person's
+/// page, the node's feed); the reader's own feed keeps its picks to itself, and keeps them in its
+/// saved feeds. An address that names picks outranks the tab's memory, and a pick replaces the
+/// address rather than pushing one, so the back button leaves the page rather than unpicking.
+export function usePicks(key, free = false, { inUrl = false } = {}) {
+    const loc = useLocation();
+    const search = inUrl ? (loc.url.split('?')[1] ?? '') : '';
+    const initial = () => {
+        const named = inUrl && picksFromQuery(search);
+        if (named) return { ...NO_PICKS, ...named };
+        return key ? readPicks(key) : NO_PICKS;
+    };
+    const [picks, setPicksState] = useState(initial);
     useEffect(() => {
-        setPicksState(key ? readPicks(key) : NO_PICKS);
-    }, [key]);
+        setPicksState(initial());
+        // A link followed to this same page with other picks in it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key, search]);
     const setPicks = (next) => {
         setPicksState(next);
         if (key) writePicks(key, next);
+        if (inUrl) {
+            const path = loc.url.split('?')[0];
+            const query = queryWithPicks(search, next);
+            if (`${path}${query}` !== loc.url) loc.route(`${path}${query}`, true);
+        }
     };
     // No filters owned, no filter in force: a pick kept from before can't narrow a list unseen.
     const owned = useOwns('tags') || free;
@@ -378,7 +428,7 @@ export const anyPicks = (picks) =>
         picks &&
         (picks.me === false ||
             picks.me === 'only' ||
-            ['kinds', 'buckets', 'tags'].some(
+            ['kinds', 'buckets', 'tags', 'authors'].some(
                 (row) => (picks[row] || []).length || (picks[LEFT_OUT[row]] || []).length,
             ))
     );

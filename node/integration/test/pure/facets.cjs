@@ -1,8 +1,65 @@
 const assert = require('node:assert');
 
-let facetSlice, togglePick, FACET_TOP, fitCount;
+let facetSlice, togglePick, FACET_TOP, fitCount, bucketChips, authorChips;
+let picksFromQuery, queryWithPicks;
 before(async () => {
-    ({ facetSlice, togglePick, FACET_TOP, fitCount } = await import('../../../js/pure/facets.js'));
+    ({
+        facetSlice,
+        togglePick,
+        FACET_TOP,
+        fitCount,
+        bucketChips,
+        authorChips,
+        picksFromQuery,
+        queryWithPicks,
+    } = await import('../../../js/pure/facets.js'));
+});
+
+describe('the picks in an address (2026-10-11)', () => {
+    it("reads the picks a link names, in the doors' own words, and nothing from one that names none", () => {
+        const picks = picksFromQuery('?kind=book&not_tag=nsfw&tag=art&tag=horse%20art&via=xyz');
+        assert.deepEqual(picks.kinds, ['book']);
+        assert.deepEqual(picks.tags, ['art', 'horse art']);
+        assert.deepEqual(picks.notTags, ['nsfw']);
+        assert.deepEqual(picks.buckets, []);
+        assert.equal(picksFromQuery('?via=xyz'), null);
+        assert.equal(picksFromQuery(''), null);
+    });
+
+    it('writes them back keeping every other parameter, and round-trips', () => {
+        const picks = { kinds: ['rebroadcast'], authors: ['a'.repeat(64)], notBuckets: ['drafts'] };
+        const q = queryWithPicks('via=xyz&kind=book', picks);
+        assert.ok(q.startsWith('?via=xyz&'), q);
+        assert.ok(!q.includes('kind=book'), 'the old picks gone');
+        const back = picksFromQuery(q);
+        assert.deepEqual(back.kinds, ['rebroadcast']);
+        assert.deepEqual(back.authors, ['a'.repeat(64)]);
+        assert.deepEqual(back.notBuckets, ['drafts']);
+        assert.equal(queryWithPicks('?kind=book', {}), '', 'nothing left, no question mark');
+    });
+});
+
+describe('the bucket and authors rows (2026-10-11)', () => {
+    it("a bucket of one post isn't a chip; an author is, but never the reader", () => {
+        const counted = [
+            { value: 'recipes', count: 3 },
+            { value: 'a book', count: 1 },
+            { value: 'outings', count: 2 },
+        ];
+        assert.deepEqual(
+            bucketChips(counted).map((f) => f.value),
+            ['recipes', 'outings'],
+        );
+        const authors = [
+            { value: 'me', count: 9 },
+            { value: 'ada', count: 4 },
+        ];
+        assert.deepEqual(
+            authorChips(authors, 'me').map((f) => f.value),
+            ['ada'],
+        );
+        assert.deepEqual(bucketChips(null), []);
+    });
 });
 
 describe('the facet strip folds each list to its top few (2026-09-07)', () => {

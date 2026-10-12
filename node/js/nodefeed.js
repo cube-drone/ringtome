@@ -41,6 +41,7 @@ export const NodeFeed = ({ current, searchQuery }) => html`
             labelsUrl="/api/node/feed/labels"
             dial=${false}
             picksKey="node:feed"
+            picksInUrl=${true}
             searchQuery=${searchQuery}
             nullState=${html`<${EmptyNode} />`}
         />

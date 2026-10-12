@@ -1242,6 +1242,74 @@
     overflow-y: auto;
 }
 
+/* Feeds (2026-10-11): the saved piles of filters, a thin column left of the composer - the tag
+   column's rows, with a trash at the left of each. */
+.feed-columns .feed-saved {
+    width: var(--w-feeds, 180px);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.feed-saved-row {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    --j: 3px;
+    clip-path: var(--jag-1);
+}
+
+.feed-saved-row:hover {
+    background: var(--surface);
+}
+
+.feed-saved-row.active {
+    background: var(--pink);
+}
+
+.feed-saved-name,
+.feed-saved-forget {
+    background: none;
+    border: 0;
+    font: inherit;
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.feed-saved-name {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    font-size: 0.85rem;
+    padding: 0.28rem 0.4rem 0.28rem 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.feed-saved-forget {
+    display: inline-flex;
+    padding: 0.28rem 0.3rem;
+    color: var(--muted);
+    opacity: 0.6;
+}
+
+.feed-saved-forget:hover {
+    opacity: 1;
+}
+
+.feed-saved-spacer {
+    visibility: hidden;
+}
+
+.feed-saved-row.active .feed-saved-name,
+.feed-saved-row.active .feed-saved-forget {
+    color: var(--surface);
+}
+
 .feed-composer {
     display: flex;
     flex-direction: column;
@@ -2433,8 +2501,12 @@ article:has(.label-emoji-strip) {
     opacity: 0.45;
     cursor: default;
 }
-.feed-top .feed-clear + .feed-sort {
+.feed-top .feed-clear + .feed-sort,
+.feed-top .feed-save + .feed-sort {
     margin-left: 0;
+}
+.feed-top .feed-save {
+    margin-right: 0.8rem;
 }
 .feed-sort select {
     font: inherit;

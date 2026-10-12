@@ -2295,6 +2295,9 @@ fn picked_size(whole: &serde_json::Value, narrow: &crate::search::Narrow) -> Opt
     if !narrow.kinds.is_empty() {
         sizes.push(narrow.kinds.iter().map(|k| count("kinds", k)).sum());
     }
+    if !narrow.authors.is_empty() {
+        sizes.push(narrow.authors.iter().map(|a| count("authors", a)).sum());
+    }
     sizes.into_iter().min()
 }
 

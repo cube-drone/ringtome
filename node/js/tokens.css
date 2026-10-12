@@ -127,6 +127,8 @@
     /* A chosen facet chip's fill (facets.css): the secondary fill here; a colourway whose secondary
        fill sits too near its cards lifts it (witchlight, 2026-10-01). */
     --chip-on: var(--surface-2);
+    --chip-on-ink: var(--ink); /* a chosen chip's words, and its count's */
+    --chip-on-count: var(--muted);
     /* A panel sunk into the dock (the corner clock, 2026-09-17): the shadow its top edge
        casts, and the hairline of light its bottom edge catches. */
     --sunk-shadow: rgba(0, 0, 0, 0.45);
@@ -414,6 +416,11 @@
     --teal-deep: #0d3a0d;
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #39ff14;
+    /* A chosen chip in inverse video (Curtis, 2026-10-11: "a little more distinct"): the phosphor
+       itself behind it, the words black. */
+    --chip-on: var(--sea);
+    --chip-on-ink: var(--on-accent);
+    --chip-on-count: var(--on-accent);
     --pink: #b8ff5c;
     --peach: #ffc53d;
     --coral: #ff4d4d;
@@ -460,6 +467,9 @@
     --teal-deep: #333333;
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ffffff;
+    --chip-on: var(--sea); /* inverse video, as terminal's */
+    --chip-on-ink: var(--on-accent);
+    --chip-on-count: var(--on-accent);
     --pink: #e0e0e0;
     --peach: #ffc53d;
     --coral: #ff4d4d;
@@ -506,6 +516,9 @@
     --teal-deep: #0a333a;
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #14e1ff;
+    --chip-on: var(--sea); /* inverse video, as terminal's */
+    --chip-on-ink: var(--on-accent);
+    --chip-on-count: var(--on-accent);
     --pink: #5cffe4;
     --peach: #ffc53d;
     --coral: #ff4d4d;
@@ -552,6 +565,9 @@
     --teal-deep: #3a2008;
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ff8c1a;
+    --chip-on: var(--sea); /* inverse video, as terminal's */
+    --chip-on-ink: var(--on-accent);
+    --chip-on-count: var(--on-accent);
     --pink: #ffd27a;
     --peach: #ffe14d;
     --coral: #ff4d4d;
@@ -598,6 +614,9 @@
     --teal-deep: #3a3008;
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ffd700;
+    --chip-on: var(--sea); /* inverse video, as terminal's */
+    --chip-on-ink: var(--on-accent);
+    --chip-on-count: var(--on-accent);
     --pink: #fff1a8;
     --peach: #ffb347;
     --coral: #ff4d4d;

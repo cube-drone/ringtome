@@ -82,6 +82,7 @@ import {
     BakeModal,
 } from '../postentry.js';
 import { tagCounts } from '../pure/contacttags.js';
+import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
 import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
 
@@ -291,12 +292,20 @@ export const FeedStream = ({
     labelsUrl,
     dial = true,
     picksKey,
+    picksInUrl = false,
     nullState,
+    onSave = null,
+    applied = null,
+    onSettings = null,
 }) => {
     const feedDoor = feedUrl || (root ? `/api/identity/${root}/feed` : null);
     const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
     // The facet picks, kept per road for the tab (facets.js). Up here: the pages below read them.
-    const [picks, setPicks] = usePicks(picksKey || (root ? `feed:${root}` : null));
+    // A stranger at the node's feed narrows it without owning filters, as on a person's page.
+    const free = picksInUrl && !current;
+    const [picks, setPicks] = usePicks(picksKey || (root ? `feed:${root}` : null), free, {
+        inUrl: picksInUrl,
+    });
     // "me" (Curtis, 2026-09-27; three-state 2026-10-01): on the reader's own feed only, your own
     // posts among the rest, alone (`me=only`), or left out (`me=0`) - every ask saying so to the
     // node (`picks.me`: undefined, 'only', false).
@@ -508,6 +517,23 @@ export const FeedStream = ({
         }).catch(() => {});
     };
 
+    // A saved feed chosen in the Feeds column (Curtis, 2026-10-11): its picks, its curiosity and
+    // its order, all at once - each written where a hand on the strip would write it.
+    useEffect(() => {
+        if (!applied) return;
+        // "all" (Curtis, 2026-10-11) is "clear all": the picks go, the curiosity and order stay.
+        if (applied.all) {
+            setPicks(NO_PICKS);
+            return;
+        }
+        const { picks: next, stop: nextStop, sort: nextSort } = applied.settings;
+        setPicks({ ...NO_PICKS, ...next });
+        if (dial && nextStop && SELECTIVITY_STOPS.some((s) => s.key === nextStop))
+            moveStop(nextStop);
+        if (sortable && nextSort && FEED_SORTS.includes(nextSort)) moveSort(nextSort);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [applied && applied.at]);
+
     const factsByRoot = {};
     for (const c of contacts || []) factsByRoot[c.root] = c.facts || {};
 
@@ -584,6 +610,33 @@ export const FeedStream = ({
             html`<span key="sort" class="facets-picked-word">${t('apps.feed.sort-by', 'order:')} ${SORT_WORDS[sort] ? SORT_WORDS[sort]() : sort}</span>`,
     ].filter(Boolean);
 
+    // What the feed is set to now, for the Feeds column to know a saved one when it's on screen.
+    const settingsNow = feedSettings(picks, dial ? stop : null, sortable ? sort : null);
+    const settingsKey = JSON.stringify(settingsNow);
+    useEffect(() => {
+        if (onSettings && (!dial || stop !== null) && (!sortable || sort !== null))
+            onSettings(settingsNow);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [settingsKey]);
+    // Save filter (Curtis, 2026-10-11): this pile, by a name, into the Feeds column.
+    const save = async () => {
+        const name = (
+            prompt(t('apps.feed.save-filter-name', 'A name for this feed:')) || ''
+        ).trim();
+        if (!name) return;
+        try {
+            await onSave(name, settingsNow);
+            toast(t('apps.feed.saved-as', 'saved as "{name}"', { name }));
+        } catch (e) {
+            toast(
+                t('apps.feed.couldnt-save-it', "couldn't save it: {message}", {
+                    message: e.message,
+                }),
+                { kind: 'error' },
+            );
+        }
+    };
+
     return html`
         <main class="feed-stream" ref=${streamRef}>
             <${UpdateNotice} />
@@ -629,6 +682,8 @@ export const FeedStream = ({
                     picks=${picks}
                     onPicks=${setPicks}
                     lead=${settingWords.length ? settingWords : null}
+                    labels=${labels}
+                    free=${free}
                 />`
             }
             ${
@@ -669,6 +724,14 @@ export const FeedStream = ({
                 >${t('apps.feed.clear-all', 'clear all')}</button>`
                 }
                 ${
+                    onSave &&
+                    html`<button
+                    class="facet-more feed-save"
+                    title=${t('apps.feed.save-filter-title', 'keep these settings as a feed of their own, in the Feeds column')}
+                    onClick=${save}
+                >${t('apps.feed.save-filter', 'save filter')}</button>`
+                }
+                ${
                     sortable &&
                     sort !== null &&
                     html`<label class="feed-sort" title=${t('apps.feed.sort-title', 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked')}>
@@ -689,6 +752,8 @@ export const FeedStream = ({
                 picks=${picks}
                 onPicks=${setPicks}
                 meChip=${meChip}
+                self=${meChip ? root : null}
+                free=${free}
             />
             </div>`
             }
@@ -782,12 +847,64 @@ export const FeedApp = ({ current, searchQuery }) => {
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
     const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'feed');
+    // Saved feeds (Curtis, 2026-10-11), read off the persona's private registers: the Feeds column,
+    // the feed on screen (to know one of them), and the one asked for.
+    const [saved, setSaved] = useState([]);
+    const [settingsNow, setSettingsNow] = useState(null);
+    const [applied, setApplied] = useState(null);
+    const loadSaved = () =>
+        root &&
+        api(`/api/identity/${root}/private/kv/${SAVED_FEEDS}`)
+            .then((r) => setSaved(readSaved(r && r.values)))
+            .catch(() => {});
+    useEffect(() => {
+        setSaved([]);
+        loadSaved();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root]);
+    const saveFeed = async (name, settings) => {
+        const bytes = new Uint8Array(8);
+        crypto.getRandomValues(bytes);
+        const id = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+        await api(`/api/identity/${root}/private/kv/${SAVED_FEEDS}/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: savedValue(name, settings) }),
+        });
+        await loadSaved();
+    };
+    const forgetFeed = async (feed) => {
+        if (
+            !confirm(
+                t('apps.feed.forget-saved-feed', 'Forget the feed "{name}"?', { name: feed.name }),
+            )
+        )
+            return;
+        try {
+            // A register emptied is one deleted (pure/savedfeeds.js).
+            await api(`/api/identity/${root}/private/kv/${SAVED_FEEDS}/${feed.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: '' }),
+            });
+            setSaved((have) => have.filter((f) => f.id !== feed.id));
+        } catch (e) {
+            toast(
+                t('apps.feed.couldnt-forget-it', "couldn't forget it: {message}", {
+                    message: e.message,
+                }),
+                { kind: 'error' },
+            );
+        }
+    };
     // The composer's floor is 260px: below that the editor's chrome crushes even in its
     // narrow mode (panes.js applies the floor to drags AND to previously-stored widths).
     // The composer's column has no ceiling (Curtis, 2026-09-29).
-    const { resizer, colStyle } = useColWidths(root, 'feed', ['compose'], { compose: 260 }, [
-        'compose',
-    ]);
+    const { resizer, colStyle } = useColWidths(
+        root,
+        'feed',
+        ['feeds', 'compose'],
+        { compose: 260 },
+        ['compose'],
+    );
 
     const rows = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     // Your ledger, for the rendering dials: interest shapes an item's size, never its place.
@@ -1037,6 +1154,60 @@ export const FeedApp = ({ current, searchQuery }) => {
             <${BakeModal} items=${baking} />
             <div class="feed-columns panes" style=${colStyle}>
                 ${
+                    /* Feeds (Curtis, 2026-10-11): the saved piles of filters, leftmost - there only
+                    while one is saved. A press puts the feed back as it was saved; the one on screen
+                    is lit. */ ''
+                }
+                ${
+                    saved.length > 0 &&
+                    (tucked.has('feeds')
+                        ? html`<${Rail}
+                          icon=${Icons.filter}
+                          label=${t('apps.feed.feeds', 'feeds')}
+                          onClick=${() => toggleTuck('feeds')}
+                      />`
+                        : html`${tab('feeds', Icons.filter, t('apps.feed.feeds', 'feeds'))}<aside class="feed-saved">
+                          <${PaneHead} icon=${Icons.filter} label=${t('apps.feed.feeds', 'feeds')} onTuck=${() => toggleTuck('feeds')} />
+                          ${
+                              /* "all" heads the list (Curtis, 2026-10-11): the feed unpicked, as "clear
+                              all" leaves it - lit while nothing is picked. Nobody's to forget, so a
+                              blank where the trash would be keeps the names in line. */ ''
+                          }
+                          <div class=${settingsNow && !anyPicks(settingsNow.picks) ? 'feed-saved-row active' : 'feed-saved-row'}>
+                              <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
+                              <button
+                                  class="feed-saved-name"
+                                  title=${t('apps.feed.clear-all-title', 'show everything again - every type and tag back to unpicked')}
+                                  onClick=${() => {
+                                      setApplied({ all: true, at: Date.now() });
+                                      settle();
+                                  }}
+                              >${t('apps.feed.all', 'all')}</button>
+                          </div>
+                          ${saved.map(
+                              (feed) => html`<div
+                                  key=${feed.id}
+                                  class=${sameFeed(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
+                              >
+                                  <button
+                                      class="feed-saved-forget"
+                                      title=${t('apps.feed.forget-this-feed', 'forget this feed')}
+                                      aria-label=${t('apps.feed.forget-this-feed', 'forget this feed')}
+                                      onClick=${() => forgetFeed(feed)}
+                                  ><${Icons.trash} /></button>
+                                  <button
+                                      class="feed-saved-name"
+                                      onClick=${() => {
+                                          setApplied({ settings: feed, at: Date.now() });
+                                          settle();
+                                      }}
+                                  >${feed.name}</button>
+                              </div>`,
+                          )}
+                      </aside>
+                      ${resizer('feeds')}`)
+                }
+                ${
                     tucked.has('compose')
                         ? html`<${Rail}
                           icon=${Icons.notes}
@@ -1125,6 +1296,9 @@ export const FeedApp = ({ current, searchQuery }) => {
                     scheduled=${scheduledItems}
                     editingFor=${editingFor}
                     searchQuery=${searchQuery}
+                    onSave=${saveFeed}
+                    applied=${applied}
+                    onSettings=${setSettingsNow}
                 />
             </div>
         </div>

@@ -19983,6 +19983,7 @@ the feed's; a cycle refused, a rename, and a delete that keeps documents; an
 upload link filing into a notebook's tree; and the hour key working, writing
 "ai-agent", refusing to make keys, stopping at three, and ending with its
 parent. `RINGTOME_TEST_GREP=MCP just integration`: 50 passing.
+
 ## 2026-10-11 (cont.): toasts
 
 Curtis: "This is an utterly toastless system... Can we talk about introducing a
@@ -20055,3 +20056,76 @@ tagging keeps too. hrseFiles gained a count line, to carry "select all". Rows,
 tiles, the tree and the publish column all open through one click handler now,
 so any plain click ends the selection; "+ new" ends it too. Not browser-tested:
 the panel and the clicks are UI, and STYLE's rule leaves those to a person.
+
+## 2026-10-11 (cont.): the feed by author, notebooks of two or more, and saved feeds
+
+Curtis asked for four things in the feed options: filtering by author, most
+prolific first; buckets only when they hold two or more posts ("a lot of 1-item
+buckets (books)"); a "save filter" beside "clear all"; and a **Feeds** column of
+the saved piles, there only while one is saved, where a press switches to that
+feed and a trash forgets it.
+
+- **Authors** (search.rs `Narrow`): `author=` and `not_author=` take roots and
+  cycle through the same three states as every other row. The judgment checks a
+  post's author beside its kind. The labels doors count an `authors` row over
+  what the other rows' picks leave, most first, each with the name the byline
+  cache knows, and a left-out author keeps their chip. On the strip it's the
+  "by" row. The reader's own chip stays "me", and the row shows only when there
+  are two authors to choose between (or one is picked). It covers the feed, a
+  person's page and the node's front page alike.
+- **Buckets of one** leave the strip (pure/facets.js `BUCKET_FLOOR`), except a
+  picked one, which stays so it can be clicked back.
+- **Saved feeds** (pure/savedfeeds.js): a feed's picks, curiosity and order,
+  under a name. They live in the persona's private registers (`feed_filters`),
+  so they follow it to every computer. Emptying a register deletes the feed.
+  "save filter" asks for a name. The Feeds column lists them by name, lights the
+  one that matches the feed on screen, applies one with a press, and forgets one
+  with its trash, after a confirm. It tucks to a rail like the composer, and
+  isn't drawn at all with nothing saved.
+
+Tests: a unit test for parsing and judging authors; pure tests for the chip
+rules and for saved feeds (same feed however picked, read back by name, deleted
+and unreadable registers left out); and a claim in `facets.cjs` (a two-author
+feed counts and names its authors, narrows both ways, and keeps a left-out
+author's chip and count). In headless Chrome: three personas, a bucket of one
+hidden, "by Ada 5, Bo 1" without the reader, a pick, a save, the column lit,
+clear unlit it, a press lit it again, and forgetting the last one took the
+column away.
+
+Then, the same evening:
+
+- **Picks in the address on public pages** (Curtis: "Yes please", to keeping
+  "just my books" as a link). A person's page and the node's feed keep their
+  picks in the address, in the node's own parameter words (`?kind=book`,
+  `?not_tag=nsfw`, `?author=<root>`), and other parameters are left alone. A
+  link that names picks overrides the tab's memory. A pick replaces the address
+  rather than pushing a new one, so the back button leaves the page instead of
+  undoing chips. The reader's own feed stays out of its address: saved feeds do
+  that job there. To make this work for strangers, the node's feed now lets
+  someone who isn't signed in filter, as a person's page already did. The
+  helpers are pure/facets.js `picksFromQuery` and `queryWithPicks`, with pure
+  tests.
+- **"me" leads the "by" row** (Curtis: "now there's definitely a location for
+  'me'"), where it had sat in the kind row. On the reader's own feed the row is
+  always drawn, to hold it.
+
+Seen in headless Chrome as a stranger: `/id/<root>?tag=art` showed the two art
+posts with the chip lit. One click made the address `?not_tag=art`, showing the
+other post, with history no longer than before. `/feed?tag=bikes` showed only
+the bikes post. On the persona's own feed, the "by" row read "me".
+
+- **"all" heads the Feeds column** (Curtis: "a default 'all' which does the same
+  thing as clearing the current set of feed options"): pressing it clears the
+  picks as "clear all" does, leaving the curiosity and order as they are. It's
+  lit while nothing is picked, and has no trash, with a blank in its place so
+  the names line up. Seen in headless Chrome: "all" above "Ada art", and a press
+  on it lit it and cleared every chip.
+
+- **Picked chips in inverse video on the terminal colourways** (Curtis: "the
+  'selected' tags could be a little more distinct from unselected ones"). Their
+  fill had been the default `--surface-2`, a pane green barely lighter than the
+  card. In all five terminal colourways a picked chip is now the phosphor itself
+  (`--sea`) with black words and count (`--on-accent`). The new tokens
+  `--chip-on-ink` and `--chip-on-count` default to the old ink and muted
+  colours, so other colourways are unchanged. Seen in headless Chrome in
+  terminal and terminal-white.

@@ -132,7 +132,7 @@ export const PublicPosts = ({ root, posts, pinned, more, current, fields, search
     // The header's search (2026-09-07): the node answers over the whole held shelf
     // (postsearch.js); its results stand in for the shelf and the pinned strip while a
     // query is open. Hooks before the early return below, as always.
-    const [picks, setPicks] = usePicks(root ? `id:${root}` : null, !current);
+    const [picks, setPicks] = usePicks(root ? `id:${root}` : null, !current, { inUrl: true });
     const viewer = current ? `?as=${current.root}` : '';
     // The picks thin the lists (Curtis, 2026-09-27; search.rs facet_sets) - the words stay out.
     const pickQuery = narrowParams('', picks);

@@ -91,7 +91,64 @@ export function togglePick(picked, value) {
 /// Every chip on the strip is three-state (Curtis, 2026-10-01): left alone, "only", "leave out".
 /// A row's "only" picks live in its own list (`kinds`, `buckets`, `tags` - kept as they were, so
 /// picks remembered from before still read) and its left-out ones beside it, here.
-export const LEFT_OUT = { kinds: 'notKinds', buckets: 'notBuckets', tags: 'notTags' };
+export const LEFT_OUT = {
+    kinds: 'notKinds',
+    buckets: 'notBuckets',
+    tags: 'notTags',
+    authors: 'notAuthors',
+};
+
+/// The picks' words in an address (Curtis, 2026-10-11: "just my books" as a link someone can hand
+/// on), named as the node's own doors name them (postsearch.js `narrowParams`): `kind=book`,
+/// `not_tag=nsfw`, `author=<root>`. "me" is the reader's own feed's, and never in an address.
+const URL_ROWS = [
+    ['kinds', 'kind'],
+    ['buckets', 'bucket'],
+    ['tags', 'tag'],
+    ['authors', 'author'],
+];
+const URL_KEYS = new Set(URL_ROWS.flatMap(([, key]) => [key, `not_${key}`]));
+
+/// The picks an address's query names, or null when it names none.
+export function picksFromQuery(search) {
+    const params = new URLSearchParams(search || '');
+    const picks = {};
+    let any = false;
+    for (const [row, key] of URL_ROWS) {
+        picks[row] = params.getAll(key).filter(Boolean);
+        picks[LEFT_OUT[row]] = params.getAll(`not_${key}`).filter(Boolean);
+        any = any || picks[row].length > 0 || picks[LEFT_OUT[row]].length > 0;
+    }
+    return any ? picks : null;
+}
+
+/// `search` (an address's query, `?` or not) with its picks replaced by `picks`' - every other
+/// parameter kept as it was. Answers the query with its `?`, or '' when nothing is left.
+export function queryWithPicks(search, picks) {
+    const params = new URLSearchParams(search || '');
+    for (const key of URL_KEYS) params.delete(key);
+    for (const [row, key] of URL_ROWS) {
+        for (const v of (picks && picks[row]) || []) params.append(key, v);
+        for (const v of (picks && picks[LEFT_OUT[row]]) || []) params.append(`not_${key}`, v);
+    }
+    const q = params.toString();
+    return q ? `?${q}` : '';
+}
+
+/// The fewest posts a notebook needs to be a chip on the strip (Curtis, 2026-10-11: "a lot of
+/// 1-item buckets (books)"): a book is a notebook of its own, and each one's pages made a chip of
+/// one. A picked one stays whatever its count, so it can be clicked back.
+export const BUCKET_FLOOR = 2;
+
+/// The bucket row's chips: those at the floor or over it.
+export const bucketChips = (counted) => (counted || []).filter((f) => f.count >= BUCKET_FLOOR);
+
+/// The authors row's chips (2026-10-11), the most prolific first as the node counts them - less
+/// `self`, whose own chip is "me". Shown only when there is a choice: two authors or more, or one
+/// picked.
+export function authorChips(counted, self = null) {
+    return (counted || []).filter((f) => f.value !== self);
+}
 
 /// Where one value of a row stands: 'only', 'out', or null for left alone.
 export function pickState(picks, row, value) {

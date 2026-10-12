@@ -472,5 +472,54 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
                 });
             }
         });
+
+        // Last, since it gives Bea a post of her own, which the claims above count without.
+        it('the authors row: who wrote what the reader sees, most first, each named - and it narrows both ways', async () => {
+            const d = await (
+                await j(bea, `api/identity/${beaRoot}/docs`, {
+                    title: 'Mine',
+                    body: 'my own',
+                    format: 'marquee',
+                })
+            ).json();
+            const pub = await j(bea, `api/identity/${beaRoot}/docs/${d.doc_id}/publish`, {});
+            assert.equal(pub.status, 200, await pub.clone().text());
+            const own = (await pub.json()).post_id;
+            await j(bea, `api/identity/${beaRoot}/profile`, { field: 'name', value: 'Bea' });
+            const get = (qs) => bea(`api/identity/${beaRoot}/${qs}`).then((r) => r.json());
+            const whole = ids(await get('feed'));
+            const adas = whole.filter((id) => id !== own);
+            assert.ok(adas.length >= 2 && whole.includes(own), JSON.stringify(whole));
+
+            const { authors } = await get('feed/labels');
+            assert.deepEqual(
+                authors.map((a) => [a.value, a.count]),
+                [
+                    [adaRoot, adas.length],
+                    [beaRoot, 1],
+                ],
+                'the most prolific first',
+            );
+            assert.ok(
+                authors.every((a) => 'name' in a),
+                'each with the name the node knows',
+            );
+
+            assert.deepEqual(ids(await get(`feed?author=${adaRoot}`)), adas.sort(), 'only hers');
+            assert.deepEqual(ids(await get(`feed?not_author=${adaRoot}`)), [own], 'all but hers');
+            const left = await get(`feed/labels?not_author=${adaRoot}`);
+            assert.deepEqual(
+                left.authors.map((a) => [a.value, a.count]),
+                [
+                    [adaRoot, adas.length],
+                    [beaRoot, 1],
+                ],
+                'a left-out author keeps their chip and count, to be clicked back',
+            );
+            assert.ok(
+                !left.tags.some((t) => t.value === 'bread'),
+                "and the other rows count without her: no bread is Bea's",
+            );
+        });
     },
 );

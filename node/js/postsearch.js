@@ -26,6 +26,9 @@ export function narrowParams(query, picks, extra = {}) {
     for (const g of (picks && picks.notTags) || []) parts.push(`not_tag=${encodeURIComponent(g)}`);
     for (const k of (picks && picks.notKinds) || [])
         parts.push(`not_kind=${encodeURIComponent(k)}`);
+    // Who wrote it (2026-10-11): a root, either way.
+    for (const a of (picks && picks.authors) || []) parts.push(`author=${a}`);
+    for (const a of (picks && picks.notAuthors) || []) parts.push(`not_author=${a}`);
     // The feed's selectivity dial rides along (2026-09-08) so the node narrows what the
     // dial shows; it never makes a search on its own.
     const stop = extra.stop && extra.stop !== 'explorer' ? extra.stop : null;
