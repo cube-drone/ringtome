@@ -85,6 +85,11 @@ lightly federated, unapologetically Old Internet.
   engines: a server-written reading copy in every public page's body, a
   `robots.txt` and sitemap, the right status codes, and a choice of who is
   indexed. A design draft (2026-10-11); nothing built.
+- [`CROWD.md`](plans/CROWD.md) — a popular persona served by its followers'
+  nodes: a published follow makes a node a holder, the author's node (and its
+  "busy" refusal) refers askers to holders, holders pass moves on, and the wake
+  pass asks a holder first and the author now and then. A design draft
+  (2026-10-11); nothing built.
 - [`DEDUP.md`](plans/DEDUP.md) — one copy of each private file a persona holds:
   a keyed fingerprint of every private blob, carried in its encrypted header and
   folded into a per-persona view, so an upload the persona already holds names
