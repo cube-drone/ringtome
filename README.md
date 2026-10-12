@@ -81,6 +81,11 @@ lightly federated, unapologetically Old Internet.
   what the node sees the network doing - drawings, words, reactions positive and
   negative, follows, chat, posts. Horse Financial's second instrument. Built
   2026-10-06.
+- [`CROWD.md`](plans/CROWD.md) — a popular persona served by its followers'
+  nodes: a published follow makes a node a holder, the author's node (and its
+  "busy" refusal) refers askers to holders, holders pass moves on, and the wake
+  pass asks a holder first and the author now and then. A design draft
+  (2026-10-11); nothing built.
 - [`DEDUP.md`](plans/DEDUP.md) — one copy of each private file a persona holds:
   a keyed fingerprint of every private blob, carried in its encrypted header and
   folded into a per-persona view, so an upload the persona already holds names

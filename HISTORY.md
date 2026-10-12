@@ -20323,3 +20323,22 @@ if published before paths existed. The backfill gives the older one `twin-peaks`
 and the newer one `twin-peaks-<its id>`, and a second run changes nothing. Not
 tried on a real archive: Curtis's lives on his server, and the first startup
 after a deploy is where it will run.
+## 2026-10-11 (cont.): the crowd serves, a plan
+
+Curtis asked whether horsedrawingtycoon.com would fold if 100,000 people joined
+at once, now that cube-drone and the official persona are every newcomer's
+starters. Worked from the constants, not measured: it would shed rather than
+fall (admission refuses past 512 connections), but every follower re-asks the
+author's node whenever its mirror is half an hour stale and pushes stop at 16,
+so the steady cost is about 170 exchanges a second, and newcomers are the ones
+refused. The gap underneath: a follower pulls only from the persona's own
+machinery, and a node pushes only what it authors - while canon has said since
+_Rehosting Policy_ that a follow makes a node a server. The serve door already
+answers for followed personas; nothing tells anyone to ask it.
+[`plans/CROWD.md`](plans/CROWD.md) is the design: published follows make
+holders, the author's node and its busy refusal refer askers to them, holders
+relay moves, the wake pass asks a holder first and the author now and then. One
+finding rides it for a ruling: the serve door already answers strangers for a
+QUIETLY followed persona, which a probe can read as node-level interest. Ruled
+the same day: the door narrows to published follows, unless the node serves
+more than 10 personas - a crowd to hide in.
