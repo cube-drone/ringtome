@@ -94,7 +94,8 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
         const fresh = amp.readTableSettings(null);
         assert.deepEqual(
             fresh.hidden.sort(),
-            ['by', 'from', 'genre', 'notebook', 'number', 'year'].sort(),
+            ['by', 'date', 'from', 'genre', 'notebook', 'number', 'score', 'year'].sort(),
+            'title, artist, album, length and tags show to begin with',
         );
         assert.deepEqual(fresh.sort, { column: 'date', down: true });
         const kept = amp.readTableSettings(

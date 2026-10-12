@@ -32,8 +32,8 @@ export const COLUMNS = [
     { key: 'notebook', sortable: true, shown: false, width: 130 },
     { key: 'by', sortable: true, shown: false, width: 130 },
     { key: 'from', sortable: true, shown: false, width: 130 },
-    { key: 'date', sortable: true, shown: true, width: 110 },
-    { key: 'score', sortable: true, shown: true, width: 64 },
+    { key: 'date', sortable: true, shown: false, width: 110 },
+    { key: 'score', sortable: true, shown: false, width: 64 },
 ];
 
 export const COLUMN_MIN = 36;
@@ -150,7 +150,7 @@ const text = (a, b) => {
     return collator.compare(a || '', b || '');
 };
 
-/// The comparator for a column, ascending; `names` gives a person's name for By and From. Ties fall
+/// The comparator for a column, ascending; `names` gives a person's name for Posted by and Via (`by`, `from`). Ties fall
 /// to the title, then the row's key, so an order is the same every time.
 export function comparator(column, names = {}) {
     const tie = (a, b) => text(a.title, b.title) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);

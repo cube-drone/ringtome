@@ -56,10 +56,17 @@ const COLUMN_WORDS = {
     length: () => t('amp.col-length', 'length'),
     tags: () => t('amp.col-tags', 'tags'),
     notebook: () => t('amp.col-notebook', 'notebook'),
-    by: () => t('amp.col-by', 'by'),
-    from: () => t('amp.col-from', 'from'),
+    by: () => t('amp.col-by', 'posted by'),
+    from: () => t('amp.col-from', 'via'),
     date: () => t('amp.col-date', 'date'),
     score: () => t('amp.col-score', 'score'),
+};
+
+/// What the two people columns mean, in their headers' hover: they're easy to mix up.
+const COLUMN_HINTS = {
+    by: () => t('amp.col-by-hint', 'who posted the file'),
+    from: () =>
+        t('amp.col-from-hint', 'who it reached you through: you, who posted it, or who shared it'),
 };
 
 /// The sound fields' names, as the panel says them.
@@ -258,6 +265,8 @@ export const AmpApp = ({ current, searchQuery }) => {
     const [scrollTop, setScrollTop] = useState(0);
     const [height, setHeight] = useState(600);
     const body = useRef(null);
+    // When a column's edge was last let go: the click that ends a drag isn't a sort.
+    const resizedAt = useRef(0);
 
     const load = async () => {
         if (!root) return;
@@ -327,7 +336,7 @@ export const AmpApp = ({ current, searchQuery }) => {
     const columns = COLUMNS.filter((c) => !settings.hidden.includes(c.key));
     const template = columns.map((c) => `${widths[c.key]}px`).join(' ');
     const sortBy = (c) => {
-        if (!c.sortable) return;
+        if (!c.sortable || Date.now() - resizedAt.current < 300) return;
         const down =
             settings.sort.column === c.key
                 ? !settings.sort.down
@@ -348,6 +357,7 @@ export const AmpApp = ({ current, searchQuery }) => {
             setWidths((all) => ({ ...all, [key]: w }));
         };
         const up = () => {
+            resizedAt.current = Date.now();
             strip.removeEventListener('pointermove', move);
             strip.removeEventListener('pointerup', up);
             save({ widths: { ...widths, [key]: w } });
@@ -403,29 +413,31 @@ export const AmpApp = ({ current, searchQuery }) => {
                     <button class="facet-more" onClick=${load}>${t('amp.refresh', 'refresh')}</button>
                 </p>
                 <div class="amp-table" ref=${body} onScroll=${(e) => setScrollTop(e.currentTarget.scrollTop)}>
-                    <div class="amp-head" style=${`grid-template-columns: ${template} 2rem`}>
+                    <div class="amp-head" style=${`grid-template-columns: 2rem ${template}`}>
+                        <${ColumnMenu} hidden=${settings.hidden} onToggle=${toggleColumn} />
                         ${columns.map(
                             (c) => html`<div
                                 key=${c.key}
                                 class=${c.sortable ? 'amp-th amp-th-sorts' : 'amp-th'}
+                                title=${COLUMN_HINTS[c.key] ? COLUMN_HINTS[c.key]() : undefined}
                                 onClick=${() => sortBy(c)}
                             >
                                 <span class="amp-th-word">${COLUMN_WORDS[c.key]()}</span>
                                 ${settings.sort.column === c.key && html`<span class="amp-th-dir">${settings.sort.down ? '▾' : '▴'}</span>`}
-                                <span class="amp-th-edge" onPointerDown=${resize(c.key)}></span>
+                                <span class="amp-th-edge" onPointerDown=${resize(c.key)} onClick=${(e) => e.stopPropagation()}></span>
                             </div>`,
                         )}
-                        <${ColumnMenu} hidden=${settings.hidden} onToggle=${toggleColumn} />
                     </div>
                     <div class="amp-rows" style=${`height: ${shown.length * ROW_HEIGHT}px`}>
                         ${shown.slice(first, last).map(
                             (r, i) => html`<div
                                 key=${r.key}
                                 class=${['amp-row', picked.has(r.key) ? 'amp-row-picked' : '', playingKey === r.key ? 'amp-row-playing' : ''].join(' ')}
-                                style=${`top: ${(first + i) * ROW_HEIGHT}px; grid-template-columns: ${template} 2rem`}
+                                style=${`top: ${(first + i) * ROW_HEIGHT}px; grid-template-columns: 2rem ${template}`}
                                 onClick=${(e) => select(r, e)}
                                 onDblClick=${() => player && player.play(shown, r)}
                             >
+                                <span class="amp-td-lead">${playingKey === r.key && html`<${Icons.speaker} />`}</span>
                                 ${columns.map((c) => {
                                     const v = cell(r, c.key, names);
                                     return html`<span key=${c.key} class=${cellClass(c.key)} title=${v}>${v}</span>`;

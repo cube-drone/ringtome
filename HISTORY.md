@@ -20454,3 +20454,11 @@ shuffle. On a scratch node in headless Chrome, three followed sounds and an own
 one listed and selected, double-click played with Media Session's title set, and
 the cassette turned. Shuffle and next moved on, and the compact player kept
 playing on another route.
+
+**Fixes after first use (Curtis, same day).** Letting go of a column's edge no
+longer sorts by that column. Shift-clicking rows picks rows without selecting
+their text. The column menu moved to the first slot, where a wide table can't
+scroll it away. By and From are now "posted by" and "via", with a hover saying
+which is which. The playing row shows a speaker in that first column and keeps
+the picked row's ink when it's also picked, so it stays readable. The default
+columns are Title, Artist, Album, Length and Tags. Checked in headless Chrome.

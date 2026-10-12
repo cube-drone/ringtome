@@ -96,7 +96,8 @@ A design draft (2026-10-12), with rulings and no open questions. Nothing built.
    good interface for adjusting it.
 10. **Visible** is your sounds, your feed's at the curiosity dial, and anything
     in your mixtapes - not peeks or the front page on their own (section 1).
-11. **The default columns** as section 2 proposes, "for now".
+11. **The default columns** as section 2 proposes, "for now" - narrowed after
+    using it to Title, Artist, Album, Length and Tags (2026-10-12).
 12. **Everyone's tags by default**, with a chip to narrow to the author's and
     yours (section 3, reversing the draft's default).
 13. **Station breaks are just a slice.** Curtis: "that's just another kind of
@@ -163,9 +164,9 @@ notebook, by, from, date, score.
 
 - **Title** is the sound's own title tag, else its document's title. **Artist**
   is its album artist, else its artist (ruling 5).
-- **By** is who made the file (its author, or the first in its copy chain for a
-  copy); **From** is who it reached you through - you, the person who posted it,
-  or who shared it.
+- **Posted by** is who made the file (its author, or the first in its copy chain
+  for a copy); **Via** is who it reached you through - you, the person who
+  posted it, or who shared it.
 - **Date**: your own sound's date (its claimed date, else when you made it); a
   feed sound's, when its post reached you.
 - **Score**: the feed's score for the post it arrived in; for your own sound,
@@ -185,15 +186,18 @@ instantly there, and "select all" means "all that match" with no round trip.
 
 ### 2. The table
 
-- **Columns**: Title, Artist, Album, #, Year, Genre, Length, Tags, Notebook, By,
-  From, Date, Score. Shown by default: Title, Artist, Album, Length, Tags, Date,
-  Score. Hidden by default: #, Year, Genre, Notebook, By, From. Sortable: all
-  but Tags and #. Sorting by Album keeps each album in track order.
+- **Columns**: Title, Artist, Album, #, Year, Genre, Length, Tags, Notebook,
+  Posted by, Via, Date, Score. Shown by default: Title, Artist, Album, Length,
+  Tags (Curtis, 2026-10-12). Hidden by default: the rest. Sortable: all but Tags
+  and #. Sorting by Album keeps each album in track order. Posted by and Via
+  (first drafted as "By" and "From", which Curtis found easy to mix up) say in
+  their headers' hover what each means.
 - **Widths** drag at a header's edge and are kept per device. A cell never
   wraps: what doesn't fit is cut with an ellipsis, and the whole value shows on
   hover.
-- **Hiding**: a menu at the end of the header row lists every column with a
-  tick.
+- **Hiding**: a menu at the start of the header row lists every column with a
+  tick - at the start, so a wide table never scrolls it out of reach (Curtis,
+  2026-10-12). Below it, the playing song's row shows a speaker.
 - **Selection**: a click selects one, ctrl- or cmd-click adds or removes one,
   shift-click selects a run, and "select all" selects every row the filter
   leaves. A double-click plays.
