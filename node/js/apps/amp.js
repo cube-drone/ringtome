@@ -35,7 +35,17 @@ import { postHref } from '../links.js';
 import { Icons } from '../icons.js';
 import { toast } from '../toasts.js';
 import { t } from '../i18n.js';
+import { askText } from '../modal.js';
 import { FacetRow } from '../facets.js';
+import {
+    dropIndex,
+    inMixtapeOrder,
+    isMixtape,
+    mixtapeTitle,
+    mixtapesBySong,
+    notYetIn,
+    readMixtape,
+} from '../pure/mixtapes.js';
 import { Chip } from '../doc/chips.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { STOP_WORDS } from '../curiosity.js';
@@ -281,14 +291,16 @@ const PanelHead = ({ root, rows, title, onDeleted, children = null }) => {
 
 /// What's selected, in the file column: one of your sounds, its own panel; one of someone else's, its
 /// fields beside yours; several, the bulk panel for yours and your layer for theirs.
-const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted }) => {
+const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted, mixtapes }) => {
     const own = rows.filter((r) => r.own && !r.builtin);
     const theirs = rows.filter((r) => !r.own);
     const files = appById('lost-found');
     if (rows.length === 1) {
         const r = rows[0];
         return html`<div class="amp-panel-body">
-            <${PanelHead} root=${root} rows=${rows} title=${r.title} onDeleted=${onDeleted} />
+            <${PanelHead} root=${root} rows=${rows} title=${r.title} onDeleted=${onDeleted}>
+                <${MixtapeActions} rows=${rows} ...${mixtapes} />
+            <//>
             ${r.own && !r.builtin && html`<${SoundTags} root=${root} docId=${r.doc} score=${html`<${Reaction} root=${root} row=${r} onLayer=${onLayer} />`} />`}
             ${r.builtin && html`<${SoundTags} root=${root} docId=${r.doc} readOnly=${true} />`}
             ${
@@ -304,6 +316,7 @@ const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted }) 
     return html`<div class="amp-panel-body">
         <${PanelHead} root=${root} rows=${rows} title=${t('amp.n-selected', '{n} selected', { n: rows.length })} onDeleted=${onDeleted}>
             <button class="chip chip-button" onClick=${onClear}>${t('amp.clear', 'clear')}</button>
+            <${MixtapeActions} rows=${rows} ...${mixtapes} />
         <//>
         ${
             own.length > 0 &&
@@ -334,6 +347,7 @@ const ROW_WORDS = {
     from: () => t('amp.row-from', 'via'),
     artists: () => t('amp.row-artists', 'artist'),
     genres: () => t('amp.row-genres', 'genre'),
+    mixtapes: () => t('amp.row-mixtapes', 'mixtape'),
     tags: () => t('amp.row-tags', 'tags'),
 };
 
@@ -589,7 +603,8 @@ const FilterStrip = ({
 };
 
 /// The Playlists column (section 3): filters - "all" first, always there, then each saved one, lit
-/// while it is what the table shows. Mixtapes and radio stations join it in their slices.
+/// while it is what the table shows - and the mixtapes (section 5). Radio stations join it in their
+/// slice.
 const Playlists = ({
     filters,
     now,
@@ -597,6 +612,10 @@ const Playlists = ({
     onPick,
     onForget,
     onTuck,
+    tapes,
+    openTape,
+    onOpenTape,
+    onForgetTape,
 }) => html`<aside class="amp-playlists">
     <${PaneHead} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onTuck=${onTuck} />
     <p class="amp-playlists-group">${t('amp.filters', 'filters')}</p>
@@ -621,7 +640,55 @@ const Playlists = ({
             <button class="feed-saved-name" onClick=${() => onPick(f)}>${f.name}</button>
         </div>`,
     )}
+    ${/* Mixtapes (section 5): each a name and an order, opened into the table in that order. */ ''}
+    ${tapes.length > 0 && html`<p class="amp-playlists-group">${t('amp.mixtapes', 'mixtapes')}</p>`}
+    ${tapes.map(
+        (
+            tape,
+        ) => html`<div key=${tape.id} class=${openTape === tape.id ? 'feed-saved-row active' : 'feed-saved-row'}>
+            <button
+                class="feed-saved-forget"
+                title=${t('amp.forget-this-mixtape', 'forget this mixtape - its songs stay where they are')}
+                aria-label=${t('amp.forget-this-mixtape', 'forget this mixtape - its songs stay where they are')}
+                onClick=${() => onForgetTape(tape)}
+            ><${Icons.trash} /></button>
+            <button class="feed-saved-name" onClick=${() => onOpenTape(tape)}>${tape.name}</button>
+        </div>`,
+    )}
 </aside>`;
+
+/// "Add to mixtape" (section 5), and inside an open one "take out of" it: for one song or many, in
+/// the file panel's actions. Adding appends, and a song already in the mixtape keeps its place.
+const MixtapeActions = ({ rows, tapes, openTape, onAdd, onRemove }) => {
+    const open = tapes.find((x) => x.id === openTape) || null;
+    return html`<select
+            class="jag-field amp-mixtape-select"
+            title=${t('amp.add-to-mixtape-title', 'put these at the end of a mixtape')}
+            value=""
+            onChange=${(e) => {
+                const v = e.currentTarget.value;
+                e.currentTarget.value = '';
+                if (v === 'new') onAdd(null, rows);
+                else if (v)
+                    onAdd(
+                        tapes.find((x) => x.id === v),
+                        rows,
+                    );
+            }}
+        >
+            <option value="">${t('amp.add-to-mixtape', 'add to mixtape…')}</option>
+            ${tapes.map((tape) => html`<option key=${tape.id} value=${tape.id}>${tape.name}</option>`)}
+            <option value="new">${t('amp.new-mixtape', 'new mixtape…')}</option>
+        </select>
+        ${
+            open &&
+            html`<button
+                class="bulk-button jag-line amp-take-out"
+                title=${t('amp.take-out-title', 'take these out of "{name}" - they stay in your library', { name: open.name })}
+                onClick=${() => onRemove(rows)}
+            >${t('amp.take-out-of', 'out of "{name}"', { name: open.name })}</button>`
+        }`;
+};
 
 /// The column menu: every column, ticked if shown.
 const ColumnMenu = ({ hidden, onToggle }) => {
@@ -682,6 +749,35 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const [filters, setFilters] = useState([]);
     // The filter last chosen in the Playlists column, by id: "save" puts the strip back into it.
     const [loadedId, setLoadedId] = useState(null);
+    // Mixtapes (section 5): each read whole from its taxonomy when the roster moves, or after our own
+    // edits; and the one open in the table, if any.
+    const taxRows = useLive(() => (root ? openMirror(root).taxonomies.toArray() : []), [root]);
+    const tapeIds = (taxRows || [])
+        .filter((x) => isMixtape(x.title))
+        .map((x) => `${x.taxonomy_id}:${x.members ?? ''}`)
+        .sort()
+        .join(',');
+    const [tapes, setTapes] = useState([]);
+    const [tapesAt, setTapesAt] = useState(0);
+    const reloadTapes = () => setTapesAt(Date.now());
+    const [openTape, setOpenTape] = useState(null);
+    useEffect(() => {
+        if (!root) return;
+        const ids = tapeIds ? tapeIds.split(',').map((x) => x.split(':')[0]) : [];
+        Promise.all(
+            ids.map((id) =>
+                api(`/api/identity/${root}/taxonomies/${id}`)
+                    .then(readMixtape)
+                    .catch(() => null),
+            ),
+        ).then((list) =>
+            setTapes(list.filter(Boolean).sort((a, b) => a.name.localeCompare(b.name))),
+        );
+    }, [root, tapeIds, tapesAt]);
+    const tape = tapes.find((x) => x.id === openTape) || null;
+    // A drag in an open mixtape: the song lifted, and where it would land.
+    const dragKey = useRef(null);
+    const [dropAt, setDropAt] = useState(null); // { key, after }
     const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'amp');
     // The Playlists column and the file column, each as wide as it was dragged (panes.js).
     const { resizer, colStyle } = useColWidths(root, 'amp', ['playlists', 'file'], { file: 260 });
@@ -737,21 +833,25 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const mine = (docs || [])
             .filter((d) => d.format === 'opus')
             .map((d) => ({ ...ownRow(d, root, layer), builtin: !!d.builtin }));
-        return [...mine, ...feed.sounds.map((s) => feedRow(s, layer))];
-    }, [docs, feed, layer, root]);
+        // Each knows the mixtapes it's in, by name - the strip's "mixtape" row.
+        const byTape = mixtapesBySong(tapes);
+        return [...mine, ...feed.sounds.map((s) => feedRow(s, layer))].map((r) => ({
+            ...r,
+            mixtapes: byTape.get(r.key) || [],
+        }));
+    }, [docs, feed, layer, root, tapes]);
     const names = useMemo(
         () => ({ ...feed.names, [root]: t('amp.you', 'you') }),
         [feed.names, root],
     );
     const shown = useMemo(() => {
-        const list = sorted(
-            searched(narrowedSongs(rows, picks, scope), searchQuery),
-            settings.sort,
-            names,
-        );
+        const narrowed = searched(narrowedSongs(rows, picks, scope), searchQuery);
+        // An open mixtape is its own order: the strip and the search narrow it, nothing sorts it.
+        if (tape) return inMixtapeOrder(narrowed, tape);
+        const list = sorted(narrowed, settings.sort, names);
         // Probable duplicates: each set of copies together, where its first stands in the order.
         return dupeMode(picks) === 'only' ? byDuplicateGroup(list, duplicateGroups(list)) : list;
-    }, [rows, picks, scope, searchQuery, settings.sort, names]);
+    }, [rows, picks, scope, searchQuery, settings.sort, names, tape]);
     const settingsNow = filterSettings(picks, stop, scope, searchQuery);
 
     // A value on the strip, in words: "me", a person's name, or the value itself.
@@ -766,7 +866,11 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const into = asNew ? null : loaded;
         const name = into
             ? into.name
-            : (prompt(t('amp.save-filter-name', 'A name for this filter:')) || '').trim();
+            : (await askText({
+                  title: t('amp.save-filter-title-modal', 'save the filter'),
+                  label: t('amp.save-filter-name', 'A name for this filter:'),
+                  ok: t('amp.save', 'save'),
+              })) || '';
         if (!name) return;
         let id = into && into.id;
         if (!id) {
@@ -816,6 +920,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const applyFilter = (f) => {
         settle();
         setLoadedId(f ? f.id : null);
+        setOpenTape(null);
         if (!f) {
             setPicks(NO_AMP_PICKS);
             if (onSearch) onSearch('');
@@ -826,6 +931,117 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         if (onSearch) onSearch(f.q || '');
         if (f.stop && f.stop !== stop && SELECTIVITY_STOPS.some((s) => s.key === f.stop))
             moveStop(f.stop);
+    };
+    // A mixtape opened from Playlists: the table in its order, the strip and the search cleared.
+    const openMixtape = (x) => {
+        settle();
+        setLoadedId(null);
+        setPicks(NO_AMP_PICKS);
+        if (onSearch) onSearch('');
+        setOpenTape(x.id);
+    };
+    const failed = (e) =>
+        toast(
+            t('amp.couldnt-change-mixtape', "couldn't change the mixtape: {message}", {
+                message: e.message,
+            }),
+            {
+                kind: 'error',
+            },
+        );
+    const memberUrl = (tid, r) => `/api/identity/${root}/taxonomies/${tid}/members/${r.doc}`;
+    // Add to a mixtape, or to a new one: at the end, a song already in it left where it is.
+    const addToTape = async (target, songs) => {
+        let id = target && target.id;
+        let name = target && target.name;
+        try {
+            if (!target) {
+                name =
+                    (await askText({
+                        title: t('amp.new-mixtape-title', 'a new mixtape'),
+                        label: t('amp.new-mixtape-name', 'A name for the new mixtape:'),
+                        ok: t('amp.make-it', 'make it'),
+                    })) || '';
+                if (!name) return;
+                id = (
+                    await api(`/api/identity/${root}/taxonomies`, {
+                        method: 'POST',
+                        body: JSON.stringify({ title: mixtapeTitle(name) }),
+                    })
+                ).taxonomy_id;
+            }
+            const adding = notYetIn(target, songs);
+            for (const r of adding) {
+                await api(memberUrl(id, r), {
+                    method: 'PUT',
+                    body: JSON.stringify({ member_root: r.author }),
+                });
+            }
+            toast(t('amp.added-to-mixtape', 'added {n} to "{name}"', { n: adding.length, name }));
+        } catch (e) {
+            failed(e);
+        }
+        reloadTapes();
+    };
+    // Out of the open mixtape: off the list only - the songs stay in the library.
+    const removeFromTape = async (songs) => {
+        if (!tape) return;
+        try {
+            for (const r of songs) {
+                await api(`${memberUrl(tape.id, r)}?member_root=${r.author}`, { method: 'DELETE' });
+            }
+        } catch (e) {
+            failed(e);
+        }
+        reloadTapes();
+    };
+    const forgetTape = async (x) => {
+        if (
+            !confirm(
+                t(
+                    'amp.forget-mixtape',
+                    'Forget the mixtape "{name}"? Its songs stay where they are.',
+                    { name: x.name },
+                ),
+            )
+        )
+            return;
+        try {
+            await api(`/api/identity/${root}/taxonomies/${x.id}`, { method: 'DELETE' });
+            if (openTape === x.id) setOpenTape(null);
+            setTapes((have) => have.filter((y) => y.id !== x.id));
+        } catch (e) {
+            failed(e);
+        }
+    };
+    // A song dragged to a new place in the open mixtape: moved there at once, then said.
+    const moveInTape = async (key, index) => {
+        const r = rows.find((x) => x.key === key);
+        if (!tape || !r) return;
+        const order = tape.members.filter((k) => k !== key);
+        order.splice(index, 0, key);
+        setTapes((have) => have.map((x) => (x.id === tape.id ? { ...x, members: order } : x)));
+        try {
+            await api(memberUrl(tape.id, r), {
+                method: 'PUT',
+                body: JSON.stringify({ index, member_root: r.author }),
+            });
+        } catch (e) {
+            failed(e);
+        }
+        reloadTapes();
+    };
+    // Where a drag over the table would land (Curtis, 2026-10-12: the ends wanted "Exactly the
+    // bottom"): the whole table takes it, and the pointer's height picks the gap - anywhere below
+    // the last song is after it, anywhere above the first (the header too) before it.
+    const dropTarget = (e) => {
+        const rowsEl = e.currentTarget.querySelector('.amp-rows');
+        if (!rowsEl || !shown.length) return null;
+        const y = (e.clientY - rowsEl.getBoundingClientRect().top) / ROW_HEIGHT;
+        if (y < 0) return { key: shown[0].key, after: false };
+        if (y >= shown.length) return { key: shown[shown.length - 1].key, after: true };
+        const i = Math.floor(y);
+        return { key: shown[i].key, after: y - i >= 0.5 };
     };
     const keys = useMemo(() => shown.map((r) => r.key), [shown]);
 
@@ -868,7 +1084,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const columns = COLUMNS.filter((c) => !settings.hidden.includes(c.key));
     const template = columns.map((c) => `${widths[c.key]}px`).join(' ');
     const sortBy = (c) => {
-        if (!c.sortable || Date.now() - resizedAt.current < 300) return;
+        if (tape || !c.sortable || Date.now() - resizedAt.current < 300) return;
         const down =
             settings.sort.column === c.key
                 ? !settings.sort.down
@@ -947,6 +1163,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                         onLayer=${onLayer}
                         onClear=${() => setPicked(new Set())}
                         onDeleted=${() => setPicked(new Set())}
+                        mixtapes=${{ tapes, openTape, onAdd: addToTape, onRemove: removeFromTape }}
                     />
                 </aside>${resizer('file')}`
               : html`<${Rail} icon=${Icons.fileAudio} label=${t('amp.file', 'file')} onClick=${() => toggleTuck('file')} />`;
@@ -961,11 +1178,15 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     ? html`<${Rail} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onClick=${() => toggleTuck('playlists')} />`
                     : html`${tab('playlists', Icons.music, t('amp.playlists', 'playlists'))}<${Playlists}
                           filters=${filters}
-                          now=${settingsNow}
+                          now=${tape ? null : settingsNow}
                           onAll=${() => applyFilter(null)}
                           onPick=${applyFilter}
                           onForget=${forgetFilter}
                           onTuck=${() => toggleTuck('playlists')}
+                          tapes=${tapes}
+                          openTape=${openTape}
+                          onOpenTape=${openMixtape}
+                          onForgetTape=${forgetTape}
                       />${resizer('playlists')}`
             }
             ${
@@ -1000,7 +1221,28 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     ${' · '}
                     <button class="facet-more" onClick=${load}>${t('amp.refresh', 'refresh')}</button>
                 </p>
-                <div class="amp-table" ref=${body} onScroll=${(e) => setScrollTop(e.currentTarget.scrollTop)}>
+                <div
+                    class="amp-table"
+                    ref=${body}
+                    onScroll=${(e) => setScrollTop(e.currentTarget.scrollTop)}
+                    onDragOver=${(e) => {
+                        if (!tape || !dragKey.current) return;
+                        e.preventDefault();
+                        const at = dropTarget(e);
+                        if (at && (!dropAt || dropAt.key !== at.key || dropAt.after !== at.after))
+                            setDropAt(at);
+                    }}
+                    onDrop=${(e) => {
+                        if (!tape || !dragKey.current) return;
+                        e.preventDefault();
+                        const at = dropTarget(e);
+                        const moved = dragKey.current;
+                        dragKey.current = null;
+                        setDropAt(null);
+                        const index = at ? dropIndex(tape.members, moved, at.key, at.after) : null;
+                        if (index !== null) moveInTape(moved, index);
+                    }}
+                >
                     <div class="amp-head" style=${`grid-template-columns: 2rem ${template}`}>
                         <${ColumnMenu} hidden=${settings.hidden} onToggle=${toggleColumn} />
                         ${columns.map(
@@ -1011,7 +1253,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                 onClick=${() => sortBy(c)}
                             >
                                 <span class="amp-th-word">${COLUMN_WORDS[c.key]()}</span>
-                                ${settings.sort.column === c.key && html`<span class="amp-th-dir">${settings.sort.down ? '▾' : '▴'}</span>`}
+                                ${!tape && settings.sort.column === c.key && html`<span class="amp-th-dir">${settings.sort.down ? '▾' : '▴'}</span>`}
                                 <span class="amp-th-edge" onPointerDown=${resize(c.key)} onClick=${(e) => e.stopPropagation()}></span>
                             </div>`,
                         )}
@@ -1020,12 +1262,32 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                         ${shown.slice(first, last).map(
                             (r, i) => html`<div
                                 key=${r.key}
-                                class=${['amp-row', picked.has(r.key) ? 'amp-row-picked' : '', playingKey === r.key ? 'amp-row-playing' : ''].join(' ')}
+                                class=${[
+                                    'amp-row',
+                                    picked.has(r.key) ? 'amp-row-picked' : '',
+                                    playingKey === r.key ? 'amp-row-playing' : '',
+                                    dropAt && dropAt.key === r.key
+                                        ? dropAt.after
+                                            ? 'amp-row-drop-after'
+                                            : 'amp-row-drop-before'
+                                        : '',
+                                ].join(' ')}
                                 style=${`top: ${(first + i) * ROW_HEIGHT}px; grid-template-columns: 2rem ${template}`}
                                 onClick=${(e) => select(r, e)}
                                 onDblClick=${() => player && player.play(shown, r)}
+                                draggable=${!!tape}
+                                onDragStart=${(e) => {
+                                    if (!tape) return;
+                                    dragKey.current = r.key;
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    e.dataTransfer.setData('text/plain', r.key);
+                                }}
+                                onDragEnd=${() => {
+                                    dragKey.current = null;
+                                    setDropAt(null);
+                                }}
                             >
-                                <span class="amp-td-lead">${playingKey === r.key && html`<${Icons.speaker} />`}</span>
+                                <span class="amp-td-lead">${playingKey === r.key ? html`<${Icons.speaker} />` : tape && html`<span class="amp-drag-handle" title=${t('amp.drag-to-reorder', 'drag to move it in the mixtape')}><${Icons.dragHandle} /></span>`}</span>
                                 ${columns.map((c) => {
                                     const v = cell(r, c.key, names);
                                     return html`<span key=${c.key} class=${cellClass(c.key)} title=${v}>${richCell(r, c.key) || v}</span>`;
@@ -1033,7 +1295,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                             </div>`,
                         )}
                     </div>
-                    ${!loading && shown.length === 0 && html`<p class="null-sub amp-empty">${searchQuery || anyAmpPicks(picks) ? t('amp.nothing-matches', 'nothing matches that.') : t('amp.no-music-yet', 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.')}</p>`}
+                    ${!loading && shown.length === 0 && html`<p class="null-sub amp-empty">${tape && !searchQuery && !anyAmpPicks(picks) ? t('amp.empty-mixtape', 'nothing on this mixtape yet - add songs from the file column.') : searchQuery || anyAmpPicks(picks) ? t('amp.nothing-matches', 'nothing matches that.') : t('amp.no-music-yet', 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.')}</p>`}
                 </div>
             </div>
         </div>`

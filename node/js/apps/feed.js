@@ -74,6 +74,7 @@ import { useTurbolinks } from '../doc/turbolinks.js';
 import { useLocation } from 'preact-iso';
 import { postHref } from '../links.js';
 import { t } from '../i18n.js';
+import { askText } from '../modal.js';
 import {
     PostEntry,
     Composer,
@@ -627,7 +628,11 @@ export const FeedStream = ({
         const into = asNew ? null : loaded;
         const name = into
             ? into.name
-            : (prompt(t('apps.feed.save-filter-name', 'A name for this feed:')) || '').trim();
+            : (await askText({
+                  title: t('apps.feed.save-filter-title-modal', 'save the feed'),
+                  label: t('apps.feed.save-filter-name', 'A name for this feed:'),
+                  ok: t('apps.feed.save', 'save'),
+              })) || '';
         if (!name) return;
         try {
             await onSave(name, settingsNow, into ? into.id : null);

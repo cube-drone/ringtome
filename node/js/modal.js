@@ -3,8 +3,8 @@
 // but wearing the BOLD QUICKBAR TEAL instead of the app ink, so a modal reads as the system
 // stepping forward, not another app. Built to be reused (file upload first; whatever needs a
 // modal next, this is it).
-import { h } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { h, render } from 'preact';
+import { useEffect, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import htm from 'htm';
 
@@ -49,4 +49,61 @@ export const Modal = ({ title, onClose, children, wide = false }) => {
         </div>
     `;
     return typeof document !== 'undefined' ? createPortal(node, document.body) : node;
+};
+
+/// A name or a short line, asked in the house modal instead of the browser's `prompt()` (Curtis,
+/// 2026-10-12: saving a filter or making a mixtape "we're using a system modal when we should
+/// probably use a HDT modal of our own"). Resolves to the trimmed words, or null when closed or
+/// cancelled. Mounted on its own at the page, so any handler can ask without a component to host
+/// it - as `prompt()` could.
+export function askText({ title, label = null, placeholder = '', initial = '', ok = null }) {
+    if (typeof document === 'undefined') return Promise.resolve(null);
+    return new Promise((resolve) => {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const done = (value) => {
+            render(null, host);
+            host.remove();
+            resolve(value);
+        };
+        render(
+            html`<${AskText}
+                title=${title}
+                label=${label}
+                placeholder=${placeholder}
+                initial=${initial}
+                ok=${ok || t('modal.ok', 'ok')}
+                onDone=${done}
+            />`,
+            host,
+        );
+    });
+}
+
+const AskText = ({ title, label, placeholder, initial, ok, onDone }) => {
+    const [value, setValue] = useState(initial || '');
+    const words = value.trim();
+    return html`<${Modal} title=${title} onClose=${() => onDone(null)}>
+        <form
+            class="modal-ask"
+            onSubmit=${(e) => {
+                e.preventDefault();
+                if (words) onDone(words);
+            }}
+        >
+            ${label && html`<label class="modal-ask-label" for="modal-ask-input">${label}</label>`}
+            <input
+                id="modal-ask-input"
+                class="modal-ask-input"
+                value=${value}
+                placeholder=${placeholder}
+                onInput=${(e) => setValue(e.currentTarget.value)}
+                ref=${(el) => el && !el.dataset.focused && ((el.dataset.focused = '1'), el.focus(), el.select())}
+            />
+            <div class="modal-ask-buttons">
+                <button type="button" class="copy-bucket" onClick=${() => onDone(null)}>${t('modal.cancel', 'cancel')}</button>
+                <button type="submit" class="copy-bucket modal-ask-ok" disabled=${!words}>${ok}</button>
+            </div>
+        </form>
+    <//>`;
 };

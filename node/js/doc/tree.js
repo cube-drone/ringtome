@@ -32,6 +32,7 @@ import { pageStanding } from '../pure/books.js';
 import { isTextDoc } from '../pure/feed.js';
 import { PaneHead } from '../panes.js';
 import { t } from '../i18n.js';
+import { askText } from '../modal.js';
 import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
@@ -534,7 +535,12 @@ export const WikiTree = ({
     };
 
     const newSection = async (parentTaxId) => {
-        const title = (prompt('A name for the new section:') || '').trim();
+        const title =
+            (await askText({
+                title: t('doc.tree.new-section-title', 'a new section'),
+                label: t('doc.tree.new-section-name', 'A name for the new section:'),
+                ok: t('doc.tree.make-it', 'make it'),
+            })) || '';
         if (!title) return;
         try {
             const pid = parentTaxId || (await ensureRoot());
@@ -559,7 +565,13 @@ export const WikiTree = ({
 
     // Rename: a taxonomy's title is an ordinary annotation on its own id.
     const renameSection = async (taxId, currentTitle) => {
-        const title = (prompt('Rename this section:', currentTitle || '') || '').trim();
+        const title =
+            (await askText({
+                title: t('doc.tree.rename-section-title', 'rename the section'),
+                label: t('doc.tree.rename-section-name', 'Its new name:'),
+                initial: currentTitle || '',
+                ok: t('doc.tree.rename', 'rename'),
+            })) || '';
         if (!title || title === currentTitle) return;
         try {
             await api(`/api/identity/${root}/docs/${taxId}/annotations/fields/title`, {

@@ -444,7 +444,8 @@ search policy: "tagged audio - not from this server". With it on:
    saving, and the Playlists column with "all".
 4. **Twins carry their sound's fields** - built 2026-10-12: publishing states
    them on the twin. No backfill (Curtis: nothing has gone live yet).
-5. **Mixtapes**: the taxonomy, "add to mixtape", their order in the table.
+5. **Mixtapes** - built 2026-10-12: the taxonomy, "add to mixtape", their order
+   in the table.
 6. **Radio stations**: the editor, nesting, and the picker.
 7. **The unlock**: hrseAmp in the Market after File upload, H$ 5,000, marked
    experimental (ruling 2) - in the first slice that ships to people, really.
@@ -565,6 +566,26 @@ feed's saved feeds do the same.
 - **No backfill** (Curtis, 2026-10-12): nothing has gone live, so twins
   published before this simply say their fields the next time their post is
   published.
+
+### What building slice 5 found
+
+- **A member is the sound itself**: your own private sound, or someone else's
+  public twin (`member_root` names whose), so a mixtape holds anyone's songs and
+  the same song in many mixtapes is simple.
+- **Kept in a mixtape.** The library door reads the reader's mixtapes and keeps
+  someone else's song in one even when it no longer arrives in the feed -
+  unfollowed, or past the dial - from the node's memo of sound, which remembers
+  it from when it did (marked `kept`). No database is opened for it.
+- **Opening one** from Playlists clears the strip and the search and shows its
+  songs in its order: headers don't sort, the first column is a drag handle, and
+  a drop lands where the line shows (the member PUT's index, counted without the
+  song). The strip and the search still narrow an open mixtape, keeping its
+  order. Choosing a filter or "all" closes it.
+- **In the file column**: "add to mixtape…" for one or many, which appends and
+  leaves a song already there where it is, and "new mixtape…"; inside an open
+  mixtape, "out of" it. Forgetting a mixtape leaves its songs where they are.
+- **The strip's "mixtape" row**: a mixtape's name behaves as a tag, three-state
+  like the rest, and a saved filter keeps it.
 
 ## Questions for Curtis
 

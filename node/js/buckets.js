@@ -26,6 +26,7 @@ import { appTypeOf, bucketsForApp, DEFAULT_STYLE, RESERVED_BUCKETS } from './pur
 import { bucketHref } from './pure/naming.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { askText } from './modal.js';
 import { toast } from './toasts.js';
 
 const html = htm.bind(h);
@@ -142,7 +143,14 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
     };
 
     const create = async () => {
-        const name = (prompt(`A name for the new ${app.bucketNoun}:`) || '').trim();
+        const name =
+            (await askText({
+                title: t('buckets.new-title', 'a new {noun}', { noun: app.bucketNoun }),
+                label: t('buckets.new-name', 'A name for the new {noun}:', {
+                    noun: app.bucketNoun,
+                }),
+                ok: t('buckets.make-it', 'make it'),
+            })) || '';
         if (!name) return;
         // A reserved name would vanish from every switcher the moment it was made.
         if (RESERVED_BUCKETS.has(name)) {

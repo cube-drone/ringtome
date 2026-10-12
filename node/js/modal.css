@@ -91,3 +91,42 @@
         height: 2.4rem;
     }
 }
+
+/* A name asked (askText): one line, then cancel and the act itself. */
+.modal-ask {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.modal-ask-label {
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+}
+
+.modal-ask-input {
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+    font: inherit;
+    padding: 0.4rem 0.6rem;
+    color: var(--ink);
+}
+
+.modal-ask-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* The act, in the accent, its words in the accent's own ink. */
+.copy-bucket.modal-ask-ok {
+    background: var(--teal);
+    color: var(--on-accent);
+    --line: var(--teal);
+}
+
+.copy-bucket.modal-ask-ok:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+

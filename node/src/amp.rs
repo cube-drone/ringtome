@@ -80,7 +80,7 @@ pub async fn library_handler(
     let pairs: Vec<(String, String)> = posts.keys().cloned().collect();
     // The scores kept up to this reader's dials as they are now, as a "best" page has them.
     crate::score::refresh_dials(&state, &root, &facts).await.map_err(AppError::Internal)?;
-    let scores = crate::score::stored_for(&state.node_db, &root, &pairs)
+    let mut scores = crate::score::stored_for(&state.node_db, &root, &pairs)
         .await
         .map_err(AppError::Internal)?;
 
@@ -116,6 +116,34 @@ pub async fn library_handler(
     found.sort_by_key(|a| std::cmp::Reverse(a.1.arrived_ms));
     let mut seen = std::collections::HashSet::new();
     found.retain(|(author, _, sound)| seen.insert((author.clone(), sound.sound_doc.clone())));
+
+    // Kept in a mixtape (section 1): someone else's song in one of the reader's mixtapes stays in
+    // their library when it no longer arrives in their feed - unfollowed, or past the dial - read
+    // from the node's memo of sound, which remembers it from when it did.
+    let mut kept: std::collections::HashSet<(String, String)> = Default::default();
+    let wanted = mixtape_members(&owned, &root).await?;
+    if wanted.iter().any(|k| !seen.contains(k)) {
+        let mut known: HashMap<(String, String), (String, Sound)> = HashMap::new();
+        for ((author, post), sounds) in &memo {
+            for sound in sounds.iter().filter(|s| !s.sound_doc.is_empty()) {
+                known
+                    .entry((author.clone(), sound.sound_doc.clone()))
+                    .or_insert_with(|| (post.clone(), sound.clone()));
+            }
+        }
+        let mut posts_kept: Vec<(String, String)> = Vec::new();
+        for key in wanted.into_iter().filter(|k| !seen.contains(k)) {
+            let Some((post, sound)) = known.get(&key).cloned() else { continue };
+            posts_kept.push((key.0.clone(), post.clone()));
+            found.push((key.0.clone(), kept_row(&key.0, &post, &sound), sound));
+            kept.insert(key);
+        }
+        scores.extend(
+            crate::score::stored_for(&state.node_db, &root, &posts_kept)
+                .await
+                .map_err(AppError::Internal)?,
+        );
+    }
 
     // Every label on the sounds and the posts they came in, as this reader may see them, in one read.
     let mut asked: Vec<(String, String)> = found
@@ -193,6 +221,7 @@ pub async fn library_handler(
             "arrived_ms": row.arrived_ms,
             "published_ms": row.dated_ms.unwrap_or(row.published_ms),
             "score": score,
+            "kept": kept.contains(&(author.clone(), sound_hex.clone())),
         }));
     }
     // Who made them and who they came through, by name, for the By and From columns.
@@ -209,6 +238,50 @@ pub async fn library_handler(
         .filter_map(|(root, b)| b.name.map(|n| (root, n)))
         .collect();
     Ok(Json(json!({ "sounds": sounds, "names": names })))
+}
+
+/// The title a mixtape's taxonomy wears (plans/AUDIO.md, section 5): `mixtape:<name>`, as a
+/// notebook's tree is `wiki:<name>`.
+pub const MIXTAPE: &str = "mixtape:";
+
+/// Someone else's songs in the reader's mixtapes, `(author, sound)` in hex.
+async fn mixtape_members(
+    owned: &store::Store,
+    me: &str,
+) -> Result<std::collections::HashSet<(String, String)>, AppError> {
+    let mut out = std::collections::HashSet::new();
+    for tape in owned.taxonomies().all().await? {
+        if !tape.title.starts_with(MIXTAPE) {
+            continue;
+        }
+        for member in owned.taxonomies().members(&tape.taxonomy_id).await? {
+            let author = hex::encode(member.root);
+            if author != me {
+                out.insert((author, hex::encode(member.doc_id)));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// A kept song's row, standing in for the journal's: the post the memo read it in, no arrival.
+fn kept_row(author: &str, post: &str, sound: &Sound) -> crate::fanout::FeedRow {
+    crate::fanout::FeedRow {
+        author_root: author.to_string(),
+        via_root: None,
+        suggested_via: None,
+        doc_id: post.to_string(),
+        title: String::new(),
+        format: None,
+        published_ms: 0,
+        updated_ms: sound.post_updated_ms,
+        arrived_ms: 0,
+        settled: false,
+        trusted_only: false,
+        onward: false,
+        dated_ms: None,
+        minted_ms: 0,
+    }
 }
 
 /// One sound a post carries, as the memo keeps it (`amp_sounds`, migration 0080).

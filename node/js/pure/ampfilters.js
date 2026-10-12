@@ -13,11 +13,12 @@
 export const AMP_FILTERS = 'amp_filters';
 
 /// The strip's rows, in its order, and where each keeps its left-out values.
-export const FILTER_ROWS = ['from', 'artists', 'genres', 'tags'];
+export const FILTER_ROWS = ['from', 'artists', 'genres', 'mixtapes', 'tags'];
 export const LEFT_OUT = {
     from: 'notFrom',
     artists: 'notArtists',
     genres: 'notGenres',
+    mixtapes: 'notMixtapes',
     tags: 'notTags',
 };
 
@@ -32,10 +33,12 @@ export const NO_AMP_PICKS = {
     from: [],
     artists: [],
     genres: [],
+    mixtapes: [],
     tags: [],
     notFrom: [],
     notArtists: [],
     notGenres: [],
+    notMixtapes: [],
     notTags: [],
     yearMin: null,
     yearMax: null,
@@ -238,6 +241,9 @@ function valuesOf(song, row, scope) {
             return song.artist ? [song.artist] : [];
         case 'genres':
             return song.genre ? [song.genre] : [];
+        // The mixtapes it's in, by name (section 5: a mixtape's name behaves as a tag).
+        case 'mixtapes':
+            return song.mixtapes || [];
         case 'tags':
             return (scope === 'ours' ? song.ourTags : song.tags) || [];
         default:

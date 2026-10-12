@@ -281,4 +281,47 @@ describe('hrseAmp: the library of sound in your feed', function () {
         assert.ok(said.includes('track=Second Buck'), JSON.stringify(said));
         assert.ok(said.includes('artist=Bucks Unlimited'), JSON.stringify(said));
     });
+
+    it('keeps a song in one of your mixtapes after it leaves your feed (section 5)', async () => {
+        const before = await library();
+        const alonesSound = before.sounds.find((s) => s.post === alone).doc;
+        // Ada puts bea's second song on a mixtape: a taxonomy titled mixtape:<name>.
+        const made = await j(ada, `api/identity/${adaRoot}/taxonomies`, {
+            title: 'mixtape:Keepers',
+        });
+        const tape = (await made.json()).taxonomy_id;
+        const put = await j(
+            ada,
+            `api/identity/${adaRoot}/taxonomies/${tape}/members/${twin}`,
+            {
+                member_root: beaRoot,
+            },
+            'PUT',
+        );
+        assert.equal(put.status, 200, await put.text());
+        // Then stops following bea: her songs leave the feed, and the library with it - but not
+        // the one ada kept.
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/contact:${beaRoot}/interest`,
+            { value: 'none' },
+            'PUT',
+        );
+        let sounds = [];
+        for (let i = 0; i < 30; i++) {
+            sounds = (await library()).sounds;
+            if (!sounds.some((s) => s.doc === alonesSound)) break;
+            await wait(300);
+        }
+        assert.ok(
+            !sounds.some((s) => s.doc === alonesSound),
+            'an unkept song leaves with the follow',
+        );
+        const kept = sounds.find((s) => s.doc === twin);
+        assert.ok(kept, `the mixtape's song stays: ${JSON.stringify(sounds.map((s) => s.doc))}`);
+        assert.equal(kept.kept, true);
+        assert.equal(kept.author, beaRoot);
+        assert.equal(kept.fields.artist, 'Bucks Unlimited', 'with its fields, from its twin');
+        assert.ok(kept.duration_ms > 0);
+    });
 });

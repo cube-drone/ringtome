@@ -20618,3 +20618,42 @@ Napster. `plans/AUDIO.md` gains rulings 15 to 18 and section 8:
 
 The work is slices 8 to 10. One question is open: whether the fence also covers
 private uploads.
+
+## 2026-10-12 (cont.): hrseAmp slice 5, mixtapes
+
+A mixtape is a taxonomy titled `mixtape:<name>`. Its members are the songs in
+order: your own private sound, or someone else's public twin.
+
+- **Playlists column.** A "mixtapes" group, each with a trash button.
+- **Opening one.** The table shows the mixtape's songs in its order. Headers
+  don't sort, the first column is a drag handle, and the player plays that
+  order.
+- **The file column.** "Add to mixtape…" appends, leaving a song already there
+  where it is, and offers "new mixtape…". Inside an open mixtape there's also
+  "out of" it.
+- **The strip.** A "mixtape" row, three-state, saved with filters.
+- **Kept songs.** The library door now keeps someone else's song that's in one
+  of your mixtapes after it leaves your feed, using the node's sound memo, with
+  no database opened.
+
+`pure/mixtapes.js` has vectors. `integration/test/amp.cjs` checks that the kept
+song stays, with its slice 4 fields, when its author is unfollowed. In headless
+Chrome: added three to a new mixtape, opened it in order, dragged the first to
+the end (it held across a reload), narrowed by the strip's row, took one out,
+and forgot the mixtape with its songs still in the library.
+
+**House modals, and drops past the ends (Curtis, same day).**
+
+- **House modals.** Naming a saved filter or feed, a new mixtape, a new
+  notebook, or a new or renamed tree section used the browser's `prompt()`. They
+  now use `askText()` in `modal.js`: the house modal with one line, cancel and
+  the act, resolving to the words or null.
+- **Drops past the ends.** Dragging a song to the start or end of an open
+  mixtape needed a precise spot. A drop counted only on a row, so letting go in
+  the empty space below the last song, or above the first, did nothing even when
+  the line showed. The whole table takes the drop now, and the pointer's height
+  picks the gap.
+
+Checked in headless Chrome with `prompt()` set to throw: each of the three names
+went through the house modal. A drop in the empty table moved the first song to
+the end, and a drop on the header moved the last to the start.
