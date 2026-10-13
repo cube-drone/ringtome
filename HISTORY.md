@@ -20887,3 +20887,35 @@ shift-click does, and on a phone the count line gains "show N selected", the way
 through to the bulk panel the open list covers. Checked in headless Chrome with
 touch in all three: holds toggle, a hold that drifts does nothing, a tap still
 selects or opens, and the column stays open while you pick.
+
+**hrseAmp plays on Android: the shade, the headphones, the car (Curtis,
+2026-10-12).** "I want this to play on my phone, from Android Auto, or, on
+wireless headphones" - and Tauri's web view can't: it never hands the page's
+Media Session to Android, so no shade, no lock screen, no headphone buttons, no
+car, and the music (and the node with it) dies in the background. Built in three
+rounds on the `android-player` branch, each a CI build and a phone, and verified
+on one end to end:
+
+- **Round 1, the phone's own player.** `PlayerService.kt` is Media3's library
+  service: ExoPlayer plays from the node with the web view's sign-in (Android's
+  cookie store is shared), the session puts the player in the shade, on the lock
+  screen and under the headphones' buttons, and Media3 holds the foreground
+  service while it plays. `PlayerBridge.kt` is the page's `__ringtomePlayer`:
+  `player.js` hands it the queue in order (fifty ahead; a shuffle is only an
+  order) and follows what it says back, so the bar, the compact player and the
+  cassette show the phone's player. A song that won't play is skipped. Android
+  Auto browses `AutoLibrary.kt`'s tree - the mixtapes, everything, each saved
+  filter, each station - from the lists the page hands over while hrseAmp is
+  open.
+- **Round 2, the cold start.** The car or a headphone button can wake the
+  service with no window, and so no node. The service boots it on its own thread
+  through the shell's library (`NodeBoot`, `boot_once` in `desktop/src/lib.rs`),
+  into the same data directory, and plays wait for it.
+- **Round 3, covers in the car.** Auto fetches artwork itself, without the
+  sign-in a thumbnail needs. `ArtProvider.kt` serves thumbnails only, under
+  `content://` addresses granted to Android Auto alone, fetched with the sign-in
+  and kept a day.
+
+Found on the way: the branch wanted main's mobile pass merged in first, and a
+sideloaded app is missing from the car's list until Auto's developer settings
+allow unknown sources. The branch still wants merging to main.

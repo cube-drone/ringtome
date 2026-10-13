@@ -395,6 +395,10 @@ while anyone types. Worst first:
   clear of the clock, the app bar's teal under the home/back bar, a rotation,
   the keyboard); boot the node off the main thread. Only then
   `ANDROID_IN_RELEASE=true`, and `ANDROID_ON_PUSH` back off.
+- **hrseAmp on Android** (plans/AUDIO.md, section 10): verified on a phone on
+  the `android-player` branch, which wants merging to main. Left: voice search
+  in the car ("play Giorgio by Moroder"), and the desktop app's media keys (one
+  test, section 10's _Elsewhere_).
 
 ### Real-Time Chat
 
