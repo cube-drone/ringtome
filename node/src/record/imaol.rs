@@ -27,7 +27,7 @@ async fn chain_head(
 ) -> Result<Option<(u64, [u8; 32], i64)>, AppError> {
     let row: Option<(i64, Vec<u8>, i64)> = db
         .fetch_optional(
-            "SELECT seq, entry_hash, timestamp_ms FROM entries
+            "SELECT seq, entry_hash, timestamp_ms FROM entries INDEXED BY sqlite_autoindex_entries_1
          WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
          ORDER BY seq DESC LIMIT 1",
             (author_hex, i64::from(service_id), crate::db::instance_blob(instance)),
@@ -823,7 +823,7 @@ pub async fn prune_chain_below(
     let floor = floor_seq.min(head_seq);
     let pruned = db
         .execute(
-            "DELETE FROM entries
+            "DELETE FROM entries INDEXED BY sqlite_autoindex_entries_1
              WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq < ?4",
             (author_hex, i64::from(service_id), crate::db::instance_blob(instance), floor as i64),
         )
@@ -839,7 +839,7 @@ pub async fn prune_chain_below(
 pub(crate) async fn chain_len(db: &Db, author_hex: &str, service_id: u32) -> Result<u64, AppError> {
     let row: Option<(i64,)> = db
         .fetch_optional(
-            "SELECT COUNT(*) FROM entries WHERE author_pubkey = ?1 AND service = ?2",
+            "SELECT COUNT(*) FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2",
             (author_hex, i64::from(service_id)),
         )
         .await
@@ -1542,9 +1542,9 @@ pub async fn chain_heads_for_author(
 ) -> Result<Vec<(u32, Option<[u8; 16]>, u64, [u8; 32])>, AppError> {
     let rows: Vec<(i64, Vec<u8>, i64, Vec<u8>)> = db
         .fetch_all(
-            "SELECT service, instance, seq, entry_hash FROM entries e
+            "SELECT service, instance, seq, entry_hash FROM entries e INDEXED BY sqlite_autoindex_entries_1
          WHERE author_pubkey = ?1
-           AND seq = (SELECT MAX(seq) FROM entries
+           AND seq = (SELECT MAX(seq) FROM entries INDEXED BY sqlite_autoindex_entries_1
                       WHERE author_pubkey = e.author_pubkey AND service = e.service
                         AND instance = e.instance)",
             (author_hex,),
@@ -1700,9 +1700,10 @@ pub(crate) async fn chain_keys(db: &Db) -> anyhow::Result<Vec<(String, i64, Vec<
 
 /// One chain's floor seq, and its head's seq and hash: two seeks on the primary key, from each
 /// end. Named so the plan test pins them.
-pub(crate) const CHAIN_FLOOR: &str = "SELECT seq FROM entries
+pub(crate) const CHAIN_FLOOR: &str = "SELECT seq FROM entries INDEXED BY sqlite_autoindex_entries_1
      WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq LIMIT 1";
-pub(crate) const CHAIN_HEAD: &str = "SELECT seq, entry_hash FROM entries
+pub(crate) const CHAIN_HEAD: &str =
+    "SELECT seq, entry_hash FROM entries INDEXED BY sqlite_autoindex_entries_1
      WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq DESC LIMIT 1";
 
 /// Up to `limit` rows of `entries` strictly after `cursor` in primary-key order, `cols` selected:

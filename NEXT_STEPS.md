@@ -146,6 +146,12 @@ are driving towards.
   potentially a low-level node: bad!
 - declare a "management persona"
 - storage management
+- **Backups store every blob again** (Curtis, 2026-10-13): each backup archives
+  the whole blob store, and audio and pictures don't compress, so keeping the
+  recent backups the supervisor keeps leaves the server room for about a seventh
+  of its media. Blobs are content-addressed and never change: share them between
+  backups (hard links, or one blob copy the archives point into) rather than
+  copying each into every archive.
 - reporting flow
 - full-node blocks ("do not carry this user")
 - Registration management:

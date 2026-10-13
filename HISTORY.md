@@ -21187,3 +21187,30 @@ runs: 41 KB. `rollout` builds the publish future off its frame (`stack::boxed`,
 `publish_reporting` are still a few hundred KB each in debug, from their own
 dozens of awaits - splitting them is the next step if anything grows near the
 edge again; a release build shares the slots.
+
+**2026-10-13 - a lookup by chain names its index.** Under an agent's upload the
+live server's main persona sat 80% busy with lookups that should cost
+microseconds - the chain head an append asks for, sync's duplicate check, the
+pages it serves a sibling - each 500-600 ms, the same whatever the query, with
+no tabs open and nothing big in front of them. On a copy of that persona's
+database (from the noon backup, opened with the node's own keystore in a
+throwaway probe), Turso's plan for them was
+`entries_by_service_type (service=?)`: every entry of the service - 36,641 of
+them for doc-meta - walked, and sorted for the chain head. Forced onto the
+primary key, the same lookups took 92 µs and 48 µs where they had taken 32-180
+ms and 27 ms on this laptop. No fresh database reproduced the choice - not even
+one shaped like it, one author holding nearly every row - and the file holds no
+planner statistics, so whatever steers it is the file's own. Seventeen
+statements in `net/sync.rs` and `record/imaol.rs` that name one chain now say
+`INDEXED BY sqlite_autoindex_entries_1`, the way sync's eviction already did;
+the fold's `FOLD_PAST_SEQ`, which binds all four of `entries_by_service_type`'s
+columns, keeps it. A plan test can't hold a choice no test database makes, so a
+conventions test does (`a_lookup_by_chain_names_the_primary_key`; caught the
+hint taken off `chain_head`). This is the 500 ms chain-head lookup's
+explanation, three entries back.
+
+On the way: with the tabs closed, the whole-library reads
+(`SELECT collection, element, present ...` ×107 in 5 minutes, ~950 ms each) went
+to zero - every write rebuilds an open tab's document list (`shared_documents`),
+which plans/CACHE.md Stage 4 coalesces. And each backup stores the whole blob
+store again (NEXT_STEPS).

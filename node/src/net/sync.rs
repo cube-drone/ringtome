@@ -484,7 +484,7 @@ async fn missing_plan(
                     Some(h) => Some(h),
                     None => db
                         .fetch_optional::<(i64,)>(
-                            "SELECT MAX(seq) FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
+                            "SELECT MAX(seq) FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
                             (author_hex.as_str(), svc, crate::db::instance_blob(instance)),
                         )
                         .await
@@ -507,7 +507,7 @@ async fn missing_plan(
         if let Some((peer_head, peer_hash)) = claimed {
             let ours: Option<(Vec<u8>, Vec<u8>)> = db
                 .fetch_optional(
-                    "SELECT entry_hash, bytes FROM entries
+                    "SELECT entry_hash, bytes FROM entries INDEXED BY sqlite_autoindex_entries_1
                      WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
                     (
                         author_hex.as_str(),
@@ -552,7 +552,7 @@ async fn chain_page_down(
 ) -> Result<Vec<(u64, Vec<u8>)>> {
     let rows: Vec<(i64, Vec<u8>)> = db
         .fetch_all(
-            "SELECT seq, bytes FROM entries
+            "SELECT seq, bytes FROM entries INDEXED BY sqlite_autoindex_entries_1
              WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq <= ?4 AND seq >= ?5
              ORDER BY seq DESC LIMIT ?6",
             (
@@ -578,7 +578,7 @@ async fn chain_page(
 ) -> Result<Vec<(u64, Vec<u8>)>> {
     let rows: Vec<(i64, Vec<u8>)> = db
         .fetch_all(
-            "SELECT seq, bytes FROM entries
+            "SELECT seq, bytes FROM entries INDEXED BY sqlite_autoindex_entries_1
              WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq >= ?4
              ORDER BY seq LIMIT ?5",
             (
@@ -1028,7 +1028,7 @@ pub(crate) async fn ingest_batch(
                                 // wire: drop the stale prefix so [floor..head] stays a range
                                 // rather than a range with a hole the pager would mis-serve.
                                 db.execute(
-                                    "DELETE FROM entries
+                                    "DELETE FROM entries INDEXED BY sqlite_autoindex_entries_1
                                      WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq < ?4",
                                     (
                                         hex::encode(author).as_str(),
@@ -1157,7 +1157,7 @@ async fn note_if_equivocation(db: &Db, arrived: &SignedEntry) -> Result<()> {
     let author_hex = hex::encode(entry.chain.author);
     let held: Option<(Vec<u8>, Vec<u8>)> = db
         .fetch_optional(
-            "SELECT entry_hash, bytes FROM entries
+            "SELECT entry_hash, bytes FROM entries INDEXED BY sqlite_autoindex_entries_1
              WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
             (
                 author_hex.as_str(),
@@ -1284,7 +1284,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
         let author_hex = hex::encode(key);
         let chains: Vec<(i64, Vec<u8>)> = db
             .fetch_all(
-                "SELECT DISTINCT service, instance FROM entries WHERE author_pubkey = ?1",
+                "SELECT DISTINCT service, instance FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1",
                 (author_hex.as_str(),),
             )
             .await
@@ -1297,7 +1297,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
             }
             let rows_affected = db
                 .execute(
-                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
+                    "DELETE FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
                     (author_hex.as_str(), i64::from(svc), crate::db::instance_blob(instance)),
                 )
                 .await
@@ -1328,7 +1328,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
         let instance_blob = crate::db::instance_blob(*instance);
         let row: Option<(Vec<u8>,)> = db
             .fetch_optional(
-                "SELECT entry_hash FROM entries
+                "SELECT entry_hash FROM entries INDEXED BY sqlite_autoindex_entries_1
              WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
                 (author_hex.as_str(), i64::from(*svc), instance_blob.clone(), final_seq),
             )
@@ -1376,7 +1376,7 @@ async fn evict_disproven_chains(db: &Db, tree: &Crown) -> Result<(u64, BTreeSet<
         }
         let rows_affected = db
             .execute(
-                "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
+                "DELETE FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3",
                 (author_hex.as_str(), i64::from(*svc), instance_blob),
             )
             .await
@@ -1463,7 +1463,7 @@ async fn admit_ceilinged_chain(
             Some(held) if held.hash() == e.hash() => {} // already held
             Some(_) => {
                 db.execute(
-                    "DELETE FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
+                    "DELETE FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq = ?4",
                     (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance), e.entry().seq as i64),
                 )
                 .await
@@ -1517,7 +1517,7 @@ async fn stored_chain(
 ) -> Result<Vec<SignedEntry>> {
     let rows: Vec<(Vec<u8>,)> = db
         .fetch_all(
-            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq",
+            "SELECT bytes FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 ORDER BY seq",
             (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance)),
         )
         .await
@@ -1548,7 +1548,7 @@ async fn stored_chain_head(
 ) -> Result<Option<SignedEntry>> {
     let row: Option<(Vec<u8>,)> = db
         .fetch_optional(
-            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
+            "SELECT bytes FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
          ORDER BY seq DESC LIMIT 1",
             (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance)),
         )
@@ -1567,7 +1567,7 @@ async fn stored_chain_floor(
 ) -> Result<Option<SignedEntry>> {
     let row: Option<(Vec<u8>,)> = db
         .fetch_optional(
-            "SELECT bytes FROM entries WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
+            "SELECT bytes FROM entries INDEXED BY sqlite_autoindex_entries_1 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3
          ORDER BY seq ASC LIMIT 1",
             (hex::encode(author), i64::from(svc), crate::db::instance_blob(instance)),
         )

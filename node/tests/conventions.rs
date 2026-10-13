@@ -441,6 +441,48 @@ fn every_entry_insert_is_counted_for_its_service() {
     );
 }
 
+/// A lookup that names one chain - `author_pubkey = ?` - reads `entries` by its primary key,
+/// said in so many words: `INDEXED BY sqlite_autoindex_entries_1`. Left to itself, Turso walked
+/// the live server's main persona's lookups through `entries_by_service_type` - every entry of
+/// the service, 36,641 of them, sorted for the chain-head - at 500-600 ms apiece, the persona's
+/// one connection 80% busy with them under an upload; the same lookups on the primary key took
+/// 50-90 µs on a copy of that file (2026-10-13). No fresh database reproduced the choice, so a
+/// plan test can't hold it - this does. A statement that also binds `entry_type = ?` is the fold
+/// path's (`imaol::FOLD_PAST_SEQ`): `entries_by_service_type` is its exact seek, by design.
+#[test]
+fn a_lookup_by_chain_names_the_primary_key() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut missing = Vec::new();
+    for path in files {
+        let source = std::fs::read_to_string(&path).expect("readable source");
+        let rel = path.strip_prefix(&src).unwrap().to_string_lossy().replace('\\', "/");
+        // From each `FROM entries` to the end of its string - never pairing quotes across the
+        // file, which a stray quote in a comment or a char literal throws off.
+        for (at, _) in source.match_indices("FROM entries") {
+            let rest = &source[at..];
+            let statement = &rest[..rest.find('"').unwrap_or(rest.len())];
+            let flat: String = statement.split_whitespace().collect::<Vec<_>>().join(" ");
+            let names_a_chain = flat.contains("author_pubkey = ?");
+            let fold_path = flat.contains("entry_type = ?");
+            if names_a_chain
+                && !fold_path
+                && !flat.contains("INDEXED BY sqlite_autoindex_entries_1")
+            {
+                let line = source[..at].lines().count();
+                missing.push(format!("src/{rel}:{line}: {}", &flat[..flat.len().min(100)]));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "a lookup by chain without `INDEXED BY sqlite_autoindex_entries_1` - Turso may walk a \
+         whole service instead (see this test's doc):\n  {}",
+        missing.join("\n  ")
+    );
+}
+
 /// The tag cap, spelled twice: the wire refuses a tag past `MAX_TAG_CHARS`, and the client
 /// stops the typing at the same place so a chip the door would refuse never forms. They
 /// agree today; if they ever stop, the symptom is not a crash but the exact bug this pins
