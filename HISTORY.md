@@ -21126,3 +21126,20 @@ CDN) where a browser's app is meant to be as new as its node, so the window also
 counts from the node's start: a release is a restart, and every page served
 after one starts again at five minutes.
 `a_page_is_kept_longer_the_longer_it_has_stood` and a crawling claim pin it.
+
+**2026-10-13 - an open picture stops asking for itself (plans/CACHE.md, Stage
+1).** The caching audit's first find, and the "one note fetched ~25 times in 2½
+minutes" from the live logs: a media document's detail never carries its bytes
+
+- they're served at their own address, and its `media` facts come from the
+  header - but the readers (`useDocDetail`, `doc/detail.js`) took its
+  `body: null` for a body still travelling and asked the node again every two
+  seconds for as long as an image, a song or a video stayed open. The doc cache
+  refused it for the same reason, so reopening one started the loop again. One
+  rule now, `bodyTravelling` (`pure/lookout.js`): a missing body on a document
+  that isn't media. The retry and the cache both ask it; media details are
+  remembered. And the editor's lookout no longer starts a reload while a load is
+  out or the waiting room's timer is asking - each one that landed came back for
+  another. `harness/media-poll-probe.mjs`, on a scratch node: an open picture
+  asked for its detail 10 more times in 10 s before, none after. A pure claim in
+  `lookout.cjs`.

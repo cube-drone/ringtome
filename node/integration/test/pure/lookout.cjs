@@ -3,9 +3,9 @@
 // resolution case carries the exact shape from the 2026-07-25 debug dumps.
 const assert = require('node:assert');
 
-let needsReload;
+let needsReload, bodyTravelling;
 before(async () => {
-    ({ needsReload } = await import('../../../js/pure/lookout.js'));
+    ({ needsReload, bodyTravelling } = await import('../../../js/pure/lookout.js'));
 });
 
 describe('editor lookout', () => {
@@ -140,5 +140,22 @@ describe('editor lookout', () => {
             true,
             'a head we never saw is news',
         );
+    });
+});
+
+describe('a body on its way (2026-10-13)', () => {
+    it("waits for a note's words, never for a picture's", () => {
+        assert.equal(bodyTravelling({ format: 'marquee', body: null, media: null }), true);
+        assert.equal(bodyTravelling({ format: 'marquee', body: 'words' }), false);
+        assert.equal(bodyTravelling({ format: 'plaintext', body: '' }), false, 'empty is there');
+        // A media document's detail never carries its bytes: that null is final, not a wait -
+        // the readers asked every two seconds for as long as one stayed open.
+        const picture = { format: 'avif', body: null, media: { width: 640, height: 480 } };
+        assert.equal(bodyTravelling(picture), false);
+        assert.equal(
+            bodyTravelling({ format: 'opus', body: null, media: { duration_ms: 1 } }),
+            false,
+        );
+        assert.equal(bodyTravelling(null), false);
     });
 });

@@ -12,6 +12,7 @@ import { useState, useEffect } from 'preact/hooks';
 
 import { api } from '../net.js';
 import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
+import { bodyTravelling } from '../pure/lookout.js';
 
 // How long to wait before asking the node again for a body that hasn't landed. Cheap: one GET per
 // waiting document, and only while a reader is actually open on it.
@@ -35,14 +36,15 @@ export function useDocDetail(root, docId) {
             api(`/api/identity/${root}/docs/${docId}`)
                 .then((d) => {
                     if (!alive) return;
-                    rememberDoc(root, docId, d); // a null body is never remembered
+                    rememberDoc(root, docId, d); // a body on its way is never remembered
                     setDoc(d);
-                    if (d.body == null) timer = setTimeout(fetchDoc, BODY_RETRY_MS);
+                    if (bodyTravelling(d)) timer = setTimeout(fetchDoc, BODY_RETRY_MS);
                 })
                 .catch((e) => alive && setError(e.message));
         // Cache-first (mirror/doccache.js): a copy the mirror row still vouches for is as
         // trustworthy as a fetch under that row, so it paints straight from disk. A remembered
-        // copy always has a body, so only the fetch path can land in the waiting room.
+        // copy is never one whose body is on its way, so only the fetch path can land in the
+        // waiting room.
         cachedDoc(root, docId).then((hit) => {
             if (!alive) return;
             if (hit) setDoc(hit);

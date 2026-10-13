@@ -312,6 +312,10 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     useEffect(() => {
         const m = machine.current;
         if (!row || !loaded || m.dirty || m.inflight) return;
+        // A load already out, or the waiting room's own timer asking: a reload here would be a
+        // second one beside it, and each landing set `status` and came back here for a third
+        // (2026-10-13, the caching audit).
+        if (status === 'opening' || status === 'waiting') return;
         const seen = m.seen || { diverged: false, heads: 1 };
         if (needsReload(row, m.parents, seen, m.replaced || [])) {
             load({ reload: true }).catch(() => {});

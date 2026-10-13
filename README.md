@@ -75,6 +75,12 @@ lightly federated, unapologetically Old Internet.
   delete, move (to a notebook, or a new one), tag, untag from the combined tags,
   date, and for sounds their artist, album and cover. One request per document
   on the existing routes, four at a time. Built 2026-10-11.
+- [`CACHE.md`](plans/CACHE.md) — what the node keeps in RAM, invalidated exactly
+  by its write counts, and the repeated work it stops: the media poll, write
+  counts per service, a memory of computers that don't answer, a memory budget
+  sized to the machine (phone, computer, server, Pi), the doc-meta view kept
+  current, the public face, whole-table reads, and the browser. Nine stages from
+  the 2026-10-13 audit; nothing built yet.
 - [`CHAT.md`](plans/CHAT.md) — real-time rooms: a room is a post, a message is
   an entry on its author's own chain on the room's lane, live is gossip carrying
   the same entries, history is recent everywhere and whole at the creator's.

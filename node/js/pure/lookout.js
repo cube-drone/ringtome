@@ -48,3 +48,12 @@ export function needsReload(row, parents, seen, replaced = []) {
         (parents.length === 1 && row.diverged)
     );
 }
+
+/**
+ * Is this document's body still on its way - a detail to keep asking the node about, and never to
+ * remember? A missing body, on a document that isn't media. A media document's detail never
+ * carries its bytes - they're served at their own address, and its `media` facts come from the
+ * header - so `body: null` is its final answer, not a wait (2026-10-13: the readers took it for one
+ * and asked the node every two seconds for as long as an image, a song or a video stayed open).
+ */
+export const bodyTravelling = (doc) => !!doc && doc.body == null && !doc.media;

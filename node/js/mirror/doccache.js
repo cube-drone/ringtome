@@ -16,6 +16,7 @@
 //     or row tick mismatches the stamp and forces one honest refetch. Self-healing, never
 //     silently stale beyond a stream beat.
 import { openMirror } from '../mirror.js';
+import { bodyTravelling } from '../pure/lookout.js';
 
 /// The doc row's freshness fingerprint - the same trio `needsReload` watches (pure/lookout.js).
 /// Exported for its vectors; nothing else outside this module needs it.
@@ -44,11 +45,12 @@ export async function cachedDoc(root, docId) {
     }
 }
 
-/// Remember a fresh GET response. A null body (blobs still travelling) is never remembered -
-/// the waiting room must keep asking the node, not the cache.
+/// Remember a fresh GET response. A body still travelling is never remembered - the waiting room
+/// must keep asking the node, not the cache. A media document's detail never has a body (its
+/// bytes have their own address), so it's remembered like any other (`bodyTravelling`).
 export async function rememberDoc(root, docId, doc) {
     try {
-        if (!doc || doc.body == null) return;
+        if (!doc || bodyTravelling(doc)) return;
         const db = openMirror(root);
         const row = await db.docs.get(docId);
         if (!row) return;
