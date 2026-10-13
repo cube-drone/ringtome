@@ -282,6 +282,9 @@ pub struct Db {
     /// The catch-up's last answers (`record::imaol::rows_past_watermarks`). Shared by clones,
     /// like the locks.
     pub(crate) fold_memo: std::sync::Arc<Mutex<crate::record::imaol::FoldMemo>>,
+    /// The heads of the chains this handle appended to (`record::imaol::append_on`). Shared by
+    /// clones, like the locks.
+    pub(crate) head_memo: std::sync::Arc<Mutex<crate::record::imaol::HeadMemo>>,
 }
 
 /// The statement lock, held across a run of statements (`Db::hold`). Each statement is still
@@ -903,6 +906,7 @@ fn connect(database: turso::Database, name: &str) -> Result<Db> {
         root: None,
         write_nudge: None,
         fold_memo: Default::default(),
+        head_memo: Default::default(),
     })
 }
 
@@ -944,7 +948,11 @@ pub async fn test_user_db_with_journal(journal: Journal) -> Db {
 #[cfg(test)]
 pub(crate) async fn test_memory_db() -> Db {
     let database = Builder::new_local(":memory:").build().await.unwrap();
-    connect(database, "memory").unwrap()
+    // Named apart: the write counts are keyed by a database's name (`writes_to`), and tests run
+    // side by side - under one shared name, each saw every other's writes as its own.
+    static OPENED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = OPENED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    connect(database, &format!("memory{n}")).unwrap()
 }
 
 /// Record a boot in `boot_timestamps` (a local-only diagnostic; never exposed over the network).

@@ -47,6 +47,40 @@ async fn chain_head(
     }
 }
 
+/// The heads of the chains appended through this handle, each with the persona's `entries` write
+/// count right after its insert. While that count stands, nothing has written `entries` since -
+/// not a sync ingest, an eviction, nor another append - so the kept head is the chain's head,
+/// and the next append needn't ask (2026-10-13: the asking took 330-505 ms an append on the live
+/// server, against 25 us anywhere it could be reproduced, and held the persona's connection
+/// while an upload appended hundreds of entries - every other request queued behind it).
+#[derive(Default)]
+pub(crate) struct HeadMemo {
+    kept: std::collections::HashMap<Chain, (u64, Head)>,
+}
+
+/// A chain: its author (hex), service and instance.
+type Chain = (String, u32, Option<[u8; 16]>);
+/// A chain's head: seq, entry hash, claimed time.
+type Head = (u64, [u8; 32], i64);
+
+fn kept_head(db: &Db, chain: &Chain) -> Option<Head> {
+    let at = crate::db::writes_to(db.writes_key(), "entries");
+    let memo = db.head_memo.lock().expect("head memo poisoned");
+    memo.kept.get(chain).filter(|(kept_at, _)| *kept_at == at).map(|(_, head)| *head)
+}
+
+/// Keep a chain's new head, if the insert that made it is the only write to `entries` since
+/// `before`; otherwise forget it, and the next append asks.
+fn keep_head(db: &Db, chain: Chain, before: u64, head: Head) {
+    let after = crate::db::writes_to(db.writes_key(), "entries");
+    let mut memo = db.head_memo.lock().expect("head memo poisoned");
+    if after == before + 1 {
+        memo.kept.insert(chain, (after, head));
+    } else {
+        memo.kept.remove(&chain);
+    }
+}
+
 /// Append one entry to this key's (service) chain: derive seq and prev_hash from the stored
 /// head, sign, store the exact envelope bytes.
 pub async fn append(
@@ -103,9 +137,12 @@ pub async fn append_on(
     // where this chain ENDED - lives in the flat-file checkpoint instead (record::heads).
     let ephemeral = crate::net::sync::service_allows_suffix(service_id);
 
-    let (seq, prev_hash, head_claim_ms) = match chain_head(db, &author_hex, service_id, instance)
-        .await?
-    {
+    let chain = (author_hex.clone(), service_id, instance);
+    let head = match kept_head(db, &chain) {
+        Some(head) => Some(head),
+        None => chain_head(db, &author_hex, service_id, instance).await?,
+    };
+    let (seq, prev_hash, head_claim_ms) = match head {
         Some((head_seq, head_hash, head_ts)) => (head_seq + 1, head_hash, head_ts),
         // The database has no head. For a durable chain that means genesis; for an ephemeral
         // one it might instead mean a REBUILT database (inbox chains were never journaled, so
@@ -157,6 +194,7 @@ pub async fn append_on(
 
     // Two concurrent appends to one chain race to the same seq; the (author, service,
     // instance, seq) primary key makes the loser fail loudly instead of forking the chain.
+    let before = crate::db::writes_to(db.writes_key(), "entries");
     db.execute(
         "INSERT INTO entries
            (author_pubkey, service, instance, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
@@ -178,6 +216,7 @@ pub async fn append_on(
     .await
     .context("storing entry")
     .map_err(AppError::Internal)?;
+    keep_head(db, chain, before, (seq, *signed.hash(), signed.entry().timestamp_ms));
 
     // The chain-heads memo, fed at the source: this signer just became the tip of its chain,
     // and the fact is in hand - re-deriving it later means reopening this encrypted file.
@@ -2869,5 +2908,63 @@ mod tests {
         }
         assert_eq!(chain_keys(&db).await.unwrap(), want);
         assert!(chain_keys(&test_db().await).await.unwrap().is_empty(), "an empty log, no chains");
+    }
+
+    /// Statements a future runs, by the tally the request log keeps.
+    async fn statements<T>(f: impl std::future::Future<Output = T>) -> (T, u64) {
+        let tally = std::sync::Arc::new(std::sync::Mutex::new(crate::db::DbTally::default()));
+        let out = crate::db::DB_TALLY.scope(tally.clone(), f).await;
+        let n = tally.lock().unwrap().statements;
+        (out, n)
+    }
+
+    async fn rebroadcast(db: &Db, key: &SigningKey, n: u8) -> SignedEntry {
+        append(db, key, service::REBROADCASTS, entry_type::REBROADCAST, Payload::Inline(vec![n]))
+            .await
+            .unwrap()
+    }
+
+    /// Back-to-back appends chain from the head the last one left, without asking the database
+    /// for it (2026-10-13: the asking held a busy persona's connection 330-505 ms an append).
+    #[tokio::test]
+    async fn back_to_back_appends_chain_without_asking_for_the_head() {
+        let db = test_db().await;
+        let key = test_key();
+        let (first, asked) = statements(rebroadcast(&db, &key, 0)).await;
+        let (second, kept) = statements(rebroadcast(&db, &key, 1)).await;
+        let third = rebroadcast(&db, &key, 2).await;
+        assert_eq!((second.entry().seq, third.entry().seq), (1, 2));
+        assert_eq!(second.entry().prev_hash, *first.hash());
+        assert_eq!(third.entry().prev_hash, *second.hash());
+        assert_eq!(asked, kept + 1, "the first append on a handle asks; the next doesn't");
+    }
+
+    /// Any other write to `entries` - here a row landing as sync would land it - and the next
+    /// append asks again, and continues from what's there.
+    #[tokio::test]
+    async fn an_entries_write_from_elsewhere_makes_the_next_append_ask() {
+        let db = test_db().await;
+        let key = test_key();
+        rebroadcast(&db, &key, 0).await;
+        let second = rebroadcast(&db, &key, 1).await;
+        // A seq-2 row the append didn't write, under the same author and chain.
+        let foreign = [7u8; 32];
+        db.execute(
+            "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash, prev_hash,
+               entry_type, timestamp_ms, received_at_ms, bytes)
+             VALUES (?1, ?2, X'', 2, ?3, ?4, ?5, 0, 0, X'00')",
+            (
+                hex::encode(key.verifying_key().to_bytes()).as_str(),
+                i64::from(service::REBROADCASTS),
+                foreign.as_slice(),
+                second.hash().as_slice(),
+                i64::from(entry_type::REBROADCAST),
+            ),
+        )
+        .await
+        .unwrap();
+        let next = rebroadcast(&db, &key, 2).await;
+        assert_eq!(next.entry().seq, 3, "continues after the row it didn't write");
+        assert_eq!(next.entry().prev_hash, foreign);
     }
 }

@@ -21065,3 +21065,22 @@ tree read made eight. `a_catch_up_with_nothing_new_asks_nothing` and
 Not explained yet: each taxonomy write's chain-head lookup took 330-505 ms live,
 24 µs locally on a 20,000-entry chain - not its plan, nor the WAL (1.5 MB), nor
 a second connection.
+
+**2026-10-13 - an append remembers where its chain ended.** What held a busy
+persona's connection was one statement: the chain-head lookup every append makes
+for its seq (`imaol::chain_head`), 330-505 ms each on the live server while an
+upload appended hundreds of entries - against 25 µs anywhere it could be
+reproduced, a 237 MB encrypted on-disk database with the chain mid-index
+included. Its plan, the WAL, a second connection and the key-tree read before it
+are ruled out; the server's I/O is what's left.
+
+Whatever the cause, back-to-back appends no longer ask: the handle keeps each
+chain's head (`imaol::HeadMemo`) with the persona's `entries` write count right
+after the insert that made it, and trusts it only while that count stands - any
+other write to `entries` (sync's ingest, an eviction, a failed insert, which is
+counted before it runs) and the next append asks. If the half-second moves to
+the next statement instead of vanishing, it was never this query.
+`back_to_back_appends_chain_without_asking_for_the_head` and
+`an_entries_write_from_elsewhere_makes_the_next_append_ask` pin it. The
+in-memory test databases are named apart now (`db::test_memory_db`): sharing one
+name, side-by-side tests counted each other's writes as their own.
