@@ -1262,7 +1262,7 @@ pub(crate) async fn rows_past_watermarks(
 /// fold in one service leaves every other service's answer standing.
 #[derive(Default)]
 pub(crate) struct FoldMemo {
-    kept: std::collections::HashMap<(u32, u32), ((u64, u64), std::sync::Arc<Vec<PastWatermark>>)>,
+    kept: std::collections::HashMap<(u32, u32), Kept>,
     moved: std::collections::HashMap<u32, u64>,
 }
 
@@ -1280,6 +1280,12 @@ fn watermarks_moved(db: &Db, service_id: Option<u32>) {
         }
     }
 }
+
+/// What a kept answer was asked under: the `entries` write count, the service's watermark moves.
+type FoldStamp = (u64, u64);
+
+/// One kept answer, and what it was asked under.
+type Kept = (FoldStamp, std::sync::Arc<Vec<PastWatermark>>);
 
 /// The most rows a kept catch-up answer holds.
 const FOLD_MEMO_ROWS: usize = 64;
