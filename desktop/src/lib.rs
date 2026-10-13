@@ -82,21 +82,18 @@ pub fn run() {
             // system browser came from here. NOT the query string all the same: a URL lands in
             // history, in a log, in a screenshot.
             let token = ringtome_node::auth::mint_launch_token();
-            // Before the node, whose first HTTPS request would otherwise panic (android_tls.rs).
-            // Said once the node's logging is up, below - a failure here is a phone that can sync
-            // with peers and reach no web server, not one that can't start.
-            #[cfg(target_os = "android")]
-            let tls = android_tls::init();
+            #[cfg(desktop)]
             let (url, attention, requests) = start_node(&data_dir, token.clone())?;
-            #[cfg(target_os = "android")]
-            if let Err(e) = tls {
-                tracing::error!(error = %e, "could not initialize Android certificate checks: HTTPS will fail");
-            }
+            // On a phone the node may already be up: hrseAmp's media service boots it when the car
+            // or a headphone button wakes the app with no window (plans/AUDIO.md, section 10's cold
+            // start) - one node per process, whichever came first.
+            #[cfg(mobile)]
+            let url = boot_once(&data_dir, token.clone())?;
             // A phone has no tray, no login items and no hidden launch: the app is its window.
             #[cfg(desktop)]
             let hidden = tray::launched_hidden();
             #[cfg(mobile)]
-            let (hidden, _) = (false, (attention, requests));
+            let hidden = false;
             // Links that leave the app go to the system browser (links.rs): judged against the
             // node's own origin, for navigations and for new-window requests alike.
             let origin: tauri::Url = url.parse()?;
@@ -164,6 +161,59 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
         return Ok(PathBuf::from(said));
     }
     Ok(app.path().app_data_dir()?)
+}
+
+/// The phone's node, booted once per process (plans/AUDIO.md, section 10): by the window's `setup`,
+/// or - with no window at all - by hrseAmp's media service, when the car or a headphone button wakes
+/// the app ([`Java_net_lassam_ringtome_NodeBoot_boot`]). Whichever comes second finds it up and
+/// shares it. Its URL is said in the process's environment too (`RINGTOME_NODE_URL`), for the
+/// service to point the car's saved songs at, should the port have moved.
+#[cfg(mobile)]
+static BOOTED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[cfg(mobile)]
+fn boot_once(data_dir: &Path, token: String) -> anyhow::Result<String> {
+    let mut booted = BOOTED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(url) = booted.as_ref() {
+        return Ok(url.clone());
+    }
+    // Before the node, whose first HTTPS request would otherwise panic (android_tls.rs). Said once
+    // the node's logging is up, below - a failure here is a phone that can sync with peers and reach
+    // no web server, not one that can't start.
+    #[cfg(target_os = "android")]
+    let tls = android_tls::init();
+    let (url, _attention, _requests) = start_node(data_dir, token)?;
+    #[cfg(target_os = "android")]
+    if let Err(e) = tls {
+        tracing::error!(error = %e, "could not initialize Android certificate checks: HTTPS will fail");
+    }
+    std::env::set_var("RINGTOME_NODE_URL", &url);
+    *booted = Some(url.clone());
+    Ok(url)
+}
+
+/// The cold start's door (plans/AUDIO.md, section 10): hrseAmp's media service (PlayerService.kt,
+/// through NodeBoot.kt) calls this when it wakes with no window, to have a node to play from. The
+/// data directory comes the way the window's does - `RINGTOME_DATA_DIRECTORY`, which NodeBoot sets
+/// to the app's own before calling - so both find the same node, the same port and the same
+/// sign-ins. Nothing but pointers crosses here, and a byte back: true when the node is up.
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_net_lassam_ringtome_NodeBoot_boot(
+    _env: *mut std::ffi::c_void,
+    _this: *mut std::ffi::c_void,
+) -> u8 {
+    let Ok(dir) = std::env::var("RINGTOME_DATA_DIRECTORY") else {
+        return 0;
+    };
+    match boot_once(Path::new(&dir), ringtome_node::auth::mint_launch_token()) {
+        Ok(_) => 1,
+        Err(e) => {
+            // Logging may not be up if the boot failed early; the error is the caller's to report.
+            eprintln!("ringtome: the cold start's node did not boot: {e:#}");
+            0
+        }
+    }
 }
 
 /// Build the node, bind it, and hand back the URL the window should open - having started the

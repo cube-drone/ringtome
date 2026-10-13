@@ -163,6 +163,17 @@ export class StationRun {
         return this.pos >= 0 ? this.history[this.pos] : null;
     }
 
+    /// Pick ahead until `n` songs wait past the one playing - for a player that plays on without the
+    /// page (Android's, plans/AUDIO.md section 10). `next()` then walks them, as it walks back.
+    ahead(n) {
+        while (this.history.length - 1 - this.pos < n) {
+            const song = this.pick();
+            if (!song) break;
+            this.history.push(song);
+        }
+        return this.history.slice(this.pos + 1);
+    }
+
     prev() {
         if (this.pos > 0) this.pos -= 1;
         return this.current();

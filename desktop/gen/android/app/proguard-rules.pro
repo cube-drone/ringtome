@@ -29,3 +29,14 @@
 -keepclassmembers class net.lassam.ringtome.MainActivity$* {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# hrseAmp's player bridge (PlayerBridge.kt, `__ringtomePlayer`), called by name the same way.
+-keepclassmembers class net.lassam.ringtome.PlayerBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# The cold start's door (NodeBoot.kt): its `boot` is bound to Rust by its JNI name
+# (Java_net_lassam_ringtome_NodeBoot_boot, desktop/src/lib.rs), which a renamed class or method breaks.
+-keep class net.lassam.ringtome.NodeBoot {
+    native <methods>;
+}

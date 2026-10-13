@@ -16,12 +16,25 @@ class MainActivity : TauriActivity() {
   // the web view's.
   @Volatile private var insets = "{}"
 
+  // hrseAmp's player (PlayerBridge.kt, PlayerService.kt): the page's road to the phone's own player.
+  private var player: PlayerBridge? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
   }
 
+  // The window goes; the music doesn't - only this window's hold on the player does.
+  override fun onDestroy() {
+    player?.release()
+    player = null
+    super.onDestroy()
+  }
+
   override fun onWebViewCreate(webView: WebView) {
+    // hrseAmp plays through the phone's player, not the page's (plans/AUDIO.md, section 10):
+    // `__ringtomePlayer`, there before the first page loads, as the insets bridge is.
+    player = PlayerBridge(this, webView).also { webView.addJavascriptInterface(it, "__ringtomePlayer") }
     // Before the first page loads, so its first script finds the bridge: `__ringtomeInsets.get()`.
     webView.addJavascriptInterface(object {
       @JavascriptInterface fun get(): String = insets

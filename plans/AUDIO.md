@@ -543,6 +543,28 @@ mode, but CarPlay, like Auto, needs native code and Apple's entitlement.
 phone for the shade, the lock screen and the headphones, and Google's Desktop
 Head Unit (Auto on a laptop) for the car.
 
+**What building it found** (2026-10-12, three rounds, each a CI build and a
+phone):
+
+- **No plugin.** The player lives in the Android project Tauri generates
+  (`desktop/gen/android`): `PlayerService.kt` (Media3's library service, its
+  ExoPlayer and session), `PlayerBridge.kt` (the page's `__ringtomePlayer`, and
+  its events back), `AutoLibrary.kt` (the car's tree), `NodeBoot.kt` and
+  `ArtProvider.kt`. A plugin's packaging bought nothing for one app.
+- **Every list comes from the page**, mixtapes too: the page hands its lists
+  over whenever hrseAmp is open (`player.library`), kept in a file for the car.
+  Reading mixtapes from the node's API was one more road to the same lists.
+- **The cold start** boots the node from the service, on its own thread, through
+  the shell's library (`NodeBoot_boot` in `desktop/src/lib.rs`): the same data
+  directory and sign-ins as the window's, whichever comes first. Plays wait for
+  it.
+- **The car can't read the node's covers.** Auto fetches artwork itself, without
+  the sign-in a thumbnail needs, so it showed none. `ArtProvider` serves
+  thumbnails - only paths ending `/thumb` - under `content://` addresses that
+  only Android Auto is granted, fetched with the sign-in and kept a day.
+- **A sideloaded app isn't in the car's list** until Auto's developer settings
+  allow unknown sources. Nothing to build; a store install won't need it.
+
 ### Stretch goals
 
 - **Posting a mixtape** (ruling 7), published as a book is, for someone else to
@@ -585,9 +607,11 @@ Head Unit (Auto on a laptop) for the car.
     ingest, said on the twin, applied as volume downward only, one switch.
 12. **The equalizer** (section 9): Winamp's ten bands and a few presets,
     "background" among them, through Web Audio only while it's on.
-13. **Playing on Android** (section 10, a priority - ruling 22; still last,
-    after a mobile usability pass of the UI, which it calls for - Curtis,
-    2026-10-12; that pass done the same day, HISTORY has it), in steps: the node
+13. **Playing on Android** - built and verified on a phone 2026-10-12 (section
+    10, _What building it found_): the shade, the lock screen, the background,
+    headphones, the cold start and Android Auto, covers included. Planned as a
+    priority (ruling 22), last, after a mobile usability pass of the UI, which
+    it called for and got the same day. The steps it was built in: the node
     booting off the main thread; the plugin with Media3's session, the native
     player taking the page's queue, the foreground service while it plays, and
     the shade, lock screen and headphones; then Android Auto's tree

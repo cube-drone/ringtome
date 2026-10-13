@@ -30,7 +30,8 @@ import { formatWhen } from '../pure/when.js';
 import { speakable } from '../speakable.js';
 import { SoundTags } from '../doc/soundtags.js';
 import { BulkPanel } from '../doc/bulk.js';
-import { usePlayer, PlayerBar, Cassette } from '../player.js';
+import { usePlayer, PlayerBar, Cassette, songForPhone } from '../player.js';
+import { spreadOrder } from '../pure/shuffle.js';
 import { postHref } from '../links.js';
 import { Icons } from '../icons.js';
 import { toast } from '../toasts.js';
@@ -1300,6 +1301,55 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             albumOf: (r) => (r.album ? `${r.artist}/${r.album}` : ''),
             random: Math.random,
         });
+    // Android Auto's lists (plans/AUDIO.md, section 10): on a phone, hrseAmp hands the phone's player
+    // what the car may browse - everything, shuffled; each mixtape in its order; each saved filter;
+    // each station as a long run of its picks - a few seconds after the library settles, so the car
+    // has the last set even once the page is gone. Only what this server carries.
+    useEffect(() => {
+        const phone = typeof window !== 'undefined' && window.__ringtomePlayer;
+        if (!phone || loading || !root || !stationsRead) return undefined;
+        const timer = setTimeout(() => {
+            const order = {
+                artistOf: (r) => r.artist,
+                albumOf: (r) => r.album,
+                random: Math.random,
+            };
+            const items = (songs) => songs.map((r) => songForPhone(r, root));
+            const lists = [
+                {
+                    id: 'all',
+                    title: t('amp.everything-shuffled', 'everything, shuffled'),
+                    items: items(spreadOrder(playable(rows), order).slice(0, 2000)),
+                },
+                ...tapes.map((x) => ({
+                    id: `mixtape:${x.id}`,
+                    title: x.name,
+                    items: items(playable(inMixtapeOrder(rows, x))),
+                })),
+                ...filters.map((f) => ({
+                    id: `filter:${f.id}`,
+                    title: f.name,
+                    items: items(spreadOrder(songsOf({ kind: 'filter', id: f.id }), order)),
+                })),
+                ...stations.map((st) => {
+                    const station = runFor(st);
+                    station.next();
+                    return {
+                        id: `station:${st.id}`,
+                        title: st.name,
+                        items: items([station.current(), ...station.ahead(150)].filter(Boolean)),
+                    };
+                }),
+            ].filter((l) => l.items.length);
+            try {
+                phone.library(JSON.stringify({ lists }));
+            } catch {
+                /* the car keeps the last set it was given */
+            }
+        }, 3000);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, tapes, filters, stations, stationsRead, loading, root]);
     const playStation = (st) => {
         if (!player) return;
         const run = runFor(st);
