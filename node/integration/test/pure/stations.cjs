@@ -202,4 +202,58 @@ describe("hrseAmp's radio stations (plans/AUDIO.md)", () => {
             ahead.map((s) => s.key),
         );
     });
+    it('plays a song new to a slice soon, not a cycle later, and still once a cycle (2026-10-13)', () => {
+        const lists = { all: songs('o', 40, 40) };
+        const station = { id: 'x', name: 'x', slices: [{ kind: 'all', weight: 50 }] };
+        const run = new st.StationRun(station, opts(lists));
+        const before = play(run, 10).map((s) => s.key);
+        lists.all = [...lists.all, { key: 'new', artist: 'someone new', album: '' }];
+        run.refresh();
+        assert.equal(run.next().key, 'new', 'the new song comes up next');
+        const rest = play(run, 29).map((s) => s.key);
+        const cycle = [...before, 'new', ...rest];
+        assert.equal(new Set(cycle).size, 40, 'the rest of the cycle repeats nothing');
+        assert.ok(!rest.includes('new'), 'and the new song plays once in it');
+    });
+
+    it('lets an import of many new songs share the air with what was there', () => {
+        const lists = { all: songs('o', 40, 40) };
+        const station = { id: 'x', name: 'x', slices: [{ kind: 'all', weight: 50 }] };
+        const run = new st.StationRun(station, opts(lists));
+        play(run, 5);
+        lists.all = [...lists.all, ...songs('n', 30, 30)];
+        run.refresh();
+        const next = play(run, 20).map((s) => s.key);
+        const fresh = next.filter((k) => k.startsWith('n')).length;
+        assert.ok(fresh >= 8 && fresh <= 12, `about every other song new: ${fresh} of 20`);
+        assert.ok(next[0].startsWith('n'), 'a newcomer first');
+    });
+
+    it('slots newcomers in every other place from the top of a bag', () => {
+        assert.deepEqual(st.withNewcomers(['a', 'b', 'c', 'd'], ['X', 'Y']), [
+            'X',
+            'a',
+            'Y',
+            'b',
+            'c',
+            'd',
+        ]);
+        assert.deepEqual(st.withNewcomers(['a'], ['X', 'Y', 'Z']), ['X', 'a', 'Y', 'Z']);
+        assert.deepEqual(st.withNewcomers([], ['X']), ['X']);
+    });
+    it('takes back picks made ahead for a phone when a new song comes in, losing none of them', () => {
+        const lists = { all: songs('o', 40, 40) };
+        const station = { id: 'x', name: 'x', slices: [{ kind: 'all', weight: 50 }] };
+        const run = new st.StationRun(station, opts(lists));
+        run.next();
+        run.ahead(20);
+        assert.equal(run.refresh(), false, 'nothing new: the picks ahead stand');
+        lists.all = [...lists.all, { key: 'new', artist: 'someone new', album: '' }];
+        assert.equal(run.refresh(), true, 'something new: the picks ahead are taken back');
+        assert.equal(run.history.length, 1);
+        const ahead = run.ahead(40).map((s) => s.key);
+        assert.equal(ahead[0], 'new', 'the new song is next');
+        const cycle = [run.current().key, ...ahead];
+        assert.equal(new Set(cycle).size, 41, 'a whole cycle, every song once - none lost');
+    });
 });

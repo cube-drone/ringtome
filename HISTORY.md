@@ -21084,3 +21084,19 @@ the next statement instead of vanishing, it was never this query.
 `an_entries_write_from_elsewhere_makes_the_next_append_ask` pin it. The
 in-memory test databases are named apart now (`db::test_memory_db`): sharing one
 name, side-by-side tests counted each other's writes as their own.
+
+**2026-10-13 - a new song comes up soon on the station playing.** A playing
+station heard the library change, but a song new to a slice waited for the
+slice's next cycle - after every other song in it had played, days of listening
+in an "everything" slice of thousands - and on a phone, behind the 50 picks
+already handed to its player too. Whoever just added a song expects to hear it
+soon, to know it's really in there, however a fair shuffle would deal it
+(Curtis). Now a song new to a slice mid-cycle goes in at the front of its bag
+(`withNewcomers`, `pure/stations.js`): newcomers take every other place from the
+top, newcomer first - one new song comes up next, and an import of hundreds
+shares the air with what was already there instead of taking all of it. It still
+plays once a cycle. Picks made ahead for a phone are taken back to the front of
+their own bags - none loses its turn - and picked again with the newcomers among
+them; the page hands the phone what follows the song it's on again
+(`player.stationAhead`). The memory still keeps a just-heard artist back where
+the slice has another. Four claims in `stations.cjs`; `just ui-check` green.

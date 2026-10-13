@@ -1369,7 +1369,9 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         if (live) {
             live.station = st;
             live.opts = { ...live.opts, stations, songsOf };
-            live.refresh();
+            // New songs come up soon (pure/stations.js); a phone holding picks made before they
+            // arrived is handed the picks again.
+            if (live.refresh()) player.stationAhead();
             return;
         }
         const waiting = player.pendingStation();
@@ -1377,6 +1379,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const run = runFor(st);
         const byKey = new Map(rows.map((r) => [r.key, r]));
         run.history = waiting.rows.map((r) => byKey.get(r.key) || r);
+        run.from = run.history.map(() => null); // which slice each came from isn't saved
         run.pos = Math.min(waiting.pos, run.history.length - 1);
         player.resumeStation(run);
         // eslint-disable-next-line react-hooks/exhaustive-deps

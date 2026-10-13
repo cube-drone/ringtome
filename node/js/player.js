@@ -350,6 +350,15 @@ export const PlayerProvider = ({ me, children }) => {
         },
         /// The run playing now, so the page can tell it the library changed.
         stationRun: () => stationRun.current,
+        /// The playing station's picks ahead changed (new songs came in): a phone's player holding
+        /// the old ones is handed what follows the song it's on again.
+        stationAhead() {
+            if (!native || !stationId.current || !stationRun.current) return;
+            const rows = fromModel();
+            const q = nq.current;
+            nq.current = { rows, base: modelPos(), offset: q.offset + (modelPos() - q.base) };
+            native.upcoming(handed(rows.slice(1)));
+        },
         toggle() {
             if (native) {
                 if (!currentRef.current) return step(true);

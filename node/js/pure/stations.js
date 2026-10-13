@@ -106,13 +106,30 @@ export function memoryFor(songs, artists) {
 ///   - `songsOf(slice)`: the songs a leaf slice (filter, mixtape, all) holds now;
 ///   - `keyOf`, `artistOf`, `albumOf`, `random`: as the shuffle takes them.
 /// `next()` and `prev()` walk the station's history; past its end, `next()` picks anew.
+/// A song new to a slice mid-cycle goes in at the front of its bag, not at the next cycle: whoever
+/// just added it expects to hear it soon, to know it's really in there - however a fair shuffle
+/// would deal it (Curtis, 2026-10-13). Newcomers take every other place from the top, newcomer
+/// first, so one new song comes up next and an import of hundreds shares the air with what was
+/// already there instead of taking all of it.
+export function withNewcomers(bag, newcomers) {
+    const out = [];
+    let i = 0;
+    for (const song of newcomers) {
+        out.push(song);
+        if (i < bag.length) out.push(bag[i++]);
+    }
+    return out.concat(bag.slice(i));
+}
+
 export class StationRun {
     constructor(station, opts) {
         this.station = station;
         this.opts = opts;
         this.history = [];
+        this.from = []; // the leaf each song in the history was picked from, beside it
         this.pos = -1;
         this.bags = new Map(); // a leaf's path -> what's left of its cycle
+        this.dealt = new Map(); // a leaf's path -> every song its cycle has held
         this.refresh();
     }
 
@@ -143,7 +160,33 @@ export class StationRun {
     }
 
     /// The station's songs as they stand now - after the library or a filter changed underneath.
+    /// Songs new to a slice go to the front of its bag (`withNewcomers`); songs already picked
+    /// ahead for a player that plays on alone would keep them waiting behind, so those go back to
+    /// the front of their own bags, to be picked again with the newcomers among them. True when
+    /// it took picks back: the player should be handed what's next again.
     refresh() {
+        this.songsNow();
+        if (this.history.length - 1 <= this.pos || !this.hasNewcomers()) return false;
+        const songs = this.history.splice(this.pos + 1);
+        const from = this.from.splice(this.pos + 1);
+        for (let i = songs.length - 1; i >= 0; i--) {
+            const bag = from[i] && this.bags.get(from[i]);
+            if (bag) bag.unshift(songs[i]);
+        }
+        return true;
+    }
+
+    /// Is any slice holding a song its cycle hasn't dealt yet?
+    hasNewcomers() {
+        const { keyOf } = this.opts;
+        for (const [path, songs] of this.leafSongs) {
+            const dealt = this.dealt.get(path);
+            if (dealt && songs.some((s) => !dealt.has(keyOf(s)))) return true;
+        }
+        return false;
+    }
+
+    songsNow() {
         const { keyOf, artistOf } = this.opts;
         this.leafSongs = new Map();
         const keys = new Set();
@@ -170,6 +213,7 @@ export class StationRun {
             const song = this.pick();
             if (!song) break;
             this.history.push(song);
+            this.from.push(this.picked);
         }
         return this.history.slice(this.pos + 1);
     }
@@ -187,6 +231,7 @@ export class StationRun {
         const song = this.pick();
         if (!song) return null;
         this.history.push(song);
+        this.from.push(this.picked);
         this.pos = this.history.length - 1;
         return song;
     }
@@ -200,6 +245,7 @@ export class StationRun {
         const leaves = this.leaves().filter((l) => (this.leafSongs.get(l.path) || []).length);
         if (!leaves.length) return null;
         const leaf = this.chooseLeaf(leaves);
+        this.picked = leaf.path;
         return this.fromBag(leaf, 2) || this.fromBag(leaf, 1) || this.fromBag(leaf, 0);
     }
 
@@ -223,7 +269,18 @@ export class StationRun {
         let bag = this.bags.get(leaf.path);
         const known = new Set(songs.map(keyOf));
         bag = (bag || []).filter((s) => known.has(keyOf(s)));
-        if (!bag.length) bag = spreadOrder(songs, { artistOf, albumOf, random });
+        let dealt = this.dealt.get(leaf.path);
+        if (!bag.length || !dealt) {
+            bag = bag.length ? bag : spreadOrder(songs, { artistOf, albumOf, random });
+            dealt = new Set(bag.map(keyOf));
+            this.dealt.set(leaf.path, dealt);
+        } else {
+            const fresh = songs.filter((s) => !dealt.has(keyOf(s)));
+            if (fresh.length) {
+                bag = withNewcomers(bag, spreadOrder(fresh, { artistOf, albumOf, random }));
+                for (const s of fresh) dealt.add(keyOf(s));
+            }
+        }
         // The last n of the history (`slice(-0)` would be all of it).
         const last = (n) => (n > 0 ? this.history.slice(-n) : []);
         const recent = last(this.memory.songs).map(keyOf);
