@@ -299,6 +299,56 @@ pub async fn account_for_token_renewing(
 
 /// A live session's account and expiry; an expired one is cleaned up and answers None.
 async fn session_row(db: &Db, token: &str) -> Result<Option<(Account, i64)>, AppError> {
+    let stamp = session_stamp(db);
+    if let Some((account, expires_at_ms)) = kept_session(token, stamp) {
+        return Ok(Some((account, expires_at_ms)));
+    }
+    let found = read_session(db, token).await?;
+    if let Some((account, expires_at_ms)) = &found {
+        keep_session(token, stamp, account, *expires_at_ms);
+    }
+    Ok(found)
+}
+
+/// The sessions and accounts write counts a kept session stands on: a logout, a purge, a
+/// renewal, an account's removal - every one a write through node.db's door.
+fn session_stamp(db: &Db) -> u64 {
+    let key = db.writes_key();
+    crate::db::writes_to(key, "sessions") + crate::db::writes_to(key, "accounts")
+}
+
+/// Live sessions as last read, by token (plans/CACHE.md, Stage 4): every request resolved its
+/// session with a statement on node.db's one connection - an MCP tool call, four to eight of
+/// them. Only a live session is kept, never a refusal; it stands while the stamp does, and
+/// never past `SESSION_KEPT` (anything that edits node.db from outside this process) or its
+/// own expiry.
+type KeptSessions = std::collections::HashMap<String, (u64, std::time::Instant, Account, i64)>;
+static SESSIONS: std::sync::LazyLock<std::sync::Mutex<KeptSessions>> =
+    std::sync::LazyLock::new(Default::default);
+const SESSION_KEPT: std::time::Duration = std::time::Duration::from_secs(30);
+const SESSIONS_KEPT_MAX: usize = 10_000;
+
+fn kept_session(token: &str, stamp: u64) -> Option<(Account, i64)> {
+    let kept = SESSIONS.lock().ok()?;
+    let (at, when, account, expires) = kept.get(token)?;
+    (*at == stamp && when.elapsed() < SESSION_KEPT && *expires > now_ms())
+        .then(|| (account.clone(), *expires))
+}
+
+fn keep_session(token: &str, stamp: u64, account: &Account, expires_at_ms: i64) {
+    if let Ok(mut kept) = SESSIONS.lock() {
+        if kept.len() >= SESSIONS_KEPT_MAX {
+            kept.clear();
+        }
+        kept.insert(
+            token.to_string(),
+            (stamp, std::time::Instant::now(), account.clone(), expires_at_ms),
+        );
+    }
+}
+
+/// `session_row`'s read of the table.
+async fn read_session(db: &Db, token: &str) -> Result<Option<(Account, i64)>, AppError> {
     let row: Option<(String, String, i64)> = db
         .fetch_optional(
             "SELECT a.id, a.username, s.expires_at_ms

@@ -1137,7 +1137,25 @@ pub struct StoredEntry {
 
 /// Load and resolve the identity's key tree from its stored identity-public chains. The tree is
 /// tiny (design center: 2-5 keys), so recomputing on demand beats maintaining a view.
+///
+/// Kept on the handle while the identity chain's mark stands (`db::entries_mark`): rebuilt, it
+/// read the whole chain and checked every signature on every append, every exchange's membership
+/// check and every candidate lookup (plans/CACHE.md, Stage 4). A revocation is an identity entry,
+/// so it moves the mark and the next read rebuilds.
 pub async fn load_key_tree(db: &Db, root_hex: &str) -> Result<ringtome_proto::Crown, AppError> {
+    let at = crate::db::entries_mark(db.writes_key(), service::IDENTITY_PUBLIC);
+    if let Some((root, kept_at, crown)) = &*db.crown_memo.lock().expect("crown memo poisoned") {
+        if root == root_hex && *kept_at == at {
+            return Ok(crown.clone());
+        }
+    }
+    let crown = build_key_tree(db, root_hex).await?;
+    *db.crown_memo.lock().expect("crown memo poisoned") =
+        Some((root_hex.to_string(), at, crown.clone()));
+    Ok(crown)
+}
+
+async fn build_key_tree(db: &Db, root_hex: &str) -> Result<ringtome_proto::Crown, AppError> {
     let root = pubkey::require(root_hex, "root pubkey")?;
 
     let rows: Vec<(Vec<u8>,)> = db
@@ -3012,5 +3030,41 @@ mod tests {
         insert(7, 1).await;
         assert_eq!(crate::db::entries_mark(&key, 7), meta + 3);
         assert_eq!(crate::db::entries_mark(&key, 6), docs + 3, "never back");
+    }
+
+    /// The key tree is kept while the identity chain stands: a second read asks nothing, another
+    /// service's write leaves it, an identity entry makes the next read rebuild (plans/CACHE.md,
+    /// Stage 4).
+    #[tokio::test]
+    async fn the_key_tree_is_kept_until_the_identity_chain_moves() {
+        let db = test_db().await;
+        let key = test_key();
+        let root_hex = hex::encode(key.verifying_key().to_bytes());
+        load_key_tree(&db, &root_hex).await.unwrap();
+        let (_, asked) = statements(load_key_tree(&db, &root_hex)).await;
+        assert_eq!(asked, 0, "kept");
+        rebroadcast(&db, &key, 0).await;
+        let (_, asked) = statements(load_key_tree(&db, &root_hex)).await;
+        assert_eq!(asked, 0, "another service's entry leaves it standing");
+        let child = SigningKey::from_bytes(&[9u8; 32]).verifying_key().to_bytes();
+        let payload = ringtome_proto::Authorize {
+            child,
+            usurpers: vec![key.verifying_key().to_bytes()],
+            enc_pubkey: None,
+        }
+        .encode()
+        .unwrap();
+        append(
+            &db,
+            &key,
+            service::IDENTITY_PUBLIC,
+            entry_type::AUTHORIZE,
+            Payload::Inline(payload),
+        )
+        .await
+        .unwrap();
+        let (tree, asked) = statements(load_key_tree(&db, &root_hex)).await;
+        assert!(asked > 0, "an identity entry: rebuilt");
+        assert!(tree.unwrap().status(&child) == ringtome_proto::crown::KeyStatus::Active);
     }
 }

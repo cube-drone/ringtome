@@ -9056,6 +9056,9 @@ static DOCUMENT_ROWS: std::sync::LazyLock<std::sync::Mutex<DocumentSlots>> =
 /// rebuild of the document list and search rows - ~300 ms apiece, queued on the persona's one
 /// connection, ~1.5 s of it per save). The first socket to ask builds; the rest await that build;
 /// each then diffs against its own baseline. A failed build is not remembered.
+/// The fastest a stream rebuilds on writes.
+const STREAM_REBUILD_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
 async fn shared_documents(
     data: &store::Store,
     root: &str,
@@ -9275,6 +9278,8 @@ async fn serve_stream(
     // the stream's idle cost. Recorded BEFORE stamping, so a write landing mid-stamp moves
     // mtime past the guard and the next tick re-runs one round instead of skipping a change.
     let mut guard: Option<(Option<i64>, u64, u64)> = None;
+    // When this stream last rebuilt on a write (`STREAM_REBUILD_EVERY`).
+    let mut rebuilt_at: Option<std::time::Instant> = None;
     loop {
         tokio::select! {
             _ = tick.tick() => {
@@ -9304,6 +9309,20 @@ async fn serve_stream(
             who = crate::db::await_write_nudge(&mut nudge) => {
                 if who.is_some_and(|w| w != root) { continue; }
                 guard = None;
+                // At most one rebuild a beat, whatever lands in it (plans/CACHE.md, Stage 4): an
+                // upload writes several entries a song, and each rebuilt every open tab's document
+                // list and recounted its badges - the whole doc-meta view, ~950 ms, ten times a
+                // minute on the live server. A write after a quiet spell goes at once; a burst
+                // waits out the beat and is answered once, with everything that landed in it.
+                if let Some(at) = rebuilt_at {
+                    if let Some(rest) = STREAM_REBUILD_EVERY.checked_sub(at.elapsed()) {
+                        tokio::time::sleep(rest).await;
+                        if let Some(rx) = nudge.as_mut() {
+                            while rx.try_recv().is_ok() {}
+                        }
+                    }
+                }
+                rebuilt_at = Some(std::time::Instant::now());
             }
             said = alerts.recv() => {
                 match said {

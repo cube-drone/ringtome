@@ -285,6 +285,9 @@ pub struct Db {
     /// The heads of the chains this handle appended to (`record::imaol::append_on`). Shared by
     /// clones, like the locks.
     pub(crate) head_memo: std::sync::Arc<Mutex<crate::record::imaol::HeadMemo>>,
+    /// The persona's resolved key tree, with the identity chain's mark it was built under
+    /// (`record::imaol::load_key_tree`). Shared by clones, like the locks.
+    pub(crate) crown_memo: std::sync::Arc<Mutex<Option<(String, u64, ringtome_proto::Crown)>>>,
 }
 
 /// The statement lock, held across a run of statements (`Db::hold`). Each statement is still
@@ -973,8 +976,14 @@ fn connect(database: turso::Database, name: &str) -> Result<Db> {
         write_nudge: None,
         fold_memo: Default::default(),
         head_memo: Default::default(),
+        crown_memo: Default::default(),
     })
 }
+
+/// node.db's name in the write counts (`writes_to`): the file is always `node.db`, and a handle's
+/// name is its file's stem. For code that keeps something against node.db's tables without a
+/// handle to ask (`mcp::PERSONAS`).
+pub const NODE_WRITES_KEY: &str = "node";
 
 /// Open and migrate the node database at `<data_dir>/node.db`.
 pub async fn open_node_db(data_directory: &Path, keystore: &Keystore) -> Result<Db> {

@@ -492,12 +492,50 @@ pub async fn detach(node_db: &Db, account_id: &Uuid, root_hex: &str) -> Result<(
 /// Whether this node agents the identity at all (any account). The sync server consults this -
 /// per the data-access convention, `identities` SQL lives only in this module.
 pub async fn is_agented(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {
-    let row: Option<(i64,)> = node_db
-        .fetch_optional("SELECT 1 FROM identities WHERE root_pubkey = ?1", (root_pubkey,))
+    Ok(hosted(node_db).await?.iter().any(|h| h.root == root_pubkey))
+}
+
+/// One hosted identity, as the lookups below want it.
+struct Hosted {
+    root: String,
+    account: String,
+    leaf: Option<String>,
+    served: bool,
+}
+
+/// Every identity this node hosts - a few rows - read once and kept while node.db's `identities`
+/// count stands (`db::writes_to`). The lookups below asked a statement each, several a second
+/// from eager push and the attention watch, and on every exchange (plans/CACHE.md, Stage 4).
+/// Ownership (`require_owned`) still asks the table.
+async fn hosted(node_db: &Db) -> Result<std::sync::Arc<Vec<Hosted>>, AppError> {
+    type Kept = std::collections::HashMap<String, (u64, std::sync::Arc<Vec<Hosted>>)>;
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
+        std::sync::LazyLock::new(Default::default);
+    let key = node_db.writes_key().to_string();
+    // `accounts` too: an account's identities go with it by a cascade, which no statement names.
+    let at = crate::db::writes_to(&key, "identities") + crate::db::writes_to(&key, "accounts");
+    if let Some((kept_at, rows)) = KEPT.lock().expect("hosted poisoned").get(&key) {
+        if *kept_at == at {
+            return Ok(rows.clone());
+        }
+    }
+    let rows: Vec<(String, String, Option<String>, Option<i64>)> = node_db
+        .fetch_all("SELECT root_pubkey, account_id, leaf_pubkey, served_at_ms FROM identities", ())
         .await
-        .context("checking identity")
+        .context("listing hosted identities")
         .map_err(AppError::Internal)?;
-    Ok(row.is_some())
+    let rows = std::sync::Arc::new(
+        rows.into_iter()
+            .map(|(root, account, leaf, served)| Hosted {
+                root,
+                account,
+                leaf,
+                served: served.is_some(),
+            })
+            .collect::<Vec<_>>(),
+    );
+    KEPT.lock().expect("hosted poisoned").insert(key, (at, rows.clone()));
+    Ok(rows)
 }
 
 /// Roots of every identity marked served - the republish loop's worklist.
@@ -505,14 +543,10 @@ pub async fn is_agented(node_db: &Db, root_pubkey: &str) -> Result<bool, AppErro
 /// open a persona's store (its signing key, and through it the epoch keys its private records
 /// are sealed to).
 pub async fn hosted_roots_with_accounts(node_db: &Db) -> Result<Vec<(String, Uuid)>, AppError> {
-    let rows: Vec<(String, String)> = node_db
-        .fetch_all("SELECT root_pubkey, account_id FROM identities", ())
-        .await
-        .context("listing hosted identities with accounts")
-        .map_err(AppError::Internal)?;
-    Ok(rows
-        .into_iter()
-        .filter_map(|(root, account)| Uuid::parse_str(&account).ok().map(|a| (root, a)))
+    Ok(hosted(node_db)
+        .await?
+        .iter()
+        .filter_map(|h| Uuid::parse_str(&h.account).ok().map(|a| (h.root.clone(), a)))
         .collect())
 }
 
@@ -520,33 +554,18 @@ pub async fn hosted_roots_with_accounts(node_db: &Db) -> Result<Vec<(String, Uui
 /// who we carry, which is the question the frontier sweep has (an unpublished persona still
 /// writes chains, and this node still holds them).
 pub async fn hosted_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
-    let rows: Vec<(String,)> = node_db
-        .fetch_all("SELECT root_pubkey FROM identities", ())
-        .await
-        .context("listing hosted identities")
-        .map_err(AppError::Internal)?;
-    Ok(rows.into_iter().map(|(r,)| r).collect())
+    Ok(hosted(node_db).await?.iter().map(|h| h.root.clone()).collect())
 }
 
 /// The leaf key THIS node signs with for a hosted identity, hex (the root itself on the
 /// founding node) - None when the identity isn't hosted here. The via mint leads with it:
 /// our own leaf is the one hint we can vouch for absolutely.
 pub async fn leaf_hex_of(node_db: &Db, root_hex: &str) -> Result<Option<String>, AppError> {
-    let row: Option<(Option<String>,)> = node_db
-        .fetch_optional("SELECT leaf_pubkey FROM identities WHERE root_pubkey = ?1", (root_hex,))
-        .await
-        .context("reading a hosted identity's leaf")
-        .map_err(AppError::Internal)?;
-    Ok(row.and_then(|(l,)| l))
+    Ok(hosted(node_db).await?.iter().find(|h| h.root == root_hex).and_then(|h| h.leaf.clone()))
 }
 
 pub async fn served_roots(node_db: &Db) -> Result<Vec<String>, AppError> {
-    let rows: Vec<(String,)> = node_db
-        .fetch_all("SELECT root_pubkey FROM identities WHERE served_at_ms IS NOT NULL", ())
-        .await
-        .context("listing served identities")
-        .map_err(AppError::Internal)?;
-    Ok(rows.into_iter().map(|(r,)| r).collect())
+    Ok(hosted(node_db).await?.iter().filter(|h| h.served).map(|h| h.root.clone()).collect())
 }
 
 /// Stamp an identity as served. The flow around it (ownership check, immediate publication)
@@ -568,12 +587,7 @@ pub(crate) async fn record_served(node_db: &Db, root_pubkey: &str) -> Result<(),
 /// Is this root hosted by ANY account on this node? The /id surface's shelf question -
 /// audience-independent, unlike `require_owned` below, which asks about one account.
 pub async fn is_hosted(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {
-    let row: Option<(i64,)> = node_db
-        .fetch_optional("SELECT 1 FROM identities WHERE root_pubkey = ?1", (root_pubkey,))
-        .await
-        .context("checking identity hosting")
-        .map_err(AppError::Internal)?;
-    Ok(row.is_some())
+    is_agented(node_db, root_pubkey).await
 }
 
 pub async fn require_owned(

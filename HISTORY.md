@@ -21246,3 +21246,35 @@ nobody stays dirty and retries, anti-entropy samples again. Off on the test rig,
 whose nodes stop and start under the claims (`RINGTOME_TEST_DARK_MS` turns it
 on). The body sweep resolves its cohort and each origin's endpoints once a pass,
 not once a persona. `a_dark_computer_waits_longer_each_time_it_stays_dark`.
+
+**2026-10-13 - the small wins (plans/CACHE.md, Stage 4).** What the audit found
+repeated for nothing, each kept against what changes it:
+
+- **Eager push** read every persona's frontier every second to learn nothing had
+  changed: the fingerprint is kept with its `entries` count, and the tracker
+  hears it - its clocks move - without a read until something is written.
+  Observed once a pass either way.
+- **The stream** rebuilt every open tab's document list and recounted its badges
+  on every write: at most once a beat now (`STREAM_REBUILD_EVERY`, 1 s)
+  - a write after a quiet spell goes at once, a burst is answered once.
+- **The key tree** (`load_key_tree`) - every append, every exchange's membership
+  check - is kept on the handle against the identity chain's mark; a revocation
+  is an identity entry.
+- **`OPENED`** keeps the signer and the encryption keypair when only the epoch
+  keys went stale: a miss re-unseals, without the key files.
+- **`identities`** - 72 call sites, several a second - is read once and kept
+  against its write count (and `accounts`', for a cascade no statement names);
+  ownership (`require_owned`) still asks the table.
+- **Sessions and API keys** resolve from RAM: only a live one is kept, never a
+  refusal, against `sessions`/`api_keys` and `accounts` (a logout, a revoke, a
+  renewal), never past its own end or 30 s.
+- **keyprefetch** skips rows already opened for their reader before any
+  statement, against `post_keys`/`post_key_grants`; whose key opens a post is
+  remembered from its header.
+- **`has_public_equivocation`**, on every public shelf read, is kept against
+  `equivocations`.
+- **MCP** keeps each caller's persona list fifteen seconds; `edit_profile` drops
+  it.
+
+`the_key_tree_is_kept_until_the_identity_chain_moves`; the rest ride the suite's
+claims on logout, revocation, adoption, sync, streams and MCP.

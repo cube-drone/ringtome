@@ -184,7 +184,26 @@ struct Refused {
     message: String,
 }
 
+/// Each caller's personas as last asked, by its key's hash (plans/CACHE.md, Stage 4): every tool
+/// call resolved them - the identity list, each persona's standing (a key file and its key tree)
+/// and profile - before doing what it was asked. Kept a few seconds: personas are made in the
+/// app, never by a tool, and every call still checks ownership when it opens the persona. A
+/// persona made or removed moves node.db's `identities`, and the list is asked again at once.
+type KeptPersonas = std::collections::HashMap<String, (std::time::Instant, u64, Vec<Persona>)>;
+static PERSONAS: std::sync::LazyLock<std::sync::Mutex<KeptPersonas>> =
+    std::sync::LazyLock::new(Default::default);
+const PERSONAS_KEPT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Drop the caller's kept personas - after a tool changed one of them.
+fn forget_personas(parts: &Parts) {
+    if let Some(v) = parts.headers.get(header::AUTHORIZATION) {
+        let caller = blake3::hash(v.as_bytes()).to_hex().to_string();
+        PERSONAS.lock().expect("personas poisoned").remove(&caller);
+    }
+}
+
 /// A persona of the caller's account.
+#[derive(Clone)]
 struct Persona {
     root: String,
     /// The profile's `name`, when it has one.
@@ -370,6 +389,35 @@ impl Tools {
 
     /// The account's personas, each with its name.
     async fn personas(&self, parts: &Parts) -> Result<Vec<Persona>, Refused> {
+        let caller = parts
+            .headers
+            .get(header::AUTHORIZATION)
+            .map(|v| blake3::hash(v.as_bytes()).to_hex().to_string());
+        // A persona made or removed moves node.db's identities: the list is asked again at once.
+        let stamp = crate::db::writes_to(crate::db::NODE_WRITES_KEY, "identities")
+            + crate::db::writes_to(crate::db::NODE_WRITES_KEY, "accounts");
+        if let Some(caller) = &caller {
+            if let Some((at, kept_at, kept)) =
+                PERSONAS.lock().expect("personas poisoned").get(caller)
+            {
+                if *kept_at == stamp && at.elapsed() < PERSONAS_KEPT {
+                    return Ok(kept.clone());
+                }
+            }
+        }
+        let personas = self.personas_asked(parts).await?;
+        if let Some(caller) = caller {
+            let mut kept = PERSONAS.lock().expect("personas poisoned");
+            if kept.len() >= 1_000 {
+                kept.clear();
+            }
+            kept.insert(caller, (std::time::Instant::now(), stamp, personas.clone()));
+        }
+        Ok(personas)
+    }
+
+    /// `personas`, asked of the node.
+    async fn personas_asked(&self, parts: &Parts) -> Result<Vec<Persona>, Refused> {
         let Value::Array(identities) = self.call(parts, Method::GET, "/api/identity", None).await?
         else {
             return Ok(Vec::new());

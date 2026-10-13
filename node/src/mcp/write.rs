@@ -451,6 +451,8 @@ impl Tools {
             .await?;
             changed.insert(field.to_string(), json!(value));
         }
+        // A new name: the caller's kept persona list says the old one (`mcp::PERSONAS`).
+        super::forget_personas(parts);
         answer(json!({ "persona": persona.root, "changed": changed }))
     }
 

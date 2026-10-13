@@ -64,11 +64,14 @@ type KeyRow = (String, String, Option<i64>, Option<i64>, i64, i64);
 type ListedRow = (String, String, i64, Option<i64>, Option<i64>);
 
 /// A key that opened: the account it signs in, its id, and whether an agent's tool made it.
+#[derive(Clone)]
 pub struct Opened {
     pub account: Account,
     pub id: String,
     /// An hour's key an agent asked for (mcp.rs): what it writes says "ai-agent" (made_with.rs).
     pub by_agent: bool,
+    /// When an hour's key runs out - kept with it, so a kept key is never used past its end.
+    expires_ms: Option<i64>,
 }
 
 /// The account a key signs in - or None for no such key, or an hour's key that has run out or
@@ -77,6 +80,51 @@ pub async fn account_for_key(db: &Db, key: &str) -> Result<Option<Opened>, AppEr
     if !key.starts_with(KEY_PREFIX) {
         return Ok(None);
     }
+    let hashed = hash(key);
+    let stamp = {
+        let k = db.writes_key();
+        crate::db::writes_to(k, "api_keys") + crate::db::writes_to(k, "accounts")
+    };
+    if let Some(opened) = kept_key(&hashed, stamp) {
+        return Ok(Some(opened));
+    }
+    let opened = read_key(db, key).await?;
+    if let Some(o) = &opened {
+        keep_key(&hashed, stamp, o);
+    }
+    Ok(opened)
+}
+
+/// Keys that opened, by hash (plans/CACHE.md, Stage 4): an MCP tool call makes several internal
+/// requests, each resolving its key - two statements apiece on node.db's one connection. Only a
+/// key that opened is kept, never a refusal; it stands while `api_keys` and `accounts` haven't
+/// moved (a revoke, an expired key's removal, an account's) and never past `KEY_KEPT`; an hour's
+/// key's own end is checked on every use.
+type KeptKeys = std::collections::HashMap<String, (u64, std::time::Instant, Option<i64>, Opened)>;
+static KEYS: std::sync::LazyLock<std::sync::Mutex<KeptKeys>> =
+    std::sync::LazyLock::new(Default::default);
+const KEY_KEPT: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn kept_key(hashed: &str, stamp: u64) -> Option<Opened> {
+    let kept = KEYS.lock().ok()?;
+    let (at, when, expires, opened) = kept.get(hashed)?;
+    (*at == stamp && when.elapsed() < KEY_KEPT && expires.is_none_or(|t| t > now_ms()))
+        .then(|| opened.clone())
+}
+
+fn keep_key(hashed: &str, stamp: u64, opened: &Opened) {
+    let Ok(mut kept) = KEYS.lock() else { return };
+    if kept.len() >= 10_000 {
+        kept.clear();
+    }
+    kept.insert(
+        hashed.to_string(),
+        (stamp, std::time::Instant::now(), opened.expires_ms, opened.clone()),
+    );
+}
+
+/// `account_for_key`'s read of the table.
+async fn read_key(db: &Db, key: &str) -> Result<Option<Opened>, AppError> {
     let row: Option<KeyRow> = db
         .fetch_optional(
             "SELECT k.id, k.account_id, k.last_used_ms, k.expires_ms, k.by_agent,
@@ -107,7 +155,7 @@ pub async fn account_for_key(db: &Db, key: &str) -> Result<Option<Opened>, AppEr
             .context("noting an api key's use")
             .map_err(AppError::Internal)?;
     }
-    Ok(Some(Opened { account, id: key_id, by_agent: by_agent != 0 }))
+    Ok(Some(Opened { account, id: key_id, by_agent: by_agent != 0, expires_ms }))
 }
 
 /// Keys are managed from a signed-in browser only (module doc).

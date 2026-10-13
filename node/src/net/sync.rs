@@ -1242,14 +1242,29 @@ async fn note_if_equivocation(db: &Db, arrived: &SignedEntry) -> Result<()> {
 /// excluded - the crown sees both branches and convicts on its own - and private-chain
 /// evidence is a matter between the persona's own devices, not a public-presentation fact.
 pub async fn has_public_equivocation(db: &Db) -> Result<bool> {
+    // Asked on every public shelf read - an anonymous page view, a feed's fan-out - and the answer
+    // moves only with `equivocations` (plans/CACHE.md, Stage 4): kept per database while its
+    // write count stands.
+    type Kept = HashMap<String, (u64, bool)>;
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
+        std::sync::LazyLock::new(Default::default);
+    let key = db.writes_key().to_string();
+    let at = crate::db::writes_to(&key, "equivocations");
+    if let Some((kept_at, answer)) = KEPT.lock().expect("equivocation memo poisoned").get(&key) {
+        if *kept_at == at {
+            return Ok(*answer);
+        }
+    }
     let rows: Vec<(i64,)> = db
         .fetch_all("SELECT DISTINCT service FROM equivocations", ())
         .await
         .context("reading equivocation services")?;
-    Ok(rows.iter().any(|(s,)| {
+    let answer = rows.iter().any(|(s,)| {
         let svc = *s as u32;
         !is_private_service(svc) && svc != service::IDENTITY_PUBLIC
-    }))
+    });
+    KEPT.lock().expect("equivocation memo poisoned").insert(key, (at, answer));
+    Ok(answer)
 }
 
 /// Drop evidence for every no-longer-Active author: the revocation's anchors now govern what

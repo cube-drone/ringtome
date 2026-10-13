@@ -136,6 +136,10 @@ pub struct PublicView {
 /// so those two are everything that can make it wrong.
 struct Opened {
     signer: ed25519_dalek::SigningKey,
+    /// The leaf's encryption keypair, off the keystore with the signer - kept so a miss on the
+    /// epoch keys alone re-unseals them without reading either key file again (plans/CACHE.md,
+    /// Stage 4).
+    enc: crate::seal::EncKeyPair,
     epoch_keys: private::EpochKeys,
     identities_at: u64,
     entries_at: u64,
@@ -171,24 +175,39 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
     // (plans/CACHE.md, Stage 2).
     let entries_at = crate::db::entries_mark(root_hex, service::IDENTITY_PUBLIC);
     let key = (*account_id, root_hex.to_string());
-    let kept = OPENED.lock().expect("opened stores poisoned").get(&key).and_then(|o| {
-        (o.identities_at == identities_at && o.entries_at == entries_at)
-            .then(|| (o.signer.clone(), o.epoch_keys.clone()))
-    });
+    // Kept whole while both stamps stand; the keys alone while only `identities` does - the
+    // epoch keys are the part new identity entries can change.
+    let (kept, keys) = {
+        let opened = OPENED.lock().expect("opened stores poisoned");
+        match opened.get(&key).filter(|o| o.identities_at == identities_at) {
+            Some(o) if o.entries_at == entries_at => {
+                (Some((o.signer.clone(), o.epoch_keys.clone())), None)
+            }
+            Some(o) => (None, Some((o.signer.clone(), o.enc.clone()))),
+            None => (None, None),
+        }
+    };
     let db = state.user_dbs.held(root_hex).await.map_err(AppError::Internal)?;
     let (signer, epoch_keys) = match kept {
         Some(kept) => kept,
         None => {
-            let signer = crate::identity::load_signing_key(
-                &state.node_db,
-                &state.keystore,
-                account_id,
-                root_hex,
-            )
-            .await?;
+            let (signer, enc) = match keys {
+                Some(keys) => keys,
+                None => {
+                    let signer = crate::identity::load_signing_key(
+                        &state.node_db,
+                        &state.keystore,
+                        account_id,
+                        root_hex,
+                    )
+                    .await?;
+                    let leaf = signer.verifying_key().to_bytes();
+                    let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
+                        .map_err(AppError::Internal)?;
+                    (signer, enc)
+                }
+            };
             let leaf = signer.verifying_key().to_bytes();
-            let enc = private::load_enc_keypair(&state.keystore, &hex::encode(leaf))
-                .map_err(AppError::Internal)?;
             let epoch_keys = private::unseal_epoch_keys(&db, &leaf, &enc).await?;
             let mut opened = OPENED.lock().expect("opened stores poisoned");
             if opened.len() >= OPENED_MAX {
@@ -198,6 +217,7 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
                 key,
                 Opened {
                     signer: signer.clone(),
+                    enc,
                     epoch_keys: epoch_keys.clone(),
                     identities_at,
                     entries_at,

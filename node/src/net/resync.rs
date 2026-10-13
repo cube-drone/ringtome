@@ -220,6 +220,25 @@ pub async fn eager_pass(state: AppState, who: Option<String>) -> anyhow::Result<
     Ok(())
 }
 
+/// Each persona's frontier fingerprint, with its `entries` write count when read. The frontier
+/// is the chain-heads memo, which every entry written here or arriving by sync notes beside its
+/// insert; the memo's own repairs (a reconcile, a drop) don't touch `entries`, and a fingerprint
+/// kept across one only delays a push to the next write or anti-entropy - an exchange reads live
+/// frontiers, so nothing is lost.
+static FINGERPRINTS: std::sync::LazyLock<Mutex<HashMap<String, (u64, Fingerprint)>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn kept_fingerprint(root: &str, stamp: u64) -> Option<Fingerprint> {
+    let kept = FINGERPRINTS.lock().ok()?;
+    kept.get(root).filter(|(at, _)| *at == stamp).map(|(_, fp)| fp.clone())
+}
+
+fn keep_fingerprint(root: &str, stamp: u64, fp: &Fingerprint) {
+    if let Ok(mut kept) = FINGERPRINTS.lock() {
+        kept.insert(root.to_string(), (stamp, fp.clone()));
+    }
+}
+
 async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
     // Guard before user_dbs.get: get() CREATES the database if absent, and a stale peer row
     // must not mint DBs for identities this node no longer agents.
@@ -229,10 +248,33 @@ async fn eager_root(state: &AppState, root: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Nothing written since the last look: the tracker still hears the same fingerprint - its
+    // debounce, max-delay and retry clocks move on it - but nothing is read for it (plans/CACHE.md,
+    // Stage 4: one pass a second read every persona's frontier, almost always to learn nothing
+    // had changed). A push, when one is due, reads afresh below.
+    let stamp = crate::db::writes_to(root, "entries");
+    let kept = kept_fingerprint(root, stamp);
+    let early = match &kept {
+        Some(fp) => {
+            let decision =
+                state.resync.observe(root, fp.clone(), now_ms(), state.config.sync_debounce_ms);
+            if !decision.push {
+                return Ok(());
+            }
+            Some(decision)
+        }
+        None => None,
+    };
+
     let db = state.user_dbs.held(root).await?;
     let at_start = sync::local_frontiers(&db, true).await?;
     let fp = fingerprint(at_start.clone());
-    let decision = state.resync.observe(root, fp.clone(), now_ms(), state.config.sync_debounce_ms);
+    keep_fingerprint(root, stamp, &fp);
+    // Observed once a pass: on the kept fingerprint above when there was one, else on this read.
+    let decision = match early {
+        Some(decision) => decision,
+        None => state.resync.observe(root, fp.clone(), now_ms(), state.config.sync_debounce_ms),
+    };
     if !decision.push {
         return Ok(());
     }

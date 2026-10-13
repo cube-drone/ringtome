@@ -1,6 +1,6 @@
 # Caching
 
-A plan (2026-10-13). Stages 1-3 built the same day (HISTORY); what was built
+A plan (2026-10-13). Stages 1-4 built the same day (HISTORY); what was built
 before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
@@ -154,7 +154,7 @@ and retries; anti-entropy samples again next pass. Done when: the live
 `slow background pass` lines for sync and revalidation fall from tens of seconds
 to about one timeout per dark computer per window.
 
-### Stage 4 - the rest of the small wins
+### Stage 4 - the rest of the small wins (built 2026-10-13)
 
 Each small, each its own commit inside the stage.
 
@@ -198,6 +198,13 @@ Each small, each its own commit inside the stage.
 
 Done when: the per-second node statement rate with nobody using the node drops
 to about nothing; an MCP tool call's auth costs no statements after the first.
+
+As built: slugs, web paths and public profile fields moved to Stage 7, which
+reads them for the public face; MCP's persona list is kept fifteen seconds by
+the caller's key rather than stamped (the tools hold no node state to stamp
+with), and `edit_profile` drops it; the stream coalesces to a rebuild a second
+rather than sharing one badge count per persona - the documents part was already
+shared per stamp, and a beat bounds the rest.
 
 ### Stage 5 - the memory budget
 
