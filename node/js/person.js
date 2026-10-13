@@ -46,6 +46,7 @@ import {
     TAG_MAX,
 } from './pure/contacttags.js';
 import { personHref, roomHref, writeClipboard } from './links.js';
+import { OpenInApp, QrBadge } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 
 const html = htm.bind(h);
@@ -466,7 +467,15 @@ export const PersonCard = ({
         html`<a class="person-rss" href=${`${personHref(root)}/rss.xml`} target="_blank" rel="noopener" title=${t('person.rss-title', 'follow their posts in a feed reader (RSS)')}
             ><${Icons.rss}
         /></a>`;
-    const corner = (beside || rss) && html`<span class="person-card-corner">${beside}${rss}</span>`;
+    // Their QR code (plans/QR.md), on the right: their web address where this node serves them, under
+    // the @name it gave them; else the app's address, for another phone with the app to open.
+    const qr = html`<${QrBadge}
+        webPath=${person.hosted && person.slug ? `/@${person.slug}` : personHref(root)}
+        appPath=${personHref(root)}
+        web=${!!person.hosted}
+        name=${person.primary}
+    />`;
+    const corner = html`<span class="person-card-corner">${beside}${rss}${qr}</span>`;
     // A person's homepage (Curtis, 2026-09-28): their banner, and over it the picture at twice its
     // size, their name and their other names - on plates, so a black or busy banner cannot swallow
     // them - resting on its bottom edge; whatever follows starts flush beneath it.
@@ -488,6 +497,7 @@ export const PersonCard = ({
               ${others}`;
     return html`
         <div class="person-card">
+            <${OpenInApp} appPath=${personHref(root)} />
             ${head}
             ${person.isYou && you}
             ${children}

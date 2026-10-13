@@ -1880,6 +1880,18 @@ export default {
     'push.no-browsers': 'no browser is subscribed for this persona',
     'push.delivered-but-nothing': 'delivered; if nothing popped up, look in your notification centre - a Focus mode like Do Not Disturb files them silently, and on a Mac System Settings > Notifications decides for this browser',
 
+    // --- node/js/qr.js ---
+    'qr.a-qr-code': 'a QR code',
+    'qr.app-only': 'This server has no public web address, so only the Horse Drawing Tycoon 2 app opens this code.',
+    'qr.on-the-web': 'Any phone opens this code. On Android, the page offers to open it in the Horse Drawing Tycoon 2 app.',
+    'qr.copied': 'copied!',
+    'qr.copy-the-address': 'copy the address',
+    'qr.show-a-qr-code': 'show a QR code for this, to open on another phone',
+    'chips.qr': 'QR',
+    'qr.this-post': 'this post',
+    'qr.persons-code': "{name}'s QR code - press to make it bigger",
+    'qr.open-in-the-app': 'open in Horse Drawing Tycoon 2',
+
     // --- node/js/rights.js ---
     'rights.this-computer': 'this computer',
     'rights.a-song': 'a song',

@@ -20919,3 +20919,34 @@ on one end to end:
 Found on the way: the branch wanted main's mobile pass merged in first, and a
 sideloaded app is missing from the car's list until Auto's developer settings
 allow unknown sources. The branch still wants merging to main.
+
+**QR codes of people and posts (Curtis, 2026-10-12).** "QR codes, everywhere":
+on the right of a person's banner, and behind a chip on every public post, each
+opening on another phone - in the website where there is one, in the Android app
+where it's installed. Planned in `plans/QR.md`, with two rulings: a node with no
+public URL still shows a code, one only the app opens (which brings back the
+`ringtome://` scheme PROJECT_PLAN set aside in July, when no native app existed
+to answer it); and a web code reaches the app through a button on the page, not
+Android's verified links, which work only for domains written into the app.
+
+- **What a code says** (`pure/portable.js` `qrAddress`, with vectors): the
+  address "copy link" already hands out, whole, under the public URL - a person
+  at `/@name` where this node gave them one. Without a public URL, the app's
+  address: `ringtome://user/<root>[/post/<id>]?via=<this node>`.
+- **Where**: `qr.js` draws it (`qrcode-generator`, MIT, no dependencies; one SVG
+  path, dark on a light plate in every colourway, its two colours tokens of
+  their own). A small code in the person page's top right corner, beside RSS,
+  and a QR chip beside "link" on a public post; either opens big in the house
+  modal, with the address in words and a copy button.
+- **Into the app**: on an Android phone's browser, a person's page and a post's
+  page lead with "open in Horse Drawing Tycoon 2", an `intent://` link Chrome
+  hands to the app. The app answers `ringtome://` (an intent filter on
+  `MainActivity`), holds the address, and the page takes it on starting or when
+  told one arrived (`__ringtomeLink`), going there only if `fromAppAddress`
+  reads it as a person or something under one.
+
+Checked in headless Chrome: both codes say the app's address on a node without a
+public URL, the button carries the post's intent link under an Android browser,
+and a handed-over address routes to the post. The Android half needs a CI build
+and a phone: a scanned `ringtome://` code, and the button with the app
+installed.

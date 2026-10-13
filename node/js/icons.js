@@ -11,6 +11,7 @@ import {
     PiggyBank,
     CrownSimple,
     Rss,
+    QrCode,
     Bank,
     ChartLine,
     ChatsCircle,
@@ -334,6 +335,8 @@ export const Icons = {
     superPin: CrownSimple,
     // a person's RSS, in their page's top right corner (rss.rs, 2026-09-30)
     rss: Rss,
+    // a QR code of a person or a post, to scan with another phone (qr.js, plans/QR.md)
+    qrCode: QrCode,
     // a hrseBond in the market: the treasury's columns (2026-09-30)
     bond: Bank,
     people: UsersThree,

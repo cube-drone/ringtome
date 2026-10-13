@@ -145,6 +145,7 @@ import {
     pathHref,
     useSlugOf,
 } from './links.js';
+import { QrChip } from './qr.js';
 import { RoomTitle, BookTitle } from './roomtitle.js';
 import { formatWhen } from './pure/when.js';
 export { publishWithBaking, BakeModal };
@@ -1167,6 +1168,8 @@ const PostEntryBody = ({
                         does, and for nobody else. */ ''
                     }
                     ${!open && item.format === 'book' && html`<${EpubChip} path=${`/ringtome/user/${item.author}/post/${item.doc_id}/epub`} />`}
+                    ${/* Its QR code, for another phone (plans/QR.md): a public post's only. */ ''}
+                    ${!open && !item.private_doc && html`<${QrChip} webPath=${shareHref} appPath=${href} />`}
                     ${!open && html`<${CopyLinkChip} path=${shareHref} />`}
                     ${
                         /* Copy into private notes, last on every card (Curtis, 2026-09-08: the

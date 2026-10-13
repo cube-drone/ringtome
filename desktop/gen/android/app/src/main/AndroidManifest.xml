@@ -28,6 +28,14 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- A person or a post handed over by a QR code, or by a web page's "open in the app"
+                 (plans/QR.md): ringtome://user/<root>/... - MainActivity.kt passes it to the page. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ringtome" />
+            </intent-filter>
         </activity>
 
         <!-- hrseAmp's player (PlayerService.kt): Media3's session for the shade, the lock screen,

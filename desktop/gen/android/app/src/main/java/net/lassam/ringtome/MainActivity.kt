@@ -1,5 +1,6 @@
 package net.lassam.ringtome
 
+import android.content.Intent
 import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -19,19 +20,48 @@ class MainActivity : TauriActivity() {
   // hrseAmp's player (PlayerBridge.kt, PlayerService.kt): the page's road to the phone's own player.
   private var player: PlayerBridge? = null
 
+  // A `ringtome://` address handed to the app (plans/QR.md) - a scanned code, or a web page's "open in
+  // the app" - waiting for the page to take it: `__ringtomeLink.take()`, which it asks on starting
+  // and whenever it's told one arrived. The page checks it's an address of ours (pure/portable.js
+  // `fromAppAddress`) before it goes anywhere.
+  @Volatile private var link: String? = null
+  private var web: WebView? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    linkOf(intent)
+  }
+
+  // The app already open (it's single-task): the address arrives here, and the page is told.
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    if (linkOf(intent)) {
+      web?.evaluateJavascript("window.__ringtomeLinkArrived && window.__ringtomeLinkArrived()", null)
+    }
+  }
+
+  private fun linkOf(intent: Intent?): Boolean {
+    val data = intent?.data ?: return false
+    if (intent.action != Intent.ACTION_VIEW || data.scheme != "ringtome") return false
+    link = data.toString()
+    return true
   }
 
   // The window goes; the music doesn't - only this window's hold on the player does.
   override fun onDestroy() {
     player?.release()
     player = null
+    web = null
     super.onDestroy()
   }
 
   override fun onWebViewCreate(webView: WebView) {
+    web = webView
+    webView.addJavascriptInterface(object {
+      @JavascriptInterface fun take(): String = (link ?: "").also { link = null }
+    }, "__ringtomeLink")
     // hrseAmp plays through the phone's player, not the page's (plans/AUDIO.md, section 10):
     // `__ringtomePlayer`, there before the first page loads, as the insets bridge is.
     player = PlayerBridge(this, webView).also { webView.addJavascriptInterface(it, "__ringtomePlayer") }

@@ -1,0 +1,75 @@
+/* QR codes (qr.js, plans/QR.md): dark modules on a light plate in every colourway - scanners want
+   dark on light - so their two colours are tokens of their own. */
+.qr-code {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.qr-plate {
+    fill: var(--qr-light);
+}
+
+.qr-modules {
+    fill: var(--qr-dark);
+}
+
+/* On a person's banner, in its top right corner: small, pressed to open big. */
+.qr-badge {
+    width: 4.5rem;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    background: none;
+    cursor: zoom-in;
+    flex-shrink: 0;
+}
+
+.qr-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.qr-code-big {
+    width: min(20rem, 100%);
+}
+
+.qr-said {
+    margin: 0;
+    max-width: 100%;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+    text-align: center;
+    color: var(--ink-soft);
+}
+
+.qr-note {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.qr-panel .modal-ask-buttons {
+    align-self: stretch;
+}
+
+/* On an Android phone's browser, above a person or a post: into the app instead (qr.js). */
+.open-in-app {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem;
+    padding: 0.6rem 1rem;
+    background: var(--teal);
+    color: var(--on-accent);
+    --line: var(--teal);
+    font-size: 1rem;
+    text-decoration: none;
+}
+
+.open-in-app svg {
+    font-size: 1.3rem;
+}

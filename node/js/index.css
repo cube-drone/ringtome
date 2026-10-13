@@ -45,6 +45,7 @@
 @import "./apps/bank.css";    /* hrseBank: horse capital, and the ledger that shows its working */
 @import "./apps/amp.css";     /* hrseAmp: the music table, the file panel and the player */
 @import "./modal.css";        /* the house modal */
+@import "./qr.css";           /* QR codes of a person or a post (plans/QR.md) */
 @import "./doc/upload.css";   /* the upload flow inside it */
 @import "./toasts.css";       /* toasts: short messages that fade, above the quickbar */
 @import "./crt.css";          /* the CRT screen over everything: an experiment (2026-10-06) */

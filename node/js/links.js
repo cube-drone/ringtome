@@ -141,6 +141,19 @@ const base = () => {
     return publicBase;
 };
 
+/// The node's declared public URL, or '' (plans/QR.md: what a QR code says depends on it).
+export const publicUrl = () => base();
+
+/// This node's key in its base58 spelling - the `via` hint an address carries - asked once per page.
+let nodeKeyAsked = null;
+export const nodeKey = () => {
+    if (!nodeKeyAsked)
+        nodeKeyAsked = api('/api/node')
+            .then((n) => (n && n.endpoint_id ? toBase58(n.endpoint_id) : ''))
+            .catch(() => '');
+    return nodeKeyAsked;
+};
+
 /// The whole URL for an address path: the public URL, or this page's origin (a desktop app's
 /// `localhost` - a Ringtome reader rehomes it; outside Ringtome it is only good on this computer).
 export async function shareUrl(path) {

@@ -68,3 +68,33 @@ export function identityAddress({ publicUrl, root, via = [] }) {
     const query = keys.length ? `?via=${keys.join(',')}` : '';
     return `${base}/ringtome/user/${root}${query}`;
 }
+
+/// What a QR code says (plans/QR.md): with a public URL, the web address `webPath` under it; without
+/// one, the app's own address for `appPath` - an identity path, `/ringtome/user/...`, since an
+/// `@name` means nothing off this node - carrying `via`, this node's key, so the scanning app knows
+/// whom to ask.
+export function qrAddress({ publicUrl, webPath, appPath = webPath, via = '' }) {
+    const base = (publicUrl || '').trim().replace(/\/+$/, '');
+    return base ? `${base}${webPath}` : appAddress(appPath, via);
+}
+
+/// The app's address for an identity path (ruling 1): `ringtome://` and what follows `/ringtome/`.
+export function appAddress(path, via = '') {
+    const rest = path.replace(/^\/ringtome\//, '');
+    if (!via) return `ringtome://${rest}`;
+    return `ringtome://${rest}${rest.includes('?') ? '&' : '?'}via=${via}`;
+}
+
+/// And back, in the app: the path on this node an app address names, or null for anything that isn't
+/// one of ours - only a person and what's under them, never a page of the node's own.
+export function fromAppAddress(url) {
+    const m = /^ringtome:\/\/(user\/[^#]*)$/i.exec((url || '').trim());
+    return m ? `/ringtome/${m[1]}` : null;
+}
+
+/// The web page's way into the app (ruling 2): an `intent://` link Chrome hands to the app named by
+/// `pkg` when it's installed, and otherwise follows to `fallback`.
+export function intentLink(appUrl, pkg, fallback) {
+    const rest = appUrl.replace(/^ringtome:\/\//, '');
+    return `intent://${rest}#Intent;scheme=ringtome;package=${pkg};S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+}

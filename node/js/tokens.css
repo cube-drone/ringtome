@@ -20,6 +20,11 @@
        layer: the rest are still local numbers beside their rules. */
     --layer-toast: 200;
 
+    /* A QR code's two colours (qr.css), the same in every colourway: scanners read dark modules on
+       a light ground, and many can't read the reverse. */
+    --qr-dark: #000000;
+    --qr-light: #ffffff;
+
     /* The measure of a written post (Curtis, 2026-09-04): about 800px is where readable
        content sits - narrower crowds, wider puts whole paragraphs on one line. Every surface
        that shows a post caps itself here: the feed's cards, the shelf, the permalink, the

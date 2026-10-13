@@ -137,6 +137,10 @@ lightly federated, unapologetically Old Internet.
   provenance tags, OAuth for claude.ai and its kind, a page in settings saying
   how to connect one, and (2026-10-11) notebooks, their trees, and an hour's API
   key for what the tools don't reach.
+- [`QR.md`](plans/QR.md) — QR codes of a person and of a public post: the web
+  address where the node has a public URL, else a `ringtome://` address only the
+  Android app opens, and an "open in the app" button on a phone's web page.
+  Built 2026-10-12; the app's half awaits a phone.
 - [`RSS.md`](plans/RSS.md) — hrseRSS, a feed reader: subscriptions on the
   private chain, items fetched once per node into a shared cache and translated
   to Marquee (never rendered as HTML), images through the node, a merged

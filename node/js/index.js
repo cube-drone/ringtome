@@ -10,6 +10,7 @@
 // the bare paths free for the API and a future public face.
 import { h, render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { fromAppAddress } from './pure/portable.js';
 import htm from 'htm';
 import { LocationProvider, Router, useLocation, ErrorBoundary } from 'preact-iso';
 import { PushRoutes } from './push.js';
@@ -224,6 +225,23 @@ const Inside = ({ session }) => {
     // person's page (2026-10-09, "fix this everywhere"): both are drawn beside the router
     // (keptpage.js), and under a post they are there but unseen and inert.
     const kept = useKeptUrl(loc, (path) => path === FEED_PATH || PERSON_PATH.test(path));
+    // A person or a post handed to the Android app (plans/QR.md): a scanned `ringtome://` code, or a
+    // web page's "open in the app". The app holds it until the page takes it - now, as the page
+    // starts, and again whenever the app says another arrived. Only an address of ours goes anywhere.
+    const route = useRef(loc.route);
+    route.current = loc.route;
+    useEffect(() => {
+        const take = () => {
+            const bridge = typeof window !== 'undefined' && window.__ringtomeLink;
+            const path = bridge ? fromAppAddress(bridge.take() || '') : null;
+            if (path) route.current(path);
+        };
+        window.__ringtomeLinkArrived = take;
+        take();
+        return () => {
+            if (window.__ringtomeLinkArrived === take) delete window.__ringtomeLinkArrived;
+        };
+    }, []);
     // The /id lens page: not an app off the registry - People (/home/people) is the app,
     // and id pages are the shareable places it navigates out to - but the frame looks wrong
     // headless, so it gets the band with the viewed persona's name, reported upward by the

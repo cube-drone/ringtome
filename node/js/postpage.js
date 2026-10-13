@@ -43,6 +43,7 @@ import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 import { BookReader } from './doc/bookreader.js';
 import { postHref, useSlugOf } from './links.js';
+import { OpenInApp } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 
 const html = htm.bind(h);
@@ -195,6 +196,8 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
 
     return html`
         <div class="postpage">
+            ${/* On an Android phone's browser: into the app instead (plans/QR.md). */ ''}
+            ${root && html`<${OpenInApp} appPath=${postHref(root, doc)} />`}
             ${
                 /* No separate byline at all: the entry below carries the author's clickable
                 profile, exactly as it does in the feed - the page is the post, alone. */ ''

@@ -109,3 +109,62 @@ describe('viaHints (the cap and the order)', () => {
         assert.deepEqual(viaHints('me', []), ['me']);
     });
 });
+
+describe('QR addresses (plans/QR.md)', () => {
+    let qrAddress, appAddress, fromAppAddress, intentLink;
+    before(async () => {
+        ({ qrAddress, appAddress, fromAppAddress, intentLink } =
+            await import('../../../js/pure/portable.js'));
+    });
+    const post = '/ringtome/user/AbCd/post/0123456789abcdef0123456789abcdef';
+
+    it('a node with a public URL says the web address, the @name form where it has one', () => {
+        assert.equal(
+            qrAddress({
+                publicUrl: 'https://hdt.example/',
+                webPath: '/@cube-drone',
+                appPath: '/ringtome/user/AbCd',
+                via: 'K',
+            }),
+            'https://hdt.example/@cube-drone',
+        );
+    });
+
+    it('a node without one says the app address, the identity form, with this node as its hint', () => {
+        assert.equal(
+            qrAddress({
+                publicUrl: '',
+                webPath: '/@cube-drone/sourdough',
+                appPath: post,
+                via: 'K',
+            }),
+            `ringtome://user/AbCd/post/0123456789abcdef0123456789abcdef?via=K`,
+        );
+        assert.equal(
+            appAddress('/ringtome/user/AbCd?bucket=blog', 'K'),
+            'ringtome://user/AbCd?bucket=blog&via=K',
+        );
+        assert.equal(appAddress('/ringtome/user/AbCd'), 'ringtome://user/AbCd');
+    });
+
+    it('the app reads an app address back into a path here, and nothing else', () => {
+        assert.equal(
+            fromAppAddress(`ringtome://user/AbCd/post/ab?via=K`),
+            '/ringtome/user/AbCd/post/ab?via=K',
+        );
+        assert.equal(fromAppAddress('ringtome://admin'), null, "never a page of the node's own");
+        assert.equal(fromAppAddress('https://hdt.example/ringtome/user/AbCd'), null);
+        assert.equal(fromAppAddress(''), null);
+    });
+
+    it("the web page's button names the app and falls back to the page", () => {
+        assert.equal(
+            intentLink(
+                'ringtome://user/AbCd?via=K',
+                'net.lassam.ringtome',
+                'https://hdt.example/@cube-drone',
+            ),
+            'intent://user/AbCd?via=K#Intent;scheme=ringtome;package=net.lassam.ringtome;S.browser_fallback_url=https%3A%2F%2Fhdt.example%2F%40cube-drone;end',
+        );
+    });
+});
