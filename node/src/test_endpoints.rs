@@ -67,43 +67,65 @@ pub async fn beat(
     State(state): State<AppState>,
     Json(req): Json<BeatRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let Some(pass) = beat_pass(&state, &req) else {
+        return Err(AppError::BadRequest(crate::msg!(
+            "test.beat.unknown-pass",
+            "unknown pass: {other}",
+            other = req.pass_name.as_str()
+        )));
+    };
+    pass.await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// The pass a beat names, built in a plain function and boxed: its frame is gone before anything
+/// runs, and each pass is polled in a frame of its own. As one `async fn` matching twenty-odd
+/// passes, a debug build gave `beat` a 618 KB stack frame - every arm's future its own slot - and
+/// a book's rollout under it overflowed a worker's 2 MB stack once one more layer was added below
+/// (2026-10-13, measured frame by frame; 41 KB since).
+fn beat_pass<'a>(
+    state: &'a AppState,
+    req: &'a BeatRequest,
+) -> Option<std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + 'a>>> {
     let root = req.root.as_deref();
-    let outcome: anyhow::Result<()> = match (req.pass_name.as_str(), root) {
-        ("pull", Some(r)) => {
+    Some(match (req.pass_name.as_str(), root) {
+        ("pull", Some(r)) => Box::pin(async move {
             // The reader-driven fetch ladder, synchronously - widened the way
             // `spawn_revalidate` widens it, so the beat walks the SAME candidate list a
             // background revalidation would: stored tree leaves, then the cohort rung
             // (our own personas' sibling nodes), which every foreign fetch carries.
-            let via = crate::idface::stored_tree_leaves(&state, r).await;
-            let fetched = crate::idface::fetch_foreign(&state, r, &via).await;
+            let via = crate::idface::stored_tree_leaves(state, r).await;
+            let fetched = crate::idface::fetch_foreign(state, r, &via).await;
             tracing::info!(root = %r, fetched, "TEST BEAT: pull");
             Ok(())
-        }
-        ("pull-once", Some(r)) => {
+        }),
+        ("pull-once", Some(r)) => Box::pin(async move {
             // ONE budgeted exchange, no continuation (PROJECT_PLAN's Peeks, slice 1): the way a claim
             // watches a cut happen and the behind mark land. ONE candidate too - the
             // ladder dials its hints in parallel and each winner is its own exchange, so
             // only the implicit root rung (the founder's serving record) is offered here.
-            let fetched = crate::idface::fetch_foreign_passes(&state, r, &[], 1).await;
+            let fetched = crate::idface::fetch_foreign_passes(state, r, &[], 1).await;
             tracing::info!(root = %r, fetched, behind = state.behind.is_behind(r), "TEST BEAT: pull-once");
             Ok(())
+        }),
+        ("room-pulse", _) => Box::pin(async move { crate::chat::pulse_now(state.clone()).await }),
+        ("key-prefetch", _) => {
+            Box::pin(async move { crate::keyprefetch::prefetch_pass(state.clone()).await })
         }
-        ("room-pulse", _) => crate::chat::pulse_now(state.clone()).await,
-        ("key-prefetch", _) => crate::keyprefetch::prefetch_pass(state.clone()).await,
-        ("census", _) => crate::census::pass_now(state.clone()).await,
-        ("room-sync", Some(r)) => {
-            let n = crate::chat::sync_open_rooms(&state, r).await?;
+        ("census", _) => Box::pin(async move { crate::census::pass_now(state.clone()).await }),
+        ("room-sync", Some(r)) => Box::pin(async move {
+            let n = crate::chat::sync_open_rooms(state, r).await?;
             tracing::info!(root = %r, exchanged = n, "TEST BEAT: room-sync");
             Ok(())
-        }
-        ("fold", Some(r)) => {
+        }),
+        ("fold", Some(r)) => Box::pin(async move {
             // The fold lane's drainable form: nudge (ledger leg included) and await the
             // run - the chain itself now lives in fold::run_chain, serialized per root,
             // so this beat can never race a concurrent arrival's fold.
-            crate::fold::fold_now_forced(&state, r).await;
+            crate::fold::fold_now_forced(state, r).await;
             Ok(())
-        }
-        ("eager-push", Some(r)) => {
+        }),
+        ("eager-push", Some(r)) => Box::pin(async move {
             // FORCED, not the loop's pass: eager_root's debounce (resync.observe) reads
             // "nothing new since my last push" as quiet and declines - correct for a
             // free-running loop, and exactly the no-op race a rung beat cannot afford
@@ -114,21 +136,23 @@ pub async fn beat(
                 .map_err(|e| anyhow::anyhow!("{e}"))?
             {
                 let peers = crate::net::sync::peers_for(&state.node_db, r).await?;
-                let results = crate::net::sync::sync_peers(&state, r, &peers).await?;
+                let results = crate::net::sync::sync_peers(state, r, &peers).await?;
                 let ok = results.iter().filter(|x| x.ok).count();
                 tracing::info!(root = %r, peers = results.len(), ok, "TEST BEAT: eager-push");
             }
             Ok(())
+        }),
+        ("eager-push", None) => {
+            Box::pin(async move { crate::net::resync::eager_pass(state.clone(), None).await })
         }
-        ("eager-push", None) => crate::net::resync::eager_pass(state.clone(), None).await,
-        ("demand-push", Some(r)) => {
+        ("demand-push", Some(r)) => Box::pin(async move {
             // The fold's OTHER push half, awaited: `after_public_move` spawns
             // `push_to_askers` detached, so a fold beat alone cannot sequence a
             // demand-record push (author's node -> a follower's node that once asked).
-            crate::fanout::push_to_askers_now(&state, r).await;
+            crate::fanout::push_to_askers_now(state, r).await;
             Ok(())
-        }
-        ("mint", r) => {
+        }),
+        ("mint", r) => Box::pin(async move {
             // The authoring-side subscription sweep: memo refresh WITH minting allowed, so
             // a freshly-turned dial becomes its public-edge statement - then the knock,
             // AWAITED: the mint's own eager delivery is a detached spawn
@@ -137,15 +161,15 @@ pub async fn beat(
             // tests failed on exactly that). The whole sending half, run to completion.
             crate::net::subscriptions::sweep(state.clone(), r.map(String::from)).await?;
             crate::outbox::sweep(state.clone()).await
-        }
-        ("outbox", _) => {
+        }),
+        ("outbox", _) => Box::pin(async move {
             // Retry every queued knock NOW: the sweep's backoff ladder gates by
             // last_tried_ms, so zero the stamps first - a test ringing this means
             // "knock again", not "knock if due".
             crate::outbox::force_due(&state.node_db).await?;
             crate::outbox::sweep(state.clone()).await
-        }
-        ("fragment-sweep", scope) => {
+        }),
+        ("fragment-sweep", scope) => Box::pin(async move {
             // Force due-ness first: the sweep's queries select by elapsed time
             // (`checked_ms`/`last_tried_ms` older than the revalidation interval), so ringing
             // it right after an act would revalidate nothing and the beat would be a shrug.
@@ -154,14 +178,14 @@ pub async fn beat(
             // (only young posts are swept) is untouched: it is a property, not a schedule.
             crate::fragments::force_due(&state.node_db, scope).await?;
             crate::fragments::sweep(state.clone()).await
-        }
-        ("bodies-sweep", _) => {
+        }),
+        ("bodies-sweep", _) => Box::pin(async move {
             // Same posture as fragment-sweep: the healer backs off per-root
             // (`last_tried_ms` + exponential backoff), so a beat means "try again NOW".
             crate::net::bodies::force_due(&state.node_db).await?;
             crate::net::bodies::sweep(state.clone()).await
-        }
-        ("body-heal", Some(author)) => {
+        }),
+        ("body-heal", Some(author)) => Box::pin(async move {
             // The eager body heal, awaited. Fragment intake spawns this DETACHED
             // (fragments::heal_soon), so no count of forced sweeps can deterministically
             // land a fragment's bytes - the noting is synchronous but the heal races. A
@@ -169,59 +193,57 @@ pub async fn beat(
             // candidate ladder (deliverers first, then each origin's resolution) to
             // completion before asserting the served body.
             for origin in crate::fragments::origins_of_author(&state.node_db, author).await? {
-                crate::net::bodies::heal_from(&state, author, &origin).await;
+                crate::net::bodies::heal_from(state, author, &origin).await;
             }
             Ok(())
+        }),
+        ("journal-fill", _) => {
+            Box::pin(async move { crate::fanout::fill_pass(state.clone()).await })
         }
-        ("journal-fill", _) => crate::fanout::fill_pass(state.clone()).await,
-        ("search-index", _) => crate::search::index_pass(state.clone()).await,
+        ("search-index", _) => {
+            Box::pin(async move { crate::search::index_pass(state.clone()).await })
+        }
         // Web addresses for what was published before them, NOW and again (forced past the
         // once-per-persona note), for one persona or all.
-        ("web-path-backfill", scope) => {
-            let n = crate::identity::backfill_paths(&state, scope, true).await?;
+        ("web-path-backfill", scope) => Box::pin(async move {
+            let n = crate::identity::backfill_paths(state, scope, true).await?;
             tracing::info!(given = n, "TEST BEAT: web-path-backfill");
             Ok(())
-        }
-        ("book-rollout", scope) => {
-            let n = crate::books::rollout_due(&state, scope).await?;
+        }),
+        ("book-rollout", scope) => Box::pin(async move {
+            let n = crate::books::rollout_due(state, scope).await?;
             tracing::info!(touched = n, "TEST BEAT: book-rollout");
             Ok(())
-        }
-        ("publish-due", scope) => {
+        }),
+        ("publish-due", scope) => Box::pin(async move {
             let at = req.at_ms.unwrap_or_else(crate::clock::now_ms);
-            let n = crate::scheduled::publish_due(&state, scope, at).await?;
+            let n = crate::scheduled::publish_due(state, scope, at).await?;
             tracing::info!(minted = n, at, "TEST BEAT: publish-due");
             Ok(())
+        }),
+        ("follow-refresh", _) => {
+            Box::pin(async move { crate::idface::refresh_followed_pass(state.clone()).await })
         }
-        ("follow-refresh", _) => crate::idface::refresh_followed_pass(state.clone()).await,
-        ("speculative-acquire", _) => {
+        ("speculative-acquire", _) => Box::pin(async move {
             // Clear the pass's in-memory attempt stamps first: the cooldown rotation would
             // otherwise skip a target the background pass tried moments ago, and a rung
             // beat means "acquire NOW", not "acquire unless recently attempted".
             crate::speculative::reset_attempt_stamps();
             crate::speculative::acquire_pass(state.clone()).await
-        }
-        ("public-links", _) => {
+        }),
+        ("public-links", _) => Box::pin(async move {
             // "Warm NOW": the attempt stamps would otherwise skip a person tried a moment ago.
             crate::publinks::reset_attempt_stamps();
             crate::publinks::warm_pass(state.clone()).await
-        }
-        ("evict", _) => {
+        }),
+        ("evict", _) => Box::pin(async move {
             // Grace ZERO: a rung eviction gates on claims (hosted, dials, fragments,
             // demand), never on clocks - the forced-due posture of every sweep beat.
             let expiry = req.peek_expiry_ms.unwrap_or(0);
             crate::eviction::evict_pass_with_grace_and_expiry(state.clone(), 0, expiry).await
-        }
-        (other, _) => {
-            return Err(AppError::BadRequest(crate::msg!(
-                "test.beat.unknown-pass",
-                "unknown pass: {other}",
-                other = other
-            )))
-        }
-    };
-    outcome.map_err(AppError::Internal)?;
-    Ok(Json(serde_json::json!({ "ok": true })))
+        }),
+        _ => return None,
+    })
 }
 
 #[derive(serde::Deserialize)]

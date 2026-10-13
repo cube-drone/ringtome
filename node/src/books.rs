@@ -355,7 +355,12 @@ async fn rollout(
             part_of: Some(book_id),
             room: false,
         };
-        match crate::record::bake::publish(state, data, root, doc_id, None, flags).await? {
+        // Built off this frame (`stack::boxed`), which a debug build had at 429 KB under a rollout.
+        match crate::stack::boxed(|| {
+            crate::record::bake::publish(state, data, root, doc_id, None, flags)
+        })
+        .await?
+        {
             crate::record::bake::Outcome::Posted(post_id) => {
                 if let Err(e) =
                     crate::identity::after_posted(state, data, root, doc_id, post_id, None, flags)

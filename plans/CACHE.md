@@ -1,7 +1,7 @@
 # Caching
 
-A plan (2026-10-13). Stage 1 built the same day (HISTORY); what was built before
-it was written is under _Already done_.
+A plan (2026-10-13). Stages 1 and 2 built the same day (HISTORY); what was built
+before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
 SQL, and a persona's database has one connection: under load, a request costs
@@ -105,7 +105,7 @@ cache and starts the loop again. This is the ~25 fetches of one document.
 Done when: an open media document makes one request; a pure test pins the retry
 rule.
 
-### Stage 2 - write counts per service (the keystone)
+### Stage 2 - write counts per service (the keystone; built 2026-10-13)
 
 `entries` holds every chain of the persona; one count for the whole table means
 an upload's doc headers invalidate the caches of doc-meta, general-private,

@@ -9,8 +9,10 @@
 //!
 //! - **An entry nobody has folded yet.** The fold is lazy, so an entry that arrived (by sync, by
 //!   a save on another computer) leaves `doc_heads` behind until something reads. A persona's
-//!   tags stand only while its `entries` write count (`db::writes_to`) is where it was when a
-//!   fold last completed (`folded_at`); past it, the request takes the long way, which folds.
+//!   tags stand only while its documents' entries mark (`db::entries_mark`, DOCUMENTS_PRIVATE -
+//!   the chains the long way's fold reads) is where it was when a fold last completed
+//!   (`folded_at`); past it, the request takes the long way, which folds. Another service's
+//!   writes - an upload's bucket tags, a post - leave the tags standing (plans/CACHE.md, Stage 2).
 //! - **The fold changing a document.** `documents::refresh_doc_heads` - the one writer of a
 //!   document's head row - calls `changed` with exactly the documents it rewrote, AFTER writing
 //!   them. Each document carries a version; a tag computed against an older version is refused
@@ -40,7 +42,7 @@ struct Doc {
 
 #[derive(Default)]
 struct Persona {
-    /// The persona's `entries` count stamped before the latest fold that completed.
+    /// The persona's documents mark (`documents_mark`) stamped before the latest fold that completed.
     folded_at: Option<u64>,
     /// How many times the whole view was cleared.
     cleared: u64,
@@ -56,6 +58,11 @@ struct Tags {
 }
 
 static TAGS: LazyLock<Mutex<Tags>> = LazyLock::new(|| Mutex::new(Tags::default()));
+
+/// The mark the tags stand on: the persona's documents chains.
+fn documents_mark(root: &str) -> u64 {
+    crate::db::entries_mark(root, ringtome_proto::registry::service::DOCUMENTS_PRIVATE)
+}
 
 /// The most documents kept across every persona (a few hundred bytes each).
 pub const TAGS_MAX: usize = 200_000;
@@ -75,7 +82,7 @@ fn lock() -> std::sync::MutexGuard<'static, Tags> {
 
 /// The kept tag for a persona's document, when nothing has moved under it.
 pub fn kept(root: &str, doc: &[u8; 16]) -> Option<BodyTag> {
-    let entries = crate::db::writes_to(root, "entries");
+    let entries = documents_mark(root);
     let tags = lock();
     let persona = tags.personas.get(root)?;
     if persona.folded_at != Some(entries) {
@@ -87,7 +94,7 @@ pub fn kept(root: &str, doc: &[u8; 16]) -> Option<BodyTag> {
 /// Stamp a document before the long way reads it. Takes the document's place in the map, so a
 /// fold that rewrites it while the long way runs is seen at `keep`.
 pub fn stamp(root: &str, doc: &[u8; 16]) -> Stamp {
-    let entries = crate::db::writes_to(root, "entries");
+    let entries = documents_mark(root);
     let mut tags = lock();
     if tags.count >= TAGS_MAX {
         tags.personas.clear();

@@ -130,9 +130,9 @@ pub struct PublicView {
 /// What `open` assembles that costs more than a lookup - the ownership read, the signing key and
 /// encryption keypair off the keystore's disk, every epoch box unsealed - kept per account and
 /// persona (2026-10-07: every authenticated request paid all of it, a 304 included). Kept with
-/// the write counts it was assembled under (`db::writes_to`): node.db's `identities`, which says
-/// who owns the persona and with which leaf, and the persona's `entries`, where key epochs land.
-/// Trusted only while both stand where they were - a leaf key file never changes under its name,
+/// the write counts it was assembled under: node.db's `identities` (`db::writes_to`), which says
+/// who owns the persona and with which leaf, and the identity chain's entries mark
+/// (`db::entries_mark`), where key epochs land. Trusted only while both stand where they were - a leaf key file never changes under its name,
 /// so those two are everything that can make it wrong.
 struct Opened {
     signer: ed25519_dalek::SigningKey,
@@ -167,7 +167,9 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
     })?;
     // Stamped BEFORE anything is read, so a write racing the assembly leaves the stamp behind.
     let identities_at = crate::db::writes_to(state.node_db.writes_key(), "identities");
-    let entries_at = crate::db::writes_to(root_hex, "entries");
+    // Key epochs arrive on the identity chain alone: an upload's entries leave this standing
+    // (plans/CACHE.md, Stage 2).
+    let entries_at = crate::db::entries_mark(root_hex, service::IDENTITY_PUBLIC);
     let key = (*account_id, root_hex.to_string());
     let kept = OPENED.lock().expect("opened stores poisoned").get(&key).and_then(|o| {
         (o.identities_at == identities_at && o.entries_at == entries_at)
@@ -3403,6 +3405,22 @@ mod tests {
         let (pinned, n) = statements(store.documents().pinned()).await;
         assert!(pinned.unwrap().contains(&doc), "refolded");
         assert!(n > 1, "the chains are asked again once the watermarks move, got {n}");
+    }
+
+    /// Another service's entry - a document saved, as an upload saves hundreds - leaves a kept
+    /// catch-up standing: the memo stands on its own service's mark, not the persona's whole
+    /// `entries` count (plans/CACHE.md, Stage 2).
+    #[tokio::test]
+    async fn another_services_entry_leaves_a_kept_catch_up_standing() {
+        let store = test_store().await;
+        store.documents().pinned().await.unwrap();
+        store
+            .documents()
+            .create("a", b"one", crate::record::documents::Format::Plaintext)
+            .await
+            .unwrap();
+        let (_, n) = statements(store.documents().pinned()).await;
+        assert_eq!(n, 1, "only the pin list's own read - the doc-meta catch-up still kept");
     }
 
     /// One view, everything the tree read wants from it, the same as the whole-persona reads

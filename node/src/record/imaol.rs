@@ -47,10 +47,10 @@ async fn chain_head(
     }
 }
 
-/// The heads of the chains appended through this handle, each with the persona's `entries` write
-/// count right after its insert. While that count stands, nothing has written `entries` since -
-/// not a sync ingest, an eviction, nor another append - so the kept head is the chain's head,
-/// and the next append needn't ask (2026-10-13: the asking took 330-505 ms an append on the live
+/// The heads of the chains appended through this handle, each with its service's entries mark
+/// (`db::entries_mark`) right after its insert. While that mark stands, nothing has written that
+/// service's chains since - not a sync ingest, an eviction, nor another append - so the kept head
+/// is the chain's head, and the next append needn't ask (2026-10-13: the asking took 330-505 ms an append on the live
 /// server, against 25 us anywhere it could be reproduced, and held the persona's connection
 /// while an upload appended hundreds of entries - every other request queued behind it).
 #[derive(Default)]
@@ -64,15 +64,15 @@ type Chain = (String, u32, Option<[u8; 16]>);
 type Head = (u64, [u8; 32], i64);
 
 fn kept_head(db: &Db, chain: &Chain) -> Option<Head> {
-    let at = crate::db::writes_to(db.writes_key(), "entries");
+    let at = crate::db::entries_mark(db.writes_key(), chain.1);
     let memo = db.head_memo.lock().expect("head memo poisoned");
     memo.kept.get(chain).filter(|(kept_at, _)| *kept_at == at).map(|(_, head)| *head)
 }
 
-/// Keep a chain's new head, if the insert that made it is the only write to `entries` since
-/// `before`; otherwise forget it, and the next append asks.
+/// Keep a chain's new head, if the insert that made it is the only thing to move its service's
+/// mark since `before`; otherwise forget it, and the next append asks.
 fn keep_head(db: &Db, chain: Chain, before: u64, head: Head) {
-    let after = crate::db::writes_to(db.writes_key(), "entries");
+    let after = crate::db::entries_mark(db.writes_key(), chain.1);
     let mut memo = db.head_memo.lock().expect("head memo poisoned");
     if after == before + 1 {
         memo.kept.insert(chain, (after, head));
@@ -194,8 +194,9 @@ pub async fn append_on(
 
     // Two concurrent appends to one chain race to the same seq; the (author, service,
     // instance, seq) primary key makes the loser fail loudly instead of forking the chain.
-    let before = crate::db::writes_to(db.writes_key(), "entries");
-    db.execute(
+    let before = crate::db::entries_mark(db.writes_key(), service_id);
+    db.insert_entry(
+        service_id,
         "INSERT INTO entries
            (author_pubkey, service, instance, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
             received_at_ms, bytes)
@@ -1275,7 +1276,7 @@ pub(crate) async fn rows_past_watermarks(
     let stamp = {
         let memo = db.fold_memo.lock().expect("fold memo poisoned");
         let stamp = (
-            crate::db::writes_to(db.writes_key(), "entries"),
+            crate::db::entries_mark(db.writes_key(), service_id),
             memo.moved.get(&service_id).copied().unwrap_or(0),
         );
         if let Some((at, rows)) = memo.kept.get(&(service_id, type_id)) {
@@ -1296,7 +1297,8 @@ pub(crate) async fn rows_past_watermarks(
 }
 
 /// The catch-up's last answers, per `(service, entry_type)`, each stamped with what it was asked
-/// under: the persona's `entries` write count and its service's watermark moves. Every write to
+/// under: its service's entries mark (`db::entries_mark` - an upload's doc headers leave the
+/// doc-meta and identity answers standing) and its service's watermark moves. Every write to
 /// `view_watermarks` is in this file and says which service it moved (`watermarks_moved`), so a
 /// fold in one service leaves every other service's answer standing.
 #[derive(Default)]
@@ -1320,7 +1322,7 @@ fn watermarks_moved(db: &Db, service_id: Option<u32>) {
     }
 }
 
-/// What a kept answer was asked under: the `entries` write count, the service's watermark moves.
+/// What a kept answer was asked under: the service's entries mark, its watermark moves.
 type FoldStamp = (u64, u64);
 
 /// One kept answer, and what it was asked under.
@@ -2966,5 +2968,48 @@ mod tests {
         let next = rebroadcast(&db, &key, 2).await;
         assert_eq!(next.entry().seq, 3, "continues after the row it didn't write");
         assert_eq!(next.entry().prev_hash, foreign);
+    }
+
+    /// A service's entries mark moves for its own inserts and for any entries write it can't
+    /// attribute, never for another service's inserts, and never steps back (plans/CACHE.md,
+    /// Stage 2).
+    #[tokio::test]
+    async fn an_entries_mark_moves_for_its_own_service_and_for_anything_unattributed() {
+        let db = crate::db::test_user_db().await;
+        let key = db.writes_key().to_string();
+        let insert = |service: u32, seq: i64| {
+            let db = db.clone();
+            async move {
+                db.insert_entry(
+                    service,
+                    "INSERT INTO entries (author_pubkey, service, instance, seq, entry_hash,
+                       prev_hash, entry_type, timestamp_ms, received_at_ms, bytes)
+                     VALUES ('a', ?1, X'', ?2, randomblob(32), randomblob(32), 1, 0, 0, X'00')",
+                    (i64::from(service), seq),
+                )
+                .await
+                .unwrap()
+            }
+        };
+        let (docs, meta) = (crate::db::entries_mark(&key, 6), crate::db::entries_mark(&key, 7));
+        insert(6, 0).await;
+        assert_eq!(crate::db::entries_mark(&key, 6), docs + 1, "its own insert");
+        assert_eq!(
+            crate::db::entries_mark(&key, 7),
+            meta,
+            "another service's insert leaves it standing"
+        );
+        db.execute("DELETE FROM entries WHERE seq = 0", ()).await.unwrap();
+        assert_eq!(
+            crate::db::entries_mark(&key, 6),
+            docs + 2,
+            "an unattributed write moves every mark"
+        );
+        assert_eq!(crate::db::entries_mark(&key, 7), meta + 1);
+        db.execute_batch("UPDATE entries SET bytes = X'01';").await.unwrap();
+        assert_eq!(crate::db::entries_mark(&key, 7), meta + 2, "and a script");
+        insert(7, 1).await;
+        assert_eq!(crate::db::entries_mark(&key, 7), meta + 3);
+        assert_eq!(crate::db::entries_mark(&key, 6), docs + 3, "never back");
     }
 }

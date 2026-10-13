@@ -1595,7 +1595,8 @@ async fn store_entry(db: &Db, e: &SignedEntry) -> Result<()> {
         // any held chain - it is what a rebuild replays.)
         db.journal_append(e.bytes()).context("journaling synced entry")?;
     }
-    db.execute(
+    db.insert_entry(
+        e.entry().chain.service,
         "INSERT INTO entries
            (author_pubkey, service, instance, seq, entry_hash, prev_hash, entry_type, timestamp_ms,
             received_at_ms, bytes)

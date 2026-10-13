@@ -427,6 +427,23 @@ pub fn writes_to(db: &str, table: &str) -> u64 {
         + counts.get(&format!("{db}/*")).copied().unwrap_or(0)
 }
 
+/// How far one service's chains in a persona's `entries` have moved, as one number that only rises:
+/// the inserts on that service's chains, plus every write to `entries` not attributed to a service
+/// (sync's evictions, a prune, a script, anything unforeseen - each moves every service's mark).
+///
+/// For a cache over one service's chains (plans/CACHE.md, Stage 2). The whole table's count moves
+/// for every chain the persona holds, so an upload's doc headers threw away the caches of its
+/// notebooks, its keys and its posts on every song (2026-10-13). The two counts move together in
+/// one step (`Db::insert_entry`), so the mark never steps back, and a write this can't attribute
+/// can only make it rise - stale is impossible by construction, a miss always possible.
+pub fn entries_mark(db: &str, service: u32) -> u64 {
+    let counts = TABLE_WRITES.lock().expect("table write counts poisoned");
+    let get = |k: String| counts.get(&k).copied().unwrap_or(0);
+    let all = get(format!("{db}/entries")) + get(format!("{db}/*"));
+    let attributed = get(format!("{db}/entries@"));
+    get(format!("{db}/entries@{service}")) + (all - attributed)
+}
+
 impl Db {
     /// The database's name in the write counts: a persona's root, or this handle's own name.
     pub fn writes_key(&self) -> &str {
@@ -501,13 +518,62 @@ impl Db {
         // busy answer (a reader mid-snapshot) is a no-op and the next window retries;
         // the 60s beat (`checkpoint_pass`) still covers the idle tail. Cheap when
         // frequent: the truncate's cost is the frames since the last one.
-        let count = self.writes.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        if count.is_multiple_of(CHECKPOINT_EVERY) {
+        if self.checkpoint_due() {
             if let Err(e) = self.checkpoint().await {
                 tracing::debug!(error = ?e, "volume checkpoint failed");
             }
         }
         Ok(n)
+    }
+
+    /// An insert into `entries` on one service's chains: `execute`, counted for that service too
+    /// (`entries_mark`) - the table's count and the service's in one step. The two places an entry
+    /// lands outside tests (`imaol::append_on`, sync's store) come through here; a conventions test
+    /// holds them to it.
+    ///
+    /// `execute`'s body, spelled again rather than shared through an inner `async fn`: every write
+    /// in the node passes here or there, and one more layer of future between a handler and the
+    /// statement overflowed a debug build's worker stack on the deepest path (a book's rollout,
+    /// 2026-10-13).
+    pub async fn insert_entry(
+        &self,
+        service: u32,
+        sql: &str,
+        params: impl IntoParams,
+    ) -> Result<u64> {
+        debug_assert_eq!(written_table(sql).as_deref(), Some("entries"));
+        self.note_entry_insert(service);
+        let n = {
+            let (_guard, wait, locked) = self.statement_lock().await;
+            let n = self.conn.execute(sql, params).await;
+            self.timed(sql, wait, locked);
+            n?
+        };
+        if self.checkpoint_due() {
+            if let Err(e) = self.checkpoint().await {
+                tracing::debug!(error = ?e, "volume checkpoint failed");
+            }
+        }
+        Ok(n)
+    }
+
+    /// Count an entry insert: the table, the attributed total and the service, under one lock.
+    fn note_entry_insert(&self, service: u32) {
+        let mut counts = TABLE_WRITES.lock().expect("table write counts poisoned");
+        let key = self.writes_key();
+        for k in [
+            format!("{key}/entries"),
+            format!("{key}/entries@"),
+            format!("{key}/entries@{service}"),
+        ] {
+            *counts.entry(k).or_default() += 1;
+        }
+    }
+
+    /// One more write on this handle; is it time for the volume checkpoint?
+    fn checkpoint_due(&self) -> bool {
+        let count = self.writes.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        count.is_multiple_of(CHECKPOINT_EVERY)
     }
 
     /// Run a script of semicolon-separated statements.

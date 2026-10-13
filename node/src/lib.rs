@@ -100,6 +100,7 @@ pub mod shell;
 pub mod slugs;
 pub mod speakable;
 pub mod speculative;
+pub mod stack;
 pub mod starters;
 pub mod storage;
 pub mod syncstatus;

@@ -397,6 +397,50 @@ fn every_outbound_dial_goes_through_the_gate() {
     );
 }
 
+/// Every entry that lands outside a test is counted for its service (plans/CACHE.md, Stage 2):
+/// `Db::insert_entry`, never a bare `execute`. The caches over one service's chains stand on
+/// `db::entries_mark`, and an insert it doesn't attribute only makes every mark rise - safe, but
+/// an upload through such a door would throw away every service's caches on every entry, the very
+/// thing the mark exists to stop. A grep can't tell a test's insert from a door's, so the counts
+/// are pinned per file: a new `INSERT INTO entries` fails here until it's routed and bumped.
+#[test]
+fn every_entry_insert_is_counted_for_its_service() {
+    // file -> (`INSERT INTO entries` in it, `.insert_entry(` calls in it)
+    let expected: BTreeMap<&str, (usize, usize)> = BTreeMap::from([
+        // The sync store path.
+        ("net/sync.rs", (1, 1)),
+        // `append_on`; the other nine are test fixtures (a cloned replica, forged rows, the
+        // mark's own test - which counts through `insert_entry`, the second call).
+        ("record/imaol.rs", (10, 2)),
+    ]);
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut found: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    for path in files {
+        let source = std::fs::read_to_string(&path).expect("readable source");
+        let flat: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+        let inserts = flat.matches("INTOentries").count();
+        let counted = flat.matches(".insert_entry(").count();
+        if inserts + counted > 0 {
+            let rel = path
+                .strip_prefix(&src)
+                .expect("path under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            found.insert(rel, (inserts, counted));
+        }
+    }
+    let found_ref: BTreeMap<&str, (usize, usize)> =
+        found.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    assert_eq!(
+        found_ref, expected,
+        "the entries insert sites changed. An entry that lands outside a test goes through \
+         `db.insert_entry(service, sql, params)` so its service's mark moves with it \
+         (`db::entries_mark`); then bump the counts here."
+    );
+}
+
 /// The tag cap, spelled twice: the wire refuses a tag past `MAX_TAG_CHARS`, and the client
 /// stops the typing at the same place so a chip the door would refuse never forms. They
 /// agree today; if they ever stop, the symptom is not a crash but the exact bug this pins

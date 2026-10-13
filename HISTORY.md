@@ -21143,3 +21143,47 @@ minutes" from the live logs: a media document's detail never carries its bytes
   another. `harness/media-poll-probe.mjs`, on a scratch node: an open picture
   asked for its detail 10 more times in 10 s before, none after. A pure claim in
   `lookout.cjs`.
+
+**2026-10-13 - a cache over one service stands through another's writes
+(plans/CACHE.md, Stage 2).** Every memo over a persona's chains stamped on its
+whole-table `entries` count - the kept catch-ups (`fold_memo`), the chain heads
+(`HeadMemo`), the opened store's keys (`OPENED`), the private bodies' kept tags
+(`revalidate`) - and an upload's doc headers moved it on every song, so under
+exactly the load they were built for, every one missed. Now each stands on its
+own service's mark (`db::entries_mark`): the inserts on that service's chains,
+plus every write to `entries` not attributed to a service - sync's evictions, a
+prune, a script - which moves every mark. The two places an entry lands outside
+tests (`imaol::append_on`, sync's store) go through `Db::insert_entry`, which
+counts the table and the service in one step, so a mark never steps back; a
+conventions test pins the insert sites. `OPENED` stands on the identity chain
+(where key epochs land), the body tags on the documents chains (what their long
+way folds). Measured on a test store: a doc-meta read after a document save asks
+one statement where it asked two - with one author; live, with several, the
+difference is three statements an author for each catch-up a request makes.
+`an_entries_mark_moves_for_its_own_service_and_for_anything_unattributed`,
+`another_services_entry_leaves_a_kept_catch_up_standing` (fails against the old
+stamp), `every_entry_insert_is_counted_for_its_service`.
+
+A finding on the way: the first cut shared `execute`'s body with `insert_entry`
+through an inner `async fn`, and the integration rig's first node died -
+`thread 'tokio-rt-worker' has overflowed its stack` - mid book rollout, 284
+claims failing behind it. One more layer of future between a handler and every
+statement was enough. `insert_entry` spells the body again instead; the books
+claims pass with and without it now. The deepest path sits that close to a debug
+build's 2 MB worker stack.
+
+**2026-10-13 - why a book's rollout ran a worker's stack to the edge.** Stage
+2's first cut overflowed a debug build's 2 MB worker stack mid rollout, by one
+more layer of future. Measured frame by frame (a temporary probe at every
+statement: the stack position of each frame, and its file and line), the deepest
+statement sat 1.89 MB down - not recursion, but a debug build's `async fn`
+frames, which give every future built at every await a slot of its own and share
+none. The test beat's dispatch (`test_endpoints::beat`, twenty-odd passes in one
+`match`) was 618 KB; `books::rollout` 429 KB; `bake::publish_reporting` 375 KB;
+the rest of ~140 frames the remainder. The beat now picks its pass in a plain
+function that returns it boxed (`beat_pass`) - its frame is gone before anything
+runs: 41 KB. `rollout` builds the publish future off its frame (`stack::boxed`,
+30 KB). The deepest statement under the books claims: 1.32 MB. `rollout` and
+`publish_reporting` are still a few hundred KB each in debug, from their own
+dozens of awaits - splitting them is the next step if anything grows near the
+edge again; a release build shares the slots.
