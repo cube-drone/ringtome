@@ -55,7 +55,8 @@ import {
     readMixtape,
 } from '../pure/mixtapes.js';
 import { Chip } from '../doc/chips.js';
-import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
+import { useColWidths, useColTucks, useNarrow, PaneHead, Rail } from '../panes.js';
+import { longPress, pressedLong } from '../longpress.js';
 import { STOP_WORDS } from '../curiosity.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP } from '../pure/selectivity.js';
 import {
@@ -87,7 +88,11 @@ const html = htm.bind(h);
 const LAYER = 'amp_layer';
 const TABLE_PREF = 'amp-table';
 /// A row's height, in pixels: the table draws only the rows in view, and this is how it knows which.
+/// A phone's is a thumb's, with the artist under the title (Curtis, 2026-10-12, the mobile pass).
 const ROW_HEIGHT = 30;
+const ROW_HEIGHT_NARROW = 46;
+/// Two taps on one row this close together, in milliseconds, are a double-tap: a phone's double-click.
+const DOUBLE_TAP = 400;
 const OVERSCAN = 12;
 
 /// The columns' names, as the header says them.
@@ -927,6 +932,13 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const [scrollTop, setScrollTop] = useState(0);
     const [height, setHeight] = useState(600);
     const body = useRef(null);
+    const narrow = useNarrow();
+    const rowHeight = narrow ? ROW_HEIGHT_NARROW : ROW_HEIGHT;
+    // A phone has no double-click to play a row by (Chrome's double-tap doesn't reliably send one):
+    // two taps on the same row are counted here, and a double-click that follows them is the same
+    // gesture said twice, so it's let go.
+    const lastTap = useRef({ key: null, at: 0 });
+    const tappedPlay = useRef(0);
     // When a column's edge was last let go: the click that ends a drag isn't a sort.
     const resizedAt = useRef(0);
     // The strip (section 3): the curiosity dial's stop - hrseAmp's own, starting from the feed's -
@@ -1257,7 +1269,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const dropTarget = (e) => {
         const rowsEl = e.currentTarget.querySelector('.amp-rows');
         if (!rowsEl || !shown.length) return null;
-        const y = (e.clientY - rowsEl.getBoundingClientRect().top) / ROW_HEIGHT;
+        const y = (e.clientY - rowsEl.getBoundingClientRect().top) / rowHeight;
         if (y < 0) return { key: shown[0].key, after: false };
         if (y >= shown.length) return { key: shown[shown.length - 1].key, after: true };
         const i = Math.floor(y);
@@ -1490,9 +1502,56 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     };
     const selectedRows = shown.filter((r) => picked.has(r.key));
 
-    const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-    const last = Math.min(shown.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + OVERSCAN);
+    const first = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
+    const last = Math.min(shown.length, Math.ceil((scrollTop + height) / rowHeight) + OVERSCAN);
     const playingKey = player && player.current ? player.current.key : null;
+    const playRow = (r) => player && r.carried !== false && player.play(playable(shown), r);
+    // A long press is a phone's Ctrl-click: that row into the selection, or out of it.
+    const held = (r) => () => {
+        setPicked((p) => clickSelect(p, r.key, keys, anchor, { toggle: true }));
+        setAnchor(r.key);
+    };
+    const tapped = (r) => (e) => {
+        if (e.pointerType !== 'touch' || pressedLong()) return;
+        const now = performance.now();
+        if (lastTap.current.key === r.key && now - lastTap.current.at < DOUBLE_TAP) {
+            lastTap.current = { key: null, at: 0 };
+            tappedPlay.current = now;
+            playRow(r);
+        } else lastTap.current = { key: r.key, at: now };
+    };
+    // An open mixtape's rows, moved by a finger (Curtis, 2026-10-12): a phone has no drag and drop,
+    // so the handle follows the pointer itself, the table scrolling under it near either edge, and
+    // the gap it's over is where the song lands - the mouse's drop, by hand.
+    const fingerDrag = (r) => (e) => {
+        if (!tape || e.pointerType === 'mouse') return;
+        e.preventDefault();
+        e.stopPropagation();
+        const table = body.current;
+        const handle = e.currentTarget;
+        handle.setPointerCapture(e.pointerId);
+        dragKey.current = r.key;
+        const over = (ev) => dropTarget({ clientY: ev.clientY, currentTarget: table });
+        const move = (ev) => {
+            const box = table.getBoundingClientRect();
+            if (ev.clientY < box.top + rowHeight) table.scrollTop -= rowHeight / 3;
+            else if (ev.clientY > box.bottom - rowHeight) table.scrollTop += rowHeight / 3;
+            setDropAt(over(ev));
+        };
+        const end = (ev) => {
+            handle.removeEventListener('pointermove', move);
+            handle.removeEventListener('pointerup', end);
+            handle.removeEventListener('pointercancel', end);
+            const at = ev.type === 'pointerup' ? over(ev) : null;
+            dragKey.current = null;
+            setDropAt(null);
+            const index = at ? dropIndex(tape.members, r.key, at.key, at.after) : null;
+            if (index !== null) moveInTape(r.key, index);
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', end);
+        handle.addEventListener('pointercancel', end);
+    };
 
     // The file column (Curtis, 2026-10-12): the house's kind, as Playlists is - tucked to a rail by
     // its head, a tab in a narrow window - there while something is selected.
@@ -1625,7 +1684,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                             </div>`,
                         )}
                     </div>
-                    <div class="amp-rows" style=${`height: ${shown.length * ROW_HEIGHT}px`}>
+                    <div class="amp-rows" style=${`height: ${shown.length * rowHeight}px`}>
                         ${shown.slice(first, last).map(
                             (r, i) => html`<div
                                 key=${r.key}
@@ -1640,9 +1699,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                             : 'amp-row-drop-before'
                                         : '',
                                 ].join(' ')}
-                                style=${`top: ${(first + i) * ROW_HEIGHT}px; grid-template-columns: 2rem ${template}`}
+                                style=${`top: ${(first + i) * rowHeight}px; height: ${rowHeight}px; grid-template-columns: 2rem ${template}`}
                                 onClick=${(e) => select(r, e)}
-                                onDblClick=${() => player && r.carried !== false && player.play(playable(shown), r)}
+                                ...${longPress(held(r), { onUp: tapped(r) })}
+                                onDblClick=${() => performance.now() - tappedPlay.current > 600 && playRow(r)}
                                 draggable=${!!tape}
                                 onDragStart=${(e) => {
                                     if (!tape) return;
@@ -1655,10 +1715,18 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                     setDropAt(null);
                                 }}
                             >
-                                <span class="amp-td-lead">${playingKey === r.key ? html`<${Icons.speaker} />` : tape && html`<span class="amp-drag-handle" title=${t('amp.drag-to-reorder', 'drag to move it in the mixtape')}><${Icons.dragHandle} /></span>`}</span>
+                                <span class="amp-td-lead">${playingKey === r.key ? html`<${Icons.speaker} />` : tape && html`<span class="amp-drag-handle" title=${t('amp.drag-to-reorder', 'drag to move it in the mixtape')} onPointerDown=${fingerDrag(r)}><${Icons.dragHandle} /></span>`}</span>
                                 ${columns.map((c) => {
                                     const v = cell(r, c.key, names);
-                                    return html`<span key=${c.key} class=${cellClass(c.key)} title=${v}>${richCell(r, c.key) || v}</span>`;
+                                    const said = richCell(r, c.key) || v;
+                                    // On a phone the title carries the artist under it: the
+                                    // columns past the first are a sideways scroll away.
+                                    return narrow && c.key === 'title'
+                                        ? html`<span key=${c.key} class="amp-td amp-td-title amp-td-two" title=${v}>
+                                              <span class="amp-td-line">${said}</span>
+                                              <span class="amp-td-sub">${cell(r, 'artist', names)}</span>
+                                          </span>`
+                                        : html`<span key=${c.key} class=${cellClass(c.key)} title=${v}>${said}</span>`;
                                 })}
                             </div>`,
                         )}

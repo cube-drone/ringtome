@@ -517,6 +517,7 @@ export default {
     'apps.notes.tagged': 'tagged',
     'apps.notes.files-count': '{n} files',
     'apps.notes.select-all': 'select all',
+    'apps.notes.show-n-selected': 'show {n} selected',
     'apps.notes.couldnt-make-a-new-one': "couldn't make a new one: {message}",
     'apps.notes.nothing-here-yet': 'nothing here yet.',
     'apps.notes.nothing-matches': 'nothing matches.',

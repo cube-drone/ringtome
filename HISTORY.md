@@ -20844,3 +20844,46 @@ now in the catalog, with their plurals as separate phrases. A new convention
 `confirm(` or `prompt(` in `node/js`. Checked in headless Chrome on hrseAmp's
 song delete: cancel and Escape keep the song, "delete it" deletes it, and no
 system dialog fires.
+
+**hrseAmp on a phone (Curtis, 2026-10-12).** "Can you do a little mobile
+usability pass over this?" - all of hrseAmp under the 900px line, the dialogs
+with it, walked at 390×844 with touch in headless Chrome. What it found and what
+changed:
+
+- **Nothing played.** Rows play on double-click, and Chrome's double-tap doesn't
+  reliably send one. Two taps on a row within 400 ms now play it; a double-click
+  that follows is let go, so it never plays twice.
+- **The player bar ran off the screen** - 675px of it in 352, the scrub, the
+  levelling switch and fill-the-page out of reach. On a phone it's two lines:
+  the buttons and what's playing, then the scrub with its two switches. The
+  volume slider goes, since the phone's buttons are the volume.
+- **A mixtape couldn't be reordered** - drag and drop is the mouse's. Its handle
+  now follows a finger too (pointer events, the table scrolling under it near
+  either edge), landing in the same gap a mouse drop would.
+- **Rows were 30px and showed the title only**, the rest a sideways scroll away.
+  On a phone they are 46px, with the artist under the title.
+- **A long artist ran off the filter strip.** A facet chip on a phone stops at
+  12rem with an ellipsis (facets.css, so the feed's strip too).
+- **A station's slice names were cut to four letters** by their sliders. Each
+  slider now has its own line under its name.
+- **Dialogs** keep a 0.75rem margin on a phone, not 2rem, and their buttons are
+  a fingertip's size. Column edges and the drag handle take
+  `touch-action: none`, so a finger drags them rather than scrolling the page.
+
+The wide layout is unchanged (checked at 1280).
+
+**A long press picks, on a phone (Curtis, same day).** Shift- and ctrl-click had
+no touch twin, so "select all" was the only way to pick several songs, notes or
+files. Browsers have no long-press event: Android's Chrome sends `contextmenu`
+and iOS's Safari sends nothing. So `longpress.js` counts one from pointer
+events: a finger held still for 450 ms (inside Chrome's own long press),
+cancelled by 10px of movement or the browser's pointercancel. What the press
+leaves behind is swallowed at the window: the click its lifting may send (ahead
+of panes.js's `data-settles`, so a held row doesn't close its column), the
+browser's menu, and a drag of the draggable row. Rows turn off iOS's callout.
+Where the phone can, it ticks under the finger. In hrseAmp a long press toggles
+a row, as ctrl-click does. In Notes and Files it toggles a document, as
+shift-click does, and on a phone the count line gains "show N selected", the way
+through to the bulk panel the open list covers. Checked in headless Chrome with
+touch in all three: holds toggle, a hold that drifts does nothing, a tap still
+selects or opens, and the column stays open while you pick.

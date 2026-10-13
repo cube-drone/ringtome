@@ -510,6 +510,8 @@
 }
 
 .note-row {
+    /* Held to pick it (longpress.js), never for iOS's callout. */
+    -webkit-touch-callout: none;
     background: var(--surface);
     --line: var(--border);
     --j: 3px;
@@ -603,6 +605,7 @@
 }
 
 .files-tile {
+    -webkit-touch-callout: none; /* as a note row's */
     width: 100%;
     display: flex;
     flex-direction: column;

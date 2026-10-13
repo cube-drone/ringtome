@@ -144,6 +144,15 @@
         font-size: 0.85rem;
     }
 
+    /* A value longer than a phone is wide (an artist's credits) is cut, rather than running off
+       the row's edge: the row shows at least one chip, however long. */
+    .facet-row > [data-facet] {
+        max-width: 12rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .facet-row-label {
         font-size: 0.9rem;
     }
