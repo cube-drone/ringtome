@@ -1,6 +1,6 @@
 # Caching
 
-A plan (2026-10-13). Stages 1 and 2 built the same day (HISTORY); what was built
+A plan (2026-10-13). Stages 1-3 built the same day (HISTORY); what was built
 before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
@@ -128,7 +128,7 @@ Done when: on a test store, an append to one service leaves the other services'
 kept catch-ups standing (counted with the request tally); live, a note opened
 mid-upload is a handful of statements, not ~50.
 
-### Stage 3 - computers that don't answer
+### Stage 3 - computers that don't answer (built 2026-10-13)
 
 `net::p2p::dial` remembers computers that answered (`REACHED_AT`) and nothing
 about ones that didn't. A sleeping laptop is dialled per persona, per pass, per
@@ -144,8 +144,10 @@ author, origin, sharers and cohort for each of 16 documents at 8 s each.
   "Sync now" clears the marks of that persona's peers. An `unplugged` refusal
   never marks. The rig's nodes restart constantly: short or off under
   `local_test`.
-- Per-pass memos in `bodies::sweep` and fragment revalidation: the cohort once a
-  pass, each origin's endpoints once a pass.
+- Per-pass memos in `bodies::sweep`: the cohort once a pass, each origin's
+  endpoints once a pass. (Fragment revalidation's were left: threading a memo
+  through `fragment::fetch` buys what the dark marks and Stage 4's key-tree
+  cache already do - no dial to a dark computer, no key tree rebuilt.)
 
 Safe because it only delays: a push with no peer reached leaves the root dirty
 and retries; anti-entropy samples again next pass. Done when: the live

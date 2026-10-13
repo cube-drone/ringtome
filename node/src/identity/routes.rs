@@ -611,6 +611,7 @@ async fn sync_handler(
     super::require_owned(&state.node_db, &session.account.id, &root).await?;
     // Asked for by a person: every pair starts afresh, a stuck one included (piece 7).
     state.sync_ledger.forgive(&root);
+    crate::net::p2p::forget_dark();
     let peers =
         crate::net::sync::peers_for(&state.node_db, &root).await.map_err(AppError::Internal)?;
     let task_state = state.clone();

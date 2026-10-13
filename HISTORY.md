@@ -21229,3 +21229,20 @@ the table would hold a chain's tail back); what arrives after waits for the next
 exchange, which eager push starts within seconds. Both roles cap, so a computer
 on an older build stops being echoed at once by an updated server.
 `a_send_stops_at_the_head_it_planned` (fails without the cap: 521 sent of 516).
+
+**2026-10-13 - a computer that doesn't answer is left alone a while
+(plans/CACHE.md, Stage 3).** Every dial goes through `net::p2p::dial`, and it
+remembered only the computers that answered. A sleeping laptop was dialled once
+a persona, once a pass, once a document, each until a timeout: the live server's
+`sync-anti-entropy` and `sync-eager-push` passes hit their 120 s ceiling every
+pass, fragment revalidation took 42 s. Now a connect that fails marks the
+computer dark - a minute, doubling each time in a row, ten at most - and a dial
+to a dark computer is refused at once, saying so. Any connection that works,
+either way, clears it (`remember`, which outbound and inbound both call); "sync
+now" clears them all. `dial` has its own connect deadline (6 s, under the
+shortest whole-exchange timeout a caller wraps it in), so it sees a failure
+instead of being dropped before it can. Only ever a delay: a push that reaches
+nobody stays dirty and retries, anti-entropy samples again. Off on the test rig,
+whose nodes stop and start under the claims (`RINGTOME_TEST_DARK_MS` turns it
+on). The body sweep resolves its cohort and each origin's endpoints once a pass,
+not once a persona. `a_dark_computer_waits_longer_each_time_it_stays_dark`.

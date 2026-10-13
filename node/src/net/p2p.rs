@@ -161,20 +161,101 @@ pub async fn dial(
     } else {
         addr
     };
+    let id = addr.id;
+    if let Some(left) = dark_for(&id) {
+        return Err(anyhow!(
+            "{} didn't answer a moment ago; not asking again for {}s",
+            id.fmt_short(),
+            left.as_secs().max(1)
+        ));
+    }
     let connect = endpoint.connect(addr, alpn);
-    let conn = match dial_ceiling() {
+    let limit = dial_ceiling().or(dark_window().map(|_| CONNECT_DEADLINE));
+    let conn = match limit {
         Some(limit) => match tokio::time::timeout(limit, connect).await {
             Ok(conn) => conn.map_err(|e| anyhow!("{e}")),
             Err(_) => Err(anyhow!(
-                "dial timed out at the test ceiling ({}ms) on the {} protocol",
+                "dial timed out after {}ms on the {} protocol",
                 limit.as_millis(),
                 alpn_name(alpn).unwrap_or("unknown")
             )),
         },
         None => connect.await.map_err(|e| anyhow!("{e}")),
-    }?;
-    remember(&conn);
-    Ok(conn)
+    };
+    match conn {
+        Ok(conn) => {
+            remember(&conn);
+            Ok(conn)
+        }
+        Err(e) => {
+            went_dark(&id);
+            Err(e)
+        }
+    }
+}
+
+/// Computers that didn't answer, and until when not to ask again (plans/CACHE.md, Stage 3).
+/// Every dial comes through `dial`, and before this it remembered only the computers that
+/// answered: a sleeping laptop was dialled once a persona, once a pass, once a document, each
+/// time until a timeout - anti-entropy's 120 s passes on the live server, fragment revalidation's
+/// 42 s (2026-10-13). A connect that fails marks it dark for a minute, doubling to ten; any
+/// connection that works, either way, clears it (`remember`); "sync now" clears them all. Only
+/// ever delays a dial - a push that reaches no one stays dirty and retries, and anti-entropy
+/// samples again.
+type DarkBook = std::collections::HashMap<iroh::PublicKey, (std::time::Instant, u32)>;
+static DARK: std::sync::LazyLock<std::sync::Mutex<DarkBook>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// How long a connect may take before it counts as not answering - under the shortest whole
+/// timeout a caller wraps a dial in (`idface::FETCH_TIMEOUT`, 8 s), so the dial sees its own
+/// failure rather than being dropped before it can.
+const CONNECT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(6);
+/// The longest a computer stays dark.
+const DARK_MAX: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// The first dark window: a minute; none on a test rig, whose nodes stop and start under the
+/// claims - unless `RINGTOME_TEST_DARK_MS` asks for one.
+fn dark_window() -> Option<std::time::Duration> {
+    static WINDOW: std::sync::OnceLock<Option<std::time::Duration>> = std::sync::OnceLock::new();
+    *WINDOW.get_or_init(|| {
+        if let Some(ms) = std::env::var("RINGTOME_TEST_DARK_MS").ok().and_then(|v| v.parse().ok()) {
+            return (ms > 0).then(|| std::time::Duration::from_millis(ms));
+        }
+        let local_test =
+            matches!(std::env::var("RINGTOME_LOCAL_TEST").as_deref(), Ok("1") | Ok("true"));
+        (!local_test).then(|| std::time::Duration::from_secs(60))
+    })
+}
+
+/// How much longer `id` is dark, if it is.
+fn dark_for(id: &iroh::PublicKey) -> Option<std::time::Duration> {
+    let book = DARK.lock().ok()?;
+    let (until, _) = book.get(id)?;
+    until.checked_duration_since(std::time::Instant::now())
+}
+
+/// `id` didn't answer: dark for the window, doubled for each time in a row.
+fn went_dark(id: &iroh::PublicKey) {
+    let Some(window) = dark_window() else { return };
+    if let Ok(mut book) = DARK.lock() {
+        let strikes = book.get(id).map_or(0, |(_, s)| *s).saturating_add(1);
+        let span = dark_span(window, strikes);
+        book.insert(*id, (std::time::Instant::now() + span, strikes));
+        tracing::debug!(endpoint = %id.fmt_short(), strikes, secs = span.as_secs(), "a computer went dark");
+    }
+}
+
+/// How long the `strikes`th time in a row keeps a computer dark: the window, doubled each time,
+/// never past `DARK_MAX`.
+fn dark_span(window: std::time::Duration, strikes: u32) -> std::time::Duration {
+    window.saturating_mul(1 << strikes.saturating_sub(1).min(10)).min(DARK_MAX)
+}
+
+/// Every dark mark gone - "sync now" means now.
+pub fn forget_dark() {
+    if let Ok(mut book) = DARK.lock() {
+        book.clear();
+    }
 }
 
 /// Where each computer was last reached, either way (plans/SYNC_STATUS.md, step 7): the paths of
@@ -193,8 +274,9 @@ static REACHED_AT: std::sync::LazyLock<std::sync::Mutex<AddressBook>> =
 /// How long a remembered address is offered.
 const REMEMBER_FOR: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// Note where this connection's other side was reached.
+/// Note where this connection's other side was reached - and that it answered.
 pub fn remember(conn: &Connection) {
+    answered(conn);
     let addrs: Vec<iroh::TransportAddr> = conn
         .paths()
         .iter()
@@ -206,6 +288,13 @@ pub fn remember(conn: &Connection) {
     }
     if let Ok(mut book) = REACHED_AT.lock() {
         book.insert(conn.remote_id(), (addrs, std::time::Instant::now()));
+    }
+}
+
+/// A connection with `conn`'s other side worked, either way: it isn't dark.
+fn answered(conn: &Connection) {
+    if let Ok(mut book) = DARK.lock() {
+        book.remove(&conn.remote_id());
     }
 }
 
@@ -502,5 +591,19 @@ mod port_tests {
         for d in [dir, dir_b, dir_c] {
             let _ = std::fs::remove_dir_all(d);
         }
+    }
+}
+
+#[cfg(test)]
+mod dark_tests {
+    use super::*;
+
+    /// A computer that doesn't answer is left a minute, then two, four... never past ten.
+    #[test]
+    fn a_dark_computer_waits_longer_each_time_it_stays_dark() {
+        let m = std::time::Duration::from_secs(60);
+        let spans: Vec<u64> = (1..=6).map(|s| dark_span(m, s).as_secs()).collect();
+        assert_eq!(spans, vec![60, 120, 240, 480, 600, 600]);
+        assert_eq!(dark_span(m, u32::MAX).as_secs(), 600, "no overflow however long");
     }
 }

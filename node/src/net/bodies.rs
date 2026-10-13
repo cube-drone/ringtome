@@ -235,6 +235,11 @@ pub async fn sweep(state: AppState) -> Result<()> {
         }
     }
 
+    // Once a pass, not once a persona (plans/CACHE.md, Stage 3): the cohort is the same for every
+    // root, and the same origins recur across them - each resolution a key-tree load and a lookup.
+    let cohort = crate::net::sync::cohort_endpoints(&state).await.unwrap_or_default();
+    let mut resolved: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
     for root in roots {
         // Candidates, most-likely first - split by WHICH relationship vouches for them
         // (2026-08-22, second draft: the first gated a hunch-held author down to the
@@ -303,10 +308,16 @@ pub async fn sweep(state: AppState) -> Result<()> {
             }
         }
         for origin in fragment_peers {
-            for c in crate::net::deliver::candidates(&state, &origin).await {
-                let ep = crate::idface::leaf_via_to_endpoint(&state, &origin, &c).await;
-                if !candidates.contains(&ep) {
-                    candidates.push(ep);
+            if !resolved.contains_key(&origin) {
+                let mut eps = Vec::new();
+                for c in crate::net::deliver::candidates(&state, &origin).await {
+                    eps.push(crate::idface::leaf_via_to_endpoint(&state, &origin, &c).await);
+                }
+                resolved.insert(origin.clone(), eps);
+            }
+            for ep in &resolved[&origin] {
+                if !candidates.contains(ep) {
+                    candidates.push(ep.clone());
                 }
             }
         }
@@ -314,9 +325,9 @@ pub async fn sweep(state: AppState) -> Result<()> {
         // tree, and all of it can be gone for good while a sibling node of one of our own
         // personas still holds the bytes. Already endpoint-shaped; a blob fetch is
         // hash-capability, and asking our own household discloses nothing.
-        for ep in crate::net::sync::cohort_endpoints(&state).await.unwrap_or_default() {
-            if !candidates.contains(&ep) {
-                candidates.push(ep);
+        for ep in &cohort {
+            if !candidates.contains(ep) {
+                candidates.push(ep.clone());
             }
         }
 
