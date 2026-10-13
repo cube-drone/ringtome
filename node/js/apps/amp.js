@@ -35,7 +35,7 @@ import { postHref } from '../links.js';
 import { Icons } from '../icons.js';
 import { toast } from '../toasts.js';
 import { t } from '../i18n.js';
-import { askText } from '../modal.js';
+import { askText, askYes } from '../modal.js';
 import { FacetRow } from '../facets.js';
 import {
     AMP_STATIONS,
@@ -250,18 +250,25 @@ const Reaction = ({ root, row, onLayer }) => {
 async function deleteSongs(root, rows, onDeleted) {
     const own = rows.filter((r) => r.own && !r.builtin);
     if (!own.length) return;
-    const sure =
-        own.length === 1
-            ? confirm(
-                  t('amp.delete-one', 'Delete "{title}"? It leaves every list right away.', {
+    const sure = await askYes({
+        title:
+            own.length === 1
+                ? t('amp.delete-song-title', 'delete the song')
+                : t('amp.delete-songs-title', 'delete {n} songs', { n: own.length }),
+        body:
+            own.length === 1
+                ? t('amp.delete-one', 'Delete "{title}"? It leaves every list right away.', {
                       title: own[0].title,
-                  }),
-              )
-            : confirm(
-                  t('amp.delete-many', 'Delete your {n} songs? They leave every list right away.', {
+                  })
+                : t('amp.delete-many', 'Delete your {n} songs? They leave every list right away.', {
                       n: own.length,
                   }),
-              );
+        yes:
+            own.length === 1
+                ? t('amp.delete-it', 'delete it')
+                : t('amp.delete-them', 'delete them'),
+        danger: true,
+    });
     if (!sure) return;
     let failed = 0;
     for (const r of own) {
@@ -1097,7 +1104,14 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         }
     };
     const forgetFilter = async (f) => {
-        if (!confirm(t('amp.forget-filter', 'Forget the filter "{name}"?', { name: f.name })))
+        if (
+            !(await askYes({
+                title: t('amp.forget-filter-title', 'forget the filter'),
+                body: t('amp.forget-filter', 'Forget the filter "{name}"?', { name: f.name }),
+                yes: t('amp.forget-it', 'forget it'),
+                danger: true,
+            }))
+        )
             return;
         try {
             // A register emptied is one deleted (pure/ampfilters.js).
@@ -1200,13 +1214,16 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     };
     const forgetTape = async (x) => {
         if (
-            !confirm(
-                t(
+            !(await askYes({
+                title: t('amp.forget-mixtape-title', 'forget the mixtape'),
+                body: t(
                     'amp.forget-mixtape',
                     'Forget the mixtape "{name}"? Its songs stay where they are.',
                     { name: x.name },
                 ),
-            )
+                yes: t('amp.forget-it', 'forget it'),
+                danger: true,
+            }))
         )
             return;
         try {
@@ -1340,7 +1357,14 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         openStationView(st);
     };
     const forgetStation = async (st) => {
-        if (!confirm(t('amp.forget-station', 'Forget the station "{name}"?', { name: st.name })))
+        if (
+            !(await askYes({
+                title: t('amp.forget-station-title', 'forget the station'),
+                body: t('amp.forget-station', 'Forget the station "{name}"?', { name: st.name }),
+                yes: t('amp.forget-it', 'forget it'),
+                danger: true,
+            }))
+        )
             return;
         try {
             await api(`/api/identity/${root}/private/kv/${AMP_STATIONS}/${st.id}`, {

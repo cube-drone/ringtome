@@ -287,6 +287,18 @@ describe('the import graph', () => {
         }
         assert.deepEqual(offenders, { fetch: [], Dexie: [] });
     });
+
+    it("asks and tells in the house modal, never the browser's", () => {
+        // modal.js's askYes / askText / tell (Curtis, 2026-10-12): the browser's alert, confirm
+        // and prompt are grey boxes in another app's voice, and fourteen of them had crept in.
+        // A method of the same name (`x.confirm(`) is someone else's and passes.
+        const offenders = [];
+        for (const f of jsFiles) {
+            if (/(^|[^\w.$]|\bwindow\.)(alert|confirm|prompt)\s*\(/.test(code(f)))
+                offenders.push(rel(f));
+        }
+        assert.deepEqual(offenders, []);
+    });
 });
 
 describe('the pure core', () => {

@@ -149,6 +149,13 @@
     --line: var(--teal);
 }
 
+/* An act that can't be taken back - a delete, a forget - in the danger colour (askYes's `danger`). */
+.copy-bucket.modal-ask-danger {
+    background: var(--coral);
+    color: var(--on-danger);
+    --line: var(--coral);
+}
+
 .copy-bucket.modal-ask-ok:disabled {
     opacity: 0.5;
     cursor: default;

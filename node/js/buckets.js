@@ -26,7 +26,7 @@ import { appTypeOf, bucketsForApp, DEFAULT_STYLE, RESERVED_BUCKETS } from './pur
 import { bucketHref } from './pure/naming.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
-import { askText } from './modal.js';
+import { askText, askYes } from './modal.js';
 import { toast } from './toasts.js';
 
 const html = htm.bind(h);
@@ -187,15 +187,29 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
         const members = docs.filter((d) => !d.builtin && (d.buckets || []).includes(bucket));
         const inside =
             members.length === 0
-                ? 'It is empty - nothing else is lost.'
-                : `EVERY DOCUMENT INSIDE IT - all ${members.length} of ${
-                      members.length === 1 ? 'it' : 'them'
-                  } - GOES TOO.`;
+                ? t('buckets.delete-empty', 'It is empty - nothing else is lost.')
+                : members.length === 1
+                  ? t(
+                        'buckets.delete-one-inside',
+                        'EVERY DOCUMENT INSIDE IT - all 1 of it - GOES TOO.',
+                    )
+                  : t(
+                        'buckets.delete-n-inside',
+                        'EVERY DOCUMENT INSIDE IT - all {n} of them - GOES TOO.',
+                        {
+                            n: members.length,
+                        },
+                    );
         if (
-            !confirm(
-                `WHOA THERE. DELETE THE ${app.bucketNoun.toUpperCase()} “${bucket}”?\n\n${inside}\n\n` +
-                    `This is the big one. Are you sure?`,
-            )
+            !(await askYes({
+                title: t('buckets.delete-title', 'delete the {noun}', { noun: app.bucketNoun }),
+                body: `${t('buckets.delete-whoa', 'WHOA THERE. DELETE THE {noun} “{name}”?', {
+                    noun: app.bucketNoun.toUpperCase(),
+                    name: bucket,
+                })}\n\n${inside}\n\n${t('buckets.delete-big-one', 'This is the big one. Are you sure?')}`,
+                yes: t('buckets.delete-it-all', 'delete it all'),
+                danger: true,
+            }))
         )
             return;
         setMenu(false);

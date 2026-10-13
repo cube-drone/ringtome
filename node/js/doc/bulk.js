@@ -34,6 +34,7 @@ import {
 } from '../pure/bulk.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
+import { askYes } from '../modal.js';
 
 const html = htm.bind(h);
 
@@ -160,13 +161,16 @@ export const BulkPanel = ({
     // --- delete --------------------------------------------------------------------------------
     const deleteAll = async () => {
         if (
-            !confirm(
-                t(
+            !(await askYes({
+                title: t('doc.bulk.delete-title', 'delete {n} documents', { n: mine.length }),
+                body: t(
                     'doc.bulk.delete-confirm',
                     'Whoa there - delete {n} documents? They leave every list right away.',
                     { n: mine.length },
                 ),
-            )
+                yes: t('doc.bulk.delete-them', 'delete them'),
+                danger: true,
+            }))
         )
             return;
         const failed = await run(

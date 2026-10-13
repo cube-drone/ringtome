@@ -74,7 +74,7 @@ import { useTurbolinks } from '../doc/turbolinks.js';
 import { useLocation } from 'preact-iso';
 import { postHref } from '../links.js';
 import { t } from '../i18n.js';
-import { askText } from '../modal.js';
+import { askText, askYes } from '../modal.js';
 import {
     PostEntry,
     Composer,
@@ -162,12 +162,15 @@ const StackItem = ({ root, row, onPost, posting }) => {
     // live rows drop it from the stack on their own; nothing here needs to.
     const discard = async () => {
         if (
-            !confirm(
-                t(
+            !(await askYes({
+                title: t('apps.feed.discard-title', 'discard the draft'),
+                body: t(
                     'apps.feed.discard-this-draft',
                     'Whoa there - discard this draft? It leaves the list right away.',
                 ),
-            )
+                yes: t('apps.feed.discard-it', 'discard it'),
+                danger: true,
+            }))
         )
             return;
         try {
@@ -901,9 +904,14 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     };
     const forgetFeed = async (feed) => {
         if (
-            !confirm(
-                t('apps.feed.forget-saved-feed', 'Forget the feed "{name}"?', { name: feed.name }),
-            )
+            !(await askYes({
+                title: t('apps.feed.forget-feed-title', 'forget the feed'),
+                body: t('apps.feed.forget-saved-feed', 'Forget the feed "{name}"?', {
+                    name: feed.name,
+                }),
+                yes: t('apps.feed.forget-it', 'forget it'),
+                danger: true,
+            }))
         )
             return;
         try {

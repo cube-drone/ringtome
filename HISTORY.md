@@ -20825,3 +20825,22 @@ Now a slice chosen by weight always plays. The memory only picks which of its
 songs plays, and never the same song twice running where the list has another. A
 new vector holds 5/40/2,000 songs at 60/30/10 to within a few percent of their
 weights, with each 5-song loop whole and no immediate repeats.
+
+**House dialogs replace the browser's (Curtis, 2026-10-12).** "Can we build some
+standard confirmation and message models … replacing [the system ones] with
+ours?" `modal.js` now offers three promise-shaped dialogs, each on its own host
+so any handler can `await` one: `askText` (was there), `askYes` (a title, a body
+whose blank lines become paragraphs, a named action; `danger: true` paints the
+action coral and puts the focus on cancel, so a stray Enter keeps things) and
+`tell`, a one-button notice for whatever `alert()` would have said. The audit
+found fourteen `confirm()` calls and no `alert` or `prompt`. All fourteen now
+use `askYes`, each with a title and an action named for what it does ("delete
+it", "forget it", "revoke it"): logging out, revoking an API key, deleting a
+notebook, a section, a document or many, discarding a draft, forgetting a saved
+feed, deleting songs, and forgetting a filter, mixtape or station. Only logging
+out isn't a danger. The notebook and section warnings were raw English and are
+now in the catalog, with their plurals as separate phrases. A new convention
+("asks and tells in the house modal") fails the build on any bare `alert(`,
+`confirm(` or `prompt(` in `node/js`. Checked in headless Chrome on hrseAmp's
+song delete: cancel and Escape keep the song, "delete it" deletes it, and no
+system dialog fires.

@@ -25,6 +25,7 @@ import { personaHue, shortcode } from './pure/person.js';
 import { bannerStyle } from './person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
+import { askYes } from './modal.js';
 import { Version } from './version.js';
 import { RELEASES_URL } from './pure/releasename.js';
 import {
@@ -659,12 +660,14 @@ export const SettingsList = ({ persona, session }) => {
         // Heading out forgets this browser: stream stopped, mirror dropped. Confirm first - it's
         // easy to hit by mistake, and coming back means signing in again.
         if (
-            !confirm(
-                t(
+            !(await askYes({
+                title: t('persona.log-out-title', 'log out'),
+                body: t(
                     'persona.log-out-of-this-browser',
                     'Log out of this browser? You will sign in again to come back.',
                 ),
-            )
+                yes: t('persona.log-out-yes', 'log out'),
+            }))
         )
             return;
         await persona.shutdown();
@@ -993,13 +996,16 @@ const ApiKeys = () => {
     };
     const revoke = async (k) => {
         if (
-            !confirm(
-                t(
+            !(await askYes({
+                title: t('persona.revoke-key-title', 'revoke the key'),
+                body: t(
                     'persona.revoke-key-confirm',
                     'Revoke "{name}"? Anything using it stops working at once.',
                     { name: k.name },
                 ),
-            )
+                yes: t('persona.revoke-it', 'revoke it'),
+                danger: true,
+            }))
         )
             return;
         try {
