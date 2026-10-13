@@ -21214,3 +21214,18 @@ On the way: with the tabs closed, the whole-library reads
 to zero - every write rebuilds an open tab's document list (`shared_documents`),
 which plans/CACHE.md Stage 4 coalesces. And each backup stores the whole blob
 store again (NEXT_STEPS).
+
+**2026-10-13 - a send stops at the head it planned.** The live server ran its
+duplicate check (an arrival at or below a held head) 2,187 times in an hour. The
+served-exchange log said who: one of the persona's own computers, exchanging
+every ~26 s, was sent 3,048 new entries and sent back 1,704 the server already
+held - never one it lacked. The race: a responder sent everything past the
+requester's claim up to the table's end, while the requester then sent back
+whatever it held above the responder's Hello - so every entry the upload
+appended between the server's Hello and the end of its send went out, and came
+straight back. Now each chain's send stops at its head when the plan is made
+(`ChainSend::upto`, read from the table - the memo may lag it, and a cap below
+the table would hold a chain's tail back); what arrives after waits for the next
+exchange, which eager push starts within seconds. Both roles cap, so a computer
+on an older build stops being echoed at once by an updated server.
+`a_send_stops_at_the_head_it_planned` (fails without the cap: 521 sent of 516).

@@ -284,6 +284,13 @@ struct ChainSend {
     /// A range BENEATH the peer's floor to send first (PROJECT_PLAN's Peeks, slice 5, scrollback's
     /// backfill): `(from, to)` inclusive.
     backfill: Option<(u64, u64)>,
+    /// The last seq to send: this node's head when the plan was made, and so - for a responder,
+    /// which plans just after its Hello - the head it claimed. An entry appended later waits for
+    /// the next exchange. Sent past it, it reached the requester above the head this node had
+    /// claimed, and the requester sent it straight back as something this node lacked: under
+    /// an upload, 1,704 resends of 3,048 sent in an hour, every one a duplicate check
+    /// (2026-10-13). Read from the table, not the memo, which may lag it.
+    upto: Option<u64>,
 }
 
 /// A peer's missing entries, yielded one at a time and read a page at a time - the whole
@@ -294,11 +301,16 @@ struct ChainSend {
 /// collect them (`missing_for_peer`). Keeping the paging arithmetic in `next` rather than in
 /// each sink is what lets a test of the collector be a test of what the wire does - the
 /// alternative, one loop per sink, is two copies whose seam bugs only one of them proves.
+/// The chain a send is draining: author, service, instance, next page's first seq, last seq to
+/// send (`ChainSend::upto`).
+type Draining = (String, u32, Option<[u8; 16]>, u64, Option<u64>);
+
 pub(crate) struct MissingEntries<'a> {
     db: &'a Db,
     chains: std::vec::IntoIter<ChainSend>,
-    /// The chain being drained: `(author_hex, service, next page's first seq)`.
-    current: Option<(String, u32, Option<[u8; 16]>, u64)>,
+    /// The chain being drained: `(author_hex, service, instance, next page's first seq, last
+    /// seq to send)`.
+    current: Option<Draining>,
     /// The bounded range beneath the peer's floor still to send, `(lowest, next)` inclusive,
     /// walked downward from `next`.
     backfill: Option<Backfill>,
@@ -354,15 +366,23 @@ impl<'a> MissingEntries<'a> {
             // The current chain may have more: read one page. A short page (or none) means
             // this chain is finished, and the next loop turn moves on.
             if self.more {
-                if let Some((author_hex, service, instance, from_seq)) = self.current.clone() {
-                    let rows =
+                if let Some((author_hex, service, instance, from_seq, upto)) = self.current.clone()
+                {
+                    let mut rows =
                         chain_page(self.db, &author_hex, service, instance, from_seq).await?;
                     self.more = rows.len() == SEND_PAGE_ENTRIES;
+                    if let Some(upto) = upto {
+                        // Nothing past the head this node held when it planned (`ChainSend::upto`).
+                        if rows.iter().any(|(seq, _)| *seq >= upto) {
+                            self.more = false;
+                        }
+                        rows.retain(|(seq, _)| *seq <= upto);
+                    }
                     if let Some((last_seq, _)) = rows.last() {
                         // Advance by the seq actually read, never by a count: a shallow-held
                         // chain's floor is not zero, and its seqs are dense only within what
                         // is held.
-                        self.current = Some((author_hex, service, instance, last_seq + 1));
+                        self.current = Some((author_hex, service, instance, last_seq + 1, upto));
                     }
                     self.page.extend(rows.into_iter().map(|(_, bytes)| bytes));
                     continue;
@@ -374,9 +394,14 @@ impl<'a> MissingEntries<'a> {
                     self.backfill = chain.backfill.map(|(from, to)| {
                         (chain.author_hex.clone(), chain.service, chain.instance, from, to)
                     });
-                    self.current =
-                        Some((chain.author_hex, chain.service, chain.instance, chain.from_seq));
-                    self.more = true;
+                    self.more = chain.upto.is_none_or(|upto| chain.from_seq <= upto);
+                    self.current = Some((
+                        chain.author_hex,
+                        chain.service,
+                        chain.instance,
+                        chain.from_seq,
+                        chain.upto,
+                    ));
                 }
                 None => return Ok(None),
             }
@@ -525,6 +550,16 @@ async fn missing_plan(
             }
         }
 
+        // The table's head now, not the memo's: the memo may lag the table, and a cap below the
+        // table would hold the chain's tail back until it healed (`ChainSend::upto`).
+        let upto: Option<u64> = db
+            .fetch_optional::<(i64, Vec<u8>)>(
+                crate::record::imaol::CHAIN_HEAD,
+                (author_hex.as_str(), svc, crate::db::instance_blob(instance)),
+            )
+            .await
+            .context("reading a chain's head for the send")?
+            .map(|(seq, _)| seq as u64);
         plan.push(ChainSend {
             author_hex,
             service: svc as u32,
@@ -532,6 +567,7 @@ async fn missing_plan(
             evidence,
             from_seq,
             backfill,
+            upto,
         });
     }
     Ok(plan)
@@ -3377,6 +3413,56 @@ mod tests {
 
     fn hashes(entries: &[SignedEntry]) -> Vec<[u8; 32]> {
         entries.iter().map(|e| *e.hash()).collect()
+    }
+
+    /// A send stops at the head this node held when it planned: entries appended while it drains
+    /// wait for the next exchange. Sent past the head a responder had claimed in its Hello, they
+    /// reached the requester above that claim and came straight back as things this node lacked
+    /// (2026-10-13: 1,704 resends of 3,048 sent in an hour under an upload).
+    #[tokio::test]
+    async fn a_send_stops_at_the_head_it_planned() {
+        let db = test_db().await;
+        let mut root_chain = Chain::new(1, service::IDENTITY_PUBLIC);
+        let mut posts = Chain::new(2, service::POSTS);
+        let k = posts.pk();
+        let authorize = root_chain.append(
+            entry_type::AUTHORIZE,
+            Authorize { child: k, usurpers: vec![root_chain.pk()], enc_pubkey: None }
+                .encode()
+                .unwrap(),
+        );
+        let before: Vec<SignedEntry> = (0..SEND_PAGE_ENTRIES + 3)
+            .map(|n| posts.append(entry_type::POST, vec![n as u8]))
+            .collect();
+        ingest(&db, root_chain.pk(), std::slice::from_ref(&authorize)).await;
+        ingest(&db, root_chain.pk(), &before).await;
+
+        let mut missing =
+            MissingEntries::plan(&db, &[], false, &[], &[], Ask::default()).await.unwrap();
+        let mut sent = vec![missing.next().await.unwrap().unwrap()];
+        // The upload goes on while the send drains.
+        let during: Vec<SignedEntry> =
+            (0..5).map(|n| posts.append(entry_type::POST, vec![0xee, n])).collect();
+        assert_eq!(ingest(&db, root_chain.pk(), &during).await.0, 5);
+        while let Some(bytes) = missing.next().await.unwrap() {
+            sent.push(bytes);
+        }
+        assert_eq!(sent.len(), 1 + before.len(), "everything planned, nothing appended after");
+        assert!(!sent.iter().any(|b| during.iter().any(|e| e.bytes() == b.as_slice())));
+        // The next exchange carries them.
+        let caught_up = local_frontiers(&db, false).await.unwrap();
+        let peer: Vec<Frontier> = caught_up
+            .into_iter()
+            .map(|mut f| {
+                if f.service == service::POSTS {
+                    f.head = before.len() as u64 - 1;
+                    f.head_hash = *before.last().unwrap().hash();
+                }
+                f
+            })
+            .collect();
+        let next = missing_for_peer(&db, &peer, false, &[]).await.unwrap();
+        assert_eq!(next.len(), 5, "the next exchange sends what arrived during this one");
     }
 
     /// A chain longer than one send page comes back whole, in order, once. The send path
