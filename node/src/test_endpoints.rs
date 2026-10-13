@@ -256,6 +256,23 @@ pub async fn credit(
 }
 
 #[derive(serde::Deserialize)]
+pub struct BankWalkRequest {
+    pub root: String,
+}
+
+/// Catch a persona's ledger up as usual, then walk its whole history again (bank.rs
+/// `walk_for_test`): the lines before and after.
+pub async fn bank_walk(
+    State(state): State<AppState>,
+    Json(req): Json<BankWalkRequest>,
+) -> Result<Json<Value>, AppError> {
+    let data = crate::record::store::open_agented(&state, &req.root).await?;
+    let (before, after) =
+        crate::bank::walk_for_test(&state, &data, &req.root).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "before": before, "after": after })))
+}
+
+#[derive(serde::Deserialize)]
 pub struct AgeLotRequest {
     pub root: String,
     pub lot: String,

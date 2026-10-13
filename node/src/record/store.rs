@@ -983,6 +983,24 @@ impl Documents<'_> {
         .await
     }
 
+    /// Some documents of the view (`materialize_some`): the ones a reader knows changed.
+    pub async fn some(
+        &self,
+        doc_ids: &BTreeSet<[u8; 16]>,
+    ) -> Result<crate::record::documents::DocumentsView, AppError> {
+        crate::record::documents::materialize_some(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            doc_ids,
+        )
+        .await
+    }
+
+    /// The view's memo caught up, nothing read (`caught_up`).
+    pub async fn caught_up(&self) -> Result<(), AppError> {
+        crate::record::documents::caught_up(&self.store.db, &self.store.authorship.epoch_keys).await
+    }
+
     /// Which of `ids` the view holds (`held_of`): the embed checks, without the view.
     pub async fn held(&self, ids: &[[u8; 16]]) -> Result<BTreeSet<[u8; 16]>, AppError> {
         crate::record::documents::held_of(&self.store.db, &self.store.authorship.epoch_keys, ids)
@@ -1726,24 +1744,30 @@ impl Annotations<'_> {
     /// bank's catch-up, 2026-10-01: a fold per post was 700 folds a balance poll, minutes of
     /// them, and the persona's database queued behind it).
     pub async fn notes_claiming(&self) -> Result<HashMap<[u8; 16], [u8; 16]>, AppError> {
-        let view = self.store.doc_meta_view().await?;
+        // The claims' own rows, not the whole doc-meta view: the ledger asks on every pass that
+        // holds a post (2026-10-13).
+        let mut rows = private::registers_keyed(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+            PUBLISHED_AS,
+        )
+        .await?;
+        // In collection order, as the view's walk took them: two notes claiming one post resolve
+        // the same way they did.
+        rows.sort();
         let mut claimed = HashMap::new();
-        for collection in view.collections() {
-            let Some((root, doc_id)) = parse_annot_collection(collection) else {
+        for (collection, value) in rows {
+            let Some((root, doc_id)) = parse_annot_collection(&collection) else {
                 continue;
             };
             if root != self.store.root {
                 continue;
             }
-            for r in view.registers_in(collection) {
-                if r.key != PUBLISHED_AS {
-                    continue;
-                }
-                if let Some(post) =
-                    hex::decode(&r.value).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
-                {
-                    claimed.entry(post).or_insert(doc_id);
-                }
+            if let Some(post) =
+                hex::decode(&value).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+            {
+                claimed.entry(post).or_insert(doc_id);
             }
         }
         Ok(claimed)

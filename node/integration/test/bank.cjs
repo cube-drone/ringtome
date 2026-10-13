@@ -681,6 +681,44 @@ describe('HorseBucks: the ledger', function () {
         await publish('quiet', 'nothing magic about this one');
         assert.equal((await magic()).length, 2, 'a post without them still pays nothing');
     });
+
+    it('a pass reads only what changed since the last, and pays all a walk of everything would (2026-10-13)', async () => {
+        // A pass between each edit: each reads what's new since the one before, and no more.
+        const made = await (
+            await j(ada, `api/identity/${root}/docs`, {
+                title: 'marks',
+                body: 'one two three four five',
+                format: 'marquee',
+            })
+        ).json();
+        await bank();
+        const got = await (await ada(`api/identity/${root}/docs/${made.doc_id}`)).json();
+        const saved = await j(
+            ada,
+            `api/identity/${root}/docs/${made.doc_id}`,
+            {
+                title: 'marks',
+                body: 'one two three four five six seven eight',
+                parents: got.heads.map((h) => h.version),
+                format: 'marquee',
+            },
+            'PUT',
+        );
+        assert.equal(saved.status, 200, await saved.text());
+        const b = await bank();
+        // Three shingles in the first version, three more in the second: 75 horsepennies each.
+        assert.equal(
+            b.lines.filter((l) => l.kind === 'words' && l.detail.title === 'marks').length,
+            2,
+            JSON.stringify(b.lines),
+        );
+        const walk = await (await j(makeFetch(), 'test/bank-walk', { root })).json();
+        assert.equal(
+            walk.after,
+            walk.before,
+            'a walk of everything finds nothing the passes missed',
+        );
+    });
 });
 
 /*

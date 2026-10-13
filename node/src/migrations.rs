@@ -286,6 +286,12 @@ pub const USER: &[Rung] = &[
         sql: include_str!("../migrations/user/0032_content_prints.sql"),
         refold: &[],
     },
+    Rung {
+        version: 33,
+        name: "0033_bank_marks.sql",
+        sql: include_str!("../migrations/user/0033_bank_marks.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder's own record, created by the climb rather than by any rung so that it exists

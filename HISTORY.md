@@ -20950,3 +20950,44 @@ public URL, the button carries the post's intent link under an Android browser,
 and a handed-over address routes to the post. The Android half needs a CI build
 and a phone: a scanned `ringtome://` code, and the button with the app
 installed.
+
+**2026-10-13 - the ledger reads what's new, not the persona's whole history.**
+An agent's import into the live server's notebook: `make_section` at 30-60 s a
+call. The server's logs named it. The tree read inside it spent 11-16 s of its
+13-18 s waiting for the persona's connection, behind the corner balance's own
+`GET /bank` - 14-25 s each, back to back through the import, because the
+corner's skip (files unchanged, under a minute) never holds while files are
+being written, and every pass walked everything: every version of every
+document; every version not yet paid, its body asked for again (the blob store
+it asks is the one the server's 4.5-minute `missing-bodies` sweep keeps busy);
+the whole doc-meta view, for the posts' claims; and every document's versions
+again for the contracts. Curtis: "why does it need to ever walk the whole chain
+after the first time?" It doesn't.
+
+- **Marks** (`0033_bank_marks.sql`): the last `doc_versions` row a pass read -
+  its rowid, the order rows are folded in, so a version synced late from another
+  computer is new too; and that row's hash, so a rebuilt table is noticed and
+  walked again. A pass reads the documents with a version past the mark and
+  weighs only those versions; the words and strokes lines, one a version, are
+  asked after for those versions instead of read whole.
+- **Waiting** (`bank_pending`): a document with something a pass couldn't pay (a
+  body still arriving, a parent it can't read) is tried again every five minutes
+  until it pays, not on every pass.
+- **A walk of everything** on a persona's first pass, after `PUBLICATION_RULES`
+  moves, or when the mark's row isn't the row it named.
+- **The contracts** look at the heads memo, a row a document (`doc_heads` with
+  the head's embeds), never the versions, and only while one that needs it is
+  open. The posts' claims are read off their own register rows
+  (`registers_keyed`), not the whole doc-meta view, and only when a post is in
+  hand or "post your horse" is open.
+- **Measured**, each pass logging `bank catch-up` (full or not, documents,
+  retried, unpaid, paid, ms) when it walks everything or passes 250 ms: 1,500
+  notes of four versions, the first pass paid 6,001 lines in 4.4 s (debug);
+  every pass after, 70 ms a bank read. A walk with nothing new to pay was 63 ms
+  locally - so the live 15-25 s was the retries and the claims, which the
+  server's own `bank catch-up` line, once deployed, will confirm or refute.
+- **Proved** by `/test/bank-walk`, which catches up, forgets the marks and walks
+  everything: equal lines before and after, on the bench persona (6,004) and in
+  `bank.cjs`'s new claim over the whole ledger persona's history.
+  `a_hash_keyed_table_numbers_its_rows_in_arrival_order` pins the rowid
+  behaviour the marks lean on, in turso.

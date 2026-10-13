@@ -17,7 +17,7 @@
 //! shapes, and a document version pays only for what it added over its parents - so pasting a
 //! paragraph fifty times, or pressing one stamp five hundred times, pays once.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use anyhow::Result;
@@ -282,20 +282,14 @@ async fn node_admin(
 /// still (AVIF, APNG) or a silent loop - that isn't a drawing's flattened copy (the image picker
 /// makes those itself; `FLAT_FROM`). Avatars and banners are public, so never in view here; a
 /// sound or a film isn't an image. The annotations are read only once a candidate exists.
-async fn uploaded_an_image(
-    data: &Store,
-    view: &crate::record::documents::DocumentsView,
-) -> Result<bool> {
-    let pictures: Vec<[u8; 16]> = view
-        .docs
+async fn uploaded_an_image(data: &Store, shelf: &HashMap<[u8; 16], Head>) -> Result<bool> {
+    let pictures: Vec<[u8; 16]> = shelf
         .iter()
-        .filter(|(_, d)| d.lane == "private")
-        .filter(|(_, d)| {
-            d.display_head().is_some_and(|h| match Format::from_wire(h.header.format) {
-                Format::Avif | Format::Apng => true,
-                Format::WebmAv1 => h.header.animation,
-                _ => false,
-            })
+        .filter(|(_, h)| h.lane == "private")
+        .filter(|(_, h)| match h.format {
+            Format::Avif | Format::Apng => true,
+            Format::WebmAv1 => h.animation,
+            _ => false,
         })
         .map(|(id, _)| *id)
         .collect();
@@ -329,19 +323,11 @@ fn is_writer_notebook(name: &str, registered: &HashMap<String, String>) -> bool 
 /// Has this persona a private note in hrseWriter? A private text document (Marquee or plain)
 /// filed in a Writer notebook - not a Feed draft, a room's, or a picture. The notebooks are read
 /// only once a private text document exists at all.
-async fn wrote_a_private_note(
-    data: &Store,
-    view: &crate::record::documents::DocumentsView,
-) -> Result<bool> {
-    let notes: Vec<&[u8; 16]> = view
-        .docs
+async fn wrote_a_private_note(data: &Store, shelf: &HashMap<[u8; 16], Head>) -> Result<bool> {
+    let notes: Vec<&[u8; 16]> = shelf
         .iter()
-        .filter(|(_, d)| d.lane == "private")
-        .filter(|(_, d)| {
-            d.display_head().is_some_and(|h| {
-                matches!(Format::from_wire(h.header.format), Format::Marquee | Format::Plaintext)
-            })
-        })
+        .filter(|(_, h)| h.lane == "private")
+        .filter(|(_, h)| matches!(h.format, Format::Marquee | Format::Plaintext))
         .map(|(id, _)| id)
         .collect();
     if notes.is_empty() {
@@ -442,20 +428,19 @@ const FLAT_FROM: &str = "flattened_from";
 /// annotations read once, only if some published note embeds anything. No body is opened.
 async fn posted_a_drawing(
     data: &Store,
-    view: &crate::record::documents::DocumentsView,
+    shelf: &HashMap<[u8; 16], Head>,
     claimed: &HashMap<[u8; 16], [u8; 16]>,
 ) -> Result<bool> {
     let mut flat: Option<HashSet<[u8; 16]>> = None;
-    for (post_id, post) in &view.docs {
-        if post.lane != "public" || post.display_head().is_none() {
+    for (post_id, post) in shelf {
+        if post.lane != "public" {
             continue;
         }
-        let Some(note) = claimed.get(post_id).and_then(|n| view.docs.get(n)) else { continue };
-        let Some(head) = note.display_head() else { continue };
-        if Format::from_wire(head.header.format) == Format::Drawing {
+        let Some(head) = claimed.get(post_id).and_then(|n| shelf.get(n)) else { continue };
+        if head.format == Format::Drawing {
             return Ok(true);
         }
-        if head.header.refs.is_empty() {
+        if head.refs.is_empty() {
             continue;
         }
         if flat.is_none() {
@@ -467,7 +452,7 @@ async fn posted_a_drawing(
                     .collect(),
             );
         }
-        if head.header.refs.iter().any(|r| flat.as_ref().is_some_and(|f| f.contains(r))) {
+        if head.refs.iter().any(|r| flat.as_ref().is_some_and(|f| f.contains(r))) {
             return Ok(true);
         }
     }
@@ -485,22 +470,19 @@ fn chosen_tag(tag: &str) -> bool {
 
 /// Has one of this persona's private notes a link to another? The search index's stored links
 /// (no refresh), each naming the document it points at when it's one of ours.
-async fn linked_two_notes(
-    data: &Store,
-    view: &crate::record::documents::DocumentsView,
-) -> Result<bool> {
+async fn linked_two_notes(data: &Store, shelf: &HashMap<[u8; 16], Head>) -> Result<bool> {
     let private = |hex: &str| {
         hex::decode(hex)
             .ok()
             .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
-            .and_then(|id| view.docs.get(&id))
-            .is_some_and(|d| d.lane == "private")
+            .and_then(|id| shelf.get(&id))
+            .is_some_and(|h| h.lane == "private")
     };
     let rows = crate::record::documents::stored_links(data.db())
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(rows.into_iter().any(|(from, links)| {
-        view.docs.get(&from).is_some_and(|d| d.lane == "private")
+        shelf.get(&from).is_some_and(|h| h.lane == "private")
             && links
                 .iter()
                 .filter_map(|l| l.doc.as_deref())
@@ -751,10 +733,129 @@ struct Line {
     detail: serde_json::Value,
 }
 
-async fn banked(data: &Store) -> Result<HashSet<(String, String)>> {
-    let rows: Vec<(String, String)> =
-        data.db().fetch_all("SELECT kind, source FROM bank_lines", ()).await?;
+/// What's paid already: every line, or - `words_too` false - every line but the words and strokes
+/// lines, which are one a version and most of any ledger (`paid_for` asks after those one by one).
+async fn banked(data: &Store, words_too: bool) -> Result<HashSet<(String, String)>> {
+    let sql = if words_too {
+        "SELECT kind, source FROM bank_lines"
+    } else {
+        "SELECT kind, source FROM bank_lines WHERE kind NOT IN ('words', 'strokes')"
+    };
+    let rows: Vec<(String, String)> = data.db().fetch_all(sql, ()).await?;
     Ok(rows.into_iter().collect())
+}
+
+/// The words and strokes lines paid already for these versions (their hashes, hex).
+async fn paid_for(data: &Store, versions: &[String]) -> Result<HashSet<(String, String)>> {
+    let mut out = HashSet::new();
+    for source in versions {
+        for kind in ["words", "strokes"] {
+            let row: Option<(String,)> = data
+                .db()
+                .fetch_optional(
+                    "SELECT source FROM bank_lines WHERE kind = ?1 AND source = ?2",
+                    (kind, source.as_str()),
+                )
+                .await?;
+            if row.is_some() {
+                out.insert((kind.to_string(), source.clone()));
+            }
+        }
+    }
+    Ok(out)
+}
+
+// ---- the ledger's memory (2026-10-13) ----
+//
+// A pass reads what's new since the last, not the persona's whole history: the last
+// `doc_versions` row it read (its rowid - the order rows were folded in, a version arriving late
+// from another computer included - and that row's hash, so a rebuilt table is noticed), the rules
+// it paid under, and the documents it couldn't pay yet. 0033_bank_marks.sql.
+
+/// How many changed documents a pass reads one by one before it reads them all in one go.
+const READ_ONE_BY_ONE: usize = 200;
+
+/// How often the documents waiting to be paid are tried again: each try reads them whole, and
+/// a body that never arrives would otherwise be asked after on every pass.
+const PENDING_EVERY_MS: i64 = 5 * 60 * 1000;
+
+struct Marks {
+    /// The last `doc_versions` row read: its rowid and its entry hash.
+    versions: Option<(i64, Vec<u8>)>,
+    /// `PUBLICATION_RULES` as the last pass paid under it.
+    rules: Option<i64>,
+    /// When the waiting documents were last tried.
+    pending_ms: i64,
+}
+
+async fn marks(data: &Store) -> Result<Marks> {
+    let rows: Vec<(String, i64, Option<Vec<u8>>)> =
+        data.db().fetch_all("SELECT name, mark, hash FROM bank_marks", ()).await?;
+    let mut marks = Marks { versions: None, rules: None, pending_ms: 0 };
+    for (name, mark, hash) in rows {
+        match name.as_str() {
+            "versions" => marks.versions = hash.map(|h| (mark, h)),
+            "rules" => marks.rules = Some(mark),
+            "pending_ms" => marks.pending_ms = mark,
+            _ => {}
+        }
+    }
+    Ok(marks)
+}
+
+async fn set_mark(data: &Store, name: &str, mark: i64, hash: Option<Vec<u8>>) -> Result<()> {
+    data.db()
+        .execute(
+            "INSERT INTO bank_marks (name, mark, hash) VALUES (?1, ?2, ?3)
+             ON CONFLICT(name) DO UPDATE SET mark = excluded.mark, hash = excluded.hash",
+            (name, mark, hash),
+        )
+        .await?;
+    Ok(())
+}
+
+/// The last row `doc_versions` holds, when it holds any.
+async fn versions_top(data: &Store) -> Result<Option<(i64, Vec<u8>)>> {
+    Ok(crate::record::documents::versions_top(data.db()).await?)
+}
+
+/// Is the row a mark names still the one it named?
+async fn still_there(data: &Store, (rowid, hash): &(i64, Vec<u8>)) -> Result<bool> {
+    let at = crate::record::documents::version_at(data.db(), *rowid).await?;
+    Ok(at.is_some_and(|h| &h == hash))
+}
+
+/// Every version folded after the row `rowid`: its document, and its hash.
+async fn versions_since(data: &Store, rowid: i64) -> Result<Vec<([u8; 16], [u8; 32])>> {
+    Ok(crate::record::documents::versions_since(data.db(), rowid).await?)
+}
+
+/// The documents waiting to be paid.
+async fn pending(data: &Store) -> Result<BTreeSet<[u8; 16]>> {
+    let rows: Vec<(Vec<u8>,)> = data.db().fetch_all("SELECT doc_id FROM bank_pending", ()).await?;
+    Ok(rows.into_iter().filter_map(|(id,)| id.try_into().ok()).collect())
+}
+
+/// A document as the contracts look at it: its display head, as the heads memo keeps it.
+type Head = crate::record::documents::HeadFacts;
+
+/// The contracts that look at the documents (`shelf`): while one is open, a pass reads it.
+const SHELF_CONTRACTS: [&str; 8] = [
+    "draw-a-horse",
+    "post-a-horse",
+    "write-a-note",
+    "upload-an-image",
+    "start-a-room",
+    "start-a-chat-for-two",
+    "seal-a-post",
+    "link-two-notes",
+];
+
+/// Every document's display head, a row each off the heads memo: what the contracts ask of the
+/// documents, without folding any of them.
+async fn shelf(data: &Store) -> Result<HashMap<[u8; 16], Head>> {
+    let heads = crate::record::documents::head_facts(data.db()).await?;
+    Ok(heads.into_iter().map(|h| (h.doc_id, h)).collect())
 }
 
 async fn bank(data: &Store, lines: Vec<Line>) -> Result<()> {
@@ -827,10 +928,10 @@ static CORNER_SEEN: LazyLock<Mutex<HashMap<String, (std::time::Instant, i64)>>> 
 
 /// The corner balance's catch-up: skipped while the persona's files haven't moved since the
 /// last one and it was under a minute ago. The corner asks every ten seconds and on every
-/// autosave, and each catch-up walks the persona's whole history - its documents, its chats,
-/// its heartbeats - to find, nearly always, nothing new; on a large persona that was seconds
-/// of its one database connection per ask, queued in front of everything the person was
-/// actually doing (2026-10-02). The bank page itself always catches up in full.
+/// autosave, and each catch-up used to walk the persona's whole history to find, nearly always,
+/// nothing new - seconds of its one database connection per ask, queued in front of everything
+/// the person was actually doing (2026-10-02). A catch-up reads only what's new since the last
+/// now (2026-10-13, the ledger's marks); the skip still saves the little that's left.
 async fn catch_up_for_corner(state: &AppState, data: &Store, root_hex: &str) -> Result<()> {
     let files = state.user_dbs.db_mtime_ms(root_hex);
     let started = std::time::Instant::now();
@@ -851,12 +952,96 @@ async fn catch_up_for_corner(state: &AppState, data: &Store, root_hex: &str) -> 
 }
 
 async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<()> {
-    recount_stale_publications(data).await?;
-    let have = banked(data).await?;
+    let started = std::time::Instant::now();
+    let docs = data.documents();
+    docs.caught_up().await.map_err(|e| anyhow::anyhow!("reading documents: {e}"))?;
+    let marks = marks(data).await?;
+    // Read before anything past the mark is: a version folded while this pass runs sits above it,
+    // and the next pass reads it.
+    let top = versions_top(data).await?;
+    let now = crate::clock::now_ms();
+    // A walk of everything on the first pass, after a rule changed, or when the row the mark names
+    // isn't there any more (the table rebuilt: a refold, a repair). Every other pass reads what's
+    // new since the last (2026-10-13: a pass walked the whole history every time, holding the
+    // persona's connection for 15-25 s a pass while an agent imported into it).
+    let since = match (&marks.versions, marks.rules) {
+        (Some(at), Some(PUBLICATION_RULES)) if still_there(data, at).await? => Some(at.0),
+        _ => None,
+    };
+    let full = since.is_none();
+    if full {
+        recount_stale_publications(data).await?;
+    }
+    // The documents this pass reads: every one on a walk of everything; else those with a version
+    // past the mark, and - every few minutes - those still waiting to be paid.
+    let mut retried: BTreeSet<[u8; 16]> = BTreeSet::new();
+    let mut fresh: Option<HashSet<[u8; 32]>> = None;
+    let view = match since {
+        None => docs.all().await.map_err(|e| anyhow::anyhow!("reading documents: {e}"))?,
+        Some(mark) => {
+            let past = versions_since(data, mark).await?;
+            if now - marks.pending_ms >= PENDING_EVERY_MS {
+                retried = pending(data).await?;
+            }
+            let ids: BTreeSet<[u8; 16]> =
+                past.iter().map(|(doc, _)| *doc).chain(retried.iter().copied()).collect();
+            fresh = Some(past.into_iter().map(|(_, hash)| hash).collect());
+            if ids.len() > READ_ONE_BY_ONE {
+                let mut all =
+                    docs.all().await.map_err(|e| anyhow::anyhow!("reading documents: {e}"))?;
+                all.docs.retain(|id, _| ids.contains(id));
+                all
+            } else {
+                docs.some(&ids).await.map_err(|e| anyhow::anyhow!("reading documents: {e}"))?
+            }
+        }
+    };
+    // A version this pass weighs: any on a walk of everything; else a new one, or any of a
+    // document being tried again.
+    let weighs = |doc_id: &[u8; 16], hash: &[u8; 32]| match &fresh {
+        None => true,
+        Some(fresh) => fresh.contains(hash) || retried.contains(doc_id),
+    };
+
+    // Who claims each post, read only when a post is in hand: it reads every annotation the
+    // persona has (a fold per post was minutes at 700 posts, 2026-10-01).
+    let mut claimed: Option<HashMap<[u8; 16], [u8; 16]>> = None;
+    if view.docs.values().any(|d| d.lane == "public") {
+        claimed = Some(data.annotations().notes_claiming().await.unwrap_or_default());
+    }
+    // The notes those posts were published from, when this pass didn't read them already.
+    let notes_wanted: BTreeSet<[u8; 16]> = claimed
+        .iter()
+        .flat_map(|c| {
+            view.docs
+                .iter()
+                .filter(|(_, d)| d.lane == "public")
+                .filter_map(|(post, _)| c.get(post).copied())
+        })
+        .filter(|note| !view.docs.contains_key(note))
+        .collect();
+    let notes = if notes_wanted.is_empty() {
+        Default::default()
+    } else {
+        docs.some(&notes_wanted).await.map_err(|e| anyhow::anyhow!("reading documents: {e}"))?
+    };
+
+    // What's paid already. A walk of everything reads the whole ledger; a pass of what's new
+    // reads it all but its words and strokes - one line a version, most of any ledger - and
+    // asks for those only of the versions it weighs.
+    let mut have = banked(data, full).await?;
+    if !full {
+        let weighed: Vec<String> = view
+            .docs
+            .iter()
+            .flat_map(|(id, d)| d.versions.keys().filter(|h| weighs(id, h)).map(hex::encode))
+            .collect();
+        have.extend(paid_for(data, &weighed).await?);
+    }
     let is_new = |kind: &str, source: &str| !have.contains(&(kind.to_string(), source.to_string()));
     let mut lines: Vec<Line> = Vec::new();
-    let docs = data.documents();
-    let view = docs.all().await.map_err(|e| anyhow::anyhow!("reading documents: {e}"))?;
+    // Documents with something this pass couldn't pay: tried again on a later one.
+    let mut unpaid: BTreeSet<[u8; 16]> = BTreeSet::new();
     let mut bodies: HashMap<[u8; 32], Option<Vec<u8>>> = HashMap::new();
     let mut body_of = async |v: &Version| -> Option<Vec<u8>> {
         if let Some(b) = bodies.get(&v.hash) {
@@ -873,6 +1058,9 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             continue;
         }
         for (hash, v) in &doc.versions {
+            if !weighs(doc_id, hash) {
+                continue;
+            }
             let format = Format::from_wire(v.header.format);
             let title = v.header.title.clone();
             match format {
@@ -898,7 +1086,10 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                     if !is_new(kind, &source) {
                         continue;
                     }
-                    let Some(body) = body_of(v).await else { continue };
+                    let Some(body) = body_of(v).await else {
+                        unpaid.insert(*doc_id);
+                        continue;
+                    };
                     let measure = |b: &[u8]| {
                         if format == Format::Drawing {
                             stroke_shapes(b)
@@ -918,7 +1109,8 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                         }
                     }
                     if !readable {
-                        continue; // a parent this computer can't read yet: a later pass
+                        unpaid.insert(*doc_id); // a parent this computer can't read yet
+                        continue;
                     }
                     let added = measure(&body).difference(&before).count() as i64;
                     lines.push(Line {
@@ -934,9 +1126,9 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
 
-    // Publications: once per note, the private amounts again plus the size bonus. Who claims
-    // each post, read once for them all (a fold per post was minutes at 700 posts, 2026-10-01).
-    let claimed = data.annotations().notes_claiming().await.unwrap_or_default();
+    // Publications: once per note, the private amounts again plus the size bonus.
+    let no_claims = HashMap::new();
+    let claims = claimed.as_ref().unwrap_or(&no_claims);
     // The magic words pay once per post that says them (2026-10-05). A persona paid under the old
     // once-ever rule keeps that line, and the post it named isn't paid a second time.
     let paid_once = magic_paid_once(data).await?;
@@ -948,7 +1140,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         if !matches!(Format::from_wire(v.header.format), Format::Marquee | Format::Plaintext) {
             continue;
         }
-        let note = claimed.get(post_id).copied();
+        let note = claims.get(post_id).copied();
         let source = hex::encode(note.unwrap_or(*post_id));
         if !is_new("publication", &source) {
             continue;
@@ -957,7 +1149,9 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         // what the note IS. A drawing's body is stroke data, so it's measured in strokes, never
         // read as words (2026-09-29: a published drawing's JSON counted as thousands of words and
         // paid 12,292 H$); a note of any other kind than words or strokes brings neither.
-        let note_head = note.and_then(|n| view.docs.get(&n)).and_then(|n| n.display_head());
+        let note_head = note
+            .and_then(|n| view.docs.get(&n).or_else(|| notes.docs.get(&n)))
+            .and_then(|n| n.display_head());
         let note_format = note_head.map(|nv| Format::from_wire(nv.header.format));
         let body = match note_head {
             Some(nv) => body_of(nv).await,
@@ -969,7 +1163,10 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
                 .flatten(),
             None => None,
         };
-        let Some(body) = body else { continue };
+        let Some(body) = body else {
+            unpaid.insert(*post_id);
+            continue;
+        };
         let post_hex = hex::encode(post_id);
         if note_format != Some(Format::Drawing)
             && is_new("magic_words", &post_hex)
@@ -1129,20 +1326,33 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
 
     // Contracts: what the private chain says is done, and what is done now that it doesn't say yet.
     let mut done = contracts_done(data).await?;
+    // What the contracts look at of the documents: each one's display head, off the heads memo -
+    // a row a document, never their versions - and read only while a contract that needs it is
+    // open.
+    let shelf = if SHELF_CONTRACTS.iter().any(|c| !done.contains_key(*c)) {
+        shelf(data).await?
+    } else {
+        HashMap::new()
+    };
     if !done.contains_key("draw-a-horse") {
         // The current head of each drawing, read once ever while the contract is open.
+        let unseen: BTreeSet<[u8; 16]> = {
+            let looked = DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned");
+            shelf
+                .iter()
+                .filter(|(_, h)| h.lane == "private" && h.format == Format::Drawing)
+                .filter(|(_, h)| !looked.contains(&h.hash))
+                .map(|(id, _)| *id)
+                .collect()
+        };
+        let drawings = if unseen.is_empty() {
+            Default::default()
+        } else {
+            docs.some(&unseen).await.map_err(|e| anyhow::anyhow!("reading documents: {e}"))?
+        };
         let mut drew = false;
-        for doc in view.docs.values() {
-            if doc.lane != "private" {
-                continue;
-            }
+        for doc in drawings.docs.values() {
             let Some(head) = doc.display_head() else { continue };
-            if Format::from_wire(head.header.format) != Format::Drawing {
-                continue;
-            }
-            if DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").contains(&head.hash) {
-                continue;
-            }
             // A body not here yet is asked again on a later pass; one read is remembered.
             let Some(body) = body_of(head).await else { continue };
             DRAWINGS_LOOKED_AT.lock().expect("looked-at poisoned").insert(head.hash);
@@ -1156,7 +1366,12 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
     // "Post your horse": a published post holding a drawing - posts from before the contract count.
-    if !done.contains_key("post-a-horse") && posted_a_drawing(data, &view, &claimed).await? {
+    if !done.contains_key("post-a-horse") && claimed.is_none() {
+        claimed = Some(data.annotations().notes_claiming().await.unwrap_or_default());
+    }
+    if !done.contains_key("post-a-horse")
+        && posted_a_drawing(data, &shelf, claimed.as_ref().unwrap_or(&no_claims)).await?
+    {
         complete_contract(state, data, root_hex, "post-a-horse", &mut done).await?;
     }
     // "Follow a stranger": interest set, of the person's own accord, in somebody.
@@ -1165,11 +1380,11 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         complete_contract(state, data, root_hex, "follow-a-stranger", &mut done).await?;
     }
     // "Create a private note": one, in a Writer notebook.
-    if !done.contains_key("write-a-note") && wrote_a_private_note(data, &view).await? {
+    if !done.contains_key("write-a-note") && wrote_a_private_note(data, &shelf).await? {
         complete_contract(state, data, root_hex, "write-a-note", &mut done).await?;
     }
     // "Upload an image": a picture of the person's own, not a drawing's copy.
-    if !done.contains_key("upload-an-image") && uploaded_an_image(data, &view).await? {
+    if !done.contains_key("upload-an-image") && uploaded_an_image(data, &shelf).await? {
         complete_contract(state, data, root_hex, "upload-an-image", &mut done).await?;
     }
     // The profile's contracts, off one read of it: a picture, a colourway - each set only by the
@@ -1206,11 +1421,8 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     // a memo that doesn't keep it. Read only while either contract is open, one header a room.
     if !done.contains_key("start-a-room") || !done.contains_key("start-a-chat-for-two") {
         let (mut room, mut im) = (false, false);
-        for (doc_id, d) in &view.docs {
-            let is_room = d.lane == "public"
-                && d.display_head()
-                    .is_some_and(|h| Format::from_wire(h.header.format) == Format::Room);
-            if !is_room {
+        for (doc_id, h) in &shelf {
+            if h.lane != "public" || h.format != Format::Room {
                 continue;
             }
             if crate::chat::is_im(state, root_hex, doc_id).await {
@@ -1229,12 +1441,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     // "Seal a post": a post of the persona's own, trusted only - a room isn't a post here (every
     // chat for two is sealed without anyone choosing to seal it).
     if !done.contains_key("seal-a-post")
-        && view.docs.values().any(|d| {
-            d.lane == "public"
-                && d.display_head().is_some_and(|h| {
-                    h.header.trusted_only && Format::from_wire(h.header.format) != Format::Room
-                })
-        })
+        && shelf.values().any(|h| h.lane == "public" && h.trusted_only && h.format != Format::Room)
     {
         complete_contract(state, data, root_hex, "seal-a-post", &mut done).await?;
     }
@@ -1274,7 +1481,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
             complete_contract(state, data, root_hex, "tag-a-public-post", &mut done).await?;
         }
     }
-    if !done.contains_key("link-two-notes") && linked_two_notes(data, &view).await? {
+    if !done.contains_key("link-two-notes") && linked_two_notes(data, &shelf).await? {
         complete_contract(state, data, root_hex, "link-two-notes", &mut done).await?;
     }
     if !done.contains_key("organize-a-note") && organized_a_note(data).await? {
@@ -1299,7 +1506,39 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
 
+    let paid = lines.len();
     bank(data, lines).await?;
+    // The marks move once the lines are banked: a pass that fails part way is read again whole.
+    if let Some((rowid, hash)) = top {
+        set_mark(data, "versions", rowid, Some(hash)).await?;
+    }
+    set_mark(data, "rules", PUBLICATION_RULES, None).await?;
+    if full {
+        data.db().execute("DELETE FROM bank_pending", ()).await?;
+    }
+    for doc_id in &retried {
+        data.db().execute("DELETE FROM bank_pending WHERE doc_id = ?1", (doc_id.to_vec(),)).await?;
+    }
+    for doc_id in &unpaid {
+        data.db()
+            .execute("INSERT OR IGNORE INTO bank_pending (doc_id) VALUES (?1)", (doc_id.to_vec(),))
+            .await?;
+    }
+    if full || !retried.is_empty() {
+        set_mark(data, "pending_ms", now, None).await?;
+    }
+    let total_ms = started.elapsed().as_millis() as u64;
+    if full || total_ms >= 250 {
+        tracing::info!(
+            full,
+            documents = view.docs.len(),
+            retried = retried.len(),
+            unpaid = unpaid.len(),
+            paid,
+            total_ms,
+            "bank catch-up"
+        );
+    }
     instruments(data).await
 }
 
@@ -1340,7 +1579,7 @@ pub async fn bonds(data: &Store) -> Result<Vec<Bond>> {
 /// then debt - 2% of the balance, compounding, on every heartbeat day that ends below zero.
 /// Heartbeat days are the ledger's own `heartbeat` lines: days, never a clock.
 async fn instruments(data: &Store) -> Result<()> {
-    let have = banked(data).await?;
+    let have = banked(data, false).await?;
     let is_new = |kind: &str, source: &str| !have.contains(&(kind.to_string(), source.to_string()));
     let days: Vec<String> = {
         let mut d: Vec<(String,)> = data
@@ -1714,6 +1953,21 @@ pub async fn gift_handler(
     })))
 }
 
+/// The ledger caught up as a pass of what's new does it, then again as a walk of everything, for
+/// the test rig only (`/test/bank-walk`): the lines before and after - equal when the passes of
+/// what's new missed nothing.
+pub async fn walk_for_test(state: &AppState, data: &Store, root_hex: &str) -> Result<(i64, i64)> {
+    let count = async || -> Result<i64> {
+        let (n,): (i64,) = data.db().fetch_one("SELECT COUNT(*) FROM bank_lines", ()).await?;
+        Ok(n)
+    };
+    catch_up(state, data, root_hex).await?;
+    let before = count().await?;
+    data.db().execute("DELETE FROM bank_marks", ()).await?;
+    catch_up(state, data, root_hex).await?;
+    Ok((before, count().await?))
+}
+
 /// A line put straight into the ledger, for the test rig only (`/test/credit`): funding a persona,
 /// or sinking one into debt, without the months of earning either would take.
 pub async fn credit_for_test(data: &Store, pennies: BigInt) -> Result<()> {
@@ -2007,7 +2261,8 @@ mod tests {
     async fn the_bigint_rung_keeps_the_ledger_and_widens_it() {
         let db = crate::db::test_memory_db().await;
         let ladder = crate::migrations::USER;
-        crate::migrations::climb(&db, &ladder[..ladder.len() - 1], "user").await.unwrap();
+        let rung = ladder.iter().position(|r| r.name == "0031_bank_lines_bigint.sql").unwrap();
+        crate::migrations::climb(&db, &ladder[..rung], "user").await.unwrap();
         db.execute(
             "INSERT INTO bank_lines (kind, source, pennies, at_ms) VALUES ('heartbeat', 'a', -12345, 1), ('words', 'b', 9223372036854775807, 2)",
             (),
@@ -2036,6 +2291,36 @@ mod tests {
         let (back,): (String,) =
             db.fetch_one("SELECT pennies FROM bank_lines WHERE source = 'c'", ()).await.unwrap();
         assert_eq!(back, past);
+    }
+
+    /// The ledger's mark is `doc_versions`' rowid (0033_bank_marks.sql): a table keyed by a hash
+    /// still numbers its rows, in the order they arrive - a row past the mark is one folded after
+    /// it, whatever its key - and a row deleted and refolded comes back under a new number, so
+    /// the hash kept beside the mark notices.
+    #[tokio::test]
+    async fn a_hash_keyed_table_numbers_its_rows_in_arrival_order() {
+        let db = crate::db::test_memory_db().await;
+        db.execute("CREATE TABLE t (h BLOB PRIMARY KEY)", ()).await.unwrap();
+        for h in [[9u8; 4], [1u8; 4], [5u8; 4]] {
+            db.execute("INSERT OR IGNORE INTO t (h) VALUES (?1)", (h.to_vec(),)).await.unwrap();
+        }
+        let (mark, at): (i64, Vec<u8>) =
+            db.fetch_one("SELECT rowid, h FROM t ORDER BY rowid DESC LIMIT 1", ()).await.unwrap();
+        assert_eq!(at, vec![5u8; 4], "the last to arrive is the top, whatever its key");
+        db.execute("INSERT OR IGNORE INTO t (h) VALUES (?1)", (vec![1u8; 4],)).await.unwrap();
+        db.execute("INSERT OR IGNORE INTO t (h) VALUES (?1)", (vec![0u8; 4],)).await.unwrap();
+        let past: Vec<(Vec<u8>,)> =
+            db.fetch_all("SELECT h FROM t WHERE rowid > ?1", (mark,)).await.unwrap();
+        assert_eq!(
+            past,
+            vec![(vec![0u8; 4],)],
+            "only the new row; a refold of an old one is no row"
+        );
+        db.execute("DELETE FROM t", ()).await.unwrap();
+        db.execute("INSERT INTO t (h) VALUES (?1)", (vec![7u8; 4],)).await.unwrap();
+        let there: Option<(Vec<u8>,)> =
+            db.fetch_optional("SELECT h FROM t WHERE rowid = ?1", (mark,)).await.unwrap();
+        assert_ne!(there, Some((vec![5u8; 4],)), "rebuilt: the mark's row isn't the row it named");
     }
 
     /// Every unlock a contract or an unlock names exists, comes earlier in the Market than what

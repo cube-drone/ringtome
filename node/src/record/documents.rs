@@ -3044,6 +3044,103 @@ pub async fn materialize_one(
     Ok((!doc.versions.is_empty()).then_some(doc))
 }
 
+/// The last row `doc_versions` holds - its rowid, the order rows were folded in, and its entry
+/// hash - for a reader that keeps a mark in it (the ledger, bank.rs).
+pub async fn versions_top(db: &Db) -> Result<Option<(i64, Vec<u8>)>, AppError> {
+    db.fetch_optional("SELECT rowid, entry_hash FROM doc_versions ORDER BY rowid DESC LIMIT 1", ())
+        .await
+        .context("reading the last version folded")
+        .map_err(AppError::Internal)
+}
+
+/// The entry hash of the `doc_versions` row numbered `rowid`, if there is one.
+pub async fn version_at(db: &Db, rowid: i64) -> Result<Option<Vec<u8>>, AppError> {
+    let row: Option<(Vec<u8>,)> = db
+        .fetch_optional("SELECT entry_hash FROM doc_versions WHERE rowid = ?1", (rowid,))
+        .await
+        .context("reading a version by its row")
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(h,)| h))
+}
+
+/// Every version folded after the row `rowid`: its document, and its hash.
+pub async fn versions_since(db: &Db, rowid: i64) -> Result<Vec<([u8; 16], [u8; 32])>, AppError> {
+    let rows: Vec<(Vec<u8>, Vec<u8>)> = db
+        .fetch_all("SELECT doc_id, entry_hash FROM doc_versions WHERE rowid > ?1", (rowid,))
+        .await
+        .context("reading the versions folded since a row")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(doc, hash)| Some((doc.try_into().ok()?, hash.try_into().ok()?)))
+        .collect())
+}
+
+/// One document's display head as the heads memo keeps it, with the documents its body embeds.
+pub struct HeadFacts {
+    pub doc_id: [u8; 16],
+    pub lane: String,
+    pub format: Format,
+    pub hash: [u8; 32],
+    pub animation: bool,
+    pub trusted_only: bool,
+    pub refs: Vec<[u8; 16]>,
+}
+
+/// Every document's display head, a row each off `doc_heads` (its embeds off the head's
+/// version): what a reader asks of all the documents without folding any of them. The memo is
+/// read as it stands - the caller catches the view up first.
+pub async fn head_facts(db: &Db) -> Result<Vec<HeadFacts>, AppError> {
+    type Row = (Vec<u8>, String, Option<i64>, Vec<u8>, i64, i64, Option<Vec<u8>>);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT h.doc_id, h.lane, h.format, h.entry_hash, h.animation, h.trusted_only, v.refs
+             FROM doc_heads h LEFT JOIN doc_versions v ON v.entry_hash = h.entry_hash",
+            (),
+        )
+        .await
+        .context("reading every document's head")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(doc, lane, format, hash, animation, trusted_only, refs)| {
+            Some(HeadFacts {
+                doc_id: doc.try_into().ok()?,
+                lane,
+                format: Format::from_wire(format.map(|f| f as u64)),
+                hash: hash.try_into().ok()?,
+                animation: animation != 0,
+                trusted_only: trusted_only != 0,
+                refs: refs.unwrap_or_default().as_chunks::<16>().0.to_vec(),
+            })
+        })
+        .collect())
+}
+
+/// The view's memo brought up to date, and nothing read from it: for a reader that then asks
+/// `doc_versions` its own question (the ledger's "what's new since my mark", bank.rs).
+pub async fn caught_up(db: &Db, keys: &EpochKeys) -> Result<(), AppError> {
+    catch_up(db, keys).await.map(|_| ())
+}
+
+/// A few documents of the view, caught up once and threaded each (`materialize_one`'s, for a
+/// handful): the ones a reader knows changed, without the rest.
+pub async fn materialize_some(
+    db: &Db,
+    keys: &EpochKeys,
+    doc_ids: &BTreeSet<[u8; 16]>,
+) -> Result<DocumentsView, AppError> {
+    let undecryptable = catch_up(db, keys).await?;
+    let mut view = DocumentsView { undecryptable, ..Default::default() };
+    for doc_id in doc_ids {
+        let doc = load_doc(db, doc_id).await?;
+        if !doc.versions.is_empty() {
+            view.docs.insert(*doc_id, doc);
+        }
+    }
+    Ok(view)
+}
+
 /// Every blob each stored version names - its body, and its thumbnail and preview when it has
 /// them - as `(doc_id, blob hash)`, both lanes, deleted documents too (their bytes are still held).
 /// What the storage tally (storage.rs) sizes: one read of the persisted fold, nothing decrypted

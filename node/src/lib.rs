@@ -1041,6 +1041,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route("/test/beat", axum::routing::post(test_endpoints::beat))
             .route("/test/heartbeat", axum::routing::post(test_endpoints::heartbeat))
             .route("/test/credit", axum::routing::post(test_endpoints::credit))
+            .route("/test/bank-walk", axum::routing::post(test_endpoints::bank_walk))
             .route("/test/age-lot", axum::routing::post(test_endpoints::age_lot))
             .route("/test/revalidation", axum::routing::post(test_endpoints::revalidation_mode))
             .route("/test/shelf-stall", axum::routing::post(test_endpoints::shelf_stall))

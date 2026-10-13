@@ -72,6 +72,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("import_policy", vec!["import.rs"]),
         ("super_pins", vec!["frontdoor.rs"]),
         ("bank_lines", vec!["bank.rs"]),
+        ("bank_marks", vec!["bank.rs"]),
+        ("bank_pending", vec!["bank.rs"]),
         ("commodity_days", vec!["commodities.rs"]),
         ("node_shelf", vec!["nodeshelf.rs"]),
         ("node_listing", vec!["nodeshelf.rs"]),
