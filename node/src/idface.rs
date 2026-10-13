@@ -350,10 +350,15 @@ pub(crate) async fn post_page(
     }
     head.push_str(&crate::crawl::json_ld(&post_ld));
     let body = crate::reading::post_copy(state, &db, &root, &post, &title, &author).await;
+    // The same page for every reader - who's asking is the app's business once it's running - so
+    // a CDN may keep it, longer the longer the post has stood (`crawl::public_cache`). Only the
+    // page: the app reads the post's words at their own address, asked every time, so an edit
+    // reaches every reader in the app at once.
+    let cache = crate::crawl::public_cache(Some(post.head_ms));
     Ok(Some(
         (
             StatusCode::OK,
-            [(header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
+            [(header::X_CONTENT_TYPE_OPTIONS, "nosniff"), (header::CACHE_CONTROL, cache.as_str())],
             axum::response::Html(crate::ui::app_page_with(state, &head, &body)),
         )
             .into_response(),
@@ -691,9 +696,12 @@ pub(crate) async fn persona_page_with(
             }
         }
     }
+    // A hosted person's page is the same for every reader, so a CDN may keep it - five minutes,
+    // since it lists the newest posts (`crawl::public_cache`). Anyone else's: asked each time.
+    let cache = if hosted { crate::crawl::public_cache(None) } else { "no-cache".into() };
     Ok((
         status,
-        [(header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
+        [(header::X_CONTENT_TYPE_OPTIONS, "nosniff"), (header::CACHE_CONTROL, cache.as_str())],
         axum::response::Html(crate::ui::app_page_with(state, &head, &body)),
     )
         .into_response())

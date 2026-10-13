@@ -74,6 +74,22 @@ describe('crawling: the public site as a search engine reads it', function () {
         );
     });
 
+    it("lets a CDN keep a public page a while, and asks for a post's words every time (2026-10-13)", async () => {
+        const page = await crawler(`ringtome/user/${short}/a-horse-at-dawn`);
+        assert.equal(
+            page.headers.get('cache-control'),
+            'public, max-age=0, s-maxage=300',
+            'a new post: the five-minute floor',
+        );
+        const person = await crawler(`ringtome/user/${short}`);
+        assert.equal(person.headers.get('cache-control'), 'public, max-age=0, s-maxage=300');
+        // The app reads the words at their own address: kept by nobody, so an edit reaches every
+        // reader in the app at once.
+        const words = await crawler(`ringtome/user/${short}/doc/${post}/body`);
+        assert.equal(words.status, 200);
+        assert.equal(words.headers.get('cache-control'), 'no-cache');
+    });
+
     it("a person's page lists their posts as links, and paging goes further back", async () => {
         const html = await (await crawler(`ringtome/user/${short}`)).text();
         const copy = copyOf(html);

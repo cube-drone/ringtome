@@ -21100,3 +21100,29 @@ their own bags - none loses its turn - and picked again with the newcomers among
 them; the page hands the phone what follows the song it's on again
 (`player.stationAhead`). The memory still keeps a just-heard artist back where
 the slice has another. Four claims in `stations.cjs`; `just ui-check` green.
+
+**2026-10-13 - a CDN keeps public pages, longer the longer they've stood.**
+`/@cube-drone/263--bone-telemetry`, anonymous, while an upload poured into the
+persona: the page 16 s, its words and thumbnail 3.5-5 s each - and as long on a
+refresh. horsedrawingtycoon.com sits behind BunnyCDN, and every one came back
+`cdn-cache: MISS`: the HTML went out with no `Cache-Control` (the CDN said
+`no-cache`), so every visit and every crawler went through to the node. Bunny
+does honour the node's own header - a picture's `s-maxage` comes back a `HIT` in
+80 ms.
+
+A post's page now says `public, max-age=0, s-maxage=<window>`: a tenth of the
+time since the post last changed, from five minutes to a year
+(`crawl::public_cache`); a hosted person's page, which lists the newest posts,
+five minutes. Browsers still ask every time - the CDN answers them. The page is
+the same for every reader (no cookie, nothing per-visitor: the app reads who's
+asking once it runs). No purge (Curtis): an edit or a takedown reaches a page
+the CDN holds once its window is out - weeks, for a post untouched for years.
+
+Two things kept it to the page. The app reads other people's posts' words at
+`/id/<author>/docs/<doc>/body` - kept by the CDN, an edit would have reached
+logged-in readers weeks late too - so words and thumbnails stay `no-cache`. And
+the page names the app it loads (`/static/<version>/app.js`, kept 30 days at the
+CDN) where a browser's app is meant to be as new as its node, so the window also
+counts from the node's start: a release is a restart, and every page served
+after one starts again at five minutes.
+`a_page_is_kept_longer_the_longer_it_has_stood` and a crawling claim pin it.

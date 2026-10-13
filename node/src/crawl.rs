@@ -52,6 +52,36 @@ pub async fn indexable(
         && node_indexed(state).await
 }
 
+/// How long a CDN may keep a public page for anonymous readers: a tenth of the time since it last
+/// changed, at least five minutes and at most a year (Curtis, 2026-10-13: every anonymous visit and
+/// every crawler went through to the node - `no-cache` - and a busy persona made a post's page
+/// 20 s, as long on a refresh as the first time). A browser still asks each time (`max-age=0`);
+/// the CDN answers it. There is no purge: an edit or a takedown reaches a page the CDN holds once
+/// its window is out - weeks, for a post untouched for years - which Curtis accepted over
+/// CDN-specific machinery.
+///
+/// The page names the app it loads (`/static/<version>/app.js`), and a browser's app is meant to
+/// be as new as its node (`update.js`), so the window also counts from this node's start - a
+/// release is a restart: every page served after an update starts again at five minutes.
+pub fn public_cache(last_change_ms: Option<i64>) -> String {
+    let window = cache_window_s(last_change_ms, *STARTED_MS, crate::clock::now_ms());
+    format!("public, max-age=0, s-maxage={window}")
+}
+
+/// `public_cache`'s window, in seconds: a tenth of the time since the later of the last change and
+/// the node's start, from five minutes to a year. No last change known: five minutes.
+fn cache_window_s(last_change_ms: Option<i64>, started_ms: i64, now_ms: i64) -> i64 {
+    const FLOOR_S: i64 = 5 * 60;
+    const CEILING_S: i64 = 365 * 24 * 60 * 60;
+    let Some(changed) = last_change_ms else { return FLOOR_S };
+    let age_s = (now_ms - changed.max(started_ms)).max(0) / 1000;
+    (age_s / 10).clamp(FLOOR_S, CEILING_S)
+}
+
+/// When this node started serving pages - first asked at its first public page, which is no
+/// earlier than its start, so the windows it gives are only ever shorter.
+static STARTED_MS: std::sync::LazyLock<i64> = std::sync::LazyLock::new(crate::clock::now_ms);
+
 /// The head's word to a crawler that a page isn't to be indexed.
 pub const NOINDEX: &str = "\n<meta name=\"robots\" content=\"noindex\">";
 
@@ -395,6 +425,34 @@ pub async fn people_page(State(state): State<AppState>) -> Response {
 
 #[cfg(test)]
 mod tests {
+
+    /// The window grows with the page's age - a tenth of it - between five minutes and a year, and
+    /// counts from the node's start when that's later: a release starts every page over.
+    #[test]
+    fn a_page_is_kept_longer_the_longer_it_has_stood() {
+        const DAY: i64 = 24 * 60 * 60 * 1000;
+        let now = 10_000 * DAY;
+        let long_up = 0;
+        assert_eq!(cache_window_s(None, long_up, now), 300, "no change known: five minutes");
+        assert_eq!(
+            cache_window_s(Some(now - 60_000), long_up, now),
+            300,
+            "a minute old: the floor"
+        );
+        assert_eq!(cache_window_s(Some(now - 10 * DAY), long_up, now), 86_400, "ten days: one");
+        assert_eq!(
+            cache_window_s(Some(now - 100 * 365 * DAY), long_up, now),
+            365 * 24 * 60 * 60,
+            "a century: a year at most"
+        );
+        assert_eq!(
+            cache_window_s(Some(now - 1000 * DAY), now - 10 * DAY, now),
+            86_400,
+            "an old post on a node up ten days: counted from the start"
+        );
+        assert_eq!(cache_window_s(Some(now + DAY), long_up, now), 300, "a claim from the future");
+    }
+
     use super::*;
 
     #[test]
