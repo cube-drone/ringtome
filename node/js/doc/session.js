@@ -16,6 +16,7 @@ import { keepaliveOk } from '../pure/keepalive.js';
 import { parse } from '@cube-drone/marquee-react-renderer';
 import { overCapTargets, replaceTargets, EMBED_CAP } from '../pure/embedcap.js';
 import { t } from '../i18n.js';
+import { askYes } from '../modal.js';
 import { toast } from '../toasts.js';
 
 const AUTOSAVE_MS = 10_000;
@@ -235,12 +236,15 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
     // save a fresh version onto the doc we're deleting. Then navigate away via onDeleted.
     const remove = async () => {
         if (
-            !confirm(
-                t(
+            !(await askYes({
+                title: t('doc.delete-title', 'delete the document'),
+                body: t(
                     'doc.delete-this-document',
                     'Whoa there - delete this document? It leaves the list right away.',
                 ),
-            )
+                yes: t('doc.delete-it', 'delete it'),
+                danger: true,
+            }))
         )
             return;
         const m = machine.current;

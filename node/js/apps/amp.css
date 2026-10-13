@@ -166,6 +166,8 @@
 /* Rows are placed by the page as they scroll into view (apps/amp.js): each one absolute, 30px.
    Nothing in them selects as text: shift-click picks rows, not words. */
 .amp-row {
+    /* Held to pick it (longpress.js), never for iOS's callout. */
+    -webkit-touch-callout: none;
     position: absolute;
     left: 0;
     height: 30px;
@@ -795,4 +797,143 @@
     border: 1px solid var(--border-strong);
     border-radius: 999px;
     font-size: 0.7rem;
+}
+
+/* ---- a phone (Curtis, 2026-10-12, the mobile pass): under 900px ---- */
+
+/* On a phone the title carries the artist under it (apps/amp.js, ROW_HEIGHT_NARROW). */
+.amp-td-two {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    line-height: 1.25;
+}
+
+.amp-td-line,
+.amp-td-sub {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.amp-td-sub {
+    font-size: 0.75rem;
+    font-weight: normal;
+    color: var(--muted);
+}
+
+.amp-row-picked .amp-td-sub {
+    color: inherit;
+    opacity: 0.8;
+}
+
+/* A finger moves a mixtape's row by its handle and a column by its edge: the page mustn't take
+   the gesture as a scroll. */
+.amp-drag-handle,
+.amp-th-edge {
+    touch-action: none;
+}
+
+@media (max-width: 900px) {
+    .amp-main {
+        gap: 0.5rem;
+    }
+
+    .amp-row {
+        font-size: 0.95rem;
+    }
+
+    /* The handle is the whole first cell, a fingertip wide. */
+    .amp-drag-handle {
+        align-self: stretch;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        font-size: 1.2rem;
+    }
+
+    /* A column's edge, wide enough to find. */
+    .amp-th-edge {
+        width: 14px;
+    }
+
+    .amp-th {
+        padding-block: 0.6rem;
+    }
+
+    /* The columns menu, each line a fingertip tall. */
+    .amp-columns-menu label {
+        padding-block: 0.15rem;
+    }
+
+    .amp-columns-button {
+        min-width: 2rem;
+    }
+
+    /* The bar in two lines: the buttons and what's playing, then the scrub with its two toggles.
+       The volume is the phone's own buttons'. */
+    .player-bar {
+        display: grid;
+        grid-template-columns: auto auto 1fr auto auto;
+        column-gap: 0.5rem;
+        row-gap: 0.15rem;
+        padding: 0.35rem 0.5rem;
+    }
+
+    .player-buttons {
+        grid-area: 1 / 1;
+    }
+
+    .player-bar > .player-thumb {
+        grid-area: 1 / 2;
+    }
+
+    .player-now {
+        grid-area: 1 / 3 / 2 / 6;
+        max-width: none;
+        min-width: 0;
+    }
+
+    .player-track {
+        grid-area: 2 / 1 / 3 / 4;
+        min-width: 0;
+    }
+
+    .player-volume {
+        display: none;
+    }
+
+    .player-button {
+        justify-content: center;
+        align-items: center;
+        font-size: 1.3rem;
+    }
+
+    .player-play {
+        font-size: 1.6rem;
+    }
+
+    /* A slice's slider on a line of its own, under its name, so the name has room to be read. */
+    .amp-slice-row {
+        grid-template-columns: auto auto 1fr 3rem;
+        row-gap: 0.1rem;
+    }
+
+    .amp-slice-weight {
+        grid-row: 2;
+        grid-column: 2 / -1;
+    }
+
+    .amp-station-slices {
+        min-width: 0;
+        flex-basis: 100%;
+    }
+
+    .amp-pie {
+        margin: 0 auto;
+    }
+
+    .amp-panel-title {
+        font-size: 1.2rem;
+    }
 }

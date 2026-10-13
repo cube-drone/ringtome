@@ -32,7 +32,7 @@ import { pageStanding } from '../pure/books.js';
 import { isTextDoc } from '../pure/feed.js';
 import { PaneHead } from '../panes.js';
 import { t } from '../i18n.js';
-import { askText } from '../modal.js';
+import { askText, askYes } from '../modal.js';
 import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
@@ -600,12 +600,39 @@ export const WikiTree = ({
     const deleteSection = async (node, parentId) => {
         const descendants = sectionIdsUnder(node);
         const subs = descendants.length - 1;
+        const name = node.title || t('doc.tree.untitled', '(untitled)');
+        const whoa =
+            subs === 0
+                ? t('doc.tree.delete-section-whoa', 'Whoa there - delete the section “{name}”?', {
+                      name,
+                  })
+                : subs === 1
+                  ? t(
+                        'doc.tree.delete-section-one-sub',
+                        'Whoa there - delete the section “{name}”? Its 1 sub-section goes too.',
+                        { name },
+                    )
+                  : t(
+                        'doc.tree.delete-section-subs',
+                        'Whoa there - delete the section “{name}”? Its {n} sub-sections go too.',
+                        { name, n: subs },
+                    );
+        const kept = showUnfiled
+            ? t(
+                  'doc.tree.nothing-inside-unfiled',
+                  'Nothing inside is deleted - it lands in unfiled.',
+              )
+            : t(
+                  'doc.tree.nothing-inside-top',
+                  'Nothing inside is deleted - it moves to the top level.',
+              );
         if (
-            !confirm(
-                `Whoa there - delete the section “${node.title || '(untitled)'}”?` +
-                    (subs ? ` Its ${subs} sub-section${subs === 1 ? '' : 's'} go too.` : '') +
-                    ` Nothing inside is deleted - it ${showUnfiled ? 'lands in unfiled' : 'moves to the top level'}.`,
-            )
+            !(await askYes({
+                title: t('doc.tree.delete-section-title', 'delete the section'),
+                body: `${whoa}\n\n${kept}`,
+                yes: t('doc.tree.delete-it', 'delete it'),
+                danger: true,
+            }))
         )
             return;
         try {

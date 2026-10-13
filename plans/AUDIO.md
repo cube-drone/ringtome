@@ -587,10 +587,10 @@ Head Unit (Auto on a laptop) for the car.
     "background" among them, through Web Audio only while it's on.
 13. **Playing on Android** (section 10, a priority - ruling 22; still last,
     after a mobile usability pass of the UI, which it calls for - Curtis,
-    2026-10-12), in steps: the node booting off the main thread; the plugin with
-    Media3's session, the native player taking the page's queue, the foreground
-    service while it plays, and the shade, lock screen and headphones; then
-    Android Auto's tree
+    2026-10-12; that pass done the same day, HISTORY has it), in steps: the node
+    booting off the main thread; the plugin with Media3's session, the native
+    player taking the page's queue, the foreground service while it plays, and
+    the shade, lock screen and headphones; then Android Auto's tree
     - mixtapes, everything, saved filters - and stations once they exist.
 
 ### What building slices 1 and 2 found

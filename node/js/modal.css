@@ -90,6 +90,17 @@
         width: 2.4rem;
         height: 2.4rem;
     }
+
+    /* A phone's width is too dear for the scrim's wide margin: a dialog takes nearly all of it. */
+    .modal-scrim {
+        padding: calc(0.75rem + var(--safe-top)) calc(0.75rem + var(--safe-right))
+            calc(0.75rem + var(--safe-bottom)) calc(0.75rem + var(--safe-left));
+    }
+
+    .modal-ask-buttons .copy-bucket {
+        font-size: 1rem;
+        padding: 0.4rem 1rem;
+    }
 }
 
 /* A name asked (askText): one line, then cancel and the act itself. */
@@ -147,6 +158,13 @@
     background: var(--teal);
     color: var(--on-accent);
     --line: var(--teal);
+}
+
+/* An act that can't be taken back - a delete, a forget - in the danger colour (askYes's `danger`). */
+.copy-bucket.modal-ask-danger {
+    background: var(--coral);
+    color: var(--on-danger);
+    --line: var(--coral);
 }
 
 .copy-bucket.modal-ask-ok:disabled {

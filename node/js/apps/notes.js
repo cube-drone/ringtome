@@ -35,7 +35,7 @@ import { noteByTitle } from '../pure/bytitle.js';
 import { browseFiles, UNFILED } from '../pure/filebrowse.js';
 import { filesHides, orderDocs, tagCounts } from '../pure/doclist.js';
 import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
-import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
+import { useColWidths, useColTucks, useNarrow, PaneHead, Rail, TagColumn } from '../panes.js';
 import { LinksColumn } from '../doc/linkcol.js';
 import { BucketShelf, BucketSwitcher } from '../buckets.js';
 import { startDocDrag } from '../doc/crosslink.js';
@@ -56,6 +56,7 @@ import { sizeLabel } from '../pure/backups.js';
 import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
 import { BulkPanel } from '../doc/bulk.js';
+import { longPress } from '../longpress.js';
 import { pruneSelection, selectAll, toggleSelection } from '../pure/bulk.js';
 
 const html = htm.bind(h);
@@ -269,6 +270,7 @@ const NoteRowBody = ({
     data-settles
     onMouseDown=${noShiftSelect}
     onClick=${(e) => onSelect(doc.doc_id, e)}
+    ...${longPress(() => onSelect(doc.doc_id, { shiftKey: true }))}
     draggable=${true}
     onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
 >
@@ -388,6 +390,7 @@ const FileTile = ({ doc, root, bucket, bytes, selected, onSelect, onFollowHome, 
             data-settles
             onMouseDown=${noShiftSelect}
             onClick=${(e) => onSelect(doc.doc_id, e)}
+            ...${longPress(() => onSelect(doc.doc_id, { shiftKey: true }))}
             draggable=${true}
             onDragStart=${(e) => startDocDrag(e, root, doc, bucket)}
         >
@@ -449,6 +452,7 @@ const FileBrowser = ({
     empty,
     pickedSet,
     onSelectAll,
+    showPicked,
 }) => html`<div
     class="files-browser"
 >
@@ -515,6 +519,7 @@ const FileBrowser = ({
         html`<p class="notes-count">
             ${t('apps.notes.files-count', '{n} files', { n: browse.files.length })}
             ${' · '}<button class="notes-select-all" onClick=${onSelectAll}>${t('apps.notes.select-all', 'select all')}</button>
+            ${showPicked}
         </p>`
     }
     ${
@@ -596,7 +601,7 @@ export const DocsApp = ({
         bucket,
         { resume: !missing },
     );
-    // The bulk selection (plans/BULK.md): Shift-click and "select all" fill it, and while it holds
+    // The bulk selection (plans/BULK.md): Shift-click (a long press, on a phone) and "select all" fill it, and while it holds
     // anything the bulk panel stands where the open document would. The list's own, never the
     // address's - gone with a reload, as a file manager's is.
     const [picked, setPicked] = useState([]);
@@ -777,6 +782,13 @@ export const DocsApp = ({
         setPicked(selectAll(list));
         settle();
     };
+    // On a phone the list covers the bulk panel, and a long press (longpress.js) keeps it open to
+    // pick more: the way through to what was picked, beside "select all".
+    const narrow = useNarrow();
+    const showPicked =
+        narrow && picked.length > 0
+            ? html`${' · '}<button class="notes-select-all" onClick=${settle}>${t('apps.notes.show-n-selected', 'show {n} selected', { n: picked.length })}</button>`
+            : null;
     const tagsTucked = tucked.has('tags');
     const treeTucked = tucked.has('tree');
     const publishTucked = tucked.has('publish');
@@ -888,6 +900,7 @@ export const DocsApp = ({
                         onFollowHome=${followHome}
                         pickedSet=${pickedSet}
                         onSelectAll=${pickAll}
+                        showPicked=${showPicked}
                         empty=${!docs ? '' : hits === null ? t('apps.notes.nothing-here-yet', 'nothing here yet.') : t('apps.notes.nothing-matches', 'nothing matches.')}
                     />
                     ${/* The persona in all, held at the column's foot (Curtis, 2026-10-02). */ ''}
@@ -932,6 +945,7 @@ export const DocsApp = ({
                                 list.length > 0 &&
                                 html`${' · '}<button class="notes-select-all" onClick=${pickAll}>${t('apps.notes.select-all', 'select all')}</button>`
                             }
+                            ${showPicked}
                         </p>`
                     }
                     ${

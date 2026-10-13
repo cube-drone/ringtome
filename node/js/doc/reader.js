@@ -25,6 +25,7 @@ import { docHref, shareUrl, writeClipboard } from '../links.js';
 import { featuresOf } from '../pure/apps.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
+import { askYes } from '../modal.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { DrawingSurface } from './drawing.js';
 import { useStorage } from '../storage.js';
@@ -133,12 +134,15 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
 
     const remove = async () => {
         if (
-            !confirm(
-                t(
+            !(await askYes({
+                title: t('doc.delete-title', 'delete the document'),
+                body: t(
                     'doc.delete-this-document',
                     'Whoa there - delete this document? It leaves the list right away.',
                 ),
-            )
+                yes: t('doc.delete-it', 'delete it'),
+                danger: true,
+            }))
         )
             return;
         // Leave at once, as the editor does (doc/session.js): a refusal comes back said out loud,

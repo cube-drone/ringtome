@@ -108,10 +108,17 @@ const AskText = ({ title, label, placeholder, initial, ok, onDone }) => {
     <//>`;
 };
 
-/// A yes or a no, asked in the house modal instead of the browser's `confirm()`. `body` is what the
-/// question says (words or markup); resolves true for `yes`, false for `no`, the [x], or Escape.
-export function askYes({ title, body, yes, no }) {
-    if (typeof document === 'undefined') return Promise.resolve(false);
+/// Words for a dialog's body: markup as it is, or a string, its blank-line-separated parts each a
+/// paragraph (a warning in two breaths reads as two).
+const said = (body) =>
+    typeof body === 'string'
+        ? body.split(/\n\s*\n/).map((part, i) => html`<p key=${i}>${part.trim()}</p>`)
+        : body;
+
+/// Mount a dialog on its own at the page, for any handler to await - as the browser's own dialogs
+/// could be - and take it down when `render(done)`'s content calls `done`.
+function mounted(render_) {
+    if (typeof document === 'undefined') return Promise.resolve(undefined);
     return new Promise((resolve) => {
         const host = document.createElement('div');
         document.body.appendChild(host);
@@ -120,22 +127,56 @@ export function askYes({ title, body, yes, no }) {
             host.remove();
             resolve(value);
         };
-        render(
-            html`<${Modal} title=${title} onClose=${() => done(false)}>
-                <div class="modal-ask">
-                    <div class="modal-ask-body">${body}</div>
-                    <div class="modal-ask-buttons">
-                        <button type="button" class="copy-bucket" onClick=${() => done(false)}>${no}</button>
-                        <button
-                            type="button"
-                            class="copy-bucket modal-ask-ok"
-                            ref=${(el) => el && !el.dataset.focused && ((el.dataset.focused = '1'), el.focus())}
-                            onClick=${() => done(true)}
-                        >${yes}</button>
-                    </div>
-                </div>
-            <//>`,
-            host,
-        );
+        render(render_(done), host);
     });
+}
+
+/// Focus an element once, as it first mounts.
+const focusOnce = (el) => el && !el.dataset.focused && ((el.dataset.focused = '1'), el.focus());
+
+/// A yes or a no, asked in the house modal instead of the browser's `confirm()` (Curtis,
+/// 2026-10-12: "standard confirmation and message models", the system's dialogs replaced across the
+/// app). `body` is words or markup; `yes` names the act ("delete it", never "OK"). With `danger` -
+/// a delete, a forget, anything that can't be taken back - the act wears the danger colour and the
+/// keyboard starts on `no`, so Enter alone never destroys anything. Resolves true for `yes`; false
+/// for `no`, the [x], Escape or the scrim.
+export function askYes({ title, body, yes, no = null, danger = false }) {
+    return mounted(
+        (done) => html`<${Modal} title=${title} onClose=${() => done(false)}>
+            <div class="modal-ask">
+                <div class="modal-ask-body">${said(body)}</div>
+                <div class="modal-ask-buttons">
+                    <button
+                        type="button"
+                        class="copy-bucket"
+                        ref=${danger ? focusOnce : null}
+                        onClick=${() => done(false)}
+                    >${no || t('modal.cancel', 'cancel')}</button>
+                    <button
+                        type="button"
+                        class=${danger ? 'copy-bucket modal-ask-danger' : 'copy-bucket modal-ask-ok'}
+                        ref=${danger ? null : focusOnce}
+                        onClick=${() => done(true)}
+                    >${yes}</button>
+                </div>
+            </div>
+        <//>`,
+    ).then((value) => value === true);
+}
+
+/// Something to say, with one button to take it in - the house modal in place of the browser's
+/// `alert()`. Resolves when it's closed, however.
+export function tell({ title, body, ok = null }) {
+    return mounted(
+        (done) => html`<${Modal} title=${title} onClose=${() => done()}>
+            <div class="modal-ask">
+                <div class="modal-ask-body">${said(body)}</div>
+                <div class="modal-ask-buttons">
+                    <button type="button" class="copy-bucket modal-ask-ok" ref=${focusOnce} onClick=${() => done()}>
+                        ${ok || t('modal.ok', 'ok')}
+                    </button>
+                </div>
+            </div>
+        <//>`,
+    );
 }
