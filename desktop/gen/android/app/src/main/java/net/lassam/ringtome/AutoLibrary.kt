@@ -81,7 +81,7 @@ object AutoLibrary {
     val all = lists(context)
     if (!mediaId.startsWith(LIST) || i !in 0 until all.length()) return emptyList()
     val items = all.getJSONObject(i).optJSONArray("items") ?: return emptyList()
-    return (0 until items.length()).map { k -> song(items.getJSONObject(k), "$SONG$i/$k") }
+    return (0 until items.length()).map { k -> song(context, items.getJSONObject(k), "$SONG$i/$k") }
   }
 
   /** A browsed item, played: a list from its top, or a song with the rest of its list after it. */
@@ -101,7 +101,7 @@ object AutoLibrary {
   }
 
   /** A song as the player takes it: where it is, and what it is. */
-  fun song(o: JSONObject, mediaId: String): MediaItem {
+  fun song(context: Context, o: JSONObject, mediaId: String): MediaItem {
     val url = o.getString("url")
     val meta = MediaMetadata.Builder()
       .setTitle(o.optString("title"))
@@ -110,7 +110,8 @@ object AutoLibrary {
       .setIsBrowsable(false)
       .setIsPlayable(true)
       .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
-    o.optString("art").ifEmpty { null }?.let { meta.setArtworkUri(Uri.parse(it)) }
+    // The cover as the car can read it (ArtProvider): the node's address needs a sign-in it hasn't.
+    ArtProvider.forCar(context, o.optString("art"))?.let { meta.setArtworkUri(it) }
     if (o.optLong("durationMs") > 0) meta.setDurationMs(o.optLong("durationMs"))
     return MediaItem.Builder()
       .setMediaId(mediaId)

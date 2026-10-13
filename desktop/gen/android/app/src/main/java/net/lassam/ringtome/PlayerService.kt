@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceBitmapLoader
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -81,10 +82,16 @@ class PlayerService : MediaLibraryService() {
     })
     session = MediaLibrarySession.Builder(this, player, Library())
       // Covers by the same signed-in road: a person's own sounds' thumbnails are behind their sign-in.
+      // A cover is a `content://` address now (ArtProvider, for the car), which the default source
+      // reads; the web's still go by the signed-in one.
       .setBitmapLoader(
-        DataSourceBitmapLoader(MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()), signedIn)
+        DataSourceBitmapLoader(
+          MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
+          DefaultDataSource.Factory(this, signedIn),
+        )
       )
       .build()
+    ArtProvider.grantTo(this)
   }
 
   override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session

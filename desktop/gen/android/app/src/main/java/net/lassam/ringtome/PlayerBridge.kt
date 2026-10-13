@@ -65,7 +65,7 @@ class PlayerBridge(private val activity: Activity, private val webView: WebView)
     val all = JSONArray(json)
     return (0 until all.length()).map { i ->
       val song = all.getJSONObject(i)
-      AutoLibrary.song(song, KEY + song.getString("key"))
+      AutoLibrary.song(activity, song, KEY + song.getString("key"))
     }
   }
 

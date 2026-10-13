@@ -47,6 +47,13 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
+        <!-- Songs' covers for Android Auto, which may read them and nothing else (ArtProvider.kt). -->
+        <provider
+          android:name=".ArtProvider"
+          android:authorities="${applicationId}.art"
+          android:exported="false"
+          android:grantUriPermissions="true" />
+
         <provider
           android:name="androidx.core.content.FileProvider"
           android:authorities="${applicationId}.fileprovider"
