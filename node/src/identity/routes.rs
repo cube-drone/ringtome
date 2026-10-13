@@ -8359,17 +8359,26 @@ async fn taxonomy_get_handler(
         ms
     };
     let mut at = std::time::Instant::now();
-    let tree = data.taxonomies().tree(&taxonomy_id).await?;
+    // The tree, and its documents' annotations, buckets and pins, from one read of the doc-meta
+    // view (2026-10-13: each was a catch-up and a read of its own, the annotations and buckets
+    // every document's in the persona).
+    let meta = data.doc_meta().await?;
+    let tree = meta.tree(&taxonomy_id);
     let tree_ms = lap(&mut at);
 
     // One summaries query for every own document in the whole tree.
     let mut own_ids = Vec::new();
     collect_doc_ids(&tree, &own_root, &mut own_ids);
-    let annots = annotation_map(&data).await?;
+    let annots = meta.annotations_of(&own_ids).into_iter().map(|a| (a.doc_id.clone(), a)).collect();
     let annots_ms = lap(&mut at);
-    let buckets = bucket_map(&data).await?;
+    let buckets = meta
+        .buckets_of(&own_ids)
+        .into_iter()
+        .map(|(doc_id, names)| (hex::encode(doc_id), names))
+        .collect();
     let buckets_ms = lap(&mut at);
-    let pinned = data.documents().pinned().await?;
+    let pinned = meta.pinned();
+    drop(meta);
     let pinned_ms = lap(&mut at);
     let implicit = data.documents().implicit_tags_as_indexed().await?;
     let implicit_ms = lap(&mut at);

@@ -34,7 +34,7 @@ import { featuresOf, itemNoun, itemPlural, bucketHolds, FILES_BUCKET } from '../
 import { noteByTitle } from '../pure/bytitle.js';
 import { browseFiles, UNFILED } from '../pure/filebrowse.js';
 import { filesHides, orderDocs, tagCounts } from '../pure/doclist.js';
-import { WikiTree, ensureTreeRoot } from '../doc/tree.js';
+import { WikiTree, fileNewIntoTree } from '../doc/tree.js';
 import { useColWidths, useColTucks, useNarrow, PaneHead, Rail, TagColumn } from '../panes.js';
 import { LinksColumn } from '../doc/linkcol.js';
 import { BucketShelf, BucketSwitcher } from '../buckets.js';
@@ -854,13 +854,9 @@ export const DocsApp = ({
             // When the tree column exists, a new document also takes its place in the tree - the
             // last child of the root (append), where it's visible and draggable into shape,
             // rather than invisibly unfiled.
+            // The tree pane shows it there at once, and reads the tree again once it's filed.
             if (feat.tree) {
-                const rootTax = await ensureTreeRoot(root, bucket);
-                await api(`/api/identity/${root}/taxonomies/${rootTax}/members/${made.doc_id}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({}),
-                });
-                bumpTree(); // don't wait for the roster tick
+                await fileNewIntoTree(root, bucket, made.doc_id, { title: named, format });
             }
         } catch (e) {
             toast(

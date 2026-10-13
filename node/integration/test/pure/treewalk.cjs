@@ -8,9 +8,21 @@
 const assert = require('node:assert');
 
 let flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex, parentsOf;
+let withMember, withoutMember, memberIn, retitled;
 before(async () => {
-    ({ flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex, parentsOf } =
-        await import('../../../js/pure/treewalk.js'));
+    ({
+        flatDocs,
+        pathToDoc,
+        sectionIdsUnder,
+        filedDocIds,
+        docsInsideOnly,
+        dropIndex,
+        parentsOf,
+        withMember,
+        withoutMember,
+        memberIn,
+        retitled,
+    } = await import('../../../js/pure/treewalk.js'));
 });
 
 const sec = (id, members, title = id) => ({ taxonomy_id: id, title, members });
@@ -196,5 +208,67 @@ describe('dropIndex (where a dragged member lands)', () => {
 
     it('drops onto the top of the list as index 0', () => {
         assert.equal(dropIndex(members, 'c', 'a', false), 0);
+    });
+});
+
+// The tree pane's edits (2026-10-13): what a drag, a new page or an unfile shows before the node has
+// answered, applied to whatever tree it last sent - so each is pure, and each is idempotent.
+describe('tree edits, shown ahead of the node', () => {
+    const ids = (node) => node.members.map((m) => m.doc_id);
+    const section = (tree, id) => pathToDoc(tree, id);
+
+    it('places a member at an index counted without itself, or appends', () => {
+        const t = withMember(TREE, 'mains', leaf('d4'), 1);
+        assert.deepEqual(ids(memberIn(t, 'root', 'mains').taxonomy), ['d3', 'd4', 'd1']);
+        const appended = withMember(TREE, 'mains', leaf('d9'));
+        assert.deepEqual(ids(memberIn(appended, 'root', 'mains').taxonomy), ['d3', 'd1', 'd9']);
+        const past = withMember(TREE, 'mains', leaf('d9'), 40);
+        assert.deepEqual(ids(memberIn(past, 'root', 'mains').taxonomy), ['d3', 'd1', 'd9']);
+    });
+
+    it('placed again, a member moves: never a second copy in one section', () => {
+        const t = withMember(TREE, 'mains', leaf('d1'), 0);
+        assert.deepEqual(ids(memberIn(t, 'root', 'mains').taxonomy), ['d1', 'd3']);
+    });
+
+    it('is idempotent: a fetch that already holds the edit gets it again, unchanged', () => {
+        const once = withMember(TREE, 'cold', leaf('d4'));
+        assert.deepEqual(withMember(once, 'cold', leaf('d4')), once);
+        const gone = withoutMember(TREE, 'root', 'd4');
+        assert.deepEqual(withoutMember(gone, 'root', 'd4'), gone);
+    });
+
+    it('edits a nested section, and the root itself', () => {
+        const t = withoutMember(withMember(TREE, 'cold', leaf('d4')), 'root', 'd4');
+        assert.deepEqual(
+            section(t, 'd4').map((s) => s.taxonomy_id),
+            ['starters', 'cold'],
+        );
+        assert.deepEqual(ids(t), ['starters', 'mains']);
+    });
+
+    it('leaves the tree it was given alone', () => {
+        const before = JSON.stringify(TREE);
+        withMember(TREE, 'cold', leaf('d9'), 0);
+        withoutMember(TREE, 'mains', 'd1');
+        retitled(TREE, 'cold', 'chilled');
+        assert.equal(JSON.stringify(TREE), before);
+    });
+
+    it('a section it does not hold, or holds only as a stub, is no edit at all', () => {
+        assert.equal(withMember(TREE, 'nowhere', leaf('d9')), TREE);
+        const withStub = sec('root', [inTree(sec('a', [leaf('d1')])), inTree(stub('a'))]);
+        const t = withMember(withStub, 'a', leaf('d2'));
+        assert.deepEqual(ids(t.members[0].taxonomy), ['d1', 'd2'], 'the expansion is edited');
+        assert.equal(t.members[1].taxonomy.members, undefined, 'the stub stays a stub');
+    });
+
+    it('renames a section wherever it appears, its stubs included', () => {
+        const withStub = sec('root', [inTree(sec('a', [])), inTree(stub('a'))]);
+        const t = retitled(withStub, 'a', 'renamed');
+        assert.deepEqual(
+            t.members.map((m) => m.taxonomy.title),
+            ['renamed', 'renamed'],
+        );
     });
 });

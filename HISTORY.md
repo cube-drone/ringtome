@@ -20991,3 +20991,77 @@ after the first time?" It doesn't.
   `bank.cjs`'s new claim over the whole ledger persona's history.
   `a_hash_keyed_table_numbers_its_rows_in_arrival_order` pins the rowid
   behaviour the marks lean on, in turso.
+
+**2026-10-13 - the tree moves when you move it.** Curtis, in "Impossible
+Landscapes" (Cube Drone, 5,207 documents): a note made in a section appeared in
+unfiled, a drag into the section did nothing, and a while later the note jumped
+into place on its own. No tree edit was optimistic: each awaited its writes, in
+turn, then a whole-tree read, before anything on screen moved - and that read
+was 13-18 s on the live server that morning. Unfiled is the notebook's notes
+less the tree last read, so a new note sat there for the whole round trip.
+
+- **Edits shown ahead of the node** (doc/tree.js): a new page or section, a
+  drag, an unfile, a rename, a section's delete each change the tree on screen
+  at once - pure, idempotent edits in `pure/treewalk.js` (`withMember`,
+  `withoutMember`, `memberIn`, `retitled`, pinned in `treewalk.cjs`) - and their
+  writes follow one edit after another. A pane shows the fetched tree with every
+  edit it can't have seen applied on top: a read drops only the edits whose
+  writes were done before it left, so a read already on its way doesn't snap a
+  drag back. A refused write takes its edit back off and says why; the tree is
+  read again once the last write is done.
+- **Kept per notebook, not per pane**: opening the page a pane just made is a
+  new route, which mounts a new pane while the writes are still out - the
+  harness caught the first cut losing its edit exactly there.
+- **The list's "new"** files through `fileNewIntoTree`, the same queue: a note
+  made there shows at the top of the tree at once, never in unfiled.
+
+`harness/tree-optimistic-probe.mjs` holds every tree write and read, as a slow
+server would, and checks: a new note in its section and not unfiled, the list's
+new note at the top, a drag where it was dropped - all before the node answers;
+nothing snapping back once it does, and the node agreeing; a refused move put
+back, with its reason. `just ui-check` green.
+
+**2026-10-13 - a tree's summaries in one statement, not one a document.** The
+tree read (`GET /taxonomies/<tree>`) joined every document it holds against the
+heads memo through `heads_for`, which asked once per document - about 400
+statements for the live "Impossible Landscapes" agent import's tree, each
+queueing for the persona's connection on its own: `summaries_ms` was 7-13 s of
+those 13-18 s reads. It asks 500 ids a statement now (`IN (...)`, the
+`edgegraph.rs` way), and answers as before - in the order asked, a repeat
+repeated, an unknown id absent - which
+`heads_for_answers_in_the_order_asked_across_statements` pins across the chunk
+boundary. On a scratch node, a 299-note tree's summaries: 2 ms, one statement.
+The tree pane, `make_section` and the tag reads all ride it.
+
+**2026-10-13 - a read waits for the connection once, not once a statement.** An
+agent moving notes while an upload ran: an 8-note tree read took 6-15 s, 85-90%
+of it `db_wait_ms`, in 123-129 statements - and the live `read_notebook`, at 698
+documents, 108 s. A request paid for every statement it sent, each queueing for
+the persona's one connection behind the upload's writes; the work was small.
+Three cuts:
+
+- **A catch-up with nothing new asks nothing** (`imaol::rows_past_watermarks`).
+  Every read folds what's new first, and finding nothing cost one statement plus
+  three an author. The answer depends on `entries` and `view_watermarks` only,
+  so it is kept on the handle, stamped with the persona's `entries` write count
+  (`db::writes_to`) and its service's watermark moves - every watermark write is
+  in `imaol.rs` and says which service it moved, so one service's fold leaves
+  the others' answers standing.
+- **When it must ask, it waits once** (`Db::hold`): its seeks run back to back
+  under one turn of the statement lock instead of each going to the back of the
+  line.
+- **The tree read reads doc-meta once** (`Store::doc_meta`, `DocMeta`): the
+  tree, and its documents' annotations, buckets and pins, from one view. It was
+  five catch-ups and three folds of the whole view, the annotations and buckets
+  every document's in the persona. The roster is a set, read once, not copied
+  for each member walked (`place`'s cycle check too).
+
+Counted on a test store with one author: the tree read went from 48 statements
+to 7 with nothing new, and from 50 to 33 after a write (the rest is folding it).
+Live, with several authors, every no-op catch-up was ~15-25 statements and a
+tree read made eight. `a_catch_up_with_nothing_new_asks_nothing` and
+`the_doc_meta_reading_matches_the_whole_persona_reads` pin it.
+
+Not explained yet: each taxonomy write's chain-head lookup took 330-505 ms live,
+24 µs locally on a 20,000-entry chain - not its plan, nor the WAL (1.5 MB), nor
+a second connection.

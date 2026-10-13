@@ -339,7 +339,9 @@ async fn catch_up_published_edges(db: &Db) -> Result<(), AppError> {
     }
 
     let mut advance: BTreeMap<String, u64> = BTreeMap::new();
-    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in rows {
+    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in
+        std::sync::Arc::unwrap_or_clone(rows)
+    {
         advance.insert(author_hex, seq as u64);
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;
@@ -456,7 +458,9 @@ async fn catch_up_rebroadcasts(db: &Db) -> Result<(), AppError> {
     }
 
     let mut advance: BTreeMap<String, u64> = BTreeMap::new();
-    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in rows {
+    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in
+        std::sync::Arc::unwrap_or_clone(rows)
+    {
         advance.insert(author_hex, seq as u64);
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;
@@ -709,7 +713,9 @@ async fn catch_up_annotations(db: &Db) -> Result<(), AppError> {
         return Ok(());
     }
     let mut advance: BTreeMap<String, u64> = BTreeMap::new();
-    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in rows {
+    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in
+        std::sync::Arc::unwrap_or_clone(rows)
+    {
         advance.insert(author_hex, seq as u64);
         let Ok(signed) = SignedEntry::decode(&bytes) else {
             continue;
@@ -987,6 +993,7 @@ async fn drop_views_fed_by(
             .await
             .context("clearing view watermarks")
             .map_err(AppError::Internal)?;
+        watermarks_moved(db, Some(*service_id));
     }
     Ok(())
 }
@@ -1193,7 +1200,7 @@ pub(crate) async fn entries_past_watermarks(
 ) -> Result<Vec<SignedEntry>, AppError> {
     rows_past_watermarks(db, service_id, type_id)
         .await?
-        .into_iter()
+        .iter()
         .map(|row| {
             SignedEntry::decode(&row.bytes)
                 .map_err(|e| AppError::Internal(anyhow!("stored entry fails decode: {e}")))
@@ -1203,6 +1210,7 @@ pub(crate) async fn entries_past_watermarks(
 
 /// One stored entry past its chain's watermark, undecoded - for the keyless folds, which skip
 /// what will not decode rather than fail on it.
+#[derive(Clone)]
 pub(crate) struct PastWatermark {
     pub author: String,
     pub bytes: Vec<u8>,
@@ -1213,7 +1221,70 @@ pub(crate) struct PastWatermark {
 /// `entries_past_watermarks`' seeks, the rows raw: every fold read goes through here (the
 /// published-edges, rebroadcasts and annotations folds walked their whole history by a
 /// LEFT JOIN on the watermark until the 2026-10-07 plan audit).
+///
+/// The answer depends on two tables only, `entries` and `view_watermarks`, so it is kept on the
+/// handle stamped with their write counts (`db::writes_to`, taken before the seeks), and asked
+/// again only once either has moved. The seeks cost one statement plus three an author even
+/// when nothing is new, and every read pays a catch-up first: a notebook's tree read made about
+/// eight of them, 129 statements for an 8-note tree, each waiting its turn on the persona's one
+/// connection behind an upload's writes - 6 to 15 s a read (2026-10-13).
 pub(crate) async fn rows_past_watermarks(
+    db: &Db,
+    service_id: u32,
+    type_id: u32,
+) -> Result<std::sync::Arc<Vec<PastWatermark>>, AppError> {
+    let stamp = {
+        let memo = db.fold_memo.lock().expect("fold memo poisoned");
+        let stamp = (
+            crate::db::writes_to(db.writes_key(), "entries"),
+            memo.moved.get(&service_id).copied().unwrap_or(0),
+        );
+        if let Some((at, rows)) = memo.kept.get(&(service_id, type_id)) {
+            if *at == stamp {
+                return Ok(rows.clone());
+            }
+        }
+        stamp
+    };
+    let rows = std::sync::Arc::new(seek_past_watermarks(db, service_id, type_id).await?);
+    // A long answer is a first fold or a backlog, folded next and so not asked again unchanged;
+    // only the short ones - nothing new, or the few a stall holds back - are worth keeping.
+    if rows.len() <= FOLD_MEMO_ROWS {
+        let mut memo = db.fold_memo.lock().expect("fold memo poisoned");
+        memo.kept.insert((service_id, type_id), (stamp, rows.clone()));
+    }
+    Ok(rows)
+}
+
+/// The catch-up's last answers, per `(service, entry_type)`, each stamped with what it was asked
+/// under: the persona's `entries` write count and its service's watermark moves. Every write to
+/// `view_watermarks` is in this file and says which service it moved (`watermarks_moved`), so a
+/// fold in one service leaves every other service's answer standing.
+#[derive(Default)]
+pub(crate) struct FoldMemo {
+    kept: std::collections::HashMap<(u32, u32), ((u64, u64), std::sync::Arc<Vec<PastWatermark>>)>,
+    moved: std::collections::HashMap<u32, u64>,
+}
+
+/// A service's watermarks moved: its kept catch-up answers are stale. Called after the write, so
+/// a read that stamped before it can't keep what it found.
+fn watermarks_moved(db: &Db, service_id: Option<u32>) {
+    let mut memo = db.fold_memo.lock().expect("fold memo poisoned");
+    match service_id {
+        Some(service_id) => *memo.moved.entry(service_id).or_default() += 1,
+        None => {
+            memo.kept.clear();
+            for moved in memo.moved.values_mut() {
+                *moved += 1;
+            }
+        }
+    }
+}
+
+/// The most rows a kept catch-up answer holds.
+const FOLD_MEMO_ROWS: usize = 64;
+
+async fn seek_past_watermarks(
     db: &Db,
     service_id: u32,
     type_id: u32,
@@ -1221,14 +1292,15 @@ pub(crate) async fn rows_past_watermarks(
     let (svc, ty) = (i64::from(service_id), i64::from(type_id));
     let mut out = Vec::new();
     let mut after = String::new();
+    let mut held = db.hold().await;
     loop {
-        let author: Option<(String,)> = db
+        let author: Option<(String,)> = held
             .fetch_optional(FOLD_NEXT_AUTHOR, (svc, ty, after.as_str()))
             .await
             .context("finding the next author past view watermarks")
             .map_err(AppError::Internal)?;
         let Some((author,)) = author else { break };
-        let folded: Option<(i64,)> = db
+        let folded: Option<(i64,)> = held
             .fetch_optional(
                 "SELECT folded_seq FROM view_watermarks WHERE author_pubkey = ?1 AND service = ?2",
                 (author.as_str(), svc),
@@ -1236,7 +1308,7 @@ pub(crate) async fn rows_past_watermarks(
             .await
             .context("reading a view watermark")
             .map_err(AppError::Internal)?;
-        let rows: Vec<(Vec<u8>, i64, i64)> = db
+        let rows: Vec<(Vec<u8>, i64, i64)> = held
             .fetch_all(FOLD_PAST_SEQ, (svc, ty, author.as_str(), folded.map_or(-1, |(seq,)| seq)))
             .await
             .context("reading entries past view watermarks")
@@ -1274,6 +1346,7 @@ pub(crate) async fn lower_watermark(
     .await
     .context("lowering view watermark")
     .map_err(AppError::Internal)?;
+    watermarks_moved(db, Some(service_id));
     Ok(())
 }
 
@@ -1294,6 +1367,7 @@ pub(crate) async fn advance_watermark(
     .await
     .context("advancing view watermark")
     .map_err(AppError::Internal)?;
+    watermarks_moved(db, Some(service_id));
     Ok(())
 }
 
@@ -1316,6 +1390,7 @@ pub(crate) async fn view_watermark(db: &Db, author_hex: &str, service_id: u32) -
 #[cfg(test)]
 pub(crate) async fn reset_watermarks_for_test(db: &Db) {
     db.execute("DELETE FROM view_watermarks", ()).await.unwrap();
+    watermarks_moved(db, None);
 }
 
 /// Test-only: copy every entry row of one database into another - a second replica that holds

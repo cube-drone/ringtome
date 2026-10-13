@@ -279,6 +279,43 @@ pub struct Db {
     /// bell for the whole node (each consumer re-checks its own frontier and acts only if it
     /// actually moved, so no per-root routing is needed).
     write_nudge: Option<WriteNudge>,
+    /// The catch-up's last answers (`record::imaol::rows_past_watermarks`). Shared by clones,
+    /// like the locks.
+    pub(crate) fold_memo: std::sync::Arc<Mutex<crate::record::imaol::FoldMemo>>,
+}
+
+/// The statement lock, held across a run of statements (`Db::hold`). Each statement is still
+/// counted and timed on its own; the wait is the run's, charged to its first.
+pub struct Held<'d> {
+    db: &'d Db,
+    _guard: tokio::sync::MutexGuard<'d, ()>,
+    wait: Option<std::time::Duration>,
+}
+
+impl Held<'_> {
+    pub async fn fetch_optional<T: FromRow>(
+        &mut self,
+        sql: &str,
+        params: impl IntoParams,
+    ) -> Result<Option<T>> {
+        self.db.note_write(sql);
+        let started = std::time::Instant::now();
+        let first = self.db.fetch_optional_locked(sql, params).await;
+        self.db.timed(sql, self.wait.take().unwrap_or_default(), started);
+        first
+    }
+
+    pub async fn fetch_all<T: FromRow>(
+        &mut self,
+        sql: &str,
+        params: impl IntoParams,
+    ) -> Result<Vec<T>> {
+        self.db.note_write(sql);
+        let started = std::time::Instant::now();
+        let all = self.db.fetch_all_locked(sql, params).await;
+        self.db.timed(sql, self.wait.take().unwrap_or_default(), started);
+        all
+    }
 }
 
 /// The write-nudge bus: a `()` broadcast fired on every locally-signed write. Consumers
@@ -399,6 +436,17 @@ impl Db {
             let mut counts = TABLE_WRITES.lock().expect("table write counts poisoned");
             *counts.entry(format!("{}/{table}", self.writes_key())).or_default() += 1;
         }
+    }
+
+    /// The statement lock held for a short run of statements, which then wait for the connection
+    /// once instead of once each. For runs of index seeks that cost microseconds apiece: queued
+    /// one by one, each went to the back of the line behind whatever else held the persona's
+    /// connection, and a catch-up's 1 + 3-an-author seeks waited out an upload's writes over and
+    /// over (2026-10-13). Never call the handle's own statement methods while holding it - they
+    /// take the lock this holds.
+    pub async fn hold(&self) -> Held<'_> {
+        let (guard, wait, _) = self.statement_lock().await;
+        Held { db: self, _guard: guard, wait: Some(wait) }
     }
 
     /// Take the statement lock, noting how long the wait was.
@@ -854,6 +902,7 @@ fn connect(database: turso::Database, name: &str) -> Result<Db> {
         ephemeral_heads: None,
         root: None,
         write_nudge: None,
+        fold_memo: Default::default(),
     })
 }
 

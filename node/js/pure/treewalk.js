@@ -137,3 +137,88 @@ export function dropIndex(members, dragId, refId, after) {
     if (i === -1) return undefined;
     return after ? i + 1 : i;
 }
+
+// ---- edits, shown ahead of the node (2026-10-13) ----
+//
+// The tree pane changes what's on screen when a page is dragged, made or unfiled, and the writes
+// follow (doc/tree.js). Each edit is one of these, applied to whatever tree the node last sent -
+// and so each must be idempotent: a fetch that already holds the edit gets it again, unchanged.
+// Every one returns a new tree and leaves the one it was given alone. A section is edited at its
+// first expansion; a stub is never edited (its expansion is the one that counts).
+
+/// The first expansion of section `id` in a tree, the root included.
+function sectionIn(node, id) {
+    if (!node || !node.members) return null;
+    if (node.taxonomy_id === id) return node;
+    for (const m of node.members) {
+        if (m.taxonomy && m.taxonomy.members) {
+            const found = sectionIn(m.taxonomy, id);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+/// A tree with section `id`'s members changed by `change` (members => members), or the same tree
+/// when it holds no such section.
+function editSection(tree, id, change) {
+    if (!sectionIn(tree, id)) return tree;
+    const done = { at: false };
+    const walk = (node) => {
+        if (done.at || !node.members) return node;
+        if (node.taxonomy_id === id) {
+            done.at = true;
+            return { ...node, members: change(node.members) };
+        }
+        let moved = false;
+        const members = node.members.map((m) => {
+            if (done.at || !m.taxonomy || !m.taxonomy.members) return m;
+            const taxonomy = walk(m.taxonomy);
+            if (taxonomy === m.taxonomy) return m;
+            moved = true;
+            return { ...m, taxonomy };
+        });
+        return moved ? { ...node, members } : node;
+    };
+    return walk(tree);
+}
+
+/// The member `docId` as section `parentId` holds it, or null.
+export function memberIn(tree, parentId, docId) {
+    const section = sectionIn(tree, parentId);
+    return (section && section.members.find((m) => m.doc_id === docId)) || null;
+}
+
+/// `member` placed in section `parentId` at `index`, counted without the member itself (the
+/// member PUT's contract, `dropIndex`'s answer); undefined, or past the end, appends. Placed
+/// again, it moves - never a second copy in one section.
+export function withMember(tree, parentId, member, index) {
+    return editSection(tree, parentId, (members) => {
+        const rest = members.filter((m) => m.doc_id !== member.doc_id);
+        const at = index === undefined || index > rest.length ? rest.length : index;
+        return [...rest.slice(0, at), member, ...rest.slice(at)];
+    });
+}
+
+/// Section `parentId` without its member `docId`.
+export function withoutMember(tree, parentId, docId) {
+    return editSection(tree, parentId, (members) => members.filter((m) => m.doc_id !== docId));
+}
+
+/// Every expansion and stub of section `id` titled `title`.
+export function retitled(tree, id, title) {
+    const walk = (node) => {
+        const own = node.taxonomy_id === id ? { ...node, title } : node;
+        if (!own.members) return own;
+        let moved = own !== node;
+        const members = own.members.map((m) => {
+            if (!m.taxonomy) return m;
+            const taxonomy = walk(m.taxonomy);
+            if (taxonomy === m.taxonomy) return m;
+            moved = true;
+            return { ...m, taxonomy };
+        });
+        return moved ? { ...own, members } : node;
+    };
+    return tree ? walk(tree) : tree;
+}

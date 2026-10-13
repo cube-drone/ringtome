@@ -6,7 +6,7 @@
 // leaves. Renders the expanded tree straight off `GET /taxonomies/{root}`, refetched when the
 // streamed roster ticks; drag-to-reorganize rides the member PUT's drag-shaped index contract.
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from '../net.js';
@@ -23,9 +23,13 @@ import {
     dropIndex,
     filedDocIds,
     flatDocs,
+    memberIn,
     parentsOf,
     pathToDoc,
+    retitled,
     sectionIdsUnder,
+    withMember,
+    withoutMember,
 } from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
 import { pageStanding } from '../pure/books.js';
@@ -71,6 +75,71 @@ export async function unfileFromTree(root, bucket, docId) {
     for (const pid of parentsOf(tree, docId)) {
         await api(`/api/identity/${root}/taxonomies/${pid}/members/${docId}`, { method: 'DELETE' });
     }
+}
+
+// The edits shown ahead of the node (Curtis, 2026-10-13: a new page sat in unfiled, and a drag
+// did nothing, until the writes and a whole-tree read had gone round a busy server). Each edit
+// changes what a pane shows at once - `apply`, tree => tree, idempotent (pure/treewalk.js) - and
+// its writes follow, one edit after another. A pane shows the tree the node last sent with every
+// edit that tree can't have seen applied on top, so a read that left before a drag landed doesn't
+// undo it. Kept per notebook, here rather than in a pane: opening the page a pane just made is a
+// new route, which mounts a new pane while the old one's writes are still out.
+const notebookEdits = new Map(); // `${root}:${bucket}` -> the notebook's queue
+
+function editsOf(key) {
+    if (!notebookEdits.has(key)) {
+        notebookEdits.set(key, {
+            edits: [], // [{ id, apply }], oldest first
+            seq: 0, // the last edit's id
+            written: 0, // edits up to this id have their writes done (they run in order)
+            writing: Promise.resolve(),
+            panes: new Set(), // { edits, drained } for each pane showing the notebook
+        });
+    }
+    return notebookEdits.get(key);
+}
+
+function changeEdits(key, change) {
+    const q = editsOf(key);
+    q.edits = change(q.edits);
+    for (const pane of q.panes) pane.edits(q.edits);
+}
+
+/// An edit to a notebook's tree: `apply` shown now, `write` (async) once every edit before it is
+/// written. A write that fails takes its edit back off the screen and says so (`fail`); once the
+/// last write is done, the panes read the tree again to confirm the lot.
+function showEdit(key, apply, write, fail) {
+    const q = editsOf(key);
+    const id = ++q.seq;
+    changeEdits(key, (es) => [...es, { id, apply }]);
+    q.writing = q.writing.then(async () => {
+        try {
+            await write();
+        } catch (e) {
+            changeEdits(key, (es) => es.filter((x) => x.id !== id));
+            fail(e);
+        } finally {
+            q.written = id;
+            if (q.seq === id) for (const pane of q.panes) pane.drained();
+        }
+    });
+}
+
+/// File a new page at the top of its notebook's tree, minting the tree if need be - shown there at
+/// once in any pane on that notebook, never a beat in unfiled. The list's "new" (apps/notes.js).
+export async function fileNewIntoTree(root, bucket, docId, summary) {
+    const rid = await ensureTreeRoot(root, bucket);
+    const placing = api(`/api/identity/${root}/taxonomies/${rid}/members/${docId}`, {
+        method: 'PUT',
+        body: JSON.stringify({}),
+    });
+    showEdit(
+        `${root}:${bucket}`,
+        (tr) => withMember(tr, rid, { doc_id: docId, doc: summary }),
+        () => placing,
+        () => {}, // the caller says so: it awaits the same write
+    );
+    await placing;
 }
 
 export async function ensureTreeRoot(root, bucket) {
@@ -434,50 +503,78 @@ export const WikiTree = ({
     // The expanded tree, fetched whole (cozy-sized). Refetches when the roster changes shape
     // (any member count or title ticking over), after our own writes (`refetch`), and when the
     // host bumps `reloadKey` (a doc deleted from the editor never touches the roster).
-    const [tree, setTree] = useState(null);
+    // The tree as the node last sent it, and the edits shown ahead of it (Curtis, 2026-10-13: a
+    // new page sat in unfiled, and a drag did nothing, until the writes and a whole-tree read had
+    // gone round a busy server). Each edit changes what's on screen at once (`show`) and its writes
+    // follow, one edit after another; what's shown is the fetched tree with every edit the fetch
+    // can't have seen applied on top - so a read that left before a drag landed doesn't undo it.
+    const [fetched, setFetched] = useState(null);
+    const notebook = `${root}:${bucket}`;
+    const [edits, setEdits] = useState(() => editsOf(notebook).edits);
+    const tree = useMemo(
+        () => (fetched ? edits.reduce((tr, e) => e.apply(tr), fetched) : null),
+        [fetched, edits],
+    );
     const [bump, setBump] = useState(0);
     const refetch = () => setBump((b) => b + 1);
+
+    const show = (apply, write, fail) => showEdit(notebook, apply, write, fail);
+    useEffect(() => {
+        const q = editsOf(notebook);
+        setEdits(q.edits);
+        const pane = { edits: setEdits, drained: refetch };
+        q.panes.add(pane);
+        return () => q.panes.delete(pane);
+    }, [notebook]);
     const rosterKey = rosterFingerprint(taxRows);
     // `bump`/`reloadKey` mark OUR OWN writes: the roster stamp hasn't ticked yet but the tree
     // has changed, so those runs must bypass the cache and go to the node.
     const lastForce = useRef('0:0');
     useEffect(() => {
         if (!rootId) {
-            setTree(null);
-            onOrder && onOrder([]);
+            setFetched(null);
             return;
         }
         const forced = `${bump}:${reloadKey}` !== lastForce.current;
         lastForce.current = `${bump}:${reloadKey}`;
         let alive = true;
-        const finish = (t) => {
+        // `seen`: the edits whose writes were done before this tree left the node - the ones it
+        // holds, and so no longer shows ahead of it. A tree from the cache has seen none.
+        const finish = (t, seen) => {
             if (!alive) return;
-            setTree(t);
-            onOrder && onOrder(flatDocs(t));
+            setFetched(t);
+            if (seen) changeEdits(notebook, (es) => es.filter((e) => e.id > seen));
         };
-        const fetchTree = () =>
-            api(`/api/identity/${root}/taxonomies/${rootId}`)
+        const fetchTree = () => {
+            const seen = editsOf(notebook).written;
+            return api(`/api/identity/${root}/taxonomies/${rootId}`)
                 .then((t) => {
                     if (!alive) return;
                     rememberTree(root, rootId, rosterKey, t);
-                    finish(t);
+                    finish(t, seen);
                 })
                 .catch(() => {});
+        };
         // Cache-first (mirror/doccache.js): a tree the roster stamp still vouches for paints from
         // disk - no fetch, no flash; misses and forced runs go to the node.
         if (forced) fetchTree();
         else {
             cachedTree(root, rootId, rosterKey).then((hit) => {
                 if (!alive) return;
-                if (hit) finish(hit);
+                if (hit) finish(hit, 0);
                 else fetchTree();
             });
         }
         return () => {
             alive = false;
         };
+    }, [root, rootId, rosterKey, bump, reloadKey, notebook]);
+
+    // The book order, of the tree as shown.
+    useEffect(() => {
+        onOrder && onOrder(tree ? flatDocs(tree) : []);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root, rootId, rosterKey, bump, reloadKey]);
+    }, [tree]);
 
     // Fold state is a local pref (mirror/prefs.js): per-section, durable in this browser, live across
     // tabs, never synced. The map form, not just the flag set, because the reveal pass below has
@@ -511,18 +608,36 @@ export const WikiTree = ({
                 method: 'POST',
                 body: JSON.stringify({ title: 'untitled', body: '', format: 'marquee' }),
             });
-            // Open it now, the row stated ahead of the stream (pure/optimistic.js).
+            // Open it now, the row stated ahead of the stream (pure/optimistic.js), and in its
+            // section ahead of the node.
             await holdNewDoc(root, made, { title: 'untitled', format: 'marquee', bucket });
             onSelect(made.doc_id);
-            await api(
-                `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
-                { method: 'PUT' },
+            const member = { doc_id: made.doc_id, doc: { title: 'untitled', format: 'marquee' } };
+            show(
+                (tr) => withMember(tr, pid, member),
+                async () => {
+                    await api(
+                        `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
+                        { method: 'PUT' },
+                    );
+                    await api(`/api/identity/${root}/taxonomies/${pid}/members/${made.doc_id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({}),
+                    });
+                },
+                (e) =>
+                    toast(
+                        t(
+                            'doc.tree.couldnt-start-the',
+                            "couldn't start the {itemNoun}: {message}",
+                            {
+                                itemNoun,
+                                message: e.message,
+                            },
+                        ),
+                        { kind: 'error' },
+                    ),
             );
-            await api(`/api/identity/${root}/taxonomies/${pid}/members/${made.doc_id}`, {
-                method: 'PUT',
-                body: JSON.stringify({}),
-            });
-            refetch();
         } catch (e) {
             toast(
                 t('doc.tree.couldnt-start-the', "couldn't start the {itemNoun}: {message}", {
@@ -548,11 +663,30 @@ export const WikiTree = ({
                 method: 'POST',
                 body: JSON.stringify({ title }),
             });
-            await api(`/api/identity/${root}/taxonomies/${pid}/members/${made.taxonomy_id}`, {
-                method: 'PUT',
-                body: JSON.stringify({}),
-            });
-            refetch();
+            const id = made.taxonomy_id;
+            show(
+                (tr) =>
+                    withMember(tr, pid, {
+                        doc_id: id,
+                        taxonomy: { taxonomy_id: id, title, members: [] },
+                    }),
+                () =>
+                    api(`/api/identity/${root}/taxonomies/${pid}/members/${id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({}),
+                    }),
+                (e) =>
+                    toast(
+                        t(
+                            'doc.tree.couldnt-create-the-section',
+                            "couldn't create the section: {message}",
+                            {
+                                message: e.message,
+                            },
+                        ),
+                        { kind: 'error' },
+                    ),
+            );
         } catch (e) {
             toast(
                 t('doc.tree.couldnt-create-the-section', "couldn't create the section: {message}", {
@@ -573,20 +707,21 @@ export const WikiTree = ({
                 ok: t('doc.tree.rename', 'rename'),
             })) || '';
         if (!title || title === currentTitle) return;
-        try {
-            await api(`/api/identity/${root}/docs/${taxId}/annotations/fields/title`, {
-                method: 'PUT',
-                body: JSON.stringify({ value: title }),
-            });
-            refetch();
-        } catch (e) {
-            toast(
-                t('doc.tree.couldnt-rename-it', "couldn't rename it: {message}", {
-                    message: e.message,
+        show(
+            (tr) => retitled(tr, taxId, title),
+            () =>
+                api(`/api/identity/${root}/docs/${taxId}/annotations/fields/title`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ value: title }),
                 }),
-                { kind: 'error' },
-            );
-        }
+            (e) =>
+                toast(
+                    t('doc.tree.couldnt-rename-it', "couldn't rename it: {message}", {
+                        message: e.message,
+                    }),
+                    { kind: 'error' },
+                ),
+        );
     };
 
     // Delete a section: unhook it from its parent, then delete it and every DESCENDANT section
@@ -635,33 +770,46 @@ export const WikiTree = ({
             }))
         )
             return;
-        try {
-            if (!showUnfiled && tree) {
-                // Only the pages this delete would ORPHAN move to the root; one also filed
-                // elsewhere is already kept in the tree by its other home.
-                const rid = await ensureRoot();
-                for (const id of docsInsideOnly(tree, descendants)) {
-                    await api(`/api/identity/${root}/taxonomies/${rid}/members/${id}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({}),
-                    });
+        // Only the pages this delete would ORPHAN move to the root; one also filed elsewhere is
+        // already kept in the tree by its other home.
+        const orphans = !showUnfiled && tree ? [...docsInsideOnly(tree, descendants)] : [];
+        show(
+            (tr) =>
+                withoutMember(
+                    orphans.reduce(
+                        (at, id) =>
+                            withMember(at, at.taxonomy_id, { doc_id: id, doc: byId.get(id) || {} }),
+                        tr,
+                    ),
+                    parentId,
+                    node.taxonomy_id,
+                ),
+            async () => {
+                if (orphans.length) {
+                    const rid = await ensureRoot();
+                    for (const id of orphans) {
+                        await api(`/api/identity/${root}/taxonomies/${rid}/members/${id}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({}),
+                        });
+                    }
                 }
-            }
-            await api(`/api/identity/${root}/taxonomies/${parentId}/members/${node.taxonomy_id}`, {
-                method: 'DELETE',
-            });
-            for (const id of descendants) {
-                await api(`/api/identity/${root}/taxonomies/${id}`, { method: 'DELETE' });
-            }
-            refetch();
-        } catch (e) {
-            toast(
-                t('doc.tree.couldnt-delete-it', "couldn't delete it: {message}", {
-                    message: e.message,
-                }),
-                { kind: 'error' },
-            );
-        }
+                await api(
+                    `/api/identity/${root}/taxonomies/${parentId}/members/${node.taxonomy_id}`,
+                    { method: 'DELETE' },
+                );
+                for (const id of descendants) {
+                    await api(`/api/identity/${root}/taxonomies/${id}`, { method: 'DELETE' });
+                }
+            },
+            (e) =>
+                toast(
+                    t('doc.tree.couldnt-delete-it', "couldn't delete it: {message}", {
+                        message: e.message,
+                    }),
+                    { kind: 'error' },
+                ),
+        );
     };
 
     // The bucket's pages (live), the tree's filed doc ids, and the difference: unfiled.
@@ -683,47 +831,66 @@ export const WikiTree = ({
         const drag = dragRef.current;
         dragRef.current = null;
         if (!drag) return;
-        try {
-            if (drop.unfile) {
-                // Unfiling is pages-only: a section unhooked from every parent would be an
-                // invisible orphan, so sections can't land here.
-                if (drag.kind !== 'page' || !drag.parentId) return;
-                await api(`/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`, {
-                    method: 'DELETE',
-                });
-                refetch();
-                return;
-            }
-            let destParent, index;
-            if (drop.intoId) {
-                destParent = drop.intoId; // append into a section (or the root)
-                index = undefined;
-            } else {
-                if (drag.id === drop.refId) return; // dropped beside itself: nothing to do
-                destParent = drop.parentNode.taxonomy_id;
-                index = dropIndex(drop.parentNode.members, drag.id, drop.refId, drop.after);
-            }
-            if (drag.kind === 'section' && drag.taxIds && drag.taxIds.includes(destParent)) {
-                return; // cycle: into itself or its own subtree (the server refuses these too)
-            }
-            await api(`/api/identity/${root}/taxonomies/${destParent}/members/${drag.id}`, {
-                method: 'PUT',
-                body: JSON.stringify(index === undefined ? {} : { index }),
-            });
-            if (drag.parentId && drag.parentId !== destParent) {
-                await api(`/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`, {
-                    method: 'DELETE',
-                });
-            }
-            refetch();
-        } catch (e) {
+        const fail = (e) =>
             toast(
                 t('doc.tree.couldnt-move-that', "couldn't move that: {message}", {
                     message: e.message,
                 }),
                 { kind: 'error' },
             );
+        if (drop.unfile) {
+            // Unfiling is pages-only: a section unhooked from every parent would be an
+            // invisible orphan, so sections can't land here.
+            if (drag.kind !== 'page' || !drag.parentId) return;
+            show(
+                (tr) => withoutMember(tr, drag.parentId, drag.id),
+                () =>
+                    api(`/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`, {
+                        method: 'DELETE',
+                    }),
+                fail,
+            );
+            return;
         }
+        let destParent, index;
+        if (drop.intoId) {
+            destParent = drop.intoId; // append into a section (or the root)
+            index = undefined;
+        } else {
+            if (drag.id === drop.refId) return; // dropped beside itself: nothing to do
+            destParent = drop.parentNode.taxonomy_id;
+            index = dropIndex(drop.parentNode.members, drag.id, drop.refId, drop.after);
+        }
+        if (drag.kind === 'section' && drag.taxIds && drag.taxIds.includes(destParent)) {
+            return; // cycle: into itself or its own subtree (the server refuses these too)
+        }
+        // What lands is what was lifted: a section with its whole expansion, a page as its row
+        // stood - or, from the unfiled bin, the page as the notebook's list holds it.
+        const lifted = (drag.parentId && memberIn(tree, drag.parentId, drag.id)) || {
+            doc_id: drag.id,
+            doc: byId.get(drag.id) || {},
+        };
+        show(
+            (tr) => {
+                const moved = withMember(tr, destParent, lifted, index);
+                return drag.parentId && drag.parentId !== destParent
+                    ? withoutMember(moved, drag.parentId, drag.id)
+                    : moved;
+            },
+            async () => {
+                await api(`/api/identity/${root}/taxonomies/${destParent}/members/${drag.id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(index === undefined ? {} : { index }),
+                });
+                if (drag.parentId && drag.parentId !== destParent) {
+                    await api(
+                        `/api/identity/${root}/taxonomies/${drag.parentId}/members/${drag.id}`,
+                        { method: 'DELETE' },
+                    );
+                }
+            },
+            fail,
+        );
     };
 
     const ops = {

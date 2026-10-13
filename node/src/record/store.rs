@@ -2439,10 +2439,11 @@ impl Taxonomies<'_> {
         index: Option<usize>,
     ) -> Result<SignedEntry, AppError> {
         let view = self.store.doc_meta_view().await?;
+        let roster = Self::roster(&view);
 
         if *root == self.store.root
-            && Self::is_on_roster(&view, doc_id)
-            && Self::reaches(&view, &self.store.root, doc_id, taxonomy_id)
+            && roster.contains(doc_id)
+            && Self::reaches(&view, &self.store.root, &roster, doc_id, taxonomy_id)
         {
             return Err(AppError::BadRequest(crate::msg!(
                 "record.store.placing-this-list-here-would",
@@ -2475,17 +2476,13 @@ impl Taxonomies<'_> {
             .await
     }
 
-    fn is_on_roster(view: &private::PrivateView, id: &[u8; 16]) -> bool {
-        let id_hex = hex::encode(id);
-        view.set_elements(TAXONOMY_ROSTER).iter().any(|e| e.element == id_hex)
-    }
-
     /// Is `target` reachable from `from` through this identity's own membership edges, in the
     /// local view? (`from == target` counts: a list contains itself.) Only own-root taxonomy
     /// members are walkable - a foreign taxonomy's contents aren't ours to know here.
     fn reaches(
         view: &private::PrivateView,
         own_root: &[u8; 32],
+        roster: &BTreeSet<[u8; 16]>,
         from: &[u8; 16],
         target: &[u8; 16],
     ) -> bool {
@@ -2499,7 +2496,7 @@ impl Taxonomies<'_> {
                 continue;
             }
             for m in Self::members_of(view, &id) {
-                if m.root == *own_root && Self::is_on_roster(view, &m.doc_id) {
+                if m.root == *own_root && roster.contains(&m.doc_id) {
                     stack.push(m.doc_id);
                 }
             }
@@ -2536,12 +2533,27 @@ impl Taxonomies<'_> {
     /// the number of taxonomies, and a renderer links to the first occurrence either way.
     pub async fn tree(&self, taxonomy_id: &[u8; 16]) -> Result<TaxonomyNode, AppError> {
         let view = self.store.doc_meta_view().await?;
+        Ok(Self::tree_in(&view, &self.store.root, taxonomy_id))
+    }
+
+    fn tree_in(
+        view: &private::PrivateView,
+        own_root: &[u8; 32],
+        taxonomy_id: &[u8; 16],
+    ) -> TaxonomyNode {
+        let roster = Self::roster(view);
         let mut visited = std::collections::BTreeSet::from([*taxonomy_id]);
-        Ok(TaxonomyNode {
+        TaxonomyNode {
             taxonomy_id: *taxonomy_id,
-            title: Self::title_of(&view, &self.store.root, taxonomy_id),
-            members: Some(Self::expand(&view, &self.store.root, taxonomy_id, &mut visited)),
-        })
+            title: Self::title_of(view, own_root, taxonomy_id),
+            members: Some(Self::expand(view, own_root, &roster, taxonomy_id, &mut visited)),
+        }
+    }
+
+    /// The roster as a set, read once: asked per member, as `is_on_roster` was, a tree read
+    /// copied every taxonomy's id once for each member it walked.
+    fn roster(view: &private::PrivateView) -> BTreeSet<[u8; 16]> {
+        ids_from(view.set_elements(TAXONOMY_ROSTER))
     }
 
     fn title_of(view: &private::PrivateView, own_root: &[u8; 32], id: &[u8; 16]) -> String {
@@ -2555,26 +2567,94 @@ impl Taxonomies<'_> {
     fn expand(
         view: &private::PrivateView,
         own_root: &[u8; 32],
+        roster: &BTreeSet<[u8; 16]>,
         taxonomy_id: &[u8; 16],
         visited: &mut std::collections::BTreeSet<[u8; 16]>,
     ) -> Vec<TreeMember> {
         Self::members_of(view, taxonomy_id)
             .into_iter()
             .map(|m| {
-                let taxonomy =
-                    (m.root == *own_root && Self::is_on_roster(view, &m.doc_id)).then(|| {
-                        let members = visited
-                            .insert(m.doc_id)
-                            .then(|| Self::expand(view, own_root, &m.doc_id, visited));
-                        TaxonomyNode {
-                            taxonomy_id: m.doc_id,
-                            title: Self::title_of(view, own_root, &m.doc_id),
-                            members,
-                        }
-                    });
+                let taxonomy = (m.root == *own_root && roster.contains(&m.doc_id)).then(|| {
+                    let members = visited
+                        .insert(m.doc_id)
+                        .then(|| Self::expand(view, own_root, roster, &m.doc_id, visited));
+                    TaxonomyNode {
+                        taxonomy_id: m.doc_id,
+                        title: Self::title_of(view, own_root, &m.doc_id),
+                        members,
+                    }
+                });
                 TreeMember { root: m.root, doc_id: m.doc_id, taxonomy }
             })
             .collect()
+    }
+}
+
+/// The doc-meta view read once, for a read that wants several things from it: a notebook's tree
+/// read asked for the tree, the annotations, the buckets, the pins and the deleted list one by
+/// one, each a catch-up and most a fold of the whole view of their own - 129 statements for an
+/// 8-note tree, waiting their turns behind an upload (2026-10-13).
+pub struct DocMeta<'s> {
+    store: &'s Store,
+    view: private::PrivateView,
+}
+
+impl Store {
+    pub async fn doc_meta(&self) -> Result<DocMeta<'_>, AppError> {
+        Ok(DocMeta { store: self, view: self.doc_meta_view().await? })
+    }
+}
+
+impl DocMeta<'_> {
+    /// `Taxonomies::tree`, from this view.
+    pub fn tree(&self, taxonomy_id: &[u8; 16]) -> TaxonomyNode {
+        Taxonomies::tree_in(&self.view, &self.store.root, taxonomy_id)
+    }
+
+    /// `Annotations::all`'s rows, for just these documents.
+    pub fn annotations_of(&self, doc_ids: &[[u8; 16]]) -> Vec<AnnotationRow> {
+        doc_ids
+            .iter()
+            .map(|doc_id| {
+                let collection = annot_collection(&self.store.root, doc_id);
+                AnnotationRow {
+                    doc_id: hex::encode(doc_id),
+                    fields: self
+                        .view
+                        .registers_in(&collection)
+                        .into_iter()
+                        .filter(|r| !r.value.is_empty())
+                        .map(|r| (r.key, r.value))
+                        .collect(),
+                    tags: self
+                        .view
+                        .set_elements_ordered(&collection)
+                        .into_iter()
+                        .map(|e| e.element)
+                        .collect(),
+                }
+            })
+            .filter(|r| !r.is_empty())
+            .collect()
+    }
+
+    /// `Buckets::all`'s map, for just these documents.
+    pub fn buckets_of(&self, doc_ids: &[[u8; 16]]) -> BTreeMap<[u8; 16], Vec<String>> {
+        doc_ids
+            .iter()
+            .filter_map(|doc_id| {
+                let collection = bucket_collection(&self.store.root, doc_id);
+                let mut names: Vec<String> =
+                    self.view.set_elements(&collection).into_iter().map(|e| e.element).collect();
+                names.sort();
+                (!names.is_empty()).then_some((*doc_id, names))
+            })
+            .collect()
+    }
+
+    /// `Documents::pinned`, from this view.
+    pub fn pinned(&self) -> BTreeSet<[u8; 16]> {
+        ids_from(self.view.set_elements(PINNED_DOCS))
     }
 }
 
@@ -3000,7 +3080,11 @@ mod tests {
     async fn pinning_flags_a_document_without_hiding_it_and_unpin_clears_it() {
         use crate::record::documents::Format;
         let store = test_store().await;
-        let (a, _) = store.documents().create("a", b"one", Format::Plaintext).await.unwrap();
+        let (a, _) = store
+            .documents()
+            .create("a", b"one", crate::record::documents::Format::Plaintext)
+            .await
+            .unwrap();
         let (b, _) = store.documents().create("b", b"two", Format::Plaintext).await.unwrap();
 
         assert!(store.documents().pinned().await.unwrap().is_empty());
@@ -3283,5 +3367,89 @@ mod tests {
         let store = test_store().await;
         let entry = store.append_post(vec![0xa0]).await.unwrap();
         assert_eq!(entry.entry().seq, 0);
+    }
+
+    /// Statements a future runs, by the tally the request log keeps.
+    async fn statements<T>(f: impl std::future::Future<Output = T>) -> (T, u64) {
+        let tally = std::sync::Arc::new(std::sync::Mutex::new(crate::db::DbTally::default()));
+        let out = crate::db::DB_TALLY.scope(tally.clone(), f).await;
+        let n = tally.lock().unwrap().statements;
+        (out, n)
+    }
+
+    /// A read with nothing new to fold asks nothing about the chains: the catch-up's answer is
+    /// kept until `entries` or its service's watermarks move (2026-10-13: a no-op catch-up was
+    /// one statement plus three an author, every read, and a tree read made eight). A new entry,
+    /// and a watermark pulled back, are still seen.
+    #[tokio::test]
+    async fn a_catch_up_with_nothing_new_asks_nothing() {
+        let store = test_store().await;
+        let (doc, _) = store
+            .documents()
+            .create("a", b"one", crate::record::documents::Format::Plaintext)
+            .await
+            .unwrap();
+        store.documents().pinned().await.unwrap();
+        let (pinned, n) = statements(store.documents().pinned()).await;
+        assert!(pinned.unwrap().is_empty());
+        assert_eq!(n, 1, "only the pin list's own read - no seeks for what's new");
+
+        store.documents().pin(&doc).await.unwrap();
+        assert!(store.documents().pinned().await.unwrap().contains(&doc), "a new entry is seen");
+
+        // Watermarks moved: the kept answer is dropped, the chains asked again, and the refold
+        // changes nothing.
+        crate::record::imaol::reset_watermarks_for_test(&store.db).await;
+        let (pinned, n) = statements(store.documents().pinned()).await;
+        assert!(pinned.unwrap().contains(&doc), "refolded");
+        assert!(n > 1, "the chains are asked again once the watermarks move, got {n}");
+    }
+
+    /// One view, everything the tree read wants from it, the same as the whole-persona reads
+    /// say for those documents.
+    #[tokio::test]
+    async fn the_doc_meta_reading_matches_the_whole_persona_reads() {
+        let store = test_store().await;
+        let root = store.root;
+        let top = store.taxonomies().create("wiki:default").await.unwrap();
+        let section = store.taxonomies().create("Landscapes").await.unwrap();
+        store.taxonomies().place(&top, &root, &section, None).await.unwrap();
+        let mut ids = Vec::new();
+        for n in 0..4 {
+            let (id, _) = store
+                .documents()
+                .create(&format!("n{n}"), b"words", crate::record::documents::Format::Plaintext)
+                .await
+                .unwrap();
+            store.buckets().place(&id, "default").await.unwrap();
+            ids.push(id);
+        }
+        store.buckets().place(&ids[0], "music").await.unwrap();
+        store.annotations().set_field(&ids[1], "description", "a mesa").await.unwrap();
+        store.annotations().tag(&ids[1], "flat").await.unwrap();
+        store.documents().pin(&ids[2]).await.unwrap();
+        store.taxonomies().place(&section, &root, &ids[0], None).await.unwrap();
+        store.taxonomies().place(&top, &root, &ids[1], None).await.unwrap();
+
+        let meta = store.doc_meta().await.unwrap();
+        let (tree, whole) = (meta.tree(&top), store.taxonomies().tree(&top).await.unwrap());
+        assert_eq!(format!("{tree:?}"), format!("{whole:?}"));
+        let some = &ids[..3];
+        let annots: Vec<String> =
+            meta.annotations_of(some).iter().map(|a| format!("{a:?}")).collect();
+        let all: Vec<String> = store
+            .annotations()
+            .all()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|a| some.iter().any(|id| hex::encode(id) == a.doc_id))
+            .map(|a| format!("{a:?}"))
+            .collect();
+        assert_eq!(annots, all);
+        let mut buckets = store.buckets().all().await.unwrap();
+        buckets.retain(|id, _| some.contains(id));
+        assert_eq!(meta.buckets_of(some), buckets);
+        assert_eq!(meta.pinned(), store.documents().pinned().await.unwrap());
     }
 }

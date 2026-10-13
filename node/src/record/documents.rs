@@ -9,7 +9,7 @@
 //! model). Deliberately NOT a naive LWW fold: LWW-by-doc-id is the stale-tab failure that
 //! silently destroys an afternoon of writing.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::db::Db;
 use anyhow::anyhow;
@@ -3200,7 +3200,7 @@ pub async fn held_of(
 /// One document's memoized display state, as `doc_heads` holds it. Claimed stamps only
 /// (`genesis_ms`, `head_ms`) - received_at never appears here: it isn't replay-stable and the
 /// sync model must not leak into display ordering.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DocHeadRow {
     pub doc_id: [u8; 16],
     /// The display head's version hash.
@@ -3321,22 +3321,35 @@ pub async fn heads_for(
     doc_ids: &[[u8; 16]],
 ) -> Result<Vec<DocHeadRow>, AppError> {
     catch_up(db, keys).await?;
-    let mut out = Vec::with_capacity(doc_ids.len());
-    for doc_id in doc_ids {
-        let tuple: Option<HeadTuple> = db
-            .fetch_optional(
-                &format!("SELECT {HEAD_COLUMNS} FROM doc_heads WHERE doc_id = ?1"),
-                (doc_id.to_vec(),),
+    // A few hundred ids a statement, not one each (2026-10-13: a notebook's tree read asked once
+    // per document, ~400 statements, and each one queued for the persona's connection on its own
+    // - 7-13 s of a live tree read). The rows come back in the order asked, a repeat repeated.
+    let mut found: HashMap<[u8; 16], DocHeadRow> = HashMap::new();
+    let wanted: BTreeSet<[u8; 16]> = doc_ids.iter().copied().collect();
+    let wanted: Vec<[u8; 16]> = wanted.into_iter().collect();
+    for chunk in wanted.chunks(HEADS_A_STATEMENT) {
+        let marks = vec!["?"; chunk.len()].join(",");
+        let params: Vec<turso::Value> =
+            chunk.iter().map(|id| turso::Value::Blob(id.to_vec())).collect();
+        let tuples: Vec<HeadTuple> = db
+            .fetch_all(
+                &format!("SELECT {HEAD_COLUMNS} FROM doc_heads WHERE doc_id IN ({marks})"),
+                turso::params_from_iter(params),
             )
             .await
-            .context("reading one doc head")
+            .context("reading doc heads by id")
             .map_err(AppError::Internal)?;
-        if let Some(tuple) = tuple {
-            out.push(head_row(tuple)?);
+        for tuple in tuples {
+            let row = head_row(tuple)?;
+            found.insert(row.doc_id, row);
         }
     }
-    Ok(out)
+    Ok(doc_ids.iter().filter_map(|id| found.get(id).cloned()).collect())
 }
+
+/// How many ids `heads_for` asks after in one statement: well inside every SQLite build's limit
+/// on a statement's parameters.
+const HEADS_A_STATEMENT: usize = 500;
 
 // ---------------------------------------------------------------------------------------------
 // The search index: doc_search, a token-bag materialized view.
@@ -5788,6 +5801,30 @@ mod tests {
                 .await,
             Some(0)
         );
+    }
+
+    /// heads_for answers in the order it was asked - a repeat repeated, an unknown id absent -
+    /// however many statements it takes (`HEADS_A_STATEMENT` a statement, 2026-10-13).
+    #[tokio::test]
+    async fn heads_for_answers_in_the_order_asked_across_statements() {
+        let db = test_db().await;
+        let key = signer(1);
+        let keys = EpochKeys::single(0, [5u8; 32]);
+        let files = FileStore::memory();
+        let mut ids = Vec::new();
+        for n in 0..(HEADS_A_STATEMENT + 7) {
+            let doc_id = new_doc_id();
+            save(&db, &key, &keys, &files, doc_id, vec![], &format!("d{n}"), b"words").await;
+            ids.push(doc_id);
+        }
+        let mut asked: Vec<[u8; 16]> = ids.iter().rev().copied().collect();
+        asked.insert(3, ids[0]); // a repeat
+        asked.insert(5, [0xee; 16]); // unknown
+        let rows = heads_for(&db, &keys, &asked).await.unwrap();
+        let known: Vec<[u8; 16]> = asked.iter().copied().filter(|id| *id != [0xee; 16]).collect();
+        assert_eq!(rows.iter().map(|r| r.doc_id).collect::<Vec<_>>(), known);
+        let titled = rows.iter().find(|r| r.doc_id == ids[2]).unwrap();
+        assert_eq!(titled.title, "d2");
     }
 
     /// doc_heads is the resolver memoized, not a second opinion: after saves (divergence
