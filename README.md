@@ -99,8 +99,13 @@ lightly federated, unapologetically Old Internet.
 - [`CROWD.md`](plans/CROWD.md) — a popular persona served by its followers'
   nodes: a published follow makes a node a holder, the author's node (and its
   "busy" refusal) refers askers to holders, holders pass moves on, and the wake
-  pass asks a holder first and the author now and then. A design draft
-  (2026-10-11); nothing built.
+  pass asks a holder first and the author now and then. Rulings settled
+  2026-10-11; all seven slices built 2026-10-11 to 2026-10-13: a node answers
+  strangers about a persona it only follows quietly only when it serves more
+  than ten personas, the author's node refers askers to holders (in its "busy"
+  refusals too), a fetch asks them when the author is dark, a holder pushes new
+  posts on to the nodes that asked it, a follower's refresh asks a holder first
+  and the author every six hours or so, and missing files heal from holders.
 - [`DEDUP.md`](plans/DEDUP.md) — one copy of each private file a persona holds:
   a keyed fingerprint of every private blob, carried in its encrypted header and
   folded into a per-persona view, so an upload the persona already holds names

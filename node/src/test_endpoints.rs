@@ -652,6 +652,81 @@ pub struct RevalidationModeRequest {
 }
 
 #[derive(Deserialize)]
+pub struct QuietCrowdRequest {
+    /// Served personas past which a quiet follow hides; 10 puts it back.
+    pub n: usize,
+}
+
+/// Move this node's crowd threshold (`crowd::QUIET_CROWD`): the rig's nodes serve dozens of
+/// personas by the time a claim runs, so a claim about a SMALL node raises the bar past them.
+pub async fn quiet_crowd(Json(req): Json<QuietCrowdRequest>) -> Json<Value> {
+    crate::crowd::QUIET_CROWD.store(req.n, std::sync::atomic::Ordering::Relaxed);
+    tracing::warn!(n = req.n, "LOCAL_TEST quiet crowd");
+    Json(serde_json::json!({ "n": req.n }))
+}
+
+#[derive(Deserialize)]
+pub struct AdmissionFullRequest {
+    pub full: bool,
+}
+
+/// Stand in for a flood (plans/CROWD.md, slice 7): while `full`, admission refuses every
+/// unproven connection as busy, with the busy referral in the close. Each call forgets the
+/// built referral, so the next refusal says what this node knows now.
+pub async fn admission_full(Json(req): Json<AdmissionFullRequest>) -> Json<Value> {
+    crate::net::admission::FULL_FOR_TEST.store(req.full, std::sync::atomic::Ordering::Relaxed);
+    crate::crowd::forget_busy_reason().await;
+    tracing::warn!(full = req.full, "LOCAL_TEST admission full");
+    Json(serde_json::json!({ "full": req.full }))
+}
+
+#[derive(Deserialize)]
+pub struct DoorProbeRequest {
+    /// The persona to ask about, hex.
+    pub root: String,
+    /// The endpoint to ask, as `api/node` gives it.
+    pub endpoint: String,
+    /// "sync" (one exchange: what arrived) or "shelf" (the fragment door's shelf question).
+    pub door: String,
+}
+
+/// Ask ONE named endpoint about a persona, at one door, and say what came back - a stranger's
+/// probe, for the crowd's rule (crowd.rs): the ordinary ladders race the persona's own nodes
+/// alongside, which would answer whatever the door under test does.
+pub async fn door_probe(
+    State(state): State<AppState>,
+    Json(req): Json<DoorProbeRequest>,
+) -> Result<Json<Value>, AppError> {
+    let author: [u8; 32] =
+        hex::decode(&req.root).ok().and_then(|b| b.try_into().ok()).ok_or_else(|| {
+            AppError::BadRequest(crate::msg!("test_endpoints.not-a-root", "not a root"))
+        })?;
+    match req.door.as_str() {
+        "sync" => {
+            let addr = crate::net::sync::dial_addr(&state, &req.endpoint)
+                .await
+                .map_err(AppError::Internal)?;
+            let stats = crate::net::sync::sync_with_peer(&state, &req.root, addr)
+                .await
+                .map_err(AppError::Internal)?;
+            Ok(Json(serde_json::json!({ "received": stats.received })))
+        }
+        "shelf" => {
+            let (posts, pinned) =
+                crate::net::fragment::fetch_shelf_from(&state, &req.endpoint, &author, 20)
+                    .await
+                    .map_err(AppError::Internal)?;
+            Ok(Json(serde_json::json!({ "posts": posts.len(), "pinned": pinned.len() })))
+        }
+        other => Err(AppError::BadRequest(crate::msg!(
+            "test_endpoints.no-such-door",
+            "no such door: {door}",
+            door = other
+        ))),
+    }
+}
+
+#[derive(Deserialize)]
 pub struct ShelfStallRequest {
     /// How long the shelf door waits before answering; 0 puts it back.
     pub ms: u64,

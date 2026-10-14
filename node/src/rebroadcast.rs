@@ -175,6 +175,20 @@ async fn unpin(
     Ok(())
 }
 
+/// Does a persona here share this one document? A share is a public act, so the fragment door
+/// may answer anybody for it, whoever this node follows (crowd.rs) - it is how a share's
+/// readers reach the sharer for the words.
+pub async fn shares_doc(node_db: &Db, author_root: &str, doc_hex: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM rebroadcast_pins WHERE author_root = ?1 AND doc_id = ?2 LIMIT 1",
+            (author_root, doc_hex),
+        )
+        .await
+        .context("checking whether anyone here shares a document")?;
+    Ok(row.is_some())
+}
+
 /// Drop every pin a persona holds - the counterpart to `excise_unfollowed`, for the case where
 /// the persona itself leaves this node. Their shares stop obliging a node that no longer
 /// answers for them.

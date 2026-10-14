@@ -188,6 +188,13 @@ pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
     // origin's own resolution ladder below can be all dark exactly when this rung matters.
     let mut endpoints: Vec<String> =
         crate::fragments::deliverers_of(&state.node_db, author_root).await.unwrap_or_default();
+    // Then the crowd (plans/CROWD.md, ruling 7): the author's holders, named by the author's
+    // own node, hold the bytes their copy of the chain references.
+    for ep in crowd_candidates(state, author_root).await {
+        if !endpoints.contains(&ep) {
+            endpoints.push(ep);
+        }
+    }
     for c in crate::net::deliver::candidates(state, origin_root).await {
         let ep = crate::idface::leaf_via_to_endpoint(state, origin_root, &c).await;
         if !endpoints.contains(&ep) {
@@ -210,6 +217,15 @@ pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
     // having healed.
     tracing::debug!(author = %author_root, origin = %origin_root, tried,
         "eager body heal left wants standing");
+}
+
+/// The author's holders as body candidates (plans/CROWD.md, ruling 7): one referral's worth,
+/// freshest first. A blob fetch is a hash, so nothing new crosses the wire - any holder with
+/// the bytes serves them, and whatever it serves is checked against the hash.
+async fn crowd_candidates(state: &AppState, author_root: &str) -> Vec<String> {
+    crate::crowd::holders(&state.node_db, author_root, ringtome_proto::sync::MAX_HOLDERS as i64)
+        .await
+        .unwrap_or_default()
 }
 
 /// One pass of the rounds. For every persona with due rows: guess who might have the bytes,
@@ -255,7 +271,8 @@ pub async fn sweep(state: AppState) -> Result<()> {
         // shares, not the author, and stand for hunch-held authors exactly as for
         // strangers we hold nothing of.
         let mut candidates: Vec<String> = Vec::new();
-        if crate::speculative::speculative_only(&state, &root).await? {
+        let hunch = crate::speculative::speculative_only(&state, &root).await?;
+        if hunch {
             if let Some(via) = crate::speculative::last_via(&state.node_db, &root).await? {
                 candidates.push(via);
             }
@@ -285,6 +302,18 @@ pub async fn sweep(state: AppState) -> Result<()> {
         for ep in crate::fragments::deliverers_of(&state.node_db, &root).await.unwrap_or_default() {
             if !candidates.contains(&ep) {
                 candidates.push(ep);
+            }
+        }
+        // The crowd after the deliverers (plans/CROWD.md, ruling 7, 2026-10-13): the holders
+        // the author's own node named, which hold whatever bytes their copy of the chain
+        // references - the rung that heals a body while the author is dark. Never for a
+        // hunch-held author, whose only author-side candidate is the introducer (above): a
+        // holder asked for the bytes would learn the hunch.
+        if !hunch {
+            for ep in crowd_candidates(&state, &root).await {
+                if !candidates.contains(&ep) {
+                    candidates.push(ep);
+                }
             }
         }
         // The fragment ORIGINS (2026-08-14) - and for a reader past the chain, the only list

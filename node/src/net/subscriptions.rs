@@ -52,6 +52,10 @@ pub struct Edge {
     pub rebroadcast: Option<i64>,
     /// Their trust band - ONLY when the author consented to it being known.
     pub trust: Option<i64>,
+    /// The relationship is published (`edges_public` is not "no"): anyone may know it. Not a
+    /// dial - a row is never kept for this alone - but the crowd's door reads it (crowd.rs:
+    /// a stranger is answered about a persona somebody here follows where all can see).
+    pub public: bool,
 }
 
 impl Edge {
@@ -61,9 +65,9 @@ impl Edge {
     }
 }
 
-/// Rows per multi-row subscription upsert: 6 binds each, well under SQLite's classic
-/// 999-variable floor (the `fanout::JOURNAL_CHUNK_ROWS` discipline).
-const SUBSCRIPTION_CHUNK_ROWS: usize = 150;
+/// Rows per multi-row subscription upsert: 7 binds each, under SQLite's classic 999-variable
+/// floor (the `fanout::JOURNAL_CHUNK_ROWS` discipline).
+const SUBSCRIPTION_CHUNK_ROWS: usize = 140;
 
 /// The ledger's keys, spelled once (they mirror `js/pure/contact.js`'s collection).
 const INTEREST: &str = "interest";
@@ -103,6 +107,7 @@ fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
         eagerness: band(INTEREST),
         rebroadcast: band(REBROADCAST),
         trust: if consented { band(TRUST) } else { None },
+        public: consented,
     }
 }
 
@@ -206,18 +211,28 @@ pub async fn refresh(
     for chunk in edges.chunks(SUBSCRIPTION_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 6;
-                format!("(?{},?{},?{},?{},?{},?{})", b + 1, b + 2, b + 3, b + 4, b + 5, b + 6)
+                let b = i * 7;
+                format!(
+                    "(?{},?{},?{},?{},?{},?{},?{})",
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6,
+                    b + 7
+                )
             })
             .collect();
         let sql = format!(
             "INSERT INTO subscriptions
-               (local_root, foreign_root, eagerness, rebroadcast, trust, updated_at_ms)
+               (local_root, foreign_root, eagerness, rebroadcast, trust, public, updated_at_ms)
              VALUES {}
              ON CONFLICT (local_root, foreign_root) DO UPDATE SET
                  eagerness = excluded.eagerness,
                  rebroadcast = excluded.rebroadcast,
                  trust = excluded.trust,
+                 public = excluded.public,
                  updated_at_ms = excluded.updated_at_ms",
             placeholders.join(",")
         );
@@ -231,6 +246,7 @@ pub async fn refresh(
                     dial(edge.eagerness),
                     dial(edge.rebroadcast),
                     dial(edge.trust),
+                    turso::Value::Integer(edge.public as i64),
                     turso::Value::Integer(now),
                 ]
             })
@@ -499,6 +515,21 @@ pub async fn dials(node_db: &crate::db::Db, local_root: &str, foreign_root: &str
         )
         .await
         .context("checking a dial")?;
+    Ok(row.is_some())
+}
+
+/// Does somebody on this node hold a PUBLISHED relationship with `foreign_root` - any dial,
+/// with `edges_public` not "no"? That relationship is already anyone's to know (it is minted
+/// as a public statement, publish.rs), so a node answering strangers about the persona
+/// discloses nothing it hasn't (crowd.rs, plans/CROWD.md ruling 1).
+pub async fn publicly_dialed(node_db: &crate::db::Db, foreign_root: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM subscriptions WHERE foreign_root = ?1 AND public = 1 LIMIT 1",
+            (foreign_root,),
+        )
+        .await
+        .context("checking for a published dial")?;
     Ok(row.is_some())
 }
 

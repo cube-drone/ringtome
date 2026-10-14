@@ -37,6 +37,7 @@ pub mod clock;
 pub mod commodities;
 pub mod config;
 pub mod crawl;
+pub mod crowd;
 pub mod db;
 pub mod downloads;
 pub mod drawing;
@@ -1057,6 +1058,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route("/test/age-lot", axum::routing::post(test_endpoints::age_lot))
             .route("/test/revalidation", axum::routing::post(test_endpoints::revalidation_mode))
             .route("/test/shelf-stall", axum::routing::post(test_endpoints::shelf_stall))
+            .route("/test/quiet-crowd", axum::routing::post(test_endpoints::quiet_crowd))
+            .route("/test/admission-full", axum::routing::post(test_endpoints::admission_full))
+            .route("/test/door-probe", axum::routing::post(test_endpoints::door_probe))
             .route(
                 "/test/resolve-serving/{leaf}",
                 axum::routing::get(test_endpoints::resolve_serving),

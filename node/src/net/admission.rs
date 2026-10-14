@@ -60,6 +60,11 @@ struct Counts {
     per_peer: HashMap<[u8; 32], usize>,
 }
 
+/// LOCAL_TEST's stand-in for a flood (`/test/admission-full`): while set, every unproven
+/// connection is refused as if the pool were full. Proven-at-birth ones (blobs) still pass, as
+/// they do past a real unproven ceiling. Never set outside a test node.
+pub static FULL_FOR_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The gate at accept. Cheap to clone; one per node.
 #[derive(Clone)]
 pub struct Admission {
@@ -99,6 +104,9 @@ impl Admission {
     /// pool. Everything else starts unproven and is promoted by its handler (`Permit::prove`)
     /// once membership is shown or a served persona is named.
     pub fn try_admit(&self, peer: [u8; 32], proven_at_birth: bool) -> Option<Permit> {
+        if !proven_at_birth && FULL_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
+            return None;
+        }
         let mut c = self.counts.lock().expect("admission counts poisoned");
         if c.total >= self.limits.max_connections {
             return None;

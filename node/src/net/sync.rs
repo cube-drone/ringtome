@@ -22,7 +22,7 @@ use iroh::endpoint::{Connection, SendStream};
 use iroh::EndpointAddr;
 use ringtome_proto::crown::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
-use ringtome_proto::sync::{Frontier, MemberProof, SyncMessage};
+use ringtome_proto::sync::{Crowd, Frontier, MemberProof, SyncMessage};
 use ringtome_proto::{validate_next, Ceiling, Crown, SignedEntry, ZERO_HASH};
 
 use crate::clock::now_ms;
@@ -1716,6 +1716,41 @@ async fn our_member_proof(
     }
 }
 
+/// The sync door's crowd rule for a persona held here but not hosted (crowd.rs): answer when
+/// strangers may be answered, when the peer is household, or when it proves itself one of
+/// the persona's own nodes. Cheapest question first; the member proof opens the mirror.
+async fn answers_for_held(
+    state: &crate::AppState,
+    root: [u8; 32],
+    proof: &Option<MemberProof>,
+    peer_id: &[u8; 32],
+    our_id: &[u8; 32],
+) -> bool {
+    let root_hex = hex::encode(root);
+    if crate::crowd::answers_strangers(state, &root_hex).await {
+        return true;
+    }
+    let peer_name = iroh::PublicKey::from_bytes(peer_id)
+        .map(|ep| ep.to_string())
+        .unwrap_or_else(|_| hex::encode(peer_id));
+    if crate::crowd::is_household(state, &peer_name).await {
+        return true;
+    }
+    // A holder we were referred to for this persona, relaying a move (ruling 5): the persona's
+    // own node told us it holds them, and told it nothing about us; it pushes here because we
+    // asked it, so answering says only what our asking already did.
+    if crate::crowd::is_holder(&state.node_db, &root_hex, &hex::encode(peer_id)).await {
+        return true;
+    }
+    if proof.is_none() {
+        return false;
+    }
+    match state.user_dbs.get(&root_hex).await {
+        Ok(Some(db)) => peer_is_member(&db, root, proof, peer_id, our_id).await,
+        _ => false,
+    }
+}
+
 /// Verify a peer's member proof: channel-bound signature *and* the leaf is Active in our own
 /// resolved tree. The transport authenticates the endpoints; the tree makes it authorization.
 /// Everything fails toward "stranger."
@@ -1910,7 +1945,7 @@ async fn sync_with_peer_dialled(
     // their WAIT and detaches the work; this bounds the work. Over it, the connection is
     // closed - a trickle is not an exchange.
     let wall = state.admission.limits().exchange_wall_clock;
-    match tokio::time::timeout(
+    let result = match tokio::time::timeout(
         wall,
         exchange_on(state, root_hex, &conn, addr, wanted, instances, ask, root),
     )
@@ -1921,8 +1956,35 @@ async fn sync_with_peer_dialled(
             conn.close(2u8.into(), b"wall clock");
             bail!("exchange for {root_hex} exceeded the wall clock ({}s)", wall.as_secs())
         }
+    };
+    // Refused as busy: say so as a [`Busy`], with whatever the refusal referred (plans/CROWD.md,
+    // ruling 3), for the fetch ladder to take or leave.
+    if result.is_err() {
+        if let Some(iroh::endpoint::ConnectionError::ApplicationClosed(close)) = conn.close_reason()
+        {
+            if let Some(referrals) = ringtome_proto::sync::decode_busy(&close.reason) {
+                return Err(anyhow::Error::new(Busy { referrals }));
+            }
+        }
+    }
+    result
+}
+
+/// A dial the peer refused as busy - its admission ceiling, or a serve of the same persona to
+/// this computer already running - with the holders the refusal named (plans/CROWD.md, ruling
+/// 3; empty from a node older than the busy referral, or with nobody to name).
+#[derive(Debug)]
+pub struct Busy {
+    pub referrals: Vec<ringtome_proto::sync::BusyReferral>,
+}
+
+impl std::fmt::Display for Busy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the peer is busy (referring {} personas)", self.referrals.len())
     }
 }
+
+impl std::error::Error for Busy {}
 
 /// The exchange proper, on an open connection - see `sync_with_peer_scoped`, which owns the
 /// dial and the wall clock around this.
@@ -1974,17 +2036,21 @@ async fn exchange_on(
             // come to whoever can read them rather than only to the creator's own circle.
             key_proofs: crate::chat::key_proofs_for(state, instances, &our_id, &peer_id).await,
             version: state.config.app_version.clone(),
+            // Our crowd word (plans/CROWD.md, ruling 2): whether we serve this persona to
+            // strangers too, so its own node may send others our way.
+            crowd: Crowd { holds: crate::crowd::holds(state, root_hex).await, holders: vec![] },
         },
     )
     .await?;
 
     // Responder: Hello, entries we lack, Done.
-    let (peer_frontiers, peer_proof) = match read_frame(&mut recv).await? {
+    let (peer_frontiers, peer_proof, referred) = match read_frame(&mut recv).await? {
         Some(SyncMessage::Hello {
             root: peer_root,
             frontiers,
             proof,
             version,
+            crowd,
             // (the responder echoes our scope and zeros for depth; our own `wanted` and
             // `ask` are authoritative)
             ..
@@ -1993,7 +2059,7 @@ async fn exchange_on(
                 bail!("peer answered for a different identity");
             }
             note_peer_version(state, &peer_id, &version);
-            (frontiers, proof)
+            (frontiers, proof, crowd.holders)
         }
         other => bail!("expected Hello from peer, got {other:?}"),
     };
@@ -2161,6 +2227,14 @@ async fn exchange_on(
             crate::fold::nudge(state, root_hex);
         }
     }
+    // The holders it referred us to (plans/CROWD.md, ruling 2) - believed only from one of the
+    // persona's own nodes, and checked HERE, after the ingest, because a first fetch holds no
+    // key tree to check a member proof against until the identity chain has arrived.
+    if !referred.is_empty() && peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await {
+        if let Err(e) = crate::crowd::remember_holders(&state.node_db, root_hex, &referred).await {
+            tracing::debug!(error = ?e, "remembering referred holders failed");
+        }
+    }
     let verdict = if received > 0 {
         crate::net::frontier::Verdict::Ahead
     } else {
@@ -2288,23 +2362,34 @@ async fn serve_on(
     // `scope` is the requester's service scope (Hello `wanted`, empty = everything) -
     // distinct from the serve-consent `wanted` gate below, which answers a different
     // question ("do we serve this persona at all").
-    let (root, peer_frontiers, peer_proof, scope, ask, instances, key_proofs) = match hello {
-        Some(SyncMessage::Hello {
-            root,
-            frontiers,
-            proof,
-            wanted,
-            ceiling,
-            below,
-            instances,
-            key_proofs,
-            version,
-        }) => {
-            note_peer_version(&state, &peer_id, &version);
-            (root, frontiers, proof, wanted, Ask { ceiling, below }, instances, key_proofs)
-        }
-        other => bail!("expected Hello, got {other:?}"),
-    };
+    let (root, peer_frontiers, peer_proof, scope, ask, instances, key_proofs, peer_holds) =
+        match hello {
+            Some(SyncMessage::Hello {
+                root,
+                frontiers,
+                proof,
+                wanted,
+                ceiling,
+                below,
+                instances,
+                key_proofs,
+                version,
+                crowd,
+            }) => {
+                note_peer_version(&state, &peer_id, &version);
+                (
+                    root,
+                    frontiers,
+                    proof,
+                    wanted,
+                    Ask { ceiling, below },
+                    instances,
+                    key_proofs,
+                    crowd.holds,
+                )
+            }
+            other => bail!("expected Hello, got {other:?}"),
+        };
     let root_hex = hex::encode(root);
     // A room-scoped exchange (CHAT.md, ruling 4): a persona nobody here follows still has a
     // lane here when the room named is one this node is in - a hosted persona's room, or
@@ -2316,17 +2401,22 @@ async fn serve_on(
     // WANTS: a followed or previously-fetched persona's updates are welcome, which is how a
     // push from their node reaches ours without us asking first. Anything else still gets the
     // polite empty exchange (uniform behavior - we don't confirm what we do or don't hold).
-    // Accepting for a wanted persona does disclose node-level interest, but only the interest
-    // our own fetch already disclosed the day it created the want; the exchange's member
-    // proofs keep everything private out of it regardless of why we accepted.
+    //
+    // A held persona is answered only to a peer the answer tells nothing new (crowd.rs,
+    // plans/CROWD.md ruling 1, 2026-10-11): anyone, when the follow here is published or the
+    // node is crowded enough to hide it; the household; and the persona's own nodes, by member
+    // proof - their push is the follow working. This used to answer everyone, on the argument
+    // that it disclosed "only the interest our own fetch already disclosed" - to the author's
+    // node, which a prober naming a root at a household node is not.
     let agented = crate::identity::is_agented(&state.node_db, &root_hex)
         .await
         .map_err(|e| anyhow!("checking identity: {e}"))?;
     let followers = crate::net::subscriptions::followers_of(&state.node_db, &root_hex).await?;
+    let held =
+        !followers.is_empty() || crate::idface::has_fetched(&state.node_db, &root_hex).await?;
     let wanted = agented
-        || !followers.is_empty()
-        || crate::idface::has_fetched(&state.node_db, &root_hex).await?
-        || room_ok;
+        || room_ok
+        || (held && answers_for_held(&state, root, &peer_proof, &peer_id, &our_id).await);
     if !wanted {
         write_frame(
             &mut send,
@@ -2340,6 +2430,7 @@ async fn serve_on(
                 instances: Vec::new(),
                 key_proofs: Vec::new(),
                 version: state.config.app_version.clone(),
+                crowd: Crowd::default(),
             },
         )
         .await?;
@@ -2411,16 +2502,6 @@ async fn serve_on(
     )
     .await;
 
-    // They dialed us and named this persona: that is a demand edge, recorded before anything
-    // else happens because the asking is the fact, whatever the exchange goes on to transfer.
-    // Deliberately AFTER the agented check above - a node we don't serve gets a uniform empty
-    // answer, and writing a row for it would make our silence measurable.
-    if let Err(e) =
-        crate::net::demand::record_ask(&state.node_db, &root_hex, &hex::encode(peer_id)).await
-    {
-        tracing::debug!(error = ?e, "recording a demand edge failed");
-    }
-
     // create, and rightly: the `wanted` gate above is this door's Pull-Not-Push enforcement,
     // so we reach here only for a persona this node hosts, has fetched, or whose followers
     // live here. The one branch that actually MINTS is the third - somebody here follows
@@ -2429,6 +2510,26 @@ async fn serve_on(
     // an identity, the node fronts it." A local human asked; this is the asking arriving.
     let db = state.user_dbs.create(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
+
+    // They dialed us and named this persona: that is a demand edge, recorded whatever the
+    // exchange goes on to transfer, because the asking is the fact. Deliberately AFTER the
+    // `wanted` gate above - a node we don't serve gets a uniform empty answer, and writing a
+    // row for it would make our silence measurable. Not for the persona's own node pushing a
+    // persona we only hold (plans/CROWD.md, ruling 5): that is the author, not an asker, and
+    // a holder's relay would otherwise push every move straight back to the node the crowd
+    // exists to spare.
+    if agented || !peer_proven {
+        if let Err(e) = crate::net::demand::record_ask(
+            &state.node_db,
+            &root_hex,
+            &hex::encode(peer_id),
+            peer_holds,
+        )
+        .await
+        {
+            tracing::debug!(error = ?e, "recording a demand edge failed");
+        }
+    }
     // On the sync ledger (crate::syncstatus) until this exchange ends: serving one of the
     // persona's own computers, or the network.
     // Named as the peer table names it (`add_peer_with_leaf` below), so its record matches.
@@ -2472,6 +2573,23 @@ async fn serve_on(
         }
     }
 
+    // Somewhere else to ask (plans/CROWD.md, ruling 2): for a persona this node AGENTS, the
+    // nodes that said they hold it lately - never the asker, and never for a proven member,
+    // which is this persona's own and needs no crowd. A mirror refers nobody: the author's
+    // word on who holds is the only one a requester keeps.
+    let referrals = if agented && !peer_proven {
+        crate::net::demand::holders_of(
+            &state.node_db,
+            &root_hex,
+            &hex::encode(peer_id),
+            ringtome_proto::sync::MAX_HOLDERS as i64,
+        )
+        .await
+        .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
     // Our Hello carries our own proof (so the requester will send *us* private entries) and our
     // frontiers - private ones included only for a proven member.
     write_frame(
@@ -2493,6 +2611,7 @@ async fn serve_on(
             instances: instances.clone(),
             key_proofs: Vec::new(),
             version: state.config.app_version.clone(),
+            crowd: Crowd { holds: false, holders: referrals },
         },
     )
     .await?;
@@ -2579,7 +2698,9 @@ async fn serve_on(
         // A delivered push IS freshness for a mirrored persona - stamp it so the
         // follow-refresh sweep stays quiet while the push machinery is working.
         if !crate::identity::is_agented(&state.node_db, &root_hex).await.unwrap_or(true) {
-            if let Err(e) = crate::idface::touch_foreign_fetch(&state.node_db, &root_hex).await {
+            if let Err(e) =
+                crate::idface::touch_foreign_fetch(&state.node_db, &root_hex, peer_proven).await
+            {
                 tracing::debug!(error = ?e, "freshness touch failed");
             }
         }
@@ -2752,6 +2873,11 @@ pub async fn derive_peers(state: crate::AppState) -> Result<()> {
         Ok(n) if n > 0 => tracing::info!(rows = n, "pruned quiet demand rows"),
         Ok(_) => {}
         Err(e) => tracing::warn!(error = ?e, "demand pruning failed"),
+    }
+    match crate::crowd::prune_holders(&state.node_db, now_ms()).await {
+        Ok(n) if n > 0 => tracing::info!(rows = n, "pruned old crowd referrals"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = ?e, "referral pruning failed"),
     }
     Ok(())
 }
