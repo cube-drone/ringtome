@@ -305,7 +305,7 @@ const NoteRowBody = ({
                   : formatIcon(doc.format) &&
                     html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `
         }
-        <span class="note-row-title-text">${doc.title || t('apps.notes.untitled', 'untitled')}</span>
+        <span class=${doc.pinned ? 'note-row-title-text pinned' : 'note-row-title-text'}>${doc.title || t('apps.notes.untitled', 'untitled')}</span>
     </span>
     ${
         feat.description &&

@@ -213,8 +213,13 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
             ? pageStanding(live, ops.book.hiddenDocs, ops.book.hidden)
             : null;
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
+    // A pinned page wears the pin, and its title the accent (Curtis, 2026-10-13) - the mirror's
+    // row first, which a pin or an unpin moves at once; the tree's summary while it's not here.
+    const pinned = live ? !!live.pinned : !!(summary && summary.pinned);
     // Media pages wear their kind (image/video/audio); text pages keep the page glyph.
-    const icon = formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
+    const icon = pinned
+        ? Icons.pin
+        : formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
     const cls = [
         'tree-row jag-line-2',
         isSelected ? 'selected' : '',
@@ -267,7 +272,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         }}
     >
         <span class=${STANDING_CLASS[standing] || 'tree-row-icon'} title=${standingTitle(standing)}><${icon} /></span>
-        <span class="tree-row-title">${title}</span>
+        <span class=${pinned ? 'tree-row-title pinned' : 'tree-row-title'}>${title}</span>
     </div>`;
 };
 

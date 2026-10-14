@@ -21388,3 +21388,12 @@ also clears trees cached before this landed.
 `a_deleted_document_leaves_every_list_it_was_in`;
 `harness/tree-delete-probe.mjs`: a deleted note leaves the open tree and its
 list on the node, and a pane mounted from its cache leaves it out too.
+
+**2026-10-13 - a pinned note shows it, in both columns.** A pinned note's title
+is in the accent (`--accent-ink`, which every colourway defines as words on its
+page) in the notes list and in the tree, and in the tree its icon is the pin. In
+a book notebook the pin keeps the page's standing colour - published, changed,
+hidden - so the tree still says where it stands. The tree reads the mirror's row
+first, which a pin or unpin moves at once, and the tree's summary while the row
+isn't here. Checked on a scratch node with a pinned and a plain note: titles and
+icons as meant in both columns. `just strings-check`, `just ui-check` green.

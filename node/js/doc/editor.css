@@ -260,6 +260,11 @@ a.chip-button {
     font-size: 0.8em;
 }
 
+/* A pinned note's title, in the accent - the tree's too (tree.css). */
+.note-row-title-text.pinned {
+    color: var(--accent-ink);
+}
+
 /* A media row's kind glyph (file-image / file-video / file-audio), quiet beside the title. */
 /* The document's standing in public (PUBLISH.md ruling 6, as re-ruled 2026-09-03): private
  * gray, live teal, scheduled peach - the publish bar's colours, the one pattern. */

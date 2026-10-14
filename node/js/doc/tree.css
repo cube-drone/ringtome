@@ -80,6 +80,11 @@
     font-weight: 600;
 }
 
+/* A pinned page's title, in the accent - the notes list's too (editor.css). */
+.tree-row-title.pinned {
+    color: var(--accent-ink);
+}
+
 .tree-caret {
     display: inline-flex;
     font-size: 0.8em;
