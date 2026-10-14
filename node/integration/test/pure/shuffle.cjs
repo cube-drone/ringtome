@@ -3,9 +3,10 @@
 // forth.
 const assert = require('node:assert');
 
-let spreadOrder, ShuffleRun, seededRandom, SEAM;
+let spreadOrder, ShuffleRun, seededRandom, SEAM, rated;
 before(async () => {
-    ({ spreadOrder, ShuffleRun, seededRandom, SEAM } = await import('../../../js/pure/shuffle.js'));
+    ({ spreadOrder, ShuffleRun, seededRandom, SEAM, rated } =
+        await import('../../../js/pure/shuffle.js'));
 });
 
 const songs = (spec) =>
@@ -144,5 +145,36 @@ describe("hrseAmp's shuffle (plans/AUDIO.md)", () => {
         const fresh = ShuffleRun.restore(list, opts(5), { order: ['gone'], pos: 0 });
         assert.equal(fresh.current(), null);
         assert.ok(fresh.next());
+    });
+
+    it('plays a thumbs-up song twice a cycle, and a thumbs-down one every second cycle (2026-10-13)', () => {
+        const list = songs([
+            ['a', 'x', 4],
+            ['b', 'y', 4],
+            ['c', 'z', 4],
+        ]);
+        const up = list[0].key;
+        const down = list[5].key;
+        const ratingOf = (s) => (s.key === up ? 'up' : s.key === down ? 'down' : '');
+        const run = new ShuffleRun(list, { ...opts(31), ratingOf });
+        const cycles = [];
+        let at = 0;
+        for (let c = 0; c < 4; c++) {
+            if (c > 0) run.extend();
+            cycles.push(run.order.slice(at).map((s) => s.key));
+            at = run.order.length;
+        }
+        for (const [c, cycle] of cycles.entries()) {
+            assert.equal(cycle.filter((k) => k === up).length, 2, `cycle ${c}: twice`);
+            assert.equal(cycle.filter((k) => k === down).length, c % 2, `cycle ${c}: every second`);
+            const others = cycle.filter((k) => k !== up && k !== down);
+            assert.equal(new Set(others).size, 10, `cycle ${c}: everything else once`);
+            assert.equal(others.length, 10);
+        }
+        assert.equal(
+            rated(list, 0, () => 'down').length,
+            list.length,
+            'all thumbs-down still plays',
+        );
     });
 });

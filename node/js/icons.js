@@ -167,6 +167,9 @@ import {
     SpeakerX,
     CornersIn,
     CornersOut,
+    ThumbsUp,
+    ThumbsDown,
+    Playlist,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -187,6 +190,10 @@ export const Icons = {
     speakerOff: SpeakerX,
     cornersIn: CornersIn,
     cornersOut: CornersOut,
+    thumbsUp: ThumbsUp,
+    thumbsDown: ThumbsDown,
+    // The now-playing column: the queue, around the song playing.
+    nowPlaying: Playlist,
     // The corner cloud's faces (plans/SYNC_STATUS.md, piece 3; synccloud.js).
     syncIdle: Cloud,
     syncDown: CloudArrowDown,

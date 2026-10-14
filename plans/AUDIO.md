@@ -853,6 +853,49 @@ nothing goes below today's floor. Songs already uploaded keep the rate they were
 encoded at - lossy can't be unlossed - and an upload that arrives as Opus keeps
 its own.
 
+### Curtis's notes after a while with it (2026-10-13)
+
+- **Stop ends listening**; pause is a breath. Stop lets the song go - the bar
+  says "nothing playing", a station goes off the air, the compact player goes at
+  once - and play starts the table again. The compact player also goes five
+  minutes after a pause, and a song a refresh brought back waits in hrseAmp
+  until it's played, rather than sitting over every app.
+- **The now-playing column**, beside Playlists: what's playing from at its head
+  (everything, the table narrowed, a filter, a mixtape, a station, or a file
+  played from hrseFiles), then up to five songs that played, the one playing,
+  and up to five to come - a station's each with the slice that picked it. A
+  song pressed shows its file; double-clicked, it plays.
+- **Where a song came from**: the bar says it beside the artist - a station's
+  slice (a nested station's as "station › slice"), else what the list is - and
+  "lately on the air" says it beside each song. A station's slices are kept with
+  its history across a refresh.
+- **Thumbs up and down** on the song playing, in the bar and the now-playing
+  column: your own, private, the same register as your score on your own sounds
+  (ruling 3). A thumbs-up song comes round twice a cycle of the shuffle (or of
+  its station slice); a thumbs-down one sits out every second cycle. A list of
+  nothing but thumbs-down still plays.
+- **The cover pressed** brings out the file column with the song playing
+  selected - from the compact player too, which opens hrseAmp first. A
+  **right-click** on a song, or on one of several selected, brings out the file
+  column too.
+- **Mute** is the speaker beside the volume; the volume stays where it was.
+- **Keys**, while hrseAmp is open only (elsewhere other tools want them): space
+  plays and pauses, the arrows go back and on a song. Not while typing, nor
+  under a modal.
+- **The pie says how many songs** each slice holds, beside its name and under
+  the pointer on the pie; a station's slice counts every song under it once.
+- **While the cassette fills the page** the frame's header (hrseAmp's name, the
+  search) goes. **A long title** is written smaller to fit the label, cut only
+  past the smallest size. **Four cassettes**: the house's, a dark one, a teal
+  one and a pink one, each song always on the same one.
+- **A sound in hrseFiles** plays in the player the whole app shares (with
+  hrseAmp unlocked): play and pause, the scrub, and "open hrseAmp" beside them.
+  Going into hrseAmp then carries on through its table, as any list playing does
+  when the table changes under it.
+- Not yet: remote-controlling the players on your other devices (NEXT_STEPS,
+  _Mixtape & Radio_); animated GIFs while the music plays (a loose idea, set
+  aside).
+
 ## Questions for Curtis
 
 None open (2026-10-12). Answered the same day: the fence is about public chains

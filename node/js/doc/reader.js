@@ -29,7 +29,9 @@ import { askYes } from '../modal.js';
 import { CopyIntoModal } from '../copyinto.js';
 import { DrawingSurface } from './drawing.js';
 import { useStorage } from '../storage.js';
-import { useGatedFeatures } from '../unlocks.js';
+import { useGatedFeatures, useOwns } from '../unlocks.js';
+import { FilePlayer } from '../player.js';
+import { ownRow } from '../pure/amp.js';
 import { sizeLabel } from '../pure/backups.js';
 import { toast } from '../toasts.js';
 
@@ -114,6 +116,8 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
     // Pin state rides the mirror row (not the doc detail), so read it live from there.
     const row = useLive(() => (docId ? openMirror(root).docs.get(docId) : null), [root, docId]);
     const pinned = !!(row && row.pinned);
+    // With hrseAmp unlocked, a sound plays in its player, the one the whole app shares.
+    const hasAmp = useOwns('music');
 
     const togglePin = async () => {
         try {
@@ -210,7 +214,11 @@ const Reader = ({ root, docId, onDeleted, nav, features }) => {
         // The player the whole width, for the most room to seek in; under it, the sound's own
         // fields (Curtis, 2026-10-11).
         body = html`<div class="reader-sound">
-            <audio class="reader-sound-player" controls src=${mediaUrl}></audio>
+            ${
+                hasAmp && row
+                    ? html`<${FilePlayer} row=${ownRow(row, root)} />`
+                    : html`<audio class="reader-sound-player" controls src=${mediaUrl}></audio>`
+            }
             <hr class="reader-sound-rule" />
             <${SoundTags} root=${root} docId=${docId} readOnly=${!!doc.builtin} />
         </div>`;

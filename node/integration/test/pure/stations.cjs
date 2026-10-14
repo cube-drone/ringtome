@@ -256,4 +256,49 @@ describe("hrseAmp's radio stations (plans/AUDIO.md)", () => {
         const cycle = [run.current().key, ...ahead];
         assert.equal(new Set(cycle).size, 41, 'a whole cycle, every song once - none lost');
     });
+
+    it("rates within a slice's cycle: thumbs-up twice, thumbs-down every second cycle", () => {
+        const lists = { all: songs('r', 6, 6) };
+        const station = { id: 'x', name: 'x', slices: [{ kind: 'all', weight: 50 }] };
+        const ratingOf = (s) => (s.key === 'r0' ? 'up' : s.key === 'r1' ? 'down' : '');
+        const run = new st.StationRun(station, { ...opts(lists), ratingOf });
+        // Cycle 0 holds 6 (r0 twice, r1 out); cycle 1 holds 7 (r0 twice, r1 in).
+        const keys = play(run, 13).map((s) => s.key);
+        const first = keys.slice(0, 6);
+        const second = keys.slice(6);
+        assert.equal(first.filter((k) => k === 'r0').length, 2);
+        assert.ok(!first.includes('r1'), 'thumbs-down sits out the first cycle');
+        assert.equal(second.filter((k) => k === 'r0').length, 2);
+        assert.equal(second.filter((k) => k === 'r1').length, 1, 'and plays in the second');
+    });
+
+    it('names the slices a pick came down through, nested stations and all', () => {
+        const inner = {
+            id: 'in',
+            name: 'inner',
+            slices: [{ kind: 'mixtape', id: 'm', weight: 50 }],
+        };
+        const outer = {
+            id: 'out',
+            name: 'outer',
+            slices: [
+                { kind: 'all', id: '', weight: 50 },
+                { kind: 'station', id: 'in', weight: 50 },
+            ],
+        };
+        const stations = [inner, outer];
+        assert.deepEqual(st.sliceTrail(stations, 'out/0'), [outer.slices[0]]);
+        assert.deepEqual(st.sliceTrail(stations, 'out/1/0'), [outer.slices[1], inner.slices[0]]);
+        assert.deepEqual(st.sliceTrail(stations, 'out/5'), [], 'a slice taken out since');
+        assert.deepEqual(st.sliceTrail(stations, null), []);
+        // The run keeps those paths beside its history.
+        const lists = { m: songs('m', 2, 2), all: songs('a', 2, 2) };
+        const run = new st.StationRun(outer, opts(lists, stations));
+        play(run, 6);
+        for (const [i, path] of run.from.entries()) {
+            const trail = st.sliceTrail(stations, path);
+            const leaf = trail[trail.length - 1];
+            assert.ok(run.history[i].key.startsWith(leaf.kind === 'all' ? 'a' : 'm'));
+        }
+    });
 });

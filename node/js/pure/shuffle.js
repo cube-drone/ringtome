@@ -102,6 +102,21 @@ export function spreadOrder(items, { artistOf, albumOf, random }) {
     return order;
 }
 
+/// A cycle's songs as you rated them (Curtis, 2026-10-13): a thumbs-up song comes up twice a
+/// cycle, a thumbs-down one only every second cycle - it sits out the even ones, counting from 0.
+/// `ratingOf` says 'up', 'down' or nothing. A list that's nothing but thumbs-down still plays.
+export function rated(items, cycle, ratingOf) {
+    if (!ratingOf) return items;
+    const out = [];
+    for (const item of items) {
+        const r = ratingOf(item);
+        if (r === 'down' && cycle % 2 === 0) continue;
+        out.push(item);
+        if (r === 'up') out.push(item);
+    }
+    return out.length ? out : items;
+}
+
 /// Keep the last cycle's tail out of the next one's head: any of `tail` (keys) among the first
 /// `SEAM` of `cycle` swaps with a song past them that isn't in the tail - one whose artist sits well
 /// in both places where there is one, so the seam doesn't undo the spreading.
@@ -130,23 +145,29 @@ export function keepSeam(cycle, tail, { keyOf, artistOf }) {
 
 /// A shuffle being played: cycle after cycle of the list, walked forward and back.
 export class ShuffleRun {
-    /// `opts`: `keyOf`, `artistOf`, `albumOf`, `random`. `first`: a song to start with, if one was
-    /// chosen.
+    /// `opts`: `keyOf`, `artistOf`, `albumOf`, `random`, and `ratingOf` if songs are rated
+    /// (`rated`). `first`: a song to start with, if one was chosen.
     constructor(items, opts, first = null) {
         this.opts = opts;
         this.items = items;
         this.order = [];
         this.pos = -1;
         this.cycleStart = 0;
+        this.cycles = 0;
         this.extend(first);
     }
 
     extend(first = null) {
         const { keyOf } = this.opts;
         const tail = this.order.slice(-SEAM).map(keyOf);
-        let cycle = keepSeam(spreadOrder(this.items, this.opts), tail, this.opts);
+        const songs = rated(this.items, this.cycles, this.opts.ratingOf);
+        this.cycles += 1;
+        let cycle = keepSeam(spreadOrder(songs, this.opts), tail, this.opts);
         if (first) {
-            cycle = [first, ...cycle.filter((item) => keyOf(item) !== keyOf(first))];
+            // To the front - one of a thumbs-up song's two plays.
+            const at = cycle.findIndex((item) => keyOf(item) === keyOf(first));
+            if (at >= 0) cycle.splice(at, 1);
+            cycle = [first, ...cycle];
         }
         this.cycleStart = this.order.length;
         this.order.push(...cycle);
@@ -172,7 +193,12 @@ export class ShuffleRun {
     /// should be durable) and handed back to `restore`.
     snapshot() {
         const { keyOf } = this.opts;
-        return { order: this.order.map(keyOf), pos: this.pos, cycleStart: this.cycleStart };
+        return {
+            order: this.order.map(keyOf),
+            pos: this.pos,
+            cycleStart: this.cycleStart,
+            cycles: this.cycles,
+        };
     }
 
     /// A run picked up where `snap` left it, over `items`: the order kept for every song still in
@@ -187,6 +213,7 @@ export class ShuffleRun {
         run.order = order;
         run.pos = Math.min(Math.max(-1, Number(snap.pos) || 0), order.length - 1);
         run.cycleStart = Math.min(Math.max(0, Number(snap.cycleStart) || 0), order.length);
+        run.cycles = Math.max(1, Number(snap.cycles) || 1);
         return run;
     }
 
@@ -205,7 +232,11 @@ export class ShuffleRun {
         const played = new Set(this.order.slice(this.cycleStart, this.pos + 1).map(keyOf));
         this.items = items;
         const rest = spreadOrder(
-            items.filter((item) => !played.has(keyOf(item))),
+            rated(
+                items.filter((item) => !played.has(keyOf(item))),
+                this.cycles - 1,
+                this.opts.ratingOf,
+            ),
             this.opts,
         );
         this.order = [...this.order.slice(0, this.pos + 1), ...rest];

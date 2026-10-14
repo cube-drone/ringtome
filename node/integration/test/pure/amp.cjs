@@ -176,4 +176,15 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
         assert.equal(row.loudness, -7.5, 'a feed song brings its loudness');
         assert.equal(amp.slimRow(row).loudness, -7.5, 'and the player keeps it across a refresh');
     });
+
+    it("writes a long title smaller on the cassette's label, and cuts only past the smallest (2026-10-13)", () => {
+        assert.deepEqual(amp.onLabel('short', 30, 22, 13), { words: 'short', size: 22 });
+        assert.deepEqual(amp.onLabel('', 30, 22, 13), { words: '', size: 22 });
+        const forty = 'x'.repeat(40);
+        assert.deepEqual(amp.onLabel(forty, 30, 22, 13), { words: forty, size: 16 });
+        const long = amp.onLabel('y'.repeat(80), 30, 22, 13);
+        assert.equal(long.size, 13);
+        assert.equal(long.words.length, 50);
+        assert.ok(long.words.endsWith('…'));
+    });
 });

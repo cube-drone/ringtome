@@ -21417,3 +21417,23 @@ whole-file reruns - a flake, correctly, with the recipe still red.
 **2026-10-13 - the Writer tree nests more visibly.** Each level sits in 1.2rem,
 not 0.9rem - about 5px more a level - from one `indent` in `doc/tree.js` that
 the page rows, the sections and the stubs all use. `just ui-check` green.
+
+**2026-10-13 - hrseAmp, from Curtis's notes.** Stop ends listening (the song let
+go, a station off the air, the compact player gone), and the compact player also
+goes five minutes after a pause and no longer appears for a song a refresh
+brought back. A now-playing column: what's playing from, five songs back, the
+song playing, five ahead, each pressed for its file and double-clicked to play.
+Where a song came from - a station's slice, else the list - in the bar, the
+column and "lately on the air". Thumbs up and down in the bar and the column,
+private, in the same register as your score: thumbs-up twice a shuffle cycle,
+thumbs-down every second cycle (`rated` in `pure/shuffle.js`, used by the
+shuffle and by each station slice's cycle). The cover opens the file column on
+the song playing, from the compact player too; a right-click on songs opens it.
+Mute on the speaker; space and the arrows while hrseAmp is open. The pie counts
+each slice's songs. The header goes while the cassette fills the page, long
+titles are written smaller to fit, and four cassettes take turns by song. A
+sound in hrseFiles plays in the shared player. Pure vectors for the ratings, the
+slice trail and the label fitting; driven end to end on a scratch node in
+headless Chrome, wide and phone-narrow (the phone bar stacks the thumbs at its
+end). `just strings-check`, `just ui-check` green. Cross-network remote control
+went to NEXT_STEPS; animated GIFs set aside.

@@ -197,6 +197,10 @@ are driving towards.
 ### Mixtape & Radio
 
 - a mp3 browser
+- **Remote-control your other players** (Curtis, 2026-10-13: "cross-network",
+  and a bigger task of its own): from one device, see the hrseAmp players
+  running on the persona's other devices and nodes - what each is playing - and
+  play, pause, skip or change the volume on them.
 
 ### Desktop
 

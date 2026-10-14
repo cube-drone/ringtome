@@ -13,7 +13,7 @@
 // `amp_stations`, keyed by a random id; a register emptied is one deleted. Pure, with the random
 // source passed in: the vectors are in integration/test/pure/stations.cjs.
 
-import { spreadOrder } from './shuffle.js';
+import { rated, spreadOrder } from './shuffle.js';
 
 /// The private register collection the stations live in.
 export const AMP_STATIONS = 'amp_stations';
@@ -91,6 +91,24 @@ export function wouldLoop(stations, into, adding) {
     return reaches(adding);
 }
 
+/// The slices a pick came down through, from the station playing to the leaf that picked it -
+/// `path` as a `StationRun` keeps it beside each song (`<station id>/<slice>/<slice>…`). Empty for
+/// a path that no longer leads anywhere (a slice taken out since).
+export function sliceTrail(stations, path) {
+    if (!path) return [];
+    const byId = new Map((stations || []).map((s) => [s.id, s]));
+    const [id, ...steps] = path.split('/');
+    let station = byId.get(id);
+    const out = [];
+    for (const step of steps) {
+        const slice = station && station.slices[Number(step)];
+        if (!slice) return [];
+        out.push(slice);
+        station = slice.kind === 'station' ? byId.get(slice.id) : null;
+    }
+    return out;
+}
+
 /// How long the memory is, for a station whose leaves hold `songs` songs by `artists` artists: a
 /// song played in the last `songs` picks, or an artist in the last `artists`, is passed over where
 /// another will do. Scaled down for a small station, so it still plays.
@@ -104,7 +122,8 @@ export function memoryFor(songs, artists) {
 /// A station being played. `opts`:
 ///   - `stations`: every station, for the slices that are stations;
 ///   - `songsOf(slice)`: the songs a leaf slice (filter, mixtape, all) holds now;
-///   - `keyOf`, `artistOf`, `albumOf`, `random`: as the shuffle takes them.
+///   - `keyOf`, `artistOf`, `albumOf`, `random`, `ratingOf`: as the shuffle takes them - a
+///     thumbs-up song twice in its slice's cycle, a thumbs-down one every second cycle.
 /// `next()` and `prev()` walk the station's history; past its end, `next()` picks anew.
 /// A song new to a slice mid-cycle goes in at the front of its bag, not at the next cycle: whoever
 /// just added it expects to hear it soon, to know it's really in there - however a fair shuffle
@@ -130,6 +149,7 @@ export class StationRun {
         this.pos = -1;
         this.bags = new Map(); // a leaf's path -> what's left of its cycle
         this.dealt = new Map(); // a leaf's path -> every song its cycle has held
+        this.cycles = new Map(); // a leaf's path -> how many cycles it has dealt
         this.refresh();
     }
 
@@ -264,20 +284,28 @@ export class StationRun {
     /// another), taken out of the bag. An empty bag is refilled with a fresh cycle of the leaf's
     /// songs.
     fromBag(leaf, strict) {
-        const { keyOf, artistOf, albumOf, random } = this.opts;
+        const { keyOf, artistOf, albumOf, random, ratingOf } = this.opts;
         const songs = this.leafSongs.get(leaf.path) || [];
         let bag = this.bags.get(leaf.path);
         const known = new Set(songs.map(keyOf));
         bag = (bag || []).filter((s) => known.has(keyOf(s)));
         let dealt = this.dealt.get(leaf.path);
+        const cycle = this.cycles.get(leaf.path) || 0;
+        const deal = (list) =>
+            spreadOrder(rated(list, cycle, ratingOf), { artistOf, albumOf, random });
         if (!bag.length || !dealt) {
-            bag = bag.length ? bag : spreadOrder(songs, { artistOf, albumOf, random });
-            dealt = new Set(bag.map(keyOf));
+            // A fresh cycle has dealt every song, a thumbs-down one sitting it out included: it's
+            // no newcomer.
+            if (!bag.length) {
+                bag = deal(songs);
+                dealt = new Set(songs.map(keyOf));
+                this.cycles.set(leaf.path, cycle + 1);
+            } else dealt = new Set(bag.map(keyOf));
             this.dealt.set(leaf.path, dealt);
         } else {
             const fresh = songs.filter((s) => !dealt.has(keyOf(s)));
             if (fresh.length) {
-                bag = withNewcomers(bag, spreadOrder(fresh, { artistOf, albumOf, random }));
+                bag = withNewcomers(bag, deal(fresh));
                 for (const s of fresh) dealt.add(keyOf(s));
             }
         }

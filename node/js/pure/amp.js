@@ -275,6 +275,20 @@ export function clickSelect(picked, key, ordered, anchor, { shift = false, toggl
     return new Set([key]);
 }
 
+/// Words written to fit a cassette's label (Curtis, 2026-10-13: long titles ran off it): `room`
+/// letters at `size`; longer, written smaller, as a pen squeezes them in, down to `least`; past
+/// that, cut, as a pen runs out of room. `{ words, size }`.
+export function onLabel(words, room, size, least) {
+    if (!words) return { words: '', size };
+    if (words.length <= room) return { words, size };
+    const fits = Math.max(least, Math.floor((size * room) / words.length));
+    const most = Math.floor((room * size) / fits);
+    return {
+        words: words.length > most ? `${words.slice(0, most - 1).trimEnd()}…` : words,
+        size: fits,
+    };
+}
+
 /// What the player keeps of a song across a refresh: enough to play it and say what it is.
 export const slimRow = (row) => ({
     key: row.key,
@@ -288,6 +302,19 @@ export const slimRow = (row) => ({
     thumb: !!row.thumb,
     loudness: row.loudness ?? null,
 });
+
+/// What the player is playing from (the now-playing column's head): the whole library, the table
+/// as it was narrowed, a saved filter, a mixtape, a station or one file played from hrseFiles -
+/// `{ kind, id, name }` - or null.
+export const CONTEXT_KINDS = ['all', 'filtered', 'filter', 'mixtape', 'station', 'file'];
+export function readContext(v) {
+    if (!v || typeof v !== 'object' || !CONTEXT_KINDS.includes(v.kind)) return null;
+    return {
+        kind: v.kind,
+        id: typeof v.id === 'string' ? v.id : '',
+        name: typeof v.name === 'string' ? v.name : '',
+    };
+}
 
 /// The player's state as kept (Curtis, 2026-10-12: the list, the song, the shuffle and where it
 /// stands, durable across a refresh), read back: null for anything that isn't one.
@@ -310,5 +337,8 @@ export function readPlayerState(raw) {
         // A station playing (section 6): its id, and where in its history (`rows`) the song is.
         station: typeof v.station === 'string' && v.station ? v.station : null,
         pos: Number.isInteger(v.pos) ? v.pos : -1,
+        // Which of the station's slices picked each song in `rows`, beside it, where it was kept.
+        from: Array.isArray(v.from) ? v.from.map((f) => (typeof f === 'string' ? f : null)) : [],
+        context: readContext(v.context),
     };
 }

@@ -30,7 +30,7 @@ import { formatWhen } from '../pure/when.js';
 import { speakable } from '../speakable.js';
 import { SoundTags } from '../doc/soundtags.js';
 import { BulkPanel } from '../doc/bulk.js';
-import { usePlayer, PlayerBar, Cassette, songForPhone } from '../player.js';
+import { usePlayer, PlayerBar, Cassette, Thumbs, SHUFFLE, songForPhone } from '../player.js';
 import { spreadOrder } from '../pure/shuffle.js';
 import { postHref } from '../links.js';
 import { Icons } from '../icons.js';
@@ -43,6 +43,7 @@ import {
     StationRun,
     readStations,
     shares,
+    sliceTrail,
     stationValue,
     wouldLoop,
 } from '../pure/stations.js';
@@ -231,21 +232,25 @@ const LayerFields = ({ root, rows, layer, onLayer }) => {
     </dl>`;
 };
 
+/// Your thumbs on a song - 'up', 'down', or '' taken back - kept in your layer: the score of a
+/// sound of yours (ruling 3), and for any song, how often the shuffle brings it round
+/// (pure/shuffle.js `rated`).
+async function rate(root, row, value, onLayer) {
+    await api(
+        `/api/identity/${root}/private/kv/${LAYER}/${encodeURIComponent(layerKey(row.author, row.doc, 'reaction'))}`,
+        {
+            method: 'PUT',
+            body: JSON.stringify({ value }),
+        },
+    ).catch(() => {});
+    onLayer([row], 'reaction', value);
+}
+
 /// A like or a dislike of your own sound (ruling 3): its score, which only you can give a sound
 /// nobody else can see. Kept in your layer.
 const Reaction = ({ root, row, onLayer }) => {
     const now = (row.layer && row.layer.reaction) || '';
-    const set = async (value) => {
-        const next = now === value ? '' : value;
-        await api(
-            `/api/identity/${root}/private/kv/${LAYER}/${encodeURIComponent(layerKey(row.author, row.doc, 'reaction'))}`,
-            {
-                method: 'PUT',
-                body: JSON.stringify({ value: next }),
-            },
-        ).catch(() => {});
-        onLayer([row], 'reaction', next);
-    };
+    const set = (value) => rate(root, row, now === value ? '' : value, onLayer);
     return html`<span class="amp-reaction">
         <button class=${now === 'up' ? 'chip chip-button chip-open' : 'chip chip-button'} onClick=${() => set('up')} title=${t('amp.like', 'like')}>👍</button>
         <button class=${now === 'down' ? 'chip chip-button chip-open' : 'chip chip-button'} onClick=${() => set('down')} title=${t('amp.dislike', 'dislike')}>👎</button>
@@ -728,8 +733,35 @@ const SLICE_CLASSES = [
 ];
 const sliceClass = (i) => SLICE_CLASSES[i % SLICE_CLASSES.length];
 
-/// The station as a pie (section 6): each slice its share of the circle.
-const Pie = ({ slices }) => {
+/// A slice's name: everything, or the filter, mixtape or station it is.
+const sliceName = (sl, { filters, tapes, stations }) => {
+    if (sl.kind === 'all') return t('amp.everything', 'everything');
+    const found =
+        sl.kind === 'filter'
+            ? filters.find((f) => f.id === sl.id)
+            : sl.kind === 'mixtape'
+              ? tapes.find((x) => x.id === sl.id)
+              : stations.find((x) => x.id === sl.id);
+    return found ? found.name : t('amp.slice-gone', '(gone)');
+};
+
+/// What a slice is, as an icon.
+const KIND_ICON = {
+    all: Icons.music,
+    filter: Icons.filter,
+    filtered: Icons.filter,
+    mixtape: Icons.cassette,
+    station: Icons.radio,
+    file: Icons.fileAudio,
+};
+
+/// How many songs a slice holds, in words (Curtis, 2026-10-13: "see the count of songs in each
+/// bin").
+const songCount = (n) => t('amp.n-songs', '{n} songs', { n });
+
+/// The station as a pie (section 6): each slice its share of the circle, and its name and how many
+/// songs it holds under the pointer. `labels[i]` says slice i.
+const Pie = ({ slices, labels = [] }) => {
     const parts = shares(slices);
     const c = 50;
     const r = 46;
@@ -740,12 +772,13 @@ const Pie = ({ slices }) => {
     let turn = 0;
     const drawn = parts.map((p, i) => {
         if (!p) return null;
+        const said = labels[i] && html`<title>${labels[i]}</title>`;
         if (p >= 100)
-            return html`<circle key=${i} class=${sliceClass(i)} cx=${c} cy=${c} r=${r} />`;
+            return html`<circle key=${i} class=${sliceClass(i)} cx=${c} cy=${c} r=${r}>${said}</circle>`;
         const [x1, y1] = at(turn);
         turn += p / 100;
         const [x2, y2] = at(turn);
-        return html`<path key=${i} class=${sliceClass(i)} d=${`M${c} ${c} L${x1} ${y1} A${r} ${r} 0 ${p > 50 ? 1 : 0} 1 ${x2} ${y2} Z`} />`;
+        return html`<path key=${i} class=${sliceClass(i)} d=${`M${c} ${c} L${x1} ${y1} A${r} ${r} 0 ${p > 50 ? 1 : 0} 1 ${x2} ${y2} Z`}>${said}</path>`;
     });
     return html`<svg class="amp-pie" viewBox="0 0 100 100" role="img" aria-label=${t('amp.station-pie', 'the station, as a pie')}>
         ${parts.some((p) => p > 0) ? drawn : html`<circle class="amp-pie-empty" cx=${c} cy=${c} r=${r} />`}
@@ -754,25 +787,25 @@ const Pie = ({ slices }) => {
 
 /// A radio station, opened (section 6): the pie; a slider per slice, its share beside it, and its
 /// trash first; a slice to add - everything, a saved filter, a mixtape, or another station that
-/// wouldn't hold this one - and the button that plays it, with what it played lately.
-const StationView = ({ station, stations, filters, tapes, playing, history, onChange, onPlay }) => {
+/// wouldn't hold this one - and the button that plays it, with what it played lately, each song
+/// with the slice that picked it. `countOf(slice)` is how many songs a slice holds; `sourceOf(path)`
+/// names the slices a pick came down through; `onShow(key)` shows a song's file.
+const StationView = ({
+    station,
+    stations,
+    filters,
+    tapes,
+    playing,
+    history,
+    countOf,
+    sourceOf,
+    onShow,
+    onChange,
+    onPlay,
+}) => {
     const parts = shares(station.slices);
-    const nameOf = (sl) => {
-        if (sl.kind === 'all') return t('amp.everything', 'everything');
-        const found =
-            sl.kind === 'filter'
-                ? filters.find((f) => f.id === sl.id)
-                : sl.kind === 'mixtape'
-                  ? tapes.find((x) => x.id === sl.id)
-                  : stations.find((x) => x.id === sl.id);
-        return found ? found.name : t('amp.slice-gone', '(gone)');
-    };
-    const kindIcon = {
-        all: Icons.music,
-        filter: Icons.filter,
-        mixtape: Icons.cassette,
-        station: Icons.radio,
-    };
+    const nameOf = (sl) => sliceName(sl, { filters, tapes, stations });
+    const counts = station.slices.map(countOf);
     const setSlices = (slices, now = false) => onChange({ ...station, slices }, now);
     const add = (value) => {
         const [kind, id] = value.split(':');
@@ -795,7 +828,7 @@ const StationView = ({ station, stations, filters, tapes, playing, history, onCh
             </button>
         </div>
         <div class="amp-station-body">
-            <${Pie} slices=${station.slices} />
+            <${Pie} slices=${station.slices} labels=${station.slices.map((sl, i) => `${nameOf(sl)}: ${songCount(counts[i])}`)} />
             <div class="amp-station-slices">
                 ${station.slices.map(
                     (sl, i) => html`<div class="amp-slice-row" key=${`${i}:${sl.kind}:${sl.id}`}>
@@ -810,7 +843,7 @@ const StationView = ({ station, stations, filters, tapes, playing, history, onCh
                                 )}
                         ><${Icons.trash} /></button>
                         <span class=${`amp-slice-swatch ${sliceClass(i)}`}></span>
-                        <span class="amp-slice-name"><${kindIcon[sl.kind]} /> ${nameOf(sl)}</span>
+                        <span class="amp-slice-name"><${KIND_ICON[sl.kind]} /> ${nameOf(sl)} <span class="amp-slice-count">${songCount(counts[i])}</span></span>
                         <input
                             class="amp-slice-weight"
                             type="range"
@@ -851,10 +884,87 @@ const StationView = ({ station, stations, filters, tapes, playing, history, onCh
             history.length > 0 &&
             html`<h3 class="amp-panel-sub">${t('amp.lately', 'lately on the air')}</h3>
             <ol class="amp-station-lately">
-                ${history.map((r, i) => html`<li key=${`${i}:${r.key}`}>${r.title}${r.artist ? html` <span class="amp-station-artist">${r.artist}</span>` : ''}</li>`)}
+                ${history.map(
+                    ({ row: r, from }, i) => html`<li
+                        key=${`${i}:${r.key}`}
+                        title=${t('amp.show-file', 'show its file')}
+                        onClick=${() => onShow(r.key)}
+                        onContextMenu=${(e) => {
+                            e.preventDefault();
+                            onShow(r.key);
+                        }}
+                    >${r.title}${r.artist ? html` <span class="amp-station-artist">${r.artist}</span>` : ''}${from && html`<span class="amp-station-source">${sourceOf(from)}</span>`}</li>`,
+                )}
             </ol>`
         }
     </div>`;
+};
+
+/// How many songs the now-playing column shows either side of the one playing.
+const QUEUE_REACH = 5;
+
+/// What's playing (pure/amp.js `readContext`), in words.
+const contextWords = (c, { tapes, filters, stations }) => {
+    if (!c) return '';
+    const named = (list) => {
+        const found = list.find((x) => x.id === c.id);
+        return found ? found.name : c.name;
+    };
+    switch (c.kind) {
+        case 'all':
+            return t('amp.from-everything', 'everything');
+        case 'filtered':
+            return t('amp.from-the-table', 'the table, narrowed');
+        case 'filter':
+            return named(filters);
+        case 'mixtape':
+            return named(tapes);
+        case 'station':
+            return named(stations);
+        case 'file':
+            return t('amp.from-a-file', 'a file, from hrseFiles');
+        default:
+            return '';
+    }
+};
+
+/// The now-playing column (Curtis, 2026-10-13): what's playing from at its head, then the few songs
+/// that played, the one playing with its thumbs, and the few to come - a station's each with the
+/// slice that picked it. A song pressed shows its file; double-clicked, it plays.
+const NowPlaying = ({ player, from, lists, sourceOf, nowFrom, rating, onRate, onShow, onTuck }) => {
+    const { past, ahead } = player.around(QUEUE_REACH);
+    const now = player.current;
+    const line = (row, by, source, extra = null) => html`<li
+        key=${by}
+        class=${by === 0 ? 'amp-now-row amp-now-playing' : by < 0 ? 'amp-now-row amp-now-past' : 'amp-now-row'}
+        title=${by ? t('amp.now-jump', 'double-click to play it now') : undefined}
+        onClick=${() => onShow(row.key)}
+        onDblClick=${() => by && player.jump(by)}
+        onContextMenu=${(e) => {
+            e.preventDefault();
+            onShow(row.key);
+        }}
+    >
+        <span class="amp-now-title">${by === 0 && html`<${Icons.speaker} /> `}${row.title}</span>
+        <span class="amp-now-artist">${row.artist}${source && html`<span class="player-source">${row.artist ? ' · ' : ''}${source}</span>`}</span>
+        ${extra}
+    </li>`;
+    const words = from && contextWords(from, lists);
+    return html`<aside class="amp-now">
+        <${PaneHead} icon=${Icons.nowPlaying} label=${t('amp.now-playing', 'now playing')} onTuck=${onTuck} />
+        ${
+            words &&
+            html`<p class="amp-now-from" title=${t('amp.now-from-title', 'what this is playing from')}>
+                ${KIND_ICON[from.kind] && html`<${KIND_ICON[from.kind]} />`} ${words}
+            </p>`
+        }
+        <ol class="amp-now-queue">
+            ${past.map((p, i) => line(p.row, i - past.length, sourceOf(p.from)))}
+            ${line(now, 0, sourceOf(nowFrom), onRate && html`<${Thumbs} rating=${rating} onRate=${onRate} className="player-rate amp-now-rate" />`)}
+            ${ahead.map((p, i) => line(p.row, i + 1, sourceOf(p.from)))}
+        </ol>
+        ${!ahead.length && html`<p class="null-sub amp-now-end">${t('amp.now-the-end', 'and then the end of the list')}</p>`}
+    </aside>`;
 };
 
 /// "Add to mixtape" (section 5), and inside an open one "take out of" it: for one song or many, in
@@ -889,6 +999,9 @@ const MixtapeActions = ({ rows, tapes, openTape, onAdd, onRemove }) => {
             >${t('amp.take-out-of', 'out of "{name}"', { name: open.name })}</button>`
         }`;
 };
+
+/// The key of the song playing, or null.
+const playingKeyOf = (player) => (player && player.current ? player.current.key : null);
 
 /// The column menu: every column, ticked if shown.
 const ColumnMenu = ({ hidden, onToggle }) => {
@@ -1016,8 +1129,12 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const dragKey = useRef(null);
     const [dropAt, setDropAt] = useState(null); // { key, after }
     const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'amp');
-    // The Playlists column and the file column, each as wide as it was dragged (panes.js).
-    const { resizer, colStyle } = useColWidths(root, 'amp', ['playlists', 'file'], { file: 260 });
+    // The Playlists column, the now-playing column and the file column, each as wide as it was
+    // dragged (panes.js).
+    const { resizer, colStyle } = useColWidths(root, 'amp', ['playlists', 'now', 'file'], {
+        file: 260,
+        now: 200,
+    });
 
     const loadFilters = () =>
         root &&
@@ -1312,11 +1429,33 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         new StationRun(st, {
             stations,
             songsOf,
-            keyOf: (r) => r.key,
-            artistOf: (r) => r.artist,
-            albumOf: (r) => (r.album ? `${r.artist}/${r.album}` : ''),
+            ...SHUFFLE,
             random: Math.random,
         });
+    // How many songs a slice holds - a station's, every song under it once - for the pie
+    // (Curtis, 2026-10-13).
+    const countOf = useMemo(() => {
+        const kept = new Map();
+        const under = (sl, seen) => {
+            if (sl.kind !== 'station') return songsOf(sl).map((r) => r.key);
+            const st = stations.find((x) => x.id === sl.id);
+            if (!st || seen.has(st.id)) return [];
+            const deeper = new Set([...seen, st.id]);
+            return st.slices.filter((x) => x.weight > 0).flatMap((x) => under(x, deeper));
+        };
+        return (sl) => {
+            const k = `${sl.kind}:${sl.id}`;
+            if (!kept.has(k)) kept.set(k, new Set(under(sl, new Set())).size);
+            return kept.get(k);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, filters, tapes, stations]);
+    // The slices a station's pick came down through, by name: "evenings › that mixtape".
+    const lists = { filters, tapes, stations };
+    const sourceOf = (path) =>
+        sliceTrail(stations, path)
+            .map((sl) => sliceName(sl, lists))
+            .join(' › ');
     // Android Auto's lists (plans/AUDIO.md, section 10): on a phone, hrseAmp hands the phone's player
     // what the car may browse - everything, shuffled; each mixtape in its order; each saved filter;
     // each station as a long run of its picks - a few seconds after the library settles, so the car
@@ -1373,7 +1512,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             toast(t('amp.station-silent', 'nothing to play - its slices hold no songs yet'));
             return;
         }
-        player.playStation(st.id, run);
+        player.playStation(st.id, run, st.name);
     };
     // The station playing hears when the library, a filter, a mixtape or a station changes; one
     // that came back from a refresh as its history alone is rebuilt here, once the library's in.
@@ -1395,7 +1534,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const run = runFor(st);
         const byKey = new Map(rows.map((r) => [r.key, r]));
         run.history = waiting.rows.map((r) => byKey.get(r.key) || r);
-        run.from = run.history.map(() => null); // which slice each came from isn't saved
+        run.from = run.history.map((_, i) => (waiting.from && waiting.from[i]) || null);
         run.pos = Math.min(waiting.pos, run.history.length - 1);
         player.resumeStation(run);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1469,22 +1608,34 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const lately = liveRun
         ? liveRun.history
               .slice(0, liveRun.pos + 1)
+              .map((row, i) => ({ row, from: liveRun.from[i] }))
               .slice(-10)
               .reverse()
         : [];
+    // What the table plays from, said as the player keeps it (pure/amp.js `readContext`).
+    const playingFrom = tape
+        ? { kind: 'mixtape', id: tape.id, name: tape.name }
+        : loaded && sameFilter(loaded, settingsNow)
+          ? { kind: 'filter', id: loaded.id, name: loaded.name }
+          : anyAmpPicks(picks) || searchQuery
+            ? { kind: 'filtered' }
+            : { kind: 'all' };
     const keys = useMemo(() => shown.map((r) => r.key), [shown]);
 
     // The player carries on through the table as it now stands.
     useEffect(() => {
-        if (player && player.current) player.relist(playable(shown));
+        if (player && player.current) player.relist(playable(shown), playingFrom);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [shown]);
 
+    // A song shown in the file column from the player or the queue, which the table (filtered, or a
+    // station open) may not hold: it stays selected all the same.
+    const [revealedKey, setRevealedKey] = useState(null);
     // A row that left the table leaves the selection.
     useEffect(() => {
         const here = new Set(keys);
-        if ([...picked].some((k) => !here.has(k)))
-            setPicked(new Set([...picked].filter((k) => here.has(k))));
+        const stays = (k) => here.has(k) || k === revealedKey;
+        if ([...picked].some((k) => !stays(k))) setPicked(new Set([...picked].filter(stays)));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [keys]);
 
@@ -1570,11 +1721,93 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         if (!e.shiftKey) setAnchor(row.key);
     };
     const selectedRows = shown.filter((r) => picked.has(r.key));
+    if (
+        revealedKey &&
+        picked.has(revealedKey) &&
+        !selectedRows.some((r) => r.key === revealedKey)
+    ) {
+        const r = rows.find((x) => x.key === revealedKey);
+        if (r) selectedRows.push(r);
+    }
+    // The file column, brought out if it's tucked away.
+    const openFile = () => {
+        if (tucked.has('file')) toggleTuck('file');
+    };
+    // A song's file, in the file column (Curtis, 2026-10-13: the cover pressed, a queue's song, a
+    // right-click): it alone selected, its row scrolled into view where the table holds it.
+    const showFile = (key) => {
+        if (player && player.expanded) player.setExpanded(false);
+        setPicked(new Set([key]));
+        setAnchor(key);
+        setRevealedKey(key);
+        openFile();
+        const i = shown.findIndex((r) => r.key === key);
+        const el = body.current;
+        if (el && i >= 0) {
+            const top = i * rowHeight;
+            if (top < el.scrollTop || top + rowHeight > el.scrollTop + el.clientHeight)
+                el.scrollTop = Math.max(0, top - el.clientHeight / 2);
+        }
+    };
+    // The cover pressed, here or in the compact player elsewhere: once the library's in.
+    const revealing = player && player.revealing;
+    useEffect(() => {
+        if (!revealing || loading) return;
+        player.revealed();
+        showFile(revealing);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [revealing, loading]);
+    // Right-click a song, or some (Curtis, 2026-10-13): its file - the selection's, if it's in it.
+    const rowMenu = (r) => (e) => {
+        if (pressedLong()) return;
+        e.preventDefault();
+        if (!picked.has(r.key)) {
+            setPicked(new Set([r.key]));
+            setAnchor(r.key);
+        }
+        openFile();
+    };
+    // The keys, while hrseAmp is open (Curtis, 2026-10-13 - elsewhere other tools want them): space
+    // plays and pauses, the arrows go back and on a song. Not while typing, nor under a modal.
+    const keyed = useRef(null);
+    keyed.current = { player, list: playable(shown), from: playingFrom };
+    useEffect(() => {
+        const press = (e) => {
+            const { player: p, list, from } = keyed.current;
+            if (!p || e.defaultPrevented || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+            const el = e.target;
+            if (el && el.closest && el.closest('input, textarea, select, [contenteditable]'))
+                return;
+            if (document.querySelector('.modal-scrim')) return;
+            if (e.key === ' ') {
+                e.preventDefault();
+                if (p.current) p.toggle();
+                else if (list.length) p.play(list, null, from);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                p.prev();
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                p.next();
+            }
+        };
+        document.addEventListener('keydown', press);
+        return () => document.removeEventListener('keydown', press);
+    }, []);
+    // The song playing: its row as the table has it, for its thumbs and its source.
+    const nowRow = playingKeyOf(player) ? rows.find((r) => r.key === playingKeyOf(player)) : null;
+    const nowRating = (nowRow && nowRow.layer && nowRow.layer.reaction) || '';
+    const rateNow = nowRow ? (value) => rate(root, nowRow, value, onLayer) : null;
+    const onAir = player && player.station ? player.stationRun() : null;
+    const nowFrom = onAir ? onAir.from[onAir.pos] || null : null;
+    const nowSource =
+        (nowFrom && sourceOf(nowFrom)) || (player && contextWords(player.context, lists));
 
     const first = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
     const last = Math.min(shown.length, Math.ceil((scrollTop + height) / rowHeight) + OVERSCAN);
-    const playingKey = player && player.current ? player.current.key : null;
-    const playRow = (r) => player && r.carried !== false && player.play(playable(shown), r);
+    const playingKey = playingKeyOf(player);
+    const playRow = (r) =>
+        player && r.carried !== false && player.play(playable(shown), r, playingFrom);
     // A long press is a phone's Ctrl-click: that row into the selection, or out of it.
     const held = (r) => () => {
         setPicked((p) => clickSelect(p, r.key, keys, anchor, { toggle: true }));
@@ -1643,6 +1876,23 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     />
                 </aside>${resizer('file')}`
               : html`<${Rail} icon=${Icons.fileAudio} label=${t('amp.file', 'file')} onClick=${() => toggleTuck('file')} />`;
+    // The now-playing column (Curtis, 2026-10-13): there while a song is.
+    const nowColumn =
+        !player || !player.current
+            ? null
+            : !tucked.has('now')
+              ? html`${tab('now', Icons.nowPlaying, t('amp.now-playing', 'now playing'))}<${NowPlaying}
+                    player=${player}
+                    from=${player.context}
+                    lists=${lists}
+                    sourceOf=${sourceOf}
+                    nowFrom=${nowFrom}
+                    rating=${nowRating}
+                    onRate=${rateNow}
+                    onShow=${showFile}
+                    onTuck=${() => toggleTuck('now')}
+                />${resizer('now')}`
+              : html`<${Rail} icon=${Icons.nowPlaying} label=${t('amp.now-playing', 'now playing')} onClick=${() => toggleTuck('now')} />`;
 
     return html`<div class=${player && player.expanded ? 'amp-app amp-expanded' : 'amp-app'}>
         ${
@@ -1671,6 +1921,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           onNewStation=${newStation}
                       />${resizer('playlists')}`
             }
+            ${nowColumn}
             ${
                 /* What's selected, in a column of its own left of the table (Curtis, 2026-10-12),
                 as wide as it's dragged - there while something is. */ ''
@@ -1686,6 +1937,9 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                               tapes=${tapes}
                               playing=${!!player && player.station === openStationObj.id}
                               history=${lately}
+                              countOf=${countOf}
+                              sourceOf=${sourceOf}
+                              onShow=${showFile}
                               onChange=${changeStation}
                               onPlay=${() => playStation(openStationObj)}
                           />`
@@ -1770,6 +2024,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                 ].join(' ')}
                                 style=${`top: ${(first + i) * rowHeight}px; height: ${rowHeight}px; grid-template-columns: 2rem ${template}`}
                                 onClick=${(e) => select(r, e)}
+                                onContextMenu=${rowMenu(r)}
                                 ...${longPress(held(r), { onUp: tapped(r) })}
                                 onDblClick=${() => performance.now() - tappedPlay.current > 600 && playRow(r)}
                                 draggable=${!!tape}
@@ -1807,6 +2062,12 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             </div>
         </div>`
         }
-        <${PlayerBar} list=${playable(shown)} />
+        <${PlayerBar}
+            list=${playable(shown)}
+            from=${playingFrom}
+            source=${nowSource}
+            rating=${nowRating}
+            onRate=${rateNow}
+        />
     </div>`;
 };

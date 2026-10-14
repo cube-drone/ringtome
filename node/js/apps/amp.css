@@ -432,6 +432,47 @@
     width: 5rem;
 }
 
+/* Muted: the volume it will come back at, faded. */
+.player-volume input.player-volume-muted {
+    opacity: 0.4;
+}
+
+/* The cover, pressed for the song's file (2026-10-13). */
+.player-thumb-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+/* Where the song playing came from: the slice that picked it, or the list it's from. */
+.player-source {
+    color: var(--muted);
+}
+
+/* The thumbs on the song playing. */
+.player-rate {
+    display: inline-flex;
+    gap: 0.1rem;
+    flex-shrink: 0;
+}
+
+/* A sound in hrseFiles, played by the shared player: play, the scrub, and hrseAmp a press away. */
+.player-file {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.player-file-amp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
 /* Anywhere else in the app, above the dock on the left - the toasts take the right. */
 .player-mini {
     position: fixed;
@@ -445,6 +486,16 @@
     padding: 0.3rem 0.5rem;
     background: var(--surface);
     border: 1px solid var(--border-strong);
+}
+
+/* The frame's top - hrseAmp's name, the search - goes while the cassette fills the page
+   (Curtis, 2026-10-13); the frame's own edge takes the header's place. */
+.app-frame:has(.amp-expanded) > .app-header {
+    display: none;
+}
+
+.app-frame:has(.amp-expanded) {
+    padding-top: 10px;
 }
 
 .player-mini-now {
@@ -486,8 +537,28 @@
     height: auto;
 }
 
+/* A few cassettes (2026-10-13), each song always on its own: the house's, a dark shell, and two
+   coloured ones. */
+.cassette-style-1 {
+    --cassette-body: var(--ink-soft);
+    --cassette-foot: var(--ink);
+    --cassette-stripe: var(--pink);
+}
+
+.cassette-style-2 {
+    --cassette-body: var(--teal);
+    --cassette-foot: var(--teal-deep);
+    --cassette-stripe: var(--peach);
+}
+
+.cassette-style-3 {
+    --cassette-body: var(--pink);
+    --cassette-foot: var(--surface-2);
+    --cassette-stripe: var(--teal);
+}
+
 .cassette-body {
-    fill: var(--surface);
+    fill: var(--cassette-body, var(--surface));
     stroke: var(--border-strong);
     stroke-width: 3;
 }
@@ -510,7 +581,7 @@
 }
 
 .cassette-stripe {
-    fill: var(--peach);
+    fill: var(--cassette-stripe, var(--peach));
     opacity: 0.7;
 }
 
@@ -557,7 +628,7 @@
 }
 
 .cassette-foot {
-    fill: var(--surface-2);
+    fill: var(--cassette-foot, var(--surface-2));
     stroke: var(--border);
 }
 
@@ -746,6 +817,94 @@
     color: var(--muted);
 }
 
+/* Lately on the air: each song pressed shows its file, and says the slice that picked it. */
+.amp-station-lately li {
+    cursor: pointer;
+}
+
+.amp-station-source {
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+/* How many songs a slice holds (2026-10-13). */
+.amp-slice-count {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+/* The now-playing column (2026-10-13): what it plays from, then the songs either side of the one
+   playing - those that played faded, the one playing marked. */
+.amp-now {
+    width: var(--w-now, 16rem);
+    min-width: 200px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.amp-now-from {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0 0.5rem;
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.amp-now-queue {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.amp-now-row {
+    display: flex;
+    flex-direction: column;
+    padding: 0.3rem 0.4rem;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+}
+
+.amp-now-row:hover {
+    background: var(--surface-2);
+}
+
+.amp-now-past {
+    opacity: 0.55;
+}
+
+.amp-now-playing {
+    background: var(--surface-2);
+    border-left: 3px solid var(--teal);
+}
+
+.amp-now-title,
+.amp-now-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.amp-now-title {
+    font-size: 0.9rem;
+}
+
+.amp-now-artist {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.amp-now-rate {
+    margin-top: 0.2rem;
+}
+
+.amp-now-end {
+    margin: 0.5rem 0.4rem;
+}
+
 .amp-slice-0 {
     fill: var(--teal);
     background: var(--teal);
@@ -870,12 +1029,12 @@
         min-width: 2rem;
     }
 
-    /* The bar in two lines: the buttons and what's playing, then the scrub with its two toggles.
-       The volume is the phone's own buttons'. */
+    /* The bar in two lines: the buttons and what's playing, then the scrub with its two toggles -
+       and the thumbs stacked at the end, down both. The volume is the phone's own buttons'. */
     .player-bar {
         display: grid;
-        grid-template-columns: auto auto 1fr auto auto;
-        column-gap: 0.5rem;
+        grid-template-columns: auto auto 1fr auto auto auto;
+        column-gap: 0.25rem;
         row-gap: 0.15rem;
         padding: 0.35rem 0.5rem;
     }
@@ -884,7 +1043,8 @@
         grid-area: 1 / 1;
     }
 
-    .player-bar > .player-thumb {
+    .player-bar > .player-thumb,
+    .player-bar > .player-thumb-button {
         grid-area: 1 / 2;
     }
 
@@ -892,6 +1052,20 @@
         grid-area: 1 / 3 / 2 / 6;
         max-width: none;
         min-width: 0;
+    }
+
+    .player-bar > .player-rate {
+        grid-area: 1 / 6 / 3 / 7;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .player-bar > .player-rate .player-button {
+        font-size: 1.1rem;
+    }
+
+    .player-buttons .player-button {
+        padding: 0.15rem;
     }
 
     .player-track {
