@@ -21413,3 +21413,7 @@ stands; the reruns never turn it green. More than six files failing is a rig
 that fell over, and isn't rerun. CI's job limit is 45 minutes now (30). Tried on
 the grep trap: an import claim run without its setup failed, and failed 0 of 5
 whole-file reruns - a flake, correctly, with the recipe still red.
+
+**2026-10-13 - the Writer tree nests more visibly.** Each level sits in 1.2rem,
+not 0.9rem - about 5px more a level - from one `indent` in `doc/tree.js` that
+the page rows, the sections and the stubs all use. `just ui-check` green.

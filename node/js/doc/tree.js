@@ -41,6 +41,10 @@ import { toast } from '../toasts.js';
 
 const html = htm.bind(h);
 
+/// How far a row sits in for its depth: 1.2rem a level (Curtis, 2026-10-13: 0.9rem, and nested
+/// items didn't read as nested enough - about 5px more each).
+const indent = (depth) => `${0.4 + depth * 1.2}rem`;
+
 // The bucket's tree root, found (mirror roster, lowest id wins a concurrent-mint tie) or minted.
 // ONE module-level dedupe for everyone who might need the root - the tree pane and the list's
 // list's new-thing button alike - so two writes racing on first touch share a single create.
@@ -231,7 +235,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     return html`<div
         class=${cls}
         ref=${rowRef}
-        style=${`padding-left: ${0.4 + depth * 0.9}rem`}
+        style=${`padding-left: ${indent(depth)}`}
         data-settles
         onClick=${() => ops.select(id)}
         draggable=${true}
@@ -284,7 +288,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
     const [hover, setHover] = useState(null); // 'before' | 'after' | 'into' | null
     const [lifting, setLifting] = useState(false);
     if (!node.members) {
-        return html`<div class="tree-row jag-line-2 tree-stub" style=${`padding-left: ${0.4 + depth * 0.9}rem`}>
+        return html`<div class="tree-row jag-line-2 tree-stub" style=${`padding-left: ${indent(depth)}`}>
             <${Icons.section} />
             <span class="tree-row-title">${node.title || t('doc.tree.untitled-section', '(untitled section)')} ↩</span>
         </div>`;
@@ -303,7 +307,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
     return html`
         <div
             class=${cls}
-            style=${`padding-left: ${0.4 + depth * 0.9}rem`}
+            style=${`padding-left: ${indent(depth)}`}
             onClick=${() => ops.toggleFold(node.taxonomy_id)}
             draggable=${true}
             onDragStart=${(e) => {
