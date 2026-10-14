@@ -873,7 +873,7 @@ export const PlayerBar = ({ list = [], from = null, source = '', rating = '', on
             <input class=${p.muted ? 'player-volume-muted' : ''} type="range" min="0" max="1" step="0.05" value=${volume} onInput=${(e) => p.setVolume(Number(e.currentTarget.value))} />
         </span>
         <button
-            class=${p.levelling ? 'player-button player-on' : 'player-button'}
+            class=${p.levelling ? 'player-button player-level player-on' : 'player-button player-level'}
             title=${p.levelling ? t('player.levelling-on', 'levelling: on - loud songs are turned down to match the rest') : t('player.levelling-off', 'levelling: off - every song plays as loud as it was made')}
             onClick=${() => p.setLevelling(!p.levelling)}
         ><${Icons.mediaAudio} /></button>
@@ -905,7 +905,9 @@ const cassetteStyle = (key) => {
 /// the window, the song's title written on its top line and the artist on its bottom one, in a hand
 /// (Caveat); the two reels high in the window, turning while it plays, with the tape wound on them
 /// showing through; and the tapered edge below, with its capstan and guide holes.
-export const Cassette = () => {
+/// On a phone the bar has no room for the thumbs (Curtis, 2026-10-13), so the cassette's page
+/// carries them, under the cassette: `rating` and `onRate` as the bar takes them.
+export const Cassette = ({ rating = '', onRate = null }) => {
     const p = usePlayer();
     if (!p) return null;
     const { current, playing, me } = p;
@@ -962,6 +964,7 @@ export const Cassette = () => {
             <rect class="cassette-hole" x="176" y="174" width="10" height="10" rx="2" />
             <rect class="cassette-hole" x="154" y="164" width="12" height="6" rx="2" />
         </svg>
+        ${current && onRate && html`<${Thumbs} rating=${rating} onRate=${onRate} className="player-rate player-cassette-rate" />`}
     </div>`;
 };
 

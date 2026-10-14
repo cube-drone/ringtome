@@ -878,6 +878,9 @@ its own.
   selected - from the compact player too, which opens hrseAmp first. A
   **right-click** on a song, or on one of several selected, brings out the file
   column too.
+- **On a phone** the bar leaves out levelling and the thumbs, for room; the
+  cassette's page carries the thumbs at its foot, and the now-playing tab has
+  them too.
 - **Mute** is the speaker beside the volume; the volume stays where it was.
 - **Keys**, while hrseAmp is open only (elsewhere other tools want them): space
   plays and pauses, the arrows go back and on a song. Not while typing, nor

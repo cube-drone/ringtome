@@ -21437,3 +21437,18 @@ slice trail and the label fitting; driven end to end on a scratch node in
 headless Chrome, wide and phone-narrow (the phone bar stacks the thumbs at its
 end). `just strings-check`, `just ui-check` green. Cross-network remote control
 went to NEXT_STEPS; animated GIFs set aside.
+
+**2026-10-13 - a cassette's edge and screws stay put.** The four cassettes take
+the colourway's colours for their shell, base and stripes (as meant all along),
+but the shell's outer edge is always black and its screws always grey: three
+fixed tokens in `tokens.css` (`--cassette-edge`, `--cassette-screw`,
+`--cassette-screw-edge`), beside the QR code's. Seen on a scratch node.
+`just ui-check` green.
+
+**2026-10-13 - a phone's player bar makes room.** On a phone the bar drops the
+levelling toggle and the thumbs - two lines again: the buttons and what's
+playing, then the scrub and the page-filling toggle - and the cassette's page
+carries the thumbs instead, large, at its foot (the now-playing tab has them
+too). A wide window is unchanged: its thumbs stay in the bar, and the cassette's
+page has none. Checked on a scratch node at phone width: the bar fits with room
+to spare, and a thumb pressed under the cassette sticks. `just ui-check` green.

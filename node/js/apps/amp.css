@@ -459,6 +459,11 @@
     flex-shrink: 0;
 }
 
+/* The cassette's page carries the thumbs only on a phone, where the bar has no room for them. */
+.player-cassette-rate {
+    display: none;
+}
+
 /* A sound in hrseFiles, played by the shared player: play, the scrub, and hrseAmp a press away. */
 .player-file {
     display: flex;
@@ -559,18 +564,18 @@
 
 .cassette-body {
     fill: var(--cassette-body, var(--surface));
-    stroke: var(--border-strong);
+    stroke: var(--cassette-edge);
     stroke-width: 3;
 }
 
 .cassette-screw {
-    fill: var(--surface-2);
-    stroke: var(--border-strong);
+    fill: var(--cassette-screw);
+    stroke: var(--cassette-screw-edge);
     stroke-width: 1.5;
 }
 
 .cassette-screw-slot {
-    stroke: var(--muted);
+    stroke: var(--cassette-screw-edge);
     stroke-width: 1.2;
 }
 
@@ -1029,12 +1034,13 @@
         min-width: 2rem;
     }
 
-    /* The bar in two lines: the buttons and what's playing, then the scrub with its two toggles -
-       and the thumbs stacked at the end, down both. The volume is the phone's own buttons'. */
+    /* The bar in two lines: the buttons and what's playing, then the scrub and the page-filling
+       toggle. The volume is the phone's own buttons'; levelling and the thumbs make way (Curtis,
+       2026-10-13: "a bit crowded") - the thumbs are on the cassette's page, and the queue's. */
     .player-bar {
         display: grid;
-        grid-template-columns: auto auto 1fr auto auto auto;
-        column-gap: 0.25rem;
+        grid-template-columns: auto auto 1fr auto;
+        column-gap: 0.5rem;
         row-gap: 0.15rem;
         padding: 0.35rem 0.5rem;
     }
@@ -1049,23 +1055,31 @@
     }
 
     .player-now {
-        grid-area: 1 / 3 / 2 / 6;
+        grid-area: 1 / 3 / 2 / 5;
         max-width: none;
         min-width: 0;
     }
 
-    .player-bar > .player-rate {
-        grid-area: 1 / 6 / 3 / 7;
-        flex-direction: column;
-        justify-content: center;
+    .player-bar > .player-rate,
+    .player-level {
+        display: none;
     }
 
-    .player-bar > .player-rate .player-button {
-        font-size: 1.1rem;
+    /* The thumbs, at the foot of the cassette's page. */
+    .player-cassette-rate {
+        display: inline-flex;
+        position: absolute;
+        bottom: 1rem;
+        left: 50%;
+        transform: translateX(-50%);
+        gap: 1rem;
+        padding: 0.3rem 0.8rem;
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
     }
 
-    .player-buttons .player-button {
-        padding: 0.15rem;
+    .player-cassette-rate .player-button {
+        font-size: 1.8rem;
     }
 
     .player-track {

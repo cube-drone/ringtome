@@ -1897,7 +1897,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     return html`<div class=${player && player.expanded ? 'amp-app amp-expanded' : 'amp-app'}>
         ${
             player && player.expanded
-                ? html`<${Cassette} />`
+                ? html`<${Cassette} rating=${nowRating} onRate=${rateNow} />`
                 : html`<div class="amp-main panes" style=${colStyle}>
             ${
                 tucked.has('playlists')

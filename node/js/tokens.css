@@ -25,6 +25,13 @@
     --qr-dark: #000000;
     --qr-light: #ffffff;
 
+    /* A cassette's shell edge and its screws (apps/amp.css), the same in every colourway (Curtis,
+       2026-10-13): black plastic round the outside, steel screws - the shell and its stripes take
+       the colourway's colours inside them. */
+    --cassette-edge: #000000;
+    --cassette-screw: #a3a3a3;
+    --cassette-screw-edge: #5c5c5c;
+
     /* The measure of a written post (Curtis, 2026-09-04): about 800px is where readable
        content sits - narrower crowds, wider puts whole paragraphs on one line. Every surface
        that shows a post caps itself here: the feed's cards, the shelf, the permalink, the
