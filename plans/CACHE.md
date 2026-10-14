@@ -1,6 +1,6 @@
 # Caching
 
-A plan (2026-10-13). Stages 1-6 built the same day (HISTORY); what was built
+A plan (2026-10-13). Stages 1-7 built the same day (HISTORY); what was built
 before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
@@ -296,7 +296,7 @@ Done when: a tree read, a move and a notebook listing issue no doc-meta
 statements when nothing is new; live, `taxonomy tree steps` shows `tree_ms` in
 single milliseconds.
 
-### Stage 7 - the public face in RAM
+### Stage 7 - the public face in RAM (built 2026-10-13)
 
 1. **Serving facts** for `public_doc_bytes` (`idface.rs`): per `(root, doc)`,
    the file and thumb hash, format, sealed-or-not, seal holder, last change -
@@ -320,6 +320,18 @@ single milliseconds.
 Done when: an anonymous post page, its words and thumbnail answer in
 milliseconds on a busy persona; a takedown is a 404 on the next request (an
 integration claim).
+
+As built: serving facts kept for hosted personas only (the hot case; peeks,
+hunches and fragments keep their careful path), against the posts chain's mark,
+`doc_heads`, `public_retractions` and `equivocations`; public blobs by hash in a
+`moka` cache weighed to the public-bytes share, 4 MB a blob at most; rendered
+words by a hash of what was rendered; a post's derived words and first picture
+by its body's hash; public profiles against `profile_view`; `Cache-Control` on
+RSS, the sitemaps, `robots.txt`, `/feed.xml`, `/feed` and `/people`. Whole
+rendered pages were left: the CDN holds them now, and with these parts kept,
+building one costs a fraction of what it did. Slugs and web paths stay read per
+request - `doc_annotations`, which they live in, moves with every label on the
+node, so a cache over it would rarely stand.
 
 ### Stage 8 - whole-table reads per list
 

@@ -906,7 +906,7 @@ pub(crate) async fn apply_profile_set(db: &Db, signed: &SignedEntry) -> Result<(
     Ok(())
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ProfileField {
     pub field: String,
     pub value: String,

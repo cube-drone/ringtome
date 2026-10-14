@@ -90,6 +90,19 @@ describe('crawling: the public site as a search engine reads it', function () {
         assert.equal(words.headers.get('cache-control'), 'no-cache');
     });
 
+    it('a takedown is a 404 on the very next read, however warm the caches (2026-10-13)', async () => {
+        const id = await publish('Here Then Gone', 'words to forget');
+        const words = `ringtome/user/${short}/doc/${id}/body`;
+        for (let i = 0; i < 3; i++) {
+            const r = await crawler(words);
+            assert.equal(r.status, 200, 'served, and every cache on the way warmed');
+            assert.equal(await r.text(), 'words to forget');
+        }
+        const down = await ada(`api/identity/${root}/posts/${id}`, { method: 'DELETE' });
+        assert.equal(down.status, 200, await down.clone().text());
+        assert.equal((await crawler(words)).status, 404, 'gone at once - no cache answers for it');
+    });
+
     it("a person's page lists their posts as links, and paging goes further back", async () => {
         const html = await (await crawler(`ringtome/user/${short}`)).text();
         const copy = copyOf(html);

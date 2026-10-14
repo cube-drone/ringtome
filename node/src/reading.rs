@@ -35,6 +35,25 @@ fn attr(s: &str) -> String {
 
 /// A post's words as HTML: Marquee rendered, plain text kept as paragraphs.
 pub fn words_html(source: &str, format: Format) -> String {
+    // Kept by what was rendered (plans/CACHE.md, Stage 7): a post page renders its words for every
+    // reader without the app and every crawler, and the same words render the same way.
+    type Kept = std::collections::HashMap<([u8; 32], bool), std::sync::Arc<str>>;
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
+        std::sync::LazyLock::new(Default::default);
+    let key = (*blake3::hash(source.as_bytes()).as_bytes(), format == Format::Marquee);
+    if let Some(html) = KEPT.lock().expect("rendered words poisoned").get(&key) {
+        return html.to_string();
+    }
+    let html = render_words(source, format);
+    let mut kept = KEPT.lock().expect("rendered words poisoned");
+    if kept.len() >= 20_000 {
+        kept.clear();
+    }
+    kept.insert(key, std::sync::Arc::from(html.as_str()));
+    html
+}
+
+fn render_words(source: &str, format: Format) -> String {
     if format == Format::Marquee {
         if let Ok(html) =
             marquee_html_renderer::render_marquee_with(source, &ReadingProfile, Output::Html)
@@ -55,7 +74,7 @@ pub async fn public_text(state: &AppState, db: &crate::db::Db, doc_id: &[u8; 16]
     let Ok(Some(head)) = crate::record::documents::public_head(db, doc_id).await else {
         return String::new();
     };
-    match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
+    match crate::idface::public_blob(state, head.file_hash).await {
         Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
         _ => String::new(),
     }

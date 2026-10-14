@@ -136,6 +136,8 @@ pub async fn rss_handler(
         [
             (header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"),
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            // Every feed reader polls it: a CDN may keep it five minutes (plans/CACHE.md, Stage 7).
+            (header::CACHE_CONTROL, crate::crawl::public_cache(None).as_str()),
         ],
         feed,
     )

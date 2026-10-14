@@ -146,10 +146,27 @@ pub async fn set_policy_handler(
 }
 
 fn text(status: StatusCode, content_type: &'static str, body: String) -> Response {
+    // The same for every reader, and asked by every crawler: a CDN may keep it five minutes
+    // (`public_cache`; plans/CACHE.md, Stage 7 - these went out with no Cache-Control at all).
+    let cache = public_cache(None);
     (
         status,
-        [(header::CONTENT_TYPE, content_type), (header::X_CONTENT_TYPE_OPTIONS, "nosniff")],
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (header::CACHE_CONTROL, cache.as_str()),
+        ],
         body,
+    )
+        .into_response()
+}
+
+/// A node page the same for every reader (`/feed`, `/people`), kept by a CDN five minutes.
+fn node_page(state: &AppState, head: &str, body: &str) -> Response {
+    let cache = public_cache(None);
+    (
+        [(header::CACHE_CONTROL, cache.as_str())],
+        axum::response::Html(crate::ui::app_page_with(state, head, body)),
     )
         .into_response()
 }
@@ -407,7 +424,7 @@ pub async fn front_page(
     )
     .await;
     let body = crate::reading::front_copy(&state, before).await;
-    axum::response::Html(crate::ui::app_page_with(&state, &head, &body)).into_response()
+    node_page(&state, &head, &body)
 }
 
 /// GET `/people` - the node's people page, with everyone listed as a reading copy.
@@ -420,7 +437,7 @@ pub async fn people_page(State(state): State<AppState>) -> Response {
     )
     .await;
     let body = crate::reading::people_copy(&state).await;
-    axum::response::Html(crate::ui::app_page_with(&state, &head, &body)).into_response()
+    node_page(&state, &head, &body)
 }
 
 #[cfg(test)]

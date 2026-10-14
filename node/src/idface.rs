@@ -102,6 +102,43 @@ pub(crate) async fn hosted_here(state: &AppState, root_hex: &str) -> Result<bool
 
 /// The public profile straight off the identity's own db - the public lane, no account in
 /// the question. Absent fields render as absent; a profile-less persona is still a page.
+/// A public blob's bytes, by hash - kept in RAM (plans/CACHE.md, Stage 7). Content-addressed, so a
+/// kept copy is never stale; a taken-down post never reaches here, because the facts that name its
+/// hash are read first and say it's gone. Thumbnails, pictures and posts' words: what a page, a
+/// feed card and a crawler ask for again and again. Bounded by the budget's public-bytes share; a
+/// blob over `KEPT_BLOB_MAX` is read through every time.
+pub(crate) async fn public_blob(
+    state: &AppState,
+    hash: [u8; 32],
+) -> anyhow::Result<Option<Vec<u8>>> {
+    static KEPT: std::sync::OnceLock<moka::future::Cache<[u8; 32], std::sync::Arc<Vec<u8>>>> =
+        std::sync::OnceLock::new();
+    let kept = KEPT.get_or_init(|| {
+        crate::budget::on_pressure("public blobs", || {
+            if let Some(kept) = KEPT.get() {
+                kept.invalidate_all();
+            }
+        });
+        moka::future::Cache::builder()
+            .max_capacity(crate::budget::share(crate::budget::Part::PublicBytes))
+            .weigher(|_, bytes: &std::sync::Arc<Vec<u8>>| bytes.len().min(u32::MAX as usize) as u32)
+            .build()
+    });
+    if let Some(bytes) = kept.get(&hash).await {
+        return Ok(Some(bytes.as_ref().clone()));
+    }
+    let bytes = state.files.get_public(iroh_blobs::Hash::from_bytes(hash)).await?;
+    if let Some(b) = &bytes {
+        if b.len() <= KEPT_BLOB_MAX {
+            kept.insert(hash, std::sync::Arc::new(b.clone())).await;
+        }
+    }
+    Ok(bytes)
+}
+
+/// The largest public blob `public_blob` keeps.
+const KEPT_BLOB_MAX: usize = 4 * 1024 * 1024;
+
 pub(crate) async fn public_profile(
     state: &AppState,
     root_hex: &str,
@@ -112,7 +149,24 @@ pub(crate) async fn public_profile(
             "nothing of theirs is held here"
         )));
     };
-    imaol::get_profile(&db).await
+    // Kept against `profile_view`, the one table it reads (plans/CACHE.md, Stage 7): every post
+    // page, person page, feed and sitemap asks it, and it changes when someone edits their profile.
+    type Kept = std::collections::HashMap<String, (u64, Vec<imaol::ProfileField>)>;
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
+        std::sync::LazyLock::new(Default::default);
+    let at = crate::db::writes_to(root_hex, "profile_view");
+    if let Some((kept_at, fields)) = KEPT.lock().expect("profiles poisoned").get(root_hex) {
+        if *kept_at == at {
+            return Ok(fields.clone());
+        }
+    }
+    let fields = imaol::get_profile(&db).await?;
+    let mut kept = KEPT.lock().expect("profiles poisoned");
+    if kept.len() >= 10_000 {
+        kept.clear();
+    }
+    kept.insert(root_hex.to_string(), (at, fields.clone()));
+    Ok(fields)
 }
 
 pub(crate) fn profile_value<'a>(fields: &'a [imaol::ProfileField], name: &str) -> Option<&'a str> {
@@ -398,22 +452,44 @@ pub(crate) async fn post_words(
     });
     let marquee = crate::record::documents::Format::from_wire(post.format)
         == crate::record::documents::Format::Marquee;
-    let text = match crate::record::documents::public_head(db, &post.doc_id).await? {
-        Some(head) => {
-            match state.files.get_public(iroh_blobs::Hash::from_bytes(head.file_hash)).await {
-                Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
-                _ => String::new(),
+    // What a post's words say - plain, and their first picture - kept by the body's hash
+    // (plans/CACHE.md, Stage 7): a person's page derives thirty posts' a request, the RSS twenty,
+    // and the same body says the same thing. The title and the author's description stay outside.
+    type Said = (String, Option<String>);
+    type Kept = std::collections::HashMap<([u8; 32], bool), Said>;
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
+        std::sync::LazyLock::new(Default::default);
+    let head = crate::record::documents::public_head(db, &post.doc_id).await?;
+    let kept = head.as_ref().and_then(|h| {
+        KEPT.lock().expect("post words poisoned").get(&(h.file_hash, marquee)).cloned()
+    });
+    let (words, picture) = match kept {
+        Some(said) => said,
+        None => {
+            let text = match &head {
+                Some(head) => match public_blob(state, head.file_hash).await {
+                    Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+                    _ => String::new(),
+                },
+                None => String::new(),
+            };
+            let picture = if marquee { first_picture_thumb(&text) } else { None };
+            let words = if marquee {
+                crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text)
+            } else {
+                String::new()
+            };
+            let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+            if let Some(h) = &head {
+                let mut kept = KEPT.lock().expect("post words poisoned");
+                if kept.len() >= 50_000 {
+                    kept.clear();
+                }
+                kept.insert((h.file_hash, marquee), (words.clone(), picture.clone()));
             }
+            (words, picture)
         }
-        None => String::new(),
     };
-    let picture = if marquee { first_picture_thumb(&text) } else { None };
-    let words = if marquee {
-        crate::record::bake::plain_words(&text, &|_| String::new()).unwrap_or(text)
-    } else {
-        String::new()
-    };
-    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
     let title = if post.title.trim().is_empty() {
         let first: String = words.split(' ').take(9).collect::<Vec<_>>().join(" ");
         if first.is_empty() {
@@ -1829,6 +1905,7 @@ pub(crate) async fn public_doc_bytes(
     // FRAGMENT shelf answers first (explicit beats implicit: the share was asked for), and
     // the mirror serves only what no fragment can. Relationship-held chains keep the
     // authoritative rule unchanged, silence included.
+    #[derive(Clone)]
     struct ServeFacts {
         file_hash: [u8; 32],
         thumb_hash: Option<[u8; 32]>,
@@ -1840,6 +1917,35 @@ pub(crate) async fn public_doc_bytes(
         /// The title, sealed under the post key (ruling 5) - handed back beside the words,
         /// to whoever gets the words.
         sealed_title: Option<Vec<u8>>,
+    }
+    /// The facts from the author's own chain - off the HEADER, not the text-only shelf view: a
+    /// media twin is filtered out of `public_doc` by format, which left sealed pictures serving
+    /// their ciphertext ungated (caught by the twins acceptance - 200 of sealed bytes for the
+    /// untrusted).
+    async fn chain_facts(
+        db: &crate::db::Db,
+        doc_id: &[u8; 16],
+    ) -> Result<Option<ServeFacts>, AppError> {
+        let (gated, seal_of, sealed_title) =
+            match crate::record::documents::public_header_entry(db, doc_id).await? {
+                Some(entry) => match &entry.entry().payload {
+                    ringtome_proto::Payload::Inline(payload) => {
+                        ringtome_proto::registry::DocHeaderPlain::decode(payload)
+                            .map(|h| (h.trusted_only, h.seal_of, h.sealed_title))
+                            .unwrap_or((false, None, None))
+                    }
+                    _ => (false, None, None),
+                },
+                None => (false, None, None),
+            };
+        Ok(crate::record::documents::public_head(db, doc_id).await?.map(|h| ServeFacts {
+            file_hash: h.file_hash,
+            thumb_hash: h.thumb_hash,
+            format: h.format,
+            trusted_only: gated,
+            seal_of,
+            sealed_title,
+        }))
     }
     let from_fragments = || async {
         Result::<Option<ServeFacts>, AppError>::Ok(
@@ -1856,93 +1962,99 @@ pub(crate) async fn public_doc_bytes(
                 }),
         )
     };
-    let facts: Option<ServeFacts> = match state
-        .user_dbs
-        .get(&root_hex)
-        .await
-        .map_err(AppError::Internal)?
-    {
-        Some(db) => {
-            let speculative_only = crate::speculative::speculative_only(state, &root_hex)
-                .await
-                .map_err(AppError::Internal)?;
-            // A peek's mirror (PROJECT_PLAN's Peeks, ruling 4) has no posts lane either: its words
-            // live on the fragment ledger, so it reads fragment-first like a hunch does.
-            // And a peek FOLLOWS THE EYE (ruling 5): a document it never fetched - a
-            // page of a shared book, a post past the newest twenty - is asked for by id
-            // over the fragment road from the author's own nodes, right now, so the
-            // reader who clicked it gets it rather than a shrug.
-            let peek = peek_held(state, &root_hex).await;
-            let mut fragment_first =
-                if speculative_only || peek { from_fragments().await? } else { None };
-            if peek {
-                touch_look(state, &root_hex).await;
-            }
-            if peek && fragment_first.is_none() {
-                if !peek_room(state, &root_hex).await {
-                    return Err(AppError::NotFound(crate::msg!(
-                        "idface.this-look-is-full",
-                        "this look is full - follow them to keep everything"
-                    )));
+    let facts: Option<ServeFacts> =
+        match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
+            // A persona hosted here answers from its own chain - the hot case, and the one the steps
+            // below arrive at for it anyway - so its facts are kept (plans/CACHE.md, Stage 7): against
+            // the posts chain's mark (a header, a takedown) and the tables its fold writes. A 304 for
+            // a hosted post then reads nothing.
+            Some(db) if hosted_here(state, &root_hex).await.unwrap_or(false) => {
+                type Kept = std::collections::HashMap<(String, [u8; 16]), (u64, ServeFacts)>;
+                static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
+                    std::sync::LazyLock::new(Default::default);
+                let stamp =
+                    crate::db::entries_mark(&root_hex, ringtome_proto::registry::service::POSTS)
+                        + crate::db::writes_to(&root_hex, "doc_heads")
+                        + crate::db::writes_to(&root_hex, "public_retractions")
+                        + crate::db::writes_to(&root_hex, "equivocations");
+                let key = (root_hex.clone(), doc_id);
+                let kept = KEPT
+                    .lock()
+                    .expect("serve facts poisoned")
+                    .get(&key)
+                    .filter(|(at, _)| *at == stamp)
+                    .map(|(_, f)| f.clone());
+                match kept {
+                    Some(facts) => Some(facts),
+                    None => {
+                        let facts = chain_facts(&db, &doc_id).await?;
+                        if let Some(f) = &facts {
+                            let mut kept = KEPT.lock().expect("serve facts poisoned");
+                            if kept.len() >= 100_000 {
+                                kept.clear();
+                            }
+                            kept.insert(key, (stamp, f.clone()));
+                        }
+                        facts
+                    }
                 }
-                crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
-                fragment_first = from_fragments().await?;
             }
-            // A FOLLOW held from a floor (PROJECT_PLAN's Peeks, ruling 8) may lack an old document
-            // too - a pin beneath the floor, a link into deep history: the ledger, then
-            // by id over the fragment road. Only while the posts chain HAS a floor: a
-            // whole mirror lacking a document lacks it for a reason (retracted,
-            // disproven), and must not fetch it back. Never for a persona hosted here.
-            // A document the held chain lacks may sit on the shelf: beneath a follow
-            // ceiling's floor, or brought by a share or a room (CHAT.md, ruling 11 - a
-            // persona held at room depth has no posts chain here at all, and its media
-            // twins arrive as fragments under the room's door). The shelf is one read,
-            // always taken; the dial for what the shelf lacks stays gated by the floor,
-            // so a typo against a followed persona costs no connection.
-            if !peek
-                && !speculative_only
-                && fragment_first.is_none()
-                && !hosted_here(state, &root_hex).await.unwrap_or(false)
-                && crate::record::documents::public_head(&db, &doc_id).await?.is_none()
-            {
-                fragment_first = from_fragments().await?;
-                if fragment_first.is_none() && posts_floor(state, &root_hex).await > 0 {
+            Some(db) => {
+                let speculative_only = crate::speculative::speculative_only(state, &root_hex)
+                    .await
+                    .map_err(AppError::Internal)?;
+                // A peek's mirror (PROJECT_PLAN's Peeks, ruling 4) has no posts lane either: its words
+                // live on the fragment ledger, so it reads fragment-first like a hunch does.
+                // And a peek FOLLOWS THE EYE (ruling 5): a document it never fetched - a
+                // page of a shared book, a post past the newest twenty - is asked for by id
+                // over the fragment road from the author's own nodes, right now, so the
+                // reader who clicked it gets it rather than a shrug.
+                let peek = peek_held(state, &root_hex).await;
+                let mut fragment_first =
+                    if speculative_only || peek { from_fragments().await? } else { None };
+                if peek {
+                    touch_look(state, &root_hex).await;
+                }
+                if peek && fragment_first.is_none() {
+                    if !peek_room(state, &root_hex).await {
+                        return Err(AppError::NotFound(crate::msg!(
+                            "idface.this-look-is-full",
+                            "this look is full - follow them to keep everything"
+                        )));
+                    }
                     crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
                     fragment_first = from_fragments().await?;
                 }
-            }
-            match fragment_first {
-                Some(facts) => Some(facts),
-                None => {
-                    // Off the HEADER, not the text-only shelf view: a media twin is
-                    // filtered out of `public_doc` by format, which left sealed
-                    // pictures serving their ciphertext ungated (caught by the twins
-                    // acceptance - 200 of sealed bytes for the untrusted).
-                    let (gated, seal_of, sealed_title) =
-                        match crate::record::documents::public_header_entry(&db, &doc_id).await? {
-                            Some(entry) => match &entry.entry().payload {
-                                ringtome_proto::Payload::Inline(payload) => {
-                                    ringtome_proto::registry::DocHeaderPlain::decode(payload)
-                                        .map(|h| (h.trusted_only, h.seal_of, h.sealed_title))
-                                        .unwrap_or((false, None, None))
-                                }
-                                _ => (false, None, None),
-                            },
-                            None => (false, None, None),
-                        };
-                    crate::record::documents::public_head(&db, &doc_id).await?.map(|h| ServeFacts {
-                        file_hash: h.file_hash,
-                        thumb_hash: h.thumb_hash,
-                        format: h.format,
-                        trusted_only: gated,
-                        seal_of,
-                        sealed_title,
-                    })
+                // A FOLLOW held from a floor (PROJECT_PLAN's Peeks, ruling 8) may lack an old document
+                // too - a pin beneath the floor, a link into deep history: the ledger, then
+                // by id over the fragment road. Only while the posts chain HAS a floor: a
+                // whole mirror lacking a document lacks it for a reason (retracted,
+                // disproven), and must not fetch it back. Never for a persona hosted here.
+                // A document the held chain lacks may sit on the shelf: beneath a follow
+                // ceiling's floor, or brought by a share or a room (CHAT.md, ruling 11 - a
+                // persona held at room depth has no posts chain here at all, and its media
+                // twins arrive as fragments under the room's door). The shelf is one read,
+                // always taken; the dial for what the shelf lacks stays gated by the floor,
+                // so a typo against a followed persona costs no connection.
+                if !peek
+                    && !speculative_only
+                    && fragment_first.is_none()
+                    && !hosted_here(state, &root_hex).await.unwrap_or(false)
+                    && crate::record::documents::public_head(&db, &doc_id).await?.is_none()
+                {
+                    fragment_first = from_fragments().await?;
+                    if fragment_first.is_none() && posts_floor(state, &root_hex).await > 0 {
+                        crate::fragments::fetch_post(state, &root_hex, &root, &doc_id).await;
+                        fragment_first = from_fragments().await?;
+                    }
+                }
+                match fragment_first {
+                    Some(facts) => Some(facts),
+                    None => chain_facts(&db, &doc_id).await?,
                 }
             }
-        }
-        None => from_fragments().await?,
-    };
+            None => from_fragments().await?,
+        };
     // Nothing here has the words and a member is asking: one fetch - from the sharer
     // whose shelf listed it (`?via=`), else the author's own nodes - whichever way the
     // author is held: not at all, as a hunch, as a peek short of this post. A share on a
@@ -1953,18 +2065,23 @@ pub(crate) async fn public_doc_bytes(
     // from it - retracted, or disproven by a repudiation - and re-fetching it from the
     // network would resurrect what the chain took back (the repudiation suite caught the
     // first draft doing exactly that).
-    let not_here_yet = match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
-        None => true,
-        Some(_) => {
-            crate::speculative::speculative_only(state, &root_hex).await.unwrap_or(false)
-                || peek_held(state, &root_hex).await
-        }
+    // Asked only when nothing was found - it was asked on every read, facts in hand or not.
+    let not_here_yet = async {
+        Ok::<bool, AppError>(
+            match state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? {
+                None => true,
+                Some(_) => {
+                    crate::speculative::speculative_only(state, &root_hex).await.unwrap_or(false)
+                        || peek_held(state, &root_hex).await
+                }
+            },
+        )
     };
     let facts = match facts {
         Some(f) => Some(f),
         // ...or a stranger, for someone a public post here links to (publinks.rs).
         None if (session.is_some() || crate::publinks::linked_publicly_here(state, &root_hex))
-            && not_here_yet
+            && not_here_yet.await?
             && !hosted_here(state, &root_hex).await.unwrap_or(false) =>
         {
             let origin = via
@@ -2043,12 +2160,7 @@ pub(crate) async fn public_doc_bytes(
         )
             .into_response());
     }
-    let Some(bytes) = state
-        .files
-        .get_public(iroh_blobs::Hash::from_bytes(hash))
-        .await
-        .map_err(AppError::Internal)?
-    else {
+    let Some(bytes) = public_blob(state, hash).await.map_err(AppError::Internal)? else {
         // A peek at its ceiling never wanted these bytes (PROJECT_PLAN's Peeks, ruling 6): say so, rather
         // than promising bodies that are not on their way.
         if peek_held(state, &root_hex).await && !peek_room(state, &root_hex).await {

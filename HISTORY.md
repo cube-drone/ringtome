@@ -21325,3 +21325,20 @@ collection, so a zero budget can't make them worse.
 fields set twice, bucket and list placements and a pin, the view is the same
 allocation - mirrored, never read again - equal to a fresh read of the tables,
 and a clear makes the next read reload. (With the mirror disabled it fails.)
+
+**2026-10-13 - the public face in RAM (plans/CACHE.md, Stage 7).** What a public
+visit and a crawler read again and again, kept against what changes it:
+**serving facts** for a persona hosted here (`public_doc_bytes`) - the body's
+hash, format, seal - against the posts chain's mark (a header, a takedown),
+`doc_heads`, `public_retractions` and `equivocations`, so a 304 for a hosted
+post reads nothing; **public blobs by hash** (`idface::public_blob`) in a `moka`
+cache weighed to the budget's public-bytes share - content-addressed, never
+stale, and behind the facts, so a taken-down post's bytes are never reached;
+**rendered words** by a hash of what was rendered; **a post's derived words and
+first picture** (`post_words`, thirty a person page) by its body's hash;
+**public profiles** against `profile_view`. "Not here yet", asked on every body
+read with the facts in hand or not, is asked only when nothing was found. RSS,
+the sitemaps, `robots.txt`, `/feed.xml`, `/feed` and `/people` carry
+`public_cache` - they went out with no `Cache-Control`. A new crawling claim: a
+takedown is a 404 on the very next read, however warm the caches (and fails with
+the facts cache's stamp ignored).
