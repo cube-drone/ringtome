@@ -37,6 +37,24 @@ const markAll = (note) => {
     );
 };
 
+// Third job (2026-10-13): name what failed, for the reruns (rerun.cjs). When the recipe sets
+// RINGTOME_FAILED_FILE, each failed test's file and full title go into it, a line each - the rerun
+// needs to know which file to run again and which title to count, and reading them back out of
+// mocha's printed report is a parse waiting to break.
+const fs = require('node:fs');
+const recordFailure = (test) => {
+    const into = process.env.RINGTOME_FAILED_FILE;
+    if (!into || !test || test.state !== 'failed') return;
+    try {
+        fs.appendFileSync(
+            into,
+            JSON.stringify({ file: test.file, title: test.fullTitle() }) + '\n',
+        );
+    } catch {
+        /* a failure we can't name still fails the run */
+    }
+};
+
 exports.mochaHooks = {
     async beforeEach() {
         // The client clock rides the note: marks are fire-and-forget, and on a loaded
@@ -45,6 +63,7 @@ exports.mochaHooks = {
         await markAll(`START @${Date.now()} ${this.currentTest.fullTitle()}`);
     },
     async afterEach() {
+        recordFailure(this.currentTest);
         await markAll(
             `END(${this.currentTest.state || 'unknown'}) @${Date.now()} ${this.currentTest.fullTitle()}`,
         );

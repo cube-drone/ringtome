@@ -21397,3 +21397,19 @@ hidden - so the tree still says where it stands. The tree reads the mirror's row
 first, which a pin or unpin moves at once, and the tree's summary while the row
 isn't here. Checked on a scratch node with a pinned and a plain note: titles and
 icons as meant in both columns. `just strings-check`, `just ui-check` green.
+
+**2026-10-13 - tests by judgment, CI by watching; a red run says how red.**
+Curtis's ruling, in CLAUDE.md: the full local `just ci` is no longer owed per
+batch - run the tests a change calls for, and watch GitHub Actions instead,
+looking again whenever five minutes have passed since the last look
+(`.ci_check`, gitignored), a red run the priority - real or flake, fixed either
+way. To make that call quickly, the integration recipe now reruns what failed:
+the root hooks name each failed test's file and title (`RINGTOME_FAILED_FILE`),
+and on red `node/integration/rerun.cjs` runs each failing file again five times,
+whole - a claim alone, without the claims that set it up, fails for that reason
+only - and says how often each failure came back: 5 of 5 likely real, fewer a
+flake. On Actions it also goes on the run's summary page. The run's own verdict
+stands; the reruns never turn it green. More than six files failing is a rig
+that fell over, and isn't rerun. CI's job limit is 45 minutes now (30). Tried on
+the grep trap: an import claim run without its setup failed, and failed 0 of 5
+whole-file reruns - a flake, correctly, with the recipe still red.

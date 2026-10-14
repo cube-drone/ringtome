@@ -35,3 +35,6 @@ API_KEY
 
 # cargo sweep -s writes its stamp where it runs (node/justfile tidy)
 sweep.timestamp
+
+# when Claude last looked at GitHub Actions (CLAUDE.md, _Tests by judgment, CI by watching_)
+/.ci_check

@@ -27,7 +27,9 @@ jobs:
     # target, not the more. First run after this change rebuilds cold: rust-cache keys on
     # architecture. Revert to ubuntu-latest if the aarch64 pool ever disappoints.
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    # 45 (2026-10-13; 30 before): a red run reruns each failing file five times (rerun.cjs),
+    # and the gate itself takes ~20 minutes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

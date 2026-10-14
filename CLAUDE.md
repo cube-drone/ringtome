@@ -48,17 +48,31 @@
   `just ui-check` for JS, `cargo test -p ringtome-node` for Rust,
   `RINGTOME_TEST_GREP=<area> just integration` for one acceptance area (match
   every top-level `describe` of the files touched: a grep that catches one claim
-  of a file without its setup claims fails for that reason alone). Run full
-  `just ci` once per batch — before handing work over for review, and before
-  anything lands near sync, storage or the HTTP surface — in the background,
-  carrying on with other work rather than waiting; never edit source while it
-  runs, or its verdict covers neither version. **A change that is only copy, CSS
-  or locale wording** (no Rust, no server behaviour, nothing the integration rig
-  can see) needs only `just strings-check` and `just ui-check` - they run
-  eslint, every pure test and the CSS conventions (dead classes, colour
-  literals), which is everything such a change can break; the full gate is not
-  owed for it (Curtis, 2026-10-02). At session start, check `gh run list`: a red
-  run on `main` is a finding under the rule above, settled before new work.
+  of a file without its setup claims fails for that reason alone). Full
+  `just ci` locally is no longer owed per batch — see _Tests by judgment, CI by
+  watching_ below; when you do run it, run it in the background and never edit
+  source while it runs, or its verdict covers neither version. **A change that
+  is only copy, CSS or locale wording** (no Rust, no server behaviour, nothing
+  the integration rig can see) needs only `just strings-check` and
+  `just ui-check` - they run eslint, every pure test and the CSS conventions
+  (dead classes, colour literals), which is everything such a change can break;
+  the full gate is not owed for it (Curtis, 2026-10-02). At session start, check
+  `gh run list`: a red run on `main` is a finding under the rule above, settled
+  before new work.
+- **Tests by judgment, CI by watching** (2026-10-13, when full local `just ci`
+  runs were slowing development too much): after changing or adding a feature,
+  run the tests you judge wise or necessary — the tiers above, a harness probe,
+  the acceptance areas the change can reach — rather than the full local gate
+  every time. GitHub Actions runs the full gate on every push; watch it: while
+  developing, if more than five minutes have passed since the last look (the
+  time is in `.ci_check` at the repo root, gitignored — `date +%s > .ci_check`
+  after each look), check `gh run list` again. **A red run is the priority**:
+  decide whether it is a real failure or a flake, and fix it either way — a
+  flake is worth chasing for the time it wastes. The integration recipe helps
+  decide: on red it reruns each failing file whole five times and says how often
+  each failure came back (`node/integration/rerun.cjs`; in Actions, also on the
+  run's summary page) — 5 of 5 is very likely real, fewer is a flake. The reruns
+  never turn a red run green.
 - **`just format` before handing off** (2026-10-02): the last step before
   telling Curtis work is ready to commit is `just format` (rustfmt, then
   prettier for JS and Markdown, to the configs at the root), so the diff he
