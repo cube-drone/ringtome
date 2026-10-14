@@ -761,22 +761,18 @@ async fn fold_record(
         plain.value.clone(),
         (signed.entry().timestamp_ms, signed.entry().seq, *signed.hash()),
     );
-    let before = view_counts(db);
+    let sql = match plain.kind {
+        PrivateKind::Register => FOLD_REGISTER,
+        PrivateKind::SetAdd | PrivateKind::SetRemove => FOLD_ELEMENT,
+    };
+    // Counted and patched into the kept views first, under their lock (`fold_noted`); the
+    // statement itself goes uncounted, so its count can't land apart from the patch.
+    fold_noted(db, service_id, sql, change);
     // The arms await individually: each generic `execute` call is its own future type.
     let folded = match plain.kind {
         PrivateKind::Register => {
-            db.execute(
-                "INSERT INTO private_registers
-               (service, collection, key, value, timestamp_ms, seq, entry_hash)
-             VALUES (:service, :collection, :key, :value, :timestamp_ms, :seq, :entry_hash)
-             ON CONFLICT(service, collection, key) DO UPDATE SET
-               value = excluded.value,
-               timestamp_ms = excluded.timestamp_ms,
-               seq = excluded.seq,
-               entry_hash = excluded.entry_hash
-             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
-                 > (private_registers.timestamp_ms, private_registers.seq,
-                    private_registers.entry_hash)",
+            db.execute_noted(
+                FOLD_REGISTER,
                 turso::named_params! {
                     ":service": i64::from(service_id),
                     ":collection": plain.collection,
@@ -791,20 +787,8 @@ async fn fold_record(
             .await
         }
         PrivateKind::SetAdd | PrivateKind::SetRemove => {
-            db.execute(
-                "INSERT INTO private_set_elements
-               (service, collection, element, present, value, timestamp_ms, seq, entry_hash)
-             VALUES (:service, :collection, :element, :present, :value, :timestamp_ms, :seq,
-                     :entry_hash)
-             ON CONFLICT(service, collection, element) DO UPDATE SET
-               present = excluded.present,
-               value = excluded.value,
-               timestamp_ms = excluded.timestamp_ms,
-               seq = excluded.seq,
-               entry_hash = excluded.entry_hash
-             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
-                 > (private_set_elements.timestamp_ms, private_set_elements.seq,
-                    private_set_elements.entry_hash)",
+            db.execute_noted(
+                FOLD_ELEMENT,
                 turso::named_params! {
                     ":service": i64::from(service_id),
                     ":collection": plain.collection,
@@ -820,31 +804,78 @@ async fn fold_record(
             .await
         }
     };
+    if folded.is_err() {
+        // The kept views took a change the table didn't: they go.
+        fold_failed(db);
+    }
     folded.context("folding private record into view").map_err(AppError::Internal)?;
-    mirror(db, service_id, change, before);
     Ok(())
 }
+
+/// The fold's two statements: a row in, unless the one there is newer (last-write-wins).
+const FOLD_REGISTER: &str = "INSERT INTO private_registers
+               (service, collection, key, value, timestamp_ms, seq, entry_hash)
+             VALUES (:service, :collection, :key, :value, :timestamp_ms, :seq, :entry_hash)
+             ON CONFLICT(service, collection, key) DO UPDATE SET
+               value = excluded.value,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (private_registers.timestamp_ms, private_registers.seq,
+                    private_registers.entry_hash)";
+const FOLD_ELEMENT: &str = "INSERT INTO private_set_elements
+               (service, collection, element, present, value, timestamp_ms, seq, entry_hash)
+             VALUES (:service, :collection, :element, :present, :value, :timestamp_ms, :seq,
+                     :entry_hash)
+             ON CONFLICT(service, collection, element) DO UPDATE SET
+               present = excluded.present,
+               value = excluded.value,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (private_set_elements.timestamp_ms, private_set_elements.seq,
+                    private_set_elements.entry_hash)";
 
 // ---------------------------------------------------------------------------------------------
 // Kept views (plans/CACHE.md, Stage 6). A service's whole view - for doc-meta, every title, tag,
 // bucket membership and list a persona has - was read from the two tables on every tree read,
 // move, filing, listing: on the live server ~950 ms and ~480 ms a time, ten times a minute under
-// an upload. It's kept on the handle now, stamped with the two tables' write counts
-// (`view_counts`), and kept CURRENT rather than dropped: the fold that writes a row applies the
-// same last-write-wins rule to the kept view, so it stands through an upload. Anything else that
-// writes the tables - a rebuild, a clear, a write racing the fold - moves a count the fold's own
-// write doesn't account for, and every kept view is dropped and read again. Bounded by the
+// an upload. It's kept on the handle now and kept CURRENT rather than dropped: each fold applies
+// its row to the kept views by the same last-write-wins rule the table uses. Bounded by the
 // budget's doc-meta share (`budget::Part::DocMeta`); memory pressure retires them all.
+//
+// What a kept view must notice is a write that ISN'T a fold - a rebuild, a clear, a script. The
+// first version stamped views with the tables' write counts and required each fold to move them
+// by exactly one; two folds in flight at once moved them by two, and every view was dropped -
+// which on a busy persona was nearly every time, so the bank's poll read the whole view again,
+// 1.3 s a time holding the persona's connection, and a publish waited behind it (live server,
+// 2026-10-14). A view is stamped with the OTHER writes now: the tables' counts less the folds'
+// own, which a fold counts in the same breath as it patches the views (`fold_noted`), so no
+// interleaving of folds can move it. And since last-write-wins doesn't care what order its
+// changes arrive in, a fold that lands while a view is being read is replayed onto that view
+// before it's kept (`FOLD_LOG`).
 
-/// The kept views of one handle, by service.
+/// The kept views of one handle, by service, and the folds' books.
 #[derive(Default)]
 pub(crate) struct ViewMemo {
     kept: std::collections::HashMap<u32, KeptView>,
+    /// Fold writes counted (`fold_noted`), and folds that failed after patching (`fold_failed`).
+    folds: u64,
+    failed: u64,
+    /// The latest folds, numbered, for a view read while they landed (`keep_view`).
+    seq: u64,
+    log: std::collections::VecDeque<(u64, u32, Change)>,
 }
 
+/// How many recent folds are kept for replay: a view read slower than this many folds is read
+/// again next time instead of kept.
+const FOLD_LOG: usize = 4096;
+
 struct KeptView {
-    /// `view_counts` when it was read, advanced by every fold mirrored into it.
-    at: (u64, u64),
+    /// `other_writes` when it was read.
+    other: i128,
     /// The shed generation it was kept in (`shed_views`).
     generation: u64,
     view: Arc<PrivateView>,
@@ -871,68 +902,76 @@ fn generation() -> u64 {
     GENERATION.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// The two tables' write counts for this database.
-fn view_counts(db: &Db) -> (u64, u64) {
+/// The two tables' write counts for this database, together.
+fn view_writes(db: &Db) -> u64 {
     let key = db.writes_key();
-    (
-        crate::db::writes_to(key, "private_registers"),
-        crate::db::writes_to(key, "private_set_elements"),
-    )
+    crate::db::writes_to(key, "private_registers")
+        + crate::db::writes_to(key, "private_set_elements")
+}
+
+/// The writes to the two tables that weren't folds - read under the memo's lock, where the folds
+/// count themselves, so a fold can never be half-counted.
+fn other_writes(db: &Db, memo: &ViewMemo) -> i128 {
+    i128::from(view_writes(db)) - i128::from(memo.folds) + i128::from(memo.failed)
 }
 
 /// One fold's change, carried to the kept views: kind, collection, key, value, stamp.
 type Change = (PrivateKind, String, String, Option<String>, Stamp);
 
-/// A fold wrote one row: if that is ALL that moved the counts since `before`, apply it to its
-/// service's kept view and advance every kept view's stamp; otherwise drop them all.
-fn mirror(db: &Db, service_id: u32, change: Change, before: (u64, u64)) {
-    let mut memo = db.view_memo.lock().expect("view memo poisoned");
-    if memo.kept.is_empty() {
-        return;
-    }
-    let after = view_counts(db);
+fn apply(view: &mut PrivateView, change: &Change) {
     let (kind, collection, key, value, stamp) = change;
-    let expected = match kind {
-        PrivateKind::Register => (before.0 + 1, before.1),
-        PrivateKind::SetAdd | PrivateKind::SetRemove => (before.0, before.1 + 1),
-    };
-    if after != expected {
-        memo.kept.clear();
-        return;
-    }
-    let now = generation();
-    memo.kept.retain(|_, kept| kept.at == before && kept.generation == now);
-    for (service, kept) in memo.kept.iter_mut() {
-        if *service == service_id {
-            let view = Arc::make_mut(&mut kept.view);
-            match kind {
-                PrivateKind::Register => {
-                    view.apply_register(collection.clone(), key.clone(), value.clone(), stamp)
-                }
-                PrivateKind::SetAdd | PrivateKind::SetRemove => view.apply_element(
-                    collection.clone(),
-                    key.clone(),
-                    kind == PrivateKind::SetAdd,
-                    value.clone(),
-                    stamp,
-                ),
-            }
+    match kind {
+        PrivateKind::Register => {
+            view.apply_register(collection.clone(), key.clone(), value.clone(), *stamp)
         }
-        kept.at = after;
+        PrivateKind::SetAdd | PrivateKind::SetRemove => view.apply_element(
+            collection.clone(),
+            key.clone(),
+            *kind == PrivateKind::SetAdd,
+            value.clone(),
+            *stamp,
+        ),
     }
 }
 
-/// The kept view of a service, if it is current: same counts, same generation, and the same
-/// undecryptable count the catch-up just found (which can move without a table write).
-fn kept_view(
-    db: &Db,
-    service_id: u32,
-    at: (u64, u64),
-    undecryptable: u64,
-) -> Option<Arc<PrivateView>> {
+/// A fold about to write its row: counted (the table's count and the folds' together), logged
+/// for views being read, and applied to its service's kept view - all under the memo's lock.
+fn fold_noted(db: &Db, service_id: u32, sql: &str, change: Change) {
     let mut memo = db.view_memo.lock().expect("view memo poisoned");
+    db.note_write_of(sql);
+    memo.folds += 1;
+    if let Some(kept) = memo.kept.get_mut(&service_id) {
+        apply(Arc::make_mut(&mut kept.view), &change);
+    }
+    memo.seq += 1;
+    let seq = memo.seq;
+    memo.log.push_back((seq, service_id, change));
+    while memo.log.len() > FOLD_LOG {
+        memo.log.pop_front();
+    }
+}
+
+/// A fold's statement failed after its change was applied: every kept view goes.
+fn fold_failed(db: &Db) {
+    let mut memo = db.view_memo.lock().expect("view memo poisoned");
+    memo.failed += 1;
+    memo.kept.clear();
+}
+
+/// Where a read of a view starts: the other writes, and the last fold, at that moment.
+fn read_mark(db: &Db) -> (i128, u64) {
+    let memo = db.view_memo.lock().expect("view memo poisoned");
+    (other_writes(db, &memo), memo.seq)
+}
+
+/// The kept view of a service, if it is current: no other writes since it was read, the same
+/// generation, and the same undecryptable count the catch-up just found (which can move without
+/// a table write).
+fn kept_view(db: &Db, service_id: u32, undecryptable: u64) -> Option<Arc<PrivateView>> {
+    let mut memo = db.view_memo.lock().expect("view memo poisoned");
+    let other = other_writes(db, &memo);
     let current = memo.kept.get(&service_id).is_some_and(|k| {
-        k.at == at && k.generation == generation() && k.view.undecryptable == undecryptable
+        k.other == other && k.generation == generation() && k.view.undecryptable == undecryptable
     });
     if current {
         memo.kept.get(&service_id).map(|k| k.view.clone())
@@ -942,20 +981,62 @@ fn kept_view(
     }
 }
 
-/// Keep a freshly read view, if the budget has room for it.
-fn keep_view(db: &Db, service_id: u32, at: (u64, u64), generation: u64, view: &Arc<PrivateView>) {
+/// Keep a freshly read view, if nothing but folds wrote the tables while it was read, the folds
+/// that did are still in the log to replay onto it, and the budget has room. `mark` is
+/// `read_mark` from before the read. The view as kept - with those folds - is returned.
+fn keep_view(
+    db: &Db,
+    service_id: u32,
+    mark: (i128, u64),
+    generation: u64,
+    mut view: Arc<PrivateView>,
+) -> Arc<PrivateView> {
     static ASKED: std::sync::Once = std::sync::Once::new();
     ASKED.call_once(|| crate::budget::on_pressure("private views", shed_views));
     let share = crate::budget::share(crate::budget::Part::DocMeta);
-    let bytes = view.weight();
     let mut memo = db.view_memo.lock().expect("view memo poisoned");
     memo.kept.remove(&service_id);
+    let (other, since) = mark;
+    if other_writes(db, &memo) != other {
+        return view;
+    }
+    if memo.seq > since {
+        // A fold older than the log's first can't be replayed: read again next time.
+        if memo.log.front().is_none_or(|(first, _, _)| *first > since + 1) {
+            return view;
+        }
+        let v = Arc::make_mut(&mut view);
+        for (_, service, change) in memo.log.iter().filter(|(seq, _, _)| *seq > since) {
+            if *service == service_id {
+                apply(v, change);
+            }
+        }
+    }
+    let bytes = view.weight();
     let held = KEPT_BYTES.load(std::sync::atomic::Ordering::Relaxed);
     if held.saturating_add(bytes) > share {
-        return;
+        refused_for_room(service_id, bytes, share);
+        return view;
     }
     KEPT_BYTES.fetch_add(bytes, std::sync::atomic::Ordering::Relaxed);
-    memo.kept.insert(service_id, KeptView { at, generation, view: view.clone(), bytes });
+    memo.kept.insert(service_id, KeptView { other, generation, view: view.clone(), bytes });
+    view
+}
+
+/// Said once a process per service: a view too big for its share of the budget is read whole
+/// every time it's wanted - worth knowing when a persona's reads are slow.
+fn refused_for_room(service_id: u32, bytes: u64, share: u64) {
+    static SAID: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+    let mut said = SAID.lock().expect("refusals poisoned");
+    if !said.contains(&service_id) {
+        said.push(service_id);
+        tracing::warn!(
+            service = service_id,
+            view_bytes = bytes,
+            share_bytes = share,
+            "a private view is too big for its cache share: read whole every time"
+        );
+    }
 }
 
 /// A service's kept view, caught up, when there is a current one - for a reader that wants one
@@ -966,7 +1047,7 @@ pub async fn current_view(
     service_id: u32,
 ) -> Result<Option<Arc<PrivateView>>, AppError> {
     let undecryptable = catch_up(db, keys, service_id).await?;
-    Ok(kept_view(db, service_id, view_counts(db), undecryptable))
+    Ok(kept_view(db, service_id, undecryptable))
 }
 
 /// Catch the persisted tables up to one service's chains: fetch entries past each chain's
@@ -1065,15 +1146,14 @@ pub async fn materialize_service(
     service_id: u32,
 ) -> Result<Arc<PrivateView>, AppError> {
     let undecryptable = catch_up(db, keys, service_id).await?;
-    // Stamped before the read: a write racing it leaves the stamp behind.
-    let at = view_counts(db);
-    let kept_in = generation();
-    if let Some(view) = kept_view(db, service_id, at, undecryptable) {
+    if let Some(view) = kept_view(db, service_id, undecryptable) {
         return Ok(view);
     }
+    // Marked before the read: what lands while it reads is replayed onto it, or it isn't kept.
+    let mark = read_mark(db);
+    let kept_in = generation();
     let view = Arc::new(read_view(db, service_id, undecryptable).await?);
-    keep_view(db, service_id, at, kept_in, &view);
-    Ok(view)
+    Ok(keep_view(db, service_id, mark, kept_in, view))
 }
 
 /// A service's whole view, read from its two tables.
@@ -1818,5 +1898,68 @@ mod tests {
                 "per-collection read must seek the index, got plan: {detail}"
             );
         }
+    }
+
+    /// The kept view through a busy persona (live server, 2026-10-14: two folds in flight moved
+    /// the write counts by two, and the old check dropped every view - so the bank's poll read the
+    /// whole doc-meta view, 1.3 s a time, while a publish waited). Folds in flight, a fold that
+    /// lands while a view is read, and the one write that must still drop it: something not a fold.
+    #[tokio::test]
+    async fn a_kept_view_stands_through_folds_in_flight() {
+        let db = test_db().await;
+        let key = signer(9);
+        let leaf = key.verifying_key().to_bytes();
+        let enc = EncKeyPair::generate();
+        mint_epoch(&db, &key, 0, &fresh_epoch_key(), &[(leaf, enc.public)]).await.unwrap();
+        let keys = unseal_epoch_keys(&db, &leaf, &enc).await.unwrap();
+        let svc = service::GENERAL_PRIVATE;
+        let write = |k: &'static str, v: &'static str| {
+            let (db, key, keys) = (&db, &key, &keys);
+            async move { write_record(db, key, keys, svc, &plain_register("c", k, v)).await.unwrap() }
+        };
+        let value = |view: &PrivateView, k: &str| {
+            view.registers_in("c").into_iter().find(|r| r.key == k).map(|r| r.value)
+        };
+        let change = |k: &str, v: &str, at: i64| -> Change {
+            (PrivateKind::Register, "c".into(), k.into(), Some(v.into()), (at, 0, [7u8; 32]))
+        };
+        write("a", "1").await;
+        materialize_service(&db, &keys, svc).await.unwrap();
+        assert!(kept_view(&db, svc, 0).is_some(), "kept once read");
+
+        // One fold counted and patched in, its statement still on its way; another runs whole
+        // past it. The old check saw the counts move by two for one fold and dropped the view.
+        fold_noted(&db, svc, FOLD_REGISTER, change("b", "in flight", i64::MAX));
+        // The in-flight fold's row never reaches the table here, so a view read afresh would
+        // lack it: finding it says the kept view stood.
+        write("c", "3").await;
+        let view = materialize_service(&db, &keys, svc).await.unwrap();
+        assert_eq!(value(&view, "b").as_deref(), Some("in flight"), "kept, not read again");
+        assert_eq!(value(&view, "c").as_deref(), Some("3"), "and the whole fold applied");
+
+        // A fold that lands while a view is being read is replayed onto it before it's kept.
+        db.view_memo.lock().unwrap().kept.clear();
+        let mark = read_mark(&db);
+        let read = Arc::new(read_view(&db, svc, 0).await.unwrap());
+        fold_noted(&db, svc, FOLD_REGISTER, change("d", "mid-read", i64::MAX));
+        let kept = keep_view(&db, svc, mark, generation(), read);
+        assert_eq!(value(&kept, "d").as_deref(), Some("mid-read"));
+        assert!(kept_view(&db, svc, 0).is_some(), "and kept");
+
+        // More folds during a read than the log holds: not kept, read again next time.
+        db.view_memo.lock().unwrap().kept.clear();
+        let mark = read_mark(&db);
+        let read = Arc::new(read_view(&db, svc, 0).await.unwrap());
+        for i in 0..=FOLD_LOG {
+            fold_noted(&db, svc, FOLD_REGISTER, change("e", "many", i as i64));
+        }
+        keep_view(&db, svc, mark, generation(), read);
+        assert!(kept_view(&db, svc, 0).is_none(), "past the log: not kept");
+
+        // A write that isn't a fold still drops it.
+        materialize_service(&db, &keys, svc).await.unwrap();
+        assert!(kept_view(&db, svc, 0).is_some());
+        db.execute("DELETE FROM private_registers WHERE 0", ()).await.unwrap();
+        assert!(kept_view(&db, svc, 0).is_none(), "a write not a fold drops it");
     }
 }

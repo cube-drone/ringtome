@@ -296,6 +296,20 @@ Done when: a tree read, a move and a notebook listing issue no doc-meta
 statements when nothing is new; live, `taxonomy tree steps` shows `tree_ms` in
 single milliseconds.
 
+**Overlapping folds dropped it (found live, 2026-10-14).** A publish took 33 s:
+its own statements took 1 ms, and it waited behind the bank's balance poll,
+which was reading the whole doc-meta view (~1.3 s,
+`SELECT … FROM private_set_elements`) on nearly every poll. The view was stamped
+with the two tables' write counts, and each fold had to move them by exactly
+one; two folds in flight at once - any busy persona - moved them by two, so
+every kept view was dropped. It's stamped now with the writes that _aren't_
+folds: a fold counts its own write in step with patching the views, under their
+lock, and runs its statement uncounted (`Db::execute_noted`), so no interleaving
+of folds can move the stamp. A fold that lands while a view is being read is
+replayed onto it before it's kept, from a log of the last 4,096 folds
+(last-write-wins doesn't care about order). A view too big for its share now
+says so once, in the log.
+
 ### Stage 7 - the public face in RAM (built 2026-10-13)
 
 1. **Serving facts** for `public_doc_bytes` (`idface.rs`): per `(root, doc)`,

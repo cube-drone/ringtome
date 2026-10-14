@@ -499,6 +499,12 @@ impl Db {
         self.root().unwrap_or(&self.name)
     }
 
+    /// Count a statement's write now, for a caller that runs it with `execute_noted` and must
+    /// count it in step with books of its own (the private views' folds, `record::private`).
+    pub(crate) fn note_write_of(&self, sql: &str) {
+        self.note_write(sql);
+    }
+
     /// Count a statement's write, if it is one (`TABLE_WRITES`).
     fn note_write(&self, sql: &str) {
         if let Some(table) = written_table(sql) {
@@ -567,6 +573,24 @@ impl Db {
         // busy answer (a reader mid-snapshot) is a no-op and the next window retries;
         // the 60s beat (`checkpoint_pass`) still covers the idle tail. Cheap when
         // frequent: the truncate's cost is the frames since the last one.
+        if self.checkpoint_due() {
+            if let Err(e) = self.checkpoint().await {
+                tracing::debug!(error = ?e, "volume checkpoint failed");
+            }
+        }
+        Ok(n)
+    }
+
+    /// `execute`, its write already counted by the caller (`note_write_of`). The same body as
+    /// `execute` rather than a call into it: another async layer here once overflowed a debug
+    /// build's stack (2026-10-13).
+    pub async fn execute_noted(&self, sql: &str, params: impl IntoParams) -> Result<u64> {
+        let n = {
+            let (_guard, wait, locked) = self.statement_lock().await;
+            let n = self.conn.execute(sql, params).await;
+            self.timed(sql, wait, locked);
+            n?
+        };
         if self.checkpoint_due() {
             if let Err(e) = self.checkpoint().await {
                 tracing::debug!(error = ?e, "volume checkpoint failed");

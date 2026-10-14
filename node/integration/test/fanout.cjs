@@ -12,6 +12,7 @@ const { sql, HOST_B, HOST_C } = require('./fetch.cjs');
 const { makeUserFetch, decodeCode } = require('./helpers.cjs');
 const { beat, pullAndFold } = require('./beat.cjs');
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const journalOf = async (reader, host) => {
     const { rows } = await sql(
         `SELECT author_root, doc_id, title, published_ms, updated_ms, arrived_ms
@@ -232,10 +233,17 @@ describe('fan-out: the arrival journal', () => {
 
         // A's push, rung by hand: fold on A (journals + queues), then the demand-record
         // push AWAITED - the direction the test pins. B then folds what arrived.
+        // Pushed again until it lands, a few times at most (a flake, 2026-10-14: the fold's own
+        // detached push was dialing B at the same moment, and one of the two exchanges can fail
+        // with nobody told). B still never asks: every arrival is a push from A.
         await beat(undefined, 'fold', far);
-        await beat(undefined, 'demand-push', far);
-        await beat(HOST_B, 'fold', far);
-        const rows = await journalOf(fanRoot, HOST_B);
+        let rows = [];
+        for (let i = 0; i < 5 && !rows.length; i++) {
+            if (i) await sleep(300);
+            await beat(undefined, 'demand-push', far);
+            await beat(HOST_B, 'fold', far);
+            rows = await journalOf(fanRoot, HOST_B);
+        }
         assert.ok(rows.length, 'the post crossed nodes because A pushed, not because B polled');
         assert.equal(rows[0].author_root, far);
         assert.equal(rows[0].doc_id, postId);

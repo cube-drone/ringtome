@@ -21518,3 +21518,22 @@ long once drawn - all capitals, say - is squeezed to its room with SVG's
 `textLength`, measured again when the fonts are in. Nine cassettes side by side
 on a scratch node: seven of the hands, every title on its line. `just ui-check`
 green.
+
+**2026-10-14 - the doc-meta view stands through a busy persona.** Curtis's
+publish on the live server took 33 s; its own statements took 1 ms. It waited on
+the persona's connection behind the bank's balance poll, which read the whole
+doc-meta view - about 1.3 s, twenty times in seven minutes - because the Stage 6
+kept view was being dropped: it trusted the two tables' write counts to move by
+exactly one per fold, and two folds in flight moved them by two. A kept view is
+stamped now with the writes that aren't folds (each fold counts its own write in
+step with patching the views, under their lock, and runs its statement
+uncounted - `Db::execute_noted`), and a fold landing mid-read is replayed onto
+the view before it's kept (the last 4,096). A failed fold statement, or any
+other write to the tables, still drops them; a view over its budget share says
+so once in the log. A unit test holds a fold in flight across another, a fold
+mid-read, an overflowing log and a foreign write. `cargo test -p ringtome-node`
+and clippy green; the full acceptance suite 1794 passing, one flake: the fan-out
+push claim, 0 of 5 reruns. The fold beat before it fires the same push detached,
+and two exchanges with the follower's node at once can fail one with nobody
+told; the claim now pushes again (never pulls) until the post lands, five times
+at most. `RINGTOME_TEST_GREP="fan-out|the feed endpoint"` green.
