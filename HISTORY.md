@@ -21452,3 +21452,23 @@ carries the thumbs instead, large, at its foot (the now-playing tab has them
 too). A wide window is unchanged: its thumbs stay in the bar, and the cassette's
 page has none. Checked on a scratch node at phone width: the bar fits with room
 to spare, and a thumb pressed under the cassette sticks. `just ui-check` green.
+
+**2026-10-13 - every cassette its own.** On top of its colours, each song's
+cassette carries extras chosen by chance, seeded by its key so it never changes
+(`cassetteLook` in the new `pure/cassette.js`): a side's "A" or "B" in a square,
+the tape's length (C-46 to C-90, or 60/90), "HORSE STEREO" on a wider band, a
+block of colour down an edge or across the top, diagonal stripes growing wider,
+one of four places for the title and artist, and one line, faint ruled lines or
+none. A song keeps the colours it had. All in the colourway's own colours; the
+marks beside the window step in where a colour block runs down that edge. A pure
+vector holds it to always-the-same and to every option turning up; nine songs'
+cassettes drawn side by side on a scratch node, in the house colourway and
+witchlight. `just ui-check` green.
+
+**2026-10-13 - a takedown flake settled.** CI on "so many changes?" went red on
+combinations 1's takedown claim - "for the trusted reader too" - and the reruns
+called it a flake, 0 of 5. The trusted reader asks their own node for the book's
+video twin, and the claim asked the moment the takedown returned, before that
+node had heard of it. It now waits for the takedown to arrive, as the claim's
+own feed check below it already did: up to twenty pulls.
+`RINGTOME_TEST_GREP=combinations just integration` green.

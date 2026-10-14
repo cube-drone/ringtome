@@ -891,6 +891,15 @@ its own.
   search) goes. **A long title** is written smaller to fit the label, cut only
   past the smallest size. **Four cassettes**: the house's, a dark one, a teal
   one and a pink one, each song always on the same one.
+- **Each cassette its own extras** (pure/cassette.js), chosen by chance seeded
+  by the song's key, so a song always comes on the same one: an "A" or "B" side
+  in a square beside the window; the tape's length (C-46, C-60, C-90, 60, 90)
+  printed opposite it; "HORSE STEREO" on a wider band; a block of colour down
+  the label's left or right edge or across its top; diagonal stripes growing
+  wider at the band's end; the title and artist written classic (title on top,
+  artist at the foot), centred, stacked on the top lines, or from the left; and
+  one line to write on, several faint ones, or none. All in the colourway's
+  colours, as the cassettes are.
 - **A sound in hrseFiles** plays in the player the whole app shares (with
   hrseAmp unlocked): play and pause, the scrub, and "open hrseAmp" beside them.
   Going into hrseAmp then carries on through its table, as any list playing does

@@ -544,22 +544,29 @@
 
 /* A few cassettes (2026-10-13), each song always on its own: the house's, a dark shell, and two
    coloured ones. */
+.cassette-style-0 {
+    --cassette-block: var(--teal);
+}
+
 .cassette-style-1 {
     --cassette-body: var(--ink-soft);
     --cassette-foot: var(--ink);
     --cassette-stripe: var(--pink);
+    --cassette-block: var(--peach);
 }
 
 .cassette-style-2 {
     --cassette-body: var(--teal);
     --cassette-foot: var(--teal-deep);
     --cassette-stripe: var(--peach);
+    --cassette-block: var(--pink);
 }
 
 .cassette-style-3 {
     --cassette-body: var(--pink);
     --cassette-foot: var(--surface-2);
     --cassette-stripe: var(--teal);
+    --cassette-block: var(--peach);
 }
 
 .cassette-body {
@@ -593,6 +600,45 @@
 .cassette-line {
     stroke: var(--border-strong);
     stroke-width: 1;
+}
+
+.cassette-line-faint {
+    stroke: var(--border);
+    stroke-width: 0.7;
+}
+
+/* A label's extras (pure/cassette.js): a block of colour, stripes growing wider, the brand on the
+   band, the side in its square, and the tape's length - printed, where the words are by hand. */
+.cassette-block,
+.cassette-diagonal {
+    fill: var(--cassette-block, var(--teal));
+    opacity: 0.75;
+}
+
+.cassette-brand {
+    fill: var(--paper);
+    font-size: 8px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.cassette-side {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.5;
+}
+
+.cassette-side-letter {
+    fill: var(--ink);
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.cassette-print {
+    fill: var(--ink);
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
 }
 
 /* Written on the label by hand. */

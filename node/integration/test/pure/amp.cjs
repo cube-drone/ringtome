@@ -187,4 +187,28 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
         assert.equal(long.words.length, 50);
         assert.ok(long.words.endsWith('…'));
     });
+
+    it('gives each song its own cassette, always the same one, with the extras varied (2026-10-13)', async () => {
+        const c = await import('../../../js/pure/cassette.js');
+        const keys = Array.from({ length: 400 }, (_, i) => `author${i % 7}.doc${i}`);
+        const looks = keys.map(c.cassetteLook);
+        assert.deepEqual(c.cassetteLook(keys[3]), looks[3], 'the same song, the same cassette');
+        // The colours a song had before the extras came, kept.
+        let h = 0;
+        for (const ch of keys[5]) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+        assert.equal(looks[5].style, c.CASSETTE_STYLES[h % 4]);
+        const seen = (f) => new Set(looks.map(f));
+        assert.equal(seen((l) => l.style).size, 4);
+        assert.deepEqual([...seen((l) => l.layout)].sort(), [...c.LAYOUTS].sort());
+        assert.deepEqual([...seen((l) => l.lines)].sort(), ['none', 'one', 'ruled']);
+        assert.deepEqual([...seen((l) => l.block)].sort(), ['left', 'right', 'top', null].sort());
+        assert.deepEqual([...seen((l) => l.side && l.side.letter)].sort(), ['A', 'B', null].sort());
+        assert.deepEqual(
+            [...seen((l) => l.length)].filter(Boolean).sort(),
+            [...c.TAPE_LENGTHS].sort(),
+        );
+        assert.ok(seen((l) => l.brand).has('HORSE STEREO') && seen((l) => l.brand).has(null));
+        assert.ok(seen((l) => l.stripes).size === 2);
+        assert.ok(c.cassetteLook(null).style, 'nothing playing: a cassette all the same');
+    });
 });

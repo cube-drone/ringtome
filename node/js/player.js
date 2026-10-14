@@ -14,6 +14,7 @@ import { useLocation } from 'preact-iso';
 
 import { ShuffleRun } from './pure/shuffle.js';
 import { clock, levelGain, onLabel, readContext, readPlayerState, slimRow } from './pure/amp.js';
+import { cassetteLook } from './pure/cassette.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 
@@ -887,24 +888,11 @@ export const PlayerBar = ({ list = [], from = null, source = '', rating = '', on
 
 /// Expanded (section 4): the page is a cassette whose reels turn while it plays, over the song's
 /// cover, blurred.
-/// The cassettes a song can come on (Curtis, 2026-10-13: "rotate between a few"): each song its
-/// own, always the same one, by its key.
-const CASSETTE_STYLES = [
-    'cassette-style-0',
-    'cassette-style-1',
-    'cassette-style-2',
-    'cassette-style-3',
-];
-const cassetteStyle = (key) => {
-    let h = 0;
-    for (const ch of key || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return CASSETTE_STYLES[h % CASSETTE_STYLES.length];
-};
-
 /// A compact cassette (Curtis, 2026-10-12): screws in the four corners; a paper label wrapped round
-/// the window, the song's title written on its top line and the artist on its bottom one, in a hand
-/// (Caveat); the two reels high in the window, turning while it plays, with the tape wound on them
-/// showing through; and the tapered edge below, with its capstan and guide holes.
+/// the window, the song's title and artist written on it in a hand (Caveat); the two reels high in
+/// the window, turning while it plays, with the tape wound on them showing through; and the tapered
+/// edge below, with its capstan and guide holes. Each song's has its own colours and extras - a
+/// side, a length, a brand, stripes, where the words go (pure/cassette.js).
 /// On a phone the bar has no room for the thumbs (Curtis, 2026-10-13), so the cassette's page
 /// carries them, under the cassette: `rating` and `onRate` as the bar takes them.
 export const Cassette = ({ rating = '', onRate = null }) => {
@@ -912,14 +900,76 @@ export const Cassette = ({ rating = '', onRate = null }) => {
     if (!p) return null;
     const { current, playing, me } = p;
     const reels = [100, 220];
-    const title = onLabel(current && current.title, 30, 22, 13);
-    const artist = onLabel(current && current.artist, 40, 15, 11);
+    const look = cassetteLook(current && current.key);
+    const stacked = look.layout === 'stacked';
+    const title = stacked
+        ? onLabel(current && current.title, 30, 20, 12)
+        : onLabel(current && current.title, 30, 22, 13);
+    const artist = stacked
+        ? onLabel(current && current.artist, 40, 14, 10)
+        : onLabel(current && current.artist, 40, 15, 11);
+    // Where the words go (pure/cassette.js `LAYOUTS`).
+    const titleAt = stacked
+        ? { x: 40, y: 32, anchor: 'start' }
+        : look.layout === 'centred'
+          ? { x: 160, y: 40, anchor: 'middle' }
+          : { x: 40, y: 40, anchor: 'start' };
+    const artistAt = stacked
+        ? { x: 40, y: 48, anchor: 'start' }
+        : look.layout === 'left'
+          ? { x: 40, y: 136, anchor: 'start' }
+          : { x: 160, y: 136, anchor: 'middle' };
+    // The lines to write on: under the words, or ruled down the top, faint, or none.
+    const lines =
+        look.lines === 'none'
+            ? []
+            : stacked
+              ? [...(look.lines === 'ruled' ? [[20, true]] : []), [36, false], [50, false]]
+              : [
+                    ...(look.lines === 'ruled'
+                        ? [
+                              [26, true],
+                              [36, true],
+                              [139, true],
+                          ]
+                        : []),
+                    [46, false],
+                ];
+    // The band under the words, wider when it carries the brand or the stripes.
+    const wide = !!(look.brand || look.stripes);
+    const band = wide ? { y: 52, height: 12 } : { y: 54, height: 6 };
+    // Diagonal stripes at the band's end, each wider than the last.
+    const diagonals = [];
+    if (look.stripes) {
+        let x = 294;
+        for (const w of [10, 7, 5, 3, 2]) {
+            x -= w;
+            diagonals.push(
+                `M${x} ${band.y + band.height} L${x + band.height} ${band.y} L${x + band.height + w} ${band.y} L${x + w} ${band.y + band.height} Z`,
+            );
+            x -= 4;
+        }
+    }
+    // The side's square, and the tape's length opposite it (on the right, with no side) - each in
+    // the room beside the window, a little further in where a block of colour runs down that edge.
+    const leftX = look.block === 'left' ? 53 : 48;
+    const rightX = look.block === 'right' ? 267 : 272;
+    const sideX = look.side && look.side.at === 'left' ? leftX : rightX;
+    const lengthX = look.side && look.side.at === 'right' ? leftX : rightX;
+    const block = {
+        left: { x: 26, y: 12, width: 10, height: 130 },
+        right: { x: 284, y: 12, width: 10, height: 130 },
+        top: { x: 26, y: 12, width: 268, height: stacked ? 5 : 7 },
+    }[look.block];
     return html`<div class="player-expanded">
         ${current && current.thumb && html`<img class="player-backdrop" src=${soundThumb(current, me)} alt="" />`}
-        <svg class=${`cassette ${cassetteStyle(current && current.key)}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" role="img" aria-label=${t('player.a-cassette', 'a cassette')}>
+        <svg class=${`cassette ${look.style}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" role="img" aria-label=${t('player.a-cassette', 'a cassette')}>
             <defs>
                 <clipPath id="cassette-window-clip">
                     <rect x="70" y="72" width="180" height="40" rx="20" />
+                </clipPath>
+                <clipPath id="cassette-label-clip">
+                    <rect x="26" y="12" width="268" height="130" rx="6" />
                 </clipPath>
             </defs>
             <rect class="cassette-body" x="4" y="4" width="312" height="192" rx="12" />
@@ -935,10 +985,21 @@ export const Cassette = ({ rating = '', onRate = null }) => {
                 </g>`,
             )}
             <rect class="cassette-label" x="26" y="12" width="268" height="130" rx="6" />
-            <rect class="cassette-stripe" x="26" y="54" width="268" height="6" />
-            <rect class="cassette-stripe" x="26" y="122" width="268" height="4" />
-            <text class="cassette-text" x="40" y="40" style=${`font-size: ${title.size}px`}>${title.words}</text>
-            <path class="cassette-line" d="M38 46 H282" />
+            <g clip-path="url(#cassette-label-clip)">
+                ${block && html`<rect class="cassette-block" ...${block} />`}
+                <rect class="cassette-stripe" x="26" y=${band.y} width="268" height=${band.height} />
+                <rect class="cassette-stripe" x="26" y="122" width="268" height="4" />
+                ${diagonals.map((d) => html`<path key=${d} class="cassette-diagonal" d=${d} />`)}
+            </g>
+            ${look.brand && html`<text class="cassette-brand" x="160" y=${band.y + 8.5} text-anchor="middle">${look.brand}</text>`}
+            ${lines.map(([y, faint]) => html`<path key=${y} class=${faint ? 'cassette-line cassette-line-faint' : 'cassette-line'} d=${`M38 ${y} H282`} />`)}
+            ${
+                look.side &&
+                html`<rect class="cassette-side" x=${sideX - 13} y="79" width="26" height="26" rx="2" />
+                    <text class="cassette-side-letter" x=${sideX} y="99" text-anchor="middle">${look.side.letter}</text>`
+            }
+            ${look.length && html`<text class="cassette-print" x=${lengthX} y="96" text-anchor="middle">${look.length}</text>`}
+            <text class="cassette-text" x=${titleAt.x} y=${titleAt.y} text-anchor=${titleAt.anchor} style=${`font-size: ${title.size}px`}>${title.words}</text>
             <rect class="cassette-window" x="70" y="72" width="180" height="40" rx="20" />
             <g clip-path="url(#cassette-window-clip)">
                 <circle class="cassette-tape" cx=${reels[0]} cy="92" r="34" />
@@ -956,7 +1017,7 @@ export const Cassette = ({ rating = '', onRate = null }) => {
                     )}
                 </g>`,
             )}
-            <text class="cassette-text cassette-text-small" x="160" y="136" text-anchor="middle" style=${`font-size: ${artist.size}px`}>${artist.words}</text>
+            <text class="cassette-text cassette-text-small" x=${artistAt.x} y=${artistAt.y} text-anchor=${artistAt.anchor} style=${`font-size: ${artist.size}px`}>${artist.words}</text>
             <path class="cassette-foot" d="M58 196 L78 152 L242 152 L262 196 Z" />
             <circle class="cassette-hole" cx="96" cy="180" r="5" />
             <circle class="cassette-hole" cx="224" cy="180" r="5" />

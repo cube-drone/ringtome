@@ -456,11 +456,17 @@ const trustAndMeet = async (ada, adaRoot, other, otherRoot) => {
                 200,
                 'the video twin goes with its page',
             );
-            assert.notEqual(
-                (await bea(`id/${adaRoot}/docs/${twin}/body`)).status,
-                200,
-                'for the trusted reader too',
-            );
+            // The trusted reader asks their own node, which holds the twin until the takedown
+            // reaches it (a CI flake, 2026-10-13: read at once, before it had).
+            let beaTwin = 200;
+            for (let i = 0; i < 20 && beaTwin === 200; i++) {
+                if (i) {
+                    await pullAndFold(HOST_B, adaRoot);
+                    await sleep(300);
+                }
+                beaTwin = (await bea(`id/${adaRoot}/docs/${twin}/body`)).status;
+            }
+            assert.notEqual(beaTwin, 200, 'for the trusted reader too');
             // The follower's feed, then the share tree, hear it.
             let stillThere = true;
             for (let i = 0; i < 20 && stillThere; i++) {
