@@ -288,6 +288,9 @@ pub struct Db {
     /// The persona's resolved key tree, with the identity chain's mark it was built under
     /// (`record::imaol::load_key_tree`). Shared by clones, like the locks.
     pub(crate) crown_memo: std::sync::Arc<Mutex<Option<(String, u64, ringtome_proto::Crown)>>>,
+    /// Each private service's whole view, kept current by the fold (`record::private`'s kept
+    /// views). Shared by clones, like the locks.
+    pub(crate) view_memo: std::sync::Arc<Mutex<crate::record::private::ViewMemo>>,
 }
 
 /// The statement lock, held across a run of statements (`Db::hold`). Each statement is still
@@ -977,6 +980,7 @@ fn connect(database: turso::Database, name: &str) -> Result<Db> {
         fold_memo: Default::default(),
         head_memo: Default::default(),
         crown_memo: Default::default(),
+        view_memo: Default::default(),
     })
 }
 

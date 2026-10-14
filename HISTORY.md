@@ -21302,3 +21302,26 @@ Said at boot - this Mac, as a bare node:
 cache that asked (`budget::on_pressure`) when under a tenth of memory is free.
 `the_budget_fits_the_machine`, `the_operator_can_say_otherwise`,
 `the_shares_add_up`.
+
+**2026-10-13 - the doc-meta view, kept current by the fold (plans/CACHE.md,
+Stage 6).** With 0.4.3 live and the `entries` lookups gone from the slow log,
+the live server's main persona was still ~80% busy: the whole doc-meta view -
+every title, tag, bucket membership and list - read 325 times in ten minutes,
+`private_set_elements` ~1.1 s and `private_registers` ~0.5 s a time, for every
+tree read, move, filing, listing and bank pass. `materialize_service` now keeps
+each service's view on the handle (`Arc<PrivateView>`), stamped with the two
+tables' write counts, and keeps it CURRENT: `fold_record` reads the counts
+before and after its one statement, and when that statement is all that moved
+them, applies the same last-write-wins rule (`apply_register`, `apply_element`)
+to the kept view of its service and advances every kept view's stamp. Anything
+else that writes the tables - a clear, a rebuild, a racing write - drops them
+all, and the next read reloads: stale is impossible by construction. The kept
+view also carries the catch-up's undecryptable count, which moves without a
+table write. Bounded by the budget's doc-meta share; memory pressure retires
+every kept view. `Documents::deleted` and `pinned` read a current kept view when
+there is one, else their one collection - never the whole view for one
+collection, so a zero budget can't make them worse.
+`the_doc_meta_view_is_kept_current_by_the_fold`: after tags added and removed,
+fields set twice, bucket and list placements and a pin, the view is the same
+allocation - mirrored, never read again - equal to a fresh read of the tables,
+and a clear makes the next read reload. (With the mirror disabled it fails.)

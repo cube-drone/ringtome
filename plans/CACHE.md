@@ -1,6 +1,6 @@
 # Caching
 
-A plan (2026-10-13). Stages 1-5 built the same day (HISTORY); what was built
+A plan (2026-10-13). Stages 1-6 built the same day (HISTORY); what was built
 before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
@@ -277,7 +277,7 @@ headroom on Linux - which covers Android too, its kernel being Linux - so no
 and no shedding. The budget is said in the boot line, not yet on the status
 page. Windows' memory isn't read: there, the floor.
 
-### Stage 6 - the doc-meta view in RAM
+### Stage 6 - the doc-meta view in RAM (built 2026-10-13)
 
 Every title, tag, bucket membership and list in a persona: the ~400 ms
 `SELECT … FROM private_registers` behind every tree read, every move, every

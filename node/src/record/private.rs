@@ -23,6 +23,7 @@
 //! the old decrypt-everything semantics exact for mixed-era readers.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use crate::db::Db;
 use anyhow::{anyhow, Context, Result};
@@ -618,7 +619,7 @@ pub struct SetElement {
 
 /// The materialized private state: LWW registers and LWW-element-sets, folded from every record
 /// this node can decrypt.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PrivateView {
     registers: BTreeMap<(String, String), (String, Stamp)>,
     /// `(present, value, stamp)` per element - LWW-element-set semantics.
@@ -631,6 +632,50 @@ pub struct PrivateView {
 }
 
 impl PrivateView {
+    /// A register's fold, the SQL upsert's own rule: the later stamp wins, an equal or earlier
+    /// one changes nothing (`fold_record`).
+    fn apply_register(
+        &mut self,
+        collection: String,
+        key: String,
+        value: Option<String>,
+        stamp: Stamp,
+    ) {
+        let k = (collection, key);
+        if self.registers.get(&k).is_some_and(|(_, old)| *old >= stamp) {
+            return;
+        }
+        self.registers.insert(k, (value.unwrap_or_default(), stamp));
+    }
+
+    /// A set element's fold, the same rule.
+    fn apply_element(
+        &mut self,
+        collection: String,
+        element: String,
+        present: bool,
+        value: Option<String>,
+        stamp: Stamp,
+    ) {
+        let k = (collection, element);
+        if self.sets.get(&k).is_some_and(|(_, _, old)| *old >= stamp) {
+            return;
+        }
+        self.sets.insert(k, (present, value, stamp));
+    }
+
+    /// Roughly what this view holds in memory, for the budget.
+    fn weight(&self) -> u64 {
+        let r: usize =
+            self.registers.iter().map(|((c, k), (v, _))| c.len() + k.len() + v.len() + 96).sum();
+        let s: usize = self
+            .sets
+            .iter()
+            .map(|((c, e), (_, v, _))| c.len() + e.len() + v.as_ref().map_or(0, String::len) + 104)
+            .sum();
+        (r + s) as u64
+    }
+
     /// Readers walk their collection as a contiguous `range` of the `(collection, key)` map,
     /// never a filter over the whole of it: a filter is O(everything) per call, and
     /// `Store::contacts` calls a reader once per contact collection - at large follow counts
@@ -708,6 +753,15 @@ async fn fold_record(
     signed: &SignedEntry,
     plain: PrivatePlain,
 ) -> Result<(), AppError> {
+    // What the kept views will need of it, before the statement takes it (`mirror`).
+    let change = (
+        plain.kind,
+        plain.collection.clone(),
+        plain.key.clone(),
+        plain.value.clone(),
+        (signed.entry().timestamp_ms, signed.entry().seq, *signed.hash()),
+    );
+    let before = view_counts(db);
     // The arms await individually: each generic `execute` call is its own future type.
     let folded = match plain.kind {
         PrivateKind::Register => {
@@ -767,7 +821,152 @@ async fn fold_record(
         }
     };
     folded.context("folding private record into view").map_err(AppError::Internal)?;
+    mirror(db, service_id, change, before);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Kept views (plans/CACHE.md, Stage 6). A service's whole view - for doc-meta, every title, tag,
+// bucket membership and list a persona has - was read from the two tables on every tree read,
+// move, filing, listing: on the live server ~950 ms and ~480 ms a time, ten times a minute under
+// an upload. It's kept on the handle now, stamped with the two tables' write counts
+// (`view_counts`), and kept CURRENT rather than dropped: the fold that writes a row applies the
+// same last-write-wins rule to the kept view, so it stands through an upload. Anything else that
+// writes the tables - a rebuild, a clear, a write racing the fold - moves a count the fold's own
+// write doesn't account for, and every kept view is dropped and read again. Bounded by the
+// budget's doc-meta share (`budget::Part::DocMeta`); memory pressure retires them all.
+
+/// The kept views of one handle, by service.
+#[derive(Default)]
+pub(crate) struct ViewMemo {
+    kept: std::collections::HashMap<u32, KeptView>,
+}
+
+struct KeptView {
+    /// `view_counts` when it was read, advanced by every fold mirrored into it.
+    at: (u64, u64),
+    /// The shed generation it was kept in (`shed_views`).
+    generation: u64,
+    view: Arc<PrivateView>,
+    /// Its weight when kept, on the budget's books until it goes.
+    bytes: u64,
+}
+
+impl Drop for KeptView {
+    fn drop(&mut self) {
+        KEPT_BYTES.fetch_sub(self.bytes, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// What every handle's kept views weigh, together.
+static KEPT_BYTES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Moved by memory pressure: a view kept in an older generation is dropped when next met.
+static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn shed_views() {
+    GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn generation() -> u64 {
+    GENERATION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The two tables' write counts for this database.
+fn view_counts(db: &Db) -> (u64, u64) {
+    let key = db.writes_key();
+    (
+        crate::db::writes_to(key, "private_registers"),
+        crate::db::writes_to(key, "private_set_elements"),
+    )
+}
+
+/// One fold's change, carried to the kept views: kind, collection, key, value, stamp.
+type Change = (PrivateKind, String, String, Option<String>, Stamp);
+
+/// A fold wrote one row: if that is ALL that moved the counts since `before`, apply it to its
+/// service's kept view and advance every kept view's stamp; otherwise drop them all.
+fn mirror(db: &Db, service_id: u32, change: Change, before: (u64, u64)) {
+    let mut memo = db.view_memo.lock().expect("view memo poisoned");
+    if memo.kept.is_empty() {
+        return;
+    }
+    let after = view_counts(db);
+    let (kind, collection, key, value, stamp) = change;
+    let expected = match kind {
+        PrivateKind::Register => (before.0 + 1, before.1),
+        PrivateKind::SetAdd | PrivateKind::SetRemove => (before.0, before.1 + 1),
+    };
+    if after != expected {
+        memo.kept.clear();
+        return;
+    }
+    let now = generation();
+    memo.kept.retain(|_, kept| kept.at == before && kept.generation == now);
+    for (service, kept) in memo.kept.iter_mut() {
+        if *service == service_id {
+            let view = Arc::make_mut(&mut kept.view);
+            match kind {
+                PrivateKind::Register => {
+                    view.apply_register(collection.clone(), key.clone(), value.clone(), stamp)
+                }
+                PrivateKind::SetAdd | PrivateKind::SetRemove => view.apply_element(
+                    collection.clone(),
+                    key.clone(),
+                    kind == PrivateKind::SetAdd,
+                    value.clone(),
+                    stamp,
+                ),
+            }
+        }
+        kept.at = after;
+    }
+}
+
+/// The kept view of a service, if it is current: same counts, same generation, and the same
+/// undecryptable count the catch-up just found (which can move without a table write).
+fn kept_view(
+    db: &Db,
+    service_id: u32,
+    at: (u64, u64),
+    undecryptable: u64,
+) -> Option<Arc<PrivateView>> {
+    let mut memo = db.view_memo.lock().expect("view memo poisoned");
+    let current = memo.kept.get(&service_id).is_some_and(|k| {
+        k.at == at && k.generation == generation() && k.view.undecryptable == undecryptable
+    });
+    if current {
+        memo.kept.get(&service_id).map(|k| k.view.clone())
+    } else {
+        memo.kept.remove(&service_id);
+        None
+    }
+}
+
+/// Keep a freshly read view, if the budget has room for it.
+fn keep_view(db: &Db, service_id: u32, at: (u64, u64), generation: u64, view: &Arc<PrivateView>) {
+    static ASKED: std::sync::Once = std::sync::Once::new();
+    ASKED.call_once(|| crate::budget::on_pressure("private views", shed_views));
+    let share = crate::budget::share(crate::budget::Part::DocMeta);
+    let bytes = view.weight();
+    let mut memo = db.view_memo.lock().expect("view memo poisoned");
+    memo.kept.remove(&service_id);
+    let held = KEPT_BYTES.load(std::sync::atomic::Ordering::Relaxed);
+    if held.saturating_add(bytes) > share {
+        return;
+    }
+    KEPT_BYTES.fetch_add(bytes, std::sync::atomic::Ordering::Relaxed);
+    memo.kept.insert(service_id, KeptView { at, generation, view: view.clone(), bytes });
+}
+
+/// A service's kept view, caught up, when there is a current one - for a reader that wants one
+/// collection and would rather not load the whole view to get it (`Documents::deleted`).
+pub async fn current_view(
+    db: &Db,
+    keys: &EpochKeys,
+    service_id: u32,
+) -> Result<Option<Arc<PrivateView>>, AppError> {
+    let undecryptable = catch_up(db, keys, service_id).await?;
+    Ok(kept_view(db, service_id, view_counts(db), undecryptable))
 }
 
 /// Catch the persisted tables up to one service's chains: fetch entries past each chain's
@@ -864,8 +1063,21 @@ pub async fn materialize_service(
     db: &Db,
     keys: &EpochKeys,
     service_id: u32,
-) -> Result<PrivateView, AppError> {
+) -> Result<Arc<PrivateView>, AppError> {
     let undecryptable = catch_up(db, keys, service_id).await?;
+    // Stamped before the read: a write racing it leaves the stamp behind.
+    let at = view_counts(db);
+    let kept_in = generation();
+    if let Some(view) = kept_view(db, service_id, at, undecryptable) {
+        return Ok(view);
+    }
+    let view = Arc::new(read_view(db, service_id, undecryptable).await?);
+    keep_view(db, service_id, at, kept_in, &view);
+    Ok(view)
+}
+
+/// A service's whole view, read from its two tables.
+async fn read_view(db: &Db, service_id: u32, undecryptable: u64) -> Result<PrivateView, AppError> {
     let mut view = PrivateView { undecryptable, ..Default::default() };
 
     fn stamp(timestamp_ms: i64, seq: i64, hash: Vec<u8>) -> Result<Stamp, AppError> {

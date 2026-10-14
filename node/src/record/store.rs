@@ -1163,6 +1163,17 @@ impl Documents<'_> {
     }
 
     pub async fn deleted(&self) -> Result<BTreeSet<[u8; 16]>, AppError> {
+        // From the kept doc-meta view when there's a current one (plans/CACHE.md, Stage 6); else
+        // the one collection's read - never the whole view for one collection.
+        if let Some(view) = private::current_view(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+        )
+        .await?
+        {
+            return Ok(ids_from(view.set_elements(DELETED_DOCS)));
+        }
         let (elements, _) = private::collection_set_elements(
             &self.store.db,
             &self.store.authorship.epoch_keys,
@@ -1208,6 +1219,17 @@ impl Documents<'_> {
 
     /// The pin roster: every pinned document's id - the join input that sets `DocSummary.pinned`.
     pub async fn pinned(&self) -> Result<BTreeSet<[u8; 16]>, AppError> {
+        // From the kept doc-meta view when there's a current one (plans/CACHE.md, Stage 6); else
+        // the one collection's read - never the whole view for one collection.
+        if let Some(view) = private::current_view(
+            &self.store.db,
+            &self.store.authorship.epoch_keys,
+            service::DOC_META_PRIVATE,
+        )
+        .await?
+        {
+            return Ok(ids_from(view.set_elements(PINNED_DOCS)));
+        }
         let (elements, _) = private::collection_set_elements(
             &self.store.db,
             &self.store.authorship.epoch_keys,
@@ -2271,7 +2293,7 @@ impl Buckets<'_> {
 }
 
 impl Store {
-    async fn doc_meta_view(&self) -> Result<private::PrivateView, AppError> {
+    async fn doc_meta_view(&self) -> Result<std::sync::Arc<private::PrivateView>, AppError> {
         private::materialize_service(
             &self.db,
             &self.authorship.epoch_keys,
@@ -2618,7 +2640,7 @@ impl Taxonomies<'_> {
 /// 8-note tree, waiting their turns behind an upload (2026-10-13).
 pub struct DocMeta<'s> {
     store: &'s Store,
-    view: private::PrivateView,
+    view: std::sync::Arc<private::PrivateView>,
 }
 
 impl Store {
@@ -3441,6 +3463,53 @@ mod tests {
             .unwrap();
         let (_, n) = statements(store.documents().pinned()).await;
         assert_eq!(n, 1, "only the pin list's own read - the doc-meta catch-up still kept");
+    }
+
+    /// The doc-meta view is kept, and kept CURRENT: the fold mirrors each write into it, so after a
+    /// mix of writes it's the same view in memory - never read again - and equal to a fresh read
+    /// of the tables. A write the fold didn't make (the tables cleared) makes the next read
+    /// reload (plans/CACHE.md, Stage 6).
+    #[tokio::test]
+    async fn the_doc_meta_view_is_kept_current_by_the_fold() {
+        let store = test_store().await;
+        let root = store.root;
+        let plain = crate::record::documents::Format::Plaintext;
+        let (a, _) = store.documents().create("a", b"one", plain).await.unwrap();
+        let (b, _) = store.documents().create("b", b"two", plain).await.unwrap();
+        let first = store.doc_meta_view().await.unwrap();
+        let (_, asked) = statements(store.doc_meta_view()).await;
+        assert_eq!(asked, 0, "kept: asked nothing");
+        let kept_at = std::sync::Arc::as_ptr(&first) as usize;
+        drop(first);
+
+        let list = store.taxonomies().create("Landscapes").await.unwrap();
+        store.annotations().tag(&a, "mesa").await.unwrap();
+        store.annotations().tag(&a, "flat").await.unwrap();
+        store.annotations().untag(&a, "mesa").await.unwrap();
+        store.annotations().set_field(&b, "description", "a butte").await.unwrap();
+        store.annotations().set_field(&b, "description", "a taller butte").await.unwrap();
+        store.buckets().place(&a, "default").await.unwrap();
+        store.buckets().place(&b, "music").await.unwrap();
+        store.taxonomies().place(&list, &root, &a, None).await.unwrap();
+        store.taxonomies().place(&list, &root, &b, Some(0)).await.unwrap();
+        store.documents().pin(&b).await.unwrap();
+
+        let mirrored = store.doc_meta_view().await.unwrap();
+        assert_eq!(
+            std::sync::Arc::as_ptr(&mirrored) as usize,
+            kept_at,
+            "the same view, every write mirrored into it - never read again"
+        );
+        *store.db.view_memo.lock().unwrap() = Default::default();
+        let fresh = store.doc_meta_view().await.unwrap();
+        assert_eq!(format!("{mirrored:?}"), format!("{fresh:?}"), "and what a fresh read says");
+        assert!(store.documents().pinned().await.unwrap().contains(&b));
+
+        // A write the fold didn't make: the next read reloads, and says what the tables say.
+        drop((mirrored, fresh));
+        crate::record::private::clear_view(&store.db).await.unwrap();
+        let reloaded = store.doc_meta_view().await.unwrap();
+        assert!(reloaded.set_elements(&tax_collection(&list)).is_empty(), "the cleared tables");
     }
 
     /// One view, everything the tree read wants from it, the same as the whole-persona reads
