@@ -2331,18 +2331,50 @@ pub async fn private_implicit_tags(
     gone: &HashSet<[u8; 16]>,
 ) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
     catch_up(db, keys).await?;
+    // The three reads kept against their tables (plans/CACHE.md, Stage 8): every list and tree
+    // read and the stream's gather made them, the join ~280 ms a time on the live server. The
+    // deleted (`gone`) are applied after, being the caller's.
+    static KEPT: crate::db::KeptByWrites<std::sync::Arc<ImplicitReads>> =
+        crate::db::KeptByWrites::new(&["doc_heads", "doc_versions", "doc_search"]);
+    let stamp = KEPT.stamp(db);
+    let reads = match KEPT.get(db, stamp) {
+        Some(reads) => reads,
+        None => {
+            let reads = std::sync::Arc::new(implicit_reads(db).await?);
+            KEPT.keep(db, stamp, reads.clone());
+            reads
+        }
+    };
+    let (heads, refs, words) = (&reads.0, &reads.1, &reads.2);
+    let kind: BTreeMap<[u8; 16], Option<&'static str>> = heads
+        .iter()
+        .filter_map(|(id, format, animation)| {
+            let id = <[u8; 16]>::try_from(id.as_slice()).ok()?;
+            (!gone.contains(&id))
+                .then(|| (id, media_tag(format.map(|f| f as u64), *animation != 0)))
+        })
+        .collect();
+    Ok(kind
+        .iter()
+        .map(|(id, own)| {
+            let named = refs.get(id).into_iter().flatten().map(|r| kind.get(r).copied().flatten());
+            let length = words.get(id.as_slice()).copied().and_then(length_tag);
+            (*id, implicit_of(&[*own, length], named))
+        })
+        .filter(|(_, tags)| !tags.is_empty())
+        .collect())
+}
+
+/// `private_implicit_tags`' three reads: the private heads' formats, their refs, the word counts.
+type ImplicitReads =
+    (Vec<(Vec<u8>, Option<i64>, i64)>, BTreeMap<[u8; 16], Vec<[u8; 16]>>, BTreeMap<Vec<u8>, i64>);
+
+async fn implicit_reads(db: &Db) -> Result<ImplicitReads, AppError> {
     let heads: Vec<(Vec<u8>, Option<i64>, i64)> = db
         .fetch_all("SELECT doc_id, format, animation FROM doc_heads WHERE lane = 'private'", ())
         .await
         .context("reading private formats for implicit tags")
         .map_err(AppError::Internal)?;
-    let kind: BTreeMap<[u8; 16], Option<&'static str>> = heads
-        .into_iter()
-        .filter_map(|(id, format, animation)| {
-            let id = <[u8; 16]>::try_from(id.as_slice()).ok()?;
-            (!gone.contains(&id)).then(|| (id, media_tag(format.map(|f| f as u64), animation != 0)))
-        })
-        .collect();
     let refs: Vec<(Vec<u8>, Vec<u8>)> = db
         .fetch_all(
             "SELECT h.doc_id, v.refs FROM doc_heads h
@@ -2367,15 +2399,7 @@ pub async fn private_implicit_tags(
         .map_err(AppError::Internal)?
         .into_iter()
         .collect();
-    Ok(kind
-        .iter()
-        .map(|(id, own)| {
-            let named = refs.get(id).into_iter().flatten().map(|r| kind.get(r).copied().flatten());
-            let length = words.get(id.as_slice()).copied().and_then(length_tag);
-            (*id, implicit_of(&[*own, length], named))
-        })
-        .filter(|(_, tags)| !tags.is_empty())
-        .collect())
+    Ok((heads, refs, words))
 }
 
 /// The book a public post is a page of (header key 19), off its signed header; `None` for a
@@ -3295,7 +3319,23 @@ fn head_row(tuple: HeadTuple) -> Result<DocHeadRow, AppError> {
 /// count - the same figure `materialize` reports, for the same reason (watermarks never pass an
 /// unopenable header).
 pub async fn list_heads(db: &Db, keys: &EpochKeys) -> Result<(Vec<DocHeadRow>, usize), AppError> {
+    // Kept against `doc_heads` (plans/CACHE.md, Stage 8): every docs list, by-tag and by-bucket
+    // read, and the stream's gather, read every private head row.
+    static KEPT: crate::db::KeptByWrites<(std::sync::Arc<Vec<DocHeadRow>>, usize)> =
+        crate::db::KeptByWrites::new(&["doc_heads"]);
     let undecryptable = catch_up(db, keys).await?;
+    let stamp = KEPT.stamp(db);
+    if let Some((rows, kept_undecryptable)) = KEPT.get(db, stamp) {
+        if kept_undecryptable == undecryptable {
+            return Ok((rows.as_ref().clone(), undecryptable));
+        }
+    }
+    let rows = read_list_heads(db).await?;
+    KEPT.keep(db, stamp, (std::sync::Arc::new(rows.clone()), undecryptable));
+    Ok((rows, undecryptable))
+}
+
+async fn read_list_heads(db: &Db) -> Result<Vec<DocHeadRow>, AppError> {
     let rows: Vec<HeadTuple> = db
         .fetch_all(
             // The list surface is the PRIVATE workspace (notes, buckets, All): public-lane
@@ -3308,8 +3348,7 @@ pub async fn list_heads(db: &Db, keys: &EpochKeys) -> Result<(Vec<DocHeadRow>, u
         .await
         .context("reading doc heads")
         .map_err(AppError::Internal)?;
-    let rows = rows.into_iter().map(head_row).collect::<Result<_, _>>()?;
-    Ok((rows, undecryptable))
+    rows.into_iter().map(head_row).collect::<Result<_, _>>()
 }
 
 /// Memoized rows for a specific set of documents (the docs-by-tag read), current to the chains.

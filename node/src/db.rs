@@ -450,6 +450,49 @@ pub fn entries_mark(db: &str, service: u32) -> u64 {
     get(format!("{db}/entries@{service}")) + (all - attributed)
 }
 
+/// A whole read kept per database against the write counts of the tables it reads (plans/CACHE.md,
+/// Stage 8): the list handlers and the stream re-read whole tables - the private heads, the
+/// implicit tags' three reads, the published edges - for every request, to decorate rows that
+/// had nearly always not changed. Stamp before computing (`stamp`), keep what was computed under
+/// that stamp (`keep`); a kept value stands while the tables' counts do. The caller catches its
+/// fold up first, so the stamp covers what the fold wrote. Bounded by count, not weight: one
+/// value a database, at most `KEPT_DATABASES` databases.
+pub struct KeptByWrites<T> {
+    tables: &'static [&'static str],
+    kept: Mutex<Option<HashMap<String, (u64, T)>>>,
+}
+
+/// How many databases one `KeptByWrites` keeps a value for before starting over.
+const KEPT_DATABASES: usize = 512;
+
+impl<T: Clone> KeptByWrites<T> {
+    pub const fn new(tables: &'static [&'static str]) -> Self {
+        KeptByWrites { tables, kept: Mutex::new(None) }
+    }
+
+    /// The tables' write counts for this database, now.
+    pub fn stamp(&self, db: &Db) -> u64 {
+        self.tables.iter().map(|t| writes_to(db.writes_key(), t)).sum()
+    }
+
+    /// The value kept for this database, if it was kept under `stamp`.
+    pub fn get(&self, db: &Db, stamp: u64) -> Option<T> {
+        let kept = self.kept.lock().ok()?;
+        kept.as_ref()?.get(db.writes_key()).filter(|(at, _)| *at == stamp).map(|(_, v)| v.clone())
+    }
+
+    /// Keep `value`, computed under `stamp`.
+    pub fn keep(&self, db: &Db, stamp: u64, value: T) {
+        if let Ok(mut kept) = self.kept.lock() {
+            let map = kept.get_or_insert_with(HashMap::new);
+            if map.len() >= KEPT_DATABASES {
+                map.clear();
+            }
+            map.insert(db.writes_key().to_string(), (stamp, value));
+        }
+    }
+}
+
 impl Db {
     /// The database's name in the write counts: a persona's root, or this handle's own name.
     pub fn writes_key(&self) -> &str {
@@ -1949,5 +1992,29 @@ mod tests {
         assert_eq!(writes_to(&key, "counted_t"), at + 2, "a read moves nothing");
         db.execute_batch("UPDATE counted_t SET a = 3;").await.unwrap();
         assert_eq!(writes_to(&key, "counted_t"), at + 3, "a script moves every table");
+    }
+
+    /// A kept read stands while its tables' counts do, and goes the moment any of them moves - a
+    /// script included (plans/CACHE.md, Stage 8).
+    #[tokio::test]
+    async fn a_kept_read_stands_until_its_tables_move() {
+        static KEPT: KeptByWrites<u32> = KeptByWrites::new(&["kept_a", "kept_b"]);
+        let db = test_memory_db().await;
+        db.execute_batch("CREATE TABLE kept_a (v INTEGER); CREATE TABLE kept_b (v INTEGER); CREATE TABLE other (v INTEGER);")
+            .await
+            .unwrap();
+        let at = KEPT.stamp(&db);
+        assert_eq!(KEPT.get(&db, at), None);
+        KEPT.keep(&db, at, 7);
+        assert_eq!(KEPT.get(&db, KEPT.stamp(&db)), Some(7), "kept");
+        db.execute("INSERT INTO other (v) VALUES (1)", ()).await.unwrap();
+        assert_eq!(KEPT.get(&db, KEPT.stamp(&db)), Some(7), "another table's write leaves it");
+        db.execute("INSERT INTO kept_b (v) VALUES (1)", ()).await.unwrap();
+        assert_eq!(KEPT.get(&db, KEPT.stamp(&db)), None, "one of its own moves it");
+        KEPT.keep(&db, KEPT.stamp(&db), 8);
+        db.execute_batch("UPDATE other SET v = 2;").await.unwrap();
+        assert_eq!(KEPT.get(&db, KEPT.stamp(&db)), None, "and a script moves every table");
+        let elsewhere = test_memory_db().await;
+        assert_eq!(KEPT.get(&elsewhere, KEPT.stamp(&elsewhere)), None, "kept per database");
     }
 }

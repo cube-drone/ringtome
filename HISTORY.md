@@ -21342,3 +21342,16 @@ the sitemaps, `robots.txt`, `/feed.xml`, `/feed` and `/people` carry
 `public_cache` - they went out with no `Cache-Control`. A new crawling claim: a
 takedown is a 404 on the very next read, however warm the caches (and fails with
 the facts cache's stamp ignored).
+
+**2026-10-13 - whole-table reads kept per persona (plans/CACHE.md, Stage 8).**
+`db::KeptByWrites<T>`: a whole read kept per database against the write counts
+of the tables it reads, stamped after the caller's catch-up so the stamp covers
+what the fold wrote. On it: `list_heads` (every docs, tag and bucket list, and
+the stream's gather, read every private head row), `private_implicit_tags`'
+three reads (the `doc_heads ⋈ doc_versions` join was ~280 ms on the live server;
+the deleted are applied after the cache, being the caller's), and
+`published_edges`, `rebroadcasts`, `public_annotations` (each the whole table
+after a catch-up, for profile and feed pages). Left, with reasons, in the plan:
+`search_rows`, `for_posts`, two small N+1s, and switching the list handlers to
+`implicit_tags_as_indexed` - a visible change to how fast a note's length tag
+follows an edit. `a_kept_read_stands_until_its_tables_move`.

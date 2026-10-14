@@ -80,7 +80,7 @@ lightly federated, unapologetically Old Internet.
   counts per service, a memory of computers that don't answer, a memory budget
   sized to the machine (phone, computer, server, Pi), the doc-meta view kept
   current, the public face, whole-table reads, and the browser. Nine stages from
-  the 2026-10-13 audit; Stages 1-7 built.
+  the 2026-10-13 audit; Stages 1-8 built.
 - [`CHAT.md`](plans/CHAT.md) — real-time rooms: a room is a post, a message is
   an entry on its author's own chain on the room's lane, live is gossip carrying
   the same entries, history is recent everywhere and whole at the creator's.

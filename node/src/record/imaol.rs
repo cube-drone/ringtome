@@ -348,6 +348,20 @@ pub struct PublishedRow {
 /// last: the fold writes a memo, and reads never fold.
 pub async fn published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, AppError> {
     catch_up_published_edges(db).await?;
+    // The whole table, kept against its own write count - the fold is its one writer
+    // (plans/CACHE.md, Stage 8).
+    static KEPT: crate::db::KeptByWrites<std::sync::Arc<BTreeMap<String, PublishedRow>>> =
+        crate::db::KeptByWrites::new(&["published_edges"]);
+    let stamp = KEPT.stamp(db);
+    if let Some(kept) = KEPT.get(db, stamp) {
+        return Ok(kept.as_ref().clone());
+    }
+    let read = read_published_edges(db).await?;
+    KEPT.keep(db, stamp, std::sync::Arc::new(read.clone()));
+    Ok(read)
+}
+
+async fn read_published_edges(db: &Db) -> Result<BTreeMap<String, PublishedRow>, AppError> {
     type Row = (String, Option<String>, Option<String>, i64, i64);
     let rows: Vec<Row> = db
         .fetch_all(
@@ -457,6 +471,20 @@ impl RebroadcastRow {
 /// this read sits behind the feed.
 pub async fn rebroadcasts(db: &Db) -> Result<Vec<RebroadcastRow>, AppError> {
     catch_up_rebroadcasts(db).await?;
+    // The whole table, kept against its own write count - the fold is its one writer
+    // (plans/CACHE.md, Stage 8).
+    static KEPT: crate::db::KeptByWrites<std::sync::Arc<Vec<RebroadcastRow>>> =
+        crate::db::KeptByWrites::new(&["rebroadcasts"]);
+    let stamp = KEPT.stamp(db);
+    if let Some(kept) = KEPT.get(db, stamp) {
+        return Ok(kept.as_ref().clone());
+    }
+    let read = read_rebroadcasts(db).await?;
+    KEPT.keep(db, stamp, std::sync::Arc::new(read.clone()));
+    Ok(read)
+}
+
+async fn read_rebroadcasts(db: &Db) -> Result<Vec<RebroadcastRow>, AppError> {
     type Row = (String, Vec<u8>, Option<Vec<u8>>, i64, i64);
     let rows: Vec<Row> = db
         .fetch_all(
@@ -584,6 +612,20 @@ pub struct AnnotationRow {
 /// memo's source (PROJECT_PLAN's Public annotations, slice 2), filtered by stamp at the caller.
 pub async fn public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError> {
     catch_up_annotations(db).await?;
+    // The whole table, kept against its own write count - the fold is its one writer
+    // (plans/CACHE.md, Stage 8).
+    static KEPT: crate::db::KeptByWrites<std::sync::Arc<Vec<AnnotationRow>>> =
+        crate::db::KeptByWrites::new(&["public_annotations"]);
+    let stamp = KEPT.stamp(db);
+    if let Some(kept) = KEPT.get(db, stamp) {
+        return Ok(kept.as_ref().clone());
+    }
+    let read = read_public_annotations(db).await?;
+    KEPT.keep(db, stamp, std::sync::Arc::new(read.clone()));
+    Ok(read)
+}
+
+async fn read_public_annotations(db: &Db) -> Result<Vec<AnnotationRow>, AppError> {
     type Row = (String, Vec<u8>, String, String, i64, i64, i64);
     let rows: Vec<Row> = db
         .fetch_all(

@@ -1,6 +1,6 @@
 # Caching
 
-A plan (2026-10-13). Stages 1-7 built the same day (HISTORY); what was built
+A plan (2026-10-13). Stages 1-8 built the same day (HISTORY); what was built
 before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
@@ -333,7 +333,7 @@ building one costs a fraction of what it did. Slugs and web paths stay read per
 request - `doc_annotations`, which they live in, moves with every label on the
 node, so a cache over it would rarely stand.
 
-### Stage 8 - whole-table reads per list
+### Stage 8 - whole-table reads per list (built 2026-10-13)
 
 The docs-list, by-tag and by-bucket handlers and the stream each re-read whole
 tables for decoration: `list_heads`, `private_implicit_tags` (three whole
@@ -348,6 +348,17 @@ kept per persona as an `Arc`, stamped on its own tables after the catch-up.
 - Free first: the list handlers call `implicit_tags()` - a whole search-index
   refresh - where `implicit_tags_as_indexed()` does (the stream keeps the index
   fresh); `held_of` and `public_implicit_tags` are N+1 loops to batch.
+
+As built (`db::KeptByWrites`, a kept read per database against its tables' write
+counts): `list_heads`, `private_implicit_tags`' three reads (the deleted applied
+after, being the caller's), `published_edges`, `rebroadcasts`,
+`public_annotations`. Left, and why: `search_rows` (its fingerprint reads
+whether bodies are present, which no table write marks - and its whole doc-meta
+read is Stage 6's now); `annotations::for_posts` (node-wide `doc_annotations`,
+moved by every label anywhere); `held_of` and `public_implicit_tags`' N+1s
+(small, not on the hot path in the logs); and the list handlers'
+`implicit_tags()` over `implicit_tags_as_indexed()` - its refresh is what counts
+a just-edited note's words, a visible change, so Curtis's call.
 
 ### Stage 9 - the browser
 
