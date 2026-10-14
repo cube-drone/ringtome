@@ -9,6 +9,7 @@ import htm from 'htm';
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
+import { flatDocs } from '../pure/treewalk.js';
 import { Icons } from '../icons.js';
 import { PaneHead } from '../panes.js';
 import { Modal } from '../modal.js';
@@ -157,8 +158,21 @@ export function useBookTree(root, bucket, reloadKey) {
         // A reload asked for is a fetch; otherwise the cache, when the roster still vouches for it.
         (reloadKey ? Promise.resolve(null) : cachedTree(root, rootId, fingerprint)).then((hit) => {
             if (!live) return;
-            if (hit) setTree(hit);
-            else fetchTree();
+            if (!hit) {
+                fetchTree();
+                return;
+            }
+            setTree(hit);
+            // A cached tree showing a page the mirror no longer holds - a deleted one, which
+            // moves no list's count - is read again (doc/tree.js has the story).
+            const pages = flatDocs(hit);
+            if (!pages.length) return;
+            openMirror(root)
+                .docs.bulkGet(pages)
+                .then((rows) => {
+                    if (live && rows.some((r) => !r)) fetchTree();
+                })
+                .catch(() => {});
         });
         return () => {
             live = false;

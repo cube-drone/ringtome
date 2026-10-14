@@ -1078,7 +1078,8 @@ impl Documents<'_> {
     /// list and search read filters the roster, so the doc vanishes from all of them at once.
     /// Idempotent.
     pub async fn delete(&self, doc_id: &[u8; 16]) -> Result<SignedEntry, AppError> {
-        self.store
+        let signed = self
+            .store
             .write_private(
                 service::DOC_META_PRIVATE,
                 PrivatePlain {
@@ -1088,7 +1089,12 @@ impl Documents<'_> {
                     value: None,
                 },
             )
-            .await
+            .await?;
+        // ...and out of every list it was in (Curtis, 2026-10-13: two deleted notes stayed in a
+        // big notebook's tree, each opening on "that isn't here"). Deleting moved no list's member
+        // count, so every tab's cached tree - stamped by the roster - went on showing them.
+        self.store.taxonomies().unfile_everywhere(doc_id).await?;
+        Ok(signed)
     }
 
     /// Is this document on the public shelf right now? The gate for whether deleting it also
@@ -2520,6 +2526,25 @@ impl Taxonomies<'_> {
             .await
     }
 
+    /// Take one of this identity's own documents out of every list it's a member of - what
+    /// deleting a document means for the trees it sat in. One remove a list; none when it was in
+    /// none. Returns how many lists it left.
+    pub async fn unfile_everywhere(&self, doc_id: &[u8; 16]) -> Result<usize, AppError> {
+        let view = self.store.doc_meta_view().await?;
+        let root = self.store.root;
+        let holding: Vec<[u8; 16]> = Self::roster(&view)
+            .into_iter()
+            .filter(|list| {
+                Self::members_of(&view, list).iter().any(|m| m.root == root && m.doc_id == *doc_id)
+            })
+            .collect();
+        drop(view);
+        for list in &holding {
+            self.remove(list, &root, doc_id).await?;
+        }
+        Ok(holding.len())
+    }
+
     /// Is `target` reachable from `from` through this identity's own membership edges, in the
     /// local view? (`from == target` counts: a list contains itself.) Only own-root taxonomy
     /// members are walkable - a foreign taxonomy's contents aren't ours to know here.
@@ -3510,6 +3535,30 @@ mod tests {
         crate::record::private::clear_view(&store.db).await.unwrap();
         let reloaded = store.doc_meta_view().await.unwrap();
         assert!(reloaded.set_elements(&tax_collection(&list)).is_empty(), "the cleared tables");
+    }
+
+    /// Deleting a document takes it out of every list it was in, and leaves the rest alone
+    /// (Curtis, 2026-10-13: deleted notes stayed in their notebook's tree).
+    #[tokio::test]
+    async fn a_deleted_document_leaves_every_list_it_was_in() {
+        let store = test_store().await;
+        let root = store.root;
+        let plain = crate::record::documents::Format::Plaintext;
+        let (gone, _) = store.documents().create("gone", b"x", plain).await.unwrap();
+        let (kept, _) = store.documents().create("kept", b"y", plain).await.unwrap();
+        let a = store.taxonomies().create("A").await.unwrap();
+        let b = store.taxonomies().create("B").await.unwrap();
+        for list in [&a, &b] {
+            store.taxonomies().place(list, &root, &gone, None).await.unwrap();
+            store.taxonomies().place(list, &root, &kept, None).await.unwrap();
+        }
+        store.documents().delete(&gone).await.unwrap();
+        for list in [&a, &b] {
+            let members: Vec<[u8; 16]> =
+                store.taxonomies().members(list).await.unwrap().iter().map(|m| m.doc_id).collect();
+            assert_eq!(members, vec![kept], "gone from the list, the other left");
+        }
+        assert!(store.documents().deleted().await.unwrap().contains(&gone), "and deleted");
     }
 
     /// One view, everything the tree read wants from it, the same as the whole-persona reads

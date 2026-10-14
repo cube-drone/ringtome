@@ -21371,3 +21371,20 @@ notification, chat-room, chat-history and feed polls (`whileVisible`); the
 balance asks every 30 s, not 10. Left: remembering a just-saved note (the
 divergence lookout's territory). The media-poll and optimistic-tree probes pass
 against the new bundle; `just ui-check` green.
+
+**2026-10-13 - a deleted note leaves its tree.** Two notes deleted from a big
+notebook stayed in its tree, each opening on "that isn't here". Deleting only
+marked a document deleted: it stayed a member of every list it was in, and while
+a fresh tree read leaves a deleted member out (`doc: null`, which the pane
+skips), the pane paints from its cached tree while the list roster's
+fingerprint - each list's id, title and member count - stands. A delete moved no
+count, so a tree cached before it (a reload the editor asked for, answered by a
+busy server before the delete landed) went on vouching for the note. Now
+`Documents::delete` also takes the document out of every list it's in
+(`Taxonomies::unfile_everywhere`) - the counts move, every tab's cached tree
+goes - and a pane painting a cached tree (the tree pane and the book column)
+checks its pages against the mirror and reads afresh when one is missing, which
+also clears trees cached before this landed.
+`a_deleted_document_leaves_every_list_it_was_in`;
+`harness/tree-delete-probe.mjs`: a deleted note leaves the open tree and its
+list on the node, and a pane mounted from its cache leaves it out too.

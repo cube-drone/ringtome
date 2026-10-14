@@ -561,8 +561,23 @@ export const WikiTree = ({
         else {
             cachedTree(root, rootId, rosterKey).then((hit) => {
                 if (!alive) return;
-                if (hit) finish(hit, 0);
-                else fetchTree();
+                if (!hit) {
+                    fetchTree();
+                    return;
+                }
+                finish(hit, 0);
+                // ...unless it shows a page the mirror no longer holds: deleting a note moves no
+                // list's count, so the roster went on vouching for a tree that still had it
+                // (Curtis, 2026-10-13: two deleted notes sat in a big notebook's tree, each
+                // opening on "that isn't here"). A page too new for the mirror reads afresh too.
+                const pages = flatDocs(hit);
+                if (!pages.length) return;
+                openMirror(root)
+                    .docs.bulkGet(pages)
+                    .then((rows) => {
+                        if (alive && rows.some((r) => !r)) fetchTree();
+                    })
+                    .catch(() => {});
             });
         }
         return () => {
