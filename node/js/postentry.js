@@ -77,6 +77,9 @@ import { CopyButton } from './copyinto.js';
 import { warningFor } from './pure/warnings.js';
 import { veilsMedia } from './pure/chatveil.js';
 
+/// Feed cards' public words, by address and the post's last edit (see the card's body effect).
+const cardBodies = new Map();
+const CARD_BODIES_KEPT = 500;
 const html = htm.bind(h);
 
 export const StatusDot = ({ status }) =>
@@ -783,8 +786,22 @@ const PostEntryBody = ({
         const bodyUrl = item.private_doc
             ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
             : `/id/${item.author}/docs/${item.doc_id}/body${item.via ? `?via=${item.via}` : ''}`;
+        // A public post's words under its last edit's time are those words for good: kept, so
+        // coming back to the feed doesn't ask for every visible card again (plans/CACHE.md,
+        // Stage 9). A scheduled draft's private words change without a new time - always asked.
+        const key = item.private_doc ? null : `${bodyUrl}@${item.updated_ms || item.published_ms}`;
+        const kept = key && cardBodies.get(key);
+        if (kept) {
+            setBody(kept.text);
+            if (kept.title) setSealedWords(kept.title);
+            return undefined;
+        }
         apiTextTitled(bodyUrl)
             .then(({ text, title }) => {
+                if (key) {
+                    if (cardBodies.size >= CARD_BODIES_KEPT) cardBodies.clear();
+                    cardBodies.set(key, { text, title });
+                }
                 if (!live) return;
                 setBody(text);
                 if (title) setSealedWords(title);
@@ -793,7 +810,15 @@ const PostEntryBody = ({
         return () => {
             live = false;
         };
-    }, [item.author, item.doc_id, item.private_doc, item.kind, item.via]);
+    }, [
+        item.author,
+        item.doc_id,
+        item.private_doc,
+        item.kind,
+        item.via,
+        item.updated_ms,
+        item.published_ms,
+    ]);
 
     // (A feed post used to mark itself SEEN here, via an IntersectionObserver that fired on
     // scroll. Removed 2026-08-09 with the whole read-state feature - PROJECT_PLAN, One Cursor.

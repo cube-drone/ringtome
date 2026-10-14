@@ -15,7 +15,7 @@ import htm from 'htm';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { contractName } from '../contracts.js';
 
-import { api, apiTextTitled } from '../net.js';
+import { api, apiTextTitled, whileVisible } from '../net.js';
 import { t, tNodes } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, SignalCell, trustStops, interestStops } from '../person.js';
@@ -178,7 +178,7 @@ export const NotificationsApp = ({ current }) => {
     };
     useEffect(load, [root]);
     useEffect(() => {
-        const interval = setInterval(load, 30_000);
+        const interval = setInterval(whileVisible(load), 30_000);
         window.addEventListener('focus', load);
         return () => {
             clearInterval(interval);

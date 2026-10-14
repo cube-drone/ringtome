@@ -21355,3 +21355,19 @@ after a catch-up, for profile and feed pages). Left, with reasons, in the plan:
 `search_rows`, `for_posts`, two small N+1s, and switching the list handlers to
 `implicit_tags_as_indexed` - a visible change to how fast a note's length tag
 follows an edit. `a_kept_read_stands_until_its_tables_move`.
+
+**2026-10-13 - the browser asks less (plans/CACHE.md, Stage 9).** `api()` shares
+a GET of one address while it's out - the tree pane and the book column, a
+reader and its snippet asked for the same thing in the same instant - each
+caller its own copy, and anything with a body, a method or a cancel signal
+alone. `useBookTree` reads through the tree pane's mirror cache instead of
+asking the node uncached on every mount; `useBookFacts` shows its last answer at
+once. A chat upload is watched on the mirror's row, the node asked only every
+fifth beat (it asked every second, per upload, while a video encoded). Mixtapes
+are read again only when their own roster entry moved, not all of them when one
+did. A feed card keeps a public post's words under its last edit's time - and
+refreshes when the post is edited, which it didn't before. Hidden tabs skip the
+notification, chat-room, chat-history and feed polls (`whileVisible`); the
+balance asks every 30 s, not 10. Left: remembering a just-saved note (the
+divergence lookout's territory). The media-poll and optimistic-tree probes pass
+against the new bundle; `just ui-check` green.

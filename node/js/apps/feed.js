@@ -56,7 +56,7 @@ import {
     collapseReplyPairs,
     PUBLISHED_AS,
 } from '../pure/feed.js';
-import { api } from '../net.js';
+import { api, whileVisible } from '../net.js';
 import {
     SELECTIVITY_STOPS,
     DEFAULT_STOP,
@@ -422,7 +422,7 @@ export const FeedStream = ({
                 // A failed look leaves the bar as it was; the next beat retries.
             }
         };
-        const timer = setInterval(look, 30_000);
+        const timer = setInterval(whileVisible(look), 30_000);
         window.addEventListener('focus', look);
         return () => {
             live = false;

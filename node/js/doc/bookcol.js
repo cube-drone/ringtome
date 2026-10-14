@@ -8,6 +8,7 @@ import htm from 'htm';
 
 import { api } from '../net.js';
 import { openMirror, useLive } from '../mirror.js';
+import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
 import { Icons } from '../icons.js';
 import { PaneHead } from '../panes.js';
 import { Modal } from '../modal.js';
@@ -37,10 +38,16 @@ const html = htm.bind(h);
 /// The book facts for a persona: the switch per bucket and the hidden marks, off the
 /// private kv, with the writes that move them. Not a live query - the kv has no mirror -
 /// so every write re-reads.
+/// Each persona's book facts as last read (plans/CACHE.md, Stage 9): every move between the list and
+/// a note mounts the notes app again, and it asked both lists afresh each time. The last answer
+/// shows at once; the read behind it replaces it.
+const lastFacts = new Map();
+
 export function useBookFacts(root) {
-    const [modes, setModes] = useState({});
-    const [books, setBooks] = useState({}); // bucket -> { mode, published_as_book }
-    const [hidden, setHidden] = useState(new Set());
+    const last = root ? lastFacts.get(root) : null;
+    const [modes, setModes] = useState(last ? last.modes : {});
+    const [books, setBooks] = useState(last ? last.books : {}); // bucket -> { mode, published_as_book }
+    const [hidden, setHidden] = useState(last ? last.hidden : new Set());
     const [gen, setGen] = useState(0);
     useEffect(() => {
         if (!root) return undefined;
@@ -49,10 +56,16 @@ export function useBookFacts(root) {
             api(`/api/identity/${root}/private/kv/${BOOKS_KV}`).catch(() => ({ values: [] })),
             api(`/api/identity/${root}/private/kv/${HIDDEN_KV}`).catch(() => ({ values: [] })),
         ]).then(([b, h]) => {
+            const read = {
+                modes: bookModes(b && b.values),
+                books: bookFacts(b && b.values),
+                hidden: hiddenSetOf(h && h.values),
+            };
+            lastFacts.set(root, read);
             if (!live) return;
-            setModes(bookModes(b && b.values));
-            setBooks(bookFacts(b && b.values));
-            setHidden(hiddenSetOf(h && h.values));
+            setModes(read.modes);
+            setBooks(read.books);
+            setHidden(read.hidden);
         });
         return () => {
             live = false;
@@ -123,9 +136,10 @@ export function useBookTree(root, bucket, reloadKey) {
         .filter((tx) => tx.title === rootTitleFor(bucket))
         .sort((a, b) => (a.taxonomy_id < b.taxonomy_id ? -1 : 1))[0];
     const rootId = rootRow && rootRow.taxonomy_id;
-    const fingerprint = (taxRows || [])
-        .map((tx) => `${tx.taxonomy_id}:${tx.members}:${tx.title}`)
-        .join('|');
+    // The tree pane's own stamp and cache (mirror/doccache.js): it fetched this same tree, and this
+    // asked again, uncached, on every mount (plans/CACHE.md, Stage 9). A fetch at the same moment
+    // as the pane's shares it (net.js).
+    const fingerprint = rosterFingerprint(taxRows);
     const [tree, setTree] = useState(null);
     useEffect(() => {
         if (!rootId) {
@@ -133,9 +147,19 @@ export function useBookTree(root, bucket, reloadKey) {
             return undefined;
         }
         let live = true;
-        api(`/api/identity/${root}/taxonomies/${rootId}`)
-            .then((node) => live && setTree(node))
-            .catch(() => live && setTree(null));
+        const fetchTree = () =>
+            api(`/api/identity/${root}/taxonomies/${rootId}`)
+                .then((node) => {
+                    rememberTree(root, rootId, fingerprint, node);
+                    if (live) setTree(node);
+                })
+                .catch(() => live && setTree(null));
+        // A reload asked for is a fetch; otherwise the cache, when the roster still vouches for it.
+        (reloadKey ? Promise.resolve(null) : cachedTree(root, rootId, fingerprint)).then((hit) => {
+            if (!live) return;
+            if (hit) setTree(hit);
+            else fetchTree();
+        });
         return () => {
             live = false;
         };

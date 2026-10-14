@@ -89,7 +89,37 @@ export async function downloadFile(path, fallback, onPending = () => {}) {
     await saveFile(named ? named[1] : fallback, await res.blob());
 }
 
-export async function api(path, options = {}) {
+/// GETs of one address out at once, shared (plans/CACHE.md, Stage 9): the notebook's tree pane and
+/// its book column, a document's reader and its snippet, a card and its neighbour each asked the
+/// node for the same thing in the same instant. Each caller gets its own copy of the answer, so
+/// none can change another's. A request with a body, a method, or a signal to cancel it goes
+/// alone - cancelling one caller's must never cancel another's.
+const inFlight = new Map();
+
+export function api(path, options = {}) {
+    const plainGet =
+        (!options.method || options.method === 'GET') && !options.body && !options.signal;
+    if (!plainGet) return apiOnce(path, options);
+    const key = `${path}\u0000${JSON.stringify(options.headers || {})}`;
+    let shared = inFlight.get(key);
+    if (!shared) {
+        shared = apiOnce(path, options).finally(() => inFlight.delete(key));
+        inFlight.set(key, shared);
+    }
+    return shared.then((answer) =>
+        typeof structuredClone === 'function' ? structuredClone(answer) : answer,
+    );
+}
+
+/// An interval's callback that does nothing while the tab is hidden (plans/CACHE.md, Stage 9):
+/// notifications, the chat rooms and the feed's look polled a hidden tab every half minute. Each
+/// poller also asks on focus, so a reader coming back sees it fresh.
+export const whileVisible = (fn) => () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    fn();
+};
+
+async function apiOnce(path, options = {}) {
     // The caller's own headers are merged rather than replaced, and they win: ours are
     // defaults, and one of them - the launch token - must survive a caller that sets any.
     const { headers: given, ...rest } = options;

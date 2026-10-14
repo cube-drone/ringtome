@@ -134,8 +134,10 @@ export const useGatedFeatures = (root, feat) => {
     }, [key, ledger.owned, ledger.everything]);
 };
 
-/// How often the shell asks the node while the tab is visible.
-const ASK_MS = 10_000;
+/// How often the shell asks the node while the tab is visible. Half a minute (plans/CACHE.md,
+/// Stage 9; ten seconds before): a save asks again on its own a moment after it lands
+/// (`docsMoved`), so the wait is only ever for earnings that aren't saves.
+const ASK_MS = 30_000;
 
 /// The one poll (in the shell): the balance for the corner, and what's owned for every gate. Asked
 /// every ten seconds while the tab is visible, and again whenever the persona's own documents move

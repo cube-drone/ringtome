@@ -1,7 +1,7 @@
 # Caching
 
-A plan (2026-10-13). Stages 1-8 built the same day (HISTORY); what was built
-before it was written is under _Already done_.
+A plan (2026-10-13). All nine stages built the same day (HISTORY); what was
+built before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
 SQL, and a persona's database has one connection: under load, a request costs
@@ -360,7 +360,7 @@ moved by every label anywhere); `held_of` and `public_implicit_tags`' N+1s
 `implicit_tags()` over `implicit_tags_as_indexed()` - its refresh is what counts
 a just-edited note's words, a visible change, so Curtis's call.
 
-### Stage 9 - the browser
+### Stage 9 - the browser (built 2026-10-13)
 
 - **In-flight de-duplication** in `net.js`: one request per URL at a time for
   GETs (answers shared read-only).
@@ -376,6 +376,18 @@ a just-edited note's words, a visible change, so Curtis's call.
 - **Mixtapes** fetched one by one as they change, not all when one does.
 - **Hidden tabs** stop polling (notifications, chat rooms, the feed's look); the
   balance corner asks every 30-60 s, not 10.
+
+As built: in-flight GETs shared in `net.js`'s `api()` (each caller its own copy;
+anything with a body, method or signal goes alone); `useBookTree` through the
+tree pane's mirror cache; `useBookFacts` shows its last answer at once; chat
+uploads watch the mirror row, asking the node every fifth beat for a page whose
+stream is down; mixtapes read again only when their own roster entry moved; feed
+cards keep a public post's words under its last edit's time (and now refresh
+when it's edited); hidden tabs skip the notification, chat-room, chat-history
+and feed polls (`whileVisible`); the balance asks every 30 s. Left: remembering
+a just-saved note under the head it will have - it threads through the editor's
+divergence lookout, whose scars are its own, and wants a harness probe of its
+own before it changes.
 
 ## What we won't cache
 

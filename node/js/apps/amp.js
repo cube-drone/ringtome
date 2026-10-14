@@ -82,6 +82,8 @@ import {
     songFacets,
 } from '../pure/ampfilters.js';
 
+/// Each mixtape as last read, by `root:id`, with the roster entry it was read under.
+const keptTapes = new Map();
 const html = htm.bind(h);
 
 /// The private register your layer on other people's songs lives in (ruling 6), and the device pref
@@ -959,22 +961,36 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const taxRows = useLive(() => (root ? openMirror(root).taxonomies.toArray() : []), [root]);
     const tapeIds = (taxRows || [])
         .filter((x) => isMixtape(x.title))
-        .map((x) => `${x.taxonomy_id}:${x.members ?? ''}`)
+        .map((x) => `${x.taxonomy_id}:${x.members ?? ''}:${encodeURIComponent(x.title)}`)
         .sort()
         .join(',');
     const [tapes, setTapes] = useState([]);
     const [tapesAt, setTapesAt] = useState(0);
     const reloadTapes = () => setTapesAt(Date.now());
     const [openTape, setOpenTape] = useState(null);
+    // Each tape is read again only when its own roster entry moved (plans/CACHE.md, Stage 9: one song
+    // added read every tape again, and every visit read them all) - or when our own edit asked
+    // (`reloadTapes`: a reorder moves no count).
+    const tapesForced = useRef(0);
     useEffect(() => {
         if (!root) return;
-        const ids = tapeIds ? tapeIds.split(',').map((x) => x.split(':')[0]) : [];
+        const forced = tapesForced.current !== tapesAt;
+        tapesForced.current = tapesAt;
+        const entries = tapeIds ? tapeIds.split(',') : [];
         Promise.all(
-            ids.map((id) =>
-                api(`/api/identity/${root}/taxonomies/${id}`)
+            entries.map((entry) => {
+                const id = entry.split(':')[0];
+                const key = `${root}:${id}`;
+                const kept = keptTapes.get(key);
+                if (!forced && kept && kept.entry === entry) return kept.tape;
+                return api(`/api/identity/${root}/taxonomies/${id}`)
                     .then(readMixtape)
-                    .catch(() => null),
-            ),
+                    .then((tape) => {
+                        keptTapes.set(key, { entry, tape });
+                        return tape;
+                    })
+                    .catch(() => null);
+            }),
         ).then((list) =>
             setTapes(list.filter(Boolean).sort((a, b) => a.name.localeCompare(b.name))),
         );

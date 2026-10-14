@@ -12,7 +12,7 @@ import { memo } from 'preact/compat';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
-import { api, apiTextTitled } from '../net.js';
+import { api, apiTextTitled, whileVisible } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { PersonChip, PersonHex, PersonInline, usePerson } from '../person.js';
@@ -1114,7 +1114,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         api(`/api/identity/${root}/rooms/${author}/${doc}/sync`, { method: 'POST' })
             .catch(() => {})
             .then(readHistory);
-        const interval = setInterval(readHistory, HISTORY_POLL_MS);
+        const interval = setInterval(whileVisible(readHistory), HISTORY_POLL_MS);
         return () => clearInterval(interval);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, author, doc, !!room]);
@@ -1339,11 +1339,23 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     useEffect(() => {
         if (!landing.length) return undefined;
         let live = true;
+        let ticks = 0;
         const tick = setInterval(async () => {
+            ticks += 1;
             for (const item of landing) {
                 if (sentLanded.current.has(item.docId)) continue;
                 try {
-                    const d = await api(`/api/identity/${root}/docs/${item.docId}`);
+                    // The mirror's row first - it carries the media facts the moment the stream
+                    // does - and the node only every fifth beat, for a page whose stream is
+                    // down (plans/CACHE.md, Stage 9: this asked the node every second, per upload,
+                    // for as long as a video took to process).
+                    const row = await openMirror(root).docs.get(item.docId);
+                    const d =
+                        row && row.media
+                            ? row
+                            : ticks % 5 === 0
+                              ? await api(`/api/identity/${root}/docs/${item.docId}`)
+                              : null;
                     if (!live) return;
                     if (d && d.media) {
                         // Claimed before the send, so the next tick cannot send it twice; a send
@@ -2259,7 +2271,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [author, doc, mode, wasOpen, page]);
     useEffect(() => {
-        const interval = setInterval(load, 30_000);
+        const interval = setInterval(whileVisible(load), 30_000);
         window.addEventListener('focus', load);
         return () => {
             clearInterval(interval);
