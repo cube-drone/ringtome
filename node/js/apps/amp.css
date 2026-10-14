@@ -526,20 +526,64 @@
     background: var(--surface-2);
 }
 
+/* The cover, blurred most behind the cassette and least at the edges (2026-10-13): a lightly
+   blurred copy, and a heavy one over it that fades out from the middle. */
 .player-backdrop {
     position: absolute;
     inset: -2rem;
-    width: calc(100% + 4rem);
-    height: calc(100% + 4rem);
-    object-fit: cover;
-    filter: blur(18px);
     opacity: 0.55;
+}
+
+.player-backdrop-light,
+.player-backdrop-heavy {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.player-backdrop-light {
+    filter: blur(5px);
+}
+
+.player-backdrop-heavy {
+    filter: blur(16px);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+    mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+}
+
+/* The cassette on its floor (2026-10-13: "some weight and heft"): a close shadow at its edges,
+   and a soft one on the floor beneath, which stays down when it bounces - smaller and fainter the
+   higher it goes (player.js). */
+.cassette-stage {
+    position: relative;
+    width: min(80%, 38rem);
 }
 
 .cassette {
     position: relative;
-    width: min(80%, 38rem);
+    display: block;
+    width: 100%;
     height: auto;
+    filter: drop-shadow(0 3px 2px var(--shadow-drop)) drop-shadow(0 8px 10px var(--shadow-drop));
+    /* It bounces from its foot (player.js, the kicks). */
+    transform-origin: 50% 100%;
+    will-change: transform;
+}
+
+.cassette-floor {
+    position: absolute;
+    left: 4%;
+    right: 4%;
+    bottom: -10%;
+    height: 18%;
+    /* Twice over: the token's shade alone is a panel's, too light to stand a weight on. */
+    background:
+        radial-gradient(ellipse at 50% 45%, var(--shadow-drop) 30%, transparent 70%),
+        radial-gradient(ellipse at 50% 45%, var(--shadow-drop) 20%, transparent 60%);
+    filter: blur(5px);
+    will-change: transform, opacity;
 }
 
 /* A few cassettes (2026-10-13), each song always on its own: the house's, a dark shell, and two
@@ -650,6 +694,39 @@
 
 .cassette-text-small {
     font-size: 15px;
+}
+
+/* The hands a label is written in (pure/cassette.js `CASSETTE_FONTS`). */
+.cassette-font-caveat .cassette-text {
+    font-family: 'Caveat', cursive;
+}
+
+.cassette-font-audiowide .cassette-text {
+    font-family: 'Audiowide', sans-serif;
+}
+
+.cassette-font-major-mono .cassette-text {
+    font-family: 'Major Mono Display', monospace;
+}
+
+.cassette-font-atkinson .cassette-text {
+    font-family: 'Atkinson Hyperlegible', sans-serif;
+}
+
+.cassette-font-special-elite .cassette-text {
+    font-family: 'Special Elite', monospace;
+}
+
+.cassette-font-bungee .cassette-text {
+    font-family: 'Bungee', sans-serif;
+}
+
+.cassette-font-orbitron .cassette-text {
+    font-family: 'Orbitron', sans-serif;
+}
+
+.cassette-font-bitcount .cassette-text {
+    font-family: 'Bitcount', monospace;
 }
 
 .cassette-window {

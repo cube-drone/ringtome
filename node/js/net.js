@@ -215,6 +215,18 @@ export async function apiText(path, options = {}) {
     return text;
 }
 
+/// A file's bytes, as `apiText` reads its words - the cassette reads a song a second time to find
+/// its kicks (player.js).
+export async function apiBytes(path) {
+    const res = await fetch(path, { credentials: 'same-origin', headers: authHeaders() });
+    if (!res.ok) {
+        const err = new Error(`request failed (${res.status})`);
+        err.status = res.status;
+        throw err;
+    }
+    return res.arrayBuffer();
+}
+
 /// The node's upload cap, from the page (ui.rs `app_page`), or null when the page doesn't say.
 export function maxUploadBytes() {
     const el = document.querySelector('meta[name="app-max-upload"]');

@@ -14,9 +14,11 @@ import { useLocation } from 'preact-iso';
 
 import { ShuffleRun } from './pure/shuffle.js';
 import { clock, levelGain, onLabel, readContext, readPlayerState, slimRow } from './pure/amp.js';
-import { cassetteLook } from './pure/cassette.js';
+import { LINE_ROOM, cassetteLook, fontFit } from './pure/cassette.js';
+import { kickAt, kicks } from './pure/bounce.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { apiBytes } from './net.js';
 
 const html = htm.bind(h);
 
@@ -154,6 +156,8 @@ export const PlayerProvider = ({ me, children }) => {
     // the first of them (the list's index, the shuffle's or the station's position), and `offset` the
     // player's index of the first - so the player's index says where the model is.
     const nq = useRef({ rows: [], base: 0, offset: 0 });
+    // Where the phone's player last said it was, and when, for `now` to count on from.
+    const said = useRef({ at: 0, when: 0, playing: false });
 
     const persist = () => {
         if (!me) return;
@@ -516,6 +520,13 @@ export const PlayerProvider = ({ me, children }) => {
             persist();
             handUpcoming();
         },
+        /// Where in the song, now, to the frame - the cassette's bounce asks every frame, and the
+        /// position the page re-renders on moves only a few times a second.
+        now() {
+            if (audio) return audio.currentTime || 0;
+            const s = said.current;
+            return s.at + (s.playing ? (performance.now() - s.when) / 1000 : 0);
+        },
         seek(seconds) {
             if (native && Number.isFinite(seconds)) native.seek(Math.round(seconds * 1000));
             if (audio && Number.isFinite(seconds)) audio.currentTime = seconds;
@@ -576,6 +587,11 @@ export const PlayerProvider = ({ me, children }) => {
             if (!state || typeof state !== 'object') return;
             setPlaying(!!state.playing);
             setPosition((state.position || 0) / 1000);
+            said.current = {
+                at: (state.position || 0) / 1000,
+                when: performance.now(),
+                playing: !!state.playing,
+            };
             setDuration((state.duration || 0) / 1000);
             const q = nq.current;
             const at = (state.index ?? -1) - q.offset;
@@ -886,6 +902,119 @@ export const PlayerBar = ({ list = [], from = null, source = '', rating = '', on
     </div>`;
 };
 
+/// The cassette bounces to the music (pure/bounce.js): each song read a second time, quietly -
+/// decoded at a low rate, its bass kept - into how hard it kicks every 50ms. Read once a song, the
+/// last few kept; none past a quarter of an hour, which would be a lot to decode on a phone; none
+/// where the browser can't decode it, which only means a still cassette.
+const KICK_RATE = 8000;
+const KICK_MOST_MS = 15 * 60 * 1000;
+const keptKicks = new Map(); // song key -> its kicks, being read or read
+function readKicks(row, me) {
+    if (keptKicks.has(row.key)) return keptKicks.get(row.key);
+    const Offline =
+        typeof window !== 'undefined' &&
+        (window.OfflineAudioContext || window.webkitOfflineAudioContext);
+    if (!Offline || (row.lengthMs || 0) > KICK_MOST_MS) return Promise.resolve(null);
+    const reading = (async () => {
+        const bytes = await apiBytes(soundSrc(row, me));
+        const song = await new Offline(1, 1, KICK_RATE).decodeAudioData(bytes);
+        const bass = new Offline(1, song.length, KICK_RATE);
+        const source = bass.createBufferSource();
+        source.buffer = song;
+        const low = bass.createBiquadFilter();
+        low.type = 'lowpass';
+        low.frequency.value = 150;
+        source.connect(low).connect(bass.destination);
+        source.start();
+        return kicks((await bass.startRendering()).getChannelData(0), KICK_RATE);
+    })().catch(() => null);
+    keptKicks.set(row.key, reading);
+    while (keptKicks.size > 12) keptKicks.delete(keptKicks.keys().next().value);
+    return reading;
+}
+
+/// The song's kicks, once read - null until then, and for a song that can't be.
+function useKicks(row, me) {
+    const [kept, setKept] = useState(null);
+    const key = row ? row.key : null;
+    useEffect(() => {
+        setKept(null);
+        if (!row || !row.doc) return undefined;
+        let here = true;
+        readKicks(row, me).then((k) => here && setKept(k));
+        return () => {
+            here = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key, me]);
+    return kept;
+}
+
+/// The bounce, a frame at a time while it plays: a kick lifts the cassette and squashes it a
+/// little, and it settles back between - its shadow left on the floor, smaller and fainter the
+/// higher it goes. Still for anyone who asks their computer for less motion.
+function useBounce(svg, floor, kickList, playing, p) {
+    const player = useRef(p);
+    player.current = p;
+    useEffect(() => {
+        const el = svg.current;
+        const ground = floor.current;
+        const still =
+            typeof window !== 'undefined' &&
+            window.matchMedia &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!el || !kickList || !playing || still) return undefined;
+        let shown = 0;
+        let frame = 0;
+        const tick = () => {
+            shown = Math.max(kickAt(kickList, player.current.now()), shown * 0.82);
+            el.style.transform = `translateY(${(-shown * 3).toFixed(2)}%) scale(${(1 + shown * 0.025).toFixed(4)}, ${(1 - shown * 0.015).toFixed(4)})`;
+            if (ground) {
+                ground.style.transform = `scale(${(1 - shown * 0.12).toFixed(4)})`;
+                ground.style.opacity = (1 - shown * 0.35).toFixed(3);
+            }
+            frame = requestAnimationFrame(tick);
+        };
+        frame = requestAnimationFrame(tick);
+        return () => {
+            cancelAnimationFrame(frame);
+            el.style.transform = '';
+            if (ground) {
+                ground.style.transform = '';
+                ground.style.opacity = '';
+            }
+        };
+    }, [svg, floor, kickList, playing]);
+}
+
+/// A label line that still runs past its room once drawn - a hand wider than its average for these
+/// letters (all capitals, say) - squeezed to fit, as a pen crowds the last words in. Measured once
+/// the fonts are in.
+function useFitted(svg) {
+    useEffect(() => {
+        const el = svg.current;
+        if (!el) return undefined;
+        const squeeze = () => {
+            for (const line of el.querySelectorAll('text[data-room]')) {
+                line.removeAttribute('textLength');
+                line.removeAttribute('lengthAdjust');
+                const room = Number(line.dataset.room);
+                if (line.getComputedTextLength() > room) {
+                    line.setAttribute('textLength', String(room));
+                    line.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+                }
+            }
+        };
+        squeeze();
+        let here = true;
+        if (typeof document !== 'undefined' && document.fonts)
+            document.fonts.ready.then(() => here && squeeze());
+        return () => {
+            here = false;
+        };
+    });
+}
+
 /// Expanded (section 4): the page is a cassette whose reels turn while it plays, over the song's
 /// cover, blurred.
 /// A compact cassette (Curtis, 2026-10-12): screws in the four corners; a paper label wrapped round
@@ -897,17 +1026,22 @@ export const PlayerBar = ({ list = [], from = null, source = '', rating = '', on
 /// carries them, under the cassette: `rating` and `onRate` as the bar takes them.
 export const Cassette = ({ rating = '', onRate = null }) => {
     const p = usePlayer();
+    const svg = useRef(null);
+    const floor = useRef(null);
+    const kickList = useKicks(p && p.current, p && p.me);
+    useBounce(svg, floor, kickList, !!(p && p.playing), p);
+    useFitted(svg);
     if (!p) return null;
     const { current, playing, me } = p;
     const reels = [100, 220];
     const look = cassetteLook(current && current.key);
     const stacked = look.layout === 'stacked';
-    const title = stacked
-        ? onLabel(current && current.title, 30, 20, 12)
-        : onLabel(current && current.title, 30, 22, 13);
-    const artist = stacked
-        ? onLabel(current && current.artist, 40, 14, 10)
-        : onLabel(current && current.artist, 40, 15, 11);
+    const fit = (words, part) => {
+        const f = fontFit(look.font, part, stacked);
+        return onLabel(words, f.room, f.size, f.least);
+    };
+    const title = fit(current && current.title, 'title');
+    const artist = fit(current && current.artist, 'artist');
     // Where the words go (pure/cassette.js `LAYOUTS`).
     const titleAt = stacked
         ? { x: 40, y: 32, anchor: 'start' }
@@ -962,8 +1096,21 @@ export const Cassette = ({ rating = '', onRate = null }) => {
         top: { x: 26, y: 12, width: 268, height: stacked ? 5 : 7 },
     }[look.block];
     return html`<div class="player-expanded">
-        ${current && current.thumb && html`<img class="player-backdrop" src=${soundThumb(current, me)} alt="" />`}
-        <svg class=${`cassette ${look.style}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" role="img" aria-label=${t('player.a-cassette', 'a cassette')}>
+        ${
+            /* The cover behind it, blurred most at the middle and least at the edges (Curtis,
+            2026-10-13): a lightly blurred copy, under a heavily blurred one masked to a circle. */ ''
+        }
+        ${
+            current &&
+            current.thumb &&
+            html`<div class="player-backdrop">
+                <img class="player-backdrop-light" src=${soundThumb(current, me)} alt="" />
+                <img class="player-backdrop-heavy" src=${soundThumb(current, me)} alt="" />
+            </div>`
+        }
+        <div class="cassette-stage">
+        <div class="cassette-floor" ref=${floor}></div>
+        <svg ref=${svg} class=${`cassette ${look.style} ${look.font.cls}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" role="img" aria-label=${t('player.a-cassette', 'a cassette')}>
             <defs>
                 <clipPath id="cassette-window-clip">
                     <rect x="70" y="72" width="180" height="40" rx="20" />
@@ -999,7 +1146,7 @@ export const Cassette = ({ rating = '', onRate = null }) => {
                     <text class="cassette-side-letter" x=${sideX} y="99" text-anchor="middle">${look.side.letter}</text>`
             }
             ${look.length && html`<text class="cassette-print" x=${lengthX} y="96" text-anchor="middle">${look.length}</text>`}
-            <text class="cassette-text" x=${titleAt.x} y=${titleAt.y} text-anchor=${titleAt.anchor} style=${`font-size: ${title.size}px`}>${title.words}</text>
+            <text class="cassette-text" data-room=${LINE_ROOM.title} x=${titleAt.x} y=${titleAt.y} text-anchor=${titleAt.anchor} style=${`font-size: ${title.size}px`}>${title.words}</text>
             <rect class="cassette-window" x="70" y="72" width="180" height="40" rx="20" />
             <g clip-path="url(#cassette-window-clip)">
                 <circle class="cassette-tape" cx=${reels[0]} cy="92" r="34" />
@@ -1017,7 +1164,7 @@ export const Cassette = ({ rating = '', onRate = null }) => {
                     )}
                 </g>`,
             )}
-            <text class="cassette-text cassette-text-small" x=${artistAt.x} y=${artistAt.y} text-anchor=${artistAt.anchor} style=${`font-size: ${artist.size}px`}>${artist.words}</text>
+            <text class="cassette-text cassette-text-small" data-room=${LINE_ROOM.artist} x=${artistAt.x} y=${artistAt.y} text-anchor=${artistAt.anchor} style=${`font-size: ${artist.size}px`}>${artist.words}</text>
             <path class="cassette-foot" d="M58 196 L78 152 L242 152 L262 196 Z" />
             <circle class="cassette-hole" cx="96" cy="180" r="5" />
             <circle class="cassette-hole" cx="224" cy="180" r="5" />
@@ -1025,6 +1172,7 @@ export const Cassette = ({ rating = '', onRate = null }) => {
             <rect class="cassette-hole" x="176" y="174" width="10" height="10" rx="2" />
             <rect class="cassette-hole" x="154" y="164" width="12" height="6" rx="2" />
         </svg>
+        </div>
         ${current && onRate && html`<${Thumbs} rating=${rating} onRate=${onRate} className="player-rate player-cassette-rate" />`}
     </div>`;
 };

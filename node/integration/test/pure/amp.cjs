@@ -210,5 +210,56 @@ describe("hrseAmp's library (plans/AUDIO.md)", () => {
         assert.ok(seen((l) => l.brand).has('HORSE STEREO') && seen((l) => l.brand).has(null));
         assert.ok(seen((l) => l.stripes).size === 2);
         assert.ok(c.cassetteLook(null).style, 'nothing playing: a cassette all the same');
+        // Every hand turns up, and each fits its line: Caveat's room as it was, a wide hand's less.
+        assert.equal(seen((l) => l.font.cls).size, c.CASSETTE_FONTS.length);
+        const caveat = c.fontFit(c.CASSETTE_FONTS[0], 'title');
+        assert.deepEqual(caveat, { room: 28, size: 22, least: 13 });
+        for (const font of c.CASSETTE_FONTS) {
+            for (const part of ['title', 'artist']) {
+                const f = c.fontFit(font, part);
+                assert.ok(
+                    f.room * f.size * font.width <= c.LINE_ROOM[part],
+                    `${font.cls} ${part} fits`,
+                );
+                assert.ok(f.least <= f.size && f.least >= 9);
+            }
+        }
+    });
+
+    it('finds the kicks: a burst of bass bounces, silence and a steady drone settle (2026-10-13)', async () => {
+        const b = await import('../../../js/pure/bounce.js');
+        const rate = 8000;
+        // Four seconds: a 100Hz thump of 100ms every half second, silence between.
+        const samples = new Float32Array(rate * 4);
+        for (let beat = 0; beat < 8; beat++) {
+            const at = beat * rate * 0.5;
+            for (let j = 0; j < rate * 0.1; j++)
+                samples[at + j] = Math.sin((2 * Math.PI * 100 * j) / rate);
+        }
+        const k = b.kicks(samples, rate);
+        assert.equal(k.length, 80, 'a step each 50ms');
+        for (let beat = 1; beat < 8; beat++) {
+            assert.ok(b.kickAt(k, beat * 0.5 + 0.01) > 0.5, `beat ${beat} kicks`);
+            assert.equal(b.kickAt(k, beat * 0.5 + 0.3), 0, `and the gap after it doesn't`);
+        }
+        assert.ok(k.every((v) => v >= 0 && v <= 1));
+        assert.ok(
+            b.kicks(new Float32Array(rate * 2), rate).every((v) => v === 0),
+            'silence: still',
+        );
+        // A drone that never changes settles once it's been going a second.
+        const drone = Float32Array.from({ length: rate * 3 }, (_, j) =>
+            Math.sin((2 * Math.PI * 100 * j) / rate),
+        );
+        assert.ok(
+            b
+                .kicks(drone, rate)
+                .slice(20)
+                .every((v) => v < 0.05),
+            'a drone: still',
+        );
+        assert.equal(b.kickAt(k, -1), 0);
+        assert.equal(b.kickAt(k, 999), 0, 'past the end: still');
+        assert.equal(b.kickAt(null, 1), 0);
     });
 });

@@ -21472,3 +21472,49 @@ video twin, and the claim asked the moment the takedown returned, before that
 node had heard of it. It now waits for the takedown to arrive, as the claim's
 own feed check below it already did: up to twenty pulls.
 `RINGTOME_TEST_GREP=combinations just integration` green.
+
+**2026-10-13 - the cassette bounces to the music.** While the cassette fills the
+page, each song is read a second time - fetched (usually from the browser's
+cache), decoded at 8 kHz, low-passed at 150 Hz - and turned into how hard it
+kicks every 50 ms: its loudness above the last second's (`kicks` in the new
+`pure/bounce.js`). Each frame looks up the song's place (`now()` on the player:
+the audio element's, or counted on from the phone player's last report) and
+lifts and squashes the cassette from its foot, settling between kicks. The
+playing audio is untouched - no Web Audio in its path, so the lock screen and
+levelling are as they were. Kept for the last dozen songs; skipped past 15
+minutes, where the browser can't decode, and under reduced motion. The bytes
+come through net.js (`apiBytes`), the one HTTP client. A pure vector on
+synthetic thumps, silence and a drone; on a scratch node in headless Chrome, the
+first bounce came about 100 ms after the cassette opened on a 20-second song,
+kicks rising and settling between beats, still when paused. Curtis: "if it's
+terrible we can take it out." `just ui-check` green.
+
+**2026-10-13 - the cassette has weight.** Two shadows (Curtis: "some weight and
+heft"): a close one at its edges, which goes where it goes, and a soft one on
+the floor beneath it, which doesn't - when the cassette bounces, the floor's
+shadow stays down, smaller and fainter the higher it lifts, so a kick reads as a
+hop off the table. The floor's is the colourway's own `--shadow-drop`, laid
+twice, since once is a menu's shade and too light to stand a weight on. Seen at
+rest and mid-lift on a scratch node, in the house colourway and witchlight.
+`just ui-check` green.
+
+**2026-10-13 - the cover behind the cassette, less blurred at its edges.** The
+backdrop was one copy of the cover at 18px of blur. It is two now: a lightly
+blurred copy (5px), under a heavily blurred one (16px) masked to fade out from
+the middle - so the art is soft behind the cassette and clearer towards the
+page's edges, in CSS alone (`mask-image`, as the sign-in page's fade does).
+Found on the way: the cover is the sound's thumbnail, at most 128px a side
+(`THUMB_BOUND`), stretched across the page - so the edges can't get much sharper
+than this without a bigger cover kept for sounds. Seen on a scratch node.
+`just ui-check` green.
+
+**2026-10-13 - a cassette's label in one of eight hands.** Caveat, Audiowide,
+Major Mono Display, Atkinson Hyperlegible, Special Elite, Bungee, Orbitron or
+Bitcount, chosen with the rest of the cassette's look and drawn last, so a song
+keeps every other choice it had. They run from 0.39em a letter (Caveat) to 0.74
+(Major Mono), measured in Chrome, so each carries its own sizes and its line's
+room comes from its width (`fontFit` in `pure/cassette.js`); a line still too
+long once drawn - all capitals, say - is squeezed to its room with SVG's
+`textLength`, measured again when the fonts are in. Nine cassettes side by side
+on a scratch node: seven of the hands, every title on its line. `just ui-check`
+green.

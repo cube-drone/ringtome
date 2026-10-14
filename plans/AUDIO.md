@@ -898,8 +898,25 @@ its own.
   the label's left or right edge or across its top; diagonal stripes growing
   wider at the band's end; the title and artist written classic (title on top,
   artist at the foot), centred, stacked on the top lines, or from the left; and
-  one line to write on, several faint ones, or none. All in the colourway's
-  colours, as the cassettes are.
+  one line to write on, several faint ones, or none; and the hand it's written
+  in
+  - Caveat, Audiowide, Major Mono Display, Atkinson Hyperlegible, Special Elite,
+    Bungee, Orbitron or Bitcount, all loaded anyway. Each hand has its own sizes
+    and room on the line, from its letters' measured width (Caveat's narrow,
+    Major Mono's twice as wide), and a line still too long once drawn is
+    squeezed to fit. All in the colourway's colours, as the cassettes are.
+- **The cassette bounces to the music** (Curtis: "if it's terrible we can take
+  it out"). Not a live analyser on the playing audio - that would put the player
+  through Web Audio, which it keeps out of so a locked screen can't stop the
+  music, and on Android the sound is the phone player's, out of the page's
+  hearing. The song is read a second time instead, while the cassette shows:
+  decoded at 8 kHz, low-passed at 150 Hz so the kick drum leads, and boiled down
+  to how hard it kicks each 50 ms - its loudness above the last second's
+  (`pure/bounce.js`). Each frame looks up where the song is (`now()`, counted on
+  from the phone player's last word on Android) and lifts and squashes the
+  cassette a little, settling between kicks. The last dozen songs' kicks are
+  kept; nothing over 15 minutes is read; a song the browser can't decode, or
+  anyone asking their computer for less motion, gets a still cassette.
 - **A sound in hrseFiles** plays in the player the whole app shares (with
   hrseAmp unlocked): play and pause, the scrub, and "open hrseAmp" beside them.
   Going into hrseAmp then carries on through its table, as any list playing does
