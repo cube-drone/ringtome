@@ -1,6 +1,6 @@
 # Caching
 
-A plan (2026-10-13). Stages 1-4 built the same day (HISTORY); what was built
+A plan (2026-10-13). Stages 1-5 built the same day (HISTORY); what was built
 before it was written is under _Already done_.
 
 The node keeps almost nothing in memory. Every request rebuilds its answer from
@@ -206,7 +206,7 @@ with), and `edit_profile` drops it; the stream coalesces to a rebuild a second
 rather than sharing one badge count per persona - the documents part was already
 shared per stamp, and a beat bounds the rest.
 
-### Stage 5 - the memory budget
+### Stage 5 - the memory budget (built 2026-10-13)
 
 The node runs on a personal computer (plenty of RAM, rude to use it all), a
 server (plenty, rude _not_ to use it), a VPS or a Raspberry Pi (little, and an
@@ -270,6 +270,12 @@ Done when: the boot line is right on a laptop, the server, the phone and a
 memory-limited Linux service (`MemoryMax=`, checked by hand on the server - the
 rig runs on macOS); the budget arithmetic has unit tests per row of the table;
 `0` turns the caches off with the suite still green.
+
+As built (`budget.rs`): the pressure beat reads `/proc/meminfo` and the cgroup's
+headroom on Linux - which covers Android too, its kernel being Linux - so no
+`onTrimMemory` bridge was needed; elsewhere (macOS, Windows) there is no reading
+and no shedding. The budget is said in the boot line, not yet on the status
+page. Windows' memory isn't read: there, the floor.
 
 ### Stage 6 - the doc-meta view in RAM
 

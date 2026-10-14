@@ -242,6 +242,16 @@ somebody's video encodes. On one CPU there is nothing spare: the site slows
 while a video encodes. If people will upload video, use two CPUs or more.
 `RINGTOME_MEDIA_THREADS` changes how many threads encode.
 
+Memory: the node keeps what it reads often in RAM - each persona's notebook
+index, public pages and pictures - within a budget it sizes to the machine. On a
+server that is a quarter of the memory, leaving at least a gigabyte for
+everything else (the databases' own caches, encoding, the operating system's
+file cache); inside a container or a systemd unit with `MemoryMax=`, that limit
+counts as the machine. The node says its budget once at start
+(`cache budget 4.0 GB (server, 16.0 GB memory)`), and drops its caches when the
+machine runs short (under a tenth of memory free). `RINGTOME_CACHE_MEMORY`
+changes it.
+
 ## Settings
 
 Everything is an environment variable. The ones an operator is likely to want:
@@ -262,6 +272,7 @@ Everything is an environment variable. The ones an operator is likely to want:
 | `RINGTOME_MAX_UPLOAD_BYTES`     | 128 MiB (multi) / 1 GiB (single) | the largest raw upload the node will accept                                                                               |
 | `RINGTOME_QUARANTINE_DIRECTORY` | the system temp dir              | where uploads wait for processing; disposable                                                                             |
 | `RINGTOME_MEDIA_THREADS`        | the CPUs, less one (at least 1)  | how many threads encode pictures, sound and video - see _How much computer_                                               |
+| `RINGTOME_CACHE_MEMORY`         | a quarter of memory              | how much the node's caches may hold: a size (`2GB`, `512MB`), a share (`40%`), or `0` for none - see _How much computer_  |
 | `RUST_LOG`                      | node and requests at `debug`     | log filter, `tracing` syntax; `ringtome_node=info` is quieter                                                             |
 
 The rest (sync and admission budgets, proof-of-work prices) have defaults sized

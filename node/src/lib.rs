@@ -29,6 +29,7 @@ pub mod auth;
 pub mod backup;
 pub mod bank;
 pub mod books;
+pub mod budget;
 pub mod builtin;
 pub mod census;
 pub mod chat;
@@ -438,6 +439,9 @@ pub async fn serve(bound: Bound) -> anyhow::Result<()> {
 
 /// Everything [`run`] does except the last line: the whole assembly, and the listener bound.
 pub async fn bind(config: Config) -> anyhow::Result<Bound> {
+    // How much the caches may hold, said once (plans/CACHE.md, Stage 5) - here, which the
+    // desktop and Android shells call too, rather than in `run`, which only the binary does.
+    budget::init();
     // The listener comes FIRST - before the banner, before a byte of state - and the order is
     // the design (2026-09-21): the loops are registered with clones of the state as it is
     // built, so a bind that failed after that would leave a half-dead node's background tasks
@@ -676,6 +680,13 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(300)
     };
     loops::periodic("missing-bodies", body_beat, state.clone(), net::bodies::sweep);
+    // Memory running short: the caches drop what they hold (plans/CACHE.md, Stage 5).
+    loops::periodic(
+        "memory-pressure",
+        std::time::Duration::from_secs(30),
+        state.clone(),
+        budget::pressure_pass,
+    );
     // The outbox rounds (outbox::sweep): envelopes owed to strangers who were not reachable
     // when their news was minted. Shares the body sweep's beat and its backoff discipline -
     // both are "keep knocking, politely, at machines that are mostly asleep".

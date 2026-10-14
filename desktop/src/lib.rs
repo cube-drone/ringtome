@@ -232,6 +232,11 @@ fn start_node(
     tokio::sync::broadcast::Receiver<ringtome_node::attention::Alert>,
     tokio::sync::broadcast::Receiver<ringtome_node::shell::ShellRequest>,
 )> {
+    // What the node runs on, for its memory budget (plans/CACHE.md, Stage 5): a phone or a
+    // computer, never the server it assumes when nobody says - unless whoever launched us did.
+    if std::env::var("RINGTOME_DEVICE").is_err() {
+        std::env::set_var("RINGTOME_DEVICE", if cfg!(mobile) { "phone" } else { "computer" });
+    }
     let mut config = ringtome_node::config::Config::from_env();
     config.data_directory = data_dir.to_path_buf();
     // A PACKAGED app is a prod node (DESKTOP.md, Stage 4), and a `cargo run` is a dev one - which

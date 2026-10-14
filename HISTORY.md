@@ -21273,8 +21273,32 @@ repeated for nothing, each kept against what changes it:
   remembered from its header.
 - **`has_public_equivocation`**, on every public shelf read, is kept against
   `equivocations`.
-- **MCP** keeps each caller's persona list fifteen seconds; `edit_profile` drops
-  it.
+- **MCP** keeps each caller's persona list fifteen seconds, against node.db's
+  `identities` (`db::NODE_WRITES_KEY`); `edit_profile` drops it. (The first cut
+  had no stamp, and the claim that gives an account a second persona found the
+  agent still sure there was one.)
 
 `the_key_tree_is_kept_until_the_identity_chain_moves`; the rest ride the suite's
 claims on logout, revocation, adoption, sync, streams and MCP.
+
+Seen once on the way and not ours: a rig node died mid-run on
+`attempt to subtract with overflow` inside the QUIC library
+(`noq-1.0.1/src/endpoint.rs:648`, a debug build's overflow check), the poisoned
+locks after it taking the process down - 85 claims failing behind it. It didn't
+recur in the next full run. If it comes back, it's the library's to fix.
+
+**2026-10-13 - a memory budget sized to the machine (plans/CACHE.md, Stage 5).**
+Before the caches that hold real memory (the doc-meta views, public pages and
+pictures), one budget for all of them: `budget.rs`. What the node runs on comes
+from `RINGTOME_DEVICE`, which the desktop and Android shells now set
+(`computer`, `phone`) before the node reads its environment; a bare node is a
+`server`. How much there is: `/proc/meminfo`, capped by a cgroup's `memory.max`
+(a container, a systemd `MemoryMax=`), on Linux and Android; `sysctl hw.memsize`
+on macOS. A server gets a quarter, leaving a gigabyte; a computer a twentieth,
+at most 1 GB; a phone a fiftieth, at most 256 MB; never under 32 MB.
+`RINGTOME_CACHE_MEMORY` overrides it (`2GB`, `40%`, `0` for none), in SERVER.md.
+Said at boot - this Mac, as a bare node:
+`cache budget 4.0 GB (server, 16.0 GB memory)` - and a 30 s beat drops every
+cache that asked (`budget::on_pressure`) when under a tenth of memory is free.
+`the_budget_fits_the_machine`, `the_operator_can_say_otherwise`,
+`the_shares_add_up`.
