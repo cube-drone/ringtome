@@ -21537,3 +21537,10 @@ push claim, 0 of 5 reruns. The fold beat before it fires the same push detached,
 and two exchanges with the follower's node at once can fail one with nobody
 told; the claim now pushes again (never pulls) until the post lands, five times
 at most. `RINGTOME_TEST_GREP="fan-out|the feed endpoint"` green.
+
+**2026-10-14 - the cover's strong blur, where it can be seen.** The heavy,
+masked copy of the cover behind the cassette now stays whole to halfway out,
+fading by 90% (it was 20% and 70%): Curtis couldn't see it, because at 20% the
+strongest blur sat behind the cassette itself. Its strength stays 16px (40 was
+tried first, on the same symptom, and set back). Seen on a scratch node, with
+the cassette and without. `just ui-check` green.

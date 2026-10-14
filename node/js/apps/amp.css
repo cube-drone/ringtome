@@ -549,8 +549,9 @@
 
 .player-backdrop-heavy {
     filter: blur(16px);
-    -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
-    mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+    /* Whole well past the cassette's edges, so it's seen around it - at 20% it hid behind it. */
+    -webkit-mask-image: radial-gradient(ellipse at center, black 50%, transparent 90%);
+    mask-image: radial-gradient(ellipse at center, black 50%, transparent 90%);
 }
 
 /* The cassette on its floor (2026-10-13: "some weight and heft"): a close shadow at its edges,
