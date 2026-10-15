@@ -21764,3 +21764,31 @@ first paint. `persona.js` `open` now keeps the picture too. `person.js`
 `usePerson` wears the name and picture from opening until the mirror has
 answered. A mirror read now answers `null` for "none here", so `undefined` means
 only "not read yet", and removing your picture still removes it.
+
+## 2026-10-15: custom domains, a plan; HTTPS recipes in SERVER.md
+
+Curtis wants cube-drone.com, now a Hugo blog, to serve his
+horsedrawingtycoon.com/@cube-drone, and asked what Ringtome should give anyone
+who wants their identity at a real web address. A CNAME alone can't do it (the
+node can't tell the domain is a person's), and an nginx rewrite only works for
+an operator, and badly. The plan, `plans/CUSTOM_DOMAINS.md`, splits it three
+ways: the persona's signed profile claims the domain, a TXT record names the
+root back, and a node serves the domain only when both agree. Curtis's
+follow-up, "it very much CAN live with the persona, right?", became the frame:
+the claim travels with the persona, so every node that has checked it makes the
+domain the canonical address, while DNS decides which node answers.
+
+Certificates stay out of the node. The first draft leaned on Caddy's on-demand
+certificates; Curtis asked why we'd build for a proxy we don't run.
+horsedrawingtycoon.com is behind BunnyCDN, which issues every certificate and
+can do so for custom hostnames through its API. So the node only publishes the
+domains it serves, and a small adapter beside it keeps the front in step: Bunny
+first, Caddy or certbot when an operator asks. The pull zone needs Forward Host
+Header and its cache varied by hostname, or one domain's pages can be served for
+another's.
+
+That surfaced a gap: SERVER.md said "put your own HTTPS proxy in front" and
+stopped. It now has recipes for Caddy, nginx with certbot, and a CDN in front,
+and says what any front owes the node: `X-Forwarded-For` (without it, a proxy on
+the same machine lifts every rate limit), WebSockets, no upload limit of its
+own, and the visitor's `Host`.

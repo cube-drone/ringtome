@@ -198,7 +198,14 @@ lightly federated, unapologetically Old Internet.
   path for the post, made from its title at first publish and kept stable. The
   path travels with the persona and works on every node; the @name only shortens
   the identity half where one is claimed. With the way back from it to the
-  identity path. A design draft (2026-10-11); nothing built.
+  identity path. A design draft (2026-10-11); slices 1-3 (paths, the canonical
+  address, the way back) and the backfill built the same day.
+- [`CUSTOM_DOMAINS.md`](plans/CUSTOM_DOMAINS.md) — a person at their own web
+  address: the persona's profile claims `cube-drone.com`, a TXT record names the
+  root back, and only when both agree does a node serve the domain (routing by
+  `Host`, certificates through Caddy's on-demand `ask`) and every node make it
+  the canonical address. The claim travels with the persona; DNS decides which
+  node answers. A design draft (2026-10-15); nothing built.
 - **The delivery-shape trio** — what kind of application this is, one document
   per candidate surface. Their relationship to canon differs and each says which
   at the top: **DESKTOP is canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri,
@@ -218,8 +225,9 @@ lightly federated, unapologetically Old Internet.
     traps, where each secret lands, and what proceeds unsigned meanwhile.
   - [`SERVER.md`](SERVER.md) — running a Ringtome node on a server: which
     release download is which, the container image, the settings, HTTPS (the
-    operator's own proxy), the peer-to-peer port, the data directory that IS the
-    node, and why every upgrade takes a backup first.
+    operator's own proxy or CDN, with recipes for Caddy, nginx and a CDN), the
+    peer-to-peer port, the data directory that IS the node, and why every
+    upgrade takes a backup first.
   - [`MOBILE.md`](plans/MOBILE.md) — the soft shape for phones: Tauri v2, the
     node linked in-process, a deliberately narrow UI. Corrects a factual premise
     in _Phones: deferred, by design_ and carries the availability arithmetic for

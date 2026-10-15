@@ -151,6 +151,85 @@ use, so the links the node mints point there - and so AI assistants can connect:
 claude.ai, ChatGPT and the rest sign in through the node's OAuth, which names
 this address as itself, and they refuse a plain-HTTP one.
 
+Whatever you put in front, it owes the node four things:
+
+- **The visitor's address in `X-Forwarded-For`.** Behind a proxy on the same
+  machine, every request reaches the node from loopback, and the node treats a
+  loopback request with no `X-Forwarded-For` as its operator, with no rate
+  limits. A proxy that drops the header lifts the limits for everyone.
+- **WebSockets.** Live rooms and the app's live updates are WebSocket
+  connections, and they stay open for as long as the page does.
+- **No upload limit of its own**, or one above `RINGTOME_MAX_UPLOAD_BYTES`. The
+  node enforces its own.
+- **The `Host` header the visitor asked for.**
+
+If the proxy runs on the same machine, publish the node's HTTP port to loopback
+only (`-p 127.0.0.1:5281:5281/tcp` for the container, or the default
+`RINGTOME_BIND_ADDRESS` for the binary), so nobody reaches it around the proxy
+over plain HTTP.
+
+### On a server of your own: Caddy
+
+The shortest way there. Caddy gets a Let's Encrypt certificate for every name in
+its configuration, renews it and redirects plain HTTP, and it does all four of
+the above by default. Point the name's DNS at the server, open ports 80 and 443,
+install Caddy from your distribution, and make `/etc/caddy/Caddyfile`:
+
+```
+node.example.com {
+	reverse_proxy 127.0.0.1:5281
+}
+```
+
+Then `systemctl reload caddy`. The first visit may take a few seconds while the
+certificate is issued.
+
+### On a server of your own: nginx and certbot
+
+nginx needs WebSockets, the upload limit and the forwarded address spelled out:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name node.example.com;
+
+    client_max_body_size 0;   # the node enforces its own limit
+    proxy_read_timeout 1h;    # live rooms and live updates stay open
+
+    location / {
+        proxy_pass http://127.0.0.1:5281;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+    }
+}
+```
+
+Then `certbot --nginx -d node.example.com`, which adds the certificate, the port
+443 listener and the redirect to this block. certbot's timer renews it.
+
+### Behind a CDN
+
+A CDN (BunnyCDN, Cloudflare and the like) can hold the certificate instead, and
+reach the node over plain HTTP. Then:
+
+- turn on its WebSocket support, if it's a switch;
+- never cache `/api/` (its answers depend on who is signed in, and most carry no
+  `Cache-Control` of their own); the app's files and published pages say how
+  long they keep;
+- set `RINGTOME_PUBLIC_URL` to the CDN's address, not the origin's;
+- keep the origin from being reached except through the CDN where you can (a
+  firewall allowing only the CDN's addresses), since anyone reaching it directly
+  does so over plain HTTP.
+
 ## The peer-to-peer port
 
 Nodes talk to each other over QUIC, which is UDP. Publish or open
