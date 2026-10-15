@@ -21753,3 +21753,14 @@ nudges the fold), but nothing waited for that, and on a loaded CI machine it
 came late. A real node's backfilled addresses waited on the same luck.
 `backfill_paths` now folds each persona it gave paths to before moving on, as
 the label's DELETE door already did.
+
+## 2026-10-15: your own name and picture on the first frame
+
+After a refresh, the app drew your persona as its key's words and pattern
+("squad-drama") for a moment before your name and picture arrived. Opening a
+persona already fetched its profile, but kept only the name, and the header read
+your name and picture from the mirror, whose first read lands just after the
+first paint. `persona.js` `open` now keeps the picture too. `person.js`
+`usePerson` wears the name and picture from opening until the mirror has
+answered. A mirror read now answers `null` for "none here", so `undefined` means
+only "not read yet", and removing your picture still removes it.

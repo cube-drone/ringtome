@@ -61,7 +61,7 @@ export { shortcode };
 export function usePersona(account) {
     // checking | none | ceremony | naming | join | open | farewell
     const [state, setState] = useState('checking');
-    const [current, setCurrent] = useState(null); // { root, name }
+    const [current, setCurrent] = useState(null); // { root, name, avatar }
     const [ceremony, setCeremony] = useState(null); // { root, secret }
     const [naming, setNaming] = useState(null); // root awaiting its display name
     const [join, setJoin] = useState(null); // { requestCode } - the outbound half of adoption
@@ -87,20 +87,24 @@ export function usePersona(account) {
         }
     };
 
-    // Opening a persona = remembering its root, fetching its public name for display, and
-    // starting the live cache - from here on, the mirror stays current and every view that
-    // reads it is reactive.
+    // Opening a persona = remembering its root, fetching its public name and picture for display,
+    // and starting the live cache - from here on, the mirror stays current and every view that
+    // reads it is reactive. The name and picture are worn until the mirror's first read answers
+    // (person.js usePerson; Curtis, 2026-10-15: a refresh drew the key's words and pattern first).
     const open = async (root) => {
         let name = '';
+        let avatar = '';
         try {
             const profile = await api(`/api/identity/${root}/profile`);
-            name = (profile.find((f) => f.field === 'name') || {}).value || '';
+            const field = (key) => (profile.find((f) => f.field === key) || {}).value || '';
+            name = field('name');
+            avatar = field('avatar');
         } catch {
             // A persona with no readable profile still opens; it just renders by shortcode.
         }
         if (live.current) live.current.stop();
         live.current = startLiveCache(root);
-        setCurrent({ root, name });
+        setCurrent({ root, name, avatar });
         setState('open');
     };
 

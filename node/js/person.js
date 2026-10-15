@@ -88,13 +88,26 @@ export function usePerson(root, { current, profile: given } = {}) {
         () => (myRoot && root && !isYou ? openMirror(myRoot).contacts.get(root) : null),
         [myRoot, root, isYou],
     );
-    // Your own self-claims, when the person IS you - live off your profile table.
+    // Your own self-claims, when the person IS you - live off your profile table. The name and
+    // picture answer `null` when the mirror holds none, so `undefined` means only "not read yet":
+    // until then you wear what opening the persona fetched (persona.js `open`), not your key's
+    // words and pattern (Curtis, 2026-10-15: every refresh flashed them).
     const myName = useLive(
-        () => (isYou ? openMirror(myRoot).profile.get('name') : null),
+        () =>
+            isYou
+                ? openMirror(myRoot)
+                      .profile.get('name')
+                      .then((r) => r || null)
+                : null,
         [isYou, myRoot],
     );
     const myAvatar = useLive(
-        () => (isYou ? openMirror(myRoot).profile.get('avatar') : null),
+        () =>
+            isYou
+                ? openMirror(myRoot)
+                      .profile.get('avatar')
+                      .then((r) => r || null)
+                : null,
         [isYou, myRoot],
     );
     const myBio = useLive(
@@ -142,11 +155,13 @@ export function usePerson(root, { current, profile: given } = {}) {
     const facts = (contactRow && contactRow.facts) || {};
     const words = root ? speakable(root).split('-').slice(0, 2).join('-') : '';
 
+    const opened = (mine, key) =>
+        mine === undefined ? (current && current[key]) || '' : (mine && mine.value) || '';
     const name = isYou
-        ? (myName && myName.value) || ''
+        ? opened(myName, 'name')
         : fromProfile(source && source.fields, 'name') || (contactRow && contactRow.name) || '';
     const avatar = isYou
-        ? (myAvatar && myAvatar.value) || ''
+        ? opened(myAvatar, 'avatar')
         : fromProfile(source && source.fields, 'avatar') || (contactRow && contactRow.avatar) || '';
     const bio = isYou ? (myBio && myBio.value) || '' : fromProfile(source && source.fields, 'bio');
     const banner = isYou
