@@ -21712,3 +21712,44 @@ bothered to click on the link to get here, show them the whole post"
 (2026-10-08) - but still drew the cut's lead, so the rest was neither shown nor
 offered. `postentry.js` now draws the whole body whenever nothing is held back.
 The page's server-side reading copy always had every word.
+
+## 2026-10-15: a book's pages no longer crowd out the posts
+
+Curtis's profile showed six posts and no way to see more. The profile asked for
+the newest 21 public documents and only then dropped the pages of books (Books,
+ruling 4: the book lists them). The CyberGAMER book's pages took most of the 21
+places, and "more" was counted after the drop, so the page was told there was
+nothing else. The same filter-after-the-fetch was in the profile's "older
+posts", the feed's history dig (`dig_one` reads a short page as the end of the
+shelf, so a big enough book stopped a follower's backfill), the peek's window of
+newest posts, the RSS feed, and the node's shelf.
+
+`record/documents.rs` has a new `public_posts`, which is `public_docs` with the
+pages left out in SQL, so a page of posts is always a full page. Every shelf
+that shows posts as posts now reads it. The reading copy, crawl, export and
+books still read `public_docs`, because they need the pages. The unit test
+`a_books_pages_never_short_a_page_of_posts` puts ten pages above three posts and
+checks that both pages of the shelf come back full.
+
+Trusted-only posts did the same thing to a stranger's view (Curtis asked). Which
+sealed posts a reader may see can't be said in SQL, so `idface.rs`'s new
+`readable_posts` judges a page at a time and reads on until the page is full or
+the shelf ends. The profile and its "older posts" read through it. Searching a
+person's page now hides sealed posts before it picks the first matches, not
+after. RSS, which no seal ever opens for, reads `public_open_posts`, with sealed
+posts left out in SQL. Pictures, films and sounds were never at risk: the shelf
+lists words, books and rooms in SQL, and a picture appears inside the post that
+embeds it.
+
+## 2026-10-15: a backfilled web address answers at once
+
+CI went red on release 0.4.5 with one flake (0 of 5 reruns): in `webpaths.cjs`,
+a backfilled post's path read back from the post itself, but
+`/api/id/<them>/at/<path>` still said 404 five seconds later. The backfill wrote
+the `path` labels to the persona's chain and never folded the persona, and the
+address memo that `/at/` reads is the fold's to write. Something else usually
+folded it in time (a write to the database nudges the frontier sweep, which
+nudges the fold), but nothing waited for that, and on a loaded CI machine it
+came late. A real node's backfilled addresses waited on the same luck.
+`backfill_paths` now folds each persona it gave paths to before moving on, as
+the label's DELETE door already did.

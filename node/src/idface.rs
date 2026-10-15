@@ -2836,6 +2836,38 @@ pub(crate) async fn trusted_viewer(
 /// trusted-only post unless the viewer is the author or the author publishes trust for
 /// them. Checked against the author's own published edges as this node holds them; fails
 /// closed when it holds none.
+/// The newest `want` posts past `after` that this viewer may read: [`hide_sealed`] judged a page
+/// at a time, reading on until `want` are kept or the shelf ends. Which sealed posts a viewer
+/// sees can't be said in SQL, and a page cut short by them came back short - with a whole page
+/// sealed, "more" said false and the shelf ended there (2026-10-15, beside a book's pages doing
+/// the same). No cap: the page's cursor is the last post it shows, so a page that gave up early
+/// would ask for the same hidden run again, forever.
+async fn readable_posts(
+    state: &AppState,
+    session: &Option<Session>,
+    root_hex: &str,
+    viewer: Option<&str>,
+    db: &crate::db::Db,
+    mut after: Option<(i64, [u8; 16])>,
+    want: usize,
+) -> Vec<crate::record::documents::PublicDoc> {
+    const READ: i64 = 100;
+    let mut kept = Vec::new();
+    loop {
+        let mut page =
+            crate::record::documents::public_posts(db, after, READ).await.unwrap_or_default();
+        let full = page.len() as i64 == READ;
+        after = page.last().map(|p| (p.display_ms(), p.doc_id));
+        hide_sealed(state, session, root_hex, viewer, &mut page).await;
+        kept.extend(page);
+        if kept.len() >= want || !full {
+            break;
+        }
+    }
+    kept.truncate(want);
+    kept
+}
+
 async fn hide_sealed(
     state: &AppState,
     session: &Option<Session>,
@@ -3009,12 +3041,13 @@ async fn whole_shelf(state: &AppState, root_hex: &str) -> Vec<crate::record::doc
             crate::fragments::shelf_of(&state.node_db, root_hex, 5000).await.unwrap_or_default()
         } else {
             match state.user_dbs.get(root_hex).await.ok().flatten() {
-                Some(db) => {
-                    crate::record::documents::public_docs(&db, None, 5000).await.unwrap_or_default()
-                }
+                Some(db) => crate::record::documents::public_posts(&db, None, 5000)
+                    .await
+                    .unwrap_or_default(),
                 None => Vec::new(),
             }
         };
+    // A peek's shelf still carries pages; the chain's has none (`public_posts`).
     all.into_iter().filter(|p| p.part_of.is_none()).collect()
 }
 
@@ -3077,6 +3110,8 @@ pub async fn id_posts(
             })
             .collect();
         all.sort_by(|a, b| b.display_ms().cmp(&a.display_ms()).then(a.doc_id.cmp(&b.doc_id)));
+        // Before the match, not after: the page is the first that match AND this viewer may read.
+        hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut all).await;
         let candidates: Vec<crate::search::Candidate> = all
             .iter()
             .map(|p| crate::search::Candidate {
@@ -3112,13 +3147,19 @@ pub async fn id_posts(
         }
     } else {
         match &dbh {
-            Some(db) => crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
+            // Pages stay off the shelf too (PROJECT_PLAN's Books, ruling 4): the book lists them.
+            Some(db) => {
+                readable_posts(
+                    &state,
+                    &session,
+                    &root_hex,
+                    query.as_root.as_deref(),
+                    db,
+                    after,
+                    (POSTS_PAGE + 1) as usize,
+                )
                 .await
-                .unwrap_or_default()
-                .into_iter()
-                // Pages stay off the shelf too (PROJECT_PLAN's Books, ruling 4): the book lists them.
-                .filter(|p| p.part_of.is_none())
-                .collect(),
+            }
             None => Vec::new(), // nothing held, or unreadable: an empty shelf either way
         }
     };
@@ -3145,12 +3186,16 @@ pub async fn id_posts(
         .unwrap_or(false)
     {
         if let Some(db) = &dbh {
-            posts = crate::record::documents::public_docs(db, after, POSTS_PAGE + 1)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|p| p.part_of.is_none())
-                .collect();
+            posts = readable_posts(
+                &state,
+                &session,
+                &root_hex,
+                query.as_root.as_deref(),
+                db,
+                after,
+                (POSTS_PAGE + 1) as usize,
+            )
+            .await;
         }
     }
     hide_sealed(&state, &session, &root_hex, query.as_root.as_deref(), &mut posts).await;
@@ -4126,13 +4171,19 @@ pub async fn id_profile(
             .collect()
     } else {
         match state.user_dbs.get(&root_hex).await {
-            Ok(Some(db)) => crate::record::documents::public_docs(&db, None, POSTS_PAGE + 1)
+            // Pages stay off this shelf as off the other (PROJECT_PLAN's Books, ruling 4).
+            Ok(Some(db)) => {
+                readable_posts(
+                    &state,
+                    &session,
+                    &root_hex,
+                    query.as_root.as_deref(),
+                    &db,
+                    None,
+                    (POSTS_PAGE + 1) as usize,
+                )
                 .await
-                .unwrap_or_default()
-                .into_iter()
-                // Pages stay off this shelf as off the other (PROJECT_PLAN's Books, ruling 4).
-                .filter(|p| p.part_of.is_none())
-                .collect(),
+            }
             _ => Vec::new(), // nothing held, or unreadable: an empty shelf either way
         }
     };

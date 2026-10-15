@@ -88,10 +88,9 @@ pub async fn rss_handler(
     let page = format!("{base}/ringtome/user/{short}");
 
     let posts =
-        crate::record::documents::public_docs(&db, None, ITEMS * 2).await.unwrap_or_default();
+        crate::record::documents::public_open_posts(&db, None, ITEMS).await.unwrap_or_default();
     let mut items = String::new();
-    for post in posts.iter().filter(|p| p.part_of.is_none() && !p.trusted_only).take(ITEMS as usize)
-    {
+    for post in &posts {
         let doc_hex = hex::encode(post.doc_id);
         let said = crate::idface::post_words(&state, &db, &root_hex, post, &name).await?;
         // Its canonical address (plans/WEB_ADDRESSES.md): its path, where it has one.

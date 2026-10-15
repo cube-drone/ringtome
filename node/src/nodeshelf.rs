@@ -60,7 +60,7 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     // user-db open 1 of 2 (tests/conventions.rs): the hosted persona's own shelf, once per
     // move of their chain - the annotations memo's discipline.
     let Ok(Some(db)) = state.user_dbs.get(root).await else { return Ok(()) };
-    let posts = crate::record::documents::public_docs(&db, None, 5000)
+    let posts = crate::record::documents::public_posts(&db, None, 5000)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let shares =
@@ -78,9 +78,7 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     // One statement per chunk, not per post (2026-09-15): a whole re-fold of a long shelf
     // is a few round trips, not thousands - the fold lane is shared with the feed's own
     // digging, and the history-dig suite felt every extra statement under a full gate.
-    let rows: Vec<crate::record::documents::PublicDoc> =
-        posts.into_iter().filter(|p| p.part_of.is_none()).collect();
-    for chunk in rows.chunks(100) {
+    for chunk in posts.chunks(100) {
         let mut sql = String::from(
             "INSERT INTO node_shelf
                (author_root, doc_id, via_root, title, format, published_ms, updated_ms, settled, trusted_only, dated_ms, reply_to_author, reply_to_doc)

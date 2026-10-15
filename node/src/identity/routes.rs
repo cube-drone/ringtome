@@ -5541,6 +5541,10 @@ pub(crate) async fn backfill_paths(
         data.private_registers(WEB_PATHS_KV).set(WEB_PATHS_BACKFILLED, "yes").await?;
         if n > 0 {
             tracing::info!(root = %root, paths = n, "gave published posts their web addresses");
+            // The labels are on the chain; the address memo that answers `/at/` is the fold's
+            // to write. Without this, a backfilled path named nothing until some unrelated
+            // write folded the persona (CI, 2026-10-15: `/at/` still 404 five seconds on).
+            crate::fold::fold_now(state, &root).await;
         }
         given += n;
     }

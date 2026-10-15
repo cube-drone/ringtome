@@ -1469,6 +1469,45 @@ pub async fn public_docs(
     after: Option<(i64, [u8; 16])>,
     limit: i64,
 ) -> Result<Vec<PublicDoc>, AppError> {
+    shelf(db, after, limit, Shelf::Everything).await
+}
+
+/// [`public_docs`] without a book's pages (PROJECT_PLAN's Books, ruling 4: the book lists them),
+/// left out in SQL so a page of posts is a full page. Every shelf that shows posts as posts reads
+/// this one (Curtis, 2026-10-15): they used to read [`public_docs`] and drop the pages after, so
+/// a 20-page book filled the profile's 21-row ask, six posts were left, and "more" - counted
+/// after the drop - said there was nothing else.
+pub async fn public_posts(
+    db: &Db,
+    after: Option<(i64, [u8; 16])>,
+    limit: i64,
+) -> Result<Vec<PublicDoc>, AppError> {
+    shelf(db, after, limit, Shelf::Posts).await
+}
+
+/// [`public_posts`] without the trusted-only ones: the shelf as a stranger with no seal open
+/// to them reads it (RSS), left out in SQL for the same full pages.
+pub async fn public_open_posts(
+    db: &Db,
+    after: Option<(i64, [u8; 16])>,
+    limit: i64,
+) -> Result<Vec<PublicDoc>, AppError> {
+    shelf(db, after, limit, Shelf::OpenPosts).await
+}
+
+/// Which of the public lane a shelf reads.
+enum Shelf {
+    Everything,
+    Posts,
+    OpenPosts,
+}
+
+async fn shelf(
+    db: &Db,
+    after: Option<(i64, [u8; 16])>,
+    limit: i64,
+    which: Shelf,
+) -> Result<Vec<PublicDoc>, AppError> {
     catch_up_public_lane(db).await?;
     if quarantined(db).await? {
         return Ok(Vec::new());
@@ -1484,8 +1523,17 @@ pub async fn public_docs(
     // from the day tombstones landed, and every feed reconciliation inherited it - but this
     // query is what the anonymous /id surfaces actually page, so a takedown vanished from
     // every reader's feed while remaining listed on the author's own public page. In SQL
-    // rather than post-filtered, per this file's own doctrine: keyset pages stay full.
-    let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
+    // rather than post-filtered, per this file's own doctrine: keyset pages stay full. A book's
+    // pages leave [`public_posts`]' shelf the same way, for the same reason, and sealed posts
+    // leave [`public_open_posts`]'.
+    let not_retracted = format!(
+        "doc_id NOT IN (SELECT doc_id FROM public_retractions){}",
+        match which {
+            Shelf::Everything => "",
+            Shelf::Posts => " AND part_of IS NULL",
+            Shelf::OpenPosts => " AND part_of IS NULL AND trusted_only = 0",
+        }
+    );
     type Row = (
         Vec<u8>,
         String,
@@ -4381,11 +4429,22 @@ mod tests {
         doc_id: &[u8; 16],
         title: &str,
     ) {
+        mint_public_part(db, key, doc_id, title, None).await
+    }
+
+    /// [`mint_public_header`], as a page of a book when `part_of` names one.
+    async fn mint_public_part(
+        db: &Db,
+        key: &ringtome_proto::SigningKey,
+        doc_id: &[u8; 16],
+        title: &str,
+        part_of: Option<[u8; 16]>,
+    ) {
         let header = DocHeaderPlain {
             im: false,
             dated_ms: None,
             animation: false,
-            part_of: None,
+            part_of,
             trusted_only: false,
             settled: false,
             doc_id: *doc_id,
@@ -4440,6 +4499,34 @@ mod tests {
             "a withdrawn document leaves the shelf - which is what fanout::retract_vanished \
              reconciles every reader's journal against"
         );
+    }
+
+    /// A book's pages are left out of the posts shelf in SQL, so a page of posts is full however
+    /// many pages sit above them (Curtis, 2026-10-15: a 20-page book left a profile six posts and
+    /// no "more").
+    #[tokio::test]
+    async fn a_books_pages_never_short_a_page_of_posts() {
+        let db = crate::db::test_user_db().await;
+        let key = ringtome_proto::SigningKey::from_bytes(&[10u8; 32]);
+        for n in 0..3u8 {
+            mint_public_header(&db, &key, &[100 + n; 16], &format!("post {n}")).await;
+        }
+        let book = [50u8; 16];
+        mint_public_header(&db, &key, &book, "the book").await;
+        for n in 0..10u8 {
+            mint_public_part(&db, &key, &[n; 16], &format!("page {n}"), Some(book)).await;
+        }
+
+        let docs = public_docs(&db, None, 4).await.unwrap();
+        assert!(docs.iter().all(|p| p.part_of.is_some()), "precondition: the pages are newest");
+
+        let posts = public_posts(&db, None, 3).await.unwrap();
+        assert_eq!(posts.len(), 3, "a full page, the pages above it skipped");
+        assert!(posts.iter().all(|p| p.part_of.is_none()));
+        let last = posts.last().unwrap();
+        let rest = public_posts(&db, Some((last.display_ms(), last.doc_id)), 3).await.unwrap();
+        assert_eq!(posts.len() + rest.len(), 4, "the book and its three posts, and nothing else");
+        assert!(rest.iter().all(|p| p.part_of.is_none()));
     }
 
     /// Order-independence, which finality buys: a node that folds the tombstone before the

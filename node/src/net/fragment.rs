@@ -644,11 +644,10 @@ async fn shelf_for(
                 // quietly followed persona's posts says somebody here follows them.
                 (Vec::new(), Vec::new())
             } else {
-                let posts = crate::record::documents::public_docs(&db, None, limit)
+                let posts = crate::record::documents::public_posts(&db, None, limit)
                     .await
                     .unwrap_or_default()
                     .into_iter()
-                    .filter(|p| p.part_of.is_none())
                     .map(|p| p.doc_id)
                     .collect();
                 // The author's pins (PROJECT_PLAN's Peeks, ruling 13): named first, so a peek fetches

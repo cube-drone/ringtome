@@ -2156,6 +2156,11 @@ above one pair.
 
 ## Groups: Identity-Shaped (SKETCH, scoped)
 
+**Replaced (2026-10-14) by [plans/GROUPS.md](plans/GROUPS.md)**, which keeps the
+roster that references identities and the members-only plaintext lane, and drops
+the join-order invite tree and the group's own keys. What follows is kept for
+its reasoning.
+
 **Status: sketch, not doctrine** - with the decisions inside it settled
 (2026-07-30) and kept here in short. Groups are on no roadmap; contact tags and
 audiences (_Contact tags_) now cover the concrete use they were first wanted

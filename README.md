@@ -131,6 +131,11 @@ lightly federated, unapologetically Old Internet.
   every rendering (`.mq`, `.md`, `.yml.md`, `.txt`, `.horsedrawing`), media,
   posts, profile, contacts, chats and bank, in folders by notebook and section -
   a queued background job, one per persona, no keys.
+- [`GROUPS.md`](plans/GROUPS.md) — groups: one roster every member sees alike,
+  kept on every member's computer and folded from their own entries; owners
+  ranked by appointment, CROWN-style, so no founder is needed; content served
+  only to members. Replaces PROJECT_PLAN's _Groups: Identity-Shaped_ sketch. A
+  design draft (2026-10-14); nothing built.
 - [`HORSE_BASED_CURRENCIES.md`](plans/HORSE_BASED_CURRENCIES.md) — HorseBucks
   and the other currencies: never transferable, a balance is a fold over the
   persona's own ledger that may go negative and is never rolled back, interest

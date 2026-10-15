@@ -331,14 +331,13 @@ async fn shelf_page(
     else {
         return Ok(Vec::new());
     };
+    // A page of a book is never a feed row of its own (PROJECT_PLAN's Books, ruling 4): the book,
+    // and later its updates, are what reach feeds. A rule of the fold, not a courtesy of the
+    // client - and left out in SQL, since `dig_one` reads a short page as the shelf's end.
     let posts =
-        crate::record::documents::public_docs(&db, after, crate::idface::POSTS_PAGE).await?;
+        crate::record::documents::public_posts(&db, after, crate::idface::POSTS_PAGE).await?;
     Ok(posts
         .into_iter()
-        // A page of a book is never a feed row of its own (PROJECT_PLAN's Books, ruling 4): the book,
-        // and later its updates, are what reach feeds. A rule of the fold, not a courtesy
-        // of the client.
-        .filter(|p| p.part_of.is_none())
         .map(|p| JournalRow {
             // The stamp first: `title` moves out of `p` below, and the display stamp reads it.
             published_ms: p.display_ms(),
