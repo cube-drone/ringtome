@@ -61,9 +61,20 @@ pub async fn want(node_db: &Db, root_hex: &str, blob_hash: &[u8; 32]) -> Result<
 /// arrival regardless of which path the bytes took, and rows whose documents vanished
 /// (retraction, repudiation) clear on the next look. An empty `still_missing` empties the
 /// persona's ledger. Existing rows keep their backoff state; only membership changes.
-pub async fn reconcile(node_db: &Db, root_hex: &str, still_missing: &[[u8; 32]]) -> Result<()> {
+///
+/// `spare`: blobs the caller can't see and so doesn't rule on - rows for them stay as they are,
+/// neither cleared nor added. The walk sees the chains held here; a persona's fragments (a
+/// peek's avatar, a shared post) are wanted by their own intake (`fragments::want_bytes`), and
+/// until 2026-10-14 every walk erased those wants - an inbound sync landing a moment after a
+/// face was asked for left it "still on its way" for good.
+pub async fn reconcile(
+    node_db: &Db,
+    root_hex: &str,
+    still_missing: &[[u8; 32]],
+    spare: &[[u8; 32]],
+) -> Result<()> {
     let quoted: Vec<String> =
-        still_missing.iter().map(|h| format!("X'{}'", hex::encode(h))).collect();
+        still_missing.iter().chain(spare).map(|h| format!("X'{}'", hex::encode(h))).collect();
     node_db
         .execute(
             &format!(
@@ -194,13 +205,18 @@ pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
             endpoints.push(ep);
         }
     }
+    let mut fetched = 0u64;
     for ep in endpoints {
         let Ok(addr) = crate::net::sync::dial_addr(state, &ep).await else {
             continue;
         };
         tried += 1;
-        fetch_wanted(state, author_root, addr).await;
+        fetched += fetch_wanted(state, author_root, addr).await;
         if let Ok(0) = remaining(&state.node_db, author_root).await {
+            // Spoken too (2026-10-14): "healed" and "found nothing wanted" were both silent, and
+            // the face flake's wants had been erased under it by a walk - indistinguishable here.
+            tracing::debug!(author = %author_root, origin = %origin_root, tried, fetched,
+                "eager body heal left nothing wanted");
             return;
         }
     }
@@ -428,11 +444,11 @@ mod tests {
     async fn reconcile_is_replace_set_per_persona() {
         let db = node_db().await;
         let (a, b, c) = ([1u8; 32], [2u8; 32], [3u8; 32]);
-        reconcile(&db, "aa11", &[a, b]).await.unwrap();
+        reconcile(&db, "aa11", &[a, b], &[]).await.unwrap();
         assert_eq!(remaining(&db, "aa11").await.unwrap(), 2);
 
         // b arrived, c newly missing: membership follows the walk exactly.
-        reconcile(&db, "aa11", &[a, c]).await.unwrap();
+        reconcile(&db, "aa11", &[a, c], &[]).await.unwrap();
         let rows: Vec<(Vec<u8>,)> = db
             .fetch_all(
                 "SELECT blob_hash FROM missing_bodies WHERE root_pubkey = 'aa11' ORDER BY blob_hash",
@@ -443,17 +459,32 @@ mod tests {
         assert_eq!(rows, vec![(a.to_vec(),), (c.to_vec(),)]);
 
         // A whole persona coming up empty clears its ledger - and touches nobody else's.
-        reconcile(&db, "bb22", &[b]).await.unwrap();
-        reconcile(&db, "aa11", &[]).await.unwrap();
+        reconcile(&db, "bb22", &[b], &[]).await.unwrap();
+        reconcile(&db, "aa11", &[], &[]).await.unwrap();
         assert_eq!(remaining(&db, "aa11").await.unwrap(), 0);
         assert_eq!(remaining(&db, "bb22").await.unwrap(), 1, "the neighbor's grave is not mine");
+    }
+
+    /// A walk that can't see a want leaves it be (2026-10-14): a peek's face, wanted at fragment
+    /// intake, outlived the inbound sync's walk that followed it by milliseconds - until the walk
+    /// erased it, and nothing ever asked for the face again.
+    #[tokio::test]
+    async fn reconcile_spares_what_it_cannot_see() {
+        let db = node_db().await;
+        let (chain, face) = ([5u8; 32], [6u8; 32]);
+        want(&db, "aa11", &face).await.unwrap();
+        reconcile(&db, "aa11", &[chain], &[face]).await.unwrap();
+        assert_eq!(remaining(&db, "aa11").await.unwrap(), 2, "the face is still wanted");
+        // Sparing is not wanting: a spared blob nobody had asked for gains no row.
+        reconcile(&db, "bb22", &[], &[face]).await.unwrap();
+        assert_eq!(remaining(&db, "bb22").await.unwrap(), 0);
     }
 
     #[tokio::test]
     async fn reconcile_preserves_backoff_state_of_surviving_rows() {
         let db = node_db().await;
         let h = [4u8; 32];
-        reconcile(&db, "aa11", &[h]).await.unwrap();
+        reconcile(&db, "aa11", &[h], &[]).await.unwrap();
         db.execute(
             "UPDATE missing_bodies SET tries = 5, last_tried_ms = 777 WHERE root_pubkey = 'aa11'",
             (),
@@ -462,7 +493,7 @@ mod tests {
         .unwrap();
         // The next walk sees it still missing: membership unchanged, backoff untouched -
         // steady exchange churn must never reset the ladder.
-        reconcile(&db, "aa11", &[h]).await.unwrap();
+        reconcile(&db, "aa11", &[h], &[]).await.unwrap();
         let rows: Vec<(i64, i64)> = db
             .fetch_all(
                 "SELECT tries, last_tried_ms FROM missing_bodies WHERE root_pubkey = 'aa11'",

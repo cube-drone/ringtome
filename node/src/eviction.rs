@@ -183,7 +183,7 @@ async fn evict_one(state: &AppState, root: &str) -> Result<()> {
     crate::fragments::forget_wants(&state.node_db, root).await?;
     crate::search::forget_author(&state.node_db, root).await?;
     crate::storage::forget(&state.node_db, root).await?;
-    crate::net::bodies::reconcile(&state.node_db, root, &[]).await?;
+    crate::net::bodies::reconcile(&state.node_db, root, &[], &[]).await?;
     Ok(())
 }
 

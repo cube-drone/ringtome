@@ -3695,7 +3695,10 @@ pub async fn fetch_missing_bodies(
                 still.push(*hash.as_bytes());
             }
         }
-        crate::net::bodies::reconcile(&state.node_db, root_hex, &still).await?;
+        // ...and leaves the shelf's wants alone: this persona's fragments are wanted by their own
+        // intake, and this walk can't see them (`fragments::blob_refs_of`).
+        let shelf = crate::fragments::blob_refs_of(&state.node_db, root_hex).await?;
+        crate::net::bodies::reconcile(&state.node_db, root_hex, &still, &shelf).await?;
         Ok(fetched)
     }
     .await;

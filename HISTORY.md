@@ -21544,3 +21544,19 @@ fading by 90% (it was 20% and 70%): Curtis couldn't see it, because at 20% the
 strongest blur sat behind the cassette itself. Its strength stays 16px (40 was
 tried first, on the same symptom, and set back). Seen on a scratch node, with
 the cassette and without. `just ui-check` green.
+
+**2026-10-14 - a peek's face, no longer erased by the sync behind it.** CI went
+red once on idface's "a face asked for before the shelf fetches it still
+arrives" (0 of 5 reruns). The rig logs showed the order: the page's thumbnail
+ask fetched the avatar's fragment and wanted its bytes, and nine milliseconds
+later an inbound sync for the same persona ran its body walk, whose ledger write
+replaces the persona's whole want set with what its chains name. A peek's chains
+don't carry the avatar, so the want was erased; the eager heal found nothing
+wanted and returned without a word, the sweep had no row to retry, and the face
+stayed "still on its way" past the claim's twelve seconds. The walk now spares
+the wants it can't see - the persona's fragment blobs
+(`fragments::blob_refs_of`, `bodies::reconcile`'s `spare`) - without fetching
+them, so a peek at its ceiling still fetches nothing it refused; and the eager
+heal says when it ends with nothing wanted. A unit test holds a spared want
+through a walk. `cargo test -p ringtome-node` and clippy green; the idface area
+three times, the claim green in each (about 0.7 s).

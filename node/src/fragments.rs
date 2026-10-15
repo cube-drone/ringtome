@@ -944,6 +944,23 @@ pub async fn blob_refs(node_db: &Db) -> Result<Vec<[u8; 32]>> {
         .fetch_all("SELECT body_hash, entry FROM fragments", ())
         .await
         .context("reading the shelf's blob references")?;
+    refs_of_rows(rows)
+}
+
+/// [`blob_refs`] for one author's fragments: the wants the body walk over a chain held here
+/// (`documents::fetch_missing_bodies`) must leave standing. A peek holds part of a persona's
+/// chains and fetches the rest as fragments - the avatar among them - and the walk's ledger write
+/// replaced the persona's whole want set, so a want it couldn't see was a want it threw away (the
+/// idface "face asked for before the shelf" flake, 2026-10-14).
+pub async fn blob_refs_of(node_db: &Db, author_root: &str) -> Result<Vec<[u8; 32]>> {
+    let rows: Vec<(Vec<u8>, Vec<u8>)> = node_db
+        .fetch_all("SELECT body_hash, entry FROM fragments WHERE author_root = ?1", (author_root,))
+        .await
+        .context("reading an author's shelf blob references")?;
+    refs_of_rows(rows)
+}
+
+fn refs_of_rows(rows: Vec<(Vec<u8>, Vec<u8>)>) -> Result<Vec<[u8; 32]>> {
     let mut out = Vec::new();
     for (body, entry) in rows {
         out.push(

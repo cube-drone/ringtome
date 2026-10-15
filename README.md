@@ -65,6 +65,11 @@ lightly federated, unapologetically Old Internet.
 - [`plans/`](plans/) — the plans: one design document per app, feature or
   delivery shape, drafts and built alike, plus the signing guide. **A new plan
   is written here.** So far:
+- [`ACTIVITYPUB.md`](plans/ACTIVITYPUB.md) — a persona served from a domain as a
+  fediverse actor: found by WebFinger, followed and boosted from Mastodon, its
+  public posts delivered as Notes. A one-way window onto the fediverse, not
+  federation; the persona follows nobody yet. A design draft (2026-10-14);
+  nothing built.
 - [`AUDIO.md`](plans/AUDIO.md) — hrseAmp, for music: a sortable, filterable
   table of every sound you can see (your own and the feed's), a player with a
   shuffle that spreads artists and albums, saved filters, mixtapes (a taxonomy
