@@ -21560,6 +21560,7 @@ them, so a peek at its ceiling still fetches nothing it refused; and the eager
 heal says when it ends with nothing wanted. A unit test holds a spared want
 through a walk. `cargo test -p ringtome-node` and clippy green; the idface area
 three times, the claim green in each (about 0.7 s).
+
 ## 2026-10-11 (cont.): the crowd's door
 
 Slice 1 of [`plans/CROWD.md`](plans/CROWD.md), with the plan's last open rulings
@@ -21701,3 +21702,13 @@ outright.
 That completes the plan: a popular persona is now served by its followers'
 nodes, as plans/CROWD.md set out. Its load figures are still arithmetic, until
 the network is big enough to measure them.
+
+## 2026-10-14: a post on its own page, whole
+
+A long post opened on its own page stopped after its first few paragraphs, with
+no "see more" to reach the rest (Curtis's Majulaar post on
+`/@cube-drone/blog/...`). The page's card turned the cut off - "if someone has
+bothered to click on the link to get here, show them the whole post"
+(2026-10-08) - but still drew the cut's lead, so the rest was neither shown nor
+offered. `postentry.js` now draws the whole body whenever nothing is held back.
+The page's server-side reading copy always had every word.

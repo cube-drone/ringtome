@@ -889,9 +889,12 @@ const PostEntryBody = ({
     // Held back, the card draws a little past its lead and fades it away (Curtis, 2026-10-02:
     // "there's more but you just can't see it"). A room draws its floor, not its words.
     const fading = cut && !wholeThing && item.format !== 'room';
-    // A book's body is its tree, never prose: no lead cut, the card draws the whole table.
+    // A book's body is its tree, never prose: no lead cut, the card draws the whole table. Nothing
+    // held back draws the whole body, not the lead: a post on its own page cut to its lead had no
+    // "see more" to reach the rest (Curtis, 2026-10-14: a long blog post ended after its fourth
+    // paragraph).
     const shown =
-        item.format === 'book' || wholeThing
+        item.format === 'book' || wholeThing || !cut
             ? shownBody
             : fading
               ? overrunOf(shownBody || '', emphasis)
