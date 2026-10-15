@@ -460,7 +460,10 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                                 alpn = alpn_name(conn.alpn()).unwrap_or("unknown"),
                                 "admission: refusing an inbound connection at the ceiling"
                             );
-                            conn.close(1u8.into(), b"busy");
+                            // The busy referral (plans/CROWD.md, ruling 3): the refused is
+                            // told where else its persona is held, in the close itself - no
+                            // seat, and one cached lookup.
+                            conn.close(1u8.into(), &crate::crowd::busy_reason(&state).await);
                             return;
                         };
                         // The inbound half of the test gate, before any dispatch, so it covers

@@ -21560,3 +21560,144 @@ them, so a peek at its ceiling still fetches nothing it refused; and the eager
 heal says when it ends with nothing wanted. A unit test holds a spared want
 through a walk. `cargo test -p ringtome-node` and clippy green; the idface area
 three times, the claim green in each (about 0.7 s).
+## 2026-10-11 (cont.): the crowd's door
+
+Slice 1 of [`plans/CROWD.md`](plans/CROWD.md), with the plan's last open rulings
+settled first. A busy refusal will carry the holders of the node's top three
+personas, four holders each. The wake pass goes back to the author after six
+hours, give or take a quarter. Only operators get the off switch.
+
+The door itself: until today, the sync door answered anyone who named a persona
+somebody on the node followed, or had merely looked at. Probing a household node
+with a root therefore read out a quiet follow. Now `crowd.rs` decides. A
+stranger is answered about a persona the node holds but doesn't host only when
+the follow there is published (`subscriptions.public`, node rung 82, from
+`edges_public`), or when the node serves more than ten personas (Curtis: "it
+could be any of these people"). The household is always answered. So is the
+persona's own node, by the member proof every requester already sends: the
+author's push to a quiet follower is the follow working.
+
+The fragment door had the same probe twice, the shelf question and the
+one-document question, and takes the same rule. A document a persona here shares
+stays answerable to anyone, because the share is public and its readers come to
+the sharer.
+
+`crowd.cjs` holds four claims, on a node made small by `test/quiet-crowd` and
+probed by `test/door-probe` (one door, one endpoint, so the author's own node
+isn't racing alongside). The quiet claims fail with the door forced open, and
+the push claim fails without the member proof.
+
+## 2026-10-11 (cont.): the crowd, referred and asked
+
+Slices 2 and 3 of [`plans/CROWD.md`](plans/CROWD.md). The sync Hello grows its
+tenth slot, `crowd`. A requester says `holds` when it follows the persona and
+would answer a stranger about them (the slice-1 rule). The persona's own node
+keeps that word on the demand row (`identity_demand.holds`, node rung 83) and
+names up to eight such holders to every stranger it answers: never to the asker
+itself, and never to the persona's own computers. The stranger keeps the names
+in `crowd_holders` (the same rung, a week's retention, 32 per persona). It
+believes them only from one of the persona's own nodes, and checks that by
+member proof after the ingest, because on a first fetch the key tree to check
+against arrives in the same exchange. The fetch ladder asks holders once the
+persona's own nodes have failed, before the household. A holder that answers
+never becomes `last_via`, which the doors read as where the author's authority
+lives. `RINGTOME_SERVE_CROWD=false` (ruling 9, in SERVER.md's table) turns all
+of it off for a node.
+
+Three claims in `crowd.cjs`: the word is kept, the referral is made, and with
+the author's node unplugged a follower's pull finds her new post at the holder,
+without `last_via` moving. Taking the mechanism out made each fail. The
+crowd-round check didn't at first: the post had already reached the reader by
+the author's own push the moment she published. The claim now shuts the reader's
+inbound door while she posts.
+
+## 2026-10-12: the crowd relays
+
+Slice 4 of [`plans/CROWD.md`](plans/CROWD.md). A node that holds a persona for
+the crowd now pushes that persona's moves to the nodes that asked it, as the
+author's node does: the same fold hook, the same cap of 16. Before this,
+`fanout.rs` pushed only for personas it authored, and called any relay
+rebroadcast. But a holder's askers asked it for exactly this lane.
+
+Two changes at the sync door go with it. A node the persona's own node named as
+a holder (`crowd_holders`) is answered about that persona however quiet the
+follow there is, because it can only be relaying since we asked it. And a push
+from the persona's own node, proven by member proof, is no longer recorded as an
+ask about a persona this node only holds. Without that, every holder would have
+pushed every new post straight back to the author, the one node the crowd exists
+to spare.
+
+Two new claims in `crowd.cjs`, each shown failing with its mechanism removed:
+the relay carries a post to a quiet follower that can't dial out, and the
+author's node never appears among a holder's askers. The relay claim first
+passed with the relay switched off. The rig's wake pass runs every two seconds
+and fetched the post from the author, so the claim now cuts the reader's
+outbound connections while it waits. Slice 3's crowd-round claim had the same
+gap and was tightened the same way.
+
+## 2026-10-13: the crowd takes the wake pass
+
+Slice 5 of [`plans/CROWD.md`](plans/CROWD.md). Following a persona used to mean
+asking its own node every half hour, from every follower. At a hundred thousand
+followers that was nearly all of the author's load. Now a revalidation (the wake
+pass's pull, or a page view's) asks two of the persona's holders first, drawn at
+random from the memo. It goes back to the persona's own machinery once that has
+gone about six hours unasked.
+
+The six hours are `foreign_fetches.author_due_ms`, node rung 84. A fetch the own
+round won sets it, and so does a push proven by member proof, each time to six
+hours from now, give or take a quarter, drawn fresh. The spread matters more
+than the six: newcomers who all joined in the same minute would otherwise come
+back to the author together, every six hours, for good. The six bound how long a
+holder that is behind, or a retraction it hasn't heard of, can keep a follower
+behind. First fetches and peeks still ask the author first.
+
+Two claims in `crowd.cjs`. Hearing from the author sets its turn between 4.5 and
+7.5 hours off. A holder kept behind (off the network while the author posts,
+then able to answer but not to dial) keeps the follower's wake pass coming to
+it, and the follower stays behind until the author's turn comes, written back to
+zero by the test to stand in for the six hours. The second claim fails both with
+the old author-first order and with the author never owed.
+
+## 2026-10-13 (cont.): bodies from the crowd
+
+Slice 6 of [`plans/CROWD.md`](plans/CROWD.md). The missing-body healer now asks
+a persona's holders after the nodes that delivered its fragments. That covers
+both the background sweep and the immediate heal at fragment intake. A blob
+fetch is by hash, so any holder with the bytes serves them, and nothing new
+crosses the wire. A persona held only on a hunch keeps the introducer as its
+only author-side candidate, because asking a holder for its bytes would tell the
+holder about the hunch.
+
+The claim in `crowd.cjs` heals a post's words from a holder while the author's
+node is dark. It uses a reader with no household tie to the holder, since the
+household would answer for the wrong reason. The reader's blob door has to be
+shut before the author posts: the first run found the words already there,
+fetched straight back from the author by the reader's node when the author's
+push arrived. The claim fails with the holders rung emptied.
+
+## 2026-10-13 (cont.): a busy refusal refers
+
+Slice 7 of [`plans/CROWD.md`](plans/CROWD.md), its last. Under a flood, a
+brand-new node has no holders memo, and the busy refusal is exactly when it
+needs one. Admission's close reason is now `busy` followed by a short CBOR list.
+It names the three personas hosted here that the most nodes ask about, with up
+to four holders each. A bare `busy`, from any older node, reads as no referral.
+The list is built at most once every 30 seconds, so a flood costs the refusing
+node one lookup and no seat.
+
+A refused dial is now a typed `Busy` error. The fetch ladder keeps the holders
+it names only in the persona's own round, and reads the memo again before asking
+the crowd. Nothing can be proven before a Hello, so the referral is believed as
+far as the dial was. A bad one costs a few wasted dials, since a holder's
+answers are checked against the root like anyone's.
+
+`test/admission-full` makes a test node refuse every unproven connection, as a
+flood would. The claim plants a dozen askers so ada is her node's most-asked
+persona. A newcomer then opens her page while her node is full and gets her from
+the holder the refusal named. With the referral ignored, the page fails
+outright.
+
+That completes the plan: a popular persona is now served by its followers'
+nodes, as plans/CROWD.md set out. Its load figures are still arithmetic, until
+the network is big enough to measure them.

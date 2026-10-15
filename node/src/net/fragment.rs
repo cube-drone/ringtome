@@ -82,7 +82,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     let (mut send, mut recv) = conn.accept_bi().await.context("accepting fragment stream")?;
     let answer = match read_frame(&mut recv).await? {
         Some(FragmentMessage::Want { author, doc_id }) => {
-            answer_for(&state, &author, &doc_id).await
+            answer_for(&state, Some(&asker_name(&conn)), &author, &doc_id).await
         }
         Some(FragmentMessage::WantDeaths { since }) => deaths_page(&state, since).await,
         Some(FragmentMessage::WantKey { author, doc_id, for_root }) => {
@@ -139,7 +139,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             FragmentMessage::Replies { proofs, cursor }
         }
         Some(FragmentMessage::WantShelf { author, limit }) => {
-            shelf_for(&state, &author, limit).await
+            shelf_for(&state, &asker_name(&conn), &author, limit).await
         }
         _ => return Err(anyhow!("expected a Want, WantDeaths, WantReplies, or WantShelf")),
     };
@@ -623,7 +623,12 @@ async fn deaths_page(state: &AppState, since: u64) -> FragmentMessage {
 /// holds - its own, or a mirror it keeps for a follower. Pages stay off (PROJECT_PLAN's Books, ruling 4),
 /// and a speculative mirror answers nothing, for the reasons `from_held_chain` gives. A
 /// node holding no chain answers an empty shelf: "nothing to say" is a fact, not a fault.
-async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentMessage {
+async fn shelf_for(
+    state: &AppState,
+    asker: &str,
+    author: &[u8; 32],
+    limit: u64,
+) -> FragmentMessage {
     let stall = SHELF_STALL_MS.load(std::sync::atomic::Ordering::Relaxed);
     if stall > 0 {
         tokio::time::sleep(std::time::Duration::from_millis(stall)).await;
@@ -632,7 +637,11 @@ async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentM
     let limit = limit.clamp(1, ringtome_proto::fragment::MAX_SHELF_IDS as u64) as i64;
     let (posts, pinned) = match state.user_dbs.get(&author_hex).await {
         Ok(Some(db)) => {
-            if crate::speculative::speculative_only(state, &author_hex).await.unwrap_or(true) {
+            if crate::speculative::speculative_only(state, &author_hex).await.unwrap_or(true)
+                || !answers_asker(state, asker, &author_hex).await
+            {
+                // Nor a shelf the crowd's rule keeps from this asker (crowd.rs): a list of a
+                // quietly followed persona's posts says somebody here follows them.
                 (Vec::new(), Vec::new())
             } else {
                 let posts = crate::record::documents::public_docs(&db, None, limit)
@@ -654,9 +663,29 @@ async fn shelf_for(state: &AppState, author: &[u8; 32], limit: u64) -> FragmentM
     FragmentMessage::Shelf { posts, pinned }
 }
 
-async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> FragmentMessage {
+/// The asker's endpoint, spelled as `identity_peers` spells it - what `crowd::is_household`
+/// compares against.
+fn asker_name(conn: &Connection) -> String {
+    conn.remote_id().to_string()
+}
+
+/// The crowd's rule at this door (crowd.rs, plans/CROWD.md ruling 1): a persona this node
+/// hosts is anybody's to ask about; one it only holds is answered for to the household, and
+/// to anyone when the follow here is published or the node is crowded enough to hide it.
+async fn answers_asker(state: &AppState, asker: &str, author_hex: &str) -> bool {
+    crate::identity::is_agented(&state.node_db, author_hex).await.unwrap_or(false)
+        || crate::crowd::answers_strangers(state, author_hex).await
+        || crate::crowd::is_household(state, asker).await
+}
+
+async fn answer_for(
+    state: &AppState,
+    asker: Option<&str>,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> FragmentMessage {
     let author_hex = hex::encode(author);
-    let mut answer = answer_inner(state, &author_hex, doc_id).await;
+    let mut answer = answer_inner(state, asker, &author_hex, doc_id).await;
     // The labels ride the words (PROJECT_PLAN's Public annotations, slice 3): every proof this node can attach,
     // in one place for every Have - the mirror's, the fragment ledger's, whichever shelf
     // answered. Attach-after keeps the sources honest about the WORDS and this line honest
@@ -677,8 +706,13 @@ async fn answer_for(state: &AppState, author: &[u8; 32], doc_id: &[u8; 16]) -> F
     answer
 }
 
-async fn answer_inner(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> FragmentMessage {
-    match from_held_chain(state, author_hex, doc_id).await {
+async fn answer_inner(
+    state: &AppState,
+    asker: Option<&str>,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> FragmentMessage {
+    match from_held_chain(state, asker, author_hex, doc_id).await {
         Ok(Some(answer)) => return answer,
         Ok(None) => {}
         Err(e) => {
@@ -726,6 +760,7 @@ async fn answer_inner(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> 
 /// The answer from our own copy of the author's chain, if we hold one.
 async fn from_held_chain(
     state: &AppState,
+    asker: Option<&str>,
     author_hex: &str,
     doc_id: &[u8; 16],
 ) -> Result<Option<FragmentMessage>> {
@@ -749,6 +784,20 @@ async fn from_held_chain(
     // not answer "unknown" for words the fragment ledger beside it holds. Fall through.
     if crate::idface::peek_held(state, author_hex).await {
         return Ok(None);
+    }
+    // The crowd's rule (crowd.rs, plans/CROWD.md ruling 1): a stranger asking for a document of a
+    // persona followed here only quietly learns, from a Have, that somebody here follows them.
+    // A document a persona here SHARES is the exception - the share is public, and its readers
+    // reach the sharer here for the words. Falling through leaves the tombstone and fragment
+    // shelves to answer, as for a persona this node never held.
+    if let Some(asker) = asker {
+        if !answers_asker(state, asker, author_hex).await
+            && !crate::rebroadcast::shares_doc(&state.node_db, author_hex, &hex::encode(doc_id))
+                .await
+                .unwrap_or(false)
+        {
+            return Ok(None);
+        }
     }
     // `public_doc_ids` already filters retractions, so absence here IS the withdrawal signal -
     // the same chokepoint the feed's own retraction sweep reconciles against, which is what
@@ -936,7 +985,7 @@ pub async fn fetch(
     // connection. `net::deliver` does the same, for the same reason - iroh has no cause to make
     // a self-dial work, and the judgment is identical either way.
     if crate::identity::is_agented(&state.node_db, origin_root).await.unwrap_or(false) {
-        return match answer_for(state, author, doc_id).await {
+        return match answer_for(state, None, author, doc_id).await {
             FragmentMessage::Have { entry, auth_path, .. } => {
                 match verify_fragment(*author, *doc_id, &entry, &auth_path) {
                     Ok(v) => Fetched::Have(Box::new(v), entry, auth_path, None),

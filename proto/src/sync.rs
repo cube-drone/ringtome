@@ -15,7 +15,7 @@
 //!
 //! | tag | message | slots, in order                                                     |
 //! |-----|---------|---------------------------------------------------------------------|
-//! | 0   | Hello   | root, frontiers, proof, wanted, [ceiling, below], instances, key proofs, version |
+//! | 0   | Hello   | root, frontiers, proof, wanted, [ceiling, below], instances, key proofs, version, crowd |
 //! | 1   | Entry   | bstr envelope bytes (opaque; the author's exact bytes)              |
 //! | 2   | Done    | -                                                                   |
 //!
@@ -63,11 +63,107 @@ const HELLO_MIN_ARITY: u64 = 4;
 const ENTRY_MIN_ARITY: u64 = 2;
 const DONE_MIN_ARITY: u64 = 1;
 /// How many slots this build writes for a Hello, and the last one it reads.
-const HELLO_ARITY: u64 = 9;
+const HELLO_ARITY: u64 = 10;
 
 /// Cap on the version slot's text: a semver string is a dozen characters, and a page of it
 /// is not a version.
 pub const MAX_VERSION_LEN: usize = 64;
+
+/// Cap on the holders one Hello refers (plans/CROWD.md, ruling 2): a handful to try, never a
+/// directory of the persona's readers.
+pub const MAX_HOLDERS: usize = 8;
+
+/// The crowd slot (plans/CROWD.md, 2026-10-11): how a popular persona comes to be served by
+/// the nodes of the people who follow it. Each half is said by one side of the exchange.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Crowd {
+    /// The REQUESTER's word: "I serve this persona to strangers too" - it holds the persona
+    /// under a follow it may answer for (the node's crowd rule, ruling 1). The responder
+    /// keeps it beside the ask, and refers others to it.
+    pub holds: bool,
+    /// The RESPONDER's word: other nodes that said `holds` for this persona lately, endpoint
+    /// ids, at most [`MAX_HOLDERS`]. Somewhere else to ask, nothing more: whatever a holder
+    /// answers is validated against the root like any other answer.
+    pub holders: Vec<[u8; 32]>,
+}
+
+/// The close reason a node refusing a connection at its admission ceiling sends: `busy`, and
+/// since the busy referral (plans/CROWD.md, ruling 3, 2026-10-13) a CBOR list after it - for
+/// each of the few personas this node authors that most nodes ask about, a few of their
+/// holders. Admission refuses before any Hello, so it can't know which persona was wanted;
+/// one short list per persona lets the refused take the one it came for. A bare `busy` (every
+/// node before this) decodes as no referrals.
+pub const BUSY: &[u8] = b"busy";
+
+/// Personas one busy referral names (ruling 3): the three most asked about.
+pub const MAX_BUSY_PERSONAS: usize = 3;
+
+/// Holders named per persona in a busy referral (ruling 3). Three personas by four holders is
+/// about 480 bytes, well inside one close frame.
+pub const MAX_BUSY_HOLDERS: usize = 4;
+
+/// One persona's referral in a busy close: its root, and holders to ask instead.
+pub type BusyReferral = ([u8; 32], Vec<[u8; 32]>);
+
+/// The busy close reason: `busy`, then `[[root, [holder, ...]], ...]` when there is anything
+/// to refer. Truncates to the caps rather than failing - a refusal must always be sayable.
+pub fn encode_busy(referrals: &[BusyReferral]) -> Vec<u8> {
+    let mut out = BUSY.to_vec();
+    let named: Vec<&BusyReferral> =
+        referrals.iter().filter(|(_, h)| !h.is_empty()).take(MAX_BUSY_PERSONAS).collect();
+    if named.is_empty() {
+        return out;
+    }
+    let mut w = Writer::new();
+    w.array(named.len() as u64);
+    for (root, holders) in named {
+        w.array(2);
+        w.bytes(root);
+        let holders = &holders[..holders.len().min(MAX_BUSY_HOLDERS)];
+        w.array(holders.len() as u64);
+        for h in holders {
+            w.bytes(h);
+        }
+    }
+    out.extend(w.into_bytes());
+    out
+}
+
+/// Read a close reason as a busy referral: `None` when it isn't a busy close at all, an empty
+/// list for a bare `busy` or one whose list doesn't parse within the caps (a refusal is still
+/// a refusal; only the referral is lost).
+pub fn decode_busy(reason: &[u8]) -> Option<Vec<BusyReferral>> {
+    let rest = reason.strip_prefix(BUSY)?;
+    if rest.is_empty() {
+        return Some(Vec::new());
+    }
+    let parse = || -> Result<Vec<BusyReferral>, ProtoError> {
+        let mut r = Reader::new(rest);
+        let n = r.array()?;
+        if n > MAX_BUSY_PERSONAS as u64 {
+            return Err(ProtoError::BadEntry("too many personas in a busy referral"));
+        }
+        let mut out = Vec::with_capacity(n as usize);
+        for _ in 0..n {
+            if r.array()? != 2 {
+                return Err(ProtoError::BadEntry("a busy referral is [root, holders]"));
+            }
+            let root = r.bytes_fixed::<32>()?;
+            let m = r.array()?;
+            if m > MAX_BUSY_HOLDERS as u64 {
+                return Err(ProtoError::BadEntry("too many holders in a busy referral"));
+            }
+            let mut holders = Vec::with_capacity(m as usize);
+            for _ in 0..m {
+                holders.push(r.bytes_fixed::<32>()?);
+            }
+            out.push((root, holders));
+        }
+        r.finish()?;
+        Ok(out)
+    };
+    Some(parse().unwrap_or_default())
+}
 
 /// One chain's held range: this peer holds entries `floor..=head` of `(author, service)`.
 /// v1 nodes always hold full chains (`floor == 0`); the wire carries the floor anyway because
@@ -207,6 +303,9 @@ pub enum SyncMessage {
         /// exchange branches on it, but the receiver can say "this peer runs 0.4 and I run
         /// 0.1" when something disagrees. Empty from a sender that predates the slot.
         version: String,
+        /// The crowd slot (2026-10-11): who holds this persona besides its author. Default -
+        /// holds nothing, refers nobody - from a sender that predates it.
+        crowd: Crowd,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -228,6 +327,7 @@ impl SyncMessage {
                 instances,
                 key_proofs,
                 version,
+                crowd,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
@@ -243,6 +343,9 @@ impl SyncMessage {
                 }
                 if version.len() > MAX_VERSION_LEN {
                     return Err(ProtoError::BadEntry("version text too long"));
+                }
+                if crowd.holders.len() > MAX_HOLDERS {
+                    return Err(ProtoError::BadEntry("too many holders"));
                 }
                 // Every slot, every time: since readers skip what they don't know, there is no
                 // longer a reason to shorten the frame by leaving trailing empties off.
@@ -297,6 +400,13 @@ impl SyncMessage {
                 }
                 // The version slot (2026-09-23).
                 w.text(version);
+                // The crowd slot (2026-10-11): [holds, [holder, ...]].
+                w.array(2);
+                w.uint(u64::from(crowd.holds));
+                w.array(crowd.holders.len() as u64);
+                for h in &crowd.holders {
+                    w.bytes(h);
+                }
             }
             SyncMessage::Entry(bytes) => {
                 if bytes.len() > MAX_ENTRY_BYTES {
@@ -424,6 +534,29 @@ impl SyncMessage {
                 } else {
                     String::new()
                 };
+                // Arity 10 carries the crowd slot (2026-10-11); older shapes hold and refer
+                // nothing.
+                let crowd = if arity >= 10 {
+                    if r.array()? != 2 {
+                        return Err(ProtoError::BadEntry("crowd must be [holds, holders]"));
+                    }
+                    let holds = match r.uint()? {
+                        0 => false,
+                        1 => true,
+                        _ => return Err(ProtoError::BadEntry("holds is 0 or 1")),
+                    };
+                    let n = r.array()?;
+                    if n > MAX_HOLDERS as u64 {
+                        return Err(ProtoError::BadEntry("too many holders"));
+                    }
+                    let mut holders = Vec::with_capacity(n as usize);
+                    for _ in 0..n {
+                        holders.push(r.bytes_fixed::<32>()?);
+                    }
+                    Crowd { holds, holders }
+                } else {
+                    Crowd::default()
+                };
                 skip_trailing(&mut r, arity, HELLO_ARITY)?;
                 SyncMessage::Hello {
                     root,
@@ -435,6 +568,7 @@ impl SyncMessage {
                     instances,
                     key_proofs,
                     version,
+                    crowd,
                 }
             }
             TAG_ENTRY if arity >= ENTRY_MIN_ARITY => {
@@ -507,6 +641,7 @@ mod tests {
             instances: vec![],
             key_proofs: Vec::new(),
             version: String::new(),
+            crowd: Crowd::default(),
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -518,6 +653,7 @@ mod tests {
             instances: vec![],
             key_proofs: Vec::new(),
             version: String::new(),
+            crowd: Crowd::default(),
         };
         let scoped = SyncMessage::Hello {
             root: [7u8; 32],
@@ -529,6 +665,7 @@ mod tests {
             instances: vec![],
             key_proofs: Vec::new(),
             version: String::new(),
+            crowd: Crowd::default(),
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
@@ -551,6 +688,7 @@ mod tests {
             instances: vec![],
             key_proofs: Vec::new(),
             version: "0.1.4".to_string(),
+            crowd: Crowd::default(),
         };
         let bytes = hello.encode().unwrap();
         assert_eq!(SyncMessage::decode(&bytes).unwrap(), hello);
@@ -564,8 +702,114 @@ mod tests {
             instances: vec![],
             key_proofs: Vec::new(),
             version: "x".repeat(MAX_VERSION_LEN + 1),
+            crowd: Crowd::default(),
         };
         assert_eq!(long.encode(), Err(ProtoError::BadEntry("version text too long")));
+    }
+
+    fn bare_hello(crowd: Crowd) -> SyncMessage {
+        SyncMessage::Hello {
+            root: [7u8; 32],
+            frontiers: vec![],
+            proof: None,
+            wanted: vec![],
+            ceiling: 0,
+            below: 0,
+            instances: vec![],
+            key_proofs: Vec::new(),
+            version: "0.2.0".to_string(),
+            crowd,
+        }
+    }
+
+    /// The crowd slot (plans/CROWD.md): a holder's word and a referral both cross, and an
+    /// older sender's Hello - arity 9, no slot - reads as holding nothing and referring nobody.
+    #[test]
+    fn the_crowd_slot_round_trips_and_defaults() {
+        for crowd in [
+            Crowd::default(),
+            Crowd { holds: true, holders: vec![] },
+            Crowd { holds: false, holders: vec![[1u8; 32], [2u8; 32]] },
+        ] {
+            let hello = bare_hello(crowd);
+            assert_eq!(SyncMessage::decode(&hello.encode().unwrap()).unwrap(), hello);
+        }
+
+        let mut w = Writer::new();
+        w.array(9);
+        w.uint(TAG_HELLO);
+        w.bytes(&[7u8; 32]);
+        w.array(0); // frontiers
+        w.array(0); // proof
+        w.array(0); // wanted
+        w.array(2); // depth
+        w.uint(0);
+        w.uint(0);
+        w.array(0); // instances
+        w.array(0); // key proofs
+        w.text("0.2.0");
+        assert_eq!(SyncMessage::decode(&w.into_bytes()).unwrap(), bare_hello(Crowd::default()));
+    }
+
+    /// The busy referral (plans/CROWD.md, ruling 3): a list per persona, inside its caps, and
+    /// a bare or garbled `busy` still reads as busy - only the referral is lost.
+    #[test]
+    fn a_busy_close_refers_per_persona_within_its_caps() {
+        assert_eq!(decode_busy(b"busy"), Some(vec![]), "an older node's busy refers nobody");
+        assert_eq!(decode_busy(b"done"), None, "not a busy close at all");
+        let refs: Vec<BusyReferral> = vec![
+            ([1u8; 32], vec![[10u8; 32], [11u8; 32]]),
+            ([2u8; 32], vec![]),
+            ([3u8; 32], vec![[30u8; 32]; MAX_BUSY_HOLDERS + 2]),
+        ];
+        let wire = encode_busy(&refs);
+        assert!(wire.starts_with(BUSY));
+        let back = decode_busy(&wire).unwrap();
+        assert_eq!(back.len(), 2, "a persona with no holders isn't named");
+        assert_eq!(back[0], refs[0]);
+        assert_eq!(back[1].1.len(), MAX_BUSY_HOLDERS, "holders truncated to the cap");
+        let full: Vec<BusyReferral> =
+            (0..5u8).map(|i| ([i; 32], vec![[i; 32]; MAX_BUSY_HOLDERS])).collect();
+        let wire = encode_busy(&full);
+        assert_eq!(decode_busy(&wire).unwrap().len(), MAX_BUSY_PERSONAS);
+        assert!(wire.len() < 600, "fits a close frame: {} bytes", wire.len());
+        let mut junk = BUSY.to_vec();
+        junk.extend([0xff, 0x00]);
+        assert_eq!(decode_busy(&junk), Some(vec![]), "garbage refers nobody, still busy");
+    }
+
+    /// A referral is a handful, never a directory - refused past the cap on both sides of
+    /// the wire, and `holds` is a yes or a no.
+    #[test]
+    fn the_crowd_slot_is_bounded() {
+        let stuffed = bare_hello(Crowd { holds: false, holders: vec![[3u8; 32]; MAX_HOLDERS + 1] });
+        assert_eq!(stuffed.encode(), Err(ProtoError::BadEntry("too many holders")));
+
+        let tail = |holds: u64, holders: usize| {
+            let mut w = Writer::new();
+            w.array(10);
+            w.uint(TAG_HELLO);
+            w.bytes(&[7u8; 32]);
+            w.array(0);
+            w.array(0);
+            w.array(0);
+            w.array(2);
+            w.uint(0);
+            w.uint(0);
+            w.array(0);
+            w.array(0);
+            w.text("");
+            w.array(2);
+            w.uint(holds);
+            w.array(holders as u64);
+            for _ in 0..holders {
+                w.bytes(&[3u8; 32]);
+            }
+            SyncMessage::decode(&w.into_bytes())
+        };
+        assert!(tail(1, MAX_HOLDERS).is_ok());
+        assert_eq!(tail(0, MAX_HOLDERS + 1), Err(ProtoError::BadEntry("too many holders")));
+        assert_eq!(tail(2, 0), Err(ProtoError::BadEntry("holds is 0 or 1")));
     }
 
     /// The pre-scoping Hello (arity 4, no wanted slot) still decodes - as unscoped, which
@@ -591,6 +835,7 @@ mod tests {
                 instances: vec![],
                 key_proofs: Vec::new(),
                 version: String::new(),
+                crowd: Crowd::default(),
             }
         );
     }
@@ -607,6 +852,7 @@ mod tests {
             instances: vec![],
             key_proofs: Vec::new(),
             version: String::new(),
+            crowd: Crowd::default(),
         };
         assert_eq!(msg.encode(), Err(ProtoError::BadEntry("too many wanted services")));
     }
@@ -656,6 +902,9 @@ mod tests {
         w.array(0); // instances
         w.array(0); // key proofs
         w.text("9.9.9"); // version
+        w.array(2); // crowd
+        w.uint(0);
+        w.array(0);
         w.text("a future slot"); // and four this build cannot name
         w.array(2);
         w.uint(1);
@@ -725,6 +974,7 @@ mod tests {
             instances: vec![],
             key_proofs: Vec::new(),
             version: String::new(),
+            crowd: Crowd::default(),
         };
         assert!(bad.encode().is_err());
 

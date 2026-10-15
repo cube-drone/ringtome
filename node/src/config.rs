@@ -131,6 +131,11 @@ pub struct Config {
     /// commits to the prefix; scrollback backfills beneath it on demand. Zero is whole.
     /// `RINGTOME_FOLLOW_POSTS_CEILING`.
     pub follow_posts_ceiling: u64,
+    /// Whether this node serves the personas it follows to strangers, and says so to their
+    /// authors (plans/CROWD.md, ruling 9). Off, a node answers strangers only about the
+    /// personas it hosts - for a metered link, or an operator who would rather not.
+    /// `RINGTOME_SERVE_CROWD` (default on; `0` or `false` turns it off).
+    pub serve_crowd: bool,
     /// How long a changed identity must sit quiet before its peers get an eager push - batches
     /// a burst of writes into one exchange. Local writes ring the eager loop's doorbell
     /// (`Db::nudge_sync`) so the debounce clock starts at the write itself; the ~1s tick then
@@ -322,6 +327,8 @@ impl Config {
         let peek_total_bytes = dial("RINGTOME_PEEK_TOTAL_BYTES", 2 * 1024 * 1024 * 1024);
         let peek_expiry_ms = dial("RINGTOME_PEEK_EXPIRY_MS", 7 * 24 * 60 * 60 * 1000) as i64;
         let follow_posts_ceiling = dial("RINGTOME_FOLLOW_POSTS_CEILING", 5_000);
+        let serve_crowd =
+            !matches!(env::var("RINGTOME_SERVE_CROWD").as_deref(), Ok("0") | Ok("false"));
 
         // Floored at 8: a cache too small to hold the handles one request touches would
         // thrash on a single operation, which is worse than any descriptor it saves.
@@ -440,6 +447,7 @@ impl Config {
             peek_total_bytes,
             peek_expiry_ms,
             follow_posts_ceiling,
+            serve_crowd,
             max_open_databases,
             sync_debounce_ms,
             pow_requested_bits,

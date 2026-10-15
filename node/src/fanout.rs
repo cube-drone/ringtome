@@ -164,12 +164,21 @@ async fn after_public_move_inner(state: &AppState, root_hex: &str, moved: &[u32]
     if has(service::FOLLOWS_PUBLIC) {
         crate::edgegraph::refresh_from(state, root_hex).await;
     }
-    // Push onward only for personas this node authors. Relaying someone ELSE's lane onward is
-    // rebroadcast - a consent question, not a routing one - and waits for its own design.
+    // Push onward for personas this node authors, and for those it HOLDS for the crowd
+    // (plans/CROWD.md, ruling 5, 2026-10-12): a follow published, or hidden in a crowd, whose
+    // node already answers strangers about the persona - so passing a move to the nodes that
+    // asked here tells nobody anything the door would not. This used to stop at the author,
+    // calling any relay rebroadcast; but a holder's askers asked it for this lane, and a push
+    // is only the answer arriving before the next ask. Converges: an exchange with a node
+    // already holding the move transfers nothing, and so moves no frontier there.
     let t = std::time::Instant::now();
     match crate::identity::is_agented(&state.node_db, root_hex).await {
         Ok(true) => push_to_askers(state, root_hex).await,
-        Ok(false) => {}
+        Ok(false) => {
+            if crate::crowd::holds(state, root_hex).await {
+                push_to_askers(state, root_hex).await;
+            }
+        }
         Err(e) => tracing::debug!(error = ?e, "agented check failed in fanout"),
     }
     tracing::debug!(root = %root_hex, push_ms = t.elapsed().as_millis() as u64, "push act");

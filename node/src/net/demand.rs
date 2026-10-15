@@ -30,14 +30,23 @@ use crate::db::Db;
 /// Called from the responder for every exchange it serves, including from the persona's own
 /// devices - they ask like anyone else, and a device appearing here is true, harmless, and
 /// deduped by whatever unions this with `identity_peers`.
-pub async fn record_ask(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Result<()> {
+///
+/// `holds` is the asker's crowd word (plans/CROWD.md, ruling 2): it serves this persona to
+/// strangers too. Restated on every ask, so a node that stops holding stops being referred.
+pub async fn record_ask(
+    node_db: &Db,
+    root_hex: &str,
+    endpoint_id: &str,
+    holds: bool,
+) -> Result<()> {
     node_db
         .execute(
-            "INSERT INTO identity_demand (root_pubkey, endpoint_id, last_asked_ms)
-             VALUES (?1, ?2, ?3)
+            "INSERT INTO identity_demand (root_pubkey, endpoint_id, last_asked_ms, holds)
+             VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT (root_pubkey, endpoint_id) DO UPDATE SET
-                 last_asked_ms = excluded.last_asked_ms",
-            (root_hex, endpoint_id, now_ms()),
+                 last_asked_ms = excluded.last_asked_ms,
+                 holds = excluded.holds",
+            (root_hex, endpoint_id, now_ms(), holds as i64),
         )
         .await
         .context("recording a demand edge")?;
@@ -88,6 +97,48 @@ pub async fn recent_askers(node_db: &Db, since_ms: i64) -> Result<Vec<String>> {
     Ok(rows.into_iter().map(|(e,)| e).collect())
 }
 
+/// The crowd to refer an asker to (plans/CROWD.md, ruling 2): the `limit` most recent askers
+/// that said they hold this persona, the asker itself left out, as endpoint ids. Recent first
+/// for the reason `askers_of` is - a referral spreads across whoever asked lately rather than
+/// settling on a clique - and inside the same freshness window, so a holder gone quiet is not
+/// handed out.
+pub async fn holders_of(
+    node_db: &Db,
+    root_hex: &str,
+    except: &str,
+    limit: i64,
+) -> Result<Vec<[u8; 32]>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT endpoint_id FROM identity_demand
+             WHERE root_pubkey = ?1 AND holds = 1 AND endpoint_id != ?2 AND last_asked_ms > ?3
+             ORDER BY last_asked_ms DESC LIMIT ?4",
+            (root_hex, except, now_ms() - ASK_FRESHNESS_MS, limit),
+        )
+        .await
+        .context("reading the holders")?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(e,)| hex::decode(e).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()))
+        .collect())
+}
+
+/// The personas the most nodes asked about lately, most first, among those with somebody to
+/// refer to - the busy referral's candidates (plans/CROWD.md, ruling 3), which the caller
+/// narrows to personas hosted here. A tie goes to the one asked about last.
+pub async fn most_asked(node_db: &Db, limit: i64) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT root_pubkey FROM identity_demand WHERE last_asked_ms > ?1
+             GROUP BY root_pubkey HAVING SUM(holds) > 0
+             ORDER BY COUNT(*) DESC, MAX(last_asked_ms) DESC LIMIT ?2",
+            (now_ms() - ASK_FRESHNESS_MS, limit),
+        )
+        .await
+        .context("reading the most-asked personas")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 pub async fn askers_of(node_db: &Db, root_hex: &str, limit: i64) -> Result<Vec<String>> {
     let rows: Vec<(String,)> = node_db
         .fetch_all(
@@ -111,8 +162,8 @@ mod tests {
     async fn quiet_askers_age_out_and_reasking_reenters() {
         let db = crate::db::test_node_db().await;
         let root = "aa".repeat(32);
-        record_ask(&db, &root, "node-fresh").await.unwrap();
-        record_ask(&db, &root, "node-quiet").await.unwrap();
+        record_ask(&db, &root, "node-fresh", false).await.unwrap();
+        record_ask(&db, &root, "node-quiet", false).await.unwrap();
         // Backdate one past the window (this module owns the table, so its test may).
         db.execute(
             "UPDATE identity_demand SET last_asked_ms = ?1 WHERE endpoint_id = 'node-quiet'",
@@ -125,11 +176,63 @@ mod tests {
         assert_eq!(pruned, 1, "the quiet row is DELETED, not merely unread");
         assert_eq!(askers_of(&db, &root, 10).await.unwrap(), vec!["node-fresh"]);
 
-        record_ask(&db, &root, "node-quiet").await.unwrap();
+        record_ask(&db, &root, "node-quiet", false).await.unwrap();
         let askers = askers_of(&db, &root, 10).await.unwrap();
         assert!(
             askers.contains(&"node-quiet".to_string()),
             "a re-ask re-enters within one beat - pruning never costs data"
+        );
+    }
+
+    /// The busy referral's candidates: most askers first, and only personas somebody holds -
+    /// a persona with nobody to refer to would spend one of three slots on nothing.
+    #[tokio::test]
+    async fn most_asked_counts_askers_among_the_held() {
+        let db = crate::db::test_node_db().await;
+        let (popular, quiet, unheld) = ("aa".repeat(32), "bb".repeat(32), "cc".repeat(32));
+        for (i, e) in ["11", "22", "33"].iter().enumerate() {
+            record_ask(&db, &popular, &e.repeat(32), i == 0).await.unwrap();
+        }
+        record_ask(&db, &quiet, &"44".repeat(32), true).await.unwrap();
+        for e in ["55", "66", "77", "88"] {
+            record_ask(&db, &unheld, &e.repeat(32), false).await.unwrap();
+        }
+        assert_eq!(most_asked(&db, 8).await.unwrap(), vec![popular.clone(), quiet.clone()]);
+        assert_eq!(most_asked(&db, 1).await.unwrap(), vec![popular]);
+    }
+
+    /// A referral names holders only - the ones that said so at their LAST ask - never the
+    /// asker being referred, freshest first.
+    #[tokio::test]
+    async fn holders_are_the_ones_that_said_so_lately() {
+        let db = crate::db::test_node_db().await;
+        let root = "aa".repeat(32);
+        let (a, b, c) = ("11".repeat(32), "22".repeat(32), "33".repeat(32));
+        record_ask(&db, &root, &a, true).await.unwrap();
+        record_ask(&db, &root, &b, false).await.unwrap();
+        record_ask(&db, &root, &c, true).await.unwrap();
+        db.execute(
+            "UPDATE identity_demand SET last_asked_ms = last_asked_ms - 1000 WHERE endpoint_id = ?1",
+            (a.as_str(),),
+        )
+        .await
+        .unwrap();
+
+        let names = |v: Vec<[u8; 32]>| v.into_iter().map(hex::encode).collect::<Vec<_>>();
+        assert_eq!(
+            names(holders_of(&db, &root, "nobody", 8).await.unwrap()),
+            vec![c.clone(), a.clone()]
+        );
+        assert_eq!(
+            names(holders_of(&db, &root, &c, 8).await.unwrap()),
+            vec![a.clone()],
+            "never the asker itself"
+        );
+
+        record_ask(&db, &root, &a, false).await.unwrap();
+        assert!(
+            holders_of(&db, &root, &c, 8).await.unwrap().is_empty(),
+            "a node that stops holding stops being referred"
         );
     }
 }

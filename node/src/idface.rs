@@ -836,14 +836,29 @@ pub(crate) async fn leaf_via_to_endpoint(
     }
 }
 
-async fn record_foreign_fetch(state: &AppState, root_hex: &str, via: &str) -> Result<(), AppError> {
+/// `via` is `None` for a fetch the crowd answered (plans/CROWD.md, ruling 4): fresh, but with
+/// no new word on where the persona's own machinery answers, so `last_via` keeps the last one.
+/// `by_author` says the persona's own machinery answered, which puts the author's next turn at
+/// the staleness pull six hours off (ruling 6, [`crate::crowd::next_author_due`]); a fetch
+/// anyone else answered leaves that turn where it was.
+async fn record_foreign_fetch(
+    state: &AppState,
+    root_hex: &str,
+    via: Option<&str>,
+    by_author: bool,
+) -> Result<(), AppError> {
+    let now = crate::clock::now_ms();
+    let due = if by_author { crate::crowd::next_author_due(now) } else { 0 };
     state
         .node_db
         .execute(
-            "INSERT INTO foreign_fetches (root_pubkey, fetched_at_ms, last_via, looked_ms)
-             VALUES (?1, ?2, ?3, ?2)
-             ON CONFLICT(root_pubkey) DO UPDATE SET fetched_at_ms = ?2, last_via = ?3, looked_ms = ?2",
-            (root_hex, crate::clock::now_ms(), via),
+            "INSERT INTO foreign_fetches (root_pubkey, fetched_at_ms, last_via, looked_ms,
+                 author_due_ms)
+             VALUES (?1, ?2, ?3, ?2, ?4)
+             ON CONFLICT(root_pubkey) DO UPDATE SET fetched_at_ms = ?2,
+                 last_via = COALESCE(?3, last_via), looked_ms = ?2,
+                 author_due_ms = CASE WHEN ?4 > 0 THEN ?4 ELSE author_due_ms END",
+            (root_hex, now, via, due),
         )
         .await
         .map_err(AppError::Internal)?;
@@ -1320,6 +1335,7 @@ pub(crate) async fn backfill(state: &AppState, root_hex: &str) -> bool {
             ceiling: state.config.follow_posts_ceiling,
             below: BACKFILL_ENTRIES,
         },
+        Order::OwnFirst,
     )
     .await
 }
@@ -1346,7 +1362,7 @@ async fn fetch_foreign_at(
     depth: Option<bool>,
 ) -> bool {
     let ask = crate::net::sync::Ask { ceiling: state.config.follow_posts_ceiling, below: 0 };
-    fetch_foreign_with(state, root_hex, via, max_passes, depth, ask).await
+    fetch_foreign_with(state, root_hex, via, max_passes, depth, ask, Order::OwnFirst).await
 }
 
 async fn fetch_foreign_with(
@@ -1356,6 +1372,7 @@ async fn fetch_foreign_with(
     max_passes: usize,
     depth: Option<bool>,
     ask: crate::net::sync::Ask,
+    order: Order,
 ) -> bool {
     // Depth (PROJECT_PLAN's Peeks, ruling 1): nobody here follows them, so this is a PEEK - the scoped
     // exchange for identity, profile and annotations, then the shelf as fragments. A
@@ -1379,9 +1396,51 @@ async fn fetch_foreign_with(
     // founder is gone.)
     let own: Vec<String> =
         std::iter::once(root_hex.to_string()).chain(via.iter().take(10).cloned()).collect();
-    let mut won = race(state, root_hex, scope, ask, max_passes, held_before, own).await;
+    let crowd =
+        crate::crowd::holders(&state.node_db, root_hex, CROWD_CANDIDATES).await.unwrap_or_default();
 
-    // Round two, only when round one reached nobody: the household (the cohort rung, decided
+    // Round zero, for a revalidation only: a holder or two, before the author (plans/CROWD.md,
+    // ruling 6, 2026-10-12). This is the pull that, at a hundred thousand followers, was the
+    // author's whole load; now it lands on the crowd, and the author is asked once its
+    // jittered six hours are up (`author_owed`) - the bound on how long a holder that is
+    // behind can keep this mirror behind. Never for a peek, which nobody here holds for the
+    // crowd, and never for a first fetch, which has no holders to ask.
+    let mut won = None;
+    let mut by_crowd = false;
+    if order == Order::CrowdFirst
+        && !peek
+        && !crowd.is_empty()
+        && !author_owed(&state.node_db, root_hex).await
+    {
+        let few = crate::crowd::pick(&crowd, WAKE_HOLDERS);
+        won = race(state, root_hex, scope, ask, max_passes, held_before, few, false).await;
+        by_crowd = won.is_some();
+    }
+
+    let mut by_author = false;
+    if won.is_none() {
+        won = race(state, root_hex, scope, ask, max_passes, held_before, own, true).await;
+        by_author = won.is_some();
+    }
+
+    // Round two, only when the persona's own nodes reached nobody: the crowd (plans/CROWD.md,
+    // ruling 4) - the nodes their own node said hold them. After the author on purpose, as
+    // the household is: a holder can only hold back, never forge, but it has none of the
+    // author's authority, so it never becomes `last_via` (below) - replies, the shelf and the
+    // bodies behind a ceiling go on asking the persona's own machinery.
+    // Read again: a busy refusal in round one may just have named the holders (ruling 3) -
+    // which is how a brand-new node, with no memo, reaches the crowd at all.
+    let crowd = if won.is_none() && crowd.is_empty() {
+        crate::crowd::holders(&state.node_db, root_hex, CROWD_CANDIDATES).await.unwrap_or_default()
+    } else {
+        crowd
+    };
+    if won.is_none() && !crowd.is_empty() {
+        won = race(state, root_hex, scope, ask, max_passes, held_before, crowd, false).await;
+        by_crowd = won.is_some();
+    }
+
+    // Round three, only when round one reached nobody: the household (the cohort rung, decided
     // 2026-08-15; moved here 2026-09-24 so that EVERY foreign fetch has it - the first look
     // at a persona and a follow's promotion used to walk only the hints, and a phone opening
     // a sleeping author's page for the first time got "none of the address's computers
@@ -1396,16 +1455,18 @@ async fn fetch_foreign_with(
         let household: Vec<String> =
             crate::net::sync::cohort_endpoints(state).await.unwrap_or_default();
         if !household.is_empty() {
-            won = race(state, root_hex, scope, ask, max_passes, held_before, household).await;
+            won =
+                race(state, root_hex, scope, ask, max_passes, held_before, household, false).await;
         }
     }
 
     let Some((key_hex, received)) = won else {
         return false;
     };
-    tracing::info!(root = %root_hex, via = %key_hex, received, peek,
+    tracing::info!(root = %root_hex, via = %key_hex, received, peek, by_crowd,
         "fetched foreign identity on member request");
-    if let Err(e) = record_foreign_fetch(state, root_hex, &key_hex).await {
+    let via = if by_crowd { None } else { Some(key_hex.as_str()) };
+    if let Err(e) = record_foreign_fetch(state, root_hex, via, by_author).await {
         tracing::warn!(root = %root_hex, "could not record foreign fetch: {e:#}");
     }
     if peek {
@@ -1437,6 +1498,23 @@ async fn fetch_foreign_with(
     true
 }
 
+/// Holders tried in the crowd round (plans/CROWD.md, ruling 4): one referral's worth.
+const CROWD_CANDIDATES: i64 = ringtome_proto::sync::MAX_HOLDERS as i64;
+
+/// Holders a revalidation asks before the author (ruling 6), drawn at random from the memo so
+/// the pulls spread across the crowd. Two, not the eight the fallback races: this pull is the
+/// steady state, and every holder raced is an exchange somebody serves. Two rather than one so
+/// a single dead holder doesn't send the pull back to the author.
+const WAKE_HOLDERS: usize = 2;
+
+/// Which the ladder asks first: the persona's own machinery (every first fetch, and anything
+/// whose answer needs the author), or a holder (a revalidation, ruling 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Order {
+    OwnFirst,
+    CrowdFirst,
+}
+
 /// One round of the ladder: dial every candidate IN PARALLEL and take the first that answers
 /// with something - with the `?via=` list widened to ten keys (2026-08-02, keeping
 /// fast-moving identities alive), a sequential ladder's worst case would be ten timeouts end
@@ -1453,6 +1531,11 @@ async fn fetch_foreign_with(
 ///
 /// Returns the winning key and how much it delivered, or `None` when nobody answered with
 /// anything this node could use.
+///
+/// `refers`: a candidate that refuses as busy may name the persona's holders (plans/CROWD.md,
+/// ruling 3), and they are kept - only in the persona's own round, where the candidates are
+/// the ones this node dialed as the persona's machinery.
+#[allow(clippy::too_many_arguments)]
 async fn race(
     state: &AppState,
     root_hex: &str,
@@ -1461,6 +1544,7 @@ async fn race(
     max_passes: usize,
     held_before: bool,
     candidates: Vec<String>,
+    refers: bool,
 ) -> Option<(String, u64)> {
     // Detach, never cancel (2026-08-24, closing REFACTOR's visit-ladder entry): the old
     // shape aborted the also-rans on first success (JoinSet::abort_all) and cancelled each
@@ -1512,6 +1596,16 @@ async fn race(
                 Ok(Ok(Ok(stats))) => Some((key_hex, stats.received)),
                 Ok(Ok(Err(e))) => {
                     tracing::debug!(root = %task_root, via = %key_hex, "foreign fetch failed: {e:#}");
+                    if let Some(busy) = e.downcast_ref::<crate::net::sync::Busy>() {
+                        if refers {
+                            crate::crowd::remember_busy_referral(
+                                &task_state.node_db,
+                                &task_root,
+                                &busy.referrals,
+                            )
+                            .await;
+                        }
+                    }
                     None
                 }
                 Ok(Err(join_error)) => {
@@ -1574,7 +1668,20 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
         // The cohort - our own personas' sibling nodes, which hold the followed world we
         // slept through (FRONTIER GOSSIP's fetch half, the AM-node scenario, 2026-08-15) -
         // is the last rung of EVERY foreign fetch now, added inside `fetch_foreign_with`.
-        let ok = fetch_foreign(&task_state, &root_hex, &via).await;
+        // Crowd first (ruling 6): a revalidation is a staleness pull of a persona held here,
+        // the wake pass's and a page view's alike - the load a popular author can hand on.
+        let ask =
+            crate::net::sync::Ask { ceiling: task_state.config.follow_posts_ceiling, below: 0 };
+        let ok = fetch_foreign_with(
+            &task_state,
+            &root_hex,
+            &via,
+            crate::net::sync::CONTINUATIONS_PER_WAKE,
+            None,
+            ask,
+            Order::CrowdFirst,
+        )
+        .await;
         if !ok {
             tracing::debug!(root = %root_hex, "background revalidation reached nobody");
         }
@@ -1586,15 +1693,41 @@ fn spawn_revalidate(state: &AppState, root_hex: String, via: Vec<String>) -> boo
 /// Stamp a mirrored persona as fresh without a fetch - called by the sync responder when a
 /// push DELIVERS for a followed persona, so the follow-refresh sweep stays quiet exactly
 /// while the push machinery is doing its job. Update-only: a persona with no fetch record
-/// yet keeps "never fetched", which correctly reads as stale.
-pub async fn touch_foreign_fetch(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<()> {
+/// yet keeps "never fetched", which correctly reads as stale. A push the persona's own node
+/// made (`by_author`, member-proven) is the author's word, and resets the author's turn as
+/// a fetch from it does (`record_foreign_fetch`); a holder's relay doesn't.
+pub async fn touch_foreign_fetch(
+    node_db: &crate::db::Db,
+    root_hex: &str,
+    by_author: bool,
+) -> anyhow::Result<()> {
+    let now = crate::clock::now_ms();
+    let due = if by_author { crate::crowd::next_author_due(now) } else { 0 };
     node_db
         .execute(
-            "UPDATE foreign_fetches SET fetched_at_ms = ?2 WHERE root_pubkey = ?1",
-            (root_hex, crate::clock::now_ms()),
+            "UPDATE foreign_fetches SET fetched_at_ms = ?2,
+                 author_due_ms = CASE WHEN ?3 > 0 THEN ?3 ELSE author_due_ms END
+             WHERE root_pubkey = ?1",
+            (root_hex, now, due),
         )
         .await?;
     Ok(())
+}
+
+/// Is the persona's own machinery owed the next staleness pull (plans/CROWD.md, ruling 6)?
+/// True when it hasn't been heard from in its jittered six hours, and when the record can't
+/// say: the author is never skipped for want of a row.
+async fn author_owed(node_db: &crate::db::Db, root_hex: &str) -> bool {
+    match node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT author_due_ms FROM foreign_fetches WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+    {
+        Ok(Some((due,))) => due <= crate::clock::now_ms(),
+        _ => true,
+    }
 }
 
 /// One followed persona, as the refresh sweep weighs it.

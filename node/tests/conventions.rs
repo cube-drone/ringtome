@@ -57,6 +57,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("media_bakes", vec!["record/bake.rs"]),
         ("subscriptions", vec!["net/subscriptions.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
+        ("crowd_holders", vec!["crowd.rs"]),
         // The tag cloud (2026-09-28) reads a journal window's labels in one join, in the memo's
         // module - joined, rather than an IN list of every post.
         ("feed_journal", vec!["fanout.rs", "annotations.rs"]),
@@ -225,7 +226,10 @@ fn user_db_opens_are_deliberate() {
         // sync_with_peer's exists-check before its create: the shelf is minted only when the
         // peer's Hello claims something to put on it, or the wake pass would mint an empty
         // database per unreachable followed stranger per beat.
-        ("net/sync.rs", 4),
+        // The crowd's door (crowd.rs, 2026-10-11): `answers_for_held` opens the mirror to check a
+        // member proof - once per incoming exchange, and only on a small node asked about a
+        // persona followed there quietly.
+        ("net/sync.rs", 5),
         ("record/bake.rs", 2), // bake_one: ONE persona per external-media job, the ingest pattern; foreign_twin: the source author's header, once per copy job (2026-09-28)
         // One open per SHARE - `fragments::current_version` resolves what head this node holds
         // so a share endorses what the reader actually saw. A human gesture, once, never a loop.

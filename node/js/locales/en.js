@@ -2474,6 +2474,8 @@ export default {
     'test_endpoints.unplug-unknown-alpn': 'no such protocol {name}; this node speaks {known}',
     'test_endpoints.unplug-bad-direction': 'no such direction {other}; use both, inbound or outbound',
     'test.endpoints.not-a-blob-hash': 'not a blob hash: 64 hex characters expected',
+    'test_endpoints.not-a-root': 'not a root',
+    'test_endpoints.no-such-door': 'no such door: {door}',
     'test.endpoints.unknown-revalidation-mode': 'unknown revalidation mode {other:?} (tree | fast | none | default)',
 
     // --- node/src/ui.rs ---
