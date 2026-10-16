@@ -451,15 +451,16 @@ How each post feature carries over:
   persona's page lists the feed's cards for one person; each opens at its own
   address inside the group, `/ringtome/people/groups/{id}/posts/{doc}`, there to
   members alone (Curtis, 2026-10-16). "Members" is the disclosure a person's
-  page keeps your relationship in: closed, its head is a line or two of faces at
-  a glance (the founder, the owners, whoever posted last); open, the whole
-  roster, with the invited and an owner's invite there rather than on the
-  group's front page (Curtis, 2026-10-16). An owner can **hide** a post from the
-  group's page: a hide entry the fold honours. They can't delete it, since it's
-  the member's. A hidden post is out of sight for members, but owners see it,
-  faded, to show it again, and so does its author, so they know it was hidden
-  (Curtis, 2026-10-15). An owner's own post isn't theirs to hide: they take it
-  down.
+  page keeps your relationship in: closed, under its heading, a line or two of
+  faces at a glance (the founder, the owners, whoever posted last), each naming
+  its person on a point; open, the whole roster, each name with a cowboy hat
+  (founder or owner) or a cow (member) beside it that says which on a point,
+  with the invited and an owner's invite there rather than on the group's front
+  page (Curtis, 2026-10-16). An owner can **hide** a post from the group's page:
+  a hide entry the fold honours. They can't delete it, since it's the member's.
+  A hidden post is out of sight for members, but owners see it, faded, to show
+  it again, and so does its author, so they know it was hidden (Curtis,
+  2026-10-15). An owner's own post isn't theirs to hide: they take it down.
 - **The group's room.** Each group has one standing room, and any member can
   start more, with the group as their audience.
 - **Mute** a group, per member, in the bell and in the feed.

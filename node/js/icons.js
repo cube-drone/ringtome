@@ -100,6 +100,8 @@ import {
     FileVideo,
     UsersThree,
     UsersFour,
+    Cow,
+    CowboyHat,
     SignIn,
     House,
     Question,
@@ -350,6 +352,10 @@ export const Icons = {
     people: UsersThree,
     // a group, in People's Groups tab (plans/GROUPS.md): a shared roster, drawn apart from people
     group: UsersFour,
+    // Who's who in a group (Curtis, 2026-10-16): the hat for its founder and owners, the cow for
+    // everyone else in the herd.
+    groupOwner: CowboyHat,
+    groupMember: Cow,
     feed: Megaphone,
     notifications: Bell,
     // the People table's vocabulary: signal bars for the graded dials, and the rest

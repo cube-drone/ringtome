@@ -258,22 +258,24 @@ export const GroupPage = ({ group, current }) => {
     </div>`;
 };
 
-/// How many faces the members' closed head shows: about two rows of them.
+/// How many faces the members' closed box shows: about two rows of them.
 const GLANCE = 14;
 
 /// The members (Curtis, 2026-10-16), in the disclosure a person's page keeps your relationship in
-/// (person.js `ContactLedger`): closed, its head says who's in it at a glance - a line or two of
-/// faces, the founder, the owners, whoever posted last; open, the whole roster, with the invited
-/// and an owner's invite there too, off the group's front page.
+/// (person.js `ContactLedger`): its heading, and under it who's in it at a glance - a line or two
+/// of faces that say who on a point, the founder, the owners, whoever posted last. Open, the whole
+/// roster, each name wearing its standing, with the invited and an owner's invite there too, off
+/// the group's front page. The box draws its jag behind it (`group-members-box`), so a face's
+/// pop-over isn't cut off at its edge.
 const Members = ({ roster, current, act, posts }) => {
     const [open, setOpen] = useState(false);
     const glance = membersAtAGlance(roster, posts, GLANCE);
-    return html`<details class="contact-ledger" onToggle=${(e) => setOpen(e.currentTarget.open)}>
-        <summary class="ledger-head">
+    return html`<details class="contact-ledger group-members-box" onToggle=${(e) => setOpen(e.currentTarget.open)}>
+        <summary class="ledger-head group-members-head">
             <span class="group-members-title">${t('apps.groups.members', 'members')}</span>
             ${
                 !open &&
-                html`<span class="group-faces">
+                html`<span class="group-glance">
                     ${glance.map((r) => html`<${PersonChip} key=${r} root=${r} current=${current} />`)}
                 </span>`
             }
@@ -286,22 +288,34 @@ const Members = ({ roster, current, act, posts }) => {
     </details>`;
 };
 
-/// The whole roster, owners marked, with an owner's verbs on each row, and the invited. Seniority
+/// A member's standing beside their name (Curtis, 2026-10-16): a cowboy hat for the founder and the
+/// owners, a cow for everyone else, saying which on a point.
+const StandingMark = ({ founder, owner }) => {
+    const words = founder
+        ? t('apps.groups.founder-created-the-group', 'founder: this user created the group')
+        : owner
+          ? t('apps.groups.owner-can-manage-the-group', 'owner: this user can manage the group')
+          : t('apps.groups.member', 'member');
+    return html`<span class="group-standing" title=${words} aria-label=${words}>
+        <${founder || owner ? Icons.groupOwner : Icons.groupMember} />
+    </span>`;
+};
+
+/// The whole roster, each name wearing its standing, with an owner's verbs on each row, and the
+/// invited. Seniority
 /// is the node's to judge: a junior's act against a senior is refused there, and the refusal shows
 /// here.
 const Roster = ({ roster, current, act }) => {
     const owner = roster.you && roster.you.owner;
     const me = current && current.root;
-    const ownerWord = (m) =>
-        m.root === roster.founder
-            ? t('apps.groups.founder', 'founder')
-            : m.owner
-              ? t('apps.groups.owner', 'owner')
-              : null;
     return html`<div class="people-list">
             ${membersInOrder(roster).map(
                 (m) => html`<div class="group-member" key=${m.root}>
-                    <${PersonRow} root=${m.root} current=${current} aside=${ownerWord(m)} />
+                    <${PersonRow}
+                        root=${m.root}
+                        current=${current}
+                        mark=${html`<${StandingMark} founder=${m.root === roster.founder} owner=${m.owner} />`}
+                    />
                     ${
                         owner &&
                         m.root !== me &&

@@ -145,13 +145,49 @@
     gap: 0.5rem;
 }
 
-/* The members at a glance: a line or two of faces, each saying who on a point. */
-.group-faces {
-    flex: 1;
-    min-width: 0;
+/* The members' box draws its jag on a layer behind it rather than clipping itself, as
+   `contact-ledger` does, so a face's pop-over can reach past the edge. The look is the ledger's:
+   its surface and its dashed line, cut to the same jag. */
+.group-members-box {
+    position: relative;
+    /* Above what follows it, so a pop-over past its edge isn't painted under the posts. */
+    z-index: 1;
+    isolation: isolate;
+    background: none;
+    border: none;
+    clip-path: none;
+}
+
+.group-members-box::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    clip-path: var(--jag);
+}
+
+/* The members at a glance, under their heading: faces in a wrapping run. The summary wraps, and
+   the run sits last (after the caret) on a line of its own. */
+.group-members-head {
+    flex-wrap: wrap;
+}
+
+.group-glance {
+    order: 1;
+    flex-basis: 100%;
     display: flex;
     flex-wrap: wrap;
     gap: 0.35rem;
+}
+
+/* A member's hat or cow, beside their name in the roster. */
+.group-standing {
+    display: inline-flex;
+    align-items: center;
+    color: var(--muted);
+    font-size: 1.1rem;
 }
 
 .group-member {

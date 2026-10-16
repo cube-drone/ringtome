@@ -22212,3 +22212,22 @@ wrote it. The app never sent one, but the agent's `label` tool would have. Now:
 
 A new claim in `mcp.cjs` covers the refusal, the agent's tag and take-back
 showing on the group's page, and `read_post` naming the group with its words.
+
+## 2026-10-16: the members box's faces pop over, and the roster wears hats and cows
+
+The faces in the members box had pop-overs naming each person, and the box cut
+them off: `contact-ledger` draws its jagged edge with a `clip-path`, which clips
+everything inside it. The members box (`group-members-box`) now draws the
+ledger's surface and dashed line, cut to the same jag, on a `::before` behind
+its contents, and clips nothing itself. It also sits above what follows it, so a
+pop-over past its edge shows whole. The faces sit under the "members" heading on
+a line of their own (the summary wraps, and the faces come after the caret).
+
+A first try listed names in place of the faces. Curtis wanted the faces kept,
+and the standing shown in the full roster instead. Each roster row now has a
+mark beside the name (`PersonRow`'s new `mark`): a cowboy hat
+(`Icons.groupOwner`, Phosphor's `CowboyHat`) for the founder and owners, and a
+cow (`Icons.groupMember`) for everyone else. Its house tooltip says "founder:
+this user created the group", "owner: this user can manage the group" or
+"member". The row's right edge has its relationship glance back, where the
+"founder" and "owner" words had been.

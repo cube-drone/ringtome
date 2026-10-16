@@ -351,7 +351,8 @@ export const PersonBanner = ({ root, current, profile, actions }) => {
 /// The banner's roster form: the same face and names, plus your relationship at a glance,
 /// and the WHOLE row is the link (a list is a place you click, not a place you aim). What
 /// People is made of - one component instead of a table's worth of columns.
-export const PersonRow = ({ root, current, profile, aside, storage }) => {
+/// `mark`: something said about them beside their name - a group's hat or cow (groups.js).
+export const PersonRow = ({ root, current, profile, aside, storage, mark }) => {
     const person = usePerson(root, { current, profile });
     if (!root) return null;
     return html`
@@ -361,6 +362,7 @@ export const PersonRow = ({ root, current, profile, aside, storage }) => {
             style=${rowBannerStyle(person)}
         >
             <${PersonHex} person=${person} size="small" />
+            ${mark}
             <${PersonNames} person=${person} />
             ${
                 /* Your tags for them (2026-09-10), on the row itself: the People list is where
