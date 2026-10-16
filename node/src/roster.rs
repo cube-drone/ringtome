@@ -70,9 +70,29 @@ pub async fn refresh_from(state: &AppState, root: &str, _force: bool) {
 }
 
 async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
+    // What the memo already holds of this persona's lanes: each lane's next seq, when the lane is
+    // held unbroken from its start. Only entries past that are read (ONE_FEED.md, slice 1: the
+    // annotations' and edges' catch-up by watermark); a lane with a gap is read whole, so what
+    // fills the gap is taken.
+    let held: Vec<(Vec<u8>, Vec<u8>, i64, i64)> = state
+        .node_db
+        .fetch_all(
+            "SELECT group_id, device, COUNT(*), MAX(seq) FROM group_lanes WHERE persona = ?1
+             GROUP BY group_id, device",
+            (root,),
+        )
+        .await
+        .context("reading what a persona's group lanes hold")?;
+    let marks: std::collections::HashMap<(Vec<u8>, Vec<u8>), i64> = held
+        .into_iter()
+        .filter(|(_, _, count, max)| *count == max + 1)
+        .map(|(group, device, _, max)| ((group, device), max))
+        .collect();
     // user-db open: the fold leg, one persona per move of its GROUP chains.
     let Ok(Some(db)) = state.user_dbs.get(root).await else { return Ok(()) };
-    let entries = crate::record::imaol::group_entries(&db).await.map_err(|e| anyhow!("{e:?}"))?;
+    let entries = crate::record::imaol::group_entries_past(&db, &marks)
+        .await
+        .map_err(|e| anyhow!("{e:?}"))?;
     drop(db);
     let mut touched: BTreeSet<GroupId> = BTreeSet::new();
     for signed in entries {
@@ -102,9 +122,58 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
         }
     }
     for group in touched {
+        // After the inserts: a reader that sees the new stamp sees the new entries.
+        bump_lanes(state, &group).await?;
         refold(state, &group).await?;
     }
     Ok(())
+}
+
+/// The group's lanes moved: its stamp too, so a cached fold of it is stale.
+async fn bump_lanes(state: &AppState, group: &GroupId) -> Result<()> {
+    state
+        .node_db
+        .execute(
+            "INSERT INTO group_stamps (group_id, lanes_seq) VALUES (?1, 1)
+             ON CONFLICT (group_id) DO UPDATE SET lanes_seq = lanes_seq + 1",
+            (group.to_vec(),),
+        )
+        .await
+        .context("moving a group's stamp")?;
+    Ok(())
+}
+
+/// The group's `(lanes_seq, derived_seq)`, or `(0, -1)` for one never stamped.
+async fn stamps_of(state: &AppState, group: &GroupId) -> Result<(i64, i64)> {
+    let row: Option<(i64, i64)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT lanes_seq, derived_seq FROM group_stamps WHERE group_id = ?1",
+            (group.to_vec(),),
+        )
+        .await
+        .context("reading a group's stamp")?;
+    Ok(row.unwrap_or((0, -1)))
+}
+
+/// A stamp for the rows one derivation writes, above every earlier one's: its sweep then takes
+/// exactly the rows it didn't write. Milliseconds when they move, one more when they don't.
+fn next_noted() -> i64 {
+    static LAST: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+    let now = now_ms();
+    let mut last = LAST.load(std::sync::atomic::Ordering::Relaxed);
+    loop {
+        let next = now.max(last + 1);
+        match LAST.compare_exchange(
+            last,
+            next,
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+        ) {
+            Ok(_) => return next,
+            Err(seen) => last = seen,
+        }
+    }
 }
 
 /// Every lane held for a group, decoded. An entry that doesn't decode is left out, as a chain
@@ -163,17 +232,39 @@ async fn lanes_of(state: &AppState, group: &GroupId) -> Result<Vec<Lane>> {
     Ok(lanes.into_values().collect())
 }
 
-/// Fold a group from the memo and keep what the door reads. `None` when no valid founding for
-/// it is held.
-async fn refold(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec<Lane>)>> {
-    // One refold of a group at a time (2026-10-16): each clears the group's people and journal
-    // and writes them again, and two at once interleaved those - the second's inserts met the
-    // first's rows and failed, and a page's burst of body requests (each of which refolded, then)
-    // read "these words haven't reached this computer" on the author's own posts.
+/// A group as its lanes fold: the roster, and the lanes it was folded from. Shared, since a
+/// cached fold is handed to every read of it.
+type Folded = (std::sync::Arc<Roster>, std::sync::Arc<Vec<Lane>>);
+
+/// Fold a group from the memo and keep what the door and the feed read. `None` when no valid
+/// founding for it is held. Writes nothing when the lanes haven't moved since the tables were
+/// last written from them; when they have, rewrites them in place - upserted, then the rows not
+/// written this time swept - so a reader never meets an emptied table (ONE_FEED.md, slice 1).
+async fn refold(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
+    // One derivation of a group at a time (2026-10-16): two at once would sweep each other's rows.
     let lock = refold_lock(group);
     let _held = lock.lock().await;
+    let (lanes_seq, derived_seq) = stamps_of(state, group).await?;
     let Some((roster, lanes)) = folded(state, group).await? else { return Ok(None) };
+    // Whose rows the journal holds turns on who is hosted here too, which the lanes don't say: a
+    // persona adopted onto this node, already in the group, needs its rows. So the members hosted
+    // here are remembered with the tables, in RAM - a boot forgets them, and writes each group's
+    // tables once more.
+    let mut readers: Vec<Root> = Vec::new();
+    for m in &roster.members {
+        if crate::identity::is_agented(&state.node_db, &hex::encode(m)).await.unwrap_or(false) {
+            readers.push(*m);
+        }
+    }
+    type Hosted = std::collections::HashMap<GroupId, Vec<Root>>;
+    static HOSTED: std::sync::LazyLock<std::sync::Mutex<Hosted>> =
+        std::sync::LazyLock::new(Default::default);
+    let same_readers = HOSTED.lock().expect("hosted readers poisoned").get(group) == Some(&readers);
+    if derived_seq == lanes_seq && same_readers {
+        return Ok(Some((roster, lanes)));
+    }
     let db = &state.node_db;
+    let noted = next_noted();
     db.execute(
         "INSERT INTO group_rosters (group_id, name, founder, folded_ms) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT (group_id) DO UPDATE SET name = excluded.name, folded_ms = excluded.folded_ms",
@@ -181,9 +272,6 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec
     )
     .await
     .context("remembering a group")?;
-    db.execute("DELETE FROM group_people WHERE group_id = ?1", (group.to_vec(),))
-        .await
-        .context("clearing a group's people")?;
     let mut people: Vec<(String, &str)> = Vec::new();
     for m in &roster.members {
         people
@@ -194,21 +282,56 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec
     }
     for (root, standing) in people {
         db.execute(
-            "INSERT INTO group_people (group_id, root, standing) VALUES (?1, ?2, ?3)",
-            (group.to_vec(), root, standing),
+            "INSERT INTO group_people (group_id, root, standing, noted) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (group_id, root) DO UPDATE SET standing = excluded.standing,
+               noted = excluded.noted",
+            (group.to_vec(), root, standing, noted),
         )
         .await
         .context("remembering who's in a group")?;
     }
-    rejournal(state, group, &roster).await?;
+    db.execute(
+        "DELETE FROM group_people WHERE group_id = ?1 AND noted < ?2",
+        (group.to_vec(), noted),
+    )
+    .await
+    .context("forgetting who's no longer in a group")?;
+    rejournal(state, group, &roster, &readers, noted).await?;
+    db.execute(
+        "UPDATE group_stamps SET derived_seq = ?2 WHERE group_id = ?1",
+        (group.to_vec(), lanes_seq),
+    )
+    .await
+    .context("noting a group's tables written")?;
+    HOSTED.lock().expect("hosted readers poisoned").insert(*group, readers);
     Ok(Some((roster, lanes)))
 }
 
-/// The group as its held lanes fold now: computed, nothing written. What a read wants - the
-/// memo is kept by [`refold`], which every arrival and every write already runs.
-async fn folded(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec<Lane>)>> {
+/// The group as its held lanes fold now, nothing written: kept while the group's stamp stands,
+/// as the key tree is kept by its chain's entry count (CACHE.md: the stamp is read before the
+/// fold, so a fold that raced an arrival is only ever kept under the older stamp). What a read
+/// wants; the memo is kept by [`refold`].
+async fn folded(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
+    type Kept = std::collections::HashMap<GroupId, (i64, Folded)>;
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<Kept>> =
+        std::sync::LazyLock::new(Default::default);
+    /// Groups kept at once; past it the cache starts again (a node holds few groups).
+    const KEPT_GROUPS: usize = 256;
+    let (stamp, _) = stamps_of(state, group).await?;
+    if let Some((at, kept)) = KEPT.lock().expect("kept folds poisoned").get(group) {
+        if *at == stamp {
+            return Ok(Some(kept.clone()));
+        }
+    }
     let lanes = lanes_of(state, group).await?;
-    Ok(fold::build(*group, &lanes).map(|roster| (roster, lanes)))
+    let Some(roster) = fold::build(*group, &lanes) else { return Ok(None) };
+    let made: Folded = (std::sync::Arc::new(roster), std::sync::Arc::new(lanes));
+    let mut kept = KEPT.lock().expect("kept folds poisoned");
+    if kept.len() >= KEPT_GROUPS {
+        kept.clear();
+    }
+    kept.insert(*group, (stamp, made.clone()));
+    Ok(Some(made))
 }
 
 /// The lock [`refold`] holds for one group.
@@ -265,236 +388,128 @@ fn sees(roster: &Roster, viewer: &Root, post: &Listed) -> bool {
     !post.hidden || post.shown.persona == *viewer || roster.owners.contains_key(viewer)
 }
 
-/// Write each hosted member's rows of the group's journal, as the group now stands: a member
-/// who left or was removed keeps none, and a post they may no longer see leaves. An unchanged
-/// version keeps the words it was searched by, so a refold reads only what moved.
-async fn rejournal(state: &AppState, group: &GroupId, roster: &Roster) -> Result<()> {
+/// Write each hosted member's rows of the group's posts into the one feed journal (ONE_FEED.md,
+/// slice 3), as the group now stands: upserted with this derivation's `noted`, then the group's
+/// rows it didn't write swept - a member who left or was removed keeps none, and a post they may
+/// no longer see (taken down, or hidden from them) leaves. Its labels go to the one label memo,
+/// and its words to the search index, which reads them through the group's door.
+async fn rejournal(
+    state: &AppState,
+    group: &GroupId,
+    roster: &Roster,
+    readers: &[Root],
+    noted: i64,
+) -> Result<()> {
     let db = &state.node_db;
     let (versions, gone) =
         documents_of(state, group, roster).await.map_err(|e| anyhow!("{e:?}"))?;
     let posts = listed(&versions, &gone, roster);
-    let mut labels = labels_of(state, group, roster).await.map_err(|e| anyhow!("{e:?}"))?;
-    let held: Vec<(String, Vec<u8>, String)> = db
-        .fetch_all(
-            "SELECT DISTINCT doc_id, version, tokens FROM group_journal WHERE group_id = ?1",
-            (group.to_vec(),),
-        )
-        .await
-        .context("reading a group's journal")?;
-    let mut readers: Vec<Root> = Vec::new();
-    for m in &roster.members {
-        if crate::identity::is_agented(db, &hex::encode(m)).await.unwrap_or(false) {
-            readers.push(*m);
-        }
-    }
-    db.execute("DELETE FROM group_journal WHERE group_id = ?1", (group.to_vec(),))
-        .await
-        .context("clearing a group's journal")?;
+    let labels = labels_of(state, group, roster).await.map_err(|e| anyhow!("{e:?}"))?;
+    // The labels the fold counted, on the posts it lists, into the one label memo (ONE_FEED.md,
+    // slice 4): scores, chips and the tag cloud read them there.
+    let memo: Vec<crate::annotations::GroupLabelRow> = posts
+        .iter()
+        .flat_map(|p| {
+            let author = hex::encode(p.shown.persona);
+            let doc = hex::encode(p.doc);
+            labels.get(&p.doc).into_iter().flatten().map(move |l| {
+                (author.clone(), doc.clone(), l.annotator.clone(), l.key.clone(), l.value.clone())
+            })
+        })
+        .collect();
+    crate::annotations::keep_group_labels(state, group, &memo, noted).await?;
     for post in &posts {
         let doc_hex = hex::encode(post.doc);
-        let tokens =
-            match held.iter().find(|(d, v, _)| *d == doc_hex && v[..] == post.shown.hash[..]) {
-                Some((_, _, tokens)) => tokens.clone(),
-                None => {
-                    let words = crate::idface::public_blob(state, post.shown.header.file_hash)
-                        .await
-                        .ok()
-                        .flatten()
-                        .and_then(|b| String::from_utf8(b).ok())
-                        .unwrap_or_default();
-                    crate::search::tokens_of(&post.shown.header.title, &words)
-                }
-            };
-        let said = serde_json::to_string(
-            &labels
-                .remove(&post.doc)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|l| serde_json::json!({ "annotator": l.annotator, "key": l.key, "value": l.value }))
-                .collect::<Vec<_>>(),
-        )?;
         let format = crate::record::documents::Format::from_wire(post.shown.header.format).as_str();
         // Its claimed date when it has one, as any post sorts by its (PUBLISH.md).
         let published = post.shown.header.dated_ms.or(post.first.header.genesis_ms).unwrap_or(0);
         let updated = post.shown.header.genesis_ms.unwrap_or(published);
         let minted = post.first.header.genesis_ms.unwrap_or(0);
-        use turso::Value;
         for reader in readers.iter().filter(|r| sees(roster, r, post)) {
             let owns = roster.owners.contains_key(reader);
             db.execute(
-                "INSERT INTO group_journal (reader_root, group_id, group_name, author_root, doc_id,
-                   title, format, published_ms, updated_ms, version, tokens, labels, hidden, owns,
-                   settled, dated_ms, minted_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
-                turso::params_from_iter([
-                    Value::Text(hex::encode(reader)),
-                    Value::Blob(group.to_vec()),
-                    Value::Text(roster.name.clone()),
-                    Value::Text(hex::encode(post.shown.persona)),
-                    Value::Text(doc_hex.clone()),
-                    Value::Text(post.shown.header.title.clone()),
-                    Value::Text(format.to_string()),
-                    Value::Integer(published),
-                    Value::Integer(updated),
-                    Value::Blob(post.shown.hash.to_vec()),
-                    Value::Text(tokens.clone()),
-                    Value::Text(said.clone()),
-                    Value::Integer(post.hidden as i64),
-                    Value::Integer(owns as i64),
-                    Value::Integer(post.shown.header.settled as i64),
-                    post.shown.header.dated_ms.map_or(Value::Null, Value::Integer),
-                    Value::Integer(minted),
-                ]),
+                "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format,
+                   published_ms, updated_ms, arrived_ms, settled, dated_ms, minted_ms, group_id,
+                   hidden, owns, noted)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                 ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
+                   title = excluded.title, format = excluded.format,
+                   published_ms = excluded.published_ms, updated_ms = excluded.updated_ms,
+                   settled = excluded.settled, dated_ms = excluded.dated_ms,
+                   minted_ms = excluded.minted_ms, group_id = excluded.group_id,
+                   hidden = excluded.hidden, owns = excluded.owns, noted = excluded.noted",
+                (
+                    hex::encode(reader),
+                    hex::encode(post.shown.persona),
+                    doc_hex.as_str(),
+                    post.shown.header.title.as_str(),
+                    format,
+                    published,
+                    updated,
+                    i64::from(post.shown.header.settled),
+                    post.shown.header.dated_ms,
+                    minted,
+                    group.to_vec(),
+                    i64::from(post.hidden),
+                    i64::from(owns),
+                    noted,
+                ),
             )
             .await
             .context("journalling a group post")?;
         }
     }
+    db.execute(
+        "DELETE FROM feed_journal WHERE group_id = ?1 AND noted < ?2",
+        (group.to_vec(), noted),
+    )
+    .await
+    .context("sweeping a group's rows from the feed journal")?;
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
 }
 
-/// One of a reader's group journal rows: a feed row, its group, and its labels.
-pub struct GroupFeedRow {
-    pub row: crate::fanout::FeedRow,
-    pub tokens: String,
-    pub labels: Vec<crate::annotations::KnownAnnotation>,
-}
-
-/// A group journal row as [`JOURNAL_COLUMNS`] reads it.
-type JournalRow = (
-    String,
-    Vec<u8>,
-    String,
-    String,
-    String,
-    String,
-    i64,
-    i64,
-    String,
-    String,
-    i64,
-    i64,
-    i64,
-    Option<i64>,
-    i64,
-);
-
-const JOURNAL_COLUMNS: &str = "author_root, group_id, group_name, doc_id, title, format,
-    published_ms, updated_ms, tokens, labels, hidden, owns, settled, dated_ms, minted_ms";
-
-fn journal_row(
-    (
-        author,
-        group,
-        name,
-        doc,
-        title,
-        format,
-        published,
-        updated,
-        tokens,
-        labels,
-        hidden,
-        owns,
-        settled,
-        dated,
-        minted,
-    ): JournalRow,
-) -> GroupFeedRow {
-    let labels: Vec<serde_json::Value> = serde_json::from_str(&labels).unwrap_or_default();
-    GroupFeedRow {
-        row: crate::fanout::FeedRow {
-            author_root: author,
-            via_root: None,
-            suggested_via: None,
-            doc_id: doc,
-            title,
-            format: Some(format),
-            published_ms: published,
-            updated_ms: updated,
-            arrived_ms: published,
-            settled: settled != 0,
-            trusted_only: false,
-            onward: false,
-            dated_ms: dated,
-            // A row from before rung 87 knows no genesis until its group refolds.
-            minted_ms: if minted == 0 { published } else { minted },
-            group: Some(crate::fanout::GroupMark {
-                id: hex::encode(group),
-                name,
-                hidden: hidden != 0,
-                owns: owns != 0,
-            }),
-        },
-        tokens,
-        labels: labels
-            .into_iter()
-            .filter_map(|l| {
-                Some(crate::annotations::KnownAnnotation {
-                    annotator: l["annotator"].as_str()?.to_string(),
-                    key: l["key"].as_str()?.to_string(),
-                    value: l["value"].as_str()?.to_string(),
-                })
-            })
-            .collect(),
-    }
-}
-
-/// A reader's group posts, newest first (ties by document id, highest first), after `before`,
-/// at most `limit` - or all of them, without one. `own` is the feed's "me" chip, and `since_ms`
-/// a best order's window.
-pub async fn feed_rows(
+/// The names of these groups, by hex id, as this node last folded them: a group post's card says
+/// which group (the journal keeps the id, so a rename rewrites no rows).
+pub async fn group_names(
     state: &AppState,
-    reader: &str,
-    before: Option<&(i64, String)>,
-    limit: Option<i64>,
-    own: crate::fanout::Own,
-    since_ms: Option<i64>,
-) -> Result<Vec<GroupFeedRow>> {
-    let mut sql = format!(
-        "SELECT {JOURNAL_COLUMNS}
-         FROM group_journal WHERE reader_root = ?1 AND (published_ms, doc_id) < (?2, ?3)"
-    );
-    match own {
-        crate::fanout::Own::In => {}
-        crate::fanout::Own::Out => sql.push_str(" AND author_root <> reader_root"),
-        crate::fanout::Own::Only => sql.push_str(" AND author_root = reader_root"),
+    ids: &BTreeSet<String>,
+) -> Result<std::collections::HashMap<String, String>> {
+    let mut out = std::collections::HashMap::new();
+    for id in ids {
+        let Ok(raw) = hex::decode(id) else { continue };
+        let row: Option<(String,)> = state
+            .node_db
+            .fetch_optional("SELECT name FROM group_rosters WHERE group_id = ?1", (raw,))
+            .await
+            .context("reading a group's name")?;
+        if let Some((name,)) = row {
+            out.insert(id.clone(), name);
+        }
     }
-    if let Some(since) = since_ms {
-        sql.push_str(&format!(" AND published_ms >= {since}"));
-    }
-    sql.push_str(" ORDER BY published_ms DESC, doc_id DESC");
-    if let Some(limit) = limit {
-        sql.push_str(&format!(" LIMIT {limit}"));
-    }
-    let (ms, doc) = before.cloned().unwrap_or((i64::MAX, String::new()));
-    let rows: Vec<JournalRow> = state
-        .node_db
-        .fetch_all(&sql, (reader, ms, doc.as_str()))
-        .await
-        .context("reading a reader's group posts")?;
-    Ok(rows.into_iter().map(journal_row).collect())
+    Ok(out)
 }
 
-/// One of a reader's group posts, for its own page - or None, when it isn't theirs to see.
-pub async fn feed_row(
+/// The words of a group post, as the search index reads a post (search.rs `body_facts`): its
+/// newest version's file hash and format, off its author's lane - or None when it's no group post
+/// held here.
+pub async fn group_post_body(
     state: &AppState,
-    reader: &str,
-    group: &GroupId,
-    doc: &str,
-) -> Result<Option<GroupFeedRow>> {
-    let rows: Vec<JournalRow> = state
+    author: &str,
+    doc: &[u8; 16],
+) -> Option<([u8; 32], Option<u64>)> {
+    let rows: Vec<(Vec<u8>,)> = state
         .node_db
         .fetch_all(
-            &format!(
-                "SELECT {JOURNAL_COLUMNS} FROM group_journal
-                 WHERE reader_root = ?1 AND group_id = ?2 AND doc_id = ?3"
-            ),
-            (reader, group.to_vec(), doc),
+            "SELECT body FROM group_lanes WHERE persona = ?1 AND entry_type = ?2 ORDER BY seq DESC",
+            (author, i64::from(entry_type::DOC_HEADER)),
         )
         .await
-        .context("reading a group post")?;
-    Ok(rows.into_iter().next().map(journal_row))
+        .ok()?;
+    rows.into_iter()
+        .filter_map(|(body,)| DocHeaderPlain::decode(&body).ok())
+        .find(|h| h.doc_id == *doc)
+        .map(|h| (h.file_hash, h.format))
 }
 
 /// Is `(author, doc)` a group post this node holds - in a hosted member's journal, or posted by
@@ -504,7 +519,8 @@ pub async fn holds_group_post(state: &AppState, author: &str, doc: &[u8; 16]) ->
     let journalled: Vec<(i64,)> = state
         .node_db
         .fetch_all(
-            "SELECT 1 FROM group_journal WHERE author_root = ?1 AND doc_id = ?2 LIMIT 1",
+            "SELECT 1 FROM feed_journal
+             WHERE author_root = ?1 AND doc_id = ?2 AND group_id <> x'' LIMIT 1",
             (author, hex::encode(doc)),
         )
         .await
@@ -535,8 +551,10 @@ async fn post_group_handler(
     let rows: Vec<(Vec<u8>, String)> = state
         .node_db
         .fetch_all(
-            "SELECT group_id, group_name FROM group_journal
-             WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3 LIMIT 1",
+            "SELECT j.group_id, r.name FROM feed_journal j
+             JOIN group_rosters r ON r.group_id = j.group_id
+             WHERE j.reader_root = ?1 AND j.author_root = ?2 AND j.doc_id = ?3
+               AND j.group_id <> x'' LIMIT 1",
             (root.as_str(), author.as_str(), doc.as_str()),
         )
         .await
@@ -550,6 +568,22 @@ async fn post_group_handler(
 
 // ---------------------------------------------------------------------------------------------
 // The door
+
+/// Is `root` in the group now, as the door last folded it: a member or an owner, not merely
+/// invited. What the label memo asks before showing a group post's labels (annotations.rs).
+pub async fn is_member(state: &AppState, group: &GroupId, root: &str) -> bool {
+    state
+        .node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT 1 FROM group_people
+             WHERE group_id = ?1 AND root = ?2 AND standing IN ('member', 'owner')",
+            (group.to_vec(), root),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+}
 
 /// Is this instance a group this node holds?
 pub async fn is_group(state: &AppState, instance: &[u8; 16]) -> bool {
@@ -773,8 +807,9 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
         let Ok(group) = <[u8; 16]>::try_from(group.as_slice()) else { continue };
         if crate::identity::is_agented(&state.node_db, &root).await.unwrap_or(false) {
             sync_group(&state, &root, &group, &[]).await;
-            // Refolded whether or not anything arrived: the feed's journal of the group is
-            // written there, and a node that gained it in an upgrade fills it here (slice 4b).
+            // Refolded whether or not anything arrived: it writes nothing unless the lanes, or
+            // who is hosted here, moved since - and a node that gained the tables in an upgrade
+            // (node rung 91 marks every group) fills them here.
             refold(&state, &group).await?;
         }
     }
@@ -825,14 +860,11 @@ async fn write_signed(
     Ok(signed)
 }
 
-/// The roster as this node holds it, folded now (nothing written) - for `me` only when the
-/// group's door opens to them (ruling 3: members see the roster). A node holds a group for whichever of its
-/// personas is in it; the others on it see nothing, as they would anywhere else.
-async fn current(
-    state: &AppState,
-    group: &GroupId,
-    me: &Root,
-) -> Result<(Roster, Vec<Lane>), AppError> {
+/// The roster as this node holds it, folded now (nothing written; the fold kept by its stamp) -
+/// for `me` only when the group's door opens to them (ruling 3: members see the roster). A node
+/// holds a group for whichever of its personas is in it; the others on it see nothing, as they
+/// would anywhere else.
+async fn current(state: &AppState, group: &GroupId, me: &Root) -> Result<Folded, AppError> {
     let missing =
         || AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"));
     let (roster, lanes) =

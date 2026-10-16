@@ -113,6 +113,8 @@ fn beat_pass<'a>(
             Box::pin(async move { crate::keyprefetch::prefetch_pass(state.clone()).await })
         }
         ("census", _) => Box::pin(async move { crate::census::pass_now(state.clone()).await }),
+        // The group-sync beat (roster.rs `sync_pass`): every group held here, synced and refolded.
+        ("group-sync", _) => Box::pin(async move { crate::roster::sync_pass(state.clone()).await }),
         ("room-sync", Some(r)) => Box::pin(async move {
             let n = crate::chat::sync_open_rooms(state, r).await?;
             tracing::info!(root = %r, exchanged = n, "TEST BEAT: room-sync");

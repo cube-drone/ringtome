@@ -94,7 +94,8 @@ pub struct Narrow {
     /// `not_author=`, three-state like the rest.
     pub authors: Vec<String>,
     pub not_authors: Vec<String>,
-    /// The groups row (plans/GROUPS.md, slice 4b): group ids, `group=` and `not_group=`. A public
+    /// The groups row (plans/GROUPS.md; ONE_FEED.md): group ids, `group=` and `not_group=`, said in
+    /// SQL by the journal filter (`fanout::JournalFilter::groups`). A public
     /// post is in no group, so picking a group leaves only that group's posts.
     pub groups: Vec<String>,
     pub not_groups: Vec<String>,
@@ -173,35 +174,6 @@ impl Narrow {
             || !self.not_groups.is_empty()
     }
 
-    /// The group half of the judgment, for a post in `group` (`None` for a public one).
-    pub fn groups_admit(&self, group: Option<&str>) -> bool {
-        match group {
-            None => self.groups.is_empty(),
-            Some(g) => {
-                (self.groups.is_empty() || self.groups.iter().any(|x| x == g))
-                    && !self.not_groups.iter().any(|x| x == g)
-            }
-        }
-    }
-
-    /// The whole judgment of a group post (roster.rs's journal), whose labels and words the row
-    /// carries rather than the memos holding them: a post, by `author`, its `buckets` the
-    /// author's own and its `tags` anyone's, its words `tokens`.
-    pub fn admits_group_post(
-        &self,
-        group: &str,
-        author: &str,
-        buckets: &[String],
-        tags: &[String],
-        tokens: &str,
-    ) -> bool {
-        self.groups_admit(Some(group))
-            && self.kinds_admit("post")
-            && self.authors_admit(author)
-            && self.labels_admit(buckets, tags)
-            && hits(tokens, &self.terms)
-    }
-
     /// The author half of the judgment.
     pub fn authors_admit(&self, author: &str) -> bool {
         (self.authors.is_empty() || self.authors.iter().any(|a| a == author))
@@ -275,6 +247,13 @@ async fn body_facts(state: &AppState, author_hex: &str, doc_id: &[u8; 16]) -> Op
             trusted_only: h.trusted_only,
             sealed_title: h.sealed_title,
         });
+    }
+    // A group post (ONE_FEED.md, slice 3): its words through the group's lanes, never sealed -
+    // the journal row a reader meets it by is the door.
+    if let Some((file_hash, format)) =
+        crate::roster::group_post_body(state, author_hex, doc_id).await
+    {
+        return Some(BodyFacts { file_hash, format, trusted_only: false, sealed_title: None });
     }
     let db = state.user_dbs.get(author_hex).await.ok().flatten()?;
     let entry = crate::record::documents::public_header_entry(&db, doc_id).await.ok().flatten()?;

@@ -29,6 +29,10 @@ export const AudienceSelect = ({
     // A list a draft stands at stays offered, even once nobody wears the tag.
     const standing = [value, fixed].filter((c) => c && c.startsWith('tag:')).map((c) => c.slice(4));
     const tagged = [...new Set([...tags, ...standing])].filter((tag) => offered(`tag:${tag}`));
+    // Chosen out here: inside the template, a quoted choice reads to the strings cop as copy.
+    const onward = offered('onward');
+    const trusted = offered('trusted');
+    const mentioned = mentions && offered('mentioned');
     return html`<select
         class=${className}
         title=${title}
@@ -36,9 +40,9 @@ export const AudienceSelect = ({
         onChange=${(e) => onChange(e.currentTarget.value)}
     >
         ${(sealing || !fixed) && html`<option value="">${t('audience.everyone', 'everyone')}</option>`}
-        ${offered('onward') && html`<option value="onward">${t('audience.people-i-trust-and-onward', 'people I trust, and onward')}</option>`}
-        ${offered('trusted') && html`<option value="trusted">${t('audience.people-i-trust', 'people I trust')}</option>`}
-        ${mentions && offered('mentioned') && html`<option value="mentioned">${t('audience.the-people-mentioned', 'the people mentioned')}</option>`}
+        ${onward && html`<option value="onward">${t('audience.people-i-trust-and-onward', 'people I trust, and onward')}</option>`}
+        ${trusted && html`<option value="trusted">${t('audience.people-i-trust', 'people I trust')}</option>`}
+        ${mentioned && html`<option value="mentioned">${t('audience.the-people-mentioned', 'the people mentioned')}</option>`}
         ${
             /* The people you've tagged, by tag ("hot pot team"), in a run of their own, as your
             groups are (Curtis, 2026-10-16). */ ''

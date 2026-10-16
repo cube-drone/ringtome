@@ -72,16 +72,16 @@ are driving towards.
 
 ### Groups (plans/GROUPS.md)
 
-- **One feed** ([plans/ONE_FEED.md](plans/ONE_FEED.md), proposed, waiting on
-  Curtis): group posts into `feed_journal` and group labels into
-  `doc_annotations`, filtered like any post; the group fold cached by a
-  per-group stamp; no memo ever cleared. Five slices. It supersedes the 4b
-  residuals below (best and hot without a chip, tag counts, the journal
-  rewritten whole).
+- From ONE_FEED (built 2026-10-16):
+  - **`cascade.cjs`'s "a share held only by a sibling reaches the waking node"
+    setup failed once** in a full run on 2026-10-16 ("the sibling learned the
+    rebroadcast-follow from the synced ledger") and passed three of three alone.
+    A flake to chase.
 - From the group page on the feed's cards:
   - **The group page has no tag strip.** A persona's page lists its posts under
-    the label facets; the group's would want `/feed/labels` to count group posts
-    (the 4b residual below), and then the same strip narrowed to the group.
+    the label facets. `/feed/labels` counts group posts now (ONE_FEED slice 3);
+    the group's page wants that strip narrowed to the group (`group=` on the
+    labels route) and drawn.
   - **The page lists everything at once.** The feed narrowed to a group answers
     up to `RESULTS_CAP` posts unpaged, as any narrowed feed does; a busy group
     wants the time-ordered feed's cursor.
@@ -93,27 +93,15 @@ are driving towards.
   - **Comments off on a group post** rides its header, but group posts take no
     replies yet, so it changes nothing until they do.
 - From 4b (the feed):
-  - **Best and hot, with no chip picked, leave group posts out.** They read off
-    the score indexes in runs, and group posts have no scores yet (reactions on
-    a group post are its lane's labels, not public ones). With any chip picked
-    they're in, at a score of nothing.
-  - **The strip's tag counts leave group posts out** (`/feed/labels` counts the
-    public memo), so a tag only a group post carries gets no chip.
   - **Editing a group post from its card**: the card finds a post's draft
     through the mirror's `published_as`, which a group post's draft doesn't
     carry (its link is the node's `group_drafts`). Publishing the draft again
     from Writer edits it.
-  - **The journal is rewritten whole at every refold**, per hosted member. Fine
-    at a handful of members and posts; a big group wants the rows moved by what
-    changed.
 - From 4a (labels):
   - **A mention in a group post rings nobody.** The mention and tagged notices'
     evidence must be a public annotation (`deliver::verify_claim`), so the
     group's own wants a notice kind, or room for a group lane in those two.
 - From the app's first part:
-  - **Writer's publish bar picks a destination**: Everyone or one of your
-    groups, so a group post can carry pictures. The group page's quick composer
-    is words only.
   - **Two invites from one person collapse in the bell.** The inbox keeps one
     row per (sender, kind), as it does for mentions, so a second group's invite
     from the same owner replaces the first, both in the bell and in the Groups

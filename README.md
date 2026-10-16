@@ -134,8 +134,11 @@ lightly federated, unapologetically Old Internet.
 - [`GROUPS.md`](plans/GROUPS.md) — groups: one roster every member sees alike,
   kept on every member's computer and folded from their own entries; owners
   ranked by appointment, CROWN-style, so no founder is needed; content served
-  only to members. Replaces PROJECT_PLAN's _Groups: Identity-Shaped_ sketch. A
-  design draft (2026-10-14); nothing built.
+  only to members. Replaces PROJECT_PLAN's _Groups: Identity-Shaped_ sketch. The
+  roster, invites, group posts and the groups app are built (2026-10-15/16);
+  Proposed: public groups (a public roster, members posting as themselves for
+  the group, carried to their followers) beside private ones, chosen at
+  founding; and what a group owns (shared notebooks, drawings, playlists).
 - [`HORSE_BASED_CURRENCIES.md`](plans/HORSE_BASED_CURRENCIES.md) — HorseBucks
   and the other currencies: never transferable, a balance is a fold over the
   persona's own ledger that may go negative and is never rolled back, interest
@@ -160,7 +163,7 @@ lightly federated, unapologetically Old Internet.
   key for what the tools don't reach.
 - [`ONE_FEED.md`](plans/ONE_FEED.md) — group posts in the one feed journal,
   filtered like any post, and a group's fold cached by a stamp rather than
-  rebuilt on every read (proposed 2026-10-16; replaces GROUPS.md slice 4b's
+  rebuilt on every read (built 2026-10-16; replaced GROUPS.md slice 4b's
   separate journal).
 - [`QR.md`](plans/QR.md) — QR codes of a person and of a public post: the web
   address where the node has a public URL, else a `ringtome://` address only the

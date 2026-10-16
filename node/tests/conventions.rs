@@ -60,7 +60,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("crowd_holders", vec!["crowd.rs"]),
         // The tag cloud (2026-09-28) reads a journal window's labels in one join, in the memo's
         // module - joined, rather than an IN list of every post.
-        ("feed_journal", vec!["fanout.rs", "annotations.rs"]),
+        // roster.rs writes a group post's rows (ONE_FEED.md, slice 3), only ever those with a group.
+        ("feed_journal", vec!["fanout.rs", "annotations.rs", "roster.rs"]),
         ("post_search", vec!["search.rs"]),
         ("post_terms", vec!["search.rs"]),
         ("room_messages", vec!["chat.rs"]),
@@ -74,8 +75,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("group_rosters", vec!["roster.rs"]),
         ("group_people", vec!["roster.rs"]),
         ("group_peers", vec!["roster.rs"]),
-        // Group posts in the feed (slice 4b): their own journal, merged with feed_journal at read.
-        ("group_journal", vec!["roster.rs"]),
+        ("group_stamps", vec!["roster.rs"]),
         ("census_days", vec!["census.rs"]),
         ("front_door", vec!["frontdoor.rs"]),
         ("import_policy", vec!["import.rs"]),
@@ -709,4 +709,42 @@ fn released_migrations_never_change() {
         pinned += 1;
     }
     assert!(pinned >= 2, "both baselines are pinned");
+}
+
+/// The public road's maintenance never touches a group post's row (plans/ONE_FEED.md, slice 2).
+/// `feed_journal` holds both, told apart by `group_id`: empty for a public post. Fanout deletes
+/// and rewrites rows by author and document as the public lane moves - a group post is never on
+/// that lane, so a statement that forgot to say `group_id` would delete every group post (a boot's
+/// `retract_vanished`) or a fellow member's (an unfollow). So every `DELETE FROM feed_journal` and
+/// `UPDATE feed_journal` outside tests names `group_id`: the public road's say `group_id = x''`,
+/// the group writer's say which group.
+#[test]
+fn the_public_road_never_touches_a_group_row() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut unscoped = Vec::new();
+    for path in files {
+        let source = std::fs::read_to_string(&path).expect("readable source");
+        // Tests write what they like into a scratch journal.
+        let body = &source[..source.find("#[cfg(test)]").unwrap_or(source.len())];
+        let rel = path.strip_prefix(&src).unwrap().to_string_lossy().replace('\\', "/");
+        for needle in ["DELETE FROM feed_journal", "UPDATE feed_journal"] {
+            for (at, _) in body.match_indices(needle) {
+                let rest = &body[at..];
+                let statement = &rest[..rest.find('"').unwrap_or(rest.len())];
+                if !statement.contains("group_id") {
+                    let line = body[..at].lines().count();
+                    let flat: String = statement.split_whitespace().collect::<Vec<_>>().join(" ");
+                    unscoped.push(format!("src/{rel}:{line}: {}", &flat[..flat.len().min(100)]));
+                }
+            }
+        }
+    }
+    assert!(
+        unscoped.is_empty(),
+        "a feed_journal delete or update that doesn't say which rows it means by `group_id` - \
+         a group post's row would go with the public ones (see this test's doc):\n  {}",
+        unscoped.join("\n  ")
+    );
 }

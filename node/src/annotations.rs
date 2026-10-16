@@ -144,6 +144,7 @@ pub fn labels_that_stand(statements: Vec<Statement>) -> Vec<Statement> {
             sealed: false,
             holder: None,
             holder_doc: None,
+            group: None,
         })
         .collect();
     bounded(rows)
@@ -176,14 +177,31 @@ async fn holder_admits(
     crate::idface::seal_lists(state, holder, holder_doc, v, None).await
 }
 
-/// Which of these rows the viewer may see: every open row, and a sealed row only when its
-/// holder admits the viewer - judged once per holder. Raw `sealed` rows never.
+/// Which of these rows the viewer may see: every open row, a sealed row only when its holder
+/// admits the viewer - judged once per holder - and a group post's label only when the viewer is
+/// in that group (ONE_FEED.md, slice 4), judged once per group. Raw `sealed` rows never; with no
+/// viewer, no group row.
 async fn admitted(state: &AppState, rows: Vec<MemoRow>, viewer: Option<&str>) -> Vec<MemoRow> {
     let mut verdicts: std::collections::HashMap<String, bool> = Default::default();
+    let mut groups: std::collections::HashMap<[u8; 16], bool> = Default::default();
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
         if r.key == SEALED_KEY {
             continue;
+        }
+        if let Some(group) = r.group {
+            let Some(v) = viewer else { continue };
+            let ok = match groups.get(&group) {
+                Some(ok) => *ok,
+                None => {
+                    let ok = crate::roster::is_member(state, &group, v).await;
+                    groups.insert(group, ok);
+                    ok
+                }
+            };
+            if !ok {
+                continue;
+            }
         }
         if r.sealed {
             let Some(holder) = r.holder.clone() else { continue };
@@ -209,7 +227,8 @@ async fn admitted(state: &AppState, rows: Vec<MemoRow>, viewer: Option<&str>) ->
 /// One post's memo rows, the author's own first: a seek on `doc_annotations_sealed_as`, whose
 /// lead is the post's full key. Named so the plan test pins the statement that runs.
 const POST_ROWS: &str =
-    "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc
+    "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc,
+       group_id
      FROM doc_annotations WHERE target_author = ?1 AND target_doc = ?2
      ORDER BY (annotator = target_author) DESC, noted_ms";
 
@@ -241,11 +260,16 @@ struct MemoRow {
     sealed: bool,
     holder: Option<String>,
     holder_doc: Option<String>,
+    /// The group the post belongs to, for a group post's label (node rung 90).
+    group: Option<[u8; 16]>,
 }
 
-type MemoTuple = (String, String, String, String, String, i64, Option<String>, Option<String>);
+type MemoTuple =
+    (String, String, String, String, String, i64, Option<String>, Option<String>, Vec<u8>);
 
-fn memo_row((ta, td, annotator, key, value, sealed, holder, holder_doc): MemoTuple) -> MemoRow {
+fn memo_row(
+    (ta, td, annotator, key, value, sealed, holder, holder_doc, group): MemoTuple,
+) -> MemoRow {
     MemoRow {
         target_author: ta,
         target_doc: td,
@@ -255,6 +279,7 @@ fn memo_row((ta, td, annotator, key, value, sealed, holder, holder_doc): MemoTup
         sealed: sealed != 0,
         holder,
         holder_doc,
+        group: <[u8; 16]>::try_from(group.as_slice()).ok(),
     }
 }
 
@@ -360,7 +385,9 @@ async fn note_sealed(
 }
 
 /// Every post one person has a tag on, or a sealed statement that may open to one - what a
-/// reader's scores must look at again when their dial on that person moves (score.rs).
+/// reader's scores must look at again when their dial on that person moves (score.rs). A group
+/// post's (any `group_id`) as well: a member's best and hot rank it like any post, and a reader
+/// outside the group has no row of it to rank.
 pub async fn targets_of(node_db: &Db, annotator: &str) -> Result<Vec<(String, String)>> {
     node_db
         .fetch_all(
@@ -370,6 +397,61 @@ pub async fn targets_of(node_db: &Db, annotator: &str) -> Result<Vec<(String, St
         )
         .await
         .context("reading a labeller's posts")
+}
+
+/// One label a group's fold counted, as the memo keeps it: `(post author, post doc, annotator,
+/// key, value)`, all hex or text.
+pub type GroupLabelRow = (String, String, String, String, String);
+
+/// Write a group's counted labels into the memo (ONE_FEED.md, slice 4): each upserted with the
+/// group and this derivation's `mark`, then the group's rows without it swept - nothing cleared
+/// first, so a reader never meets a group's labels missing. Scores and the tag cloud hear of it.
+pub async fn keep_group_labels(
+    state: &AppState,
+    group: &[u8; 16],
+    rows: &[GroupLabelRow],
+    mark: i64,
+) -> Result<()> {
+    let db = &state.node_db;
+    for (author, doc, annotator, key, value) in rows {
+        db.execute(
+            "INSERT INTO doc_annotations
+               (target_author, target_doc, annotator, key, value, noted_ms, learned_via, emoji,
+                group_id, group_mark)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'group', ?7, ?8, ?9)
+             ON CONFLICT (target_author, target_doc, annotator, key, value) DO UPDATE SET
+               group_id = excluded.group_id, group_mark = excluded.group_mark",
+            (
+                author.as_str(),
+                doc.as_str(),
+                annotator.as_str(),
+                key.as_str(),
+                value.as_str(),
+                now_ms(),
+                reaction_flag(key, value),
+                group.to_vec(),
+                mark,
+            ),
+        )
+        .await
+        .context("noting a group label")?;
+    }
+    db.execute(
+        "DELETE FROM doc_annotations WHERE group_id = ?1 AND group_mark < ?2",
+        (group.to_vec(), mark),
+    )
+    .await
+    .context("sweeping a group's labels")?;
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+    let mut touched: Vec<(String, String, String)> = rows
+        .iter()
+        .filter(|(_, _, _, key, _)| key == TAG_KEY)
+        .map(|(author, doc, annotator, _, _)| (author.clone(), doc.clone(), annotator.clone()))
+        .collect();
+    touched.sort();
+    touched.dedup();
+    crate::score::labels_moved(state, &touched).await;
+    Ok(())
 }
 
 /// The fold-lane hook: fold one annotator's statements past the mark.
@@ -514,8 +596,9 @@ pub async fn label_counts(
         .node_db
         .fetch_all(
             &format!(
-                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc FROM doc_annotations
-                 WHERE target_doc IN ({}) AND key IN ('bucket', 'tag')",
+                "SELECT target_author, target_doc, annotator, key, value, sealed, holder_root, holder_doc,
+                   group_id
+                 FROM doc_annotations WHERE target_doc IN ({}) AND key IN ('bucket', 'tag')",
                 docs.join(",")
             ),
             (),
@@ -563,17 +646,21 @@ pub async fn for_posts(
 /// when there are more, and walking the feed newest first is the cheaper road. Node-wide, and a
 /// superset: whose bucket, the two-tag rule and sealed admission are the caller's exact judgment
 /// (search.rs `matching`) to apply to what this finds.
+/// `with_groups`: group posts' labels too - for a caller that meets what this finds with one
+/// reader's journal (the feed, which holds a group post's row only for its members); never for a
+/// public surface.
 pub async fn posts_labelled(
     node_db: &Db,
     key: &str,
     value: &str,
     cap: usize,
+    with_groups: bool,
 ) -> Result<Option<Vec<(String, String)>>> {
     let posts: Vec<(String, String)> = node_db
         .fetch_all(
             "SELECT DISTINCT target_author, target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
-             WHERE key = ?1 AND value = ?2 LIMIT ?3",
-            (key, value, cap as i64 + 1),
+             WHERE key = ?1 AND value = ?2 AND (group_id = x'' OR ?4) LIMIT ?3",
+            (key, value, cap as i64 + 1, i64::from(with_groups)),
         )
         .await
         .context("reading a label's posts")?;
@@ -592,7 +679,8 @@ pub async fn emoji_received(
     node_db
         .fetch_all(
             "SELECT annotator, target_doc, value, noted_ms FROM doc_annotations
-             WHERE target_author = ?1 AND key = 'tag' AND emoji = 1 AND annotator <> ?1",
+             WHERE target_author = ?1 AND key = 'tag' AND emoji = 1 AND annotator <> ?1
+               AND group_id = x''",
             (author_hex,),
         )
         .await
@@ -612,7 +700,7 @@ pub async fn emoji_noted_between(
         .fetch_all(
             "SELECT target_author, target_doc, value, noted_ms FROM doc_annotations
              WHERE key = 'tag' AND emoji = 1 AND sealed = 0 AND annotator <> target_author
-               AND noted_ms >= ?1 AND noted_ms < ?2",
+               AND noted_ms >= ?1 AND noted_ms < ?2 AND group_id = x''",
             (from_ms, to_ms),
         )
         .await
@@ -626,7 +714,8 @@ pub async fn sound_posts(node_db: &Db) -> Result<std::collections::HashSet<(Stri
     let rows: Vec<(String, String)> = node_db
         .fetch_all(
             "SELECT DISTINCT target_author, target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
-             WHERE key = 'tag' AND value = 'audio' AND annotator = target_author",
+             WHERE key = 'tag' AND value = 'audio' AND annotator = target_author
+               AND group_id = x''",
             (),
         )
         .await
@@ -645,7 +734,7 @@ pub async fn tagged_docs(
         .fetch_all(
             "SELECT DISTINCT target_doc FROM doc_annotations
              WHERE target_author = ?1 AND annotator = ?1 AND key IN ('artist', 'album')
-               AND value <> '' AND sealed = 0",
+               AND value <> '' AND sealed = 0 AND group_id = x''",
             (author_hex,),
         )
         .await
@@ -659,7 +748,7 @@ pub async fn tagged_authors(node_db: &Db) -> Result<Vec<String>> {
         .fetch_all(
             "SELECT DISTINCT target_author FROM doc_annotations
              WHERE annotator = target_author AND key IN ('artist', 'album')
-               AND value <> '' AND sealed = 0",
+               AND value <> '' AND sealed = 0 AND group_id = x''",
             (),
         )
         .await
@@ -675,6 +764,7 @@ pub async fn post_at_path(node_db: &Db, author_hex: &str, path: &str) -> Result<
         .fetch_optional(
             "SELECT target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
              WHERE key = ?1 AND value = ?2 AND target_author = ?3 AND annotator = ?3 AND sealed = 0
+               AND group_id = x''
              ORDER BY noted_ms LIMIT 1",
             (crate::webpath::PATH_KEY, path, author_hex),
         )
@@ -696,7 +786,7 @@ pub async fn folder_notebook(
         .fetch_optional(
             "SELECT target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
              WHERE key = ?1 AND value >= ?2 AND value < ?3 AND target_author = ?4 AND annotator = ?4
-               AND sealed = 0
+               AND sealed = 0 AND group_id = x''
              LIMIT 1",
             (crate::webpath::PATH_KEY, format!("{folder}/"), format!("{folder}0"), author_hex),
         )
@@ -707,7 +797,7 @@ pub async fn folder_notebook(
         .fetch_all(
             "SELECT value FROM doc_annotations
              WHERE target_author = ?1 AND target_doc = ?2 AND annotator = ?1 AND key = 'bucket'
-               AND sealed = 0",
+               AND sealed = 0 AND group_id = x''",
             (author_hex, doc.as_str()),
         )
         .await
@@ -724,7 +814,7 @@ pub async fn path_of(node_db: &Db, author_hex: &str, doc_hex: &str) -> Result<Op
         .fetch_optional(
             "SELECT value FROM doc_annotations
              WHERE target_author = ?1 AND target_doc = ?2 AND annotator = ?1 AND key = ?3
-               AND sealed = 0
+               AND sealed = 0 AND group_id = x''
              ORDER BY noted_ms LIMIT 1",
             (author_hex, doc_hex, crate::webpath::PATH_KEY),
         )
@@ -741,7 +831,8 @@ pub async fn published_from(
     let row: Option<(String,)> = node_db
         .fetch_optional(
             "SELECT target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
-             WHERE key = ?1 AND value = ?2 AND target_author = ?3 AND annotator = ?3 LIMIT 1",
+             WHERE key = ?1 AND value = ?2 AND target_author = ?3 AND annotator = ?3
+               AND group_id = x'' LIMIT 1",
             (crate::record::store::PUBLISHED_FROM, doc_hex, author_hex),
         )
         .await
@@ -752,7 +843,7 @@ pub async fn published_from(
 /// The journal window's labels: the window a range scan of the time index, each post's labels
 /// probed by the memo's key - pinned, table and order both, since this engine's planner picks
 /// neither on its own (the tests ask it).
-const JOURNAL_LABELS: &str = "SELECT a.target_author, a.target_doc, a.annotator, a.key, a.value, a.sealed, a.holder_root, a.holder_doc
+const JOURNAL_LABELS: &str = "SELECT a.target_author, a.target_doc, a.annotator, a.key, a.value, a.sealed, a.holder_root, a.holder_doc, a.group_id
      FROM feed_journal j INDEXED BY feed_journal_by_time
      CROSS JOIN doc_annotations a INDEXED BY sqlite_autoindex_doc_annotations_1
        ON a.target_author = j.author_root AND a.target_doc = j.doc_id
@@ -806,7 +897,7 @@ async fn for_posts_inner(
     let rows = fetch_rows(&state.node_db, posts).await?;
     let rows = bounded(match viewer {
         Some(v) => admitted(state, rows, v).await,
-        None => rows.into_iter().filter(|r| r.key != SEALED_KEY).collect(),
+        None => rows.into_iter().filter(|r| r.key != SEALED_KEY && r.group.is_none()).collect(),
     });
     let mut out: std::collections::HashMap<(String, String), Vec<KnownAnnotation>> =
         Default::default();
@@ -841,7 +932,7 @@ pub async fn ledger_for(
     let labels: Vec<(String, String, String, i64, String)> = node_db
         .fetch_all(
             "SELECT annotator, key, value, noted_ms, learned_via FROM doc_annotations
-             WHERE target_author = ?1 AND target_doc = ?2 ORDER BY noted_ms",
+             WHERE target_author = ?1 AND target_doc = ?2 AND group_id = x'' ORDER BY noted_ms",
             (root, doc),
         )
         .await
@@ -1099,7 +1190,68 @@ mod tests {
             sealed: false,
             holder: None,
             holder_doc: None,
+            group: None,
         }
+    }
+
+    /// A group post's labels sit in the one memo (ONE_FEED.md, slice 4) and no read that names no
+    /// reader - every public page's - ever returns one. Each such read is asked about a public
+    /// post and a group post that carry the same labels, and must find only the public one.
+    #[tokio::test]
+    async fn a_read_with_no_reader_never_meets_a_group_label() {
+        let db = crate::db::test_node_db().await;
+        for (doc, group) in [("pub", ""), ("grp", "0123456789abcdef0123456789abcdef")] {
+            for (annotator, key, value, emoji) in [
+                ("a", "tag", "audio", 0),
+                ("a", "artist", "Buck", 0),
+                ("a", "path", "notes/thing", 0),
+                ("a", "bucket", "notes", 0),
+                ("a", crate::record::store::PUBLISHED_FROM, "src", 0),
+                ("b", "tag", "\u{1F434}", 1),
+                ("b", "tag", "spuds", 0),
+            ] {
+                db.execute(
+                    &format!(
+                        "INSERT INTO doc_annotations
+                           (target_author, target_doc, annotator, key, value, noted_ms, emoji,
+                            group_id)
+                         VALUES ('a', '{doc}', ?1, ?2, ?3, 5, ?4, x'{group}')"
+                    ),
+                    (annotator, key, value, emoji),
+                )
+                .await
+                .unwrap();
+            }
+        }
+        let only_public = |docs: Vec<String>| docs.iter().all(|d| d == "pub") && !docs.is_empty();
+        let labelled = posts_labelled(&db, "tag", "spuds", 10, false).await.unwrap().unwrap();
+        assert!(only_public(labelled.into_iter().map(|(_, d)| d).collect()), "posts_labelled");
+        // The feed's road asks for group posts too: it meets them with one reader's journal.
+        let both = posts_labelled(&db, "tag", "spuds", 10, true).await.unwrap().unwrap();
+        assert_eq!(both.len(), 2, "with groups, the group post is found as well");
+        let sounds = sound_posts(&db).await.unwrap();
+        assert!(only_public(sounds.into_iter().map(|(_, d)| d).collect()), "sound_posts");
+        assert!(
+            only_public(tagged_docs(&db, "a").await.unwrap().into_iter().collect()),
+            "tagged_docs"
+        );
+        let reacted = emoji_received(&db, "a").await.unwrap();
+        assert!(only_public(reacted.into_iter().map(|(_, d, _, _)| d).collect()), "emoji_received");
+        let noted = emoji_noted_between(&db, 0, 10).await.unwrap();
+        assert!(
+            only_public(noted.into_iter().map(|(_, d, _, _)| d).collect()),
+            "emoji_noted_between"
+        );
+        assert_eq!(post_at_path(&db, "a", "notes/thing").await.unwrap().as_deref(), Some("pub"));
+        assert_eq!(path_of(&db, "a", "grp").await.unwrap(), None, "path_of");
+        assert_eq!(published_from(&db, "a", "src").await.unwrap().as_deref(), Some("pub"));
+        let (ledger, _) = ledger_for(&db, "a", "grp").await.unwrap();
+        assert!(ledger.is_empty(), "ledger_for a group post");
+        // Only the group's labels left: the public reads find nothing at all.
+        db.execute("DELETE FROM doc_annotations WHERE target_doc = 'pub'", ()).await.unwrap();
+        assert_eq!(folder_notebook(&db, "a", "notes").await.unwrap(), None, "folder_notebook");
+        assert!(tagged_authors(&db).await.unwrap().is_empty(), "tagged_authors");
+        assert!(posts_labelled(&db, "tag", "spuds", 10, false).await.unwrap().unwrap().is_empty());
     }
 
     /// The tag rules every reader keeps (2026-09-27): two to a person on somebody else's
@@ -1270,7 +1422,7 @@ mod tests {
         let plan: Vec<(i64, i64, i64, String)> = db
             .fetch_all(
                 "EXPLAIN QUERY PLAN SELECT DISTINCT target_author, target_doc FROM doc_annotations INDEXED BY doc_annotations_by_value
-                 WHERE key = ?1 AND value = ?2 LIMIT ?3",
+                 WHERE key = ?1 AND value = ?2 AND (group_id = x'' OR ?4) LIMIT ?3",
                 (),
             )
             .await
@@ -1280,13 +1432,16 @@ mod tests {
         for d in ["11", "22", "33"] {
             note(&db, "a", &d.repeat(16), "b", "tag", "bread", "chain").await.unwrap();
         }
-        assert_eq!(posts_labelled(&db, "tag", "bread", 5).await.unwrap().map(|v| v.len()), Some(3));
         assert_eq!(
-            posts_labelled(&db, "tag", "bread", 2).await.unwrap(),
+            posts_labelled(&db, "tag", "bread", 5, false).await.unwrap().map(|v| v.len()),
+            Some(3)
+        );
+        assert_eq!(
+            posts_labelled(&db, "tag", "bread", 2, false).await.unwrap(),
             None,
             "three past a cap of two"
         );
-        assert_eq!(posts_labelled(&db, "tag", "rye", 2).await.unwrap(), Some(Vec::new()));
+        assert_eq!(posts_labelled(&db, "tag", "rye", 2, false).await.unwrap(), Some(Vec::new()));
     }
 
     /// A reaction is flagged as it is noted (node rung 0056), so SQL can tell one without the

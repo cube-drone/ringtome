@@ -1614,6 +1614,44 @@ pub async fn group_entries(db: &Db) -> Result<Vec<SignedEntry>, AppError> {
         .collect()
 }
 
+/// The GROUP entries past what the group memo already holds (roster.rs, ONE_FEED.md slice 1):
+/// `held` is each lane's last seq, by `(group id, device key)`, for lanes held unbroken from their
+/// start. A chain `held` doesn't name is read whole.
+pub async fn group_entries_past(
+    db: &Db,
+    held: &std::collections::HashMap<(Vec<u8>, Vec<u8>), i64>,
+) -> Result<Vec<SignedEntry>, AppError> {
+    let chains: Vec<(String, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT DISTINCT author_pubkey, instance FROM entries WHERE service = ?1",
+            (i64::from(service::GROUP),),
+        )
+        .await
+        .context("listing the group lanes")
+        .map_err(AppError::Internal)?;
+    let mut out = Vec::new();
+    for (author, instance) in chains {
+        let device = hex::decode(&author).unwrap_or_default();
+        let past = held.get(&(instance.clone(), device)).copied().unwrap_or(-1);
+        let rows: Vec<(Vec<u8>,)> = db
+            .fetch_all(
+                "SELECT bytes FROM entries INDEXED BY sqlite_autoindex_entries_1
+                 WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq > ?4
+                 ORDER BY seq",
+                (author.as_str(), i64::from(service::GROUP), instance, past),
+            )
+            .await
+            .context("reading a group lane")
+            .map_err(AppError::Internal)?;
+        for (bytes,) in rows {
+            out.push(SignedEntry::decode(&bytes).map_err(|e| {
+                AppError::Internal(anyhow!("stored group entry fails decode: {e}"))
+            })?);
+        }
+    }
+    Ok(out)
+}
+
 /// The stored head of every chain a key has written: `(service, instance, seq, head_hash)` -
 /// exactly the shape revocation anchors want.
 pub async fn chain_heads_for_author(

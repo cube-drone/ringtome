@@ -12,7 +12,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { makeUserFetch, makePng } = require('./helpers.cjs');
 const { beat } = require('./beat.cjs');
-const { HOST, HOST_B, HOST_C, makeFetch } = require('./fetch.cjs');
+const { HOST, HOST_B, HOST_C, makeFetch, sql } = require('./fetch.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -281,6 +281,40 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.ok(!(await feed(dee, deeRoot)).some((i) => i.doc_id === post), "never a stranger's");
     });
 
+    it('a group post is a row of the one feed journal: the public road leaves it be, and every view sees it', async () => {
+        // ONE_FEED.md slice 3: no journal of its own any more.
+        const feed = async (query = '') =>
+            (await (await ada(`api/identity/${adaRoot}/feed${query}`)).json()).items || [];
+        const inIt = async (query) => (await feed(query)).some((i) => i.doc_id === post);
+        const gone = await sql("SELECT name FROM sqlite_master WHERE name = 'group_journal'");
+        assert.equal(gone.rows.length, 0, 'the separate journal is gone');
+        // Following bea and then not: the unfollow excises bea's public rows, never her group post.
+        const interest = (level) =>
+            ada(`api/identity/${adaRoot}/private/kv/contact:${beaRoot}/interest`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: level }),
+            });
+        await interest('medium');
+        await beat(HOST, 'fold', adaRoot);
+        await interest('none');
+        await beat(HOST, 'fold', adaRoot);
+        assert.ok(await inIt(`?group=${group}`), "an unfollow leaves a fellow member's group post");
+        // The forced reconcile of bea's public lane - what a boot runs - finds it on no shelf of
+        // hers, and leaves it, since it isn't a public row.
+        await beat(HOST, 'fold', beaRoot);
+        assert.ok(await inIt(`?group=${group}`), 'the reconcile leaves it too');
+        // Every view of the feed, with no chip picked.
+        assert.ok(await inIt('?sort=hot'), 'hot has it');
+        assert.ok(await inIt('?sort=best'), 'best has it');
+        const cloud = await (await ada(`api/identity/${adaRoot}/feed/labels`)).json();
+        assert.ok(
+            JSON.stringify(cloud.tags || []).includes('spuds'),
+            `the tag cloud counts its tag: ${JSON.stringify(cloud.tags)}`,
+        );
+        const named = (await feed()).find((i) => i.doc_id === post);
+        assert.equal(named.group.name, 'Potato Bunch', 'its card names its group, by id');
+    });
+
     it("a group post has a page of its own, for members alone, and its card wears an owner's hide", async () => {
         const item = async (who, root) => {
             const res = await who(`api/identity/${root}/groups/${group}/posts/${post}`);
@@ -329,6 +363,69 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             [],
             `every one answered: ${statuses.join(', ')}`,
         );
+    });
+
+    it("a group post's labels are in the one label memo, marked with its group", async () => {
+        // ONE_FEED.md slice 4: what the group's fold counts is kept where every label is.
+        const memo = async () =>
+            (
+                await sql(
+                    `SELECT annotator, key, value, lower(hex(group_id)) AS grp FROM doc_annotations
+                     WHERE target_doc = '${post}' AND key = 'tag'`,
+                )
+            ).rows;
+        await sync(ada, adaRoot);
+        let rows = await memo();
+        const spuds = rows.find((r) => r.value === 'spuds' && r.annotator === adaRoot);
+        assert.ok(spuds, `ada's tag is in the memo: ${JSON.stringify(rows)}`);
+        assert.equal(spuds.grp, group.toLowerCase(), 'marked as the group post it is');
+        await act(ada, adaRoot, `docs/${post}/labels`, { value: 'memoed', present: true });
+        assert.ok(
+            (await memo()).some((r) => r.value === 'memoed'),
+            'a new tag lands there',
+        );
+        await act(ada, adaRoot, `docs/${post}/labels`, { value: 'memoed', present: false });
+        rows = await memo();
+        assert.ok(!rows.some((r) => r.value === 'memoed'), 'and leaves when taken back');
+    });
+
+    it("a group's tables are written again only when its lanes move", async () => {
+        // ONE_FEED.md slice 1: the fold is kept by the group's stamp, and what it derives - who the
+        // door opens to, the feed's journal - is rewritten only when the lanes moved since.
+        const hexGroup = group.toLowerCase();
+        const stamps = async () =>
+            (
+                await sql(
+                    `SELECT lanes_seq, derived_seq FROM group_stamps WHERE hex(group_id) = upper('${hexGroup}')`,
+                )
+            ).rows[0];
+        const noted = async () =>
+            (
+                await sql(
+                    `SELECT MAX(noted) AS noted FROM feed_journal WHERE hex(group_id) = upper('${hexGroup}')`,
+                )
+            ).rows[0].noted;
+        await beat(HOST, 'group-sync');
+        const before = await stamps();
+        const wrote = await noted();
+        assert.equal(
+            before.derived_seq,
+            before.lanes_seq,
+            `derived from the lanes as they stand: ${JSON.stringify(before)}`,
+        );
+        // Nothing new: a sync, the beat, and every read the page makes leave the tables alone.
+        await sync(ada, adaRoot);
+        await beat(HOST, 'group-sync');
+        await page(HOST, ada, adaRoot);
+        assert.deepEqual(await stamps(), before, 'the stamp stands');
+        assert.equal(await noted(), wrote, 'and the journal was not written again');
+        // A label is an entry on ada's lane: the stamp moves, and the tables follow it.
+        await act(ada, adaRoot, `docs/${post}/labels`, { value: 'stamped', present: true });
+        const after = await stamps();
+        assert.ok(after.lanes_seq > before.lanes_seq, 'the lanes moved');
+        assert.equal(after.derived_seq, after.lanes_seq, 'and the tables were written from them');
+        assert.ok((await noted()) > wrote, 'the journal again, in place');
+        await act(ada, adaRoot, `docs/${post}/labels`, { value: 'stamped', present: false });
     });
 
     it('a dated draft posts under its date, with comments off if asked', async () => {

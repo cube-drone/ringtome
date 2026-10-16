@@ -681,7 +681,7 @@ struct LabelsQuery {
 
 #[derive(Serialize)]
 struct FeedItem {
-    /// The group it was posted to (plans/GROUPS.md, slice 4b): its words and pictures are behind
+    /// The group it was posted to (plans/GROUPS.md; ONE_FEED.md): its words and pictures are behind
     /// the group's own door, and it is never shared out.
     #[serde(skip_serializing_if = "Option::is_none")]
     group: Option<GroupCard>,
@@ -2475,20 +2475,6 @@ async fn feed_handler(
         )
         .await
         .map_err(AppError::Internal)?;
-        // The reader's group posts (plans/GROUPS.md, slice 4b), from their own journal, merged on
-        // the same cursor: the newest of both, a page of them.
-        let grouped = crate::roster::feed_rows(
-            &state,
-            &root,
-            before.as_ref(),
-            Some(page + 1),
-            wants_own(&q.me),
-            None,
-        )
-        .await
-        .map_err(AppError::Internal)?;
-        rows.extend(grouped.into_iter().map(|g| g.row));
-        rows.sort_by(|a, b| (b.published_ms, &b.doc_id).cmp(&(a.published_ms, &a.doc_id)));
         let more = rows.len() as i64 > page;
         rows.truncate(page as usize);
         (rows, more)
@@ -2544,20 +2530,15 @@ async fn dress_feed(
         .map_err(AppError::Internal)?;
     let page_pairs: Vec<(String, String)> =
         rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let mut known_labels = crate::annotations::for_posts(state, &page_pairs, Some(root))
+    // A group post's labels too: the one memo holds them, admitted for its members (ONE_FEED.md).
+    let known_labels = crate::annotations::for_posts(state, &page_pairs, Some(root))
         .await
         .map_err(AppError::Internal)?;
-    // A group post's labels ride its lane (slice 4a), so its journal row carries them.
-    if rows.iter().any(|r| r.group.is_some()) {
-        for g in crate::roster::feed_rows(state, root, None, None, crate::fanout::Own::In, None)
-            .await
-            .map_err(AppError::Internal)?
-        {
-            if rows.iter().any(|r| r.group.is_some() && r.doc_id == g.row.doc_id) {
-                known_labels.insert((g.row.author_root, g.row.doc_id), g.labels);
-            }
-        }
-    }
+    // Each group post's group by name: the journal keeps the id.
+    let group_ids: std::collections::BTreeSet<String> =
+        rows.iter().filter_map(|r| r.group.as_ref().map(|g| g.id.clone())).collect();
+    let group_names =
+        crate::roster::group_names(state, &group_ids).await.map_err(AppError::Internal)?;
     let reply_counts = crate::replies::known_counts(
         &state.node_db,
         &rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect::<Vec<_>>(),
@@ -2672,8 +2653,8 @@ async fn dress_feed(
             let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
                 group: r.group.map(|g| GroupCard {
+                    name: group_names.get(&g.id).cloned().unwrap_or(g.name),
                     id: g.id,
-                    name: g.name,
                     hidden: g.hidden,
                     owner: g.owns,
                 }),
@@ -2714,8 +2695,8 @@ async fn dress_feed(
 
 /// GET `/api/identity/{root}/groups/{group}/posts/{doc}` - one group post, dressed as the feed's
 /// card dresses it, for the post's own page (Curtis, 2026-10-16: a group post is a feed item you
-/// can click into). Read off the reader's group journal, so it is there exactly when the feed would
-/// show it: not to a non-member, and not to a member it's hidden from.
+/// can click into). Read off the reader's journal row for it, so it is there exactly when the feed
+/// would show it: not to a non-member, and not to a member it's hidden from.
 async fn group_post_handler(
     session: Session,
     State(state): State<AppState>,
@@ -2723,13 +2704,13 @@ async fn group_post_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _owned = store::open(&state, &session.account.id, &root).await?;
     let group = crate::roster::group_of(&group)?;
-    let row = crate::roster::feed_row(&state, &root, &group, &doc)
+    let row = crate::fanout::group_post_row(&state.node_db, &root, &group, &doc)
         .await
         .map_err(AppError::Internal)?
         .ok_or_else(|| {
             AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
         })?;
-    let mut items = dress_feed(&state, &root, vec![row.row], &Default::default()).await?;
+    let mut items = dress_feed(&state, &root, vec![row], &Default::default()).await?;
     Ok(Json(serde_json::json!({ "item": items.pop() })))
 }
 
@@ -2779,46 +2760,26 @@ pub(crate) async fn feed_filter<'a>(
 /// newest first through `filter` until the matches are found - soon, since they are common. Either
 /// way the exact judgment is `search::matching`'s.
 ///
-/// The reader's group posts join them (plans/GROUPS.md, slice 4b), judged by the same chips off
-/// what their journal rows carry - and alone, when a group is picked, since a public post is in no
-/// group.
+/// The reader's group posts are rows of the same journal (plans/ONE_FEED.md), judged by the same
+/// chips; the groups row is said in SQL (`JournalFilter::groups`), so a group pick leaves only its
+/// posts, a public post being in no group.
 async fn narrowed(
     state: &AppState,
     root: &str,
     filter: &crate::fanout::JournalFilter<'_>,
     narrow: &crate::search::Narrow,
 ) -> Result<Vec<crate::fanout::FeedRow>, AppError> {
-    let mut out = if narrow.groups.is_empty() {
-        narrowed_public(state, root, filter, narrow).await?
-    } else {
-        Vec::new()
+    // The groups row is the journal's own column (ONE_FEED.md, slice 3): said in SQL, where the
+    // walk and the sets meet the rows, so a group pick is a filter like any.
+    let filter = crate::fanout::JournalFilter {
+        groups: &narrow.groups,
+        not_groups: &narrow.not_groups,
+        ..filter.clone()
     };
-    for g in crate::roster::feed_rows(state, root, None, None, filter.own, filter.since_ms)
-        .await
-        .map_err(AppError::Internal)?
-    {
-        let (group, author) = match &g.row.group {
-            Some(mark) => (mark.id.clone(), g.row.author_root.clone()),
-            None => continue,
-        };
-        let buckets: Vec<String> = g
-            .labels
-            .iter()
-            .filter(|l| l.key == "bucket" && l.annotator == author)
-            .map(|l| l.value.clone())
-            .collect();
-        let tags: Vec<String> =
-            g.labels.iter().filter(|l| l.key == "tag").map(|l| l.value.clone()).collect();
-        if narrow.admits_group_post(&group, &author, &buckets, &tags, &g.tokens) {
-            out.push(g.row);
-        }
-    }
-    out.sort_by(|a, b| (b.published_ms, &b.doc_id).cmp(&(a.published_ms, &a.doc_id)));
-    out.truncate(crate::search::RESULTS_CAP);
-    Ok(out)
+    narrowed_public(state, root, &filter, narrow).await
 }
 
-/// [`narrowed`]'s public half: the feed journal's rows.
+/// [`narrowed`]'s walk: the feed journal's rows, public and group alike.
 async fn narrowed_public(
     state: &AppState,
     root: &str,
@@ -2845,7 +2806,7 @@ async fn narrowed_public(
         }
         let mut any: Option<std::collections::HashSet<(String, String)>> = Some(Default::default());
         for value in picks {
-            match crate::annotations::posts_labelled(db, key, value, SET_CAP)
+            match crate::annotations::posts_labelled(db, key, value, SET_CAP, true)
                 .await
                 .map_err(AppError::Internal)?
             {

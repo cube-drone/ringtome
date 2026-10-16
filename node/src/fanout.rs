@@ -574,7 +574,8 @@ async fn journal_rows(
 pub async fn excise_suggested(node_db: &crate::db::Db, author_root: &str) -> Result<()> {
     node_db
         .execute(
-            "DELETE FROM feed_journal WHERE author_root = ?1 AND suggested_via IS NOT NULL",
+            "DELETE FROM feed_journal
+             WHERE author_root = ?1 AND suggested_via IS NOT NULL AND group_id = x''",
             (author_root,),
         )
         .await
@@ -1277,7 +1278,7 @@ async fn retract_vanished(state: &AppState, author_root: &str, force: bool) -> R
     let journaled: Vec<(String,)> = state
         .node_db
         .fetch_all(
-            "SELECT DISTINCT doc_id FROM feed_journal WHERE author_root = ?1",
+            "SELECT DISTINCT doc_id FROM feed_journal WHERE author_root = ?1 AND group_id = x''",
             (author_root,),
         )
         .await
@@ -1316,7 +1317,7 @@ async fn retract_vanished(state: &AppState, author_root: &str, force: bool) -> R
         .node_db
         .execute(
             &format!(
-                "DELETE FROM feed_journal WHERE author_root = ?1 AND doc_id IN ({})",
+                "DELETE FROM feed_journal WHERE author_root = ?1 AND group_id = x'' AND doc_id IN ({})",
                 quoted.join(",")
             ),
             (author_root,),
@@ -1344,7 +1345,7 @@ pub(crate) async fn excise_shared(
     node_db
         .execute(
             "DELETE FROM feed_journal
-             WHERE author_root = ?1 AND doc_id = ?2 AND via_root IS NOT NULL",
+             WHERE author_root = ?1 AND doc_id = ?2 AND via_root IS NOT NULL AND group_id = x''",
             (author_root, doc_id),
         )
         .await
@@ -1373,7 +1374,7 @@ pub(crate) async fn retitle_shared(
     node_db
         .execute(
             "UPDATE feed_journal SET title = ?3
-             WHERE author_root = ?1 AND doc_id = ?2 AND via_root IS NOT NULL",
+             WHERE author_root = ?1 AND doc_id = ?2 AND via_root IS NOT NULL AND group_id = x''",
             (author_root, doc_id, title),
         )
         .await
@@ -1405,7 +1406,7 @@ pub async fn excise_unfollowed(
         state
             .node_db
             .execute(
-                "DELETE FROM feed_journal WHERE reader_root = ?1 AND author_root = ?2",
+                "DELETE FROM feed_journal WHERE reader_root = ?1 AND author_root = ?2 AND group_id = x''",
                 (reader_root, author.as_str()),
             )
             .await
@@ -1499,7 +1500,8 @@ pub struct FeedRow {
     pub dated_ms: Option<i64>,
     /// When the post was actually written down; 0 when the row came from a fragment.
     pub minted_ms: i64,
-    /// The group it was posted to - a row of the group journal (roster.rs), never of this one.
+    /// The group it was posted to, for a group post's row (`group_id`, written by roster.rs only;
+    /// ONE_FEED.md); `None` on every public row. Its name is the dressing's, by id.
     pub group: Option<GroupMark>,
 }
 
@@ -1683,6 +1685,9 @@ pub async fn sealed_rows(
     node_db.fetch_all(SEALED_ROWS, (limit,)).await.context("reading the feeds' sealed posts")
 }
 
+/// Neither read below names `group_id`, and neither needs to: a group post's row is never
+/// trusted-only, and never a room (ONE_FEED.md, slice 2), so both partial indexes leave it out.
+///
 /// The sealed-posts read: it walks `feed_journal_sealed` (node rung 73), a partial index of the
 /// trusted-only rows in arrival order, and stops at the limit - where it used to scan and sort
 /// the whole journal every pass. Named so the plan test pins it.
@@ -1714,7 +1719,8 @@ pub async fn bump_room_time(
     node_db
         .execute(
             "UPDATE feed_journal SET published_ms = ?3
-             WHERE author_root = ?1 AND doc_id = ?2 AND format = 'room' AND published_ms < ?3",
+             WHERE author_root = ?1 AND doc_id = ?2 AND format = 'room' AND published_ms < ?3
+               AND group_id = x''",
             (author_root, doc_hex, latest_ms),
         )
         .await
@@ -1768,6 +1774,7 @@ pub const FEED_FORMATS: &[&str] = &["marquee", "plaintext", "book", "room"];
 /// orders, *Shape*): the one filter every reader of the journal goes through, in SQL on an index -
 /// where the search, the facets, the chats column and "chat with them" each used to take the
 /// newest 5000 rows and filter in memory, and silently lost everything older.
+#[derive(Clone)]
 pub struct JournalFilter<'a> {
     pub reader: &'a str,
     /// The reader's own posts: among the rest, left out, or alone ("me").
@@ -1777,14 +1784,27 @@ pub struct JournalFilter<'a> {
     /// Only rows published at or after this - a best order's window.
     pub since_ms: Option<i64>,
     /// The curiosity dial's stop, with the reader's dials in it (`selectivity::stop_rule`); the
-    /// reader's own rows always pass it.
+    /// reader's own rows always pass it, and so does every group post (ONE_FEED.md, ruling 2: a
+    /// group is somewhere you chose to be).
     pub stop: Option<crate::selectivity::StopRule>,
+    /// Only posts in these groups (hex ids), or none of these: the groups row's picks. A public
+    /// post is in no group, so picking a group leaves only its posts.
+    pub groups: &'a [String],
+    pub not_groups: &'a [String],
 }
 
 impl<'a> JournalFilter<'a> {
     /// What the feed shows: the text kinds, the reader's own included, the whole of time.
     pub fn feed(reader: &'a str) -> Self {
-        JournalFilter { reader, own: Own::In, formats: FEED_FORMATS, since_ms: None, stop: None }
+        JournalFilter {
+            reader,
+            own: Own::In,
+            formats: FEED_FORMATS,
+            since_ms: None,
+            stop: None,
+            groups: &[],
+            not_groups: &[],
+        }
     }
 
     /// The WHERE clause over journal columns spelled `{t}column` (`t` empty, or an alias and a
@@ -1810,13 +1830,35 @@ impl<'a> JournalFilter<'a> {
             parts.push(format!("{t}published_ms >= {since}"));
         }
         if let Some(stop) = &self.stop {
-            parts.push(format!("({t}author_root = {t}reader_root OR {})", stop.sql(t)));
+            parts.push(format!(
+                "({t}author_root = {t}reader_root OR {t}group_id <> x'' OR {})",
+                stop.sql(t)
+            ));
+        }
+        // Group ids are hex the parse checked; checked again, so nothing else reaches the SQL.
+        let blobs = |ids: &[String]| -> Vec<String> {
+            ids.iter()
+                .filter(|g| g.len() == 32 && g.bytes().all(|b| b.is_ascii_hexdigit()))
+                .map(|g| format!("x'{g}'"))
+                .collect()
+        };
+        if !self.groups.is_empty() {
+            let picked = blobs(self.groups);
+            parts.push(if picked.is_empty() {
+                "0".to_string()
+            } else {
+                format!("{t}group_id IN ({})", picked.join(","))
+            });
+        }
+        let left_out = blobs(self.not_groups);
+        if !left_out.is_empty() {
+            parts.push(format!("{t}group_id NOT IN ({})", left_out.join(",")));
         }
         parts.join(" AND ")
     }
 }
 
-const JOURNAL_COLUMNS: &str = "author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms";
+const JOURNAL_COLUMNS: &str = "author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms, group_id, hidden, owns";
 
 /// One page of a reader's journal through `filter`, newest first (ties by document id, highest
 /// first), after `before` (the last row shown's `(published_ms, doc_id)`).
@@ -1995,6 +2037,9 @@ pub async fn hot_page(
         i64,
         Option<i64>,
         i64,
+        Vec<u8>,
+        i64,
+        i64,
         i64,
     );
     let rows: Vec<Row> = node_db
@@ -2005,8 +2050,8 @@ pub async fn hot_page(
         .into_iter()
         .map(|(r, row)| (HotRank { hot_ms: r.published_ms, doc_id: r.doc_id }, row, 0))
         .collect();
-    for (a, b, c, d, e, f, g, h, i, j, k, l, m, n, milli) in rows {
-        let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n));
+    for (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, milli) in rows {
+        let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q));
         let rank = HotRank { hot_ms: hot_of(row.published_ms, milli), doc_id: row.doc_id.clone() };
         let in_page = rank.hot_ms >= floor && after.as_ref().is_none_or(|c| c.before(&rank));
         if in_page {
@@ -2060,6 +2105,9 @@ async fn scored_run(
         i64,
         Option<i64>,
         i64,
+        Vec<u8>,
+        i64,
+        i64,
         i64,
     );
     // A month or less: read by the window; a year: off the score index.
@@ -2078,8 +2126,8 @@ async fn scored_run(
     .context("reading a best page's scored run")?;
     Ok(rows
         .into_iter()
-        .map(|(a, b, c, d, e, f, g, h, i, j, k, l, m, n, milli)| {
-            let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n));
+        .map(|(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, milli)| {
+            let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q));
             (
                 crate::score::Rank {
                     milli,
@@ -2204,6 +2252,9 @@ type JournalTuple = (
     i64,
     Option<i64>,
     i64,
+    Vec<u8>,
+    i64,
+    i64,
 );
 
 fn journal_row(
@@ -2222,6 +2273,9 @@ fn journal_row(
         onward,
         dated_ms,
         minted_ms,
+        group_id,
+        hidden,
+        owns,
     ): JournalTuple,
 ) -> FeedRow {
     FeedRow {
@@ -2239,8 +2293,34 @@ fn journal_row(
         settled: settled != 0,
         trusted_only: trusted_only != 0,
         onward: onward != 0,
-        group: None,
+        // A group post's row (ONE_FEED.md, slice 3); its name is the dressing's, by id.
+        group: (!group_id.is_empty()).then(|| GroupMark {
+            id: hex::encode(&group_id),
+            name: String::new(),
+            hidden: hidden != 0,
+            owns: owns != 0,
+        }),
     }
+}
+
+/// One of a reader's group posts, for its own page, or None when it isn't theirs to see.
+pub async fn group_post_row(
+    node_db: &crate::db::Db,
+    reader: &str,
+    group: &[u8; 16],
+    doc_hex: &str,
+) -> Result<Option<FeedRow>> {
+    let row: Option<JournalTuple> = node_db
+        .fetch_optional(
+            &format!(
+                "SELECT {JOURNAL_COLUMNS} FROM feed_journal INDEXED BY feed_journal_by_group
+                 WHERE reader_root = ?1 AND group_id = ?2 AND doc_id = ?3"
+            ),
+            (reader, group.to_vec(), doc_hex),
+        )
+        .await
+        .context("reading a group post's row")?;
+    Ok(row.map(journal_row))
 }
 
 #[cfg(test)]

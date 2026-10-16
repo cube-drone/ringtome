@@ -42,6 +42,13 @@ a complete group design."
    approved the shape below: "Yes please".)
 7. **Members keep their own identity.** The group is plumbing underneath, never
    a persona anyone acts as in the UI.
+8. **A group is private or public, chosen at founding and never changed**
+   (Curtis, 2026-10-16). A private group's membership is members-only and it
+   can't post in public. A public group's membership is public and it can. "It's
+   too complicated to ask everybody in the group if they're ok switching to
+   public, and 'public to private' might not be possible at all." The kind is in
+   the founding statement, whose hash is the group's id, so a group of the other
+   kind would be another group.
 
 ## What's already here
 
@@ -509,6 +516,125 @@ and an open one attracts bots.
 - **A group page used to harass someone** (a public group page, an open group's
   name) is subject to the same operator takedown as any persona's page.
 
+### 10. Two kinds: private groups and public groups (ruling 8)
+
+**Why there are two.** A group speaking in public, with its membership private,
+can't be had (Curtis, 2026-10-16). Every road that brings a private group's
+public post to an outsider points at its members, the more so on a sparse
+network:
+
+- **Carried by members** (each member's followers get the group's posts): an
+  account that follows only Dave answers "is Dave in it?", and a few such
+  accounts sort a whole roster out. Delivery that depends on membership is an
+  oracle for it, whatever the card says.
+- **Followed directly, under pseudonymous speaker keys**: whoever you got the
+  group from is probably in it, and the node that serves its lane points at
+  whoever that node hosts.
+- **A key the group holds**, or a persona the members act as: the machinery this
+  plan dropped (_What it replaces_) and ruling 7 forbids, and it still leaks by
+  the two roads above.
+
+So the choice is made once, at founding, by what members agree to when they
+join.
+
+**A private group** is what's built: its roster, its posts and everything it
+owns (section 11) are members-only, served by refusal to anyone else. It has no
+public voice at all, so nothing it does reaches outside to be read back.
+
+**A public group** has a public roster, and so may speak in public:
+
+- **Its roster lanes are public**, its content lanes members-only: two lanes per
+  member per public group. The old sketch's rule decides it: gating is a
+  property of the service slot, never a flag an entry could have wrong. So a
+  public group can still hold members-only posts and shared things beside its
+  public ones.
+- **A public post is the poster's own public post**, on their own public chain
+  with their own key, marked as the group's: "Bill (Cheese Group)". Checkable
+  against the public roster, answerable to its author, and no key held or
+  rotated by anyone.
+- **Members carry it, worked out by the reader.** You follow Dave; Dave's public
+  roster entry says he's in Cheese Group; so your node journals Cheese Group's
+  public posts with Dave as their via, the row a rebroadcast makes, written by
+  nobody. No member signs a statement they didn't make, and no node writes N
+  entries per post. It answers to the rebroadcast dial a followed person already
+  has ("their recommendations, not their musings"), so someone in fifty groups
+  floods nobody who didn't ask.
+- **Following the group itself** brings every member's group-marked posts.
+- **Joining says so.** A public group's join screen says your membership will be
+  public, and that its public posts will reach your followers through you
+  (ruling 1).
+
+Ruling 7 holds in both kinds: nobody ever acts as the group. Bill posts as Bill.
+
+### 11. What a group owns (proposed, 2026-10-16)
+
+Posts are the first thing a group holds, not the only one: a shared notepad, a
+shared hrseAmp playlist, a shared drawing, a group's wiki (Curtis, 2026-10-16).
+Each is members-only content, in either kind of group, on members' lanes and the
+fold like everything else here: no new identity, no new handle.
+
+- **A shared document accepts versions from any member's lane**, each naming its
+  parents, and the fold merges them; a group post accepts versions only from its
+  author's. The apps reach a group's things through the group's routes, and
+  "belongs to the Potato Bunch" is a label on a notebook, never a persona to
+  switch to.
+- **Concurrent edits are the ordinary case.** A fork used to be one person on
+  two computers; here it is two people at once, and the merge is what they see.
+  Each kind needs one that holds up (and the merge-hostile rule applies: say so
+  before building anything that edits entries in place, reads pixels, or
+  compounds approximate geometry):
+
+  | Kind                 | Its merge                                                                                        |
+  | -------------------- | ------------------------------------------------------------------------------------------------ |
+  | A note               | Line-wise three-way, as Writer's notes merge now.                                                |
+  | A drawing            | Stroke by stroke, as drawings merge now (DRAWING.md).                                            |
+  | A notebook, its tags | Sets of adds and removes, as a persona's are.                                                    |
+  | A playlist           | An ordered list: positions that merge (a key between neighbours), never the list rewritten. New. |
+
+**A removed member's edits (the rule shared documents stand on).** Section 3
+voids a removed member's entries past the anchor. For a post that's clean: the
+post goes. For a shared document it isn't: Bea edits the notepad, is removed
+with an anchor before that edit, and Cal has already written on top of Bea's
+version. The draft rule:
+
+1. **A void version changes nothing.** Its effective content is the merge of its
+   parents' effective contents, as if it had never been written.
+2. **A counted version's own change stands**, on its parents as they effectively
+   are: a three-way merge whose base is its recorded parents' merge, one side
+   its own content, the other its parents' effective merge.
+3. So **Bea's words leave every descendant, unless someone counted made them
+   theirs.** Text of Bea's that Cal kept unchanged is base on one side and gone
+   on the other, so it goes; text of Bea's that Cal edited is Cal's change, and
+   stays as Cal's.
+4. **It is the fold's, at read, cached by the group's stamp** (ONE_FEED.md,
+   section 3): a late removal recomputes the document, nobody rewrites history,
+   and every node reaches the same text from the same lanes.
+5. **What came before the anchor stands**, as it does for posts.
+
+Drawings take it stroke by stroke and playlists entry by entry. A persona needs
+the same rule for a revoked computer's edits, so it is written once for both.
+
+**Owners' tools.** Any member can wreck a shared notebook, so: revert (a new
+version with an old one's content, never history rewritten), lock (an owner's
+register on the thing: owners only may write it), and a group setting for who
+edits by default.
+
+**Cost.** Every member's node holds everything the group owns: fine for notes
+and playlists; a group that collects audio and video wants the storage budgets a
+persona has.
+
+### 12. A lesson from drafting sections 10 and 11
+
+The first drafts of section 10 gave the group a persona with a crown, then
+posting keys, then a group persona the members acted as, each time because the
+persona's key tree already does "many signers, one identity" and promised reuse.
+The 2026-07-30 sketch had refused each of those, with reasons (_Groups:
+Identity-Shaped_ in PROJECT_PLAN: a key per member, a shared epoch secret, the
+group as an identity whose keys someone holds), and ruling 7 forbids the last.
+The kernel is three things: the roster's fold, members' own lanes and keys, and
+refusal at the door. A new group feature is built from those or it says, before
+anything else, why it can't be.
+
 ## What it replaces
 
 PROJECT_PLAN's _Groups: Identity-Shaped_ gets a pointer here, and is marked as
@@ -659,6 +785,23 @@ Dropped:
 7. **The sign-up group becomes a real group.** `groups.rs` admits the joiner to
    the node's group instead of pairing them with every member.
 8. **For phones**: membership without keeping the media.
+9. **One feed** ([ONE_FEED.md](ONE_FEED.md), built 2026-10-16): group posts in
+   `feed_journal`, their labels in `doc_annotations`, the fold cached by a
+   per-group stamp. It replaces slice 4b's separate journal, and slices 10 to 13
+   build on its cached fold.
+10. **The kind in the founding** (ruling 8): a founding with no kind is private,
+    so every group so far keeps its id; the founding's wire key, and the app's
+    choice when founding.
+11. **Group-owned notebooks** (section 11): a notebook and its notes on members'
+    lanes, versions from any member, the removed-member rule, revert and lock.
+    Text first, since its merge exists, and it settles the rule the others stand
+    on.
+12. **Public groups** (section 10): the roster lanes split from the content
+    lanes, a public post marked as the group's, the carry worked out by the
+    reader under the rebroadcast dial, following a group, and the join screen
+    that says so.
+13. **More that a group owns**: drawings (their merge exists), then playlists
+    (ordered-list merging, new).
 
 ## Open questions
 
@@ -667,25 +810,26 @@ Dropped:
    as chat's rooms are.
 2. ~~Default join setting for a new group: invite only, or open to people a
    member trusts?~~ **Invite only** (Curtis, 2026-10-15).
-3. **Can the group itself speak?** A pinned rules or welcome post signed "the
-   Potato Bunch" rather than by an owner. With no group key in use, it would be
-   an owner's post marked as the group's. Is that wanted? **And might a group
-   post publicly?** (Curtis, 2026-10-15: "at some point".) A public reader has
-   to check the post is the group's, and the roster that says who its owners are
-   is members-only. So either a group key the owners share, re-minted whenever
-   one is demoted (the key management rulings 2 and 3 avoided), or a small
-   public statement of the group's name and owners, against which an owner's
-   post marked as the group's checks. The second is the lighter road.
+3. ~~**Can the group itself speak?** And might a group post publicly?~~
+   **Settled (Curtis, 2026-10-16): by kind, ruling 8.** A private group can't; a
+   public group's members post as themselves, marked as the group's (section
+   10). Section 12 says how the drafts got there.
 4. ~~Is the roster visible to members as names, or only as a count?~~ **Not for
    now** (Curtis, 2026-10-15): members see the roster (ruling 3). A hidden
    roster can come later, as a setting.
 5. **The soft ceiling**: 500, or something else?
+6. **The removed-member rule** (section 11) is a draft: is "their words leave
+   every descendant unless someone counted made them theirs" the behaviour
+   wanted?
 
 **Owed after slice 1b** (in NEXT_STEPS): a send-side door when this node dials
 (it sends its group lanes to whatever node it dialed), one exchange per group
 rather than one per persona per node, and the app's side, since 1b is routes
-only. 6. **A hostile removal: do the subtree's acts before the anchors stand?**
-Section 3, rule 5, says yes, so a rogue's sock puppets' removals of real members
-stand, and those members have to be re-invited. The alternative is voiding every
-act of a removed subtree. That's a cleaner undo, but it reaches back into acts
-that were valid when they were made, which is what anchors exist to avoid.
+only.
+
+7. **A hostile removal: do the subtree's acts before the anchors stand?**
+   Section 3, rule 5, says yes, so a rogue's sock puppets' removals of real
+   members stand, and those members have to be re-invited. The alternative is
+   voiding every act of a removed subtree. That's a cleaner undo, but it reaches
+   back into acts that were valid when they were made, which is what anchors
+   exist to avoid.

@@ -4,8 +4,9 @@ Group posts in the same feed as everything else, filtered like everything else;
 and a group's state folded the way the rest of the node folds, cached by a
 stamp, never rebuilt on a read.
 
-Status: proposed (2026-10-16). Replaces the separate group journal of
-[GROUPS.md](GROUPS.md) slice 4b. Nothing here changes the wire, the chains or
+Status: built (2026-10-16), slices 1 to 5. Section 4 (a public group's posts)
+waits on public groups, GROUPS.md slice 12. Replaces the separate group journal
+of [GROUPS.md](GROUPS.md) slice 4b. Nothing here changes the wire, the chains or
 the fold's verdicts: it is how one node stores and reads what it already holds.
 
 ## Why
@@ -54,9 +55,15 @@ lane. With group rows in it, unchanged, it would:
 - **touch them by mistake**: `excise_shared`, `retitle_shared`,
   `bump_room_time`, and the cross-reader scans `sealed_rows` (key prefetch) and
   `rooms_in_feeds` (the chat pulse), each by author and doc with no notion of a
-  group;
-- **collide**: the key is `(reader, author, doc)`, so a public post rebroadcast
-  into a group (allowed, GROUPS.md §7) would be one row for both.
+  group.
+
+The key doesn't have to change. A group post is its own document: publishing to
+a group mints a post for that group (`group_drafts` keeps one per draft and
+group), so its id is never a public post's, nor another group's. A public post
+rebroadcast into a group, when that is built, stays the public post and keeps
+its one public row; who shared it into which group is a share beside it, as
+`feed_shares` says who passed a post along, and the public maintenance still
+governs it: taken down, it leaves the group's view too.
 
 And group labels never reach `doc_annotations`, the label memo scores, chips and
 the tag cloud are built from (GROUPS.md 4a: they ride the group lane), so group
@@ -67,18 +74,20 @@ posts score nothing and add no chips.
 ### 1. One journal
 
 `feed_journal` gains `group_id BLOB NOT NULL DEFAULT x''`: empty for a public
-post, the group's id for a group post. The primary key becomes
-`(reader_root, author_root, doc_id, group_id)`, so the same post public and in a
-group are two rows. The time index gains nothing: a group pick is a filter on
-rows already met by time.
+post, the group's id for a group post. An ordinary column, not part of the key
+(see above), so the rung is an `ALTER TABLE ... ADD COLUMN`, cheap at any size.
+A group's page reads its own posts newest first, so it gains one index,
+`(reader_root, group_id, published_ms, doc_id)`; elsewhere a group pick is a
+filter on rows already met by time.
 
 - **Public maintenance is scoped to public rows.** Every statement in
   `fanout.rs` that writes, updates or deletes by author or doc adds
   `AND group_id = x''`: `retract_vanished`, `excise_unfollowed`,
-  `excise_shared`, `retitle_shared`, `excise_suggested`, `bump_room_time`, and
-  the upserts' conflict target. `sealed_rows` and `rooms_in_feeds` read public
-  rows only. A test in `node/tests/conventions.rs` holds the line: every
-  `feed_journal` statement outside the group writer names `group_id`.
+  `excise_shared`, `retitle_shared`, `excise_suggested` and `bump_room_time`;
+  the public upsert never overwrites a group row's `group_id`. `sealed_rows` and
+  `rooms_in_feeds` read public rows only. A test in `node/tests/conventions.rs`
+  holds the line: every `feed_journal` statement outside the group writer names
+  `group_id`.
 - **Group rows are written by the group, for its readers.** After a refold
   (section 3), roster writes one row per hosted member who may see the post, by
   the same upsert fanout uses, then sweeps that group's rows it didn't stamp:
@@ -109,10 +118,11 @@ rows already met by time.
 
 ### 2. One label memo
 
-`doc_annotations` gains `group_id BLOB NOT NULL DEFAULT x''`, part of its key. A
-group's `Label` entries are folded into it (the fold already knows which count:
-`labels_of`, last write by received order, then `labels_that_stand`), by the
-same note-and-forget statements a public label uses. So:
+`doc_annotations` gains `group_id BLOB NOT NULL DEFAULT x''`, an ordinary column
+(a label names its post, and a group post's id is its own). A group's `Label`
+entries are folded into it (the fold already knows which count: `labels_of`,
+last write by received order, then `labels_that_stand`), by the same
+note-and-forget statements a public label uses. So:
 
 - scores (`score::labels_moved`) count a group post's reactions, and hot and
   best rank it like any post;
@@ -149,7 +159,26 @@ group's lanes it is. So it is cached, as the key tree is:
   past its watermark, as `catch_up_annotations` does, rather than re-inserting
   their whole history at every move.
 
-### 4. What stays
+### 4. A public group's public posts
+
+A public group ([GROUPS.md](GROUPS.md), section 10 and ruling 8) speaks in
+public through its members: Bill's public post, on Bill's public chain, marked
+as the group's. It is a public row like any, journaled by the public road with
+an empty `group_id` and kept by the public maintenance, which is right for it,
+so `group_id` keeps one meaning: private to the group. Two things learn about
+the mark:
+
+- **The carry.** A reader who follows a member of a public group gets its public
+  posts with that member as `via_root`, the row a rebroadcast makes, journaled
+  by the public road from the public roster, under the rebroadcast dial. No new
+  row shape.
+- **The pick.** `group=X` reads `group_id = X OR` a post marked as X's: the mark
+  rides the post's header, and the journal keeps it as `public_group`, a column
+  empty on every other row.
+
+A private group has no public posts, so nothing here touches it.
+
+### 5. What stays
 
 The wire, the lanes, the fold's verdicts, the group door, the group's own routes
 (roster, posts, hide, labels, publish), the post's own page, and the card.
@@ -158,56 +187,62 @@ The wire, the lanes, the fold's verdicts, the group door, the group's own routes
 ## Slices
 
 Each lands green on its own, in this order, with the claims that prove it.
+(Built 2, then 4 before 3: slice 3 drops `group_journal`, where group labels and
+words came from until 4 moves the labels into the one memo, so 4 first keeps
+every step green.)
 
-1. **The fold cached, the memo never cleared.** `lanes_seq`, the cached
-   `folded`, `derived_seq`, `group_people` by stamp sweep, the journal's rewrite
-   by upsert-and-sweep (still `group_journal`), arrival by watermark. No feed
-   change yet. Claims: the twelve-at-once body claim (2026-10-16) stays green; a
-   refold with nothing new writes nothing (a count of `group_journal` writes
-   before and after); the feed never shows a group with its posts missing while
-   a refold runs (a reader polling during a burst of arrivals). A scratch probe:
-   body requests per second on a page of fifty cards, before and after.
-2. **Public maintenance scoped.** `feed_journal.group_id` with its key, every
-   fanout statement scoped, the conventions test. Still no group rows written.
-   Claims: the whole fanout suite unchanged; the conventions test catches an
-   unscoped statement (a deliberately unscoped one, in the test's own fixture).
-3. **Group rows in the one journal.** Roster writes them, `group_journal` is
-   read nowhere, then dropped in the same rung. Claims: everything in
-   `groupposts.cjs` and `groupinvites.cjs`, unchanged, against the new table;
-   new ones: a public post rebroadcast into a group is two rows, and taking one
-   down leaves the other; unfollowing a fellow member keeps their group posts; a
+1. **The fold cached, the memo never cleared** (built 2026-10-16: node rung 88
+   `group_stamps`; `roster.rs` `folded`, `refold`, `bump_lanes`;
+   `groupposts.cjs`). `lanes_seq`, the cached `folded`, `derived_seq`,
+   `group_people` by stamp sweep, the journal's rewrite by upsert-and-sweep
+   (still `group_journal`), arrival by watermark. No feed change yet. Claims:
+   the twelve-at-once body claim (2026-10-16) stays green; a refold with nothing
+   new writes nothing (a count of `group_journal` writes before and after); the
+   feed never shows a group with its posts missing while a refold runs (a reader
+   polling during a burst of arrivals). A scratch probe: body requests per
+   second on a page of fifty cards, before and after.
+2. **Public maintenance scoped** (built 2026-10-16: node rung 89; `fanout.rs`;
+   `tests/conventions.rs` `the_public_road_never_touches_a_group_row`).
+   `feed_journal.group_id` and its index, every fanout statement scoped, the
+   conventions test. Still no group rows written. Claims: the whole fanout suite
+   unchanged; the conventions test catches an unscoped statement (a deliberately
+   unscoped one, in the test's own fixture).
+3. **Group rows in the one journal** (built 2026-10-16: node rung 91;
+   `roster.rs` `rejournal`; `fanout.rs` `JournalFilter::groups`,
+   `group_post_row`; `search.rs` `body_facts`; `groupposts.cjs`). Roster writes
+   them, `group_journal` is read nowhere, then dropped in the same rung. Claims:
+   everything in `groupposts.cjs` and `groupinvites.cjs`, unchanged, against the
+   new table; new ones: unfollowing a fellow member keeps their group posts; a
    reboot keeps every group row (`retract_vanished`'s boot pass); hot, best and
    the tag cloud show a group post with no chip picked.
-4. **One label memo.** Group labels folded into `doc_annotations`, the public
-   reads scoped, the conventions test. Claims: a group post's reaction moves it
-   in best; its tag is a chip; a public tag cloud, a persona's public page and a
-   public post's annotations never show a group label (a stranger's reads, as
-   `groupposts.cjs` "nothing public lists or serves it" does).
-5. **Tidy.** `roster::feed_rows`, `GroupFeedRow`, the merge in `feed_handler`,
-   `narrowed`'s group half, `dress_feed`'s label patch, gone. NEXT_STEPS' 4b
-   residuals (best and hot without a chip, tag counts, the journal rewritten
-   whole) struck.
+4. **One label memo** (built 2026-10-16, before 3: node rung 90;
+   `annotations.rs` `keep_group_labels`, `admitted`; `groupposts.cjs`). Group
+   labels folded into `doc_annotations`, the public reads scoped, the
+   conventions test. Claims: a group post's reaction moves it in best; its tag
+   is a chip; a public tag cloud, a persona's public page and a public post's
+   annotations never show a group label (a stranger's reads, as `groupposts.cjs`
+   "nothing public lists or serves it" does).
+5. **Tidy** (done 2026-10-16). `roster::feed_rows`, `GroupFeedRow`, the merge in
+   `feed_handler`, `narrowed`'s group half, `dress_feed`'s label patch, gone.
+   NEXT_STEPS' 4b residuals (best and hot without a chip, tag counts, the
+   journal rewritten whole) struck.
 
-## Open questions
+## Rulings (Curtis, 2026-10-16)
 
-1. **A hidden post's row.** Section 1 keeps it only for owners and its author,
-   as the journal does now. Alternatively every member keeps the row with
-   `hidden` set and the read filters; simpler writes, and an unhide moves no
-   rows. The cost: a hidden post's title sits in rows of readers who may not see
-   it. Proposed: as now, rows only for those who may see it.
-2. **The curiosity dial.** Group rows would meet the dial's stop like any row.
-   Is a group post subject to "only people I trust a lot"? Proposed: a group is
-   somewhere you chose to be, so its posts pass every stop; the group pick is
-   the filter for them.
-3. **Speculative rows.** A discovery row (`suggested_via`) is public-only and
-   stays so.
+1. **A hidden post's rows are only for those who may see it**: owners and its
+   author, as the journal had it. A hide or a show adds or sweeps rows; a hidden
+   post's title never sits in a row of a reader it's hidden from.
+2. **Group posts pass every stop of the curiosity dial.** A group is somewhere
+   you chose to be; picking a group, or leaving one out, is how you narrow its
+   posts.
+3. **Discovery rows stay public-only**: a `suggested_via` row is never a group
+   post's.
 
 ## Risks
 
 - **`fanout.rs` is the node's most delicate code.** Slice 2 changes no behaviour
   on its own and lands before any group row exists, so a mistake there shows as
   a red fanout claim, not a lost group post.
-- **The rung rewrites `feed_journal`'s key**, the node's biggest table. SQLite
-  can't alter a primary key: the rung copies the table. On a node with a large
-  journal that's a slow first boot; measure on the busiest dev data before
-  shipping, and say so in SERVER.md's upgrade notes if it's long.
+- **The new index on `feed_journal`**, the node's biggest table, is built on
+  first boot after the rung. Cheaper than a copy, but measure it on the busiest
+  dev data before shipping.

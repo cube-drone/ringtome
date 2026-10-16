@@ -22265,3 +22265,144 @@ The memo is `refold`'s, and every arrival, every write and the sync pass already
 run it. `refold` takes a per-group lock, so two refolds never interleave. The
 same probe: 0 of 90, twice. A claim in `groupposts.cjs` fires twelve body
 requests beside a sync and wants every one to answer.
+
+## 2026-10-16: the group fold kept by a stamp (ONE_FEED slice 1)
+
+CI had been red for six pushes, since the "post to" select landed. `audience.js`
+had a quoted choice in its template, which the strings check reads as copy, and
+I had run `just strings` but never `just strings-check`, then reported it
+passing. The choices are now picked outside the template. A local `just ci` came
+back green: 1850 claims, every Rust test and clippy.
+
+Then the first slice of plans/ONE_FEED.md:
+
+- **The stamp.** Node rung 88 gives each group a stamp (`group_stamps`).
+  `lanes_seq` is bumped whenever an entry for the group lands, after the insert.
+  `derived_seq` records the `lanes_seq` the group's tables were last written
+  from.
+- **The fold kept by it.** `roster::folded` keeps each group's roster and lanes
+  in RAM under that stamp, reading the stamp before folding, as CACHE.md asks.
+  Every read route (roster, posts, bodies, actions) shares the kept fold.
+- **The tables written only when the lanes move.** `refold` returns at once when
+  `derived_seq` matches. When it doesn't, `group_people` and `group_journal` are
+  upserted with a fresh mark, then the rows without it are swept. Nothing is
+  cleared first, so a reader never meets an emptied table. A body arriving asks
+  for the tables again (`underive`), since a post's words can be read then.
+- **Arrival by watermark.** A persona's GROUP move now reads only the entries
+  past each lane's held unbroken prefix (`imaol::group_entries_past`), not its
+  whole group history.
+
+A `group-sync` test beat drives the sync pass. A claim in `groupposts.cjs` reads
+the stamps through the test SQL route. A sync, the beat and the page's reads
+leave the stamp and the journal untouched; a label moves the stamp and the
+journal follows. All 74 group and MCP claims, and the Rust tests and clippy,
+pass. On a scratch node a fifty-card page, every body asked for at once beside a
+sync, took about 25 ms, over five rounds with no failures.
+
+## 2026-10-16: the public road scoped to public rows (ONE_FEED slice 2)
+
+Node rung 89 gives `feed_journal` the columns group posts will need: `group_id`
+(empty on a public row), `hidden`, `owns`, a writer's mark `noted`, and an index
+on reader, group and time for a group's own page. The key is unchanged: a group
+post is its own document, never a public post's id. No group rows are written
+yet.
+
+Every delete and update in `fanout.rs` now says `group_id = x''`:
+`retract_vanished` (its read and its delete), `excise_unfollowed`,
+`excise_shared`, `retitle_shared`, `excise_suggested` and `bump_room_time`.
+Unscoped, the first two would delete every group post at boot and a fellow
+member's on an unfollow. The two cross-reader scans (sealed rows for key
+prefetch, rooms for the pulse) keep their partial indexes: a group row is never
+trusted-only and never a room, so they can't meet one.
+
+A conventions test, `the_public_road_never_touches_a_group_row`, fails any
+`DELETE FROM feed_journal` or `UPDATE feed_journal` outside tests that doesn't
+name `group_id`. With one scope taken off by hand, it named the line. The full
+integration suite (1851), the Rust tests and clippy pass.
+
+## 2026-10-16: group labels in the one label memo (ONE_FEED slice 4)
+
+Built before slice 3, since slice 3 drops `group_journal`, which until now held
+group posts' labels. Node rung 90 gives `doc_annotations` a `group_id` (empty on
+a public label) and a writer's mark. When a group rewrites its tables, it writes
+the labels its fold counted on the posts it lists into the memo
+(`annotations::keep_group_labels`). Each is upserted with the group and the
+derivation's mark, then the group's unmarked rows are swept. Scores and the
+tag-cloud cache hear of it.
+
+Reads are guarded in two ways:
+
+- **Reads that name a reader** go through `admitted`, which already decided
+  sealed labels. It now admits a group row only when the reader is a member or
+  owner of that group (`roster::is_member`, off `group_people`), judged once per
+  group. With no reader, no group row.
+- **Reads that name no reader** (every public page's) say `group_id = x''`:
+  - `posts_labelled`, `emoji_received`, `emoji_noted_between`;
+  - `sound_posts`, `tagged_docs`, `tagged_authors`;
+  - `post_at_path`, `folder_notebook` (both its reads), `path_of`;
+  - `published_from`, `ledger_for`.
+
+  Unguarded, a group post's notebook label could have made a members-only
+  notebook's name resolve as a public folder address. `targets_of`, which drives
+  score rebuilds, includes group rows on purpose: only members hold a group
+  post's row to rank.
+
+A unit test puts the same labels on a public post and a group post and asks
+every reader-less read: each finds only the public one. With one guard taken off
+it named that read. A claim in `groupposts.cjs` finds a member's tag in the memo
+marked with its group, and a new tag arriving and leaving. The full integration
+suite: 1851 passing and one failure, `cascade.cjs`'s "the sibling learned the
+rebroadcast-follow from the synced ledger" hook. It passed three of three alone;
+recorded as a flake to chase.
+
+## 2026-10-16: group posts in the one feed journal (ONE_FEED slices 3 and 5)
+
+The separate group journal is gone. When a group rewrites its tables, it upserts
+each hosted member's rows for the posts that member may see straight into
+`feed_journal`. Each row carries `group_id`, `hidden`, `owns` and the
+derivation's mark. Then the group sweeps its rows without that mark, so a post
+taken down, one hidden from a reader, or a member gone leaves no row. Node rung
+91 drops `group_journal` and marks every group for one rewrite, so the first
+group-sync pass after it fills the journal.
+
+Reading is one road for every post:
+
+- **Journal rows carry their group** (`fanout::JOURNAL_COLUMNS`, `journal_row`).
+  The dressing names the group from `group_rosters`, by id.
+- **`group=` and `not_group=` are SQL.** They're said by the journal filter
+  (`JournalFilter::groups`, `not_groups`), and `narrowed` adds them to the
+  filter it walks. Its separate group half, the merge in `feed_handler`, and
+  `dress_feed`'s patch of group labels are gone, along with `roster::feed_rows`,
+  `GroupFeedRow` and `Narrow::admits_group_post`.
+- **The curiosity dial's stop passes every group row** (ruling 2).
+- **Labels come from the one memo** (slice 4). The feed's label sets ask
+  `posts_labelled` for group posts too, since it meets them with one reader's
+  journal.
+- **The search index reads a group post's words through its lanes**
+  (`roster::group_post_body` in `search::body_facts`), so search finds group
+  posts by their words, as any post.
+- **A group post's own page, the agent's group lookup and `holds_group_post`**
+  read `feed_journal`.
+
+Two fixes on the way:
+
+- **Hosted members.** A group's tables were only rewritten when its stamp moved,
+  so a persona adopted onto this node, already in a group, would have waited for
+  the group's next entry. `refold` now also remembers which members are hosted
+  here, in RAM, and rewrites when that set changes. A boot forgets it, so each
+  group is rewritten once more after a boot.
+- **Bodies.** A body arriving no longer asks for a rewrite (`underive`, gone):
+  journal rows don't carry words any more.
+
+A claim in `groupposts.cjs` covers the slice:
+
+- `group_journal` is gone;
+- an unfollow of a fellow member leaves their group post;
+- the forced reconcile of their public lane, a boot's, leaves it too;
+- hot and best show it with no chip picked;
+- the tag cloud counts its tag;
+- its card names its group.
+
+The group and MCP areas (76) pass, and the full integration suite (1853) passed
+before the hosted-members fix and again after it, with the Rust tests (629
+and 14) and clippy.

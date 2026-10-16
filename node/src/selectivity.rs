@@ -112,6 +112,7 @@ pub fn stop_rule(
     })
 }
 
+#[derive(Clone)]
 enum StopKind {
     /// An explicit dial at height: the author's, else the sharer's.
     Explicit,
@@ -122,6 +123,7 @@ enum StopKind {
 }
 
 /// The dial's rule with the reader's dials in it, ready to render against a journal row.
+#[derive(Clone)]
 pub struct StopRule {
     kind: StopKind,
     author_dialled: Vec<String>,

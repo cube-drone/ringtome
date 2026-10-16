@@ -276,6 +276,30 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0087_group_journal_marks.sql"),
         refold: &[],
     },
+    Rung {
+        version: 88,
+        name: "0088_group_stamps.sql",
+        sql: include_str!("../migrations/node/0088_group_stamps.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 89,
+        name: "0089_journal_groups.sql",
+        sql: include_str!("../migrations/node/0089_journal_groups.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 90,
+        name: "0090_group_labels.sql",
+        sql: include_str!("../migrations/node/0090_group_labels.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 91,
+        name: "0091_drop_group_journal.sql",
+        sql: include_str!("../migrations/node/0091_drop_group_journal.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).
