@@ -12,10 +12,16 @@ import { useLocation } from 'preact-iso';
 import { api } from './net.js';
 import { appHref, groupHref, groupsHref } from './links.js';
 import { openMirror, useLive } from './mirror.js';
-import { PersonRow } from './person.js';
+import { PersonChip, PersonRow } from './person.js';
 import { PostEntry } from './postentry.js';
 import { filterContacts } from './pure/people.js';
-import { groupsInOrder, inviteCandidates, isInvite, membersInOrder } from './pure/groups.js';
+import {
+    groupsInOrder,
+    inviteCandidates,
+    isInvite,
+    membersAtAGlance,
+    membersInOrder,
+} from './pure/groups.js';
 import { speakable } from './speakable.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
@@ -146,6 +152,15 @@ export const GroupPage = ({ group, current }) => {
     const [turn, setTurn] = useState(0);
     const refresh = useCallback(() => setTurn((n) => n + 1), []);
     const [synced, setSynced] = useState(0);
+    // The group's posts, the feed narrowed to it: listed beneath, and read by the faces above for
+    // who posted last. Re-read when the visit's sync lands, which may bring posts with it.
+    const [posts, postsError, reloadPosts] = useAnswer(
+        root && group ? `/api/identity/${root}/feed?group=${group}` : null,
+    );
+    useEffect(() => {
+        if (synced) reloadPosts();
+    }, [synced, reloadPosts]);
+    const items = (posts && posts.items) || [];
     useEffect(() => {
         if (!base) return undefined;
         let live = true;
@@ -230,8 +245,7 @@ export const GroupPage = ({ group, current }) => {
                 </button>
             </div>`
         }
-        <${Members} roster=${roster} current=${current} act=${act} />
-        ${you.owner && html`<${InviteSomeone} roster=${roster} root=${root} act=${act} />`}
+        <${Members} roster=${roster} current=${current} act=${act} posts=${items} />
         ${
             you.member &&
             html`<div class="group-leave-row">
@@ -240,13 +254,42 @@ export const GroupPage = ({ group, current }) => {
                 </button>
             </div>`
         }
-        ${you.member && html`<${GroupPosts} group=${group} root=${root} current=${current} synced=${synced} />`}
+        ${you.member && html`<${GroupPosts} answer=${posts} error=${postsError} current=${current} />`}
     </div>`;
 };
 
-/// The roster, owners marked, with an owner's verbs on each row. Seniority is the node's to
-/// judge: a junior's act against a senior is refused there, and the refusal shows here.
-const Members = ({ roster, current, act }) => {
+/// How many faces the members' closed head shows: about two rows of them.
+const GLANCE = 14;
+
+/// The members (Curtis, 2026-10-16), in the disclosure a person's page keeps your relationship in
+/// (person.js `ContactLedger`): closed, its head says who's in it at a glance - a line or two of
+/// faces, the founder, the owners, whoever posted last; open, the whole roster, with the invited
+/// and an owner's invite there too, off the group's front page.
+const Members = ({ roster, current, act, posts }) => {
+    const [open, setOpen] = useState(false);
+    const glance = membersAtAGlance(roster, posts, GLANCE);
+    return html`<details class="contact-ledger" onToggle=${(e) => setOpen(e.currentTarget.open)}>
+        <summary class="ledger-head">
+            <span class="group-members-title">${t('apps.groups.members', 'members')}</span>
+            ${
+                !open &&
+                html`<span class="group-faces">
+                    ${glance.map((r) => html`<${PersonChip} key=${r} root=${r} current=${current} />`)}
+                </span>`
+            }
+        </summary>
+        ${
+            open &&
+            html`<${Roster} roster=${roster} current=${current} act=${act} />
+                ${roster.you && roster.you.owner && html`<${InviteSomeone} roster=${roster} root=${current.root} act=${act} />`}`
+        }
+    </details>`;
+};
+
+/// The whole roster, owners marked, with an owner's verbs on each row, and the invited. Seniority
+/// is the node's to judge: a junior's act against a senior is refused there, and the refusal shows
+/// here.
+const Roster = ({ roster, current, act }) => {
     const owner = roster.you && roster.you.owner;
     const me = current && current.root;
     const ownerWord = (m) =>
@@ -255,11 +298,7 @@ const Members = ({ roster, current, act }) => {
             : m.owner
               ? t('apps.groups.owner', 'owner')
               : null;
-    return html`<section class="group-members">
-        <div class="people-shelf-head">
-            <span class="people-shelf-title">${t('apps.groups.whos-in-it', "who's in it")}</span>
-        </div>
-        <div class="people-list">
+    return html`<div class="people-list">
             ${membersInOrder(roster).map(
                 (m) => html`<div class="group-member" key=${m.root}>
                     <${PersonRow} root=${m.root} current=${current} aside=${ownerWord(m)} />
@@ -295,8 +334,7 @@ const Members = ({ roster, current, act }) => {
                 <div class="people-list">
                     ${roster.invited.map((r) => html`<${PersonRow} key=${r} root=${r} current=${current} />`)}
                 </div>`
-        }
-    </section>`;
+        }`;
 };
 
 /// An owner's invite: anyone from their own contacts, filtered as People's shelf is.
@@ -341,12 +379,8 @@ const InviteSomeone = ({ roster, root, act }) => {
 /// (Curtis, 2026-10-16: a persona's page is the bellwether - the same post objects as the feed,
 /// under a filter of its own, each one clicking through to a page of its own). Nobody writes here
 /// (Curtis, 2026-10-15): a post to the group is written in the feed or in Writer, with the group
-/// as where it goes. `synced` moves when the visit's sync lands, which may bring posts with it.
-const GroupPosts = ({ group, root, current, synced }) => {
-    const [answer, error, reload] = useAnswer(`/api/identity/${root}/feed?group=${group}`);
-    useEffect(() => {
-        if (synced) reload();
-    }, [synced, reload]);
+/// as where it goes. The page fetches them, since its faces read them too.
+const GroupPosts = ({ answer, error, current }) => {
     const items = (answer && answer.items) || [];
     return html`<section class="group-posts">
         <div class="people-shelf-head">

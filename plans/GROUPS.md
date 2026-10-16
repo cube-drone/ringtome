@@ -447,7 +447,11 @@ How each post feature carries over:
   The posts are the feed's own cards, from the feed narrowed to the group, as a
   persona's page lists the feed's cards for one person; each opens at its own
   address inside the group, `/ringtome/people/groups/{id}/posts/{doc}`, there to
-  members alone (Curtis, 2026-10-16). An owner can **hide** a post from the
+  members alone (Curtis, 2026-10-16). "Members" is the disclosure a person's
+  page keeps your relationship in: closed, its head is a line or two of faces at
+  a glance (the founder, the owners, whoever posted last); open, the whole
+  roster, with the invited and an owner's invite there rather than on the
+  group's front page (Curtis, 2026-10-16). An owner can **hide** a post from the
   group's page: a hide entry the fold honours. They can't delete it, since it's
   the member's. A hidden post is out of sight for members, but owners see it,
   faded, to show it again, and so does its author, so they know it was hidden

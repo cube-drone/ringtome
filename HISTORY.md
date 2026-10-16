@@ -22139,3 +22139,19 @@ does, through one helper both doors share (`draft_audience`), so a contact tag
 or onward seals the post and its picture. A new `drawing.cjs` claim covers a
 drawing for "family" (sealed, the shelf naming the list, a stranger refused) and
 one posted onward, whose header says so.
+
+## 2026-10-16: who's in a group, at a glance
+
+Curtis asked for "who's in it" on a group's page to fold. It now shows up to
+fourteen faces inline, about two rows, each a person chip that names them on a
+point: the founder, the other owners, whoever posted most recently, then
+everyone else (`pure/groups.js` `membersAtAGlance`, with a pure test). "See
+more…" opens the whole roster with an owner's verbs on each row, the invited,
+and an owner's invite, all off the group's front page. The page now fetches its
+posts itself, the feed narrowed to the group, since the faces read who posted
+last and the list beneath shows them.
+
+Then, at Curtis's word, the section is "members", under a heavier heading, in
+the disclosure a person's page keeps "your relationship" in (`contact-ledger`, a
+`<details>`). Closed, its head carries the faces; open, the roster. The "see
+more…" button went with it.

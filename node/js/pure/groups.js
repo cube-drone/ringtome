@@ -60,3 +60,15 @@ export const groupFeeds = (rows) =>
         sort: null,
         q: null,
     }));
+
+/// The faces a group's page shows at a glance (Curtis, 2026-10-16): the founder, the other owners,
+/// then whoever posted most recently, then everyone else - at most `cap`. `posts` are the group's
+/// feed items, newest first; someone who posted but has since left isn't in it.
+export const membersAtAGlance = (roster, posts, cap) => {
+    const members = membersInOrder(roster);
+    const inIt = new Set(members.map((m) => m.root));
+    const leading = members.filter((m) => m.root === roster.founder || m.owner).map((m) => m.root);
+    const posters = (posts || []).map((p) => p.author).filter((r) => inIt.has(r));
+    const rest = members.map((m) => m.root);
+    return [...new Set([...leading, ...posters, ...rest])].slice(0, cap);
+};

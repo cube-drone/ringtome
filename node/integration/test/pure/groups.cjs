@@ -2,9 +2,9 @@
 // invite.
 const assert = require('node:assert');
 
-let groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds;
+let groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds, membersAtAGlance;
 before(async () => {
-    ({ groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds } =
+    ({ groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds, membersAtAGlance } =
         await import('../../../js/pure/groups.js'));
 });
 
@@ -40,6 +40,24 @@ describe('groups in People', () => {
             ['f', 'o1', 'm1', 'm2'],
         );
         assert.deepEqual(membersInOrder(null), []);
+    });
+
+    it('shows the founder, the owners, then the latest posters, then the rest, at a glance', () => {
+        const roster = {
+            founder: 'f',
+            members: ['m1', 'm2', 'm3', 'o1', 'f', 'm4'].map((root) => ({
+                root,
+                owner: root === 'o1' || root === 'f',
+            })),
+        };
+        const posts = [{ author: 'm3' }, { author: 'gone' }, { author: 'f' }, { author: 'm2' }];
+        assert.deepEqual(membersAtAGlance(roster, posts, 10), ['f', 'o1', 'm3', 'm2', 'm1', 'm4']);
+        assert.deepEqual(
+            membersAtAGlance(roster, posts, 3),
+            ['f', 'o1', 'm3'],
+            'one who left is never shown',
+        );
+        assert.deepEqual(membersAtAGlance(roster, null, 3), ['f', 'o1', 'm1']);
     });
 
     it("offers to invite only contacts who aren't in, waiting, banned or you", () => {

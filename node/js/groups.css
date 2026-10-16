@@ -131,12 +131,27 @@
     margin: 0;
 }
 
-.group-members,
+/* The members, in the relationship's disclosure (persona.css `contact-ledger`): its head carries a
+   heavier title and the faces, which wrap between it and the caret. */
+.group-members-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
 .group-invite-someone,
 .group-posts {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+}
+
+/* The members at a glance: a line or two of faces, each saying who on a point. */
+.group-faces {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
 }
 
 .group-member {
