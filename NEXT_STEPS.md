@@ -72,6 +72,12 @@ are driving towards.
 
 ### Groups (plans/GROUPS.md)
 
+- **One feed** ([plans/ONE_FEED.md](plans/ONE_FEED.md), proposed, waiting on
+  Curtis): group posts into `feed_journal` and group labels into
+  `doc_annotations`, filtered like any post; the group fold cached by a
+  per-group stamp; no memo ever cleared. Five slices. It supersedes the 4b
+  residuals below (best and hot without a chip, tag counts, the journal
+  rewritten whole).
 - From the group page on the feed's cards:
   - **The group page has no tag strip.** A persona's page lists its posts under
     the label facets; the group's would want `/feed/labels` to count group posts

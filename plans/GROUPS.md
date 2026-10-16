@@ -607,9 +607,11 @@ Dropped:
        The public-only ones stay out: the web path, the draft link, the sealed
        audience.
      - Any member tags any post (`POST .../docs/{doc}/labels`).
-   - **4b, the feed** (built 2026-10-15: `group_journal`, node rung 86;
-     `roster::feed_rows`; `groupposts.cjs`): the group journal, the merge at
-     read, `groups` in the filters and the implicit feeds.
+   - **4b, the feed** (to be replaced: [ONE_FEED.md](ONE_FEED.md) puts group
+     posts in the one feed journal and caches the fold; built 2026-10-15:
+     `group_journal`, node rung 86; `roster::feed_rows`; `groupposts.cjs`): the
+     group journal, the merge at read, `groups` in the filters and the implicit
+     feeds.
      - Every refold writes each hosted member's rows: the posts they may see
        (not hidden from them), with the group's name, the post's labels and its
        words for the search. A version unchanged since the last refold keeps its

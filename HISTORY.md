@@ -22247,3 +22247,21 @@ does). Lifted, a persona is removed, not banned, and may be invited back. A new
 claim in `rosters.cjs` covers it: bea, removed earlier, listed as removed and
 cal, who left, not; dee banned, then lifted to removed, then nothing left to
 lift; bea invited back and off the list.
+
+## 2026-10-16: a group post's words, every time
+
+Curtis saw "these words haven't reached this computer" on his own group post,
+sometimes, after reloading the group's page. Every read of a group (its roster,
+its posts, each card's body request) went through `current()`, which called
+`refold`. That cleared the group's people and journal and wrote them again, with
+no lock. A page load fires one body request per card beside the visit's sync, so
+refolds ran together. One's inserts met another's rows and failed. The body
+route took the failure for "not in this group", answered 404, and the card said
+the words hadn't arrived. A scratch-node probe of six posts, each fetched three
+times at once beside a sync, five rounds: 82 of 90 body requests failed.
+
+Now `current()` folds the held lanes in memory and writes nothing (`folded`).
+The memo is `refold`'s, and every arrival, every write and the sync pass already
+run it. `refold` takes a per-group lock, so two refolds never interleave. The
+same probe: 0 of 90, twice. A claim in `groupposts.cjs` fires twelve body
+requests beside a sync and wants every one to answer.

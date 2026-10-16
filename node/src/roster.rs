@@ -166,8 +166,13 @@ async fn lanes_of(state: &AppState, group: &GroupId) -> Result<Vec<Lane>> {
 /// Fold a group from the memo and keep what the door reads. `None` when no valid founding for
 /// it is held.
 async fn refold(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec<Lane>)>> {
-    let lanes = lanes_of(state, group).await?;
-    let Some(roster) = fold::build(*group, &lanes) else { return Ok(None) };
+    // One refold of a group at a time (2026-10-16): each clears the group's people and journal
+    // and writes them again, and two at once interleaved those - the second's inserts met the
+    // first's rows and failed, and a page's burst of body requests (each of which refolded, then)
+    // read "these words haven't reached this computer" on the author's own posts.
+    let lock = refold_lock(group);
+    let _held = lock.lock().await;
+    let Some((roster, lanes)) = folded(state, group).await? else { return Ok(None) };
     let db = &state.node_db;
     db.execute(
         "INSERT INTO group_rosters (group_id, name, founder, folded_ms) VALUES (?1, ?2, ?3, ?4)
@@ -197,6 +202,21 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec
     }
     rejournal(state, group, &roster).await?;
     Ok(Some((roster, lanes)))
+}
+
+/// The group as its held lanes fold now: computed, nothing written. What a read wants - the
+/// memo is kept by [`refold`], which every arrival and every write already runs.
+async fn folded(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec<Lane>)>> {
+    let lanes = lanes_of(state, group).await?;
+    Ok(fold::build(*group, &lanes).map(|roster| (roster, lanes)))
+}
+
+/// The lock [`refold`] holds for one group.
+fn refold_lock(group: &GroupId) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    type Locks = std::collections::HashMap<GroupId, std::sync::Arc<tokio::sync::Mutex<()>>>;
+    static LOCKS: std::sync::LazyLock<std::sync::Mutex<Locks>> =
+        std::sync::LazyLock::new(Default::default);
+    LOCKS.lock().expect("refold locks poisoned").entry(*group).or_default().clone()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -805,8 +825,8 @@ async fn write_signed(
     Ok(signed)
 }
 
-/// The roster as this node holds it, refolded now - for `me` only when the group's door opens
-/// to them (ruling 3: members see the roster). A node holds a group for whichever of its
+/// The roster as this node holds it, folded now (nothing written) - for `me` only when the
+/// group's door opens to them (ruling 3: members see the roster). A node holds a group for whichever of its
 /// personas is in it; the others on it see nothing, as they would anywhere else.
 async fn current(
     state: &AppState,
@@ -816,7 +836,7 @@ async fn current(
     let missing =
         || AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"));
     let (roster, lanes) =
-        refold(state, group).await.map_err(AppError::Internal)?.ok_or_else(missing)?;
+        folded(state, group).await.map_err(AppError::Internal)?.ok_or_else(missing)?;
     let mine =
         roster.members.contains(me) || roster.invited.contains(me) || roster.banned.contains(me);
     if !mine {

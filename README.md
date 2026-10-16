@@ -158,6 +158,10 @@ lightly federated, unapologetically Old Internet.
   provenance tags, OAuth for claude.ai and its kind, a page in settings saying
   how to connect one, and (2026-10-11) notebooks, their trees, and an hour's API
   key for what the tools don't reach.
+- [`ONE_FEED.md`](plans/ONE_FEED.md) — group posts in the one feed journal,
+  filtered like any post, and a group's fold cached by a stamp rather than
+  rebuilt on every read (proposed 2026-10-16; replaces GROUPS.md slice 4b's
+  separate journal).
 - [`QR.md`](plans/QR.md) — QR codes of a person and of a public post: the web
   address where the node has a public URL, else a `ringtome://` address only the
   Android app opens, and an "open in the app" button on a phone's web page.

@@ -316,6 +316,21 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         await sync(ada, adaRoot);
     });
 
+    it('reads every post at once: a page full of cards, each asking for its words together', async () => {
+        // A group's page asks for every card's words at once, beside the visit's sync. Each body
+        // request used to refold the group, and refolds running together failed one another: the
+        // author's own posts read "these words haven't reached this computer" (2026-10-16).
+        const asks = [act(bea, beaRoot, 'sync')];
+        for (let i = 0; i < 12; i++)
+            asks.push(bea(`api/groups/${group}/docs/${post}/body`).then((r) => r.status));
+        const statuses = (await Promise.all(asks)).slice(1);
+        assert.deepEqual(
+            statuses.filter((s) => s !== 200),
+            [],
+            `every one answered: ${statuses.join(', ')}`,
+        );
+    });
+
     it('a dated draft posts under its date, with comments off if asked', async () => {
         const made = await (
             await j(bea, `api/identity/${beaRoot}/docs`, {
