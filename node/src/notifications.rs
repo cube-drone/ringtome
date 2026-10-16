@@ -48,6 +48,10 @@ pub const KIND_MENTIONED: &str = "mentioned";
 /// reader. The row's doc is the ROOM and its detail the room's author: the room's address.
 /// Envelope road only - no fold derives it, since a room chain is nobody's feed.
 pub const KIND_ROOM_MENTION: &str = "room-mention";
+/// `deliver::notice_kind::GROUP_INVITE` (plans/GROUPS.md, section 5) - an owner of a group
+/// invited the reader. The row's doc is the GROUP and its detail the group's name as founded.
+/// Envelope road only: the reader's node has never heard of the group.
+pub const KIND_GROUP_INVITE: &str = "group-invite";
 
 /// "You completed a contract." The bank's own news (2026-10-04): written once, by the computer
 /// that first recorded the completion on the persona's private chain (bank.rs), so the row's author

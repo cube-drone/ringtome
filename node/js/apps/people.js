@@ -24,6 +24,7 @@ import {
 import { t } from '../i18n.js';
 import { LabelFacets, usePicks } from '../facets.js';
 import { tagCounts, rowsTagged } from '../pure/contacttags.js';
+import { GroupsTab, PeopleTabs } from '../groups.js';
 
 const html = htm.bind(h);
 
@@ -128,7 +129,16 @@ const useDirectory = () => {
     return rows;
 };
 
-export const PeopleApp = ({ current, admin = false, searchQuery }) => {
+/// People: two tabs (plans/GROUPS.md, section 7) - the people you know, and your groups.
+export const PeopleApp = ({ tab = 'people', ...props }) =>
+    tab === 'groups'
+        ? html`<div class="people-inner">
+              <${PeopleTabs} tab="groups" />
+              <${GroupsTab} current=${props.current} />
+          </div>`
+        : html`<${PeopleShelves} ...${props} />`;
+
+const PeopleShelves = ({ current, admin = false, searchQuery }) => {
     const root = current && current.root;
     // A node admin sees what each persona held here costs to move and would free to evict
     // (storage.rs, 2026-10-02) - off the node's memos, one ask per visit; nobody else asks.
@@ -245,6 +255,7 @@ export const PeopleApp = ({ current, admin = false, searchQuery }) => {
 
     return html`
         <div class="people-inner">
+            <${PeopleTabs} tab="people" />
             ${
                 alsoMe.length > 0 &&
                 html`<div class="people-known people-also-me">

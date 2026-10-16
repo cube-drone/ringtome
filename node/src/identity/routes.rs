@@ -3216,8 +3216,10 @@ pub(crate) async fn notification_items(
     let mut delivered_unowned = Vec::new();
     for n in delivered {
         // A followed sender's delivered row yields to the fold's - except a room mention
-        // (CHAT.md, slice 6), which no fold derives: the envelope is its only road.
-        let envelope_only = n.kind == crate::notifications::KIND_ROOM_MENTION;
+        // (CHAT.md, slice 6) and a group invite (plans/GROUPS.md), which no fold derives: the
+        // envelope is their only road.
+        let envelope_only = n.kind == crate::notifications::KIND_ROOM_MENTION
+            || n.kind == crate::notifications::KIND_GROUP_INVITE;
         if envelope_only
             || !crate::net::subscriptions::follows(&state.node_db, root, &n.sender_root)
                 .await
@@ -9590,6 +9592,7 @@ mod notification_dedup_tests {
             (crate::notifications::KIND_TAGGED, notice_kind::TAGGED),
             (crate::notifications::KIND_MENTIONED, notice_kind::MENTIONED),
             (crate::notifications::KIND_ROOM_MENTION, notice_kind::ROOM_MENTION),
+            (crate::notifications::KIND_GROUP_INVITE, notice_kind::GROUP_INVITE),
         ] {
             assert_eq!(
                 derived,

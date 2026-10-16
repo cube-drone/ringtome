@@ -274,7 +274,7 @@ pub async fn dialer_may_hold(
 
 /// An endpoint that served this group, and the persona it proved it speaks for ('' when it
 /// only answered).
-async fn remember_peer(state: &AppState, group: &[u8; 16], endpoint: &str, root: &str) {
+pub(crate) async fn remember_peer(state: &AppState, group: &[u8; 16], endpoint: &str, root: &str) {
     if let Err(e) = state
         .node_db
         .execute(
@@ -299,7 +299,10 @@ fn named(lanes: &[Lane]) -> BTreeSet<String> {
         for e in &lane.entries {
             let who = match &e.body {
                 GroupEntry::Found(f) => Some(f.founder),
-                GroupEntry::Invite { invitee, .. } => Some(*invitee),
+                GroupEntry::Invite { invitee, founding, .. } => {
+                    out.insert(hex::encode(founding.founder));
+                    Some(*invitee)
+                }
                 GroupEntry::Appoint { appointee, .. } => Some(*appointee),
                 GroupEntry::Remove { target, .. } | GroupEntry::Demote { target, .. } => {
                     Some(*target)
@@ -435,6 +438,17 @@ async fn write(
     group: GroupId,
     entry: GroupEntry,
 ) -> Result<Hash, AppError> {
+    Ok(*write_signed(state, data, me, group, entry).await?.hash())
+}
+
+/// [`write`], answering the entry itself - an invite's is the evidence its notice carries.
+async fn write_signed(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: GroupId,
+    entry: GroupEntry,
+) -> Result<ringtome_proto::SignedEntry, AppError> {
     let payload = entry.encode().map_err(|e| {
         AppError::BadRequest(crate::msg!(
             "roster.not-a-group-entry",
@@ -452,7 +466,7 @@ async fn write(
     )
     .await?;
     crate::fold::fold_now(state, me).await;
-    Ok(*signed.hash())
+    Ok(signed)
 }
 
 /// The roster as this node holds it, refolded now - for `me` only when the group's door opens
@@ -473,6 +487,14 @@ async fn current(
         return Err(missing());
     }
     Ok((roster, lanes))
+}
+
+/// The group's founding statement, off the founder's lane as held.
+fn founding_of(lanes: &[Lane]) -> Option<ringtome_proto::roster::Founding> {
+    lanes.iter().flat_map(|l| l.entries.iter()).find_map(|e| match &e.body {
+        GroupEntry::Found(f) => Some(f.clone()),
+        _ => None,
+    })
 }
 
 /// The appointment `me` acts under, or why they can't.
@@ -545,6 +567,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/sync", post(sync_handler))
         .route("/api/identity/{root}/groups/{group}/invites", post(invite_handler))
         .route("/api/identity/{root}/groups/{group}/join", post(join_handler))
+        .route("/api/identity/{root}/groups/{group}/open", post(open_handler))
         .route("/api/identity/{root}/groups/{group}/leave", post(leave_handler))
         .route("/api/identity/{root}/groups/{group}/remove", post(remove_handler))
         .route("/api/identity/{root}/groups/{group}/demote", post(demote_handler))
@@ -562,6 +585,24 @@ pub fn router() -> Router<AppState> {
 }
 
 type Answer = Result<Json<serde_json::Value>, AppError>;
+
+/// Where a group's page is in the app (js/apps/groups.js).
+pub fn group_route(group_hex: &str) -> String {
+    format!("/ringtome/people/groups/{group_hex}")
+}
+
+/// The group invites this persona's bell holds, as `(group, inviter, name)`: the notice road's
+/// half of an invite (plans/GROUPS.md, section 5), before it's opened.
+async fn invites_received(data: &Store) -> Result<Vec<(String, String, String)>, AppError> {
+    Ok(data
+        .inbox()
+        .page(u32::MAX)
+        .await?
+        .into_iter()
+        .filter(|n| n.kind == crate::notifications::KIND_GROUP_INVITE)
+        .filter_map(|n| Some((n.doc_id?, n.sender_root, n.detail.unwrap_or_default())))
+        .collect())
+}
 
 async fn me_of(state: &AppState, session: &Session, root: &str) -> Result<(Store, Root), AppError> {
     let data = store::open(state, &session.account.id, root).await?;
@@ -604,13 +645,15 @@ async fn found_handler(
     Ok(Json(roster_json(&group, &roster, &lanes, &me)))
 }
 
-/// GET `/api/identity/{root}/groups` - the groups this persona is in, or invited to.
+/// GET `/api/identity/{root}/groups` - the groups this persona is in, or invited to - an invite
+/// still unopened among them, as the bell has it: standing `invite`, its name the founding's
+/// and its inviter who sent it.
 async fn list_handler(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Answer {
-    me_of(&state, &session, &root).await?;
+    let (data, _) = me_of(&state, &session, &root).await?;
     let rows: Vec<(Vec<u8>, String, String)> = state
         .node_db
         .fetch_all(
@@ -622,14 +665,61 @@ async fn list_handler(
         .await
         .context("listing a persona's groups")
         .map_err(AppError::Internal)?;
-    Ok(Json(serde_json::json!(rows
+    let mut out: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|(g, name, standing)| {
+            serde_json::json!({
+                "group": hex::encode(g),
+                "name": name,
+                "standing": standing,
+            })
+        })
+        .collect();
+    let held: BTreeSet<String> = rows.iter().map(|(g, _, _)| hex::encode(g)).collect();
+    for (group, inviter, name) in invites_received(&data).await? {
+        if !held.contains(&group) {
+            out.push(serde_json::json!({
+                "group": group,
+                "name": name,
+                "standing": "invite",
+                "inviter": inviter,
+            }));
+        }
+    }
+    Ok(Json(serde_json::json!(out)))
+}
+
+/// POST `.../groups/{group}/open` - open an invite the bell holds: fetch the group from the node
+/// that delivered it, starting with the inviter's lane, whose invite names the founder. The
+/// group's door lets an invitee in, so they see whom they'd be joining before they do.
+async fn open_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let group_hex = hex::encode(group);
+    let inviters: Vec<String> = invites_received(&data)
+        .await?
         .into_iter()
-        .map(|(g, name, standing)| serde_json::json!({
-            "group": hex::encode(g),
-            "name": name,
-            "standing": standing,
-        }))
-        .collect::<Vec<_>>())))
+        .filter(|(g, _, _)| *g == group_hex)
+        .map(|(_, inviter, _)| inviter)
+        .collect();
+    if inviters.is_empty() && current(&state, &group, &me).await.is_err() {
+        return Err(AppError::NotFound(crate::msg!(
+            "roster.no-such-invite",
+            "there's no invite to that group here"
+        )));
+    }
+    sync_group(&state, &root, &group, &inviters).await;
+    let (roster, lanes) = current(&state, &group, &me).await.map_err(|_| {
+        AppError::NotFound(crate::msg!(
+            "roster.the-group-cant-be-reached",
+            "the group can't be reached just now - try again in a little while"
+        ))
+    })?;
+    Ok(Json(roster_json(&group, &roster, &lanes, &me)))
 }
 
 /// GET `/api/identity/{root}/groups/{group}` - the roster as this node holds it.
@@ -692,8 +782,29 @@ async fn invite_handler(
         })
         .map(|e| e.hash)
         .collect();
-    let invite =
-        write(&state, &data, &root, group, GroupEntry::Invite { by, invitee, readmits }).await?;
+    let founding = founding_of(&lanes).ok_or_else(|| {
+        AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"))
+    })?;
+    let signed = write_signed(
+        &state,
+        &data,
+        &root,
+        group,
+        GroupEntry::Invite { by, invitee, readmits, founding },
+    )
+    .await?;
+    let invite = *signed.hash();
+    // The invite's own road to the invitee (plans/GROUPS.md, section 5): a notice, the invite as
+    // its evidence, knocked eagerly. Their node has never heard of the group; this is how it
+    // learns, and where to look is the node that knocked.
+    crate::outbox::queue_notices(
+        &state,
+        &data,
+        &root,
+        vec![(hex::encode(invitee), signed)],
+        ringtome_proto::deliver::notice_kind::GROUP_INVITE,
+    )
+    .await;
     // Where to find the group: here, and every node it has been heard at, so the newcomer
     // meets the members' nodes and not only this one.
     let mut via = vec![state.endpoint.id().to_string()];
@@ -720,11 +831,14 @@ async fn invite_handler(
     })))
 }
 
-#[derive(Deserialize)]
+/// What joining needs. All of it is optional for an invite this node already holds (one the
+/// bell's notice opened): the invite is then found on the inviter's lane.
+#[derive(Deserialize, Default)]
+#[serde(default)]
 struct JoinRequest {
-    invite: String,
-    founder: String,
-    inviter: String,
+    invite: Option<String>,
+    founder: Option<String>,
+    inviter: Option<String>,
     via: Vec<String>,
 }
 
@@ -738,7 +852,10 @@ async fn join_handler(
 ) -> Answer {
     let (data, me) = me_of(&state, &session, &root).await?;
     let group = group_of(&group)?;
-    let invite = hash_of(&req.invite)?;
+    let invite = match &req.invite {
+        Some(invite) => hash_of(invite)?,
+        None => held_invite(&state, &group, &me).await?,
+    };
     for ep in req.via.iter().take(8) {
         remember_peer(&state, &group, ep, "").await;
     }
@@ -754,9 +871,44 @@ async fn join_handler(
     )
     .await?;
     crate::fold::fold_now(&state, &root).await;
-    sync_group(&state, &root, &group, &[req.founder, req.inviter]).await;
+    let seed: Vec<String> = [req.founder, req.inviter].into_iter().flatten().collect();
+    sync_group(&state, &root, &group, &seed).await;
     let (roster, lanes) = current(&state, &group, &me).await?;
     Ok(Json(roster_json(&group, &roster, &lanes, &me)))
+}
+
+/// An invite to `me` this node holds that the roster counts and no join has used.
+async fn held_invite(state: &AppState, group: &GroupId, me: &Root) -> Result<Hash, AppError> {
+    let none = || {
+        AppError::NotFound(crate::msg!(
+            "roster.no-such-invite",
+            "there's no invite to that group here"
+        ))
+    };
+    let (roster, lanes) =
+        refold(state, group).await.map_err(AppError::Internal)?.ok_or_else(none)?;
+    if !roster.invited.contains(me) {
+        return Err(none());
+    }
+    // A join that used an invite spent it (section 3), so a rejoin needs a fresh one.
+    let spent: BTreeSet<Hash> = lanes
+        .iter()
+        .flat_map(|l| l.entries.iter())
+        .filter_map(|e| match &e.body {
+            GroupEntry::Join { grant: Grant::Invite(h) } => Some(*h),
+            _ => None,
+        })
+        .collect();
+    lanes
+        .iter()
+        .flat_map(|l| l.entries.iter())
+        .rfind(|e| {
+            roster.counted.contains(&e.hash)
+                && !spent.contains(&e.hash)
+                && matches!(&e.body, GroupEntry::Invite { invitee, .. } if invitee == me)
+        })
+        .map(|e| e.hash)
+        .ok_or_else(none)
 }
 
 /// POST `.../groups/{group}/leave` - leave: retire from every appointment first (a leave ends
@@ -1426,6 +1578,12 @@ async fn posts_handler(
             continue;
         }
         let (Some(shown), Some(first)) = (display(list), first_version(list)) else { continue };
+        // A hidden post is out of sight (Curtis, 2026-10-15) - but for the owners, who may show
+        // it again, and its author, who should know it was hidden.
+        let hidden = roster.hidden.contains(&first.hash);
+        if hidden && shown.persona != me && !roster.owners.contains_key(&me) {
+            continue;
+        }
         let words = crate::idface::public_blob(&state, shown.header.file_hash)
             .await
             .ok()
@@ -1441,7 +1599,7 @@ async fn posts_handler(
             "media": shown.header.refs.iter().map(hex::encode).collect::<Vec<_>>(),
             "posted_ms": first.header.genesis_ms,
             "edited": list.len() > 1,
-            "hidden": roster.hidden.contains(&first.hash),
+            "hidden": hidden,
         }));
     }
     posts.sort_by_key(|p| std::cmp::Reverse(p["posted_ms"].as_i64().unwrap_or(0)));

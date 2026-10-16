@@ -72,9 +72,18 @@ are driving towards.
 
 ### Groups (plans/GROUPS.md)
 
+- From the app's first part:
+  - **Writer's publish bar picks a destination**: Everyone or one of your
+    groups, so a group post can carry pictures. The group page's quick composer
+    is words only.
+  - **Two invites from one person collapse in the bell.** The inbox keeps one
+    row per (sender, kind), as it does for mentions, so a second group's invite
+    from the same owner replaces the first, both in the bell and in the Groups
+    tab's unopened invites. The outbox has the same key, so an undelivered first
+    invite is replaced too.
+  - **The UI wants a look in a browser.** It passed the gates and the routes
+    under it are covered, but nobody has seen it drawn yet.
 - From slice 2:
-  - **The app.** The composer's "who can see this" picker gains your groups, and
-    a group gets a page. The routes are there.
   - **Pictures from elsewhere** (an external link, someone else's public
     picture) are refused in a group post. The public pipeline's download and
     copy roads need a group twin.
@@ -88,7 +97,6 @@ are driving towards.
     node it dialed, unchecked.
   - **One exchange per group.** A sync is now one per persona per node, which is
     fine at a handful of members but not at hundreds.
-  - **The app.** 1b is HTTP routes only.
 
 ### Notifications
 

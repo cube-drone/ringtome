@@ -98,7 +98,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         return Err(anyhow!("expected an Offer"));
     };
 
-    let answer = judge(&state, &bytes).await;
+    let answer = judge(&state, &bytes, &conn.remote_id().to_string()).await;
     write_frame(&mut send, &answer).await?;
     send.finish().ok();
     conn.closed().await;
@@ -108,7 +108,8 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
 /// The gate's cheap half, in order: structure, then who it is for, then the claim, then the
 /// recipient's own judgment. Everything before `inbox::accept` is pure CPU over bytes we were
 /// handed - no fetches, ever, which is the property the envelope format exists to provide.
-async fn judge(state: &AppState, bytes: &[u8]) -> DeliverMessage {
+/// `from` is the node that knocked, which a group invite remembers as where its group is.
+async fn judge(state: &AppState, bytes: &[u8], from: &str) -> DeliverMessage {
     // Size and structure. `decode` enforces MAX_ENVELOPE_BYTES before anything else.
     let Ok(signed) = SignedEnvelope::decode(bytes) else {
         return DeliverMessage::Refused(refusal::MALFORMED);
@@ -152,7 +153,7 @@ async fn judge(state: &AppState, bytes: &[u8]) -> DeliverMessage {
         }
     };
 
-    match crate::inbox::accept(state, &recipient, &signed, &claim).await {
+    match crate::inbox::accept(state, &recipient, &signed, &claim, Some(from)).await {
         Ok(verdict) => wire_answer(verdict),
         Err(e) => {
             // Our fault, not theirs - so `Busy`, never a refusal. A refusal is retired forever
@@ -197,7 +198,8 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
     // no reason to make a self-connection work - so the same judgment runs in-process. The
     // recipient's gate is identical either way, which is the point.
     if crate::identity::is_agented(&state.node_db, recipient_root).await.unwrap_or(false) {
-        return match judge(state, envelope).await {
+        // From this node itself: the sender's persona is a housemate, so the group is here.
+        return match judge(state, envelope, &state.endpoint.id().to_string()).await {
             DeliverMessage::Accepted => Outcome::Accepted,
             DeliverMessage::Refused(reason) => Outcome::Refused(reason),
             // Our own gate said Busy about our own node. `Offer` is not an answer and cannot

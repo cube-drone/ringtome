@@ -24,6 +24,7 @@ import { PushToggle } from '../push.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
 import { roomHref } from '../links.js';
+import { groupHref } from '../groups.js';
 
 const html = htm.bind(h);
 
@@ -124,6 +125,11 @@ const sentence = (r) => {
     // the object - a link into the room, worn as its name.
     if (r.kind === 'room-mention') {
         return html`${t('apps.notifications.mentioned-you-in', 'mentioned you in')} <${RoomLink} author=${r.detail} doc=${r.doc_id} title=${r.doc_title} />`;
+    }
+    // An invite to a group (plans/GROUPS.md, section 5): the group's name, as founded, as a
+    // link to its page - where opening it fetches the group, and joining is one button.
+    if (r.kind === 'group-invite') {
+        return html`${t('apps.notifications.invited-you-to', 'invited you to')} <a class="notif-group" href=${groupHref(r.doc_id)}>${r.detail || t('apps.notifications.a-group', 'a group')}</a>`;
     }
     if (r.kind === 'comment') {
         return r.doc_id

@@ -1,0 +1,242 @@
+/* Groups (apps/groups.js, plans/GROUPS.md): People's Groups tab and a group's own page. */
+
+.people-tabs {
+    margin-bottom: 0;
+}
+
+.groups {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.groups-found {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.groups-found-name,
+.group-invite-filter,
+.group-composer-title,
+.group-composer-words {
+    flex: 1;
+    font: inherit;
+    color: var(--ink);
+    background-color: var(--surface);
+    --line: var(--border);
+    padding: 0.4rem 0.6rem;
+}
+
+.group-composer-words {
+    resize: vertical;
+}
+
+.groups-found-go,
+.group-join,
+.group-composer-go {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--teal);
+    background: none;
+    --line: var(--teal);
+    --j: 0.25em;
+    padding: 0.3rem 0.9rem;
+    cursor: pointer;
+}
+
+.groups-found-go:disabled,
+.group-composer-go:disabled {
+    color: var(--muted);
+    --line: var(--border);
+    cursor: default;
+}
+
+.groups-error {
+    color: var(--coral);
+    font-size: 0.85rem;
+}
+
+.groups-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.group-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.7rem;
+    background: var(--surface);
+    --line: var(--border);
+    --j: 5px;
+    padding: 0.7rem 0.9rem;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.group-row-invite {
+    --line: var(--teal);
+}
+
+.group-row-name {
+    font-weight: 600;
+}
+
+.group-row-standing {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.group-row-invite .group-row-standing {
+    color: var(--teal);
+}
+
+/* A group's page: shaped like a persona's - details and membership first, posts beneath. */
+.group-page {
+    max-width: var(--post-measure);
+    margin: 3vh auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.group-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.group-name {
+    margin: 0;
+}
+
+.group-description {
+    margin: 0;
+}
+
+.group-count {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.group-invite {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    background: var(--surface);
+    --line: var(--teal);
+    --j: 5px;
+    padding: 0.7rem 0.9rem;
+}
+
+.group-invite p {
+    margin: 0;
+}
+
+.group-members,
+.group-invite-someone,
+.group-posts {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.group-member {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.group-member > .person-row {
+    flex: 1;
+    min-width: 0;
+}
+
+.group-member-acts,
+.group-post-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.group-act,
+.group-leave {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: none;
+    --line: var(--border);
+    --j: 0.25em;
+    padding: 0.15rem 0.6rem;
+    cursor: pointer;
+}
+
+.group-leave-row {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.group-invite-sent {
+    margin: 0;
+    color: var(--teal);
+    font-size: 0.85rem;
+}
+
+.group-composer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.group-composer-go {
+    align-self: flex-end;
+}
+
+.group-post {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: var(--surface);
+    --line: var(--border);
+    --j: 5px;
+    padding: 0.8rem 1rem;
+}
+
+.group-post-hidden {
+    opacity: 0.6;
+}
+
+.group-post-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.group-post-when,
+.group-post-hidden-note {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.group-post-title {
+    margin: 0;
+}
+
+.group-post-hidden-note,
+.group-post-plain {
+    margin: 0;
+}
+
+.group-post-plain {
+    white-space: pre-wrap;
+}

@@ -99,6 +99,7 @@ import {
     FileAudio,
     FileVideo,
     UsersThree,
+    UsersFour,
     SignIn,
     House,
     Question,
@@ -347,6 +348,8 @@ export const Icons = {
     // a hrseBond in the market: the treasury's columns (2026-09-30)
     bond: Bank,
     people: UsersThree,
+    // a group, in People's Groups tab (plans/GROUPS.md): a shared roster, drawn apart from people
+    group: UsersFour,
     feed: Megaphone,
     notifications: Bell,
     // the People table's vocabulary: signal bars for the graded dials, and the rest

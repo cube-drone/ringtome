@@ -283,6 +283,23 @@ Anchors decide what _counts_, not what was _seen_.
 
 ### 5. Members
 
+- **An invite reaches its invitee through their notifications** (Curtis,
+  2026-10-15; a private chat was rejected because it needs communications
+  already open). It's a notice on the envelope road strangers use
+  (`net/deliver.rs`, notice kind 7, `group-invite`), judged by the invitee's
+  inbox gate like any other:
+  - **The invite is its own evidence.** The envelope carries the inviter's
+    signed invite entry, which names the invitee and carries the group's
+    **founding statement**. The statement's hash is the group's id, so the
+    invite proves which group it's for, who founded it and what it was called,
+    with nothing fetched. An invite whose founding isn't its group's opens
+    nothing, in the gate and in the fold.
+  - **Where to look is the node that knocked**: kept as one of the group's
+    peers, unproven, so it opens no door.
+  - **Nothing is fetched until it's opened.** The bell says "Ada invited you to
+    the Potato Bunch"; opening it fetches the group from that node (the door
+    already lets an invitee in), so the invitee sees whom they'd be joining.
+    Joining then needs nothing more.
 - **Joining is the joiner's act** (ruling 1). What makes an "I'm in" valid
   depends on the group's setting:
   - **Invite only**: it cites an invite from an owner. That's either addressed
@@ -377,9 +394,19 @@ members.**
     group's own routes.
   - **The roster fold counts it like any entry on the lane**: while its author
     is a member at that point, and void past a removal's anchor.
-- **The group's page** gathers members' posts, newest first. An owner can
-  **hide** a post from the group's page: a hide entry the fold honours. They
-  can't delete it, since it's the member's.
+- **Where groups live in the app** (Curtis, 2026-10-15): a **Groups tab in
+  People**, beside today's page of people, listing the current persona's groups
+  (People is per persona, like everything else in the app), the invites waiting
+  for them, and founding one. A group opens at its own address under People,
+  `/ringtome/people/groups/{id}`.
+- **The group's page** is shaped like a persona's: the group's details on top
+  (name, description, the roster with owners marked, and an owner's management
+  controls), and its posts beneath, newest first. Only a member sees any of it.
+  An owner can **hide** a post from the group's page: a hide entry the fold
+  honours. They can't delete it, since it's the member's. A hidden post is out
+  of sight for members, but owners see it, faded, to show it again, and so does
+  its author, so they know it was hidden (Curtis, 2026-10-15). An owner's own
+  post isn't theirs to hide: they take it down.
 - **The group's room.** Each group has one standing room, and any member can
   start more, with the group as their audience.
 - **Mute** a group, per member, in the bell and in the feed.
@@ -505,8 +532,15 @@ Dropped:
 3. **Links and the join settings**: invite links, open to people a member
    trusts, open, and ask to join.
 4. **Rooms for groups**: the standing room and ad-hoc ones.
-5. **The People side**: groups beside tags, mute, notifications, and "start a
-   new group with these people" (the fork).
+5. **The People side**: the Groups tab and the group's page come first, with the
+   app for slices 1 and 2; then groups beside tags, mute, notifications, and
+   "start a new group with these people" (the fork).
+   - **First part built** (2026-10-15: `node/js/groups.js`, `apps/people.js`,
+     `node/integration/test/groupinvites.cjs`). Invites travel as notices
+     (section 5); People has its two tabs; a group's page shows its details,
+     members and owners with an owner's verbs (invite from your contacts, make
+     owner, demote, remove, ban), joining and leaving, and its posts beneath
+     with a quick composer, takedown and hiding.
 6. **The sign-up group becomes a real group.** `groups.rs` admits the joiner to
    the node's group instead of pairing them with every member.
 7. **For phones**: membership without keeping the media.
@@ -520,7 +554,13 @@ Dropped:
    member trusts?
 3. **Can the group itself speak?** A pinned rules or welcome post signed "the
    Potato Bunch" rather than by an owner. With no group key in use, it would be
-   an owner's post marked as the group's. Is that wanted?
+   an owner's post marked as the group's. Is that wanted? **And might a group
+   post publicly?** (Curtis, 2026-10-15: "at some point".) A public reader has
+   to check the post is the group's, and the roster that says who its owners are
+   is members-only. So either a group key the owners share, re-minted whenever
+   one is demoted (the key management rulings 2 and 3 avoided), or a small
+   public statement of the group's name and owners, against which an owner's
+   post marked as the group's checks. The second is the lighter road.
 4. ~~Is the roster visible to members as names, or only as a count?~~ **Not for
    now** (Curtis, 2026-10-15): members see the roster (ruling 3). A hidden
    roster can come later, as a setting.

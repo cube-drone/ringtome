@@ -21963,3 +21963,44 @@ the next one finds A dark), and fails in the setup, naming B's askers, if B
 never does. Locally the race hardly ever fires; started on purpose (a pull from
 A begun just before the unplug), A served it after going dark in two of eight
 runs, and the next pull went to B each time.
+
+## 2026-10-15: groups in the app, and invites that arrive
+
+Groups so far were routes only. Building their UI showed the gap first: an
+invite returned a token to the inviter and nothing told the invitee. The first
+proposal was to say it in a private chat. Curtis turned that down, since a chat
+needs communications already open, and an invite should come in through the
+notifications pipeline.
+
+**An invite is now a notice** (`notice_kind::GROUP_INVITE`, 7), on the envelope
+road strangers already use, judged by the invitee's inbox gate. Its evidence is
+the inviter's signed invite entry. Groups are still unreleased, so the invite's
+wire format grew the group's **founding statement**: its hash is the group's id,
+so an invite proves on its own which group it's for, who founded it and what it
+was called. The invitee's node has never heard of the group, and this is how it
+learns. The fold and the gate both refuse an invite whose founding is some other
+group's. The inbox keeps the knocking node as where the group can be found
+(unproven, so it opens no door), the bell says "Ada invited you to the Potato
+Bunch", and opening it (`POST .../groups/{g}/open`) fetches the group from
+there. Joining needs no token any more. It finds the invite on the inviter's
+lane, skipping any a join already spent.
+
+**The app**: People has two tabs, people and groups (`node/js/groups.js`;
+Curtis: "Groups feels like a tab in People"). The Groups tab lists the current
+persona's groups, invites first, and founds new ones. A group's page is shaped
+like a persona's (Curtis's call): name, description and members on top, owners
+marked, with an owner's verbs on each row (make owner, demote, remove, ban) and
+an invite picker over their contacts. Joining and leaving sit beneath that, then
+the posts, newest first, with a words-only quick composer, takedown for the
+author and hiding for owners. A hidden post is served only to the owners and its
+author (Curtis, once he'd asked what told hiding and takedown apart), and an
+owner's own posts offer only takedown. Curtis also floated groups making public
+posts one day. That's folded into open question 3: a public reader can't check a
+post against a members-only roster, so it needs a group key or a small public
+statement of the group's owners.
+
+`groupinvites.cjs` covers the road end to end, across two nodes that have never
+met: the bell, the Groups tab's unopened invite, opening, joining, and ada's
+node counting dee. Proto tests cover the gate (an invite for somebody else, or
+for some other group, refuses) and the fold. Nobody has seen the UI drawn yet:
+there's no browser on this machine, and NEXT_STEPS says so.

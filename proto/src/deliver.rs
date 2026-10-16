@@ -121,6 +121,12 @@ pub mod notice_kind {
     /// the room's author, hex - the two halves of the room's address, which is where the
     /// bell's row leads. Conversation, tiered by sender like a mention in a post.
     pub const ROOM_MENTION: u32 = 6;
+    /// "I invited you to a group" (plans/GROUPS.md, section 5) - evidence is the sender's own
+    /// signed invite on their lane for the group, which names the recipient and carries the
+    /// group's founding statement. The claim's `doc_id` is the GROUP (the lane's instance,
+    /// which the founding's hash must be) and its `detail` the group's name as founded. The
+    /// recipient's node has never heard of the group: this is how it learns.
+    pub const GROUP_INVITE: u32 = 7;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -130,6 +136,7 @@ pub mod notice_kind {
             TAGGED => "tagged",
             MENTIONED => "mentioned",
             ROOM_MENTION => "room-mention",
+            GROUP_INVITE => "group-invite",
             _ => "unknown-kind",
         }
     }
@@ -706,6 +713,35 @@ pub fn verify_claim(signed: &SignedEnvelope) -> Result<VerifiedClaim, ProtoError
             }
             (None, None, Some(a.target_doc), None)
         }
+        notice_kind::GROUP_INVITE => {
+            if evidence.entry().chain.service != crate::registry::service::GROUP
+                || evidence.entry().entry_type != crate::registry::entry_type::GROUP_ENTRY
+            {
+                return Err(ProtoError::ChainViolation(
+                    "a group invite needs the sender's own invite entry",
+                ));
+            }
+            let Some(group) = evidence.entry().chain.instance else {
+                return Err(ProtoError::ChainViolation("a group entry names its group"));
+            };
+            let crate::Payload::Inline(payload) = &evidence.entry().payload else {
+                return Err(ProtoError::BadEntry("group entry payload must be inline"));
+            };
+            let crate::roster::GroupEntry::Invite { invitee, founding, .. } =
+                crate::roster::GroupEntry::decode(payload)?
+            else {
+                return Err(ProtoError::ChainViolation("the group entry isn't an invite"));
+            };
+            if invitee != envelope.recipient_root {
+                return Err(ProtoError::ChainViolation("the invite is for somebody else"));
+            }
+            // The founding's hash is the group's id, so a match is the founder's own statement;
+            // its signature is checked here, where nothing else has seen it yet.
+            if founding.id() != group || !founding.verify() {
+                return Err(ProtoError::ChainViolation("the invite names some other group"));
+            }
+            (None, None, Some(group), Some(founding.name))
+        }
         _ => return Err(ProtoError::BadEntry("unknown notice kind")),
     };
 
@@ -1166,6 +1202,67 @@ mod tests {
             annotation_entry(&leaf, (recipient, post), false)
         ))
         .is_err());
+    }
+
+    fn invite_entry(
+        signer: &SigningKey,
+        invitee: [u8; 32],
+        founding: &crate::roster::Founding,
+        group: [u8; 16],
+    ) -> SignedEntry {
+        let payload = crate::roster::GroupEntry::Invite {
+            by: [3u8; 32],
+            invitee,
+            readmits: vec![],
+            founding: founding.clone(),
+        }
+        .encode()
+        .unwrap();
+        SignedEntry::create(
+            &Entry {
+                v: ENTRY_VERSION,
+                entry_type: entry_type::GROUP_ENTRY,
+                chain: ChainId {
+                    author: pubkey(signer),
+                    service: service::GROUP,
+                    instance: Some(group),
+                },
+                seq: 0,
+                prev_hash: ZERO_HASH,
+                timestamp_ms: 1_700_000_090_000,
+                payload: Payload::Inline(payload),
+            },
+            signer,
+        )
+        .unwrap()
+    }
+
+    /// A group invite (plans/GROUPS.md, section 5): the evidence is the sender's invite on
+    /// their lane for the group, naming the recipient and carrying the group's founding. The
+    /// claim names the group and its name; an invite for somebody else, and one whose
+    /// founding is some other group's, both refuse.
+    #[test]
+    fn a_group_invite_verifies_and_names_the_group() {
+        let root = key(1);
+        let leaf = key(2);
+        let recipient = [7u8; 32];
+        let founding = crate::roster::Founding::sign(&key(9), pubkey(&root), "Potato Bunch");
+        let group = founding.id();
+        let invite = |to, group| {
+            notice_of(
+                &root,
+                &leaf,
+                recipient,
+                notice_kind::GROUP_INVITE,
+                invite_entry(&leaf, to, &founding, group),
+            )
+        };
+        let claim = verify_claim(&invite(recipient, group)).unwrap();
+        assert_eq!(claim.kind, notice_kind::GROUP_INVITE);
+        assert_eq!(claim.doc_id, Some(group));
+        assert_eq!(claim.detail.as_deref(), Some("Potato Bunch"));
+        assert!(verify_claim(&invite([8u8; 32], group)).is_err(), "somebody else's invite");
+        assert!(verify_claim(&invite(recipient, [5u8; 16])).is_err(), "some other group");
     }
 
     /// A mention (2026-09-06): the evidence is the sender's `mention=<recipient>` on the

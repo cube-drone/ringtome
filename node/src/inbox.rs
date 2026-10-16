@@ -161,20 +161,25 @@ const INTEREST: &str = "interest";
 /// 5. blocked? drop it - and answer "accepted" anyway ([`Verdict::Blocked`]);
 /// 6. classify the tier;
 /// 7. transcribe.
+///
+/// `from` is the node that delivered it, when there was one.
 pub async fn accept(
     state: &AppState,
     recipient_root: &str,
     signed: &SignedEnvelope,
     claim: &VerifiedClaim,
+    from: Option<&str>,
 ) -> Result<Verdict> {
     let sender_hex = hex::encode(claim.sender_root);
 
     // (2) The follow-edge rule, enforced HERE because only the recipient can know it: an
     // envelope from someone whose chains we already sync would be a second surface for a fact
     // the pull path owns. The sender cannot check this and should not try. The one
-    // exception is a room mention (CHAT.md, slice 6): no fold reads a room chain, so the
-    // envelope is the only road, follow or no follow.
+    // exceptions are a room mention (CHAT.md, slice 6) and a group invite (plans/GROUPS.md,
+    // section 5): no fold reads a room chain or a group's lanes for someone not yet in it, so
+    // the envelope is the only road, follow or no follow.
     if claim.kind != notice_kind::ROOM_MENTION
+        && claim.kind != notice_kind::GROUP_INVITE
         && crate::net::subscriptions::follows(&state.node_db, recipient_root, &sender_hex).await?
     {
         return Ok(Verdict::AlreadyPulled);
@@ -216,6 +221,14 @@ pub async fn accept(
             if room_left(&db, &keys, author, &hex::encode(doc)).await? {
                 return Ok(Verdict::Transcribed);
             }
+        }
+    }
+    // Where the group is: the node that knocked holds it, since its persona wrote the invite
+    // there. Unproven, so it opens no door here; it is only where to look, once the invitee
+    // opens the invite (`roster::open`). A blocked sender's never gets this far.
+    if claim.kind == notice_kind::GROUP_INVITE {
+        if let (Some(group), Some(from)) = (claim.doc_id, from) {
+            crate::roster::remember_peer(state, &group, from, "").await;
         }
     }
     let kind = notice_kind::name(claim.kind).to_string();

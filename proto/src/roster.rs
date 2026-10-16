@@ -180,10 +180,15 @@ pub enum GroupEntry {
         doc: [u8; 16],
         retract: bool,
     },
+    /// An invite carries the group's founding statement, so it says on its own which group it
+    /// is for, who founded it and what it was called: an invitee's node that has never heard
+    /// of the group finds it from the invite alone (plans/GROUPS.md, section 5). An invite
+    /// whose founding isn't this group's opens nothing.
     Invite {
         by: Hash,
         invitee: Root,
         readmits: Vec<Hash>,
+        founding: Founding,
     },
     Link {
         by: Hash,
@@ -336,10 +341,14 @@ impl GroupEntry {
                     "a group document travels as a document entry, not a group entry",
                 ));
             }
-            GroupEntry::Invite { by, invitee, readmits } => {
+            GroupEntry::Invite { by, invitee, readmits, founding } => {
                 f.push((1, V::B(by)));
                 f.push((2, V::B(invitee)));
                 list!(5, readmits);
+                f.push((13, V::T(&founding.name)));
+                f.push((14, V::B(&founding.group_key)));
+                f.push((15, V::B(&founding.sig)));
+                f.push((16, V::B(&founding.founder)));
                 4
             }
             GroupEntry::Link { by, token } => {
@@ -489,7 +498,7 @@ impl GroupEntry {
         let mut grant: Option<Grant> = None;
         let mut id16: Option<[u8; 16]> = None;
         let mut setting: Option<Setting> = None;
-        let (mut name, mut group_key, mut sig) = (None, None, None);
+        let (mut name, mut group_key, mut sig, mut founder) = (None, None, None, None);
         while let Some(key) = map.next_key()? {
             let hash_list = |map: &mut crate::cbor::MapReader<'_, '_>| {
                 let len = map.array()?;
@@ -557,6 +566,7 @@ impl GroupEntry {
                 13 => name = Some(map.text()?.to_string()),
                 14 => group_key = Some(map.bytes_fixed::<32>()?),
                 15 => sig = Some(map.bytes_fixed::<64>()?),
+                16 => founder = Some(map.bytes_fixed::<32>()?),
                 _ => map.skip_value()?,
             }
         }
@@ -571,7 +581,17 @@ impl GroupEntry {
             }),
             1 => GroupEntry::Join { grant: grant.ok_or(bad("a join names its grant"))? },
             2 => GroupEntry::Leave { anchors },
-            4 => GroupEntry::Invite { by: need(by)?, invitee: need(who)?, readmits },
+            4 => GroupEntry::Invite {
+                by: need(by)?,
+                invitee: need(who)?,
+                readmits,
+                founding: Founding {
+                    founder: need(founder)?,
+                    name: name.ok_or(bad("an invite names its group"))?,
+                    group_key: need(group_key)?,
+                    sig: sig.ok_or(bad("an invite's founding is signed"))?,
+                },
+            },
             5 => GroupEntry::Link { by: need(by)?, token: id16.ok_or(bad("a link has a token"))? },
             6 => GroupEntry::Unlink { by: need(by)?, link: need(link_ref)?, accepted },
             7 => GroupEntry::Appoint { by: need(by)?, appointee: need(who)? },
@@ -912,7 +932,9 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
     for (h, appt) in &acts {
         let (_, e) = entry(h).expect("an act is held");
         match &e.body {
-            GroupEntry::Invite { invitee, readmits, .. } => {
+            // The founding's hash is the group's id, so a match is the founder's own statement,
+            // checked once already where it founded the group.
+            GroupEntry::Invite { invitee, readmits, founding, .. } if founding.id() == group => {
                 invites.insert(*h, (invitee, readmits.iter().copied().collect()));
             }
             GroupEntry::Link { .. } => {
@@ -1249,14 +1271,19 @@ mod tests {
     struct World {
         group: GroupId,
         found: Hash,
+        founding: Founding,
         lanes: BTreeMap<Device, Lane>,
     }
 
     impl World {
         fn new() -> Self {
             let founding = Founding::sign(&SigningKey::from_bytes(&[42; 32]), F, "Potato Bunch");
-            let mut w =
-                World { group: founding.id(), found: founding.hash(), lanes: BTreeMap::new() };
+            let mut w = World {
+                group: founding.id(),
+                found: founding.hash(),
+                founding: founding.clone(),
+                lanes: BTreeMap::new(),
+            };
             w.add(F, 0, GroupEntry::Found(founding));
             w
         }
@@ -1286,7 +1313,9 @@ mod tests {
 
         fn invite(&mut self, to: Root) -> Hash {
             let by = self.found;
-            let inv = self.add(F, 0, GroupEntry::Invite { by, invitee: to, readmits: vec![] });
+            let founding = self.founding.clone();
+            let inv =
+                self.add(F, 0, GroupEntry::Invite { by, invitee: to, readmits: vec![], founding });
             self.add(to, 0, GroupEntry::Join { grant: Grant::Invite(inv) })
         }
 
@@ -1447,7 +1476,16 @@ mod tests {
         let mut w = World::new();
         let found = w.found;
         w.invite(B);
-        w.add(F, 0, GroupEntry::Invite { by: found, invitee: B, readmits: vec![] }); // left over
+        w.add(
+            F,
+            0,
+            GroupEntry::Invite {
+                by: found,
+                invitee: B,
+                readmits: vec![],
+                founding: w.founding.clone(),
+            },
+        ); // left over
         let anchors = w.anchors(&[B]);
         let removal = w.add(
             F,
@@ -1455,7 +1493,16 @@ mod tests {
             GroupEntry::Remove { by: found, target: B, ends: vec![], anchors, ban: false },
         );
         assert!(w.fold().invited.is_empty(), "the leftover invite predates the removal");
-        w.add(F, 0, GroupEntry::Invite { by: found, invitee: B, readmits: vec![removal] });
+        w.add(
+            F,
+            0,
+            GroupEntry::Invite {
+                by: found,
+                invitee: B,
+                readmits: vec![removal],
+                founding: w.founding.clone(),
+            },
+        );
         assert_eq!(w.fold().invited, set(&[B]), "one that readmits it does");
     }
 
@@ -1477,10 +1524,28 @@ mod tests {
         let found = w.found;
         let ap_a = w.appoint(F, found, A);
         let ap_s = w.appoint(A, ap_a, S); // A's sock puppet
-        let inv_x = w.add(S, 0, GroupEntry::Invite { by: ap_s, invitee: X, readmits: vec![] });
+        let inv_x = w.add(
+            S,
+            0,
+            GroupEntry::Invite {
+                by: ap_s,
+                invitee: X,
+                readmits: vec![],
+                founding: w.founding.clone(),
+            },
+        );
         w.add(X, 0, GroupEntry::Join { grant: Grant::Invite(inv_x) });
         let anchors = w.anchors(&[A, S]);
-        let inv_y = w.add(S, 0, GroupEntry::Invite { by: ap_s, invitee: Y, readmits: vec![] });
+        let inv_y = w.add(
+            S,
+            0,
+            GroupEntry::Invite {
+                by: ap_s,
+                invitee: Y,
+                readmits: vec![],
+                founding: w.founding.clone(),
+            },
+        );
         w.add(Y, 0, GroupEntry::Join { grant: Grant::Invite(inv_y) });
         w.add(F, 0, GroupEntry::Demote { by: found, target: A, ends: vec![ap_a], anchors });
         let r = w.fold();
@@ -1491,7 +1556,16 @@ mod tests {
         let ap_b = w.appoint(F, found, B);
         let ap_c = w.appoint(B, ap_b, C);
         w.add(B, 0, GroupEntry::Retire { by: ap_b, anchors: vec![] });
-        let inv_z = w.add(C, 0, GroupEntry::Invite { by: ap_c, invitee: Z, readmits: vec![] });
+        let inv_z = w.add(
+            C,
+            0,
+            GroupEntry::Invite {
+                by: ap_c,
+                invitee: Z,
+                readmits: vec![],
+                founding: w.founding.clone(),
+            },
+        );
         w.add(Z, 0, GroupEntry::Join { grant: Grant::Invite(inv_z) });
         let r = w.fold();
         assert_eq!(r.owners.keys().copied().collect::<BTreeSet<_>>(), set(&[F, C]));
@@ -1566,7 +1640,16 @@ mod tests {
             0,
             GroupEntry::Remove { by: found, target: B, ends: vec![], anchors, ban: true },
         );
-        let back = w.add(F, 0, GroupEntry::Invite { by: found, invitee: B, readmits: vec![ban] });
+        let back = w.add(
+            F,
+            0,
+            GroupEntry::Invite {
+                by: found,
+                invitee: B,
+                readmits: vec![ban],
+                founding: w.founding.clone(),
+            },
+        );
         w.add(B, 0, GroupEntry::Join { grant: Grant::Invite(back) });
         let r = w.fold();
         assert_eq!(r.members, set(&[F]));
@@ -1590,11 +1673,28 @@ mod tests {
             0,
             GroupEntry::Remove { by: found, target: B, ends: vec![], anchors, ban: false },
         );
-        let plain = w.add(F, 0, GroupEntry::Invite { by: found, invitee: B, readmits: vec![] });
+        let plain = w.add(
+            F,
+            0,
+            GroupEntry::Invite {
+                by: found,
+                invitee: B,
+                readmits: vec![],
+                founding: w.founding.clone(),
+            },
+        );
         w.add(B, 0, GroupEntry::Join { grant: Grant::Invite(plain) });
         assert_eq!(w.fold().members, set(&[F]), "an invite that doesn't know of the removal");
-        let knowing =
-            w.add(F, 0, GroupEntry::Invite { by: found, invitee: B, readmits: vec![removal] });
+        let knowing = w.add(
+            F,
+            0,
+            GroupEntry::Invite {
+                by: found,
+                invitee: B,
+                readmits: vec![removal],
+                founding: w.founding.clone(),
+            },
+        );
         w.add(B, 0, GroupEntry::Join { grant: Grant::Invite(knowing) });
         assert_eq!(w.fold().members, set(&[F, B]));
     }
@@ -1698,12 +1798,17 @@ mod tests {
         let a = LaneAnchor { device: h(9), seq: 4, head_hash: h(8) };
         let founding = Founding::sign(&SigningKey::from_bytes(&[42; 32]), F, "Potato Bunch");
         let all = vec![
-            GroupEntry::Found(founding),
+            GroupEntry::Found(founding.clone()),
             GroupEntry::Join { grant: Grant::Founder },
             GroupEntry::Join { grant: Grant::Open(h(1)) },
             GroupEntry::Leave { anchors: vec![] },
             GroupEntry::Leave { anchors: vec![a] },
-            GroupEntry::Invite { by: h(1), invitee: B, readmits: vec![h(2), h(3)] },
+            GroupEntry::Invite {
+                by: h(1),
+                invitee: B,
+                readmits: vec![h(2), h(3)],
+                founding: founding.clone(),
+            },
             GroupEntry::Link { by: h(1), token: [5; 16] },
             GroupEntry::Unlink { by: h(1), link: h(2), accepted: vec![h(3)] },
             GroupEntry::Appoint { by: h(1), appointee: A },
@@ -1782,11 +1887,36 @@ mod tests {
     fn only_the_invited_may_use_an_invite() {
         let mut w = World::new();
         let found = w.found;
-        let inv = w.add(F, 0, GroupEntry::Invite { by: found, invitee: B, readmits: vec![] });
+        let inv = w.add(
+            F,
+            0,
+            GroupEntry::Invite {
+                by: found,
+                invitee: B,
+                readmits: vec![],
+                founding: w.founding.clone(),
+            },
+        );
         w.add(X, 0, GroupEntry::Join { grant: Grant::Invite(inv) });
         w.add(Y, 0, GroupEntry::Join { grant: Grant::Founder });
         let r = w.fold();
         assert_eq!(r.members, set(&[F]));
         assert_eq!(r.invited, set(&[B]), "invited, until they take it up");
+    }
+
+    #[test]
+    fn an_invite_carrying_another_groups_founding_opens_nothing() {
+        let mut w = World::new();
+        let found = w.found;
+        let elsewhere = Founding::sign(&SigningKey::from_bytes(&[43; 32]), F, "Turnip Lot");
+        let inv = w.add(
+            F,
+            0,
+            GroupEntry::Invite { by: found, invitee: B, readmits: vec![], founding: elsewhere },
+        );
+        w.add(B, 0, GroupEntry::Join { grant: Grant::Invite(inv) });
+        let r = w.fold();
+        assert_eq!(r.members, set(&[F]));
+        assert!(r.invited.is_empty(), "it names some other group");
     }
 }

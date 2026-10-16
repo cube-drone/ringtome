@@ -516,7 +516,10 @@ async fn bell_alert(
         item.author_name.clone().unwrap_or_else(|| short_name(&item.author))
     };
     // The post's title: the reader's own post for most kinds, the room for a room mention.
-    let title = if item.doc_id.is_empty() || item.kind == crate::notifications::KIND_MENTIONED {
+    let title = if item.doc_id.is_empty()
+        || item.kind == crate::notifications::KIND_MENTIONED
+        || item.kind == crate::notifications::KIND_GROUP_INVITE
+    {
         None
     } else if item.kind == crate::notifications::KIND_ROOM_MENTION {
         match &item.detail {
@@ -595,6 +598,19 @@ async fn bell_alert(
         (k::KIND_ROOM_MENTION, None) => {
             crate::msg!("attention.mentioned-you-in-a-room", "mentioned you in a room").english
         }
+        (k::KIND_GROUP_INVITE, _) => match &item.detail {
+            Some(group) => {
+                crate::msg!(
+                    "attention.invited-you-to-group",
+                    "invited you to {group}",
+                    group = group
+                )
+                .english
+            }
+            None => {
+                crate::msg!("attention.invited-you-to-a-group", "invited you to a group").english
+            }
+        },
         // The band ladder is the public edge's alone. Any kind this match doesn't know says only
         // that something happened - never another kind's news (the miscopy that made a contract
         // read as trust, 2026-10-07, and a share before it, 2026-08-25).
@@ -630,6 +646,8 @@ async fn bell_alert(
             Some(author) => room_route(author, &item.doc_id),
             None => BELL_ROUTE.to_string(),
         }
+    } else if item.kind == crate::notifications::KIND_GROUP_INVITE {
+        crate::roster::group_route(&item.doc_id)
     } else {
         BELL_ROUTE.to_string()
     };
