@@ -116,6 +116,13 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             for (let i = 0; i < 20 && sees !== want; i++) {
                 await j(dee, `${base(deeRoot)}/sync`, {});
                 sees = (await posts(dee, deeRoot)).some((p) => p.doc === post);
+                // The feed narrowed to the group, and the post's own page, say the same.
+                const feed = (
+                    (await (await dee(`api/identity/${deeRoot}/feed?group=${group}`)).json())
+                        .items || []
+                ).some((i) => i.doc_id === post);
+                const own = (await dee(`${base(deeRoot)}/posts/${post}`)).status === 200;
+                if (feed !== sees || own !== sees) sees = !want;
                 if (sees !== want) await wait(300);
             }
             return sees;

@@ -116,6 +116,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/sync", post(sync_handler))
         .route("/api/identity/{root}/feed", get(feed_handler))
         .route("/api/identity/{root}/feed/labels", get(feed_labels_handler))
+        .route("/api/identity/{root}/groups/{group}/posts/{doc}", get(group_post_handler))
         .route("/api/identity/{root}/docs/copy", post(docs_copy_handler))
         .route("/api/identity/{root}/notifications", get(notifications_handler))
         // Web Push (webpush.rs): the node's public key, and this browser's subscription.
@@ -2505,10 +2506,25 @@ async fn feed_handler(
     // author's chains are not mirrored here, exactly as the body gate would. The author-db
     // opens are bounded by the page's DISTINCT flagged authors - ordinarily zero.
     rows = readable_feed_rows(&state, &root, rows).await;
+    let items = dress_feed(&state, &root, rows, &lifted).await?;
+    let mut out = serde_json::json!({ "items": items, "more": more });
+    if let Some(after) = after {
+        out["after"] = serde_json::Value::String(after);
+    }
+    Ok(Json(out))
+}
 
+/// A page of feed rows dressed as the card renders them: bylines, sharers, replies, labels, the
+/// reader's own audiences - each a read for the whole page, never one per row. `lifted` is hot's.
+async fn dress_feed(
+    state: &AppState,
+    root: &str,
+    rows: Vec<crate::fanout::FeedRow>,
+    lifted: &std::collections::HashSet<(String, String)>,
+) -> Result<Vec<FeedItem>, AppError> {
     // Who else passed each of these along - two indexed node.db reads for the whole page, never
     // per row (`fanout::followed_sharers` argues for deriving this rather than storing it).
-    let sharers = crate::fanout::followed_sharers(&state.node_db, &root, &rows)
+    let sharers = crate::fanout::followed_sharers(&state.node_db, root, &rows)
         .await
         .map_err(AppError::Internal)?;
 
@@ -2523,17 +2539,17 @@ async fn feed_handler(
     // Parents and roots alike get the journal's dressing, one read for both.
     let parents: Vec<(String, String)> =
         reply_links.values().flat_map(|l| [l.parent.clone(), l.root.clone()]).collect();
-    let parent_cards = crate::fanout::journal_cards(&state.node_db, &root, &parents)
+    let parent_cards = crate::fanout::journal_cards(&state.node_db, root, &parents)
         .await
         .map_err(AppError::Internal)?;
     let page_pairs: Vec<(String, String)> =
         rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let mut known_labels = crate::annotations::for_posts(&state, &page_pairs, Some(&root))
+    let mut known_labels = crate::annotations::for_posts(state, &page_pairs, Some(root))
         .await
         .map_err(AppError::Internal)?;
     // A group post's labels ride its lane (slice 4a), so its journal row carries them.
     if rows.iter().any(|r| r.group.is_some()) {
-        for g in crate::roster::feed_rows(&state, &root, None, None, crate::fanout::Own::In, None)
+        for g in crate::roster::feed_rows(state, root, None, None, crate::fanout::Own::In, None)
             .await
             .map_err(AppError::Internal)?
         {
@@ -2564,7 +2580,7 @@ async fn feed_handler(
     // The path bands, only when a page actually carries suggested rows - the common page
     // costs nothing new.
     let levels = if rows.iter().any(|r| r.suggested_via.is_some()) {
-        crate::speculative::levels_for(&state.node_db, &root).await.map_err(AppError::Internal)?
+        crate::speculative::levels_for(&state.node_db, root).await.map_err(AppError::Internal)?
     } else {
         Default::default()
     };
@@ -2655,7 +2671,12 @@ async fn feed_handler(
             let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
             let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
-                group: r.group.map(|(id, name)| GroupCard { id, name }),
+                group: r.group.map(|g| GroupCard {
+                    id: g.id,
+                    name: g.name,
+                    hidden: g.hidden,
+                    owner: g.owns,
+                }),
                 lifted: is_lifted,
                 mine,
                 author_name: byline.name,
@@ -2688,11 +2709,28 @@ async fn feed_handler(
             }
         })
         .collect();
-    let mut out = serde_json::json!({ "items": items, "more": more });
-    if let Some(after) = after {
-        out["after"] = serde_json::Value::String(after);
-    }
-    Ok(Json(out))
+    Ok(items)
+}
+
+/// GET `/api/identity/{root}/groups/{group}/posts/{doc}` - one group post, dressed as the feed's
+/// card dresses it, for the post's own page (Curtis, 2026-10-16: a group post is a feed item you
+/// can click into). Read off the reader's group journal, so it is there exactly when the feed would
+/// show it: not to a non-member, and not to a member it's hidden from.
+async fn group_post_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group, doc)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let _owned = store::open(&state, &session.account.id, &root).await?;
+    let group = crate::roster::group_of(&group)?;
+    let row = crate::roster::feed_row(&state, &root, &group, &doc)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or_else(|| {
+            AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
+        })?;
+    let mut items = dress_feed(&state, &root, vec![row.row], &Default::default()).await?;
+    Ok(Json(serde_json::json!({ "item": items.pop() })))
 }
 
 /// A group post's group, as its card names it.
@@ -2700,6 +2738,12 @@ async fn feed_handler(
 struct GroupCard {
     id: String,
     name: String,
+    /// An owner hid it from the group: the card says so (only owners and its author see it).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    hidden: bool,
+    /// The reader owns the group, so the card offers hide and show.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    owner: bool,
 }
 
 /// The journal filter a feed request asks for: the reader's own posts or not, a window or not, and
@@ -2754,7 +2798,7 @@ async fn narrowed(
         .map_err(AppError::Internal)?
     {
         let (group, author) = match &g.row.group {
-            Some((id, _)) => (id.clone(), g.row.author_root.clone()),
+            Some(mark) => (mark.id.clone(), g.row.author_root.clone()),
             None => continue,
         };
         let buckets: Vec<String> = g

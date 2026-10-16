@@ -46,7 +46,7 @@ fn root_of(hex_root: &str) -> Option<Root> {
     hex::decode(hex_root).ok()?.try_into().ok()
 }
 
-fn group_of(hex_group: &str) -> Result<GroupId, AppError> {
+pub(crate) fn group_of(hex_group: &str) -> Result<GroupId, AppError> {
     hex::decode(hex_group).ok().and_then(|b| b.try_into().ok()).ok_or_else(|| {
         AppError::BadRequest(crate::msg!("roster.not-a-group-id", "that isn't a group id"))
     })
@@ -297,25 +297,34 @@ async fn rejournal(state: &AppState, group: &GroupId, roster: &Roster) -> Result
         // Its claimed date when it has one, as any post sorts by its (PUBLISH.md).
         let published = post.shown.header.dated_ms.or(post.first.header.genesis_ms).unwrap_or(0);
         let updated = post.shown.header.genesis_ms.unwrap_or(published);
+        let minted = post.first.header.genesis_ms.unwrap_or(0);
+        use turso::Value;
         for reader in readers.iter().filter(|r| sees(roster, r, post)) {
+            let owns = roster.owners.contains_key(reader);
             db.execute(
                 "INSERT INTO group_journal (reader_root, group_id, group_name, author_root, doc_id,
-                   title, format, published_ms, updated_ms, version, tokens, labels)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                (
-                    hex::encode(reader),
-                    group.to_vec(),
-                    roster.name.as_str(),
-                    hex::encode(post.shown.persona),
-                    doc_hex.as_str(),
-                    post.shown.header.title.as_str(),
-                    format,
-                    published,
-                    updated,
-                    post.shown.hash.to_vec(),
-                    tokens.as_str(),
-                    said.as_str(),
-                ),
+                   title, format, published_ms, updated_ms, version, tokens, labels, hidden, owns,
+                   settled, dated_ms, minted_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                turso::params_from_iter([
+                    Value::Text(hex::encode(reader)),
+                    Value::Blob(group.to_vec()),
+                    Value::Text(roster.name.clone()),
+                    Value::Text(hex::encode(post.shown.persona)),
+                    Value::Text(doc_hex.clone()),
+                    Value::Text(post.shown.header.title.clone()),
+                    Value::Text(format.to_string()),
+                    Value::Integer(published),
+                    Value::Integer(updated),
+                    Value::Blob(post.shown.hash.to_vec()),
+                    Value::Text(tokens.clone()),
+                    Value::Text(said.clone()),
+                    Value::Integer(post.hidden as i64),
+                    Value::Integer(owns as i64),
+                    Value::Integer(post.shown.header.settled as i64),
+                    post.shown.header.dated_ms.map_or(Value::Null, Value::Integer),
+                    Value::Integer(minted),
+                ]),
             )
             .await
             .context("journalling a group post")?;
@@ -331,6 +340,86 @@ pub struct GroupFeedRow {
     pub labels: Vec<crate::annotations::KnownAnnotation>,
 }
 
+/// A group journal row as [`JOURNAL_COLUMNS`] reads it.
+type JournalRow = (
+    String,
+    Vec<u8>,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    i64,
+    String,
+    String,
+    i64,
+    i64,
+    i64,
+    Option<i64>,
+    i64,
+);
+
+const JOURNAL_COLUMNS: &str = "author_root, group_id, group_name, doc_id, title, format,
+    published_ms, updated_ms, tokens, labels, hidden, owns, settled, dated_ms, minted_ms";
+
+fn journal_row(
+    (
+        author,
+        group,
+        name,
+        doc,
+        title,
+        format,
+        published,
+        updated,
+        tokens,
+        labels,
+        hidden,
+        owns,
+        settled,
+        dated,
+        minted,
+    ): JournalRow,
+) -> GroupFeedRow {
+    let labels: Vec<serde_json::Value> = serde_json::from_str(&labels).unwrap_or_default();
+    GroupFeedRow {
+        row: crate::fanout::FeedRow {
+            author_root: author,
+            via_root: None,
+            suggested_via: None,
+            doc_id: doc,
+            title,
+            format: Some(format),
+            published_ms: published,
+            updated_ms: updated,
+            arrived_ms: published,
+            settled: settled != 0,
+            trusted_only: false,
+            onward: false,
+            dated_ms: dated,
+            // A row from before rung 87 knows no genesis until its group refolds.
+            minted_ms: if minted == 0 { published } else { minted },
+            group: Some(crate::fanout::GroupMark {
+                id: hex::encode(group),
+                name,
+                hidden: hidden != 0,
+                owns: owns != 0,
+            }),
+        },
+        tokens,
+        labels: labels
+            .into_iter()
+            .filter_map(|l| {
+                Some(crate::annotations::KnownAnnotation {
+                    annotator: l["annotator"].as_str()?.to_string(),
+                    key: l["key"].as_str()?.to_string(),
+                    value: l["value"].as_str()?.to_string(),
+                })
+            })
+            .collect(),
+    }
+}
+
 /// A reader's group posts, newest first (ties by document id, highest first), after `before`,
 /// at most `limit` - or all of them, without one. `own` is the feed's "me" chip, and `since_ms`
 /// a best order's window.
@@ -342,11 +431,9 @@ pub async fn feed_rows(
     own: crate::fanout::Own,
     since_ms: Option<i64>,
 ) -> Result<Vec<GroupFeedRow>> {
-    type Row = (String, Vec<u8>, String, String, String, String, i64, i64, String, String);
-    let mut sql = String::from(
-        "SELECT author_root, group_id, group_name, doc_id, title, format, published_ms, updated_ms,
-                tokens, labels
-         FROM group_journal WHERE reader_root = ?1 AND (published_ms, doc_id) < (?2, ?3)",
+    let mut sql = format!(
+        "SELECT {JOURNAL_COLUMNS}
+         FROM group_journal WHERE reader_root = ?1 AND (published_ms, doc_id) < (?2, ?3)"
     );
     match own {
         crate::fanout::Own::In => {}
@@ -361,47 +448,33 @@ pub async fn feed_rows(
         sql.push_str(&format!(" LIMIT {limit}"));
     }
     let (ms, doc) = before.cloned().unwrap_or((i64::MAX, String::new()));
-    let rows: Vec<Row> = state
+    let rows: Vec<JournalRow> = state
         .node_db
         .fetch_all(&sql, (reader, ms, doc.as_str()))
         .await
         .context("reading a reader's group posts")?;
-    Ok(rows
-        .into_iter()
-        .map(|(author, group, name, doc, title, format, published, updated, tokens, labels)| {
-            let labels: Vec<serde_json::Value> = serde_json::from_str(&labels).unwrap_or_default();
-            GroupFeedRow {
-                row: crate::fanout::FeedRow {
-                    author_root: author,
-                    via_root: None,
-                    suggested_via: None,
-                    doc_id: doc,
-                    title,
-                    format: Some(format),
-                    published_ms: published,
-                    updated_ms: updated,
-                    arrived_ms: published,
-                    settled: false,
-                    trusted_only: false,
-                    onward: false,
-                    dated_ms: None,
-                    minted_ms: published,
-                    group: Some((hex::encode(group), name)),
-                },
-                tokens,
-                labels: labels
-                    .into_iter()
-                    .filter_map(|l| {
-                        Some(crate::annotations::KnownAnnotation {
-                            annotator: l["annotator"].as_str()?.to_string(),
-                            key: l["key"].as_str()?.to_string(),
-                            value: l["value"].as_str()?.to_string(),
-                        })
-                    })
-                    .collect(),
-            }
-        })
-        .collect())
+    Ok(rows.into_iter().map(journal_row).collect())
+}
+
+/// One of a reader's group posts, for its own page - or None, when it isn't theirs to see.
+pub async fn feed_row(
+    state: &AppState,
+    reader: &str,
+    group: &GroupId,
+    doc: &str,
+) -> Result<Option<GroupFeedRow>> {
+    let rows: Vec<JournalRow> = state
+        .node_db
+        .fetch_all(
+            &format!(
+                "SELECT {JOURNAL_COLUMNS} FROM group_journal
+                 WHERE reader_root = ?1 AND group_id = ?2 AND doc_id = ?3"
+            ),
+            (reader, group.to_vec(), doc),
+        )
+        .await
+        .context("reading a group post")?;
+    Ok(rows.into_iter().next().map(journal_row))
 }
 
 // ---------------------------------------------------------------------------------------------

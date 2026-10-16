@@ -150,8 +150,7 @@
     min-width: 0;
 }
 
-.group-member-acts,
-.group-post-acts {
+.group-member-acts {
     display: flex;
     flex-wrap: wrap;
     gap: 0.3rem;
@@ -183,52 +182,6 @@
     font-size: 0.85rem;
 }
 
-.group-post {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    background: var(--surface);
-    --line: var(--border);
-    --j: 5px;
-    padding: 0.8rem 1rem;
-}
-
-.group-post-hidden {
-    opacity: 0.6;
-}
-
-.group-post-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.group-post-when,
-.group-post-hidden-note {
-    color: var(--muted);
-    font-size: 0.8rem;
-}
-
-.group-post-title {
-    margin: 0;
-}
-
-.group-post-hidden-note,
-.group-post-plain {
-    margin: 0;
-}
-
-.group-post-plain {
-    white-space: pre-wrap;
-}
-
-.group-post-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35em;
-}
-
 /* A group's own feed in the feed's Feeds column (apps/feed.js): its mark sits where a saved feed's
    trash does, since it isn't one to forget. */
 .feed-saved-group {
@@ -237,6 +190,11 @@
 
 .feed-entry-group a {
     color: inherit;
+}
+
+/* Hidden from its group by an owner: still there for the owners and its author, faded. */
+.feed-entry-hidden {
+    opacity: 0.6;
 }
 
 .group-write-here {

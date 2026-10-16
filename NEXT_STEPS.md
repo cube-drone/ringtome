@@ -72,6 +72,13 @@ are driving towards.
 
 ### Groups (plans/GROUPS.md)
 
+- From the group page on the feed's cards:
+  - **The group page has no tag strip.** A persona's page lists its posts under
+    the label facets; the group's would want `/feed/labels` to count group posts
+    (the 4b residual below), and then the same strip narrowed to the group.
+  - **The page lists everything at once.** The feed narrowed to a group answers
+    up to `RESULTS_CAP` posts unpaged, as any narrowed feed does; a busy group
+    wants the time-ordered feed's cursor.
 - From 4c (writing):
   - **Writer's bar shows only if you've unlocked publishing or are in a group**
     (`editor.js` `hasPublishBar` still asks for the unlock): someone in a group

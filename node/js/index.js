@@ -40,7 +40,7 @@ import { KeptLayer, KeptRoute, PERSON_PATH, useKeptUrl } from './keptpage.js';
 import { PostPage } from './postpage.js';
 import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
-import { GroupPage } from './groups.js';
+import { GroupPage, GroupPostPage } from './groups.js';
 import { PostHistory } from './posthistory.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
@@ -695,6 +695,7 @@ const Inside = ({ session }) => {
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
             <${PeopleApp} path="/ringtome/people/groups" tab="groups" current=${persona.current} />
             <${GroupPage} path="/ringtome/people/groups/:group" current=${persona.current} />
+            <${GroupPostPage} path="/ringtome/people/groups/:group/posts/:doc" current=${persona.current} />
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />

@@ -444,11 +444,15 @@ How each post feature carries over:
 - **The group's page** is shaped like a persona's: the group's details on top
   (name, description, the roster with owners marked, and an owner's management
   controls), and its posts beneath, newest first. Only a member sees any of it.
-  An owner can **hide** a post from the group's page: a hide entry the fold
-  honours. They can't delete it, since it's the member's. A hidden post is out
-  of sight for members, but owners see it, faded, to show it again, and so does
-  its author, so they know it was hidden (Curtis, 2026-10-15). An owner's own
-  post isn't theirs to hide: they take it down.
+  The posts are the feed's own cards, from the feed narrowed to the group, as a
+  persona's page lists the feed's cards for one person; each opens at its own
+  address inside the group, `/ringtome/people/groups/{id}/posts/{doc}`, there to
+  members alone (Curtis, 2026-10-16). An owner can **hide** a post from the
+  group's page: a hide entry the fold honours. They can't delete it, since it's
+  the member's. A hidden post is out of sight for members, but owners see it,
+  faded, to show it again, and so does its author, so they know it was hidden
+  (Curtis, 2026-10-15). An owner's own post isn't theirs to hide: they take it
+  down.
 - **The group's room.** Each group has one standing room, and any member can
   start more, with the group as their audience.
 - **Mute** a group, per member, in the bell and in the feed.
@@ -607,8 +611,9 @@ Dropped:
        row; picking a group leaves only its posts.
      - A group post's card names its group, reads its words through the group's
        door, takes tags through the group's labels route, and offers only its
-       author's takedown: no share, profile or front-page pin, QR code, copy
-       into notes, or address of its own.
+       author's takedown and, to an owner, the hide (2026-10-16): no share,
+       profile or front-page pin, QR code, or copy into notes. Its address is
+       inside the group (2026-10-16; until then it had none).
      - The Feeds column lists one feed per group you're in, under "all", made
        from your groups rather than stored (`pure/groups.js` `groupFeeds`).
    - **4c, writing** (built 2026-10-15: `roster.rs` publish and

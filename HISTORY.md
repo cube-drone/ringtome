@@ -22091,3 +22091,31 @@ have collided with the identity routes' `{doc_id}` at the same position, which
 axum refuses at startup rather than compile time. The bar's group fetch would
 also have depended on `publishToGroup`, a new function on every render, and
 refetched in a loop. It depends on whether the surface can post to a group.
+
+## 2026-10-16: the group page lists the feed's own cards
+
+Curtis noticed that a group post in the feed had no hide, while the group page
+drew its posts with a renderer of its own. He took a persona's page as the
+model: the feed's post objects, under a filter of their own, each one clicking
+through to a page of its own. The group page now lists the feed narrowed to the
+group (`feed?group=`) as `PostEntry` cards, and reloads once the visit's sync
+lands. `GroupPost` and its CSS are gone.
+
+A group post's card offers an owner the hide as a chip after the trash, on the
+same rule as before: someone else's post, or your own when another owner hid it.
+A hidden card is faded and says "hidden from the group by an owner". To know
+this, the group journal gains the post's hidden mark, whether the reader owns
+the group, comments-off, the claimed date and the mint (node rung 87). These
+come through `FeedRow.group`, now a `GroupMark`, onto the item's `group` as
+`hidden` and `owner`.
+
+Each group post has its own page at `/ringtome/people/groups/{id}/posts/{doc}`,
+from `GET .../groups/{group}/posts/{doc}`. That route reads the reader's journal
+row and dresses it as the feed does: the feed handler's dressing moved into
+`dress_feed`, shared by both. So the page is there exactly when the feed would
+show the post, and is a 404 to a stranger or to a member the post is hidden
+from. The card's link and Writer's "view" go there. One new claim in
+`groupposts.cjs` covers the page for members and strangers, the owner flag, and
+the hide mark reaching the author's node. The invites claim now checks that the
+narrowed feed and the page agree with the group's posts route while the post is
+hidden.

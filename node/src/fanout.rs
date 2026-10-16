@@ -1499,9 +1499,20 @@ pub struct FeedRow {
     pub dated_ms: Option<i64>,
     /// When the post was actually written down; 0 when the row came from a fragment.
     pub minted_ms: i64,
-    /// The group it was posted to, `(id, name)` - a row of the group journal (roster.rs), never
-    /// of this one.
-    pub group: Option<(String, String)>,
+    /// The group it was posted to - a row of the group journal (roster.rs), never of this one.
+    pub group: Option<GroupMark>,
+}
+
+/// A group post's group, as its feed row knows it: which, what it's called, and what its card may
+/// say and do for this reader.
+#[derive(Debug, Clone)]
+pub struct GroupMark {
+    pub id: String,
+    pub name: String,
+    /// An owner hid it from the group; only owners and its author see it then.
+    pub hidden: bool,
+    /// The reader is one of the group's owners, so the card offers hide and show.
+    pub owns: bool,
 }
 
 /// How many of a document's other sharers a feed row will carry. A count is exact; a LIST is a

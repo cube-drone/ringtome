@@ -142,6 +142,7 @@ import { beatLabel } from './pure/swatch.js';
 import {
     postHref,
     groupHref,
+    groupPostHref,
     docHref,
     roomHref,
     CopyLinkChip,
@@ -777,6 +778,11 @@ const PostEntryBody = ({
     const [amended, setAmended] = useState(null);
     const itemRef = useRef(null);
     const groupId = item.group && item.group.id;
+    // An owner hid it from the group (plans/GROUPS.md, section 7), as the card knows it: the row
+    // says so, the owner's chip moves it, and a fresh row wins - the pin's discipline, above.
+    const serverHidden = !!(item.group && item.group.hidden);
+    const [hidden, setHidden] = useState(serverHidden);
+    useEffect(() => setHidden(serverHidden), [serverHidden]);
 
     useEffect(() => {
         let live = true;
@@ -842,12 +848,14 @@ const PostEntryBody = ({
     // low-interest card is both smaller AND holds a smaller picture, by separate amounts.
     const imageCap = item.mine ? null : postImageCap(interest);
     // Spelled out rather than interpolated, so the dead-CSS convention can see each class.
-    const entryClass =
-        emphasis === 'low'
-            ? 'feed-entry feed-entry-low'
-            : emphasis === 'high'
-              ? 'feed-entry feed-entry-high'
-              : 'feed-entry';
+    // A post an owner hid from its group is faded for the few who still see it (GROUPS.md §7).
+    const entryClass = hidden
+        ? 'feed-entry feed-entry-hidden'
+        : emphasis === 'low'
+          ? 'feed-entry feed-entry-low'
+          : emphasis === 'high'
+            ? 'feed-entry feed-entry-high'
+            : 'feed-entry';
 
     // Today the time, another year the year (pure/when.js) - the cards used to drop the year
     // always, so five years of imported posts all read as this year's.
@@ -864,8 +872,10 @@ const PostEntryBody = ({
     // months promising took the href over on 2026-08-26, the day after it was built. The
     // permalink's profile-visit-first load keeps the fresh-sync the author-page link used
     // to buy.
-    // A group post has no page of its own outside the group: its link is the group's.
-    const href = item.group ? groupHref(item.group.id) : postHref(item.author, item.doc_id);
+    // A group post's page is inside its group, there to its members alone.
+    const href = item.group
+        ? groupPostHref(item.group.id, item.doc_id)
+        : postHref(item.author, item.doc_id);
     // What "link" hands out (plans/WEB_ADDRESSES.md): the post's web address when its author gave it
     // one, in the shortest form - under their @name where this node gave them one. The @name is asked
     // ahead of the press, since a copy that waits on the network may lose the clipboard.
@@ -1153,9 +1163,9 @@ const PostEntryBody = ({
     // The card's chips, the whole deck: in its banner's row, or in a narrow window behind one menu
     // chip, opening on a line of the head below the byline (doc/chips.js `useChipMenu`; Curtis,
     // 2026-10-08).
-    // A group post's deck (plans/GROUPS.md, section 7): its takedown, through the group's door. It
-    // is never shared out, pinned to a profile or the front page, coded for another phone or
-    // copied into notes - each would carry it past the group - and it has no address of its own.
+    // A group post's deck (plans/GROUPS.md, section 7): its takedown, through the group's door, and
+    // an owner's hide. It is never shared out, pinned to a profile or the front page, coded for
+    // another phone or copied into notes - each would carry it past the group.
     const takeDownFromGroup = async () => {
         try {
             await api(
@@ -1167,6 +1177,20 @@ const PostEntryBody = ({
             // still standing: the card stays
         }
     };
+    const hideInGroup = async () => {
+        try {
+            await api(
+                `/api/identity/${current.root}/groups/${item.group.id}/docs/${item.doc_id}/hide`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({ hidden: !hidden }),
+                },
+            );
+            setHidden(!hidden);
+        } catch {
+            // refused - a senior owner's hide stands: the card stays as it was
+        }
+    };
     const groupDeck = html`${
         item.mine &&
         !!current &&
@@ -1176,6 +1200,21 @@ const PostEntryBody = ({
             aria-label=${t('postentry.take-it-down-from-the-group', 'take it down from the group')}
             onClick=${takeDownFromGroup}
         ><${Icons.trash} /></button>`
+    }${
+        /* Hiding is for someone else's post: your own you take down - unless another owner hid
+        it, when you may ask to show it, and seniority decides (Curtis, 2026-10-15). */ ''
+    }${
+        item.group &&
+        item.group.owner &&
+        !!current &&
+        (!item.mine || hidden) &&
+        html`<button
+            class="chip chip-button"
+            title=${hidden ? t('postentry.show-it-to-the-group-again', 'show it to the group again') : t('postentry.hide-it-from-the-group', 'hide it from the group')}
+            aria-label=${hidden ? t('postentry.show-it-to-the-group-again', 'show it to the group again') : t('postentry.hide-it-from-the-group', 'hide it from the group')}
+            aria-pressed=${hidden}
+            onClick=${hideInGroup}
+        ><${hidden ? Icons.eye : Icons.hidden} /></button>`
     }`;
     const cardDeck = item.group
         ? groupDeck
@@ -1320,6 +1359,7 @@ const PostEntryBody = ({
                     <${Icons.group} />
                     ${t('postentry.in-group', 'in')}
                     <a href=${groupHref(item.group.id)}>${item.group.name}</a>
+                    ${hidden && html` · ${t('postentry.hidden-from-the-group-by-an-owner', 'hidden from the group by an owner')}`}
                 </p>`
             }
             ${

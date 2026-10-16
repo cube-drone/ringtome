@@ -244,7 +244,11 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             there,
             `bea's group post is in ada's feed: ${JSON.stringify(mine.map((i) => i.title))}`,
         );
-        assert.deepEqual(there.group, { id: group, name: 'Potato Bunch' }, 'naming its group');
+        assert.deepEqual(
+            there.group,
+            { id: group, name: 'Potato Bunch', owner: true },
+            'naming its group, and that ada owns it',
+        );
         assert.equal(there.author, beaRoot);
         assert.ok(
             there.annotations.some((a) => a.annotator === adaRoot && a.value === 'spuds'),
@@ -275,6 +279,41 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             "and it's in bea's feed",
         );
         assert.ok(!(await feed(dee, deeRoot)).some((i) => i.doc_id === post), "never a stranger's");
+    });
+
+    it("a group post has a page of its own, for members alone, and its card wears an owner's hide", async () => {
+        const item = async (who, root) => {
+            const res = await who(`api/identity/${root}/groups/${group}/posts/${post}`);
+            return res.status === 200 ? (await res.json()).item : res.status;
+        };
+        const adas = await item(ada, adaRoot);
+        assert.equal(adas.doc_id, post, `ada's node answers the post: ${JSON.stringify(adas)}`);
+        assert.equal(adas.author, beaRoot);
+        assert.ok(adas.group.owner, 'and offers its owner the hide');
+        const beas = await item(bea, beaRoot);
+        assert.equal(beas.doc_id, post);
+        assert.ok(!beas.group.owner, 'but not a member who owns nothing');
+        assert.equal(await item(dee, deeRoot), 404, 'a stranger is told there is no such post');
+
+        const inFeed = async (who, root) =>
+            (
+                (await (await who(`api/identity/${root}/feed?group=${group}`)).json()).items || []
+            ).find((i) => i.doc_id === post);
+        await act(ada, adaRoot, `docs/${post}/hide`, { hidden: true });
+        assert.ok((await inFeed(ada, adaRoot)).group.hidden, "ada's card says it's hidden");
+        assert.ok((await item(ada, adaRoot)).group.hidden, 'and so does its page');
+        await sync(ada, adaRoot);
+        let beaSees;
+        for (let i = 0; i < 20; i++) {
+            await sync(bea, beaRoot);
+            beaSees = await inFeed(bea, beaRoot);
+            if (beaSees && beaSees.group.hidden) break;
+            await wait(300);
+        }
+        assert.ok(beaSees && beaSees.group.hidden, 'its author still has it, marked hidden');
+        await act(ada, adaRoot, `docs/${post}/hide`, { hidden: false });
+        assert.ok(!(await inFeed(ada, adaRoot)).group.hidden, 'shown again, the mark goes');
+        await sync(ada, adaRoot);
     });
 
     it('a dated draft posts under its date, with comments off if asked', async () => {

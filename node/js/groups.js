@@ -12,10 +12,8 @@ import { useLocation } from 'preact-iso';
 import { api } from './net.js';
 import { appHref, groupHref, groupsHref } from './links.js';
 import { openMirror, useLive } from './mirror.js';
-import { PersonChip, PersonRow } from './person.js';
-import { MarqueeBody, bareSource } from './doc/marqueebody.js';
-import { useTurbolinks } from './doc/turbolinks.js';
-import { formatWhen } from './pure/when.js';
+import { PersonRow } from './person.js';
+import { PostEntry } from './postentry.js';
 import { filterContacts } from './pure/people.js';
 import { groupsInOrder, inviteCandidates, isInvite, membersInOrder } from './pure/groups.js';
 import { speakable } from './speakable.js';
@@ -147,6 +145,7 @@ export const GroupPage = ({ group, current }) => {
     const [error, setError] = useState(null);
     const [turn, setTurn] = useState(0);
     const refresh = useCallback(() => setTurn((n) => n + 1), []);
+    const [synced, setSynced] = useState(0);
     useEffect(() => {
         if (!base) return undefined;
         let live = true;
@@ -171,7 +170,11 @@ export const GroupPage = ({ group, current }) => {
         if (!base) return undefined;
         let live = true;
         post(`${base}/sync`)
-            .then((r) => live && r && r.members && setRoster(r))
+            .then((r) => {
+                if (!live) return;
+                if (r && r.members) setRoster(r);
+                setSynced((n) => n + 1);
+            })
             .catch(() => {});
         return () => {
             live = false;
@@ -237,7 +240,7 @@ export const GroupPage = ({ group, current }) => {
                 </button>
             </div>`
         }
-        ${you.member && html`<${GroupPosts} base=${base} group=${group} root=${root} current=${current} owner=${you.owner} />`}
+        ${you.member && html`<${GroupPosts} group=${group} root=${root} current=${current} synced=${synced} />`}
     </div>`;
 };
 
@@ -334,20 +337,17 @@ const InviteSomeone = ({ roster, root, act }) => {
     </section>`;
 };
 
-/// The group's posts, newest first. Nobody writes here (Curtis, 2026-10-15): a post to the group
-/// is written in the feed or in Writer, with the group as where it goes.
-const GroupPosts = ({ base, group, root, current, owner }) => {
-    const [answer, error, reload] = useAnswer(`${base}/posts`);
-    const [actError, setActError] = useState(null);
-    const act = async (path, body) => {
-        try {
-            await post(`${base}/${path}`, body);
-            reload();
-        } catch (err) {
-            setActError(err.message);
-        }
-    };
-    const posts = (answer && answer.posts) || [];
+/// The group's posts, newest first: the feed's own cards, from the feed narrowed to this group
+/// (Curtis, 2026-10-16: a persona's page is the bellwether - the same post objects as the feed,
+/// under a filter of its own, each one clicking through to a page of its own). Nobody writes here
+/// (Curtis, 2026-10-15): a post to the group is written in the feed or in Writer, with the group
+/// as where it goes. `synced` moves when the visit's sync lands, which may bring posts with it.
+const GroupPosts = ({ group, root, current, synced }) => {
+    const [answer, error, reload] = useAnswer(`/api/identity/${root}/feed?group=${group}`);
+    useEffect(() => {
+        if (synced) reload();
+    }, [synced, reload]);
+    const items = (answer && answer.items) || [];
     return html`<section class="group-posts">
         <div class="people-shelf-head">
             <span class="people-shelf-title">${t('apps.groups.posts', 'posts')}</span>
@@ -355,74 +355,50 @@ const GroupPosts = ({ base, group, root, current, owner }) => {
         <p class="group-write-here">
             ${t('apps.groups.to-post-here', 'to post here, write in the feed or in hrseWriter™ and choose this group as where it goes.')}
         </p>
-        ${(actError || error) && html`<p class="groups-error">${actError || error.message}</p>`}
-        ${answer && posts.length === 0 && html`<p class="people-empty">${t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}</p>`}
-        ${posts.map(
-            (p) => html`<${GroupPost}
-                key=${p.doc}
-                post=${p}
-                group=${group}
+        ${error && html`<p class="groups-error">${error.message}</p>`}
+        ${answer && items.length === 0 && html`<p class="people-empty">${t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}</p>`}
+        ${items.map(
+            (item) => html`<${PostEntry}
+                key=${item.doc_id}
+                item=${item}
                 current=${current}
-                mine=${p.author === root}
-                owner=${owner}
-                act=${act}
+                editing=${null}
+                quote=${false}
             />`,
         )}
     </section>`;
 };
 
-const GroupPost = ({ post: p, current, mine, owner, act }) => {
-    const words = p.words || '';
-    const profile = useTurbolinks(words, 'marquee');
-    // Chosen out here: inside the template, a string comparison reads to the strings cop as copy.
-    const marquee = p.format === 'marquee';
-    // Its tags, whoever said them, once each (section 7: a group post's labels ride its lane).
-    const tags = [
-        ...new Set((p.annotations || []).filter((l) => l.key === 'tag').map((l) => l.value)),
-    ];
-    return html`<article class=${p.hidden ? 'group-post group-post-hidden jag-line-2' : 'group-post jag-line-2'}>
-        <header class="group-post-head">
-            <${PersonChip} root=${p.author} current=${current} />
-            <span class="group-post-when">
-                ${formatWhen(p.posted_ms)}${p.edited ? ` · ${t('apps.groups.edited', 'edited')}` : ''}
-            </span>
-        </header>
-        ${p.title && html`<h3 class="group-post-title">${p.title}</h3>`}
-        ${p.hidden && html`<p class="group-post-hidden-note">${t('apps.groups.hidden-by-an-owner', 'hidden from the group by an owner')}</p>`}
+/// A group post's own page, inside its group: the feed's card, alone. There to the group's members
+/// only, and not to one it's hidden from - the node answers no such post to anyone else.
+export const GroupPostPage = ({ group, doc, current }) => {
+    const root = current && current.root;
+    const [answer, error] = useAnswer(
+        root && group && doc ? `/api/identity/${root}/groups/${group}/posts/${doc}` : null,
+    );
+    if (!root) return null;
+    const item = answer && answer.item;
+    return html`<div class="group-page">
+        <a class="skip-link" href=${groupHref(group)}>${t('apps.groups.back-to-the-group', 'back to the group')}</a>
         ${
-            p.words == null
-                ? html`<p class="people-empty">${t('apps.groups.words-on-their-way', 'the words are on their way from another member.')}</p>`
-                : marquee
-                  ? html`<${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />`
-                  : html`<p class="group-post-plain">${words}</p>`
+            error &&
+            (error.status === 404
+                ? html`<p class="people-empty">
+                      ${t('apps.groups.post-not-here', "this post isn't here - it may have been taken down or hidden, or you may not be in its group.")}
+                  </p>`
+                : html`<p class="groups-error">${error.message}</p>`)
         }
+        ${!answer && !error && html`<p class="people-empty">${t('apps.groups.fetching-the-post', 'fetching the post…')}</p>`}
         ${
-            tags.length > 0 &&
-            html`<div class="group-post-tags">
-                ${tags.map((tag) => html`<span class="label-chip" key=${tag}>${tag}</span>`)}
-            </div>`
+            item &&
+            html`<${PostEntry}
+                key=${item.doc_id}
+                item=${item}
+                current=${current}
+                editing=${null}
+                quote=${false}
+                standalone=${true}
+            />`
         }
-        ${
-            (mine || owner) &&
-            html`<footer class="group-post-acts">
-                ${
-                    mine &&
-                    html`<button class="group-act jag-line" onClick=${() => act(`docs/${p.doc}/retract`)}>
-                        <${Icons.trash} /> ${t('apps.groups.take-down', 'take down')}
-                    </button>`
-                }
-                ${
-                    /* Hiding is for someone else's post: your own you take down. Unless another
-                    owner hid it - then you may ask to show it, and seniority decides. */ ''
-                }
-                ${
-                    owner &&
-                    (!mine || p.hidden) &&
-                    html`<button class="group-act jag-line" onClick=${() => act(`docs/${p.doc}/hide`, { hidden: !p.hidden })}>
-                        ${p.hidden ? t('apps.groups.show-it-again', 'show it again') : t('apps.groups.hide-from-the-group', 'hide from the group')}
-                    </button>`
-                }
-            </footer>`
-        }
-    </article>`;
+    </div>`;
 };

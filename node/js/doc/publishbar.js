@@ -40,7 +40,7 @@ import {
 import { Modal } from '../modal.js';
 import { api } from '../net.js';
 import { Icons } from '../icons.js';
-import { groupHref, postHref } from '../links.js';
+import { groupPostHref, postHref } from '../links.js';
 import { groupFeeds } from '../pure/groups.js';
 import { formatWhen } from '../pure/when.js';
 import { useUnlocked } from '../unlocks.js';
@@ -273,8 +273,8 @@ export const PublishBar = ({
             inGroup &&
             html`<a
                 class="publish-bar-view jag-line"
-                href=${groupHref(inGroup.group)}
-                title=${t('doc.editor.open-the-group', 'open the group it was posted in')}
+                href=${groupPostHref(inGroup.group, inGroup.post)}
+                title=${t('doc.editor.open-the-group-post', 'open the post, in the group it was posted in')}
             ><${Icons.group} /> ${t('doc.editor.view', 'view')}</a>
             <button
                 class="publish-bar-update jag-line"
