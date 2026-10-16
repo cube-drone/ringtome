@@ -52,6 +52,12 @@ async fn live_set(state: &AppState) -> Result<HashSet<Hash>> {
         live.insert(Hash::from_bytes(hash));
     }
 
+    // The documents posted to groups (plans/GROUPS.md): bodies and pictures named on any group
+    // lane this node holds - kept in the group memo, never in a persona's views.
+    for hash in crate::roster::blob_refs(&state.node_db).await? {
+        live.insert(Hash::from_bytes(hash));
+    }
+
     // Mid-heal wants: referenced by intent, protected until reconciled away.
     for hash in crate::net::bodies::wanted_hashes(&state.node_db).await? {
         live.insert(Hash::from_bytes(hash));

@@ -2396,6 +2396,8 @@ async fn serve_on(
     // one a hosted persona entered. That is how a participant's chain reaches the creator's
     // node, and how a reader pulls each participant's chain from it.
     let room_ok = !instances.is_empty() && crate::chat::rooms_here(&state, &instances).await;
+    // ...and its sibling for groups (plans/GROUPS.md, section 2): a group this node holds.
+    let group_ok = !instances.is_empty() && crate::roster::groups_here(&state, &instances).await;
 
     // Serve identities this node agents - and ACCEPT exchanges for personas someone here
     // WANTS: a followed or previously-fetched persona's updates are welcome, which is how a
@@ -2416,6 +2418,7 @@ async fn serve_on(
         !followers.is_empty() || crate::idface::has_fetched(&state.node_db, &root_hex).await?;
     let wanted = agented
         || room_ok
+        || group_ok
         || (held && answers_for_held(&state, root, &peer_proof, &peer_id, &our_id).await);
     if !wanted {
         write_frame(
@@ -2467,12 +2470,21 @@ async fn serve_on(
     // A persona held here ONLY for a room (room_ok, neither hosted nor followed) is held at
     // the room's depth (CHAT.md, ruling 9): its identity and profile at headers depth, and
     // the room chain - the room scope, whatever the peer offers.
-    let room_only = room_ok && !agented && followers.is_empty();
-    let scope: Vec<u32> = if room_only {
+    // A group's member held here only for the group is held at the group's depth the same way.
+    let lane_only: Option<&[u32]> = if agented || !followers.is_empty() {
+        None
+    } else if room_ok {
+        Some(ROOM_SCOPE)
+    } else if group_ok {
+        Some(crate::roster::GROUP_SCOPE)
+    } else {
+        None
+    };
+    let scope: Vec<u32> = if let Some(lane) = lane_only {
         if scope.is_empty() {
-            ROOM_SCOPE.to_vec()
+            lane.to_vec()
         } else {
-            scope.into_iter().filter(|s| ROOM_SCOPE.contains(s)).collect()
+            scope.into_iter().filter(|s| lane.contains(s)).collect()
         }
     } else if peek {
         if scope.is_empty() {
@@ -2483,8 +2495,8 @@ async fn serve_on(
     } else {
         scope
     };
-    let allowed: Option<&[u32]> = if room_only {
-        Some(ROOM_SCOPE)
+    let allowed: Option<&[u32]> = if lane_only.is_some() {
+        lane_only
     } else if peek {
         Some(PEEK_SCOPE)
     } else {
@@ -2493,9 +2505,20 @@ async fn serve_on(
     // The room's door at the lane (CHAT.md, ruling 4): a sealed room's chains go only to a
     // dialer serving a persona the seal admits; the instances it may not hold leave the
     // scope, so neither side claims nor sends them.
+    // A group's lanes go through the group's door instead, below, once the dialer's proof is
+    // checked: the door opens to a dialer proven to speak for someone on the roster.
+    let mut groups: Vec<[u8; 16]> = Vec::new();
+    let mut rooms: Vec<[u8; 16]> = Vec::new();
+    for i in &instances {
+        if crate::roster::is_group(&state, i).await {
+            groups.push(*i);
+        } else {
+            rooms.push(*i);
+        }
+    }
     let instances = crate::chat::instances_dialer_may_hold(
         &state,
-        &instances,
+        &rooms,
         &key_proofs,
         &hex::encode(peer_id),
         &our_id,
@@ -2510,6 +2533,15 @@ async fn serve_on(
     // an identity, the node fronts it." A local human asked; this is the asking arriving.
     let db = state.user_dbs.create(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
+    let instances: Vec<[u8; 16]> = if groups.is_empty() {
+        instances
+    } else {
+        let dialer = endpoint_to_id(&hex::encode(peer_id));
+        let proven = peer_proven.then_some(root_hex.as_str());
+        let mut all = instances;
+        all.extend(crate::roster::dialer_may_hold(&state, &groups, &dialer, proven).await);
+        all
+    };
 
     // They dialed us and named this persona: that is a demand edge, recorded whatever the
     // exchange goes on to transfer, because the asking is the fact. Deliberately AFTER the

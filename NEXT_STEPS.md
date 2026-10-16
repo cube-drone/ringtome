@@ -70,6 +70,26 @@ are driving towards.
 - Opus took a crack at fixing chat search losing visible context, but wasn't
   smart enough; revisit with Fable
 
+### Groups (plans/GROUPS.md)
+
+- From slice 2:
+  - **The app.** The composer's "who can see this" picker gains your groups, and
+    a group gets a page. The routes are there.
+  - **Pictures from elsewhere** (an external link, someone else's public
+    picture) are refused in a group post. The public pipeline's download and
+    copy roads need a group twin.
+  - **Replies in a group**, on the replier's own lane for it.
+  - **Rebroadcasts** (GROUPS.md §7): sharing a public post into a group, with
+    the share button's destination picker; an explicit refusal, with a claim,
+    for sharing a group post out, rather than trusting the rebroadcast route to
+    fail on a document it can't find.
+- From 1b:
+  - **A send-side door.** A node dialing for a group sends its lanes to whatever
+    node it dialed, unchecked.
+  - **One exchange per group.** A sync is now one per persona per node, which is
+    fine at a handful of members but not at hundreds.
+  - **The app.** 1b is HTTP routes only.
+
 ### Notifications
 
 - Change the favicon when stuff happens

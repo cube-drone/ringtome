@@ -21764,3 +21764,130 @@ first paint. `persona.js` `open` now keeps the picture too. `person.js`
 `usePerson` wears the name and picture from opening until the mirror has
 answered. A mirror read now answers `null` for "none here", so `undefined` means
 only "not read yet", and removing your picture still removes it.
+
+## 2026-10-15: groups, slice 1a - the roster fold
+
+plans/GROUPS.md settled its main protocol question with Curtis: a group lives on
+its members' own chains, one lane per device per group (a per-instance `GROUP`
+service, keyed like chat's rooms), and the roster is a fold over them. The
+plan's new section 3 says how every node reaches the same roster without clocks.
+It borrows CROWN's anchored revocations: any act that ends someone's authority
+names how much of their lanes it lets stand, and everything past that is void
+wherever and whenever it arrives.
+
+`proto/src/roster.rs` is that fold, pure and beside `crown.rs`:
+
+- the signed founding statement, whose hash is the group id;
+- owners judged top-down by rank path, a junior unable to end a senior;
+- hostile ends taking the subtree, retirement keeping it;
+- members judged lane by lane, with readmitting invites, bans and unbans;
+- link revocations and closings that list the joins they accept;
+- settings and hides as registers the senior wins.
+
+Fourteen scenario tests fold each case in every arrival order of its lanes and
+require one roster. Two deliberately broken rules (the seniority check, and an
+anchor that misnames its entry) each failed their own test.
+
+Building it changed four of the plan's rules, now in section 3:
+
+- the id hashes the founding statement, not the entry;
+- `replaces` is a list, so one write settles a conflict;
+- closing an open group accepts joins as a link revocation does;
+- leaving ends membership but not ownership, so a leaving owner retires first.
+
+The wire encoding and the node are slice 1b.
+
+## 2026-10-15: groups, slice 1b - on the wire and in the node
+
+A group now travels: `GROUP` (service 14) is a per-instance service like chat's,
+one chain per device per group, carrying `GROUP_ENTRY` (entry type 14). The
+entries' wire form is in `proto/src/roster.rs`: one integer-keyed map for every
+kind, with a round trip that refuses a second spelling of the same entry.
+
+`node/src/roster.rs` owns it on the node:
+
+- The fold leg copies a persona's group entries into `group_lanes` as their
+  chains move (node rung 85), so a roster folds from node.db alone.
+- `group_people` keeps who the door opens to.
+- `group_peers` keeps where each group has been heard, and which persona each
+  node proved it speaks for.
+- `serve_on` sends group instances through the group's door instead of a room's.
+  A persona held here only for a group is held at the group's depth (key tree,
+  profile, lanes).
+- Routes under `/api/identity/{root}/groups` found, invite, join, sync, leave,
+  appoint, demote, remove and post (a post is the entry alone until slice 2).
+- The roster shows only to a persona the group counts (ruling 3).
+- A group-sync beat runs once a minute (an hour on the rig).
+
+`rosters.cjs` has seven claims across three nodes:
+
+- one roster after a join and after a third node joins;
+- a stranger's node refused, and a stranger on a member's node shown nothing;
+- a junior's removal of a senior changing nothing;
+- a demotion taking the demoted owner's appointees;
+- posts past a removal's anchor void on a node that counted them first;
+- leaving heard everywhere.
+
+The suite found three things the unit tests hadn't:
+
+- **A void act came back to life.** A junior's void removal of a senior became
+  valid when a third owner demoted the senior. Seniority is now by the rank
+  appointed to, standing or not.
+- **A spent invite kept the door open.** An invite already used by a join still
+  counted as outstanding.
+- **A leftover invite served a removed member.** An invite from before a
+  removal, which can't readmit, kept serving the removed member the group,
+  removal and all.
+
+Each is now a roster unit test (18), and each fails against the old rule. Full
+`just ci` passes. What 1b leaves owed is in NEXT_STEPS.
+
+## 2026-10-15: groups, slice 2 - a group post is a document
+
+Curtis's model: a group post is a document like any other post. It has a
+`DocHeader` with versions, a body blob and its pictures as media documents. An
+edit is a new version, and a takedown is the usual retraction. What makes it a
+group post is where it lives: on the poster's lane for the group, served only
+through the group's door. Publishing chooses a destination, the public or one of
+your groups, and a group is a place, not a seal.
+
+**The hash is the boundary** (Curtis's call over a member check on the blob
+lane). `files.rs` serves any hash to anyone, as it always has. Only members are
+served the lanes that name a group's blobs, so only members ever learn the
+hashes.
+
+Building it:
+
+- **The fold counts documents.** The proto fold sees `DOC_HEADER` and retraction
+  entries on a lane as `GroupEntry::Document`, counted while the author is a
+  member at that point. That entry never goes on the wire; 1b's stand-in post is
+  gone.
+- **Memo, not views.** Group documents are read from the group memo (which now
+  records each entry's type), never from a persona's document views, so no
+  public surface can list them.
+- **Publishing.** `roster::publish` mints the author's own pictures as media
+  documents on the lane, embeds them at a members-only address
+  (`/api/groups/{group}/docs/{doc}/body/...`, open to a session with a persona
+  in the group), and writes the words as a body blob. Publishing the same draft
+  again is an edit.
+- **Routes:** the group page, takedown and owners' hides.
+- **Bytes and the reaper.** A group sync fetches missing bodies and pictures
+  from the group's nodes, and the reaper keeps every blob a group lane names.
+
+`groupposts.cjs` has four claims:
+
+- a post with a picture reaches another member's node and reads there, the embed
+  pointing at the group;
+- no public door lists or serves it, and a stranger is shown nothing;
+- an edit and a takedown reach the other member;
+- an owner's hide reaches everyone, and only owners can hide.
+
+`rosters.cjs`'s removal claim now uses real posts.
+
+The first full run went red: five `rosters.cjs` claims failed, cascading from a
+third member's join that pulled nothing. The rerun (each file alone) passed 5
+of 5. A member proof is checked against the persona's key tree, which a node
+meeting someone for the first time only has once the first exchange has brought
+it. So a newcomer's pulls were refused unless something earlier had introduced
+the two nodes. `sync_group` now pushes twice before it pulls, and the second
+push is the one the door can believe. Full `just ci` then passed (1819).

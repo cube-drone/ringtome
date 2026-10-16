@@ -79,6 +79,11 @@ pub mod service {
     /// under the room's key, as its body is), gated at the sync lane by the room's door
     /// (ruling 4), pruned by policy to the room's budget (ruling 6) so it syncs as a suffix.
     pub const CHAT: u32 = 13;
+    /// A group (plans/GROUPS.md, section 2): one member's entries for one group, one chain per
+    /// `(key, GROUP, group id)` - chat's per-instance shape, with a roster. Public in the gate's
+    /// sense (plaintext, never member-only encrypted) and served only through the group's door:
+    /// to a node hosting a persona the roster counts in (section 6).
+    pub const GROUP: u32 = 14;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -96,6 +101,7 @@ pub mod service {
             DOCUMENTS_PRIVATE => "documents-private",
             DOC_META_PRIVATE => "doc-meta-private",
             CHAT => "chat",
+            GROUP => "group",
             _ => "unknown-service",
         }
     }
@@ -141,6 +147,8 @@ pub mod entry_type {
     pub const PUBLIC_ANNOTATION: u32 = 12;
     /// One chat message (`ChatMessage`), on a `CHAT` chain whose instance is the room.
     pub const CHAT_MESSAGE: u32 = 13;
+    /// One group entry (`roster::GroupEntry`), on a `GROUP` chain whose instance is the group.
+    pub const GROUP_ENTRY: u32 = 14;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -157,6 +165,7 @@ pub mod entry_type {
             PUBLIC_EDGE => "public-edge",
             INBOX_NOTICE => "inbox-notice",
             CHAT_MESSAGE => "chat-message",
+            GROUP_ENTRY => "group-entry",
             _ => "unknown-type",
         }
     }

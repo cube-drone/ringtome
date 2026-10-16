@@ -91,6 +91,7 @@ pub mod replies;
 pub mod request_context;
 pub mod revalidate;
 pub mod rights;
+pub mod roster;
 pub mod rss;
 pub mod scheduled;
 pub mod score;
@@ -774,6 +775,19 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(20)
     };
     loops::periodic("room-sync", room_beat, state.clone(), chat::sync_pass);
+    // The group-sync beat (plans/GROUPS.md, slice 1b): every group a hosted persona is in,
+    // pushed and pulled. On the rig, an hour unless a suite asks: a claim about what a node
+    // has or hasn't heard yet can't have a beat deciding it halfway through.
+    let group_beat = if local_test {
+        std::env::var("RINGTOME_TEST_GROUP_SYNC_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+            .unwrap_or(std::time::Duration::from_secs(3600))
+    } else {
+        std::time::Duration::from_secs(60)
+    };
+    loops::periodic("group-sync", group_beat, state.clone(), roster::sync_pass);
     // The room pulse (Curtis, 2026-09-18): a busy room's feed time is its last word's, moved
     // periodically rather than per word.
     let pulse_beat = if local_test {
@@ -1039,7 +1053,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
                 .post(uploadlink::upload_handler)
                 .layer(axum::extract::DefaultBodyLimit::max(body_limits.upload)),
         )
-        .merge(identity::router(body_limits));
+        .merge(identity::router(body_limits))
+        .merge(roster::router());
 
     // DANGEROUS: only mounted in local-test mode. The route does not exist otherwise (404), so
     // there is no path to the SQL executor on a normal node. See test_endpoints.

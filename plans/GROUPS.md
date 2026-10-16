@@ -1,6 +1,7 @@
 # Groups - a shared roster, kept by everyone in it
 
-A design draft (2026-10-14). Nothing built.
+A design draft (2026-10-14; section 2 settled and section 3 added 2026-10-15).
+Nothing built.
 
 A group is a set of people with one membership list that every member sees the
 same way. People join by invite or link, or by asking. Members post to the group
@@ -86,14 +87,19 @@ by a key minted for the group at its creation.
 - Everything the group says after that, it says through its **members' own
   keys**: who's in, who's an owner, its name and description, its posts.
 - Each entry is valid if the roster, as it stood when the entry was signed,
-  allowed its signer to make it.
+  allowed its signer to make it. With no clocks, "as it stood" means what
+  section 3 says.
+- The group id is the hash of the founding entry, so the id proves itself.
 
 So the group has no key that someone must hold to keep it alive. That's how
 ruling 5 holds without a founder: authority comes from the roster, not from a
 key tree, and the roster is on every member's computer.
 
-**A mark that says "group"** goes everywhere a persona-shaped thing could be
-mistaken for a person, so that ruling 7 holds. A group never appears in:
+**A mark that says "group"** was planned for everywhere a persona-shaped thing
+could be mistaken for a person. Since section 2 settled on lanes, a group is
+never a persona at all, so there is nothing to mark: it has no key tree, no
+chain of its own and no profile (slice 1b, 2026-10-15). What stays true is where
+it never appears:
 
 - the persona switcher, the People list or follow suggestions;
 - search, `@name` slugs, the census or persona limits and storage accounting;
@@ -124,17 +130,126 @@ There are two ways to keep a roster that many people write.
     (ruling 2), and the crowd's relay carries a new entry to everyone in a few
     hops.
 
-**The open technical question for (b):**
+**Settled: (b)** (Curtis, 2026-10-15). Chat has already built its shape
+(CHAT.md, rulings 3 and 4):
 
-- One service slot per group per member would be many chains.
-- One "groups" service, with entries tagged by group, would break the old
-  sketch's rule that "gating is a property of the service slot, never a flag an
-  entry could have wrong".
+- `CHAT` is a per-instance service, one chain per `(key, CHAT, room id)`, and a
+  room's history is its participants' chains read together.
+- The sync exchange is already scoped by instance (`instance_in_scope` in
+  `net/sync.rs`), and each room's lane is served only through the room's door.
 
-Settle it in slice 1, by reading how services and the sync door's gates are
-keyed today.
+A group is the same thing with a roster. It's a new per-instance service,
+`GROUP`, whose instance is the group id, served only through the group's door
+(section 6). That answers the old question about service slots: one service, one
+chain per member per group, and the gate is still a property of the slot.
 
-### 3. Owners: a ranked tree (ruling 6)
+**What N lanes cost**, against one shared chain:
+
+- **Noticing a change** is one fingerprint compare per group, however many lanes
+  it has. `net/frontier.rs` already folds a persona's several devices' chains
+  into one digest, and a group's digest is the same construction keyed by group.
+- **Finding which lanes moved** means swapping head lists, about 40 KB at 500
+  lanes. That's fine at 500 and not at 10,000, where the digest has to be split
+  into buckets so two nodes can narrow the difference down. Secure Scuttlebutt
+  went the per-author way, hit this at scale, and fixed it the same way, with
+  vector clocks of feed heads (epidemic broadcast trees), not by sharing a feed.
+- **A newcomer's first sync** is N short fetches, not one long one.
+- **One shared chain** would cost more, even for three people. Concurrent
+  writers make it a DAG with merges. Takedowns become "remove someone else's
+  entry from a chain you share". Its validity depends on a roster written in the
+  same chain. And the clean fix for concurrent writers is a sequencer, which is
+  a founder by another name (ruling 5).
+
+### 3. Order without clocks: how every node reaches the same roster
+
+A roster built from many lanes has to come out the same on every node, whatever
+order the entries arrive in, with no trusted clock. Section 1's "as the roster
+stood when the entry was signed" is made precise here.
+
+**The idea is CROWN's.** When CROWN repudiates a key, the revoke carries
+**anchors**: per `(service, instance)`, the seq and head hash of the prefix that
+stands. Everything past an anchor is void, wherever and whenever it arrives
+(`proto/src/crown.rs`, step 4; `registry::Anchor` already carries an instance).
+A group does the same thing with its own lanes. **Every act that ends someone's
+authority says exactly how much of their group lanes it lets stand.**
+
+The rules:
+
+1. **The group id is the hash of its founding statement**, cut to the 16 bytes a
+   chain instance has. It's self-certifying, so nothing needs the group key
+   after founding. It hashes the statement, not the entry that carries it,
+   because that entry's own chain is keyed by the id.
+2. **A member's own entries are judged on their own lanes.** A persona's lane
+   for a group starts with its join entry. Its entries count until either its
+   own leave entry, or the anchors of an owner's removal of it. A removal
+   anchors each of the persona's device lanes for the group as the remover had
+   folded them. A lane the remover hadn't seen at all anchors at nothing.
+   Anything past an anchor is void: a post, a hide, an invite or a join.
+3. **Authority is cited, not assumed.**
+   - A join cites its grant: the invite, the link token, the trust entry or the
+     approval. A join is valid only if the grant is.
+   - An owner's act cites the appointment that makes them an owner.
+   - A grant is valid if its signer held the authority at that point of their
+     own lane. That means before any anchor against them.
+4. **Removals only go downwards.** A junior owner can't remove a senior (section
+   4), and owners compare by rank path. So ownership resolves top-down from the
+   founder, then members' standing, then members' own entries. There's no cycle
+   to break. Two owners removing each other can't both stand, because only the
+   senior's removal is valid at all. **Rank is where the appointment was made,
+   and it stays** after a demotion or retirement. If seniority were judged by
+   whether the senior still stood, a junior's void act against them would come
+   back to life the day a third owner demoted them, since nothing orders the two
+   (found by the slice 1b suite). The cost is that a demoted owner can be
+   removed only by an owner senior to the rank they held.
+5. **Ending an owner anchors their subtree too.**
+   - A hostile removal anchors the removed owner's lanes, and the lanes of every
+     owner they appointed, transitively. All of them lose ownership; they stay
+     members.
+   - Acts before the anchors stand. Acts past them are void.
+   - Retirement is the owner's own entry. It ends only their own ownership, and
+     their appointees keep their rank (section 4).
+6. **Revoking a link lists what it accepts.** A revocation names the joins under
+   that token it had seen. A join under the token that it doesn't name is void,
+   and that person can be re-invited. Arrival order never decides. **Closing an
+   open group works the same way**: a join in an open group cites the setting
+   that opened it, and the write that closes the group names the joins it
+   accepts.
+7. **A setting names what it replaces.**
+   - Each change of name, description or join setting cites every head it
+     overrides, so one write settles a conflict. The live value is the head of
+     that history.
+   - Two concurrent heads mean two owners changed it at once, and the senior's
+     wins (ruling 6). A later change by anyone, citing the winner, moves on from
+     there.
+   - Hides and unhides work the same way, per post.
+8. **Leaving ends membership, not ownership.** A leave names no appointment, so
+   it can't say which ones it ends, and one made after a rejoin isn't among
+   them. An owner who leaves writes a retirement first, and the app writes both.
+9. **A ban is a removal plus a standing refusal.** Every later join by that
+   persona is void until an owner's unban cites the ban.
+10. **A forked lane is handled the way CROWN handles it.** Two entries at the
+    same `(lane, seq)` mean the device's key was duplicated. The fork rule picks
+    the same winner on every node. An anchor names a head hash, not only a seq,
+    so a duplicated key can't sign a fresh prefix under it.
+
+**What this buys:**
+
+- **Removal is retroactive to its anchors.** A spammer's flood, sent while their
+  removal was still travelling, is void on every node once the removal arrives.
+  Nobody has to hunt it down.
+- **The cost is entry size, and it's bounded:**
+  - a removal carries one anchor per device lane of the removed persona;
+  - an owner's removal also carries one per subtree owner's device lane;
+  - every other entry carries one citation.
+- **The fold is a pure function of the entries.** It can be built and tested the
+  way `crown.rs` is: every arrival order of a scenario must produce the same
+  roster (slice 1).
+
+**What it doesn't buy:** a removed member's node still has everything it synced
+(section 5), and anything it learns of before the removal arrives, it learns.
+Anchors decide what _counts_, not what was _seen_.
+
+### 4. Owners: a ranked tree (ruling 6)
 
 - **The founder is the root owner.** Every later owner is appointed by an
   existing owner. The appointment carries its lineage (the rank path from the
@@ -166,7 +281,7 @@ keyed today.
   one button (slice 5): a fork, which is the honest recourse, and the one every
   hosted group service also leaves you with.
 
-### 4. Members
+### 5. Members
 
 - **Joining is the joiner's act** (ruling 1). What makes an "I'm in" valid
   depends on the group's setting:
@@ -191,7 +306,7 @@ keyed today.
   The UI never implies otherwise; the pessimism is the same as the deletion
   copy's.
 
-### 5. The members' lane: content served only to members
+### 6. The members' lane: content served only to members
 
 **Rulings 2 and 3 together mean group content is plaintext, served only to
 members.**
@@ -204,10 +319,16 @@ members.**
 - This is the trade the old sketch named, and it stands: every member's node
   operator can read the group's content. _We Trust the Node Operator_ already
   says that much.
-- **Blobs** (a picture in a group post) are plaintext too, so the blob door
-  needs the same member check before it serves one. Today a blob is served to
-  anyone who has the hash. This is the one place the design costs new machinery
-  rather than reusing it.
+- **Blobs** (a post's body, a picture in it) are plaintext too, and **the hash
+  is the boundary**, as it is for every blob (Curtis, 2026-10-15). The blob lane
+  has no gate anywhere: `files.rs` serves any hash to anyone who asks, and the
+  hash, unforgeable and unlinkable, is the capability. Only members are served
+  the lanes that name a group's blobs, so only members ever learn their hashes.
+  A removed member never learns what's posted after their removal. What they can
+  still fetch is a body or picture from a post they were served before it, which
+  they were entitled to read. The plan once had a member check on the blob lane
+  here; it would have put a lookup on every blob the node serves, to close only
+  that case.
 
 **Why not today's sealed audiences**, with a group as one more kind of audience?
 
@@ -218,10 +339,44 @@ members.**
 - That puts a ceiling in the low hundreds. The members' lane has no such
   ceiling: any member serves any member.
 
-### 6. What members do with it
+### 7. What members do with it
 
-- **Post to the group.** A post addressed to the group goes in the poster's own
-  lane for it, under their own name. It's edited and taken down as it is today.
+- **Post to the group.** A group post is a document like any other post (Curtis,
+  2026-10-15): a `DocHeader` with versions, a body blob, its pictures as media
+  documents, edits as new versions and takedown as the usual retraction. What
+  makes it a group post is where it lives: on the poster's own lane for the
+  group, not their public posts chain, and served only through the group's door.
+  **Publishing chooses a destination**: the public, or one of your groups. In
+  the app it's one "who can see this" picker, with your groups beside Everyone
+  and the sealed audiences, but a group is a place, not a seal:
+  - **One group per post.** A document lives on one chain, so posting to two
+    groups makes two documents.
+  - **Rebroadcasts** (Curtis, 2026-10-15):
+    - **Into a group: yes.** A public post shared into a group is a rebroadcast
+      whose pointer goes on the sharer's group lane instead of their public
+      rebroadcast chain. The replica is the public one it always was, so the
+      author's edits and retraction reach it as they reach any rebroadcast. The
+      share button asks where it's going, Everyone or one of your groups, as the
+      composer's picker does. The author may never see the share, or what the
+      group says about it; that's no more than a link pasted into a group chat
+      anywhere else.
+    - **Within its own group: no.** Every member already has the post, so a
+      share would only bump it.
+    - **Out of a group: no**, to the public or to another group. The share
+      button refuses, as it does for a sealed post. The author chose the
+      audience, and a share out breaks that promise. It also couldn't work
+      without a leak: a pointer would aim the world at something it can't fetch,
+      and making it fetchable means serving a copy outside the group. If it's
+      ever wanted, the precedent is sealed posts' "people I trust, and onward":
+      a per-post setting by the author, "members may share this out", never the
+      sharer's choice.
+  - **Replies stay in the group**, on the replier's own lane for it.
+  - **No seal inside a group.** The group is already members-only.
+  - **Nothing public lists or serves it**: not the anonymous `/id` door, the
+    shelves, RSS, the crawl or the front page. Members read it through the
+    group's own routes.
+  - **The roster fold counts it like any entry on the lane**: while its author
+    is a member at that point, and void past a removal's anchor.
 - **The group's page** gathers members' posts, newest first. An owner can
   **hide** a post from the group's page: a hide entry the fold honours. They
   can't delete it, since it's the member's.
@@ -235,13 +390,17 @@ members.**
   interest dials on its members. Being in a group with someone isn't trusting
   them. There's an optional "say hi to everyone".
 
-### 7. Scale
+### 8. Scale
 
 With the members' lane, the crowd makes a big group cheap to keep in step. Every
 member is a holder, the relay is 16 wide per hop, and any member answers any
 other. For 10,000 members, worked from the constants, not measured:
 
 - **The roster** is about 10k rows, a couple of MB per member node.
+- **10k members is at least 10k lanes per group.** Noticing a change is still
+  one digest compare; finding the moved lanes needs the bucketed digest from
+  section 2. That's a slice of its own, owed before a group passes a few
+  thousand members, and not needed for the 500 default.
 - **Churn of 1% a day** is about 100 entries, each reaching 10k nodes once.
 - **A change reaches everyone** in about four relay hops on the lazy tick:
   minutes, not seconds. The same goes for a removal, so a removed member can
@@ -257,7 +416,7 @@ until a real big group is measured. Past a few hundred, the limit is human, not
 technical. A group that big is a forum: feeds flood, moderation becomes a job,
 and an open one attracts bots.
 
-### 8. Abuse
+### 9. Abuse
 
 - **Invites from people you don't trust arrive as requests**, the way messages
   do, and are rate-limited per sender.
@@ -289,16 +448,60 @@ Dropped:
 ## Slices
 
 1. **The founding entry and the roster.**
-   - The group mark, and settling section 2's question.
-   - Owners and seniority, invites to people, joining, leaving and removal.
-   - The fold, and the extended member proof on the sync door.
-   - The claims: two members on two nodes see the same roster after a join and
-     after a leave; a stranger's node is refused the roster; the senior wins a
-     mutual removal; a removed owner's appointees are demoted.
-2. **Group posts and the blob door's member check.**
-   - Post to the group, and the group's page, with hiding.
-   - The claim: a removed member's node is refused a picture it doesn't already
-     hold.
+   - **1a, the fold, in `proto`** (built 2026-10-15, `proto/src/roster.rs`). A
+     pure roster fold beside `crown.rs`: the group entries, section 3's rules,
+     and unit tests that replay each scenario in every arrival order and get one
+     roster. No network, no node.
+     - Scenarios: a join, then a leave; a removal while the removed member is
+       still posting; a junior trying to remove a senior; a hostile removal
+       demoting a subtree, while a retirement keeps one; concurrent setting
+       changes; a revoked link with joins in flight; a ban and a rejoin; a
+       forked lane.
+   - **1b, on the wire and in the node** (built 2026-10-15:
+     `node/src/roster.rs`, `node/integration/test/rosters.cjs`). The `GROUP`
+     service per instance, invites to people, joining, leaving and removal. Also
+     the fold over held lanes, and the group's door at the sync lane.
+     - **The door** opens to a dialer that speaks for someone the roster counts:
+       a member, an owner, or someone an invite still waits for. It knows who a
+       dialer speaks for by the member proof of the exchange itself (a member
+       pushing their own lane), or by what an earlier proof told it, kept per
+       group, since the peer ledger keeps proofs only for personas hosted here.
+     - **An invite only opens the door if it could let its invitee in**: one a
+       join has used is spent, and one made before the invitee's removal must
+       readmit it. A leftover invite kept serving a removed member the group in
+       the suite, removal and all.
+     - **Nobody needs a directory yet.** Invites, appointments and removals name
+       people, so a node learns whom to pull by folding what it holds, and an
+       invite carries every node the group has been heard at.
+     - **A sync is push, pull, push.** The first push carries the member's key
+       tree to a node meeting them for the first time, so the second one's proof
+       can be checked.
+     - **Entries travel with a sync**: the person's own, or a group-sync beat,
+       once a minute (an hour on the test rig, so no claim races it).
+     - The claims: two members on two nodes see the same roster after a join and
+       after a leave; a stranger's node is refused the roster; a junior's
+       removal of a senior changes nothing; a removed owner's appointees are
+       demoted; a removed member's posts past the anchor vanish on a third node
+       that saw them first.
+2. **Group posts are documents** (built 2026-10-15: `node/src/roster.rs`,
+   `node/integration/test/groupposts.cjs`).
+   - `DOC_HEADER` and retraction entries on `GROUP` chains. As built, they are
+     read from the group memo like the roster, never folded into a persona's
+     document views: those feed every public surface, which read them filtered
+     to the public lane, so a group post can't reach one. The public pipeline
+     (`bake::publish`) stays the public chain's; `roster::publish` is the
+     group's: your own pictures become media documents on the lane, the words a
+     body blob, and publishing the same draft again is an edit. Pictures from
+     elsewhere, and other people's, are refused for now.
+   - The roster fold counts them like any entry on the lane; `GroupEntry::Post`,
+     slice 1b's stand-in, goes.
+   - After a group sync, the node fetches missing bodies and pictures from the
+     group's nodes; the reaper counts group documents as live.
+   - The group's page: its posts newest first, with hiding.
+   - The claims: a member's post, with a picture, reaches every member's node
+     and reads there; a stranger's node is never served it and no public door
+     lists or serves it; an edit and a takedown reach members as they would for
+     any post; a removed member's later posts are void everywhere.
 3. **Links and the join settings**: invite links, open to people a member
    trusts, open, and ask to join.
 4. **Rooms for groups**: the standing room and ad-hoc ones.
@@ -310,14 +513,24 @@ Dropped:
 
 ## Open questions
 
-1. **Section 2: one group chain, or members' lanes and a fold?** Recommended:
-   lanes and a fold, with the service-slot question settled in slice 1.
+1. ~~Section 2: one group chain, or members' lanes and a fold?~~ **Settled
+   (Curtis, 2026-10-15): lanes and a fold**, on a per-instance `GROUP` service
+   as chat's rooms are.
 2. **Default join setting** for a new group: invite only, or open to people a
    member trusts?
 3. **Can the group itself speak?** A pinned rules or welcome post signed "the
    Potato Bunch" rather than by an owner. With no group key in use, it would be
    an owner's post marked as the group's. Is that wanted?
-4. **Is the roster visible to members as names, or only as a count** for groups
-   that want it? Ruling 3 says members see it. This asks whether a group may
-   choose to hide it even from them (a support group, say).
+4. ~~Is the roster visible to members as names, or only as a count?~~ **Not for
+   now** (Curtis, 2026-10-15): members see the roster (ruling 3). A hidden
+   roster can come later, as a setting.
 5. **The soft ceiling**: 500, or something else?
+
+**Owed after slice 1b** (in NEXT_STEPS): a send-side door when this node dials
+(it sends its group lanes to whatever node it dialed), one exchange per group
+rather than one per persona per node, and the app's side, since 1b is routes
+only. 6. **A hostile removal: do the subtree's acts before the anchors stand?**
+Section 3, rule 5, says yes, so a rogue's sock puppets' removals of real members
+stand, and those members have to be re-invited. The alternative is voiding every
+act of a removed subtree. That's a cleaner undo, but it reaches back into acts
+that were valid when they were made, which is what anchors exist to avoid.

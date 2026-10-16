@@ -1594,6 +1594,26 @@ pub async fn chat_entries(db: &Db) -> Result<Vec<SignedEntry>, AppError> {
         .collect()
 }
 
+/// Every entry on this database's group lanes (plans/GROUPS.md): each GROUP chain whole, in seq
+/// order - its group entries and the documents posted to the group alike. Whole lanes, never a
+/// suffix - the roster's anchors need the history.
+pub async fn group_entries(db: &Db) -> Result<Vec<SignedEntry>, AppError> {
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT bytes FROM entries WHERE service = ?1 ORDER BY author_pubkey, instance, seq",
+            (i64::from(service::GROUP),),
+        )
+        .await
+        .context("reading the group lanes")
+        .map_err(AppError::Internal)?;
+    rows.into_iter()
+        .map(|(bytes,)| {
+            SignedEntry::decode(&bytes)
+                .map_err(|e| AppError::Internal(anyhow!("stored group entry fails decode: {e}")))
+        })
+        .collect()
+}
+
 /// The stored head of every chain a key has written: `(service, instance, seq, head_hash)` -
 /// exactly the shape revocation anchors want.
 pub async fn chain_heads_for_author(

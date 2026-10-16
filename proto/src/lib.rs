@@ -21,6 +21,7 @@ mod error;
 pub mod fragment;
 pub mod pow;
 pub mod registry;
+pub mod roster;
 pub mod sync;
 
 pub use chain::validate_next;

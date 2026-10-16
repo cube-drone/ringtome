@@ -2454,6 +2454,29 @@ export default {
     // --- node/src/rights.rs ---
     'rights.this-server-doesnt-publish-tagged': "this server doesn't publish songs that name their artist or album - its operator's choice (\"{title}\"{more})",
 
+    // --- node/src/roster.rs ---
+    'roster.not-a-group-id': "that isn't a group id",
+    'roster.not-an-entry-hash': "that isn't an entry hash",
+    'roster.not-a-group-entry': "that isn't a group entry: {why}",
+    'roster.no-such-group-here': 'no such group here',
+    'roster.owners-only': "only the group's owners can do that",
+    'roster.not-a-persona': "that isn't a persona",
+    'roster.a-group-needs-a-name': 'a group needs a name of one short line',
+    'roster.a-picture-is-missing': 'a picture this post embeds is missing',
+    'roster.not-a-picture': "something this post embeds isn't a picture, a film or a sound",
+    'roster.a-pictures-bytes-havent-arrived': "a picture's bytes haven't arrived on this computer yet",
+    'roster.no-such-draft': 'no such draft',
+    'roster.the-draft-is-unreadable': "that draft can't be read",
+    'roster.words-only': 'a group post is words, with pictures in them',
+    'roster.the-drafts-words-havent-arrived': "this draft's words haven't arrived on this computer yet",
+    'roster.own-pictures-only': 'a group post can carry your own pictures for now - this one is from elsewhere',
+    'roster.too-many-pictures': "that's more pictures than one post carries",
+    'roster.not-a-document-id': "that isn't a document id",
+    'roster.members-only': "only the group's members can post to it",
+    'roster.your-own-posts-only': 'you can take down only your own posts',
+    'roster.no-such-post': 'no such post in this group',
+    'roster.still-on-its-way': "still on its way from the group's other computers",
+
     // --- node/src/rss.rs ---
     'rss.no-such-persona-here': 'no such persona here',
 
