@@ -68,6 +68,34 @@ pub fn public_cache(last_change_ms: Option<i64>) -> String {
     format!("public, max-age=0, s-maxage={window}")
 }
 
+/// A JSON answer that is the same for every reader - no session, no `as=` - kept as a page is
+/// (`public_cache`): a CDN holds it for the window, a browser asks each time.
+pub fn for_anyone(body: Json<serde_json::Value>) -> Response {
+    ([(header::CACHE_CONTROL, public_cache(None))], body).into_response()
+}
+
+/// Every answer says how it may be kept (Curtis, 2026-10-15: BunnyCDN, told to respect the origin,
+/// kept a persona's shelf - which said nothing - for thirty days, under one cache key for every
+/// filter and every page, so "load more" brought the first page back). An `/api/` answer that
+/// names no rule is `private, no-cache`: a CDN keys on the URL, not the cookie, so one reader's
+/// answer must never reach another's unless it says so (`for_anyone`). And an answer that sets a
+/// cookie - a login, a sliding session's renewal (`auth::renew_cookie`), on a page or anywhere -
+/// is stored nowhere, whatever it claimed: a shared cache holding it would hand that session to
+/// strangers.
+pub async fn label_caching(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let api = req.uri().path().starts_with("/api/");
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    if headers.contains_key(header::SET_COOKIE) {
+        headers
+            .insert(header::CACHE_CONTROL, header::HeaderValue::from_static("private, no-store"));
+    } else if api && !headers.contains_key(header::CACHE_CONTROL) {
+        headers
+            .insert(header::CACHE_CONTROL, header::HeaderValue::from_static("private, no-cache"));
+    }
+    response
+}
+
 /// `public_cache`'s window, in seconds: a tenth of the time since the later of the last change and
 /// the node's start, from five minutes to a year. No last change known: five minutes.
 fn cache_window_s(last_change_ms: Option<i64>, started_ms: i64, now_ms: i64) -> i64 {

@@ -1107,6 +1107,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let app = app
         // Sliding sessions (2026-10-01): a renewed session's cookie goes out again on the response.
         .layer(axum::middleware::from_fn_with_state(state.clone(), auth::renew_cookie))
+        // Outside the renewal, so it sees the cookie that renewal sets (crawl.rs).
+        .layer(axum::middleware::from_fn(crawl::label_caching))
         // Each request's time in the database, waiting and working (db.rs, 2026-10-03).
         .layer(axum::middleware::from_fn(db::tally_requests))
         .with_state(state.clone());

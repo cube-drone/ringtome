@@ -90,3 +90,78 @@ describe('caching: words revalidate, media is kept', function () {
         assert.equal(media.headers.get('cache-control'), 'private, max-age=31536000, immutable');
     });
 });
+
+/*
+    Every answer says who may keep it (Curtis, 2026-10-15: BunnyCDN kept a persona's shelf, which
+    said nothing, for thirty days under one key for every filter and every page, so "load more"
+    brought the first page back). What is the same for everyone a CDN may keep; what was answered
+    for a reader, or sets a cookie, it may not.
+*/
+describe('caching: an answer says who may keep it', function () {
+    this.timeout(120000);
+
+    let ada, root;
+    const anon = makeFetch();
+    const cacheOf = async (who, path) => {
+        const r = await who(path);
+        assert.equal(r.status, 200, `${path}: ${await r.clone().text()}`);
+        return r.headers.get('cache-control') || '';
+    };
+    const shared = (cc) => /\bpublic\b/.test(cc) && /\bs-maxage=\d+/.test(cc);
+
+    before(async () => {
+        ada = await makeUserFetch({ prefix: 'keepada' });
+        root = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await ada(`api/identity/${root}/serve`, { method: 'POST' });
+        const d = await (
+            await j(ada, `api/identity/${root}/docs`, {
+                title: 'a post for everyone',
+                body: 'hello, strangers',
+                format: 'marquee',
+            })
+        ).json();
+        const pub = await j(ada, `api/identity/${root}/docs/${d.doc_id}/publish`, {});
+        assert.equal(pub.status, 200, await pub.clone().text());
+    });
+
+    it("a stranger's view of a shelf, its labels and the node's front page are anyone's to keep", async () => {
+        for (const path of [
+            `api/id/${root}/posts`,
+            `api/id/${root}/posts?kind=post`,
+            `api/id/${root}/labels`,
+            'api/node/feed',
+            'api/node/feed/labels',
+            'api/node/personas',
+        ]) {
+            const cc = await cacheOf(anon, path);
+            assert.ok(shared(cc), `${path} is anyone's: ${cc}`);
+        }
+    });
+
+    it("a reader's view of the same shelf is theirs alone", async () => {
+        for (const path of [
+            `api/id/${root}/posts`,
+            `api/id/${root}/posts?as=${root}`,
+            `api/id/${root}/labels?as=${root}`,
+        ]) {
+            const cc = await cacheOf(ada, path);
+            assert.ok(/\bprivate\b/.test(cc), `${path} for a reader is private: ${cc}`);
+        }
+    });
+
+    it('an API answer that names no rule is kept by nobody without asking', async () => {
+        const cc = await cacheOf(ada, `api/identity/${root}/docs`);
+        assert.equal(cc, 'private, no-cache');
+    });
+
+    it('an answer that sets a cookie is stored nowhere', async () => {
+        const fresh = makeFetch();
+        const login = await fresh('api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ username: ada.username, password: ada.password }),
+        });
+        assert.equal(login.status, 200, await login.clone().text());
+        assert.ok(login.headers.get('set-cookie'), 'the login sets its cookie');
+        assert.equal(login.headers.get('cache-control'), 'private, no-store');
+    });
+});

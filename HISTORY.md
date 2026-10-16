@@ -21918,3 +21918,30 @@ stopped. It now has recipes for Caddy, nginx with certbot, and a CDN in front,
 and says what any front owes the node: `X-Forwarded-For` (without it, a proxy on
 the same machine lifts every rate limit), WebSockets, no upload limit of its
 own, and the visitor's `Host`.
+
+## 2026-10-15: every answer says who may keep it
+
+Curtis, on his own page with a filter picked: "load more" added the first page
+again, A, C, D, F, M... A, C, D... The node pages a narrowed shelf correctly.
+BunnyCDN didn't: it was keying its cache on the path alone, so every request for
+a persona's shelf, whatever its filters or cursor, got one body back, cached at
+00:02:35 for thirty days. Bunny was set to respect the origin's `Cache-Control`,
+but the shelf sent none, so Bunny used its own default lifetime and told
+browsers the same thirty days. Curtis turned on Vary Cache → URL Query String
+(no list of parameters, so a new filter can never bring the bug back) and
+purged.
+
+The node's half: every answer now says who may keep it (`crawl.rs`
+`label_caching`, `for_anyone`). An `/api/` answer that names no rule is
+`private, no-cache`. A stranger's view of a shelf and its labels, the front
+page's feed, labels and people, and `/api/node/at` say `public` with the pages'
+`s-maxage` window, so the edge still serves strangers and crawlers. A signed-in
+reader's view, with a session or `as=`, is `private`: Bunny ignores `Vary`, so a
+reader's answer, which may hold what is sealed to them, must never be cached on
+a shared key. Varying by the session cookie was considered and turned down: it
+would keep personal answers on the CDN, out of reach of a logout. And any answer
+that sets a cookie, a page included (sliding sessions renew on any response), is
+`private, no-store` whatever it claimed, since a shared cache holding it would
+hand that session to strangers. `caching.cjs` gains the four claims, and
+SERVER.md's CDN advice now says to respect the node's headers and keep the whole
+query string in the cache key.

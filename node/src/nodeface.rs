@@ -57,7 +57,7 @@ fn decode_root(hex_root: &str) -> Option<[u8; 32]> {
 pub async fn node_personas(
     State(state): State<AppState>,
     Query(q): Query<NodePersonasQuery>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let listed =
         crate::nodeshelf::listed_roots(&state.node_db).await.map_err(AppError::Internal)?;
     let recent = q.recent.map(|n| n.clamp(1, RECENT_MAX));
@@ -100,7 +100,7 @@ pub async fn node_personas(
                 .then_with(|| a["root"].as_str().cmp(&b["root"].as_str()))
         });
     }
-    Ok(Json(serde_json::json!({ "people": people })))
+    Ok(crate::crawl::for_anyone(Json(serde_json::json!({ "people": people }))))
 }
 
 /// `GET /api/node/feed`: the front page. Paged like the reader's feed when nothing narrows;
@@ -109,7 +109,7 @@ pub async fn node_feed(
     State(state): State<AppState>,
     Query(q): Query<NodeFeedQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let page = q.limit.map_or(crate::idface::POSTS_PAGE, |n| n.clamp(1, crate::idface::POSTS_PAGE));
     let narrow = crate::search::Narrow::parse(raw.as_deref(), q.q.as_deref());
     let (rows, more) = if narrow.is_empty() {
@@ -149,7 +149,7 @@ pub async fn node_feed(
         (all, false)
     };
     let items = feed_items(&state, rows).await?;
-    Ok(Json(serde_json::json!({ "items": items, "more": more })))
+    Ok(crate::crawl::for_anyone(Json(serde_json::json!({ "items": items, "more": more }))))
 }
 
 /// Shelf rows as the front page's cards read them: bylines, labels and reply counts beside each.
@@ -204,7 +204,7 @@ pub async fn node_feed_labels(
     State(state): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<NodeLabelsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let all =
         crate::nodeshelf::page(&state.node_db, None, 5000).await.map_err(AppError::Internal)?;
     // As the node's feed narrows (Curtis, 2026-09-27), so the facets count it.
@@ -222,7 +222,7 @@ pub async fn node_feed_labels(
     let facets = crate::search::facets_json(&state, &candidates, &narrow, None, 0)
         .await
         .map_err(AppError::Internal)?;
-    Ok(Json(facets))
+    Ok(crate::crawl::for_anyone(Json(facets)))
 }
 
 #[derive(Deserialize)]
@@ -332,16 +332,16 @@ pub async fn slug_of(
 pub async fn at_name(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    at_name_answer(&state, &slug, "").await.map(Json)
+) -> Result<axum::response::Response, AppError> {
+    at_name_answer(&state, &slug, "").await.map(|a| crate::crawl::for_anyone(Json(a)))
 }
 
 /// `at_name`, with a path after the name.
 pub async fn at_name_path(
     State(state): State<AppState>,
     Path((slug, path)): Path<(String, String)>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    at_name_answer(&state, &slug, &path).await.map(Json)
+) -> Result<axum::response::Response, AppError> {
+    at_name_answer(&state, &slug, &path).await.map(|a| crate::crawl::for_anyone(Json(a)))
 }
 
 /// The answer for `@slug/path` on this node, or a 404 naming nothing.

@@ -222,9 +222,15 @@ A CDN (BunnyCDN, Cloudflare and the like) can hold the certificate instead, and
 reach the node over plain HTTP. Then:
 
 - turn on its WebSocket support, if it's a switch;
-- never cache `/api/` (its answers depend on who is signed in, and most carry no
-  `Cache-Control` of their own); the app's files and published pages say how
-  long they keep;
+- have it **respect the node's `Cache-Control`**, and nothing more. Every answer
+  says who may keep it: what is the same for everyone (a stranger's view of a
+  shelf, the front page, published pages, media) says `public` with an
+  `s-maxage`; what was answered for a signed-in reader says `private`; an answer
+  that sets a cookie says `no-store`. Don't vary on cookies, and don't override
+  the node's lifetimes;
+- **put the whole query string in the cache key** (BunnyCDN: Vary Cache → URL
+  Query String, with no list of parameters). Filters and "load more" pages are
+  query parameters: a CDN that ignores them answers every page with the first;
 - set `RINGTOME_PUBLIC_URL` to the CDN's address, not the origin's;
 - keep the origin from being reached except through the CDN where you can (a
   firewall allowing only the CDN's addresses), since anyone reaching it directly

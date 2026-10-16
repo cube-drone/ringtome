@@ -2971,7 +2971,7 @@ pub async fn id_labels(
     Path(seg): Path<String>,
     axum::extract::Query(query): axum::extract::Query<PostsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
-) -> Result<axum::Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(AppError::NotFound(crate::msg!(
             "idface.no-such-persona-here-4",
@@ -3013,7 +3013,11 @@ pub async fn id_labels(
         crate::search::facets_json(&state, &candidates, &narrow, query.as_root.as_deref(), shares)
             .await
             .map_err(AppError::Internal)?;
-    Ok(axum::Json(facets))
+    // As the shelf they count (`id_posts`): a stranger's are everyone's.
+    if session.is_none() && query.as_root.is_none() {
+        return Ok(crate::crawl::for_anyone(axum::Json(facets)));
+    }
+    Ok(axum::Json(facets).into_response())
 }
 
 /// A shelf post's kind (search.rs KINDS): a book by its format, a reply by its link, a
@@ -3337,11 +3341,16 @@ pub async fn id_posts(
             }
         }
     }
-    Ok(axum::Json(serde_json::json!({
+    let body = axum::Json(serde_json::json!({
         "posts": items,
         "more": more,
-    }))
-    .into_response())
+    }));
+    // A stranger's shelf is everyone's, and a CDN may keep it (crawl.rs `label_caching`); a
+    // reader's may hold what is sealed to them, and is theirs alone.
+    if session.is_none() && query.as_root.is_none() {
+        return Ok(crate::crawl::for_anyone(body));
+    }
+    Ok(body.into_response())
 }
 
 /// Attach every known label to a page of post JSON (PROJECT_PLAN's Public annotations, slice 2's read, on the
