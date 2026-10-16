@@ -72,7 +72,7 @@ import { LabelFacets, NO_PICKS, PickedFacets, anyPicks, useLabels, usePicks } fr
 import { meParam } from '../pure/facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { useLocation } from 'preact-iso';
-import { groupHref, postHref } from '../links.js';
+import { groupPostHref, postHref } from '../links.js';
 import { t } from '../i18n.js';
 import { askText, askYes } from '../modal.js';
 import {
@@ -86,7 +86,8 @@ import { tagCounts } from '../pure/contacttags.js';
 import { groupOfChoice, sealOfChoice } from '../pure/audience.js';
 import { AudienceSelect } from '../audience.js';
 import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
-import { groupFeeds, groupFeedOn } from '../pure/groups.js';
+import { groupFeeds, groupFeedOn, groupPostItem } from '../pure/groups.js';
+import { holdGroupPost } from '../groups.js';
 import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
 import { STOP_WORDS } from '../curiosity.js';
@@ -1092,8 +1093,28 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                 setAudienceNext('');
                 setPosting(false);
                 settle();
-                // Scheduled, it waits on the draft's plan; posted, it's on the group's page.
-                if (made.post) loc.route(groupHref(groupNext));
+                // Scheduled, it waits on the draft's plan; posted, to its own page, inside its group -
+                // drawn there at once from what this composer knows, until the node's card answers.
+                if (made.post) {
+                    const draft = await openMirror(root)
+                        .docs.get(posted)
+                        .catch(() => null);
+                    const into = ofGroups.find((g) => g.group === groupNext) || {
+                        group: groupNext,
+                        name: '',
+                    };
+                    holdGroupPost(
+                        groupPostItem({
+                            root,
+                            post: made.post,
+                            draft,
+                            group: into,
+                            settled: settleNext,
+                            now: Date.now(),
+                        }),
+                    );
+                    loc.route(groupPostHref(groupNext, made.post));
+                }
             } catch (e) {
                 setError(e.message);
                 setPosting(false);

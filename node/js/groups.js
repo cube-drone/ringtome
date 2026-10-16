@@ -431,6 +431,39 @@ const InviteSomeone = ({ roster, root, act }) => {
     </section>`;
 };
 
+// ---------------------------------------------------------------------------------------------
+// A group post just posted, held for its own page until the node's row for it answers - the
+// optimistic pattern (pure/optimistic.js, Curtis 2026-10-01: "updating the local state and then
+// reconciling it when the server catches up") for a page the browser's mirror doesn't hold. The
+// composer holds the card (pure/groups.js `groupPostItem`) before it routes; the page draws it at
+// once, keeps asking while the node says it has no such post, and lets it go when the node's own
+// card arrives. In this tab's memory only: a reload asks the node, as any page does.
+const HOLD_MS = 120_000;
+const held = new Map(); // `${group}/${doc}` -> { item, at }
+
+const keyOf = (group, doc) => `${group}/${doc}`;
+
+/// Hold this card for its page.
+export function holdGroupPost(item) {
+    if (item && item.group) held.set(keyOf(item.group.id, item.doc_id), { item, at: Date.now() });
+}
+
+/// The card held for this post, while the hold lasts - else null.
+function heldGroupPost(group, doc) {
+    const h = held.get(keyOf(group, doc));
+    if (!h) return null;
+    if (Date.now() - h.at > HOLD_MS) {
+        held.delete(keyOf(group, doc));
+        return null;
+    }
+    return h.item;
+}
+
+/// The node answered for it: the hold is done.
+function releaseGroupPost(group, doc) {
+    held.delete(keyOf(group, doc));
+}
+
 /// The group's posts, newest first: the feed's own cards, from the feed narrowed to this group
 /// (Curtis, 2026-10-16: a persona's page is the bellwether - the same post objects as the feed,
 /// under a filter of its own, each one clicking through to a page of its own). Nobody writes here
@@ -463,22 +496,39 @@ const GroupPosts = ({ answer, error, current }) => {
 /// only, and not to one it's hidden from - the node answers no such post to anyone else.
 export const GroupPostPage = ({ group, doc, current }) => {
     const root = current && current.root;
-    const [answer, error] = useAnswer(
+    const [answer, error, reload] = useAnswer(
         root && group && doc ? `/api/identity/${root}/groups/${group}/posts/${doc}` : null,
     );
+    // Just posted from this tab: its card, drawn at once (the hold above). While the hold lasts, the
+    // node saying "no such post" means "not yet", and it is asked again; its own card ends the hold.
+    const held = heldGroupPost(group, doc);
+    const [tries, setTries] = useState(0);
+    const notYet = !!held && !!error && error.status === 404 && tries < HELD_TRIES;
+    useEffect(() => {
+        if (!notYet) return undefined;
+        const again = setTimeout(() => {
+            setTries((n) => n + 1);
+            reload();
+        }, 1000);
+        return () => clearTimeout(again);
+    }, [notYet, tries, reload]);
+    useEffect(() => {
+        if (answer && answer.item) releaseGroupPost(group, doc);
+    }, [answer, group, doc]);
     if (!root) return null;
-    const item = answer && answer.item;
+    const item = (answer && answer.item) || held;
     return html`<div class="group-page">
         <a class="skip-link" href=${groupHref(group)}>${t('apps.groups.back-to-the-group', 'back to the group')}</a>
         ${
             error &&
+            !item &&
             (error.status === 404
                 ? html`<p class="people-empty">
                       ${t('apps.groups.post-not-here', "this post isn't here - it may have been taken down or hidden, or you may not be in its group.")}
                   </p>`
                 : html`<p class="groups-error">${error.message}</p>`)
         }
-        ${!answer && !error && html`<p class="people-empty">${t('apps.groups.fetching-the-post', 'fetching the post…')}</p>`}
+        ${!item && !error && html`<p class="people-empty">${t('apps.groups.fetching-the-post', 'fetching the post…')}</p>`}
         ${
             item &&
             html`<${PostEntry}
@@ -492,3 +542,6 @@ export const GroupPostPage = ({ group, doc, current }) => {
         }
     </div>`;
 };
+
+/// How many times a held post's page asks again, a second apart, before "no such post" stands.
+const HELD_TRIES = 10;

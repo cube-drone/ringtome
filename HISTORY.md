@@ -22445,3 +22445,23 @@ anything is picked, named its rows by hand and had never been told about groups.
 So a group picked alone read as nothing picked: "all" stayed lit, and the tab
 didn't keep the pick. It now asks every row `LEFT_OUT` knows, so a row added
 later can't be missed the same way.
+
+## 2026-10-16: posting to a group goes to the new post
+
+The feed's composer went to the group's page after a group post. It now goes to
+the new post's own page, inside its group, as a public post's composer goes to
+its post (2026-10-02). The page draws at once, by the optimistic pattern
+(pure/optimistic.js, Curtis 2026-10-01): before routing, the composer holds the
+card it can already make from the draft's mirror row, the group's id and name,
+and the answer's post id (`pure/groups.js` `groupPostItem`, with a pure test).
+The hold lives in `groups.js` beside the page that reads it, for two minutes, as
+`HOLD_MS` is in pure/optimistic.js. The page shows the held card until the
+node's own arrives, then lets the hold go. While the hold lasts, a "no such
+post" from the node means "not yet": it asks again a second later, up to ten
+times, before the page says the post isn't here.
+
+The node shouldn't need the patience. Publishing to a group drains the poster's
+fold, which writes the journal row the page reads, before it answers. A claim in
+`groupposts.cjs` proves it: publish, then open the post's page with no sync or
+beat between, and it's there. All 27 group claims pass, as do the JS gate and
+the strings check.

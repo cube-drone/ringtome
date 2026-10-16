@@ -446,6 +446,41 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         await act(ada, adaRoot, `docs/${post}/labels`, { value: 'stamped', present: false });
     });
 
+    it("a post's own page is there the moment it's posted, where the composer sends its author", async () => {
+        // The feed's composer goes to the new post's page (2026-10-16), so the page has to answer
+        // as soon as the publish has: no sync, no beat between.
+        const d = await (
+            await j(bea, `api/identity/${beaRoot}/docs`, {
+                title: '',
+                body: 'straight to my post',
+                format: 'marquee',
+            })
+        ).json();
+        const { post: fresh } = await act(bea, beaRoot, 'publish', { doc: d.doc_id });
+        const res = await bea(`api/identity/${beaRoot}/groups/${group}/posts/${fresh}`);
+        assert.equal(res.status, 200, await res.clone().text());
+        assert.equal((await res.json()).item.doc_id, fresh);
+        await act(bea, beaRoot, `docs/${fresh}/retract`);
+    });
+
+    it("a post's own page is there the moment it's posted, where the composer sends its author", async () => {
+        // The feed's composer goes to the new post's page (2026-10-16), drawing it from what it
+        // knows until the node answers - and the node answers at once: publishing drains the
+        // poster's fold, which writes the journal row the page reads. No sync, no beat between.
+        const d = await (
+            await j(bea, `api/identity/${beaRoot}/docs`, {
+                title: '',
+                body: 'straight to my post',
+                format: 'marquee',
+            })
+        ).json();
+        const { post: fresh } = await act(bea, beaRoot, 'publish', { doc: d.doc_id });
+        const res = await bea(`api/identity/${beaRoot}/groups/${group}/posts/${fresh}`);
+        assert.equal(res.status, 200, await res.clone().text());
+        assert.equal((await res.json()).item.doc_id, fresh);
+        await act(bea, beaRoot, `docs/${fresh}/retract`);
+    });
+
     it('a dated draft posts under its date, with comments off if asked', async () => {
         const made = await (
             await j(bea, `api/identity/${beaRoot}/docs`, {

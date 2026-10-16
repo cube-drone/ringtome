@@ -83,3 +83,22 @@ export const groupFeedOn = (feed, now) =>
     !!now &&
     JSON.stringify(canonicalPicks(feed.picks)) === JSON.stringify(canonicalPicks(now.picks)) &&
     !searchWords(now.q);
+
+/// A group post's card as its author's composer knows it the moment the node says it's posted
+/// (`post`, the group post's id): drawn on its own page at once, and swapped for the node's own
+/// answer when that comes (the optimistic pattern - pure/optimistic.js - for a page the mirror
+/// doesn't hold). `draft` is the mirror's row of the draft it was posted from.
+export const groupPostItem = ({ root, post, draft, group, settled = false, now }) => ({
+    author: root,
+    doc_id: post,
+    title: (draft && draft.title) || '',
+    format: 'marquee',
+    published_ms: now,
+    updated_ms: now,
+    minted_ms: now,
+    arrived_ms: now,
+    settled: !!settled,
+    mine: true,
+    annotations: [],
+    group: { id: group.group, name: group.name },
+});

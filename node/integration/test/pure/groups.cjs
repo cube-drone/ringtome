@@ -8,7 +8,8 @@ let groupsInOrder,
     inviteCandidates,
     groupFeeds,
     membersAtAGlance,
-    groupFeedOn;
+    groupFeedOn,
+    groupPostItem;
 before(async () => {
     ({
         groupsInOrder,
@@ -18,6 +19,7 @@ before(async () => {
         groupFeeds,
         membersAtAGlance,
         groupFeedOn,
+        groupPostItem,
     } = await import('../../../js/pure/groups.js'));
 });
 
@@ -120,6 +122,28 @@ describe('groups in People', () => {
         assert.ok(
             !groupFeedOn(feed, now({ groups: [id] }, { q: 'turnip' })),
             'words searched: not',
+        );
+    });
+
+    it("draws a just-posted group post's card from what its composer knows", () => {
+        const item = groupPostItem({
+            root: 'me',
+            post: 'p'.repeat(32),
+            draft: { title: 'Spuds' },
+            group: { group: 'g'.repeat(32), name: 'Potato Bunch' },
+            settled: true,
+            now: 5,
+        });
+        assert.equal(item.doc_id, 'p'.repeat(32));
+        assert.equal(item.author, 'me');
+        assert.ok(item.mine);
+        assert.equal(item.title, 'Spuds');
+        assert.deepEqual(item.group, { id: 'g'.repeat(32), name: 'Potato Bunch' });
+        assert.equal(item.published_ms, 5);
+        assert.ok(item.settled);
+        assert.equal(
+            groupPostItem({ root: 'me', post: 'x', group: { group: 'g' }, now: 1 }).title,
+            '',
         );
     });
 });
