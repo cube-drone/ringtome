@@ -2315,6 +2315,7 @@ export default {
     'identity.routes.this-computer-doesnt-have-that-post': "this computer doesn't have that post yet - it can't share what it hasn't read",
     'identity.routes.sealed-no-shares': 'a post shared only with people the author trusts is not passed along',
     'identity.routes.onward-needs-the-key': 'you can only pass along words you can read',
+    'routes.a-group-posts-tags-stay-in-its-group': "that's a post in a group: tag it in its group, where only its members see the tag",
     'routes.no-reacting-to-your-own-post': "a reaction is for somebody else's post",
     'routes.two-tags-to-a-person': "you can put {cap} tags on somebody else's post - take one back first",
     'identity.routes.this-node-doesnt-host-that': 'not here',

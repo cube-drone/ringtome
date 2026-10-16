@@ -531,6 +531,79 @@ describe('MCP: writing, and what it was made with', function () {
         );
     });
 
+    it('labels a group post in its group, never in public, and reads it with its group named', async () => {
+        // Bea's group, with ada in it, and a post of bea's there (plans/GROUPS.md, section 7).
+        const ok = async (res, what) => {
+            const text = await res.text();
+            assert.equal(res.status, 200, `${what}: ${text}`);
+            return JSON.parse(text);
+        };
+        const { group } = await ok(
+            await j(bea, `api/identity/${beaRoot}/groups`, { name: 'Hay Club' }),
+            'found',
+        );
+        const at = (root, path) => `api/identity/${root}/groups/${group}/${path}`;
+        const token = await ok(
+            await j(bea, at(beaRoot, 'invites'), { invitee: adaRoot }),
+            'invite',
+        );
+        await ok(
+            await j(ada, at(adaRoot, 'join'), {
+                invite: token.invite,
+                founder: token.founder,
+                inviter: token.inviter,
+                via: token.via,
+            }),
+            'join',
+        );
+        const draft = await ok(
+            await j(bea, `api/identity/${beaRoot}/docs`, {
+                title: '',
+                body: 'only for the club',
+                format: 'marquee',
+            }),
+            'draft',
+        );
+        const { post } = await ok(
+            await j(bea, at(beaRoot, 'publish'), { doc: draft.doc_id }),
+            'publish',
+        );
+        await j(ada, at(adaRoot, 'sync'), {});
+
+        const refused = await j(
+            ada,
+            `api/identity/${adaRoot}/public-annotations/${beaRoot}/${post}`,
+            { key: 'tag', value: 'hay' },
+            'PUT',
+        );
+        assert.equal(refused.status, 400, 'a public tag on a group post is refused');
+        assert.match((await refused.json()).message, /in its group/);
+
+        const on = await tool(agent, 'label', { post: `${beaRoot}/${post}`, tag: 'hay' });
+        assert.equal(on.labelled, 'hay');
+        assert.equal(on.group, 'Hay Club', 'said in the group');
+        const tagsThere = async () =>
+            (
+                (await ok(await ada(at(adaRoot, 'posts')), 'posts')).posts.find(
+                    (p) => p.doc === post,
+                ).annotations || []
+            )
+                .filter((a) => a.annotator === adaRoot && a.key === 'tag')
+                .map((a) => a.value);
+        assert.deepEqual(await tagsThere(), ['hay'], "the group's page wears it");
+        const off = await tool(agent, 'label', {
+            post: `${beaRoot}/${post}`,
+            tag: 'hay',
+            remove: true,
+        });
+        assert.equal(off.removed, 'hay');
+        assert.deepEqual(await tagsThere(), [], 'and it comes back off');
+
+        const read = await tool(agent, 'read_post', { post: `${beaRoot}/${post}` });
+        assert.equal(read.post.group.name, 'Hay Club', 'the card names its group');
+        assert.match(JSON.stringify(read.post.words), /only for the club/, 'its words, read there');
+    });
+
     it("follows and trusts: the dials on the persona's private chain", async () => {
         assert.equal(
             (await tool(agent, 'follow', { who: beaRoot, level: 'high' })).interest,

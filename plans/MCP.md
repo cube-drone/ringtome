@@ -277,7 +277,11 @@ _As built (Slice 2, `mcp/write.rs`):_
 - **`react` and `tag` are one tool, `label`**: a reaction is an emoji label. It
   labels somebody else's posts only. A persona's own post wears its note's tags,
   which publishing restates, so a label said directly would be retracted by the
-  next post.
+  next post. A post in one of the persona's groups is labelled in the group,
+  where only its members see it (2026-10-16): the tool asks which group a post
+  is in (`GET .../group-posts/{author}/{doc}`) and takes the group's door, as
+  the app's cards do. Its cards name the group, and `read_post` reads a group
+  post's words through the group.
 - **`write_document` edits from every head**, so a note two computers had split
   is joined again by the agent's words rather than left in two. The old versions
   are kept, which is why it isn't marked destructive.

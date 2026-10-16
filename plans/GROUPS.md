@@ -376,7 +376,10 @@ How each post feature carries over:
   anchor). Publishing to a group restates the draft's labels on the poster's
   lane as public publishing does (`restate_labels`: the same diff, the same
   skips). Anyone in the group may label anyone's post, as anyone may a public
-  one.
+  one. A public label on a group post is refused, and so is taking one back
+  (2026-10-16): either would name the post on the labeller's public chain. The
+  node knows a group post by the group journal and its own personas' group
+  drafts.
 - **The date and comments-off ride the post's header**, as they already do for
   any post (`dated_ms`, `settled`). The sealed bits don't: a group has no seal.
 - **Scheduled posting** keeps its plan on the draft (`publish_plan`), which

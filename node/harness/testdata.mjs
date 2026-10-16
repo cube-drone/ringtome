@@ -16,8 +16,9 @@
 //
 //   - `weight` is its share of the hat - relative, not a percentage.
 //   - `p` is the acting persona: { base, root, fetch, bases } (fetch carries their session).
-//   - `ctx` is the world: { personas, nodes, rooms, endpointOf(base), lorem(rng), pick(rng, arr) }
-//     (`rooms` is every chat room opened this run, as { author, doc, base, trusted_only }).
+//   - `ctx` is the world: { personas, nodes, rooms, groups, endpointOf(base), lorem(rng),
+//     pick(rng, arr), picture, sound } (`rooms` is every chat room opened this run, as
+//     { author, doc, base, trusted_only }; `groups` every group founded, as this run knows it).
 //   - Throwing is fine - a failed action is logged and the run continues, because one refused
 //     dial must not cost the other twenty thousand actions.
 //
@@ -31,6 +32,7 @@
 import fs from 'node:fs';
 import { httpSession as session } from './http.mjs';
 import { WORDS } from '../js/pure/words.js';
+import { writeBody } from '../js/pure/drawing.js';
 
 const J = { 'Content-Type': 'application/json' };
 // Every generated account's password. Four characters is legal here because the dev nodes
@@ -100,7 +102,21 @@ async function react(ctx, p, rng, row) {
         const v = ctx.pick(rng, row);
         if (!values.includes(v)) values.push(v);
     }
-    for (const value of values) {
+    for (const value of values) await sayTag(p, item, value);
+}
+
+/// Tag a post the feed brought, by its own door: a public post's tag is a public statement, and a
+/// group post's rides the group's lane (plans/GROUPS.md, section 7) - never the public chain, which
+/// would name a group post in public. Remembered, so it can be taken back.
+async function sayTag(p, item, value) {
+    if (item.group) {
+        await api(
+            p,
+            'POST',
+            `/api/identity/${p.root}/groups/${item.group.id}/docs/${item.doc_id}/labels`,
+            { value, present: true },
+        );
+    } else {
         await api(
             p,
             'PUT',
@@ -110,8 +126,13 @@ async function react(ctx, p, rng, row) {
                 value,
             },
         );
-        p.labels.push({ author: item.author, doc_id: item.doc_id, value });
     }
+    p.labels.push({
+        author: item.author,
+        doc_id: item.doc_id,
+        value,
+        group: item.group ? item.group.id : null,
+    });
 }
 
 const ACTIONS = [
@@ -131,7 +152,9 @@ const ACTIONS = [
             // bucketless while replies (whose action always filed) said "in: feed" -
             // half a shelf labelled, half not (Curtis, 2026-08-30).
             await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
-            await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`);
+            const pub = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`);
+            // Remembered, so it can be edited or trashed later.
+            if (pub.post_id) p.posts.push({ doc_id: d.doc_id, post_id: pub.post_id });
         },
     },
     {
@@ -506,6 +529,7 @@ const ACTIONS = [
                 `/api/identity/${p.root}/books/${encodeURIComponent(name)}/rollout`,
                 {},
             );
+            p.books.push({ name, pages: [opening, ...chapters] });
         },
     },
     {
@@ -575,6 +599,7 @@ const ACTIONS = [
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
             const theirs = (feed.items || [])
                 .filter((i) => !i.trusted_only && !i.settled) // a sealed or settled post is not passed along (2026-09-08)
+                .filter((i) => !i.group) // nor a group post: it stays in its group (GROUPS.md §7)
                 .filter(
                     (i) =>
                         i.author !== p.root &&
@@ -610,7 +635,8 @@ const ACTIONS = [
         weight: 12,
         run: async (ctx, p, rng) => {
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
-            const theirs = (feed.items || []).filter((i) => i.author !== p.root);
+            // Never a group post: replies in a group aren't built yet (NEXT_STEPS).
+            const theirs = (feed.items || []).filter((i) => i.author !== p.root && !i.group);
             const inThread = theirs.filter((i) => i.reply_to);
             const item = ctx.pick(rng, inThread.length && rng() < 0.4 ? inThread : theirs);
             if (!item) return;
@@ -639,11 +665,19 @@ const ACTIONS = [
             p.labels = p.labels || [];
             if (p.labels.length && rng() < 1 / 6) {
                 const said = ctx.pick(rng, p.labels);
-                await api(
-                    p,
-                    'DELETE',
-                    `/api/identity/${p.root}/public-annotations/${said.author}/${said.doc_id}/tag/${encodeURIComponent(said.value)}`,
-                );
+                if (said.group)
+                    await api(
+                        p,
+                        'POST',
+                        `/api/identity/${p.root}/groups/${said.group}/docs/${said.doc_id}/labels`,
+                        { value: said.value, present: false },
+                    );
+                else
+                    await api(
+                        p,
+                        'DELETE',
+                        `/api/identity/${p.root}/public-annotations/${said.author}/${said.doc_id}/tag/${encodeURIComponent(said.value)}`,
+                    );
                 p.labels = p.labels.filter((l) => l !== said);
                 return;
             }
@@ -654,17 +688,7 @@ const ACTIONS = [
             const theirs = (feed.items || []).filter((i) => i.author !== p.root && said(i) < 2);
             const item = ctx.pick(rng, theirs);
             if (!item) return;
-            const value = ctx.pick(rng, LABELS);
-            await api(
-                p,
-                'PUT',
-                `/api/identity/${p.root}/public-annotations/${item.author}/${item.doc_id}`,
-                {
-                    key: 'tag',
-                    value,
-                },
-            );
-            p.labels.push({ author: item.author, doc_id: item.doc_id, value });
+            await sayTag(p, item, ctx.pick(rng, LABELS));
         },
     },
     {
@@ -805,6 +829,376 @@ const ACTIONS = [
             }
         },
     },
+    // ---- Groups (plans/GROUPS.md). The world keeps what this run knows of each group - who
+    // founded it, who's in, who's an owner, who's banned, who's waiting on an invite, and its
+    // posts - refreshed from every roster a group route answers. It may lag the truth (a
+    // senior's refusal, a member who left on another node), which costs a logged failure.
+    {
+        name: 'found-a-group',
+        weight: 1.5,
+        run: async (ctx, p, rng) => {
+            const name = `the ${ctx.pick(rng, WORDS)} ${ctx.pick(rng, ['club', 'bunch', 'society', 'gang', 'circle', 'team'])}`;
+            const made = await api(p, 'POST', `/api/identity/${p.root}/groups`, { name });
+            const g = {
+                group: made.group,
+                name,
+                founder: p.root,
+                members: new Set([p.root]),
+                owners: new Set([p.root]),
+                banned: new Set(),
+                invites: new Map(),
+                posts: [],
+            };
+            ctx.groups.push(g);
+        },
+    },
+    {
+        // An owner invites someone; the invite rings their bell through the notifications
+        // pipeline, and `join-a-group` takes it up later, on the invitee's own turn. Someone on
+        // another node is looked up first, as anyone inviting a person has.
+        name: 'invite-someone-to-a-group',
+        weight: 14,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.owners.has(p.root)),
+            );
+            if (!g) return;
+            const them = ctx.pick(
+                rng,
+                ctx.personas.filter(
+                    (o) =>
+                        !g.members.has(o.root) && !g.banned.has(o.root) && !g.invites.has(o.root),
+                ),
+            );
+            if (!them) return;
+            if (them.base !== p.base) {
+                const via = await ctx.endpointOf(them.base);
+                await api(p, 'GET', `/api/id/${them.root}/profile?via=${via}`);
+            }
+            const token = await groupAct(p, g, 'invites', { invitee: them.root });
+            g.invites.set(them.root, token);
+        },
+    },
+    {
+        // Most invites are taken up, so this draws often: it costs nothing to a persona who
+        // holds no invite.
+        name: 'join-a-group',
+        weight: 30,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.invites.has(p.root)),
+            );
+            if (!g) return;
+            const token = g.invites.get(p.root);
+            g.invites.delete(p.root);
+            noteRoster(
+                g,
+                await groupAct(p, g, 'join', {
+                    invite: token.invite,
+                    founder: token.founder,
+                    inviter: token.inviter,
+                    via: token.via,
+                }),
+            );
+            g.members.add(p.root);
+            await groupAct(p, g, 'sync');
+        },
+    },
+    {
+        name: 'leave-a-group',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.members.has(p.root) && x.founder !== p.root),
+            );
+            if (!g) return;
+            await groupAct(p, g, 'leave');
+            g.members.delete(p.root);
+            g.owners.delete(p.root);
+        },
+    },
+    {
+        name: 'make-someone-an-owner',
+        weight: 4,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.owners.has(p.root)),
+            );
+            if (!g) return;
+            const them = ctx.pick(
+                rng,
+                [...g.members].filter((r) => !g.owners.has(r)),
+            );
+            if (!them) return;
+            noteRoster(g, await groupAct(p, g, 'appoint', { target: them }));
+            g.owners.add(them);
+        },
+    },
+    {
+        // Removal, and one in three a ban: an owner's act against someone junior (the node
+        // refuses one against a senior, which is a logged failure here).
+        name: 'remove-someone-from-a-group',
+        weight: 3,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.owners.has(p.root)),
+            );
+            if (!g) return;
+            const them = ctx.pick(
+                rng,
+                [...g.members].filter((r) => r !== p.root && r !== g.founder),
+            );
+            if (!them) return;
+            const ban = rng() < 1 / 3;
+            noteRoster(g, await groupAct(p, g, 'remove', { target: them, ban }));
+            g.members.delete(them);
+            g.owners.delete(them);
+            if (ban) g.banned.add(them);
+        },
+    },
+    {
+        name: 'ban-someone-from-a-group',
+        weight: 1.5,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.owners.has(p.root)),
+            );
+            if (!g) return;
+            const them = ctx.pick(
+                rng,
+                [...g.members].filter((r) => r !== p.root && r !== g.founder),
+            );
+            if (!them) return;
+            noteRoster(g, await groupAct(p, g, 'remove', { target: them, ban: true }));
+            g.members.delete(them);
+            g.owners.delete(them);
+            g.banned.add(them);
+        },
+    },
+    {
+        // A post to a group, as the feed's composer makes one: a draft, then the group's publish
+        // door. Then a sync, so the other members' nodes have it soon.
+        name: 'post-to-a-group',
+        weight: 20,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.members.has(p.root)),
+            );
+            if (!g) return;
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: rng() < 0.6 ? ctx.lorem(rng, 1).slice(0, 40).replace(/\.$/, '') : '',
+                body: ctx.lorem(rng, 1 + Math.floor(rng() * 2)),
+                format: 'marquee',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+            const made = await groupAct(p, g, 'publish', { doc: d.doc_id });
+            if (made.post) g.posts.push({ post: made.post, author: p.root });
+            await groupAct(p, g, 'sync');
+        },
+    },
+    {
+        // An owner hides someone else's post; one in four is shown again later.
+        name: 'hide-something-in-a-group',
+        weight: 4,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.owners.has(p.root) && x.posts.length),
+            );
+            if (!g) return;
+            const hidden = g.posts.filter((x) => x.hidden);
+            if (hidden.length && rng() < 0.25) {
+                const one = ctx.pick(rng, hidden);
+                await groupAct(p, g, `docs/${one.post}/hide`, { hidden: false });
+                one.hidden = false;
+                return;
+            }
+            const one = ctx.pick(
+                rng,
+                g.posts.filter((x) => x.author !== p.root && !x.hidden),
+            );
+            if (!one) return;
+            await groupAct(p, g, `docs/${one.post}/hide`, { hidden: true });
+            one.hidden = true;
+        },
+    },
+    {
+        name: 'take-down-a-group-post',
+        weight: 3,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter(
+                    (x) => x.members.has(p.root) && x.posts.some((y) => y.author === p.root),
+                ),
+            );
+            if (!g) return;
+            const one = ctx.pick(
+                rng,
+                g.posts.filter((y) => y.author === p.root),
+            );
+            await groupAct(p, g, `docs/${one.post}/retract`);
+            g.posts = g.posts.filter((y) => y !== one);
+        },
+    },
+
+    // ---- Your own posts, revisited.
+    {
+        // An edit to a public post: the draft's words change, and publishing again says them.
+        name: 'edit-a-public-post',
+        weight: 4,
+        run: async (ctx, p, rng) => {
+            const mine = ctx.pick(rng, p.posts);
+            if (!mine) return;
+            await rewrite(ctx, p, rng, mine.doc_id);
+            await api(p, 'POST', `/api/identity/${p.root}/docs/${mine.doc_id}/publish`);
+        },
+    },
+    {
+        name: 'trash-a-public-post',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            const mine = ctx.pick(rng, p.posts);
+            if (!mine) return;
+            await api(p, 'DELETE', `/api/identity/${p.root}/posts/${mine.post_id}`);
+            p.posts = p.posts.filter((x) => x !== mine);
+        },
+    },
+    {
+        // A page of one of this persona's books, revised, and the book rolled out again - which
+        // re-publishes the changed page.
+        name: 'edit-a-book-page',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            const book = ctx.pick(rng, p.books);
+            if (!book) return;
+            await rewrite(ctx, p, rng, ctx.pick(rng, book.pages));
+            await api(
+                p,
+                'POST',
+                `/api/identity/${p.root}/books/${encodeURIComponent(book.name)}/rollout`,
+                {},
+            );
+        },
+    },
+    {
+        // A post dated 1995 (PUBLISH.md's claimed date): the feed sorts it back there, and its
+        // card says when it was really written.
+        name: 'post-from-1995',
+        weight: 3,
+        run: async (ctx, p, rng) => {
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: ctx.lorem(rng, 1).slice(0, 40).replace(/\.$/, ''),
+                body: ctx.lorem(rng, 1 + Math.floor(rng() * 2)),
+                format: 'marquee',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/docs/${d.doc_id}/annotations/fields/display_date`,
+                { value: dayIn1995(rng) },
+            );
+            const pub = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`);
+            if (pub.post_id) p.posts.push({ doc_id: d.doc_id, post_id: pub.post_id });
+        },
+    },
+    {
+        // A sound in public: the harness's smallest one (buck-cover.opus, ~16KB, already the
+        // canonical codec), embedded and published riding the bake, as a picture is.
+        name: 'post-a-sound',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            const title = ctx.lorem(rng, 1).slice(0, 32).replace(/\.$/, '');
+            const made = await upload(
+                p,
+                `/api/identity/${p.root}/docs/binary?title=${encodeURIComponent(title)}&parents=`,
+                ctx.sound,
+            );
+            if (!made.doc_id) throw new Error('upload gave no doc_id');
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${made.doc_id}/buckets/feed`);
+            await ingested(p, made.doc_id);
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: rng() < 0.6 ? title : '',
+                body: `${ctx.lorem(rng, 1)}\n\n![${title}](/api/identity/${p.root}/docs/${made.doc_id}/body/sound.opus)`,
+                format: 'marquee',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+            await publishBaking(p, d.doc_id);
+        },
+    },
+
+    // ---- Drawings (DRAWING.md): strokes as a document, published as a picture.
+    {
+        name: 'make-a-drawing',
+        weight: 4,
+        run: async (ctx, p, rng) => {
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: `a ${ctx.pick(rng, WORDS)} horse`,
+                body: writeBody({ strokes: strokes(rng), undone: [] }),
+                format: 'drawing',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/drawing`);
+            p.drawings.push({ doc_id: d.doc_id, published: false });
+        },
+    },
+    {
+        // Publishing sends the page's flattened picture; the harness has no canvas, so it sends
+        // its one picture, which the node launders as it would the real one. One in four is
+        // dated 1995 first.
+        name: 'publish-a-drawing',
+        weight: 3,
+        run: async (ctx, p, rng) => {
+            const drawing = ctx.pick(
+                rng,
+                p.drawings.filter((x) => !x.published),
+            );
+            if (!drawing) return;
+            if (rng() < 0.25)
+                await api(
+                    p,
+                    'PUT',
+                    `/api/identity/${p.root}/docs/${drawing.doc_id}/annotations/fields/display_date`,
+                    { value: dayIn1995(rng) },
+                );
+            await upload(
+                p,
+                `/api/identity/${p.root}/docs/${drawing.doc_id}/publish/drawing?tz_offset_min=0`,
+                ctx.picture,
+            );
+            drawing.published = true;
+        },
+    },
+    {
+        name: 'publish-a-drawing-from-1995',
+        weight: 1,
+        run: async (ctx, p, rng) => {
+            const drawing = ctx.pick(
+                rng,
+                p.drawings.filter((x) => !x.published),
+            );
+            if (!drawing) return;
+            await api(
+                p,
+                'PUT',
+                `/api/identity/${p.root}/docs/${drawing.doc_id}/annotations/fields/display_date`,
+                { value: dayIn1995(rng) },
+            );
+            await upload(
+                p,
+                `/api/identity/${p.root}/docs/${drawing.doc_id}/publish/drawing?tz_offset_min=0`,
+                ctx.picture,
+            );
+            drawing.published = true;
+        },
+    },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -828,6 +1222,75 @@ async function upload(p, path, bytes) {
     }
 }
 
+/// One of a group's routes, as `p`: `.../groups/{group}/{path}`.
+const groupAct = (p, g, path, body = {}) =>
+    api(p, 'POST', `/api/identity/${p.root}/groups/${g.group}/${path}`, body);
+
+/// What a roster answer says about a group, over what this run remembered.
+function noteRoster(g, r) {
+    if (!r || !Array.isArray(r.members)) return;
+    g.members = new Set(r.members.map((m) => m.root));
+    g.owners = new Set(r.members.filter((m) => m.owner).map((m) => m.root));
+    if (Array.isArray(r.banned)) g.banned = new Set(r.banned);
+}
+
+/// Rewrite one of `p`'s documents at its current heads, as an edit in Writer saves.
+async function rewrite(ctx, p, rng, docId) {
+    const got = await api(p, 'GET', `/api/identity/${p.root}/docs/${docId}`);
+    await api(p, 'PUT', `/api/identity/${p.root}/docs/${docId}`, {
+        title: got.title,
+        body: ctx.lorem(rng, 1 + Math.floor(rng() * 3)),
+        parents: (got.heads || []).map((h) => h.version),
+        format: got.format || 'marquee',
+    });
+}
+
+/// Wait for an upload's ingest: the body door answers 202 until it has landed, then 200.
+async function ingested(p, docId) {
+    for (let i = 0; i < 60; i++) {
+        if ((await p.fetch(`/api/identity/${p.root}/docs/${docId}/body`)).status === 200) return;
+        await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error('the upload never finished ingesting');
+}
+
+/// Publish a draft whose embeds bake, asking again until it comes to rest.
+async function publishBaking(p, docId) {
+    for (let i = 0; i < 40; i++) {
+        const r = await api(p, 'POST', `/api/identity/${p.root}/docs/${docId}/publish`, {});
+        if (r && r.post_id) return r;
+        if (r && (r.baking || []).some((b) => b.status === 'failed'))
+            throw new Error(`bake failed: ${JSON.stringify(r.baking).slice(0, 300)}`);
+        await new Promise((res) => setTimeout(res, 500));
+    }
+    throw new Error('the publish never came to rest');
+}
+
+/// A day in 1995, as the date field takes one.
+function dayIn1995(rng) {
+    const two = (n) => String(n).padStart(2, '0');
+    return `1995-${two(1 + Math.floor(rng() * 12))}-${two(1 + Math.floor(rng() * 28))}`;
+}
+
+/// A few brush strokes, as the drawing surface saves them (pure/drawing.js).
+function strokes(rng) {
+    const hex = () =>
+        Array.from({ length: 16 }, () => '0123456789abcdef'[Math.floor(rng() * 16)]).join('');
+    const colours = ['#8a4b1f', '#2f6f4f', '#c0392b', '#1f3a8a', '#e0a800'];
+    return Array.from({ length: 2 + Math.floor(rng() * 5) }, (_, i) => ({
+        id: hex(),
+        t: i + 1,
+        tool: 'brush',
+        color: colours[Math.floor(rng() * colours.length)],
+        size: 4 + Math.floor(rng() * 12),
+        points: [
+            Math.floor(rng() * 400),
+            Math.floor(rng() * 300),
+            ...Array.from({ length: 6 }, () => Math.floor(rng() * 40) - 20),
+        ],
+    }));
+}
+
 async function api(p, method, path, body) {
     const resp = await p.fetch(path, {
         method,
@@ -849,6 +1312,8 @@ async function api(p, method, path, body) {
 // purpose - this exercises the ingest pipeline's SHAPE (quarantine, transcode, thumbnail),
 // and a bigger file would only measure the transcoder.
 const picture = fs.readFileSync(new URL('../../sample_media/its_webp.webp', import.meta.url));
+// And the smallest sound (~16KB), already in the canonical codec, so a sound post costs little.
+const sound = fs.readFileSync(new URL('../../sample_media/buck-cover.opus', import.meta.url));
 
 // Deterministic RNG (mulberry32): same seed, same network.
 function mulberry32(seed) {
@@ -1014,6 +1479,11 @@ for (const base of nodes) {
             notes: [],
             taxonomies: [],
             shares: [],
+            // Their public posts as { doc_id, post_id }, books as { name, pages }, and drawings
+            // as { doc_id, published } - to edit, trash, revise and publish later.
+            posts: [],
+            books: [],
+            drawings: [],
         };
         await api(p, 'POST', `/api/identity/${p.root}/profile`, { field: 'name', value: p.name });
         personas.push(p);
@@ -1023,6 +1493,8 @@ for (const base of nodes) {
 
 // The chat rooms opened this run (CHAT.md), for anyone to wander into later.
 const rooms = [];
+// The groups founded this run (plans/GROUPS.md), as far as it knows them.
+const groups = [];
 
 // Lives: interleaved rounds, one action per persona per round, order shuffled per round -
 // the network grows the way a real one does, everyone at once, rather than one biography
@@ -1036,7 +1508,11 @@ for (let round = 0; round < PER; round++) {
     for (const p of order) {
         const action = drawAction(rng);
         try {
-            await action.run({ personas, nodes, rooms, endpointOf, lorem, pick, picture }, p, rng);
+            await action.run(
+                { personas, nodes, rooms, groups, endpointOf, lorem, pick, picture, sound },
+                p,
+                rng,
+            );
         } catch (e) {
             failed++;
             failures.set(action.name, (failures.get(action.name) || 0) + 1);

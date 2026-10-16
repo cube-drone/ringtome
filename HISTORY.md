@@ -22155,3 +22155,60 @@ Then, at Curtis's word, the section is "members", under a heavier heading, in
 the disclosure a person's page keeps "your relationship" in (`contact-ledger`, a
 `<details>`). Closed, its head carries the faces; open, the roster. The "see
 more…" button went with it.
+
+## 2026-10-16: the test-data generator seeds groups, drawings, sounds and 1995
+
+`harness/testdata.mjs` gains the acts Curtis listed:
+
+- **Groups:** founding, inviting (an owner invites anyone not in, banned or
+  waiting, looked up first when on another node), joining with the invite,
+  leaving, appointing an owner, removing (one in three a ban), banning, posting
+  to the group, hiding someone else's post (sometimes showing it again), and
+  taking down your own group post. The world keeps what the run knows of each
+  group, refreshed from every roster a route answers.
+- **Your own posts:** editing a public post (rewrite at its heads, publish
+  again), trashing one, editing a book page and rolling the book out again, a
+  post dated 1995, and a sound post (`buck-cover.opus`, embedded and published
+  riding the bake, as a picture is).
+- **Drawings:** making one (random brush strokes through `pure/drawing.js`
+  `writeBody`), publishing it through the drawing door with the harness's
+  picture, and one dated 1995.
+
+Reacting positively and negatively were already in the hat. Since the feed now
+carries group posts, the feed-drawn acts learned about them: a tag or reaction
+on a group post goes through the group's labels route, and rebroadcasts and
+replies leave group posts alone. Probing that road found the public annotations
+route accepting a tag on a group post, fixed in the next entry.
+
+Weights were tuned on scratch nodes until the groups had a life. The first run
+founded ten groups and nobody joined any, because an invite sat until its holder
+happened to draw the join. Joining now draws often (it costs nothing without an
+invite) and founding rarely. Eight personas on each of two nodes at sixty acts
+apiece seeded eight groups with fifteen memberships, an appointed owner, a ban,
+eighteen group posts with members' tags, nine drawings (three published), eight
+posts dated 1995 and ten edited posts. The only failures were the chat and
+room-reply acts' existing ones.
+
+## 2026-10-16: a group post's tags stay in its group
+
+Seeding test data turned up a leak. `PUT .../public-annotations/{author}/{doc}`
+answered 200 for a group post's id and wrote a public statement naming it on the
+tagger's chain, so anyone following them could learn the post existed and who
+wrote it. The app never sent one, but the agent's `label` tool would have. Now:
+
+- **The public tag routes refuse a group post**, both a tag and taking one back,
+  since the take-back names it just as publicly. The answer says to tag it in
+  its group. The node knows a group post by the group journal or its own
+  personas' group drafts (`roster::holds_group_post`).
+- **A new route says which group a persona sees a post in**
+  (`GET .../group-posts/{author}/{doc}`), for a caller that holds only a post's
+  address.
+- **The agent's `label` tool** uses that route to tag and untag a group post
+  through the group's labels route, and says so ("said in the group: only its
+  members see it"). Its cards name a post's group, it reads a group post's words
+  through the group's door, and `read_post` reads a group post through the
+  group's post route. The connector used to treat group posts as public and
+  couldn't fetch their words.
+
+A new claim in `mcp.cjs` covers the refusal, the agent's tag and take-back
+showing on the group's page, and `read_post` naming the group with its words.

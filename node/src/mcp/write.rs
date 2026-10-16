@@ -642,6 +642,34 @@ impl Tools {
         }
         self.require(parts, &persona.root, "tags").await?;
         let tag = args.tag.trim();
+        // A post in one of the persona's groups takes its tags in the group, where only its members
+        // see them (plans/GROUPS.md, section 7) - the app's cards do the same (postentry.js).
+        if let Ok(found) = self
+            .call(
+                parts,
+                Method::GET,
+                &format!("/api/identity/{}/group-posts/{author}/{doc}", persona.root),
+                None,
+            )
+            .await
+        {
+            let group = found.get("group").and_then(Value::as_str).unwrap_or_default();
+            let present = args.remove != Some(true);
+            self.call(
+                parts,
+                Method::POST,
+                &format!("/api/identity/{}/groups/{group}/docs/{doc}/labels", persona.root),
+                Some(json!({ "value": tag, "present": present })),
+            )
+            .await?;
+            let mut out = json!({
+                "post": format!("{author}/{doc}"),
+                "group": found.get("name"),
+                "note": "said in the group: only its members see it",
+            });
+            out[if present { "labelled" } else { "removed" }] = json!(tag);
+            return answer(out);
+        }
         let base = format!("/api/identity/{}/public-annotations/{author}/{doc}", persona.root);
         if args.remove == Some(true) {
             self.call(parts, Method::DELETE, &format!("{base}/tag/{}", escape(tag)), None).await?;
@@ -749,7 +777,8 @@ impl Tools {
 
     #[tool(
         description = "Put a label on somebody else's post, or take one back: a word, or an \
-            emoji as a reaction. Public, in the persona's name. Needs the Reactions, tags & \
+            emoji as a reaction. Public, in the persona's name - or, on a post in one of their \
+            groups, said in the group, for its members only. Needs the Reactions, tags & \
             filters unlock.",
         annotations(title = "Label a post", read_only_hint = false, destructive_hint = true)
     )]

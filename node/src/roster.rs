@@ -477,6 +477,57 @@ pub async fn feed_row(
     Ok(rows.into_iter().next().map(journal_row))
 }
 
+/// Is `(author, doc)` a group post this node holds - in a hosted member's journal, or posted by
+/// one of this node's own personas? A public road refuses one (plans/GROUPS.md, section 7): a
+/// public tag on it, or a tag taken back, names the post on the tagger's public chain.
+pub async fn holds_group_post(state: &AppState, author: &str, doc: &[u8; 16]) -> Result<bool> {
+    let journalled: Vec<(i64,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT 1 FROM group_journal WHERE author_root = ?1 AND doc_id = ?2 LIMIT 1",
+            (author, hex::encode(doc)),
+        )
+        .await
+        .context("looking for a group post")?;
+    if !journalled.is_empty() {
+        return Ok(true);
+    }
+    let drafted: Vec<(i64,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT 1 FROM group_drafts WHERE root = ?1 AND post = ?2 LIMIT 1",
+            (author, doc.to_vec()),
+        )
+        .await
+        .context("looking for a group post")?;
+    Ok(!drafted.is_empty())
+}
+
+/// GET `/api/identity/{root}/group-posts/{author}/{doc}` - the group this persona sees a post in,
+/// `{group, name}`, or 404 when it sees it in none: how a caller holding only a post's address
+/// finds its group's door (the agent's `label` tool, mcp/write.rs).
+async fn post_group_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, author, doc)): Path<(String, String, String)>,
+) -> Answer {
+    me_of(&state, &session, &root).await?;
+    let rows: Vec<(Vec<u8>, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT group_id, group_name FROM group_journal
+             WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3 LIMIT 1",
+            (root.as_str(), author.as_str(), doc.as_str()),
+        )
+        .await
+        .context("finding a post's group")
+        .map_err(AppError::Internal)?;
+    let (group, name) = rows.into_iter().next().ok_or_else(|| {
+        AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
+    })?;
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "name": name })))
+}
+
 // ---------------------------------------------------------------------------------------------
 // The door
 
@@ -848,6 +899,7 @@ fn roster_json(group: &GroupId, roster: &Roster, _lanes: &[Lane], me: &Root) -> 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/identity/{root}/groups", get(list_handler).post(found_handler))
+        .route("/api/identity/{root}/group-posts/{author}/{doc}", get(post_group_handler))
         .route("/api/identity/{root}/groups/{group}", get(roster_handler))
         .route("/api/identity/{root}/groups/{group}/sync", post(sync_handler))
         .route("/api/identity/{root}/groups/{group}/invites", post(invite_handler))

@@ -4941,6 +4941,17 @@ async fn public_annotation_put_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let target_author = hex_fixed::<32>(&author, "author root")?;
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
+    // A group post's tags ride its group's lane (plans/GROUPS.md, section 7): a public one would
+    // name the post on this persona's public chain.
+    if crate::roster::holds_group_post(&state, &author, &target_doc)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        return Err(AppError::BadRequest(crate::msg!(
+            "routes.a-group-posts-tags-stay-in-its-group",
+            "that's a post in a group: tag it in its group, where only its members see the tag"
+        )));
+    }
     // A label on a sealed post seals under the post's key (ruling 7) - the labeller must
     // hold it, which is to say they must be able to read the words.
     let seal = crate::idface::seal_key_for(&state, &author, &target_doc, &root).await?;
@@ -5438,6 +5449,17 @@ async fn public_annotation_delete_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let target_author = hex_fixed::<32>(&author, "author root")?;
     let target_doc = hex_fixed::<16>(&doc, "doc id")?;
+    // A group post's tags ride its group's lane (plans/GROUPS.md, section 7): taking a public one back
+    // would name the post on this persona's public chain.
+    if crate::roster::holds_group_post(&state, &author, &target_doc)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        return Err(AppError::BadRequest(crate::msg!(
+            "routes.a-group-posts-tags-stay-in-its-group",
+            "that's a post in a group: tag it in its group, where only its members see the tag"
+        )));
+    }
     // A sealed label is retracted by the ciphertext it was said as (ruling 7): find it by
     // opening what this persona said about the post.
     let (key, value) =

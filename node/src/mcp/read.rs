@@ -247,6 +247,12 @@ fn card(post: &Value, author: &str, author_name: Option<&str>, words: Option<Str
     if post.get("mine").and_then(Value::as_bool) == Some(true) {
         card["mine"] = json!(true);
     }
+    // A group post (plans/GROUPS.md, section 7): said to the group's members, never in public, so
+    // an agent knows not to carry it anywhere else.
+    if let Some(name) = post.get("group").and_then(|g| g.get("name")) {
+        card["group"] =
+            json!({ "name": name, "note": "posted in this group, for its members only" });
+    }
     // The author's no-shares-no-replies wish (PROJECT_PLAN's Post visibility): said on the card,
     // so an agent asked to reply learns it before the door refuses.
     if post.get("settled").and_then(Value::as_bool) == Some(true) {
@@ -274,6 +280,12 @@ impl Tools {
             return None;
         }
         let doc = post.get("doc_id")?.as_str()?;
+        // A group post's words are behind the group's own door (postentry.js does the same).
+        if let Some(group) = post.get("group").and_then(|g| g.get("id")).and_then(Value::as_str) {
+            let text =
+                self.text(parts, &format!("/api/groups/{group}/docs/{doc}/body")).await.ok()?;
+            return Some(clip(&text, max));
+        }
         let via = post
             .get("via")
             .and_then(Value::as_str)
@@ -350,6 +362,38 @@ impl Tools {
             ));
         };
         let persona = self.persona(parts, args.persona.as_deref()).await?;
+        // A post in one of the persona's groups is read through the group (it has no public
+        // replies: replies in a group aren't built yet).
+        if let Ok(found) = self
+            .call(
+                parts,
+                Method::GET,
+                &format!("/api/identity/{}/group-posts/{author}/{doc}", persona.root),
+                None,
+            )
+            .await
+        {
+            let group = found.get("group").and_then(Value::as_str).unwrap_or_default();
+            let item = self
+                .call(
+                    parts,
+                    Method::GET,
+                    &format!("/api/identity/{}/groups/{group}/posts/{doc}", persona.root),
+                    None,
+                )
+                .await?;
+            let post = item.get("item").cloned().unwrap_or(Value::Null);
+            let author_name = post
+                .get("author_name")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or(self.name_of(parts, &author).await);
+            let words = self.post_words(parts, &post, &author, WORDS_MAX_CHARS).await;
+            return answer(json!({
+                "post": card(&post, &author, author_name.as_deref(), words),
+                "replies": [],
+            }));
+        }
         let post = self
             .call(
                 parts,
