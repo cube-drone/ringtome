@@ -456,11 +456,14 @@ How each post feature carries over:
   its person on a point; open, the whole roster, each name with a cowboy hat
   (founder or owner) or a cow (member) beside it that says which on a point,
   with the invited and an owner's invite there rather than on the group's front
-  page (Curtis, 2026-10-16). An owner can **hide** a post from the group's page:
-  a hide entry the fold honours. They can't delete it, since it's the member's.
-  A hidden post is out of sight for members, but owners see it, faded, to show
-  it again, and so does its author, so they know it was hidden (Curtis,
-  2026-10-15). An owner's own post isn't theirs to hide: they take it down.
+  page, and at its foot whoever was removed or banned and isn't back, so an
+  owner can invite the removed back or lift a ban (Curtis, 2026-10-16: a banned
+  persona nobody can see is lost for good). An owner can **hide** a post from
+  the group's page: a hide entry the fold honours. They can't delete it, since
+  it's the member's. A hidden post is out of sight for members, but owners see
+  it, faded, to show it again, and so does its author, so they know it was
+  hidden (Curtis, 2026-10-15). An owner's own post isn't theirs to hide: they
+  take it down.
 - **The group's room.** Each group has one standing room, and any member can
   start more, with the group as their audience.
 - **Mute** a group, per member, in the bell and in the feed.

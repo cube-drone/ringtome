@@ -216,5 +216,31 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
             assert.deepEqual(members(await roster(HOST, ada, adaRoot)), [adaRoot]);
             assert.equal((await cal(`api/identity/${calRoot}/groups/${group}`)).status, 404);
         });
+
+        it('the removed and the banned stay listed, and an owner can lift a ban and invite back', async () => {
+            // Bea was removed above; cal left of their own accord, which is no removal.
+            let r = await roster(HOST, ada, adaRoot);
+            assert.deepEqual(r.removed, [beaRoot], 'bea is listed as removed, cal (who left) not');
+            // Dee comes in, and is banned.
+            await join(dee, deeRoot, await invite(ada, adaRoot, deeRoot));
+            await sync(dee, deeRoot);
+            await sync(ada, adaRoot);
+            r = await act(ada, adaRoot, 'remove', { target: deeRoot, ban: true });
+            assert.deepEqual(r.banned, [deeRoot]);
+            assert.ok(!r.removed.includes(deeRoot), 'banned, and listed as that alone');
+            // Lifted, dee is removed, not banned.
+            r = await act(ada, adaRoot, 'unban', { target: deeRoot });
+            assert.deepEqual(r.banned, []);
+            assert.ok(r.removed.includes(deeRoot), 'lifted, dee is removed');
+            const again = await j(ada, `api/identity/${adaRoot}/groups/${group}/unban`, {
+                target: deeRoot,
+            });
+            assert.equal(again.status, 400, 'nothing left to lift');
+            // Invited back, bea leaves the list, and the invite readmits the removal.
+            await invite(ada, adaRoot, beaRoot);
+            r = await roster(HOST, ada, adaRoot);
+            assert.ok(!r.removed.includes(beaRoot), 'invited back, no longer just removed');
+            assert.ok(r.invited.includes(beaRoot));
+        });
     },
 );

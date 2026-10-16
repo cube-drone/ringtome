@@ -283,7 +283,8 @@ const Members = ({ roster, current, act, posts }) => {
         ${
             open &&
             html`<${Roster} roster=${roster} current=${current} act=${act} />
-                ${roster.you && roster.you.owner && html`<${InviteSomeone} roster=${roster} root=${current.root} act=${act} />`}`
+                ${roster.you && roster.you.owner && html`<${InviteSomeone} roster=${roster} root=${current.root} act=${act} />`}
+                <${Gone} roster=${roster} current=${current} act=${act} />`
         }
     </details>`;
 };
@@ -349,6 +350,47 @@ const Roster = ({ roster, current, act }) => {
                     ${roster.invited.map((r) => html`<${PersonRow} key=${r} root=${r} current=${current} />`)}
                 </div>`
         }`;
+};
+
+/// Whoever was removed or banned and isn't back (Curtis, 2026-10-16: a banned persona nobody can
+/// see is lost for good), at the foot of the roster. An owner may invite someone removed back -
+/// the invite readmits the removal - or lift a ban, after which they're removed, and may be
+/// invited back in turn.
+const Gone = ({ roster, current, act }) => {
+    const banned = roster.banned || [];
+    const removed = roster.removed || [];
+    if (banned.length + removed.length === 0) return null;
+    const owner = roster.you && roster.you.owner;
+    const row = (r, isBanned) => html`<div class="group-member" key=${r}>
+        <${PersonRow}
+            root=${r}
+            current=${current}
+            aside=${isBanned ? t('apps.groups.banned', 'banned') : t('apps.groups.removed', 'removed')}
+        />
+        ${
+            owner &&
+            html`<span class="group-member-acts">
+                ${
+                    isBanned
+                        ? html`<button class="group-act jag-line" onClick=${() => act('unban', { target: r })}>
+                              ${t('apps.groups.lift-the-ban', 'lift the ban')}
+                          </button>`
+                        : html`<button class="group-act jag-line" onClick=${() => act('invites', { invitee: r })}>
+                              ${t('apps.groups.invite-back', 'invite back')}
+                          </button>`
+                }
+            </span>`
+        }
+    </div>`;
+    return html`<section class="group-gone">
+        <div class="people-shelf-head">
+            <span class="people-shelf-title">${t('apps.groups.removed-or-banned', 'removed or banned')}</span>
+        </div>
+        <div class="people-list">
+            ${banned.map((r) => row(r, true))}
+            ${removed.map((r) => row(r, false))}
+        </div>
+    </section>`;
 };
 
 /// An owner's invite: anyone from their own contacts, filtered as People's shelf is.

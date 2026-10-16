@@ -872,8 +872,30 @@ fn ending(roster: &Roster, lanes: &[Lane], target: &Root) -> (Vec<Hash>, Vec<Lan
     (ends, anchors_of(lanes, &people))
 }
 
-fn roster_json(group: &GroupId, roster: &Roster, _lanes: &[Lane], me: &Root) -> serde_json::Value {
+/// The removals that count, as `(entry hash, target, ban)`.
+fn removals_of(roster: &Roster, lanes: &[Lane]) -> Vec<(Hash, Root, bool)> {
+    lanes
+        .iter()
+        .flat_map(|l| l.entries.iter())
+        .filter(|e| roster.counted.contains(&e.hash))
+        .filter_map(|e| match &e.body {
+            GroupEntry::Remove { target, ban, .. } => Some((e.hash, *target, *ban)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn roster_json(group: &GroupId, roster: &Roster, lanes: &[Lane], me: &Root) -> serde_json::Value {
     let list = |s: &BTreeSet<Root>| s.iter().map(hex::encode).collect::<Vec<_>>();
+    // Removed and not back (Curtis, 2026-10-16: the roster lists them, so an owner can find them
+    // again): not in the group, not banned (they're listed as banned), not invited back yet.
+    let removed: BTreeSet<Root> = removals_of(roster, lanes)
+        .into_iter()
+        .map(|(_, target, _)| target)
+        .filter(|t| {
+            !roster.members.contains(t) && !roster.banned.contains(t) && !roster.invited.contains(t)
+        })
+        .collect();
     serde_json::json!({
         "group": hex::encode(group),
         "name": roster.name,
@@ -886,6 +908,7 @@ fn roster_json(group: &GroupId, roster: &Roster, _lanes: &[Lane], me: &Root) -> 
         })).collect::<Vec<_>>(),
         "invited": list(&roster.invited),
         "banned": list(&roster.banned),
+        "removed": list(&removed),
         "you": {
             "member": roster.members.contains(me),
             "owner": roster.owners.contains_key(me),
@@ -907,6 +930,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/open", post(open_handler))
         .route("/api/identity/{root}/groups/{group}/leave", post(leave_handler))
         .route("/api/identity/{root}/groups/{group}/remove", post(remove_handler))
+        .route("/api/identity/{root}/groups/{group}/unban", post(unban_handler))
         .route("/api/identity/{root}/groups/{group}/demote", post(demote_handler))
         .route("/api/identity/{root}/groups/{group}/appoint", post(appoint_handler))
         .route("/api/identity/{root}/groups/{group}/posts", get(posts_handler))
@@ -1312,6 +1336,47 @@ async fn remove_handler(
     let (ends, anchors) = ending(&roster, &lanes, &target);
     let entry = GroupEntry::Remove { by, target, ends, anchors, ban: req.ban };
     write(&state, &data, &root, group, entry).await?;
+    let (roster, lanes) = current(&state, &group, &me).await?;
+    Ok(Json(roster_json(&group, &roster, &lanes, &me)))
+}
+
+/// POST `.../groups/{group}/unban` - an owner lifts a ban: every ban on `target` that still
+/// stands. They are then removed, not banned, and an invite brings them back (it readmits the
+/// removal, as any invite back does).
+async fn unban_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+    Json(req): Json<TargetRequest>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let target = target_of(&req)?;
+    let (roster, lanes) = current(&state, &group, &me).await?;
+    let by = acting(&roster, &me)?;
+    let lifted: BTreeSet<Hash> = lanes
+        .iter()
+        .flat_map(|l| l.entries.iter())
+        .filter(|e| roster.counted.contains(&e.hash))
+        .filter_map(|e| match &e.body {
+            GroupEntry::Unban { ban, .. } => Some(*ban),
+            _ => None,
+        })
+        .collect();
+    let bans: Vec<Hash> = removals_of(&roster, &lanes)
+        .into_iter()
+        .filter(|(h, t, ban)| *ban && *t == target && !lifted.contains(h))
+        .map(|(h, _, _)| h)
+        .collect();
+    if bans.is_empty() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.not-banned",
+            "they aren't banned from this group"
+        )));
+    }
+    for ban in bans {
+        write(&state, &data, &root, group, GroupEntry::Unban { by, ban }).await?;
+    }
     let (roster, lanes) = current(&state, &group, &me).await?;
     Ok(Json(roster_json(&group, &roster, &lanes, &me)))
 }

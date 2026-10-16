@@ -22231,3 +22231,19 @@ cow (`Icons.groupMember`) for everyone else. Its house tooltip says "founder:
 this user created the group", "owner: this user can manage the group" or
 "member". The row's right edge has its relationship glance back, where the
 "founder" and "owner" words had been.
+
+## 2026-10-16: the removed and the banned, at the foot of the roster
+
+Curtis pointed out that a banned persona nobody can see is lost for good. The
+roster's answer now lists `removed` beside `banned`: the targets of removals
+that count, less anyone back in, banned (listed as that) or invited back. The
+full members list ends with a "removed or banned" row under the invite box. Each
+person is marked "removed" or "banned", and an owner sees one button: "invite
+back" for the removed (an invite back readmits their removal) or "lift the ban"
+for the banned. The protocol already had the way back: `Unban` in the fold, and
+an invite's `readmits`. The node gains `POST .../groups/{g}/unban {target}`,
+which writes an `Unban` for every ban on them that still stands (400 when none
+does). Lifted, a persona is removed, not banned, and may be invited back. A new
+claim in `rosters.cjs` covers it: bea, removed earlier, listed as removed and
+cal, who left, not; dee banned, then lifted to removed, then nothing left to
+lift; bea invited back and off the list.

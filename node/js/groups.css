@@ -139,6 +139,7 @@
 }
 
 .group-invite-someone,
+.group-gone,
 .group-posts {
     display: flex;
     flex-direction: column;
