@@ -15,14 +15,15 @@
 //   `onPublished()`             - told after every publish, to re-read whatever `differs` reads
 //
 // Bought in the Market (plans/UNLOCKS.md): publishing is Social's, an update to a published post
-// is Public post editing's, and "trusted only" is Sealed posts & audiences'. Taking a post down,
+// is Public post editing's, and choosing who a sealed post is for is Sealed posts & audiences'.
+// Taking a post down,
 // or cancelling a schedule, is never for sale - so a published post's bar shows whatever is owned.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
 import { t } from '../i18n.js';
-import { holdDoc, optimisticDoc } from '../mirror.js';
+import { holdDoc, openMirror, optimisticDoc, useLive } from '../mirror.js';
 import { BakeModal } from './publish.js';
 import {
     docStatus,
@@ -42,14 +43,20 @@ import { api } from '../net.js';
 import { Icons } from '../icons.js';
 import { groupPostHref, postHref } from '../links.js';
 import { groupFeeds } from '../pure/groups.js';
+import { choiceOfDraft, groupOfChoice, publishWishes } from '../pure/audience.js';
+import { tagCounts } from '../pure/contacttags.js';
+import { AudienceSelect } from '../audience.js';
 import { formatWhen } from '../pure/when.js';
 import { useUnlocked } from '../unlocks.js';
 
 const html = htm.bind(h);
 
-// A group as a destination (plans/GROUPS.md, slice 4c): a surface that can post its words to a
-// group passes `publishToGroup(group, wishes)` - save, then post - and the bar offers your groups
-// beside the public, says which group a draft went to, and updates or takes it down there.
+// Where it goes (Curtis, 2026-10-16: "post to", everyone or any of the feed's lists or groups): one
+// select, the feed composer's own (audience.js), in place of the "trusted only" box. A group as a
+// destination (plans/GROUPS.md, slice 4c): a surface that can post its words to a group passes
+// `publishToGroup(group, wishes)` - save, then post - and the bar offers your groups beside the
+// rest, says which group a draft went to, and updates or takes it down there. `mentions`: the
+// surface publishes words, which can mention people - a drawing can't.
 export const PublishBar = ({
     root,
     docId,
@@ -59,14 +66,15 @@ export const PublishBar = ({
     diffHref,
     onPublished,
     publishToGroup,
+    mentions = false,
 }) => {
-    const [wishes, setWishes] = useState({ settled: false, trusted_only: false });
-    // A draft's own seal wish - a copy of a sealed post (copyinto.js) - ticks the box before the
-    // first publish; unticking it is the word, sent outright below.
-    const wishedSeal = !!(row && row.fields && row.fields.seal === 'yes');
-    useEffect(() => {
-        if (wishedSeal) setWishes((w) => ({ ...w, trusted_only: true }));
-    }, [wishedSeal]);
+    const [wishes, setWishes] = useState({ settled: false });
+    // Where it goes, starting where the draft stands: the list its last publish named, or a copy
+    // of a sealed post's seal (copyinto.js). Whatever the select shows is the word, sent below.
+    const fields = row && row.fields;
+    const standingChoice = choiceOfDraft(fields);
+    const [choice, setChoice] = useState(standingChoice);
+    useEffect(() => setChoice(standingChoice), [standingChoice]);
     const [publishing, setPublishing] = useState(false);
     const [baking, setBaking] = useState(null);
     const [publishNote, setPublishNote] = useState(null); // { kind: 'published' | 'scheduled' | 'unpublished' | 'unscheduled', at }
@@ -75,12 +83,16 @@ export const PublishBar = ({
     const social = useUnlocked(root, 'social');
     const editing = useUnlocked(root, 'post-editing');
     const sealing = useUnlocked(root, 'sealing');
+    // A sealed draft without the unlock keeps its own seal and no other (UNLOCKS.md).
+    const fixed = sealing ? '' : standingChoice;
+    const contacts = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
+    const tags = tagCounts(contacts || []).map((c) => c.value);
     const standing = docStatus(row);
     // Your groups, and the ones this draft is already posted in.
     const [groups, setGroups] = useState([]);
     const [postedIn, setPostedIn] = useState([]);
     const [groupTurn, setGroupTurn] = useState(0);
-    const [dest, setDest] = useState('');
+    const dest = groupOfChoice(choice);
     // Whether this surface posts to groups at all - never the function itself, a new one each
     // render, which as a dependency would ask again on every one.
     const canGroup = !!publishToGroup;
@@ -131,7 +143,7 @@ export const PublishBar = ({
                         ? { kind: 'scheduled', at: made.scheduled_for }
                         : { kind: 'published' },
                 );
-                setDest('');
+                setChoice('');
                 setGroupTurn((n) => n + 1);
                 if (onPublished) onPublished();
             } catch (e) {
@@ -142,13 +154,14 @@ export const PublishBar = ({
             return;
         }
         try {
-            const extra =
-                standing === 'private' && (wishes.settled || wishes.trusted_only)
+            const asked =
+                standing === 'private'
                     ? {
                           ...(wishes.settled ? { settled: true } : {}),
-                          trusted_only: wishes.trusted_only,
+                          ...publishWishes(choice, fields),
                       }
-                    : undefined;
+                    : {};
+            const extra = Object.keys(asked).length > 0 ? asked : undefined;
             const made = await publish(extra, setBaking);
             // The bar turns at once (2026-10-01): the answer said what the mirror will, so the row
             // wears it now and the stream settles it (pure/optimistic.js).
@@ -292,14 +305,20 @@ export const PublishBar = ({
         ${
             standing === 'private' &&
             !inGroup &&
-            publishToGroup &&
-            groups.length > 0 &&
-            html`<label class="publish-bar-wish" title=${t('doc.editor.where-it-goes', 'who it goes to: everyone, or one of your groups')}>
+            (sealing || fixed || groups.length > 0) &&
+            html`<label class="publish-bar-wish">
                 ${t('doc.editor.post-to', 'post to')}
-                <select class="publish-bar-dest jag-field" value=${dest} onChange=${(e) => setDest(e.currentTarget.value)}>
-                    <option value="">${t('doc.editor.everyone', 'everyone')}</option>
-                    ${groups.map((g) => html`<option value=${g.group} key=${g.group}>${g.name}</option>`)}
-                </select>
+                <${AudienceSelect}
+                    className="publish-bar-dest jag-field"
+                    title=${t('doc.editor.where-it-goes-2', 'who it goes to: everyone, the people you choose, or one of your groups')}
+                    value=${choice}
+                    onChange=${setChoice}
+                    sealing=${sealing}
+                    fixed=${fixed}
+                    tags=${tags}
+                    groups=${groups}
+                    mentions=${mentions}
+                />
             </label>`
         }
         ${
@@ -312,24 +331,7 @@ export const PublishBar = ({
                     onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))}
                 />
                 ${t('doc.editor.turn-off-rebroadcast-and-comment', 'turn off comments')}
-            </label>
-            ${
-                /* A copy of a sealed post keeps its seal without the unlock (UNLOCKS.md): ticked,
-                and fixed - its words were never meant to go out in the open. */ ''
-            }
-            ${
-                (sealing || wishedSeal) &&
-                !dest &&
-                html`<label class="publish-bar-wish" title=${t('doc.editor.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}>
-                <input
-                    type="checkbox"
-                    checked=${wishes.trusted_only}
-                    disabled=${!sealing}
-                    onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))}
-                />
-                ${t('doc.editor.trusted-only', 'trusted only')}
             </label>`
-            }`
         }
             ${
                 standing === 'private' &&

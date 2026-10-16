@@ -22119,3 +22119,23 @@ from. The card's link and Writer's "view" go there. One new claim in
 the hide mark reaching the author's node. The invites claim now checks that the
 narrowed feed and the page agree with the group's posts route while the post is
 hidden.
+
+## 2026-10-16: the publish bar's "post to" is the feed's audience chooser
+
+With groups in "post to", Curtis noticed that the bar's "trusted only" box had
+fallen behind the feed's "only show to", which also offers onward, the people
+mentioned and contact tags. Both are now one select (`audience.js`
+`AudienceSelect`), with what each choice means in `pure/audience.js`. Writer and
+Drawing show it as "post to", and the trusted only box is gone. The bar starts
+at the draft's standing: the list its last publish named, or a copy's seal. An
+explicit "everyone" over a sealed draft says so and clears the standing list, so
+the choice shown is the word sent. Without the unlock, a sealed draft offers its
+own seal and your groups, never everyone, as the fixed box did. Drawing leaves
+out "the people mentioned", since a picture mentions nobody. Your contact tags
+("hot pot team") sit in a "your tags" run of their own, as your groups do.
+
+The drawing door took only `trusted_only`. It now takes `audience` as Writer's
+does, through one helper both doors share (`draft_audience`), so a contact tag
+or onward seals the post and its picture. A new `drawing.cjs` claim covers a
+drawing for "family" (sealed, the shelf naming the list, a stranger refused) and
+one posted onward, whose header says so.

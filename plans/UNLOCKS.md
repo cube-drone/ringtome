@@ -40,12 +40,12 @@ _Rulings_. Everything after that is Claude's proposal for him to correct.
 The second batch, from Ruling 5 - the picks are Curtis's, **the prices and
 prerequisites are Claude's proposal**:
 
-| Unlock                   | Price     | Opens                                              | Requires        |
-| ------------------------ | --------- | -------------------------------------------------- | --------------- |
-| Sharing                  | H$ 2,500  | rebroadcasting someone's post                      | Social          |
-| Links                    | H$ 2,500  | Writer's links column                              | Private notes   |
-| Chats for two            | H$ 2,500  | a private chat with one person                     | Chat, Friends   |
-| Sealed posts & audiences | H$ 10,000 | trusted only, and choosing who a post is meant for | Social, Friends |
+| Unlock                   | Price     | Opens                            | Requires        |
+| ------------------------ | --------- | -------------------------------- | --------------- |
+| Sharing                  | H$ 2,500  | rebroadcasting someone's post    | Social          |
+| Links                    | H$ 2,500  | Writer's links column            | Private notes   |
+| Chats for two            | H$ 2,500  | a private chat with one person   | Chat, Friends   |
+| Sealed posts & audiences | H$ 10,000 | choosing who a post is meant for | Social, Friends |
 
 A third (Curtis, 2026-10-05): **Horse Financial**, H$ 500, opens hrseBonds "and
 other financial instruments" - second to last in the Market, with **Video upload
@@ -199,14 +199,16 @@ made still show in the feed; you just can't make one.
 
 ### Sealed posts & audiences
 
-- The "trusted only" box on the publish bar (`doc/publishbar.js`, the
-  `publish-bar-wish`) - Writer, Drawing and the book page share it.
-- The Feed composer's audience chooser (`apps/feed.js`, the `feed-audience`
-  select: trusted, mentioned, onward, a contact tag).
-- A draft that carries its own seal wish (a copy of a sealed post,
-  `copyinto.js`) still seals - the wish was the original author's, and dropping
-  it would publish words in the open that were never meant to be. Without the
-  unlock it publishes sealed with the box shown, ticked and fixed.
+- The lists in the one audience chooser (`audience.js`, Curtis 2026-10-16):
+  trusted, onward, mentioned, a contact tag. The Feed composer's "only show to"
+  and the publish bar's "post to" (Writer and Drawing) both draw it. Without the
+  unlock it offers everyone and your groups, since a group is a place and not a
+  seal.
+- A draft that carries its own seal (a copy of a sealed post, `copyinto.js`, or
+  a list its last publish named) still seals. The wish was the original
+  author's, and dropping it would publish words in the open that were never
+  meant to be. Without the unlock the chooser offers that seal and your groups,
+  and never everyone.
 
 Reading sealed posts is never gated: a sealed post addressed to you opens.
 

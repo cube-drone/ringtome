@@ -350,6 +350,39 @@ describe('drawings: strokes as a document, merged stroke by stroke', function ()
         assert.notEqual((await anon(target[1].slice(1))).status, 200, 'nor fetch its picture');
     });
 
+    it("posts to a contact tag, or onward, as Writer's words do", async () => {
+        const publishTo = async (title, audience) => {
+            const made = await (
+                await j(ada, docs(), { title, body: body([stroke(C, 1)]), format: 'drawing' })
+            ).json();
+            const r = await ada(
+                `${docs()}/${made.doc_id}/publish/drawing?audience=${encodeURIComponent(audience)}`,
+                { method: 'POST', body: makePng(40, 30), file: true },
+            );
+            const text = await r.text();
+            assert.equal(r.status, 200, text);
+            return JSON.parse(text).post_id;
+        };
+        const family = await publishTo('a family horse', 'family');
+        const head = await (await ada(`api/id/${root}/posts/${family}?as=${root}`)).json();
+        assert.equal(head.trusted_only, true, 'an audience seals it without being asked to');
+        const shelf = (await (await ada(`api/id/${root}/posts?as=${root}`)).json()).posts || [];
+        assert.equal(
+            (shelf.find((p) => p.doc_id === family) || {}).audience,
+            'family',
+            "the author's shelf names the list",
+        );
+        assert.notEqual(
+            (await makeFetch()(`id/${root}/docs/${family}/body`)).status,
+            200,
+            'a stranger cannot read it',
+        );
+        const onward = await publishTo('a passed-along horse', '@onward');
+        const passed = await (await ada(`api/id/${root}/posts/${onward}`)).json();
+        assert.equal(passed.trusted_only, true);
+        assert.equal(passed.onward, true, 'onward, off the header');
+    });
+
     it("keeps a pen stroke's pressure through a save and a merge", async () => {
         const pen = { ...stroke('d000000000000004', 9), pressure: [15, 60, 100] };
         const made = await (

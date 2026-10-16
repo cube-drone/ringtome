@@ -597,14 +597,15 @@ other), `doc/annotations.js` for tags.
   its row.
 - **The publish bar is Writer's** (`doc/publishbar.js`, shared - Curtis
   2026-09-26: "work and look the same in both"): the same standing colours, the
-  two wishes (turn off comments, trusted only - which seals the picture under
-  the post's key too), a past claimed date dating the post, view, update while
-  the post's day lasts, and unpublish through the same takedown modal. Where
-  Writer compares words to know the draft has changed, a drawing compares
-  versions: the door stamps the drawing with the version it published
-  (`published_head`, private bookkeeping like `published_as`), and any stroke
-  since moves the head past it. A future date is refused - drawings have no
-  schedule yet.
+  two wishes (turn off comments, and "post to", the feed's audience chooser less
+  "the people mentioned", since a picture mentions nobody - any seal also seals
+  the picture under the post's key; 2026-10-16), a past claimed date dating the
+  post, view, update while the post's day lasts, and unpublish through the same
+  takedown modal. Where Writer compares words to know the draft has changed, a
+  drawing compares versions: the door stamps the drawing with the version it
+  published (`published_head`, private bookkeeping like `published_as`), and any
+  stroke since moves the head past it. A future date is refused - drawings have
+  no schedule yet.
 - **Duplicate and copy-into-a-notebook are chips beside the title**, with tags,
   delete and the save status - the same row Writer's chips live in.
 

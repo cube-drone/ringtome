@@ -83,6 +83,8 @@ import {
     BakeModal,
 } from '../postentry.js';
 import { tagCounts } from '../pure/contacttags.js';
+import { groupOfChoice, sealOfChoice } from '../pure/audience.js';
+import { AudienceSelect } from '../audience.js';
 import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
 import { groupFeeds } from '../pure/groups.js';
 import { formatWhen } from '../pure/when.js';
@@ -1031,21 +1033,12 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     // Choosing who a post is for is Sealed posts & audiences' (plans/UNLOCKS.md); a copy of a
     // sealed post keeps its own seal wish either way (below).
     const sealing = useUnlocked(root, 'sealing');
-    // A group is a place, not a seal (plans/GROUPS.md, section 7): 'group:<id>' posts there.
-    const groupNext = audienceNext.startsWith('group:') ? audienceNext.slice(6) : null;
-    const trustNext = audienceNext !== '' && !groupNext;
-    // 'mentioned' is the post's own room (Contact tags, ruling 5): the people its user
-    // cards name; the node refuses it when the words name nobody. 'onward' (ruling 7) is
-    // the trust list with the share button left on: whoever I trust may pass it to
-    // whoever they trust.
-    const audienceTag =
-        audienceNext === 'mentioned'
-            ? '@mentioned'
-            : audienceNext === 'onward'
-              ? '@onward'
-              : audienceNext.startsWith('tag:')
-                ? audienceNext.slice(4)
-                : '';
+    // A group is a place, not a seal (plans/GROUPS.md, section 7): 'group:<id>' posts there. Every
+    // other choice but everyone is a seal (pure/audience.js says what each means).
+    const groupNext = groupOfChoice(audienceNext);
+    const sealNext = sealOfChoice(audienceNext);
+    const trustNext = !!sealNext;
+    const audienceTag = (sealNext && sealNext.audience) || '';
     const audienceTags = tagCounts(contactRows || []).map((c) => c.value);
 
     const post = async (docId) => {
@@ -1342,26 +1335,14 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                                         title=${t('apps.feed.trusted-only-means', 'only the people you choose can read it')}
                                     >
                                         ${t('apps.feed.only-show-to', 'only show to')}
-                                        <select
-                                            class="feed-audience jag-field"
+                                        <${AudienceSelect}
+                                            className="feed-audience jag-field"
                                             value=${audienceNext}
-                                            onChange=${(e) => setAudienceNext(e.currentTarget.value)}
-                                        >
-                                            <option value="">${t('apps.feed.everyone', 'everyone')}</option>
-                                            ${
-                                                sealing &&
-                                                html`<option value="onward">${t('apps.feed.people-i-trust-and-onward', 'people I trust, and onward')}</option>
-                                                <option value="trusted">${t('apps.feed.people-i-trust', 'people I trust')}</option>
-                                                <option value="mentioned">${t('apps.feed.the-people-mentioned', 'the people mentioned')}</option>
-                                                ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}`
-                                            }
-                                            ${
-                                                ofGroups.length > 0 &&
-                                                html`<optgroup label=${t('apps.feed.your-groups', 'your groups')}>
-                                                    ${ofGroups.map((g) => html`<option value=${`group:${g.group}`} key=${g.group}>${g.name}</option>`)}
-                                                </optgroup>`
-                                            }
-                                        </select>
+                                            onChange=${setAudienceNext}
+                                            sealing=${sealing}
+                                            tags=${audienceTags}
+                                            groups=${ofGroups}
+                                        />
                                     </label>`
                                     }`
                                       : html`<p class="null-sub">${t('apps.feed.opening-a-fresh-page', 'opening a fresh page…')}</p>`

@@ -4146,7 +4146,7 @@ async fn resolve_reply_link(
 /// One drawing at a time, with no taxonomy: a set of drawings published together is a later door.
 ///
 /// The query carries what Writer's publish bar sends in its body (the bar is shared, doc/publishbar.js):
-/// `settled` and `trusted_only`, the two wishes, and `tz_offset_min` for a claimed date. A claimed
+/// `settled`, `trusted_only` and `audience`, the wishes, and `tz_offset_min` for a claimed date. A claimed
 /// date in the past dates the post, as Writer's does; a future one would be a schedule, and the
 /// sweep that mints schedules publishes words, not drawings - so it is refused, in words. After
 /// posting, the drawing is stamped with the version it published (`published_head`), which is how
@@ -4157,6 +4157,9 @@ struct DrawingPublish {
     settled: bool,
     #[serde(default)]
     trusted_only: bool,
+    /// Who it's for, as Writer's body names it: a contact tag, `@onward`, or empty for no list.
+    #[serde(default)]
+    audience: Option<String>,
     #[serde(default)]
     tz_offset_min: i32,
 }
@@ -4199,7 +4202,11 @@ async fn publish_drawing_handler(
     }
     // Trusted only seals the post, and the picture under the post's own key - as baked media is -
     // or the post would ship a public copy of the very picture it seals. Once sealed, always sealed.
-    let post_key = docs.post_key_if(&doc_id, req.trusted_only).await?;
+    // An audience is a seal too, as at the words' door.
+    let audience = draft_audience(&data, &doc_id, req.audience.as_deref()).await?;
+    let post_key = docs.post_key_if(&doc_id, req.trusted_only || audience.is_some()).await?;
+    let onward =
+        post_key.is_some() && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
 
     // The same laundering every picture gets - decode, re-encode, never trust the bytes.
     let bytes = picture.to_vec();
@@ -4250,7 +4257,7 @@ async fn publish_drawing_handler(
         dated_ms,
         part_of: None,
         seal_of: None,
-        onward: false,
+        onward,
         room: false,
         im: false,
     };
@@ -4268,6 +4275,34 @@ async fn publish_drawing_handler(
         dated_ms,
         baking: None,
     }))
+}
+
+/// The audience a publish seals its post for (Contact tags, ruling 4): `asked` on this publish,
+/// or standing on the draft from the last one - an audience rides the draft, and an empty one asked
+/// for clears it. An audience is a sealed post by definition. Shared by the words' door and the
+/// drawing's.
+async fn draft_audience(
+    data: &store::Store,
+    doc_id: &[u8; 16],
+    asked: Option<&str>,
+) -> Result<Option<String>, AppError> {
+    if let Some(a) = asked {
+        let a = a.trim().to_lowercase();
+        data.annotations().set_field(doc_id, store::AUDIENCE, &a).await?;
+    }
+    let audience =
+        data.annotations().field(doc_id, store::AUDIENCE).await?.filter(|a| !a.trim().is_empty());
+    // "Only show to the people mentioned" (Contact tags, ruling 5) needs somebody mentioned:
+    // a room with nobody in it is a mistake, not a post.
+    if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE)
+        && draft_mentions(data, doc_id).await?.is_empty()
+    {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.mention-someone-first",
+            "mention someone first - a post for the people mentioned needs a user card in the words"
+        )));
+    }
+    Ok(audience)
 }
 
 async fn publish_handler(
@@ -4290,24 +4325,8 @@ async fn publish_handler(
         None => None,
     };
     let settled = req.as_ref().and_then(|b| b.settled).unwrap_or(false);
-    // The audience rides the draft (Contact tags, ruling 4): asked for on this publish, or
-    // standing from the last one; an audience is a sealed post by definition.
-    if let Some(a) = req.as_ref().and_then(|b| b.audience.as_deref()) {
-        let a = a.trim().to_lowercase();
-        data.annotations().set_field(&doc_id, store::AUDIENCE, &a).await?;
-    }
     let audience =
-        data.annotations().field(&doc_id, store::AUDIENCE).await?.filter(|a| !a.trim().is_empty());
-    // "Only show to the people mentioned" (Contact tags, ruling 5) needs somebody mentioned:
-    // a room with nobody in it is a mistake, not a post.
-    if audience.as_deref() == Some(crate::postkeys::MENTIONED_AUDIENCE)
-        && draft_mentions(&data, &doc_id).await?.is_empty()
-    {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.mention-someone-first",
-            "mention someone first - a post for the people mentioned needs a user card in the words"
-        )));
-    }
+        draft_audience(&data, &doc_id, req.as_ref().and_then(|b| b.audience.as_deref())).await?;
     // The draft's seal wish (a copy of a sealed post, PROJECT_PLAN's Copying a post) holds
     // when the request names no wish of its own; a named wish, either way, is the word.
     let trusted_only = match req.as_ref().and_then(|b| b.trusted_only) {

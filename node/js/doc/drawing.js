@@ -563,13 +563,14 @@ export async function copyPictureInto(root, drawing, title, bucket, isNew) {
 /// Publish a drawing as a picture (DRAWING.md): flattened here, laundered and posted by the node's
 /// drawing door - the post is the picture, titled as the drawing is. Publishing again replaces it
 /// within the post's day; after that the node says to take it down and post again. `extra` is the
-/// publish bar's two wishes (turn off comments, trusted only); the timezone offset resolves a claimed
+/// publish bar's wishes (turn off comments, and who it's for); the timezone offset resolves a claimed
 /// date the way Writer's publish does (PUBLISH.md ruling 7).
 export async function publishDrawing(root, docId, drawing, extra = {}) {
     const picture = await flattenToBlob(root, drawing);
     const query = new URLSearchParams({ tz_offset_min: String(-new Date().getTimezoneOffset()) });
     if (extra.settled) query.set('settled', 'true');
-    if (extra.trusted_only) query.set('trusted_only', 'true');
+    if (extra.trusted_only !== undefined) query.set('trusted_only', String(!!extra.trusted_only));
+    if (extra.audience !== undefined) query.set('audience', extra.audience);
     return xhrUpload(`/api/identity/${root}/docs/${docId}/publish/drawing?${query}`, picture);
 }
 

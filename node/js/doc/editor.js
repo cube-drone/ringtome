@@ -876,6 +876,7 @@ export const Editor = ({
                 diffHref=${`${docHref(root, docId)}/diff`}
                 onPublished=${() => setHeadPoll((n) => n + 1)}
                 publishToGroup=${publishToGroup}
+                mentions=${true}
             />`
             }
             ${

@@ -494,11 +494,6 @@ export default {
     'apps.feed.settled-no-replies-no': 'turn off comments',
     'apps.feed.trusted-only-means': 'only the people you choose can read it',
     'apps.feed.only-show-to': 'only show to',
-    'apps.feed.everyone': 'everyone',
-    'apps.feed.people-i-trust-and-onward': 'people I trust, and onward',
-    'apps.feed.people-i-trust': 'people I trust',
-    'apps.feed.the-people-mentioned': 'the people mentioned',
-    'apps.feed.your-groups': 'your groups',
     'apps.feed.opening-a-fresh-page': 'opening a fresh page…',
     'apps.feed.older-drafts': 'older drafts',
 
@@ -596,6 +591,14 @@ export default {
 
     // --- node/js/apps/settings.js ---
     'settings.title': 'your settings',
+
+    // --- node/js/audience.js ---
+    'audience.everyone': 'everyone',
+    'audience.people-i-trust-and-onward': 'people I trust, and onward',
+    'audience.people-i-trust': 'people I trust',
+    'audience.the-people-mentioned': 'the people mentioned',
+    'audience.your-tags': 'your tags',
+    'audience.your-groups': 'your groups',
 
     // --- node/js/auth.js ---
     'auth.running-in-local-server-mode': 'Running in Local Server Mode:',
@@ -1188,13 +1191,10 @@ export default {
     'doc.editor.update': 'update',
     'doc.editor.take-it-down-from-the-group': 'take it down from the group',
     'doc.editor.unpublish': 'unpublish',
-    'doc.editor.where-it-goes': 'who it goes to: everyone, or one of your groups',
     'doc.editor.post-to': 'post to',
-    'doc.editor.everyone': 'everyone',
+    'doc.editor.where-it-goes-2': 'who it goes to: everyone, the people you choose, or one of your groups',
     'doc.editor.settled-means': 'turn off comments',
     'doc.editor.turn-off-rebroadcast-and-comment': 'turn off comments',
-    'doc.editor.trusted-only-means': 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists',
-    'doc.editor.trusted-only': 'trusted only',
     'doc.editor.publish---makes-this-content': 'publish',
     'doc.editor.publish': 'publish',
     'doc.editor.open-the-public-version': 'open the public version',
