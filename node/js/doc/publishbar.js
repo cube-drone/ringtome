@@ -40,13 +40,26 @@ import {
 import { Modal } from '../modal.js';
 import { api } from '../net.js';
 import { Icons } from '../icons.js';
-import { postHref } from '../links.js';
+import { groupHref, postHref } from '../links.js';
+import { groupFeeds } from '../pure/groups.js';
 import { formatWhen } from '../pure/when.js';
 import { useUnlocked } from '../unlocks.js';
 
 const html = htm.bind(h);
 
-export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPublished }) => {
+// A group as a destination (plans/GROUPS.md, slice 4c): a surface that can post its words to a
+// group passes `publishToGroup(group, wishes)` - save, then post - and the bar offers your groups
+// beside the public, says which group a draft went to, and updates or takes it down there.
+export const PublishBar = ({
+    root,
+    docId,
+    row,
+    publish,
+    differs,
+    diffHref,
+    onPublished,
+    publishToGroup,
+}) => {
     const [wishes, setWishes] = useState({ settled: false, trusted_only: false });
     // A draft's own seal wish - a copy of a sealed post (copyinto.js) - ticks the box before the
     // first publish; unticking it is the word, sent outright below.
@@ -63,6 +76,37 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
     const editing = useUnlocked(root, 'post-editing');
     const sealing = useUnlocked(root, 'sealing');
     const standing = docStatus(row);
+    // Your groups, and the ones this draft is already posted in.
+    const [groups, setGroups] = useState([]);
+    const [postedIn, setPostedIn] = useState([]);
+    const [groupTurn, setGroupTurn] = useState(0);
+    const [dest, setDest] = useState('');
+    // Whether this surface posts to groups at all - never the function itself, a new one each
+    // render, which as a dependency would ask again on every one.
+    const canGroup = !!publishToGroup;
+    useEffect(() => {
+        if (!canGroup || !root || !docId) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/groups`)
+            .then((rows) => live && setGroups(groupFeeds(rows)))
+            .catch(() => {});
+        api(`/api/identity/${root}/docs/${docId}/groups`)
+            .then((rows) => live && setPostedIn(rows || []))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [canGroup, root, docId, groupTurn]);
+    // A schedule to a group names it on the plan.
+    const plannedGroup = (() => {
+        try {
+            return (row && row.fields && JSON.parse(row.fields.publish_plan || '{}').group) || null;
+        } catch {
+            return null;
+        }
+    })();
+    const inGroup = postedIn[0] || null;
+    const toGroup = (inGroup && inGroup.group) || plannedGroup || dest || null;
     const postId = publishedState(row).postId;
     const scheduledAt = (() => {
         if (!isScheduled(row)) return null;
@@ -79,6 +123,24 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
         setPublishing(true);
         setPublishError(null);
         setPublishNote(null);
+        if (toGroup && publishToGroup) {
+            try {
+                const made = await publishToGroup(toGroup, { settled: wishes.settled });
+                setPublishNote(
+                    made && made.scheduled_for
+                        ? { kind: 'scheduled', at: made.scheduled_for }
+                        : { kind: 'published' },
+                );
+                setDest('');
+                setGroupTurn((n) => n + 1);
+                if (onPublished) onPublished();
+            } catch (e) {
+                setPublishError(e.message);
+            } finally {
+                setPublishing(false);
+            }
+            return;
+        }
         try {
             const extra =
                 standing === 'private' && (wishes.settled || wishes.trusted_only)
@@ -132,6 +194,25 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             setAskingTakedown(false);
         }
     };
+    const takeDownFromGroup = async () => {
+        setPublishing(true);
+        setPublishError(null);
+        try {
+            await api(
+                `/api/identity/${root}/groups/${inGroup.group}/docs/${inGroup.post}/retract`,
+                {
+                    method: 'POST',
+                },
+            );
+            setPublishNote({ kind: 'unpublished' });
+            setGroupTurn((n) => n + 1);
+        } catch (e) {
+            setPublishError(e.message);
+        } finally {
+            setPublishing(false);
+            setAskingTakedown(false);
+        }
+    };
     const cancelSchedule = async () => {
         setPublishing(true);
         setPublishError(null);
@@ -158,7 +239,9 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
               })
             : standing === 'public'
               ? t('doc.editor.live-on-your-public-feed', 'live on your public feed')
-              : t('doc.editor.private', 'private');
+              : inGroup
+                ? t('doc.editor.posted-in-group', 'posted in {group}', { group: inGroup.name })
+                : t('doc.editor.private', 'private');
     const noteWords = (note) =>
         note.kind === 'scheduled'
             ? t('doc.editor.scheduled-for-2', 'scheduled for {when}', { when: formatWhen(note.at) })
@@ -169,7 +252,8 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                 : t('doc.editor.published', 'published');
 
     // Nothing published and nothing to publish with: no bar at all.
-    if (standing === 'private' && !social) return null;
+    if (standing === 'private' && !social && !inGroup && !(publishToGroup && groups.length > 0))
+        return null;
     return html`<div
         class=${
             standing === 'scheduled'
@@ -186,6 +270,41 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
         <span class="publish-bar-acts">
         ${
             standing === 'private' &&
+            inGroup &&
+            html`<a
+                class="publish-bar-view jag-line"
+                href=${groupHref(inGroup.group)}
+                title=${t('doc.editor.open-the-group', 'open the group it was posted in')}
+            ><${Icons.group} /> ${t('doc.editor.view', 'view')}</a>
+            <button
+                class="publish-bar-update jag-line"
+                disabled=${publishing}
+                title=${t('doc.editor.post-your-changes-to-the-group', 'post your changes to the group')}
+                onClick=${publishNow}
+            ><${Icons.update} /> ${publishing ? t('doc.editor.publishing', 'publishing…') : t('doc.editor.update', 'update')}</button>
+            <button
+                class="publish-bar-unpublish jag-line"
+                disabled=${publishing}
+                title=${t('doc.editor.take-it-down-from-the-group', 'take it down from the group')}
+                onClick=${() => setAskingTakedown(true)}
+            ><${Icons.unpublish} /> ${t('doc.editor.unpublish', 'unpublish')}</button>`
+        }
+        ${
+            standing === 'private' &&
+            !inGroup &&
+            publishToGroup &&
+            groups.length > 0 &&
+            html`<label class="publish-bar-wish" title=${t('doc.editor.where-it-goes', 'who it goes to: everyone, or one of your groups')}>
+                ${t('doc.editor.post-to', 'post to')}
+                <select class="publish-bar-dest jag-field" value=${dest} onChange=${(e) => setDest(e.currentTarget.value)}>
+                    <option value="">${t('doc.editor.everyone', 'everyone')}</option>
+                    ${groups.map((g) => html`<option value=${g.group} key=${g.group}>${g.name}</option>`)}
+                </select>
+            </label>`
+        }
+        ${
+            standing === 'private' &&
+            !inGroup &&
             html`<label class="publish-bar-wish" title=${t('doc.editor.settled-means', 'turn off comments')}>
                 <input
                     type="checkbox"
@@ -200,6 +319,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
             }
             ${
                 (sealing || wishedSeal) &&
+                !dest &&
                 html`<label class="publish-bar-wish" title=${t('doc.editor.trusted-only-means', 'the words go only to readers you have published trust for - everyone else sees the title, the date, and that a post exists')}>
                 <input
                     type="checkbox"
@@ -213,6 +333,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
         }
             ${
                 standing === 'private' &&
+                !inGroup &&
                 html`<button
                 class="publish-bar-publish jag-line"
                 disabled=${publishing}
@@ -297,7 +418,7 @@ export const PublishBar = ({ root, docId, row, publish, differs, diffHref, onPub
                 ${t('doc.editor.this-removes-it-from-other', 'It may take a while to disappear everywhere.')}
             </p>
             <div class="feed-unpublish-acts">
-                <button class="feed-unpublish-go jag-line" disabled=${publishing} onClick=${takeDown}>
+                <button class="feed-unpublish-go jag-line" disabled=${publishing} onClick=${inGroup ? takeDownFromGroup : takeDown}>
                     ${publishing ? t('doc.editor.taking-it-down', 'taking it down…') : t('doc.editor.yes-take-it-down', 'yes, take it down')}
                 </button>
                 <button class="feed-unpublish-no" disabled=${publishing} onClick=${() => setAskingTakedown(false)}>

@@ -56,7 +56,7 @@ a complete group design."
 - **The sign-up group** (`groups.rs`). A node whose sign-up password names a
   group makes every joiner and the node's administrators know each other: low
   trust and low interest both ways, with the group's name as a tag. It's
-  pairwise, written once at the door, and not a roster. It becomes slice 6.
+  pairwise, written once at the door, and not a roster. It becomes slice 7.
 - **CROWN's seniority** (`proto/src/crown.rs`, PROJECT_PLAN _Rules Of
   Succession_):
   - a total order on a tree, computed from local data with no clock (the rank
@@ -278,7 +278,7 @@ Anchors decide what _counts_, not what was _seen_.
 - **The stated cost:** nobody outranks the founder, so a founder who goes rogue
   can't be removed. They can abdicate (retire), and members can leave. Because
   every member holds the roster, **"start a new group with these people"** is
-  one button (slice 5): a fork, which is the honest recourse, and the one every
+  one button (slice 6): a fork, which is the honest recourse, and the one every
   hosted group service also leaves you with.
 
 ### 5. Members
@@ -357,6 +357,48 @@ members.**
   ceiling: any member serves any member.
 
 ### 7. What members do with it
+
+**A group post is a post, with everything a post has** (Curtis, 2026-10-15):
+tags, dates, pins, scheduled posting, the works. The group's lanes therefore
+need the annotations a persona's public posts get from their annotation chain,
+on the group's side of the door. And **group posts live in your feed** with
+everything else, filterable, with an implicit saved feed filter for every group
+you're in. **You post to a group from Writer or the feed's composer**, with the
+group as the post's target; the group's page is for reading it and keeping it,
+not for writing (its quick composer goes).
+
+How each post feature carries over:
+
+- **Labels ride the group lane.** Tags, description, mentions and web path are
+  the same `PublicAnnotation` statement a public post's labels are, as their own
+  entry type on the `GROUP` service, so they travel only through the group's
+  door and the roster fold counts them like any entry (void past a removal's
+  anchor). Publishing to a group restates the draft's labels on the poster's
+  lane as public publishing does (`restate_labels`: the same diff, the same
+  skips). Anyone in the group may label anyone's post, as anyone may a public
+  one.
+- **The date and comments-off ride the post's header**, as they already do for
+  any post (`dated_ms`, `settled`). The sealed bits don't: a group has no seal.
+- **Scheduled posting** keeps its plan on the draft (`publish_plan`), which
+  gains an optional group; the publish-due sweep posts through `roster::publish`
+  when it names one.
+- **Pins** (Curtis, 2026-10-15) come in two layers, each a register per post:
+  - **Owner pins**: an owner pins any post; only owners unpin one, the senior
+    winning a disagreement, as with hiding.
+  - **Member pins**: a member pins a post; any member may unpin it.
+  - **The group's page shows owner pins first, then member pins**, then
+    everything else, newest first. An owner can unpin anything, either layer.
+- **Your feed.** Group posts reach the feed through a journal of their own,
+  merged with `feed_journal` at read on the same cursor, never written into it.
+  Other surfaces read `feed_journal`, and slice 2's rule holds: a public surface
+  can't list a group post that was never in its tables. A group post's card
+  names its group. The feed's filters gain `groups`, with "not in a group" as
+  the public-only feed, and the Feeds column shows **one implicit feed per group
+  you're in**, made from your groups rather than stored, so it comes with
+  joining and goes with leaving.
+- **Writing.** The feed's "only show to" select and Writer's publish bar list
+  your groups beside Everyone and the sealed audiences; choosing one publishes
+  there.
 
 - **Post to the group.** A group post is a document like any other post (Curtis,
   2026-10-15): a `DocHeader` with versions, a body blob, its pictures as media
@@ -531,8 +573,63 @@ Dropped:
      any post; a removed member's later posts are void everywhere.
 3. **Links and the join settings**: invite links, open to people a member
    trusts, open, and ask to join.
-4. **Rooms for groups**: the standing room and ad-hoc ones.
-5. **The People side**: the Groups tab and the group's page come first, with the
+4. **Group posts are whole posts** (section 7, "How each post feature carries
+   over"), in this order:
+   - **4a, labels** (built 2026-10-15: `node/src/roster.rs` "Labels",
+     `groupposts.cjs`): the annotation entry type on group lanes, its fold, and
+     the restatement at publish.
+     - A `PUBLIC_ANNOTATION` entry on a `GROUP` chain is a label; the roster
+       fold counts it (proto `GroupEntry::Label`, never a group entry's kind).
+       The public label fold reads `ANNOTATIONS_PUBLIC` only, and so does the
+       fragment proof, so a group's labels reach no public surface.
+     - Settled as public labels are: the last said about a (who, post, key,
+       value) in the order this node received it, then the public rules
+       (`annotations::labels_that_stand`: an author's own reaction falls, anyone
+       else's tags stand two to a person).
+     - Publishing restates the draft's labels through the public path's own
+       `draft_labels` (tags, fields, notebooks, mentions), adding the pictures'
+       kinds and the length, and diffs against the poster's labels on the lane.
+       The public-only ones stay out: the web path, the draft link, the sealed
+       audience.
+     - Any member tags any post (`POST .../docs/{doc}/labels`).
+   - **4b, the feed** (built 2026-10-15: `group_journal`, node rung 86;
+     `roster::feed_rows`; `groupposts.cjs`): the group journal, the merge at
+     read, `groups` in the filters and the implicit feeds.
+     - Every refold writes each hosted member's rows: the posts they may see
+       (not hidden from them), with the group's name, the post's labels and its
+       words for the search. A version unchanged since the last refold keeps its
+       words unread. The group-sync pass refolds every group it keeps, so a node
+       that gains the table in an upgrade fills it within a pass.
+     - The feed in time order merges the two journals on the same cursor. Every
+       filtered view (search, chips, and best or hot with a chip) judges group
+       rows by the same chips, off what the row carries
+       (`Narrow::admits_group_post`). `group=` and `not_group=` are the groups
+       row; picking a group leaves only its posts.
+     - A group post's card names its group, reads its words through the group's
+       door, takes tags through the group's labels route, and offers only its
+       author's takedown: no share, profile or front-page pin, QR code, copy
+       into notes, or address of its own.
+     - The Feeds column lists one feed per group you're in, under "all", made
+       from your groups rather than stored (`pure/groups.js` `groupFeeds`).
+   - **4c, writing** (built 2026-10-15: `roster.rs` publish and
+     `publish_planned`, `scheduled.rs`, `doc/publishbar.js`, `apps/feed.js`,
+     `groupposts.cjs`): the group as a target in the feed's composer and
+     Writer's publish bar; scheduling to a group; the page's quick composer
+     goes.
+     - The feed's "only show to" lists your groups (under "your groups", shown
+       whenever you're in one, unlock or no unlock), and Writer's bar has "post
+       to", Everyone or a group. Once posted, the bar says "posted in" the
+       group, with view, update and unpublish there
+       (`GET .../docs/{doc_id}/groups` says where a draft went; a takedown
+       forgets it). Drawings don't offer it: a group post is words.
+     - A group post's header carries the draft's claimed date and comments off,
+       as any post's does, and sorts by the claimed date.
+     - A future date is a plan naming the group; the publish-due sweep posts it
+       through `roster::publish_planned` while its author is still a member, and
+       spends the plan either way.
+   - **4d, pins**: the two layers and the page's order.
+5. **Rooms for groups**: the standing room and ad-hoc ones.
+6. **The People side**: the Groups tab and the group's page come first, with the
    app for slices 1 and 2; then groups beside tags, mute, notifications, and
    "start a new group with these people" (the fork).
    - **First part built** (2026-10-15: `node/js/groups.js`, `apps/people.js`,
@@ -541,17 +638,17 @@ Dropped:
      members and owners with an owner's verbs (invite from your contacts, make
      owner, demote, remove, ban), joining and leaving, and its posts beneath
      with a quick composer, takedown and hiding.
-6. **The sign-up group becomes a real group.** `groups.rs` admits the joiner to
+7. **The sign-up group becomes a real group.** `groups.rs` admits the joiner to
    the node's group instead of pairing them with every member.
-7. **For phones**: membership without keeping the media.
+8. **For phones**: membership without keeping the media.
 
 ## Open questions
 
 1. ~~Section 2: one group chain, or members' lanes and a fold?~~ **Settled
    (Curtis, 2026-10-15): lanes and a fold**, on a per-instance `GROUP` service
    as chat's rooms are.
-2. **Default join setting** for a new group: invite only, or open to people a
-   member trusts?
+2. ~~Default join setting for a new group: invite only, or open to people a
+   member trusts?~~ **Invite only** (Curtis, 2026-10-15).
 3. **Can the group itself speak?** A pinned rules or welcome post signed "the
    Potato Bunch" rather than by an owner. With no group key in use, it would be
    an owner's post marked as the group's. Is that wanted? **And might a group

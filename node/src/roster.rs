@@ -123,6 +123,9 @@ fn lane_body(entry_type: i64, body: &[u8]) -> Option<GroupEntry> {
         entry_type::POST_RETRACT => PostRetraction::decode(body)
             .ok()
             .map(|r| GroupEntry::Document { doc: r.doc_id, retract: true }),
+        entry_type::PUBLIC_ANNOTATION => ringtome_proto::PublicAnnotation::decode(body)
+            .ok()
+            .map(|a| GroupEntry::Label { doc: a.target_doc }),
         _ => None,
     }
 }
@@ -192,7 +195,213 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<(Roster, Vec
         .await
         .context("remembering who's in a group")?;
     }
+    rejournal(state, group, &roster).await?;
     Ok(Some((roster, lanes)))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The feed: each hosted member's view of the group's posts (slice 4b)
+
+/// A group's posts as its page lists them: standing (not taken down) and not a picture another
+/// post embeds - each with the version shown, the first (which a hide names), whether it was
+/// edited, and whether an owner hid it.
+struct Listed<'a> {
+    doc: [u8; 16],
+    shown: &'a Version,
+    first: &'a Version,
+    edited: bool,
+    hidden: bool,
+}
+
+fn listed<'a>(
+    versions: &'a BTreeMap<[u8; 16], Vec<Version>>,
+    gone: &BTreeSet<[u8; 16]>,
+    roster: &Roster,
+) -> Vec<Listed<'a>> {
+    // A post is a document no other document names: a picture belongs to the post embedding it.
+    let embedded: BTreeSet<[u8; 16]> = versions
+        .values()
+        .flat_map(|l| l.iter().flat_map(|v| v.header.refs.iter().copied()))
+        .collect();
+    versions
+        .iter()
+        .filter(|(doc, _)| !gone.contains(*doc) && !embedded.contains(*doc))
+        .filter_map(|(doc, list)| {
+            let (shown, first) = (display(list)?, first_version(list)?);
+            Some(Listed {
+                doc: *doc,
+                shown,
+                first,
+                edited: list.len() > 1,
+                hidden: roster.hidden.contains(&first.hash),
+            })
+        })
+        .collect()
+}
+
+/// May `viewer` see this post? A hidden one is out of sight (Curtis, 2026-10-15) but for the
+/// owners, who may show it again, and its author, who should know it was hidden.
+fn sees(roster: &Roster, viewer: &Root, post: &Listed) -> bool {
+    !post.hidden || post.shown.persona == *viewer || roster.owners.contains_key(viewer)
+}
+
+/// Write each hosted member's rows of the group's journal, as the group now stands: a member
+/// who left or was removed keeps none, and a post they may no longer see leaves. An unchanged
+/// version keeps the words it was searched by, so a refold reads only what moved.
+async fn rejournal(state: &AppState, group: &GroupId, roster: &Roster) -> Result<()> {
+    let db = &state.node_db;
+    let (versions, gone) =
+        documents_of(state, group, roster).await.map_err(|e| anyhow!("{e:?}"))?;
+    let posts = listed(&versions, &gone, roster);
+    let mut labels = labels_of(state, group, roster).await.map_err(|e| anyhow!("{e:?}"))?;
+    let held: Vec<(String, Vec<u8>, String)> = db
+        .fetch_all(
+            "SELECT DISTINCT doc_id, version, tokens FROM group_journal WHERE group_id = ?1",
+            (group.to_vec(),),
+        )
+        .await
+        .context("reading a group's journal")?;
+    let mut readers: Vec<Root> = Vec::new();
+    for m in &roster.members {
+        if crate::identity::is_agented(db, &hex::encode(m)).await.unwrap_or(false) {
+            readers.push(*m);
+        }
+    }
+    db.execute("DELETE FROM group_journal WHERE group_id = ?1", (group.to_vec(),))
+        .await
+        .context("clearing a group's journal")?;
+    for post in &posts {
+        let doc_hex = hex::encode(post.doc);
+        let tokens =
+            match held.iter().find(|(d, v, _)| *d == doc_hex && v[..] == post.shown.hash[..]) {
+                Some((_, _, tokens)) => tokens.clone(),
+                None => {
+                    let words = crate::idface::public_blob(state, post.shown.header.file_hash)
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|b| String::from_utf8(b).ok())
+                        .unwrap_or_default();
+                    crate::search::tokens_of(&post.shown.header.title, &words)
+                }
+            };
+        let said = serde_json::to_string(
+            &labels
+                .remove(&post.doc)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| serde_json::json!({ "annotator": l.annotator, "key": l.key, "value": l.value }))
+                .collect::<Vec<_>>(),
+        )?;
+        let format = crate::record::documents::Format::from_wire(post.shown.header.format).as_str();
+        // Its claimed date when it has one, as any post sorts by its (PUBLISH.md).
+        let published = post.shown.header.dated_ms.or(post.first.header.genesis_ms).unwrap_or(0);
+        let updated = post.shown.header.genesis_ms.unwrap_or(published);
+        for reader in readers.iter().filter(|r| sees(roster, r, post)) {
+            db.execute(
+                "INSERT INTO group_journal (reader_root, group_id, group_name, author_root, doc_id,
+                   title, format, published_ms, updated_ms, version, tokens, labels)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                (
+                    hex::encode(reader),
+                    group.to_vec(),
+                    roster.name.as_str(),
+                    hex::encode(post.shown.persona),
+                    doc_hex.as_str(),
+                    post.shown.header.title.as_str(),
+                    format,
+                    published,
+                    updated,
+                    post.shown.hash.to_vec(),
+                    tokens.as_str(),
+                    said.as_str(),
+                ),
+            )
+            .await
+            .context("journalling a group post")?;
+        }
+    }
+    Ok(())
+}
+
+/// One of a reader's group journal rows: a feed row, its group, and its labels.
+pub struct GroupFeedRow {
+    pub row: crate::fanout::FeedRow,
+    pub tokens: String,
+    pub labels: Vec<crate::annotations::KnownAnnotation>,
+}
+
+/// A reader's group posts, newest first (ties by document id, highest first), after `before`,
+/// at most `limit` - or all of them, without one. `own` is the feed's "me" chip, and `since_ms`
+/// a best order's window.
+pub async fn feed_rows(
+    state: &AppState,
+    reader: &str,
+    before: Option<&(i64, String)>,
+    limit: Option<i64>,
+    own: crate::fanout::Own,
+    since_ms: Option<i64>,
+) -> Result<Vec<GroupFeedRow>> {
+    type Row = (String, Vec<u8>, String, String, String, String, i64, i64, String, String);
+    let mut sql = String::from(
+        "SELECT author_root, group_id, group_name, doc_id, title, format, published_ms, updated_ms,
+                tokens, labels
+         FROM group_journal WHERE reader_root = ?1 AND (published_ms, doc_id) < (?2, ?3)",
+    );
+    match own {
+        crate::fanout::Own::In => {}
+        crate::fanout::Own::Out => sql.push_str(" AND author_root <> reader_root"),
+        crate::fanout::Own::Only => sql.push_str(" AND author_root = reader_root"),
+    }
+    if let Some(since) = since_ms {
+        sql.push_str(&format!(" AND published_ms >= {since}"));
+    }
+    sql.push_str(" ORDER BY published_ms DESC, doc_id DESC");
+    if let Some(limit) = limit {
+        sql.push_str(&format!(" LIMIT {limit}"));
+    }
+    let (ms, doc) = before.cloned().unwrap_or((i64::MAX, String::new()));
+    let rows: Vec<Row> = state
+        .node_db
+        .fetch_all(&sql, (reader, ms, doc.as_str()))
+        .await
+        .context("reading a reader's group posts")?;
+    Ok(rows
+        .into_iter()
+        .map(|(author, group, name, doc, title, format, published, updated, tokens, labels)| {
+            let labels: Vec<serde_json::Value> = serde_json::from_str(&labels).unwrap_or_default();
+            GroupFeedRow {
+                row: crate::fanout::FeedRow {
+                    author_root: author,
+                    via_root: None,
+                    suggested_via: None,
+                    doc_id: doc,
+                    title,
+                    format: Some(format),
+                    published_ms: published,
+                    updated_ms: updated,
+                    arrived_ms: published,
+                    settled: false,
+                    trusted_only: false,
+                    onward: false,
+                    dated_ms: None,
+                    minted_ms: published,
+                    group: Some((hex::encode(group), name)),
+                },
+                tokens,
+                labels: labels
+                    .into_iter()
+                    .filter_map(|l| {
+                        Some(crate::annotations::KnownAnnotation {
+                            annotator: l["annotator"].as_str()?.to_string(),
+                            key: l["key"].as_str()?.to_string(),
+                            value: l["value"].as_str()?.to_string(),
+                        })
+                    })
+                    .collect(),
+            }
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -420,6 +629,9 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
         let Ok(group) = <[u8; 16]>::try_from(group.as_slice()) else { continue };
         if crate::identity::is_agented(&state.node_db, &root).await.unwrap_or(false) {
             sync_group(&state, &root, &group, &[]).await;
+            // Refolded whether or not anything arrived: the feed's journal of the group is
+            // written there, and a node that gained it in an upgrade fills it here (slice 4b).
+            refold(&state, &group).await?;
         }
     }
     Ok(())
@@ -574,8 +786,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/appoint", post(appoint_handler))
         .route("/api/identity/{root}/groups/{group}/posts", get(posts_handler))
         .route("/api/identity/{root}/groups/{group}/publish", post(publish_handler))
+        .route("/api/identity/{root}/docs/{doc_id}/groups", get(draft_groups_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/retract", post(retract_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/hide", post(hide_handler))
+        .route("/api/identity/{root}/groups/{group}/docs/{doc}/labels", post(label_handler))
         // A group's pictures and bodies, at one address for every member - the embed in a
         // post's words can't name the reader - so the door is the session: any persona on it
         // the group counts.
@@ -1335,6 +1549,7 @@ pub async fn publish(
     me: &str,
     group: &GroupId,
     draft: &[u8; 16],
+    wishes: Wishes,
 ) -> Result<[u8; 16], AppError> {
     use crate::record::bake::MediaRef;
     use crate::record::documents::Format;
@@ -1370,6 +1585,8 @@ pub async fn publish(
         ))
     })?;
     let mut refs: Vec<[u8; 16]> = Vec::new();
+    // What the pictures are, for the post's implicit tags.
+    let mut carried: Vec<(Option<u64>, bool)> = Vec::new();
     if format == Format::Marquee {
         let mut swaps: Vec<(String, String)> = Vec::new();
         for found in crate::record::bake::media_refs(&words, me) {
@@ -1377,6 +1594,7 @@ pub async fn publish(
                 MediaRef::PrivateDoc { target, doc_id } => {
                     let (media, fmt, animation) =
                         group_media(state, data, me, group, &doc_id).await?;
+                    carried.push((fmt.to_wire(), animation));
                     swaps.push((target, media_target(group, &media, fmt, animation)));
                     if !refs.contains(&media) {
                         refs.push(media);
@@ -1440,9 +1658,9 @@ pub async fn publish(
         genesis_ms: Some(genesis_ms),
         reply_to: None,
         thread_root: None,
-        settled: false,
+        settled: wishes.settled,
         trusted_only: false,
-        dated_ms: None,
+        dated_ms: wishes.dated_ms,
         animation: false,
         im: false,
         part_of: None,
@@ -1456,12 +1674,172 @@ pub async fn publish(
     append_document(state, data, me, group, entry_type::DOC_HEADER, payload).await?;
     drop(held);
     remember_published(state, me, draft, group, &doc_id).await?;
+    // The post's labels (section 7): the draft's own, as publishing restates them on the public
+    // chain, and what it carries - its pictures' kinds, its length - on this lane.
+    let (mut desired, word_count) =
+        crate::identity::routes::draft_labels(data, &me_root, draft).await?;
+    for tag in crate::record::documents::implicit_tags_of(carried.into_iter()) {
+        desired.insert(("tag".into(), tag.into()));
+    }
+    if let Some(length) = word_count.and_then(crate::record::documents::length_tag) {
+        desired.insert(("tag".into(), length.into()));
+    }
+    restate_labels(state, data, me, group, &me_root, &doc_id, &desired).await?;
     Ok(doc_id)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Labels: tags, descriptions, mentions on a group post (section 7)
+
+/// One label as it stands: who said it, and `key = value`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupLabel {
+    pub annotator: String,
+    pub key: String,
+    pub value: String,
+}
+
+/// Every label standing on the group's posts, by post. A statement counts while its annotator
+/// is a member at that point of their lane (the roster's `counted`), the last one said about a
+/// (who, post, key, value) wins in the order this node received them - as public labels are
+/// settled - and the public rules then apply: an author's reaction to their own post falls, and
+/// anyone else stands two tags to a person (`annotations::labels_that_stand`).
+async fn labels_of(
+    state: &AppState,
+    group: &GroupId,
+    roster: &Roster,
+) -> Result<BTreeMap<[u8; 16], Vec<GroupLabel>>, AppError> {
+    let rows: Vec<(String, Vec<u8>, Vec<u8>)> = state
+        .node_db
+        .fetch_all(
+            "SELECT persona, hash, body FROM group_lanes WHERE group_id = ?1 AND entry_type = ?2
+             ORDER BY rowid",
+            (group.to_vec(), i64::from(entry_type::PUBLIC_ANNOTATION)),
+        )
+        .await
+        .context("reading a group's labels")
+        .map_err(AppError::Internal)?;
+    let mut said: BTreeMap<(String, String, [u8; 16], String, String), bool> = BTreeMap::new();
+    for (persona, hash, body) in rows {
+        let Ok(hash) = <[u8; 32]>::try_from(hash) else { continue };
+        if !roster.counted.contains(&hash) {
+            continue;
+        }
+        let Ok(a) = ringtome_proto::PublicAnnotation::decode(&body) else { continue };
+        said.insert(
+            (persona, hex::encode(a.target_author), a.target_doc, a.key, a.value),
+            a.present,
+        );
+    }
+    let standing: Vec<crate::annotations::Statement> = said
+        .into_iter()
+        .filter(|(_, present)| *present)
+        .map(|((annotator, target_author, doc, key, value), _)| crate::annotations::Statement {
+            annotator,
+            target_author,
+            target_doc: hex::encode(doc),
+            key,
+            value,
+        })
+        .collect();
+    let mut out: BTreeMap<[u8; 16], Vec<GroupLabel>> = BTreeMap::new();
+    for st in crate::annotations::labels_that_stand(standing) {
+        let Ok(doc) = doc_of(&st.target_doc) else { continue };
+        out.entry(doc).or_default().push(GroupLabel {
+            annotator: st.annotator,
+            key: st.key,
+            value: st.value,
+        });
+    }
+    Ok(out)
+}
+
+/// Say one label on the lane, or take it back.
+#[allow(clippy::too_many_arguments)]
+async fn say_label(
+    data: &Store,
+    group: &GroupId,
+    target_author: &Root,
+    doc: &[u8; 16],
+    key: &str,
+    value: &str,
+    present: bool,
+) -> Result<(), AppError> {
+    let payload = ringtome_proto::PublicAnnotation {
+        target_author: *target_author,
+        target_doc: *doc,
+        key: key.to_string(),
+        value: value.to_string(),
+        present,
+    }
+    .encode()
+    .map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "roster.not-a-label",
+            "that label can't be said: {why}",
+            why = e
+        ))
+    })?;
+    crate::record::imaol::append_on(
+        data.db(),
+        data.signer(),
+        service::GROUP,
+        Some(*group),
+        entry_type::PUBLIC_ANNOTATION,
+        Payload::Inline(payload),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Bring `me`'s labels on a post to `desired`: say what's missing, take back what's gone - the
+/// public restatement's diff (identity/routes.rs `restate_labels`), on this lane.
+async fn restate_labels(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    author: &Root,
+    doc: &[u8; 16],
+    desired: &BTreeSet<(String, String)>,
+) -> Result<(), AppError> {
+    crate::fold::fold_now(state, me).await;
+    let (roster, _) = refold(state, group).await.map_err(AppError::Internal)?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"))
+    })?;
+    let mine: BTreeSet<(String, String)> = labels_of(state, group, &roster)
+        .await?
+        .remove(doc)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.annotator == me)
+        .map(|l| (l.key, l.value))
+        .collect();
+    for (k, v) in desired.difference(&mine) {
+        say_label(data, group, author, doc, k, v, true).await?;
+    }
+    for (k, v) in mine.difference(desired) {
+        say_label(data, group, author, doc, k, v, false).await?;
+    }
+    crate::fold::fold_now(state, me).await;
+    Ok(())
+}
+
+/// What a group post's header carries from its publish, as any post's does: the author's claimed
+/// date, and comments off.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Wishes {
+    pub dated_ms: Option<i64>,
+    pub settled: bool,
 }
 
 #[derive(Deserialize)]
 struct PublishRequest {
     doc: String,
+    #[serde(default)]
+    settled: bool,
+    #[serde(default)]
+    tz_offset_min: i32,
 }
 
 fn doc_of(hex_doc: &str) -> Result<[u8; 16], AppError> {
@@ -1486,8 +1864,67 @@ async fn publish_handler(
             "only the group's members can post to it"
         )));
     }
-    let post = publish(&state, &data, &root, &group, &doc_of(&req.doc)?).await?;
+    let draft = doc_of(&req.doc)?;
+    // The preferred date, as the public publish resolves it (identity/routes.rs): the draft's
+    // `display_date` with the request's timezone, re-read at every publish.
+    let dated_ms = data
+        .annotations()
+        .field(&draft, store::DISPLAY_DATE)
+        .await?
+        .and_then(|v| crate::record::documents::claimed_ms(&v, now_ms(), req.tz_offset_min));
+    // A future date is a schedule, as for any post (PUBLISH.md ruling 3): a plan on the draft,
+    // naming the group and this device, which the publish-due sweep mints (scheduled.rs).
+    if let Some(at) = dated_ms.filter(|at| *at > now_ms()) {
+        let plan = serde_json::json!({
+            "at": at,
+            "by": data.leaf_hex(),
+            "settled": req.settled,
+            "group": hex::encode(group),
+        });
+        data.annotations().set_field(&draft, store::PUBLISH_PLAN, &plan.to_string()).await?;
+        return Ok(Json(serde_json::json!({ "group": hex::encode(group), "scheduled_for": at })));
+    }
+    let post =
+        publish(&state, &data, &root, &group, &draft, Wishes { dated_ms, settled: req.settled })
+            .await?;
+    clear_plan(&data, &draft).await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "post": hex::encode(post) })))
+}
+
+/// The publish-due sweep's road to a group (scheduled.rs): post the draft its plan names, if
+/// its author is still a member - and spend the plan either way, since a refusal now is one
+/// later too.
+pub async fn publish_planned(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group_hex: &str,
+    draft: &[u8; 16],
+    wishes: Wishes,
+) -> Result<[u8; 16], AppError> {
+    let group = group_of(group_hex)?;
+    let me_root = root_of(me).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
+    })?;
+    let posted = match current(state, &group, &me_root).await {
+        Ok((roster, _)) if roster.members.contains(&me_root) => {
+            publish(state, data, me, &group, draft, wishes).await
+        }
+        _ => Err(AppError::Forbidden(crate::msg!(
+            "roster.members-only",
+            "only the group's members can post to it"
+        ))),
+    };
+    clear_plan(data, draft).await?;
+    posted
+}
+
+/// A draft posted is no longer planned: its plan, if it had one, is spent.
+pub async fn clear_plan(data: &Store, draft: &[u8; 16]) -> Result<(), AppError> {
+    if data.annotations().field(draft, store::PUBLISH_PLAN).await?.is_some_and(|p| !p.is_empty()) {
+        data.annotations().set_field(draft, store::PUBLISH_PLAN, "").await?;
+    }
+    Ok(())
 }
 
 /// POST `.../groups/{group}/docs/{doc}/retract` - take down your own post, as any post is taken
@@ -1517,7 +1954,124 @@ async fn retract_handler(
         PostRetraction { doc_id: doc }.encode(),
     )
     .await?;
+    // Its draft is a draft again: publishing it now makes a new post (Writer's bar reads this).
+    state
+        .node_db
+        .execute(
+            "DELETE FROM group_drafts WHERE root = ?1 AND group_id = ?2 AND post = ?3",
+            (root.as_str(), group.to_vec(), doc.to_vec()),
+        )
+        .await
+        .context("forgetting a taken-down post's draft")
+        .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "retracted": hex::encode(doc) })))
+}
+
+/// GET `/api/identity/{root}/docs/{doc_id}/groups` - the groups this draft is posted in, and as
+/// which post: Writer's publish bar says where it went (slice 4c).
+async fn draft_groups_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc)): Path<(String, String)>,
+) -> Answer {
+    me_of(&state, &session, &root).await?;
+    let doc = doc_of(&doc)?;
+    let rows: Vec<(Vec<u8>, Vec<u8>, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT d.group_id, d.post, r.name FROM group_drafts d
+             JOIN group_rosters r ON r.group_id = d.group_id
+             WHERE d.root = ?1 AND d.source = ?2 ORDER BY r.name",
+            (root.as_str(), doc.to_vec()),
+        )
+        .await
+        .context("reading where a draft was posted")
+        .map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!(rows
+        .into_iter()
+        .map(|(g, post, name)| serde_json::json!({
+            "group": hex::encode(g),
+            "post": hex::encode(post),
+            "name": name,
+        }))
+        .collect::<Vec<_>>())))
+}
+
+#[derive(Deserialize)]
+struct LabelRequest {
+    value: String,
+    present: bool,
+}
+
+/// POST `.../groups/{group}/docs/{doc}/labels` - a member tags a group post, or takes their tag
+/// back, as anyone may a public post: two tags to a person on somebody else's post, the rule
+/// every reader applies (`labels_of`). An author's own labels come from their draft, at publish.
+async fn label_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group, doc)): Path<(String, String, String)>,
+    Json(req): Json<LabelRequest>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let doc = doc_of(&doc)?;
+    let (roster, _) = current(&state, &group, &me).await?;
+    if !roster.members.contains(&me) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "roster.members-only-label",
+            "only the group's members can tag its posts"
+        )));
+    }
+    let value = req.value.trim();
+    if value.is_empty() || value.chars().count() > ringtome_proto::PublicAnnotation::MAX_TAG_CHARS {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.a-tag-is-a-word",
+            "a tag is a word or two, at most {cap} characters",
+            cap = ringtome_proto::PublicAnnotation::MAX_TAG_CHARS
+        )));
+    }
+    let (versions, gone) = documents_of(&state, &group, &roster).await?;
+    let author = versions
+        .get(&doc)
+        .filter(|_| !gone.contains(&doc))
+        .and_then(|list| display(list))
+        .map(|v| v.persona)
+        .ok_or_else(|| {
+            AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
+        })?;
+    say_label(
+        &data,
+        &group,
+        &author,
+        &doc,
+        ringtome_proto::PublicAnnotation::TAG_KEY,
+        value,
+        req.present,
+    )
+    .await?;
+    // Your own post's tag is filed on its draft too, as the public card does: publishing again
+    // restates the draft's labels, and a tag said only here would be taken back.
+    if author == me {
+        let drafts: Vec<(Vec<u8>,)> = state
+            .node_db
+            .fetch_all(
+                "SELECT source FROM group_drafts WHERE root = ?1 AND group_id = ?2 AND post = ?3",
+                (root.as_str(), group.to_vec(), doc.to_vec()),
+            )
+            .await
+            .context("finding a group post's draft")
+            .map_err(AppError::Internal)?;
+        for (source,) in drafts {
+            let Ok(draft) = <[u8; 16]>::try_from(source.as_slice()) else { continue };
+            if req.present {
+                data.annotations().tag(&draft, value).await?;
+            } else {
+                data.annotations().untag(&draft, value).await?;
+            }
+        }
+    }
+    crate::fold::fold_now(&state, &root).await;
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "doc": hex::encode(doc) })))
 }
 
 #[derive(Deserialize)]
@@ -1567,23 +2121,14 @@ async fn posts_handler(
     let group = group_of(&group)?;
     let (roster, _) = current(&state, &group, &me).await?;
     let (versions, gone) = documents_of(&state, &group, &roster).await?;
-    // A post is a document no other document names: a picture belongs to the post embedding it.
-    let embedded: BTreeSet<[u8; 16]> = versions
-        .values()
-        .flat_map(|l| l.iter().flat_map(|v| v.header.refs.iter().copied()))
-        .collect();
+    let mut labels = labels_of(&state, &group, &roster).await?;
     let mut posts = Vec::new();
-    for (doc, list) in &versions {
-        if gone.contains(doc) || embedded.contains(doc) {
+    for post in listed(&versions, &gone, &roster) {
+        if !sees(&roster, &me, &post) {
             continue;
         }
-        let (Some(shown), Some(first)) = (display(list), first_version(list)) else { continue };
-        // A hidden post is out of sight (Curtis, 2026-10-15) - but for the owners, who may show
-        // it again, and its author, who should know it was hidden.
-        let hidden = roster.hidden.contains(&first.hash);
-        if hidden && shown.persona != me && !roster.owners.contains_key(&me) {
-            continue;
-        }
+        let Listed { doc, shown, first, edited, hidden } = post;
+        let doc = &doc;
         let words = crate::idface::public_blob(&state, shown.header.file_hash)
             .await
             .ok()
@@ -1597,9 +2142,15 @@ async fn posts_handler(
             // None until the body has arrived from a member's node.
             "words": words,
             "media": shown.header.refs.iter().map(hex::encode).collect::<Vec<_>>(),
-            "posted_ms": first.header.genesis_ms,
-            "edited": list.len() > 1,
+            "posted_ms": shown.header.dated_ms.or(first.header.genesis_ms),
+            "edited": edited,
+            "settled": shown.header.settled,
             "hidden": hidden,
+            "annotations": labels.remove(doc).unwrap_or_default().into_iter().map(|l| serde_json::json!({
+                "annotator": l.annotator,
+                "key": l.key,
+                "value": l.value,
+            })).collect::<Vec<_>>(),
         }));
     }
     posts.sort_by_key(|p| std::cmp::Reverse(p["posted_ms"].as_i64().unwrap_or(0)));

@@ -72,7 +72,7 @@ import { LabelFacets, NO_PICKS, PickedFacets, anyPicks, useLabels, usePicks } fr
 import { meParam } from '../pure/facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
 import { useLocation } from 'preact-iso';
-import { postHref } from '../links.js';
+import { groupHref, postHref } from '../links.js';
 import { t } from '../i18n.js';
 import { askText, askYes } from '../modal.js';
 import {
@@ -84,6 +84,7 @@ import {
 } from '../postentry.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
+import { groupFeeds } from '../pure/groups.js';
 import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
 import { STOP_WORDS } from '../curiosity.js';
@@ -885,6 +886,20 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         loadSaved();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root]);
+    // A feed for every group you're in (plans/GROUPS.md, section 7), made from your groups rather
+    // than kept: it comes with joining and goes with leaving.
+    const [ofGroups, setOfGroups] = useState([]);
+    useEffect(() => {
+        setOfGroups([]);
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/groups`)
+            .then((rows) => live && setOfGroups(groupFeeds(rows)))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [root]);
     // The saved feed last chosen, by id: "save" puts the feed back into it (Curtis, 2026-10-12).
     const [loadedId, setLoadedId] = useState(null);
     const loaded = saved.find((f) => f.id === loadedId) || null;
@@ -1016,7 +1031,9 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     // Choosing who a post is for is Sealed posts & audiences' (plans/UNLOCKS.md); a copy of a
     // sealed post keeps its own seal wish either way (below).
     const sealing = useUnlocked(root, 'sealing');
-    const trustNext = audienceNext !== '';
+    // A group is a place, not a seal (plans/GROUPS.md, section 7): 'group:<id>' posts there.
+    const groupNext = audienceNext.startsWith('group:') ? audienceNext.slice(6) : null;
+    const trustNext = audienceNext !== '' && !groupNext;
     // 'mentioned' is the post's own room (Contact tags, ruling 5): the people its user
     // cards name; the node refuses it when the words name nobody. 'onward' (ruling 7) is
     // the trust list with the share button left on: whoever I trust may pass it to
@@ -1063,6 +1080,28 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         if (posted === draftId) {
             minting.current = false;
             mintDraft(); // deliberately not awaited - it carries its own error path
+        }
+        if (groupNext) {
+            try {
+                const made = await api(`/api/identity/${root}/groups/${groupNext}/publish`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        doc: posted,
+                        settled: settleNext,
+                        tz_offset_min: new Date().getTimezoneOffset(),
+                    }),
+                });
+                setSettleNext(false);
+                setAudienceNext('');
+                setPosting(false);
+                settle();
+                // Scheduled, it waits on the draft's plan; posted, it's on the group's page.
+                if (made.post) loc.route(groupHref(groupNext));
+            } catch (e) {
+                setError(e.message);
+                setPosting(false);
+            }
+            return;
         }
         try {
             const made = await publishWithBaking(
@@ -1195,7 +1234,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                     is lit. */ ''
                 }
                 ${
-                    saved.length > 0 &&
+                    (saved.length > 0 || ofGroups.length > 0) &&
                     (tucked.has('feeds')
                         ? html`<${Rail}
                           icon=${Icons.filter}
@@ -1221,6 +1260,22 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                                   }}
                               >${t('apps.feed.all', 'all')}</button>
                           </div>
+                          ${ofGroups.map(
+                              (feed) => html`<div
+                                  key=${feed.id}
+                                  class=${sameFeed(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
+                              >
+                                  <span class="feed-saved-forget feed-saved-group" title=${t('apps.feed.a-group-youre-in', "a group you're in")}><${Icons.group} /></span>
+                                  <button
+                                      class="feed-saved-name"
+                                      onClick=${() => {
+                                          setApplied({ settings: feed, at: Date.now() });
+                                          setLoadedId(null);
+                                          settle();
+                                      }}
+                                  >${feed.name}</button>
+                              </div>`,
+                          )}
                           ${saved.map(
                               (feed) => html`<div
                                   key=${feed.id}
@@ -1281,7 +1336,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                                         ${t('apps.feed.settled-no-replies-no', 'turn off comments')}
                                     </label>
                                     ${
-                                        sealing &&
+                                        (sealing || ofGroups.length > 0) &&
                                         html`<label
                                         class="feed-settle"
                                         title=${t('apps.feed.trusted-only-means', 'only the people you choose can read it')}
@@ -1293,10 +1348,19 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                                             onChange=${(e) => setAudienceNext(e.currentTarget.value)}
                                         >
                                             <option value="">${t('apps.feed.everyone', 'everyone')}</option>
-                                            <option value="onward">${t('apps.feed.people-i-trust-and-onward', 'people I trust, and onward')}</option>
-                                            <option value="trusted">${t('apps.feed.people-i-trust', 'people I trust')}</option>
-                                            <option value="mentioned">${t('apps.feed.the-people-mentioned', 'the people mentioned')}</option>
-                                            ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}
+                                            ${
+                                                sealing &&
+                                                html`<option value="onward">${t('apps.feed.people-i-trust-and-onward', 'people I trust, and onward')}</option>
+                                                <option value="trusted">${t('apps.feed.people-i-trust', 'people I trust')}</option>
+                                                <option value="mentioned">${t('apps.feed.the-people-mentioned', 'the people mentioned')}</option>
+                                                ${audienceTags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}`
+                                            }
+                                            ${
+                                                ofGroups.length > 0 &&
+                                                html`<optgroup label=${t('apps.feed.your-groups', 'your groups')}>
+                                                    ${ofGroups.map((g) => html`<option value=${`group:${g.group}`} key=${g.group}>${g.name}</option>`)}
+                                                </optgroup>`
+                                            }
                                         </select>
                                     </label>`
                                     }`

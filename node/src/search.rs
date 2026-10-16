@@ -94,6 +94,10 @@ pub struct Narrow {
     /// `not_author=`, three-state like the rest.
     pub authors: Vec<String>,
     pub not_authors: Vec<String>,
+    /// The groups row (plans/GROUPS.md, slice 4b): group ids, `group=` and `not_group=`. A public
+    /// post is in no group, so picking a group leaves only that group's posts.
+    pub groups: Vec<String>,
+    pub not_groups: Vec<String>,
 }
 
 /// The tag families, each its own row on the strip (Curtis, 2026-10-02): a post's SIZE (`micro`
@@ -146,6 +150,8 @@ impl Narrow {
                 "not_kind" if KINDS.contains(&v) => n.not_kinds.push(v.to_string()),
                 "author" if is_root(v) => n.authors.push(v.to_ascii_lowercase()),
                 "not_author" if is_root(v) => n.not_authors.push(v.to_ascii_lowercase()),
+                "group" if is_group(v) => n.groups.push(v.to_ascii_lowercase()),
+                "not_group" if is_group(v) => n.not_groups.push(v.to_ascii_lowercase()),
                 _ => {}
             }
         }
@@ -163,6 +169,37 @@ impl Narrow {
             || !self.not_kinds.is_empty()
             || !self.authors.is_empty()
             || !self.not_authors.is_empty()
+            || !self.groups.is_empty()
+            || !self.not_groups.is_empty()
+    }
+
+    /// The group half of the judgment, for a post in `group` (`None` for a public one).
+    pub fn groups_admit(&self, group: Option<&str>) -> bool {
+        match group {
+            None => self.groups.is_empty(),
+            Some(g) => {
+                (self.groups.is_empty() || self.groups.iter().any(|x| x == g))
+                    && !self.not_groups.iter().any(|x| x == g)
+            }
+        }
+    }
+
+    /// The whole judgment of a group post (roster.rs's journal), whose labels and words the row
+    /// carries rather than the memos holding them: a post, by `author`, its `buckets` the
+    /// author's own and its `tags` anyone's, its words `tokens`.
+    pub fn admits_group_post(
+        &self,
+        group: &str,
+        author: &str,
+        buckets: &[String],
+        tags: &[String],
+        tokens: &str,
+    ) -> bool {
+        self.groups_admit(Some(group))
+            && self.kinds_admit("post")
+            && self.authors_admit(author)
+            && self.labels_admit(buckets, tags)
+            && hits(tokens, &self.terms)
     }
 
     /// The author half of the judgment.
@@ -883,6 +920,11 @@ pub async fn facets_json_with(
         "tags": facet(tags),
         "authors": authors,
     }))
+}
+
+/// A group id as the feed's chips spell it: sixteen bytes, hex.
+fn is_group(v: &str) -> bool {
+    v.len() == 32 && v.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// A persona's root as the authors row takes it: 64 hex characters.

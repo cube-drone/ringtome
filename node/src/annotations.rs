@@ -119,6 +119,45 @@ fn bounded(rows: Vec<MemoRow>) -> Vec<MemoRow> {
 
 const TAG_KEY: &str = ringtome_proto::PublicAnnotation::TAG_KEY;
 
+/// One plain statement about a post, for a reader whose labels aren't in the memo - a group's,
+/// off its lanes (roster.rs).
+pub struct Statement {
+    pub annotator: String,
+    pub target_author: String,
+    pub target_doc: String,
+    pub key: String,
+    pub value: String,
+}
+
+/// Which of these statements stand, by the rules every reader reads public labels by
+/// ([`bounded`]): an author's reaction to their own post falls, and anyone else's tags stand two
+/// to a person.
+pub fn labels_that_stand(statements: Vec<Statement>) -> Vec<Statement> {
+    let rows = statements
+        .into_iter()
+        .map(|s| MemoRow {
+            target_author: s.target_author,
+            target_doc: s.target_doc,
+            annotator: s.annotator,
+            key: s.key,
+            value: s.value,
+            sealed: false,
+            holder: None,
+            holder_doc: None,
+        })
+        .collect();
+    bounded(rows)
+        .into_iter()
+        .map(|r| Statement {
+            annotator: r.annotator,
+            target_author: r.target_author,
+            target_doc: r.target_doc,
+            key: r.key,
+            value: r.value,
+        })
+        .collect()
+}
+
 /// The memo's `emoji` column for a label (node rung 0056): 1 for a tag that is one emoji - a
 /// reaction - so SQL can drop an author's reaction to their own post without the regex.
 fn reaction_flag(key: &str, value: &str) -> i64 {

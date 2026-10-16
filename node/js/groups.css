@@ -16,9 +16,7 @@
 }
 
 .groups-found-name,
-.group-invite-filter,
-.group-composer-title,
-.group-composer-words {
+.group-invite-filter {
     flex: 1;
     font: inherit;
     color: var(--ink);
@@ -27,13 +25,8 @@
     padding: 0.4rem 0.6rem;
 }
 
-.group-composer-words {
-    resize: vertical;
-}
-
 .groups-found-go,
-.group-join,
-.group-composer-go {
+.group-join {
     display: flex;
     align-items: center;
     gap: 0.35rem;
@@ -47,8 +40,7 @@
     cursor: pointer;
 }
 
-.groups-found-go:disabled,
-.group-composer-go:disabled {
+.groups-found-go:disabled {
     color: var(--muted);
     --line: var(--border);
     cursor: default;
@@ -191,16 +183,6 @@
     font-size: 0.85rem;
 }
 
-.group-composer {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-
-.group-composer-go {
-    align-self: flex-end;
-}
-
 .group-post {
     display: flex;
     flex-direction: column;
@@ -239,4 +221,26 @@
 
 .group-post-plain {
     white-space: pre-wrap;
+}
+
+.group-post-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35em;
+}
+
+/* A group's own feed in the feed's Feeds column (apps/feed.js): its mark sits where a saved feed's
+   trash does, since it isn't one to forget. */
+.feed-saved-group {
+    cursor: default;
+}
+
+.feed-entry-group a {
+    color: inherit;
+}
+
+.group-write-here {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
 }

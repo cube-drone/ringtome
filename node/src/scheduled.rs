@@ -16,6 +16,9 @@ struct Plan {
     settled: bool,
     #[serde(default)]
     trusted_only: bool,
+    /// The group it's for (plans/GROUPS.md, slice 4c), hex; none for the public.
+    #[serde(default)]
+    group: Option<String>,
 }
 
 /// The periodic pass: every agented persona, everything due now.
@@ -77,6 +80,24 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
                 continue;
             };
             if plan.at > now_ms || plan.by != my_leaf {
+                continue;
+            }
+            // A group's plan posts to the group, through its own publish (roster.rs), while
+            // the author is still in it.
+            if let Some(group) = plan.group.as_deref() {
+                let wishes =
+                    crate::roster::Wishes { dated_ms: Some(plan.at), settled: plan.settled };
+                match crate::roster::publish_planned(state, &data, &root, group, &doc_id, wishes)
+                    .await
+                {
+                    Ok(post) => {
+                        minted += 1;
+                        tracing::info!(root = %root, post = %hex::encode(post), at = plan.at, "scheduled group post minted");
+                    }
+                    Err(e) => {
+                        tracing::warn!(root = %root, doc = %hex::encode(doc_id), error = ?e, "scheduled group post refused");
+                    }
+                }
                 continue;
             }
             // Already public (a hand publish beat the sweep, or a sibling device minted

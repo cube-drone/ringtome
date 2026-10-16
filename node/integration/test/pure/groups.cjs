@@ -2,9 +2,9 @@
 // invite.
 const assert = require('node:assert');
 
-let groupsInOrder, isInvite, membersInOrder, inviteCandidates;
+let groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds;
 before(async () => {
-    ({ groupsInOrder, isInvite, membersInOrder, inviteCandidates } =
+    ({ groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds } =
         await import('../../../js/pure/groups.js'));
 });
 
@@ -53,5 +53,20 @@ describe('groups in People', () => {
             inviteCandidates(contacts, roster, 'me').map((c) => c.root),
             ['friend'],
         );
+    });
+
+    it("makes one feed per group you're in, picking that group alone, and none for an invite", () => {
+        const feeds = groupFeeds([
+            { group: 'b'.repeat(32), name: 'Potato Bunch', standing: 'owner' },
+            { group: 'a'.repeat(32), name: 'Allotment', standing: 'member' },
+            { group: 'c'.repeat(32), name: 'Beet Gang', standing: 'invite' },
+            { group: 'd'.repeat(32), name: 'Turnip Lot', standing: 'invited' },
+        ]);
+        assert.deepEqual(
+            feeds.map((f) => f.name),
+            ['Potato Bunch', 'Allotment'],
+        );
+        assert.deepEqual(feeds[0].picks, { groups: ['b'.repeat(32)] });
+        assert.equal(feeds[0].id, `group:${'b'.repeat(32)}`, 'never a saved feed id');
     });
 });

@@ -1499,6 +1499,9 @@ pub struct FeedRow {
     pub dated_ms: Option<i64>,
     /// When the post was actually written down; 0 when the row came from a fragment.
     pub minted_ms: i64,
+    /// The group it was posted to, `(id, name)` - a row of the group journal (roster.rs), never
+    /// of this one.
+    pub group: Option<(String, String)>,
 }
 
 /// How many of a document's other sharers a feed row will carry. A count is exact; a LIST is a
@@ -2225,6 +2228,7 @@ fn journal_row(
         settled: settled != 0,
         trusted_only: trusted_only != 0,
         onward: onward != 0,
+        group: None,
     }
 }
 

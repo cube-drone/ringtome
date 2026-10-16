@@ -7,8 +7,8 @@
 /// The private register collection the saved feeds live in.
 export const SAVED_FEEDS = 'feed_filters';
 
-const ROWS = ['kinds', 'buckets', 'tags', 'authors'];
-const OUT = ['notKinds', 'notBuckets', 'notTags', 'notAuthors'];
+const ROWS = ['kinds', 'buckets', 'tags', 'authors', 'groups'];
+const OUT = ['notKinds', 'notBuckets', 'notTags', 'notAuthors', 'notGroups'];
 
 /// Picks in one canonical shape: every row sorted, empties kept, `me` only when set - so two piles
 /// that narrow the same way compare equal however they were picked.

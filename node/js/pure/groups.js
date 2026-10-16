@@ -43,3 +43,20 @@ export const inviteCandidates = (contacts, roster, me) => {
     ]);
     return (contacts || []).filter((c) => c && c.root && !taken.has(c.root));
 };
+
+/// The feed's implicit feeds (plans/GROUPS.md, section 7: "an implicit saved feed filter for every
+/// group you're in"): one per group you're a member of, by name, picking that group alone. Made
+/// from your groups rather than stored, so one comes with joining and goes with leaving; never an
+/// invite's, since its posts aren't yours to read yet.
+export const groupFeeds = (rows) =>
+    groupsInOrder(
+        (rows || []).filter((g) => g.standing === 'member' || g.standing === 'owner'),
+    ).map((g) => ({
+        id: `group:${g.group}`,
+        name: g.name,
+        group: g.group,
+        picks: { groups: [g.group] },
+        stop: null,
+        sort: null,
+        q: null,
+    }));

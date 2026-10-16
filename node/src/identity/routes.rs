@@ -680,6 +680,10 @@ struct LabelsQuery {
 
 #[derive(Serialize)]
 struct FeedItem {
+    /// The group it was posted to (plans/GROUPS.md, slice 4b): its words and pictures are behind
+    /// the group's own door, and it is never shared out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group: Option<GroupCard>,
     /// Hot's lift (PROJECT_PLAN's Scores and sort orders, slice 2): this reader's score for the
     /// post reached two whole likes, and the card takes its top emphasis. A flag, never the score.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -2461,10 +2465,29 @@ async fn feed_handler(
             (ranked.into_iter().map(|(_, r)| r).collect(), false)
         }
     } else if narrow.is_empty() {
-        let mut rows =
-            crate::fanout::feed_page(&state.node_db, &root, before, page + 1, wants_own(&q.me))
-                .await
-                .map_err(AppError::Internal)?;
+        let mut rows = crate::fanout::feed_page(
+            &state.node_db,
+            &root,
+            before.clone(),
+            page + 1,
+            wants_own(&q.me),
+        )
+        .await
+        .map_err(AppError::Internal)?;
+        // The reader's group posts (plans/GROUPS.md, slice 4b), from their own journal, merged on
+        // the same cursor: the newest of both, a page of them.
+        let grouped = crate::roster::feed_rows(
+            &state,
+            &root,
+            before.as_ref(),
+            Some(page + 1),
+            wants_own(&q.me),
+            None,
+        )
+        .await
+        .map_err(AppError::Internal)?;
+        rows.extend(grouped.into_iter().map(|g| g.row));
+        rows.sort_by(|a, b| (b.published_ms, &b.doc_id).cmp(&(a.published_ms, &a.doc_id)));
         let more = rows.len() as i64 > page;
         rows.truncate(page as usize);
         (rows, more)
@@ -2505,9 +2528,20 @@ async fn feed_handler(
         .map_err(AppError::Internal)?;
     let page_pairs: Vec<(String, String)> =
         rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
-    let known_labels = crate::annotations::for_posts(&state, &page_pairs, Some(&root))
+    let mut known_labels = crate::annotations::for_posts(&state, &page_pairs, Some(&root))
         .await
         .map_err(AppError::Internal)?;
+    // A group post's labels ride its lane (slice 4a), so its journal row carries them.
+    if rows.iter().any(|r| r.group.is_some()) {
+        for g in crate::roster::feed_rows(&state, &root, None, None, crate::fanout::Own::In, None)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            if rows.iter().any(|r| r.group.is_some() && r.doc_id == g.row.doc_id) {
+                known_labels.insert((g.row.author_root, g.row.doc_id), g.labels);
+            }
+        }
+    }
     let reply_counts = crate::replies::known_counts(
         &state.node_db,
         &rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect::<Vec<_>>(),
@@ -2621,6 +2655,7 @@ async fn feed_handler(
             let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
             let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
+                group: r.group.map(|(id, name)| GroupCard { id, name }),
                 lifted: is_lifted,
                 mine,
                 author_name: byline.name,
@@ -2660,6 +2695,13 @@ async fn feed_handler(
     Ok(Json(out))
 }
 
+/// A group post's group, as its card names it.
+#[derive(Serialize)]
+struct GroupCard {
+    id: String,
+    name: String,
+}
+
 /// The journal filter a feed request asks for: the reader's own posts or not, a window or not, and
 /// the dial's stop with the reader's dials in it.
 pub(crate) async fn feed_filter<'a>(
@@ -2692,7 +2734,48 @@ pub(crate) async fn feed_filter<'a>(
 /// that small set and meets the journal by key; when every one is commoner, the feed is walked
 /// newest first through `filter` until the matches are found - soon, since they are common. Either
 /// way the exact judgment is `search::matching`'s.
+///
+/// The reader's group posts join them (plans/GROUPS.md, slice 4b), judged by the same chips off
+/// what their journal rows carry - and alone, when a group is picked, since a public post is in no
+/// group.
 async fn narrowed(
+    state: &AppState,
+    root: &str,
+    filter: &crate::fanout::JournalFilter<'_>,
+    narrow: &crate::search::Narrow,
+) -> Result<Vec<crate::fanout::FeedRow>, AppError> {
+    let mut out = if narrow.groups.is_empty() {
+        narrowed_public(state, root, filter, narrow).await?
+    } else {
+        Vec::new()
+    };
+    for g in crate::roster::feed_rows(state, root, None, None, filter.own, filter.since_ms)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        let (group, author) = match &g.row.group {
+            Some((id, _)) => (id.clone(), g.row.author_root.clone()),
+            None => continue,
+        };
+        let buckets: Vec<String> = g
+            .labels
+            .iter()
+            .filter(|l| l.key == "bucket" && l.annotator == author)
+            .map(|l| l.value.clone())
+            .collect();
+        let tags: Vec<String> =
+            g.labels.iter().filter(|l| l.key == "tag").map(|l| l.value.clone()).collect();
+        if narrow.admits_group_post(&group, &author, &buckets, &tags, &g.tokens) {
+            out.push(g.row);
+        }
+    }
+    out.sort_by(|a, b| (b.published_ms, &b.doc_id).cmp(&(a.published_ms, &a.doc_id)));
+    out.truncate(crate::search::RESULTS_CAP);
+    Ok(out)
+}
+
+/// [`narrowed`]'s public half: the feed journal's rows.
+async fn narrowed_public(
     state: &AppState,
     root: &str,
     filter: &crate::fanout::JournalFilter<'_>,
@@ -5632,16 +5715,16 @@ async fn backfill_persona(data: &store::Store, root: &str) -> Result<usize, AppE
     Ok(given)
 }
 
-async fn replicate_annotations(
-    state: &AppState,
+/// A draft's own labels, as publishing restates them wherever it posts - the public chain
+/// (`replicate_annotations`) or a group's lane (roster.rs): its tags, past the cap and a reaction
+/// on your own post left private; its fields, minus the draft's bookkeeping; the notebooks it's
+/// filed in; and a `mention` for every user card in its words that names somebody else. Also
+/// the words' count, for the length tag the caller decides on.
+pub(crate) async fn draft_labels(
     data: &store::Store,
     self_root: &[u8; 32],
     draft_id: &[u8; 16],
-    post_id: &[u8; 16],
-    seal_of: Option<([u8; 32], [u8; 16])>,
-    // When the post gets a web address: the date an untitled one's path starts with.
-    pathed: Option<i64>,
-) -> Result<Vec<(String, ringtome_proto::SignedEntry)>, AppError> {
+) -> Result<(std::collections::BTreeSet<(String, String)>, Option<i64>), AppError> {
     // Refuse, never truncate (2026-08-31): a label past its cap is skipped with a warning
     // rather than quietly shortened - the draft's word is the author's word or nothing.
     // Tags cap at 32 characters, everything else at the wire's value cap.
@@ -5675,36 +5758,7 @@ async fn replicate_annotations(
             desired.insert(("tag".into(), tag.clone()));
         }
     }
-    // The implicit tags (`documents::IMPLICIT_TAGS`): what the post carries, said as ordinary
-    // tags - outside the cap, so a draft's own thirty-two never crowd them out. A republish that
-    // drops the last picture retracts "image" like any tag the draft stopped carrying. A book's
-    // page says none of them, nor a length (Curtis, 2026-10-02): a page is read inside its book,
-    // and the book's own tags are its title page's, chosen by hand.
-    let in_book = crate::record::documents::public_part_of(data.db(), post_id).await?.is_some();
-    if !in_book {
-        for tag in crate::record::documents::public_implicit_tags(data.db(), post_id).await? {
-            desired.insert(("tag".into(), tag.into()));
-        }
-    }
-    let fields = data.annotations().fields(draft_id).await?;
-    // A sealed post's labels seal under its key (ruling 7): the mint left the key on the
-    // draft, the parent's for a reply under the parent's seal.
-    let post_key: Option<[u8; 32]> = fields
-        .iter()
-        .find(|(f, _)| f.as_str() == store::TRUSTED_KEY)
-        .and_then(|(_, v)| hex_fixed::<32>(v, "post key").ok());
-    // A post for the people mentioned says so, as a sealed label (Contact tags, ruling 5;
-    // Curtis, 2026-09-14: the named reader's card read "trusted only"): the people in the
-    // room can open it and see why they are there, and nobody else can read it at all. A
-    // contact-tag audience says nothing - the tag is the author's private business.
-    if post_key.is_some()
-        && fields.iter().any(|(f, v)| {
-            f.as_str() == store::AUDIENCE && v.trim() == crate::postkeys::MENTIONED_AUDIENCE
-        })
-    {
-        desired.insert((store::AUDIENCE.into(), crate::postkeys::MENTIONED_AUDIENCE.into()));
-    }
-    for (field, value) in fields {
+    for (field, value) in data.annotations().fields(draft_id).await? {
         // `published_as` is the draft's private bookkeeping (which post it minted) - a
         // fact about the draft, not a label on the post.
         if field == store::PROVENANCE {
@@ -5730,9 +5784,6 @@ async fn replicate_annotations(
         }
         desired.insert((field, value));
     }
-    // Where the post came from (slice 3 of the `/ringtome/` links, 2026-09-28): a link to the draft
-    // resolves to this post from now on, for anyone (store.rs `PUBLISHED_FROM`).
-    desired.insert((store::PUBLISHED_FROM.into(), hex::encode(draft_id)));
     let buckets = bucket_map(data).await?;
     for bucket in buckets.get(&hex::encode(draft_id)).cloned().unwrap_or_default() {
         if fits("bucket", &bucket) {
@@ -5743,51 +5794,97 @@ async fn replicate_annotations(
     // `mention=<root>` statement about the post - the label lane carrying "this post
     // names you", diffed like every other label so an edit that drops the card takes the
     // statement back. A card naming the author says nothing: you cannot mention yourself.
-    // The same words give the post its length tag (`documents::length_tag`).
-    {
-        let docs = data.documents();
-        if let Some(doc) = docs.one(draft_id).await? {
-            let format = doc
-                .display_head()
-                .map(|h| crate::record::documents::Format::from_wire(h.header.format))
-                .unwrap_or(crate::record::documents::Format::Plaintext);
-            if format.is_mergeable_text() {
-                if let Some(body) = docs.resolved(&doc).await?.body {
-                    // A post's length; a room is a place to talk, not a read, so it has none.
-                    let post_format = crate::record::documents::public_head(data.db(), post_id)
-                        .await?
-                        .map(|h| crate::record::documents::Format::from_wire(h.format));
-                    let reads = matches!(
-                        post_format,
-                        Some(
-                            crate::record::documents::Format::Marquee
-                                | crate::record::documents::Format::Plaintext
-                        )
-                    );
-                    if let Some(length) = crate::record::documents::length_tag(
-                        crate::record::documents::word_count(&body),
-                    )
-                    .filter(|_| reads && !in_book)
-                    {
-                        desired.insert(("tag".into(), length.into()));
-                    }
-                    let cards = if format == crate::record::documents::Format::Marquee {
-                        crate::record::bake::mentions(&body)
-                    } else {
-                        Vec::new()
-                    };
-                    for named in cards {
-                        if &named != self_root {
-                            desired.insert((
-                                ringtome_proto::PublicAnnotation::MENTION_KEY.into(),
-                                hex::encode(named),
-                            ));
-                        }
+    let mut words = None;
+    let docs = data.documents();
+    if let Some(doc) = docs.one(draft_id).await? {
+        let format = doc
+            .display_head()
+            .map(|h| crate::record::documents::Format::from_wire(h.header.format))
+            .unwrap_or(crate::record::documents::Format::Plaintext);
+        if format.is_mergeable_text() {
+            if let Some(body) = docs.resolved(&doc).await?.body {
+                words = Some(crate::record::documents::word_count(&body));
+                let cards = if format == crate::record::documents::Format::Marquee {
+                    crate::record::bake::mentions(&body)
+                } else {
+                    Vec::new()
+                };
+                for named in cards {
+                    if &named != self_root {
+                        desired.insert((
+                            ringtome_proto::PublicAnnotation::MENTION_KEY.into(),
+                            hex::encode(named),
+                        ));
                     }
                 }
             }
         }
     }
+    Ok((desired, words))
+}
+
+async fn replicate_annotations(
+    state: &AppState,
+    data: &store::Store,
+    self_root: &[u8; 32],
+    draft_id: &[u8; 16],
+    post_id: &[u8; 16],
+    seal_of: Option<([u8; 32], [u8; 16])>,
+    // When the post gets a web address: the date an untitled one's path starts with.
+    pathed: Option<i64>,
+) -> Result<Vec<(String, ringtome_proto::SignedEntry)>, AppError> {
+    let in_book = crate::record::documents::public_part_of(data.db(), post_id).await?.is_some();
+    let (mut desired, words) = draft_labels(data, self_root, draft_id).await?;
+    // The implicit tags (`documents::IMPLICIT_TAGS`): what the post carries, said as ordinary
+    // tags - outside the cap, so a draft's own thirty-two never crowd them out. A republish that
+    // drops the last picture retracts "image" like any tag the draft stopped carrying. A book's
+    // page says none of them, nor a length (Curtis, 2026-10-02): a page is read inside its book,
+    // and the book's own tags are its title page's, chosen by hand.
+    if !in_book {
+        for tag in crate::record::documents::public_implicit_tags(data.db(), post_id).await? {
+            desired.insert(("tag".into(), tag.into()));
+        }
+    }
+    let fields = data.annotations().fields(draft_id).await?;
+    // A sealed post's labels seal under its key (ruling 7): the mint left the key on the
+    // draft, the parent's for a reply under the parent's seal.
+    let post_key: Option<[u8; 32]> = fields
+        .iter()
+        .find(|(f, _)| f.as_str() == store::TRUSTED_KEY)
+        .and_then(|(_, v)| hex_fixed::<32>(v, "post key").ok());
+    // A post for the people mentioned says so, as a sealed label (Contact tags, ruling 5;
+    // Curtis, 2026-09-14: the named reader's card read "trusted only"): the people in the
+    // room can open it and see why they are there, and nobody else can read it at all. A
+    // contact-tag audience says nothing - the tag is the author's private business.
+    if post_key.is_some()
+        && fields.iter().any(|(f, v)| {
+            f.as_str() == store::AUDIENCE && v.trim() == crate::postkeys::MENTIONED_AUDIENCE
+        })
+    {
+        desired.insert((store::AUDIENCE.into(), crate::postkeys::MENTIONED_AUDIENCE.into()));
+    }
+    // Where the post came from (slice 3 of the `/ringtome/` links, 2026-09-28): a link to the draft
+    // resolves to this post from now on, for anyone (store.rs `PUBLISHED_FROM`).
+    desired.insert((store::PUBLISHED_FROM.into(), hex::encode(draft_id)));
+    // A post's length; a room is a place to talk, not a read, so it has none.
+    if let Some(words) = words {
+        let post_format = crate::record::documents::public_head(data.db(), post_id)
+            .await?
+            .map(|h| crate::record::documents::Format::from_wire(h.format));
+        let reads = matches!(
+            post_format,
+            Some(
+                crate::record::documents::Format::Marquee
+                    | crate::record::documents::Format::Plaintext
+            )
+        );
+        if let Some(length) =
+            crate::record::documents::length_tag(words).filter(|_| reads && !in_book)
+        {
+            desired.insert(("tag".into(), length.into()));
+        }
+    }
+    let buckets = bucket_map(data).await?;
     // Its web address (webpath.rs): the one it was given, or one made now - best-effort, like
     // every label here: an address must not unsay the words.
     if let Some(date_ms) = pathed.filter(|_| post_key.is_none()) {

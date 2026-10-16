@@ -10,7 +10,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
-import { appHref } from './links.js';
+import { appHref, groupHref, groupsHref } from './links.js';
 import { openMirror, useLive } from './mirror.js';
 import { PersonChip, PersonRow } from './person.js';
 import { MarqueeBody, bareSource } from './doc/marqueebody.js';
@@ -23,9 +23,6 @@ import { Icons } from './icons.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
-
-export const groupsHref = () => `${appHref('people')}/groups`;
-export const groupHref = (group) => `${groupsHref()}/${group}`;
 
 /// People's two tabs: the people you know, and your groups.
 export const PeopleTabs = ({ tab }) => {
@@ -337,42 +334,17 @@ const InviteSomeone = ({ roster, root, act }) => {
     </section>`;
 };
 
-/// The group's posts, newest first, with a quick composer above them. Pictures go in from
-/// Writer's publish bar, which can post to a group as it posts to the public.
+/// The group's posts, newest first. Nobody writes here (Curtis, 2026-10-15): a post to the group
+/// is written in the feed or in Writer, with the group as where it goes.
 const GroupPosts = ({ base, group, root, current, owner }) => {
     const [answer, error, reload] = useAnswer(`${base}/posts`);
-    const [title, setTitle] = useState('');
-    const [words, setWords] = useState('');
-    const [posting, setPosting] = useState(false);
-    const [postError, setPostError] = useState(null);
-    const say = async (e) => {
-        e.preventDefault();
-        if (!words.trim()) return;
-        setPosting(true);
-        setPostError(null);
-        try {
-            const made = await post(`/api/identity/${root}/docs`, {
-                title: title.trim(),
-                body: words,
-                format: 'marquee',
-            });
-            await post(`${base}/publish`, { doc: made.doc_id });
-            setTitle('');
-            setWords('');
-            reload();
-            post(`${base}/sync`).catch(() => {});
-        } catch (err) {
-            setPostError(err.message);
-        } finally {
-            setPosting(false);
-        }
-    };
+    const [actError, setActError] = useState(null);
     const act = async (path, body) => {
         try {
             await post(`${base}/${path}`, body);
             reload();
         } catch (err) {
-            setPostError(err.message);
+            setActError(err.message);
         }
     };
     const posts = (answer && answer.posts) || [];
@@ -380,25 +352,10 @@ const GroupPosts = ({ base, group, root, current, owner }) => {
         <div class="people-shelf-head">
             <span class="people-shelf-title">${t('apps.groups.posts', 'posts')}</span>
         </div>
-        <form class="group-composer" onSubmit=${say}>
-            <input
-                class="group-composer-title jag-field"
-                value=${title}
-                placeholder=${t('apps.groups.a-title-if-you-like', 'a title, if you like')}
-                onInput=${(e) => setTitle(e.currentTarget.value)}
-            />
-            <textarea
-                class="group-composer-words jag-field"
-                value=${words}
-                rows="3"
-                placeholder=${t('apps.groups.say-something-to-the-group', 'say something to the group')}
-                onInput=${(e) => setWords(e.currentTarget.value)}
-            ></textarea>
-            <button class="group-composer-go jag-line" disabled=${posting || !words.trim()}>
-                ${posting ? t('apps.groups.posting', 'posting…') : t('apps.groups.post', 'post')}
-            </button>
-        </form>
-        ${(postError || error) && html`<p class="groups-error">${postError || error.message}</p>`}
+        <p class="group-write-here">
+            ${t('apps.groups.to-post-here', 'to post here, write in the feed or in hrseWriter™ and choose this group as where it goes.')}
+        </p>
+        ${(actError || error) && html`<p class="groups-error">${actError || error.message}</p>`}
         ${answer && posts.length === 0 && html`<p class="people-empty">${t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}</p>`}
         ${posts.map(
             (p) => html`<${GroupPost}
@@ -419,6 +376,10 @@ const GroupPost = ({ post: p, current, mine, owner, act }) => {
     const profile = useTurbolinks(words, 'marquee');
     // Chosen out here: inside the template, a string comparison reads to the strings cop as copy.
     const marquee = p.format === 'marquee';
+    // Its tags, whoever said them, once each (section 7: a group post's labels ride its lane).
+    const tags = [
+        ...new Set((p.annotations || []).filter((l) => l.key === 'tag').map((l) => l.value)),
+    ];
     return html`<article class=${p.hidden ? 'group-post group-post-hidden jag-line-2' : 'group-post jag-line-2'}>
         <header class="group-post-head">
             <${PersonChip} root=${p.author} current=${current} />
@@ -434,6 +395,12 @@ const GroupPost = ({ post: p, current, mine, owner, act }) => {
                 : marquee
                   ? html`<${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />`
                   : html`<p class="group-post-plain">${words}</p>`
+        }
+        ${
+            tags.length > 0 &&
+            html`<div class="group-post-tags">
+                ${tags.map((tag) => html`<span class="label-chip" key=${tag}>${tag}</span>`)}
+            </div>`
         }
         ${
             (mine || owner) &&

@@ -23,8 +23,7 @@ import { MiniPost } from '../postentry.js';
 import { PushToggle } from '../push.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
-import { roomHref } from '../links.js';
-import { groupHref } from '../groups.js';
+import { groupHref, roomHref } from '../links.js';
 
 const html = htm.bind(h);
 

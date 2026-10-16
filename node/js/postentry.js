@@ -141,6 +141,7 @@ import { publishWithBaking, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
 import {
     postHref,
+    groupHref,
     docHref,
     roomHref,
     CopyLinkChip,
@@ -775,6 +776,7 @@ const PostEntryBody = ({
     // what the user just typed.
     const [amended, setAmended] = useState(null);
     const itemRef = useRef(null);
+    const groupId = item.group && item.group.id;
 
     useEffect(() => {
         let live = true;
@@ -783,9 +785,12 @@ const PostEntryBody = ({
         // door where to ask (2026-09-08) - and on a post sealed "people I trust, and
         // onward" (Contact tags, ruling 7) the sharer is whose trust opens it, so a feed
         // row that came by a share names them too.
-        const bodyUrl = item.private_doc
-            ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
-            : `/id/${item.author}/docs/${item.doc_id}/body${item.via ? `?via=${item.via}` : ''}`;
+        // A group post's words are behind the group's own door (plans/GROUPS.md, slice 4b).
+        const bodyUrl = groupId
+            ? `/api/groups/${groupId}/docs/${item.doc_id}/body`
+            : item.private_doc
+              ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
+              : `/id/${item.author}/docs/${item.doc_id}/body${item.via ? `?via=${item.via}` : ''}`;
         // A public post's words under its last edit's time are those words for good: kept, so
         // coming back to the feed doesn't ask for every visible card again (plans/CACHE.md,
         // Stage 9). A scheduled draft's private words change without a new time - always asked.
@@ -813,6 +818,7 @@ const PostEntryBody = ({
     }, [
         item.author,
         item.doc_id,
+        groupId,
         item.private_doc,
         item.kind,
         item.via,
@@ -858,7 +864,8 @@ const PostEntryBody = ({
     // months promising took the href over on 2026-08-26, the day after it was built. The
     // permalink's profile-visit-first load keeps the fresh-sync the author-page link used
     // to buy.
-    const href = postHref(item.author, item.doc_id);
+    // A group post has no page of its own outside the group: its link is the group's.
+    const href = item.group ? groupHref(item.group.id) : postHref(item.author, item.doc_id);
     // What "link" hands out (plans/WEB_ADDRESSES.md): the post's web address when its author gave it
     // one, in the shortest form - under their @name where this node gave them one. The @name is asked
     // ahead of the press, since a copy that waits on the network may lose the clipboard.
@@ -1000,6 +1007,18 @@ const PostEntryBody = ({
             have.some((a) => labelKey(a) === labelKey(said)) ? have : [...have, said],
         );
         try {
+            // A group post's labels ride its lane, through the group's door; the node files your
+            // own post's tag on its draft itself.
+            if (item.group) {
+                await api(
+                    `/api/identity/${me}/groups/${item.group.id}/docs/${item.doc_id}/labels`,
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({ value, present: true }),
+                    },
+                );
+                return;
+            }
             await api(`/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}`, {
                 method: 'PUT',
                 body: JSON.stringify({ key: 'tag', value }),
@@ -1037,6 +1056,16 @@ const PostEntryBody = ({
         // Gone at once, back if the node refuses (2026-10-02), as a tag added is shown at once.
         setRetractedLabels((have) => [...have, labelKey(a)]);
         try {
+            if (item.group) {
+                await api(
+                    `/api/identity/${me}/groups/${item.group.id}/docs/${item.doc_id}/labels`,
+                    {
+                        method: 'POST',
+                        body: JSON.stringify({ value: a.value, present: false }),
+                    },
+                );
+                return;
+            }
             await api(
                 `/api/identity/${me}/public-annotations/${item.author}/${item.doc_id}/${encodeURIComponent(a.key)}/${encodeURIComponent(a.value)}`,
                 { method: 'DELETE' },
@@ -1124,7 +1153,33 @@ const PostEntryBody = ({
     // The card's chips, the whole deck: in its banner's row, or in a narrow window behind one menu
     // chip, opening on a line of the head below the byline (doc/chips.js `useChipMenu`; Curtis,
     // 2026-10-08).
-    const cardDeck = html`
+    // A group post's deck (plans/GROUPS.md, section 7): its takedown, through the group's door. It
+    // is never shared out, pinned to a profile or the front page, coded for another phone or
+    // copied into notes - each would carry it past the group - and it has no address of its own.
+    const takeDownFromGroup = async () => {
+        try {
+            await api(
+                `/api/identity/${current.root}/groups/${item.group.id}/docs/${item.doc_id}/retract`,
+                { method: 'POST' },
+            );
+            setGone(true);
+        } catch {
+            // still standing: the card stays
+        }
+    };
+    const groupDeck = html`${
+        item.mine &&
+        !!current &&
+        html`<button
+            class="chip chip-button"
+            title=${t('postentry.take-it-down-from-the-group', 'take it down from the group')}
+            aria-label=${t('postentry.take-it-down-from-the-group', 'take it down from the group')}
+            onClick=${takeDownFromGroup}
+        ><${Icons.trash} /></button>`
+    }`;
+    const cardDeck = item.group
+        ? groupDeck
+        : html`
                     ${
                         /* The takedown first, after the date: trash is always the leftmost chip, on every
                         row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''
@@ -1254,6 +1309,18 @@ const PostEntryBody = ({
                 <${ViaOthers} item=${item} current=${current} />
                 ${t('postentry.passed-this-along', 'passed this along')}
             </p>`
+            }
+            ${
+                /* A group post says which group, in the seat a share's line takes (plans/GROUPS.md,
+                slice 4b): it is here because you're in it. */ ''
+            }
+            ${
+                item.group &&
+                html`<p class="feed-entry-via feed-entry-group">
+                    <${Icons.group} />
+                    ${t('postentry.in-group', 'in')}
+                    <a href=${groupHref(item.group.id)}>${item.group.name}</a>
+                </p>`
             }
             ${
                 /* The speculative sibling: nobody you follow brought this - your trust graph

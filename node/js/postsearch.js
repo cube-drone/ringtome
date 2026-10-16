@@ -29,6 +29,9 @@ export function narrowParams(query, picks, extra = {}) {
     // Who wrote it (2026-10-11): a root, either way.
     for (const a of (picks && picks.authors) || []) parts.push(`author=${a}`);
     for (const a of (picks && picks.notAuthors) || []) parts.push(`not_author=${a}`);
+    // Which group (plans/GROUPS.md, slice 4b): an id, either way.
+    for (const g of (picks && picks.groups) || []) parts.push(`group=${g}`);
+    for (const g of (picks && picks.notGroups) || []) parts.push(`not_group=${g}`);
     // The feed's selectivity dial rides along (2026-09-08) so the node narrows what the
     // dial shows; it never makes a search on its own.
     const stop = extra.stop && extra.stop !== 'explorer' ? extra.stop : null;

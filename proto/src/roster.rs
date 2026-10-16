@@ -180,6 +180,12 @@ pub enum GroupEntry {
         doc: [u8; 16],
         retract: bool,
     },
+    /// A label on a group post - a tag, a description, a mention (plans/GROUPS.md, section 7) -
+    /// as a `PUBLIC_ANNOTATION` entry on the lane, never a group entry's kind. Counted like any
+    /// entry: while its author is a member at that point of the lane.
+    Label {
+        doc: [u8; 16],
+    },
     /// An invite carries the group's founding statement, so it says on its own which group it
     /// is for, who founded it and what it was called: an invitee's node that has never heard
     /// of the group finds it from the invite alone (plans/GROUPS.md, section 5). An invite
@@ -262,7 +268,8 @@ impl GroupEntry {
             GroupEntry::Found(_)
             | GroupEntry::Join { .. }
             | GroupEntry::Leave { .. }
-            | GroupEntry::Document { .. } => None,
+            | GroupEntry::Document { .. }
+            | GroupEntry::Label { .. } => None,
         }
     }
 }
@@ -339,6 +346,11 @@ impl GroupEntry {
             GroupEntry::Document { .. } => {
                 return Err(ProtoError::BadEntry(
                     "a group document travels as a document entry, not a group entry",
+                ));
+            }
+            GroupEntry::Label { .. } => {
+                return Err(ProtoError::BadEntry(
+                    "a group post's label travels as an annotation entry, not a group entry",
                 ));
             }
             GroupEntry::Invite { by, invitee, readmits, founding } => {
@@ -1148,6 +1160,9 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
                     }
                     counted.insert(e.hash);
                 }
+                GroupEntry::Label { .. } if member => {
+                    counted.insert(e.hash);
+                }
                 _ => {}
             }
         }
@@ -1871,6 +1886,21 @@ mod tests {
 
     /// A takedown is the author's, counted while they're a member; the version it takes down
     /// stays counted (what was said was said), and the page reads the takedown.
+    #[test]
+    fn a_label_counts_while_its_author_is_in_the_group() {
+        let mut w = World::new();
+        w.invite(B);
+        let before = w.add(B, 0, GroupEntry::Label { doc: [1; 16] });
+        let found = w.found;
+        let anchors = w.anchors(&[B]);
+        w.add(F, 0, GroupEntry::Remove { by: found, target: B, ends: vec![], anchors, ban: false });
+        let after = w.add(B, 0, GroupEntry::Label { doc: [1; 16] });
+        let r = w.fold();
+        assert!(r.counted.contains(&before), "said while a member");
+        assert!(!r.counted.contains(&after), "said past the removal's anchor");
+        assert!(GroupEntry::Label { doc: [1; 16] }.encode().is_err(), "never a group entry's kind");
+    }
+
     #[test]
     fn a_documents_takedown_counts_like_any_entry() {
         let mut w = World::new();

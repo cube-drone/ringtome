@@ -74,6 +74,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("group_rosters", vec!["roster.rs"]),
         ("group_people", vec!["roster.rs"]),
         ("group_peers", vec!["roster.rs"]),
+        // Group posts in the feed (slice 4b): their own journal, merged with feed_journal at read.
+        ("group_journal", vec!["roster.rs"]),
         ("census_days", vec!["census.rs"]),
         ("front_door", vec!["frontdoor.rs"]),
         ("import_policy", vec!["import.rs"]),

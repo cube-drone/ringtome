@@ -2359,6 +2359,12 @@ pub fn media_tag(format: Option<u64>, animation: bool) -> Option<&'static str> {
     }
 }
 
+/// The implicit tags of a post naming documents of these formats - `(format, animation)` each -
+/// for a post whose twins aren't public ones (a group post's media, roster.rs).
+pub fn implicit_tags_of(named: impl Iterator<Item = (Option<u64>, bool)>) -> Vec<&'static str> {
+    implicit_of(&[], named.map(|(format, animation)| media_tag(format, animation)))
+}
+
 /// A document's own tags joined with the kinds of what it names, in [`IMPLICIT_TAGS`] order.
 fn implicit_of(
     own: &[Option<&'static str>],

@@ -22004,3 +22004,90 @@ met: the bell, the Groups tab's unopened invite, opening, joining, and ada's
 node counting dee. Proto tests cover the gate (an invite for somebody else, or
 for some other group, refuses) and the fold. Nobody has seen the UI drawn yet:
 there's no browser on this machine, and NEXT_STEPS says so.
+
+## 2026-10-15: group posts are whole posts (slice 4a, labels)
+
+Curtis, once the group page existed: a group post wants everything a post has
+(tags, dates, pins, scheduling, "the works"), group posts belong in your feed
+with an implicit filter per group, groups default to invite only, and posting
+happens from Writer or the feed with the group as the target, not from the group
+page. Pins came in two layers on his word: owners pin anything and only owners
+unpin those, while members pin and any member unpins a member's pin. Owner pins
+show first. GROUPS.md §7 and slice 4 (a to d) carry it.
+
+4a is labels. A label on a group post is the same `PublicAnnotation` a public
+post's is, as an entry on the poster's lane for the group. The roster fold
+counts it like anything else on the lane (proto `GroupEntry::Label`), so one
+said past a removal's anchor is void. The public label fold reads only the
+public annotation service, and so does the fragment proof, so a group's labels
+reach no public surface. Labels are settled the way public ones are: the last
+statement received wins, then the public rules
+(`annotations::labels_that_stand`: an author's own reaction falls, and anyone
+else's tags stand two to a person).
+
+Publishing to a group restates the draft's labels. The draft-only half of the
+public restatement is now `draft_labels` in identity/routes.rs (tags, fields,
+notebooks, mentions), shared by both roads. The public road adds its own
+(implicit tags from public twins, the length, the sealed audience, the draft
+link, the web path); the group road adds the pictures' kinds and the length. Any
+member tags any group post through `.../docs/{doc}/labels`, and the group page
+shows the tags. Mentions in group posts don't ring yet: the mention notice's
+evidence must be a public annotation (NEXT_STEPS).
+
+## 2026-10-15: group posts in the feed (slice 4b)
+
+Group posts now reach their members' feeds, through a journal of their own
+(`group_journal`, node rung 86, owned by roster.rs) and never through
+`feed_journal`. Other surfaces read that table, and slice 2's rule is the safety
+here: a public surface can't list a group post that was never in its tables.
+Every refold writes each hosted member's rows: the posts they may see, with the
+group's name, the post's labels, and its words for the search. An unchanged
+version keeps its words unread, and the group-sync pass refolds each group, so
+an upgraded node fills the table within a pass.
+
+At read, the time-ordered feed merges the two journals on one cursor. Every
+filtered view (the search, the chips, and best or hot with a chip) judges group
+rows by the same chips, off what the row carries (`Narrow::admits_group_post`).
+The new groups row is `group=` and `not_group=`, and picking a group shows only
+that group, since a public post is in none.
+
+A group post's card names its group ("in the Potato Bunch"), fetches its words
+through the group's door, tags through the group's labels route, and offers only
+its author's takedown. Sharing, profile and front-page pins, the QR code, copy
+into notes and its own address would each carry it past the group. Tagging your
+own group post files the tag on its draft on the node, since the draft's link
+lives in `group_drafts` and not in the mirror. The Feeds column gains one feed
+per group you're in, under "all", made from your groups (`groupFeeds`) rather
+than stored.
+
+Left for later (NEXT_STEPS): best and hot without a chip, the strip's tag
+counts, editing from the card, and a journal rewritten whole at each refold.
+
+## 2026-10-15: posting to a group from the feed and Writer (slice 4c)
+
+The group page's quick composer is gone (Curtis: "we don't intend to post from
+there"), and a group is now a destination where posts are written. The feed's
+"only show to" lists your groups under "your groups", shown whenever you're in
+one, whether or not you've unlocked sealing, since a group is a place and not a
+seal. Writer's publish bar has "post to": Everyone or one of your groups. Once a
+draft is posted, the bar says "posted in the Potato Bunch", with view, update
+and unpublish there. A new route says where a draft went
+(`GET .../docs/{doc_id}/groups`, off `group_drafts`), and a takedown forgets it,
+so the draft is a draft again. Drawings don't offer it, since a group post is
+words.
+
+A group post's header now carries the draft's claimed date and comments-off, as
+a public post's does, and the group's journal and page sort by the claimed date.
+A future date is a schedule: the group route writes the same `publish_plan` the
+public one does, naming the group, and the publish-due sweep posts it through
+`roster::publish_planned` while its author is still a member. It spends the plan
+either way, since a refusal now is a refusal later. Two claims in
+`groupposts.cjs` cover a backdated post with comments off, and a scheduled one
+the sweep leaves alone before its day and posts on it. The draft then knows
+where it went, and the other member has it.
+
+Two catches before anything ran. The new route at `.../docs/{doc}/groups` would
+have collided with the identity routes' `{doc_id}` at the same position, which
+axum refuses at startup rather than compile time. The bar's group fetch would
+also have depended on `publishToGroup`, a new function on every render, and
+refetched in a loop. It depends on whether the surface can post to a group.

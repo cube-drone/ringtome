@@ -295,6 +295,7 @@ fn kept_row(author: &str, post: &str, sound: &Sound) -> crate::fanout::FeedRow {
         onward: false,
         dated_ms: None,
         minted_ms: 0,
+        group: None,
     }
 }
 

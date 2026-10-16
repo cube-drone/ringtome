@@ -202,6 +202,18 @@ export const Editor = ({
         await save();
         return publishWithBaking(root, docId, setBaking, extra);
     };
+    // Or to one of your groups (plans/GROUPS.md, slice 4c): the same save, then the group's door.
+    const publishToGroup = async (group, wishes) => {
+        await save();
+        return api(`/api/identity/${root}/groups/${group}/publish`, {
+            method: 'POST',
+            body: JSON.stringify({
+                doc: docId,
+                ...wishes,
+                tz_offset_min: new Date().getTimezoneOffset(),
+            }),
+        });
+    };
     useEffect(() => {
         if (!showMeta) return undefined;
         const onDown = (e) => {
@@ -863,6 +875,7 @@ export const Editor = ({
                 differs=${differs}
                 diffHref=${`${docHref(root, docId)}/diff`}
                 onPublished=${() => setHeadPoll((n) => n + 1)}
+                publishToGroup=${publishToGroup}
             />`
             }
             ${

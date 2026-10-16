@@ -363,10 +363,12 @@ export const NO_PICKS = {
     buckets: [],
     tags: [],
     authors: [],
+    groups: [],
     notKinds: [],
     notBuckets: [],
     notTags: [],
     notAuthors: [],
+    notGroups: [],
 };
 
 /// The picks, kept for the browser session (Curtis, 2026-09-08): a refresh of the feed

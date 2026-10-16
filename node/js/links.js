@@ -106,6 +106,10 @@ export const docHref = (rootHex, doc, { row = null, bucket = null } = {}) =>
 export const LAUNCHER = PREFIX;
 export const appHref = (appId) => (appId ? `${PREFIX}/${appId}` : PREFIX);
 
+/// People's Groups tab, and one group's page under it (plans/GROUPS.md, section 7).
+export const groupsHref = () => `${appHref('people')}/groups`;
+export const groupHref = (group) => `${groupsHref()}/${group}`;
+
 /// The Settings app and its pages (2026-10-09: "they deserve an app all to themselves") -
 /// `profile`, `app` (how the app behaves), `personas`, `computers`, `content`, `import-export`.
 /// They lived under the persona at `/ringtome/persona/<page>`, which still redirects here;

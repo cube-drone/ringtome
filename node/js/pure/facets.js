@@ -96,6 +96,7 @@ export const LEFT_OUT = {
     buckets: 'notBuckets',
     tags: 'notTags',
     authors: 'notAuthors',
+    groups: 'notGroups',
 };
 
 /// The picks' words in an address (Curtis, 2026-10-11: "just my books" as a link someone can hand
@@ -106,6 +107,7 @@ const URL_ROWS = [
     ['buckets', 'bucket'],
     ['tags', 'tag'],
     ['authors', 'author'],
+    ['groups', 'group'],
 ];
 const URL_KEYS = new Set(URL_ROWS.flatMap(([, key]) => [key, `not_${key}`]));
 

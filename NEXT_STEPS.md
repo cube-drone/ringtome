@@ -72,6 +72,31 @@ are driving towards.
 
 ### Groups (plans/GROUPS.md)
 
+- From 4c (writing):
+  - **Writer's bar shows only if you've unlocked publishing or are in a group**
+    (`editor.js` `hasPublishBar` still asks for the unlock): someone in a group
+    without the unlock gets no bar to post there from Writer; the feed's
+    composer works.
+  - **Comments off on a group post** rides its header, but group posts take no
+    replies yet, so it changes nothing until they do.
+- From 4b (the feed):
+  - **Best and hot, with no chip picked, leave group posts out.** They read off
+    the score indexes in runs, and group posts have no scores yet (reactions on
+    a group post are its lane's labels, not public ones). With any chip picked
+    they're in, at a score of nothing.
+  - **The strip's tag counts leave group posts out** (`/feed/labels` counts the
+    public memo), so a tag only a group post carries gets no chip.
+  - **Editing a group post from its card**: the card finds a post's draft
+    through the mirror's `published_as`, which a group post's draft doesn't
+    carry (its link is the node's `group_drafts`). Publishing the draft again
+    from Writer edits it.
+  - **The journal is rewritten whole at every refold**, per hosted member. Fine
+    at a handful of members and posts; a big group wants the rows moved by what
+    changed.
+- From 4a (labels):
+  - **A mention in a group post rings nobody.** The mention and tagged notices'
+    evidence must be a public annotation (`deliver::verify_claim`), so the
+    group's own wants a notice kind, or room for a group lane in those two.
 - From the app's first part:
   - **Writer's publish bar picks a destination**: Everyone or one of your
     groups, so a group post can carry pictures. The group page's quick composer
