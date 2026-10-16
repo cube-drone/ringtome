@@ -313,6 +313,24 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         );
         const named = (await feed()).find((i) => i.doc_id === post);
         assert.equal(named.group.name, 'Potato Bunch', 'its card names its group, by id');
+        // The strip's groups row (Curtis, 2026-10-16): each group's posts, by name; and a group
+        // picked narrows the other rows' counts as any pick does.
+        const row = (cloud.groups || []).find((g) => g.value === group);
+        assert.ok(
+            row && row.count >= 1,
+            `the groups row counts it: ${JSON.stringify(cloud.groups)}`,
+        );
+        assert.equal(row.name, 'Potato Bunch');
+        const labelsFor = async (query) =>
+            JSON.stringify(
+                (await (await ada(`api/identity/${adaRoot}/feed/labels${query}`)).json()).tags ||
+                    [],
+            );
+        assert.ok((await labelsFor(`?group=${group}`)).includes('spuds'), 'picked, its tags count');
+        assert.ok(
+            !(await labelsFor(`?not_group=${group}`)).includes('spuds'),
+            'left out, they do not',
+        );
     });
 
     it("a group post has a page of its own, for members alone, and its card wears an owner's hide", async () => {

@@ -1423,6 +1423,7 @@ export default {
     'facets.kinds': 'show',
     'facets.buckets': 'in',
     'facets.authors': 'by',
+    'facets.groups': 'groups',
 
     // --- node/js/foundwords.js ---
     'found.one-more-page': 'and 1 more page',

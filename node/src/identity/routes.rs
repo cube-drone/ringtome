@@ -2227,6 +2227,22 @@ async fn feed_labels_handler(
         rows.retain(|r| found.contains(&(r.author_root.clone(), r.doc_id.clone())));
         narrow.terms.clear();
     }
+    // The groups row (Curtis, 2026-10-16): each group's posts in the window, counted before the
+    // group picks narrow the rows - a group row lists the groups to pick from - and then the
+    // picks narrow every other row's counts to the groups picked, as any pick does.
+    let mut per_group: std::collections::BTreeMap<String, i64> = Default::default();
+    for r in &rows {
+        if let Some(g) = &r.group {
+            *per_group.entry(g.id.clone()).or_default() += 1;
+        }
+    }
+    rows.retain(|r| match &r.group {
+        Some(g) => {
+            (narrow.groups.is_empty() || narrow.groups.contains(&g.id))
+                && !narrow.not_groups.contains(&g.id)
+        }
+        None => narrow.groups.is_empty(),
+    });
     let rows = readable_feed_rows(&state, &root, rows).await;
     let kinds = feed_kinds(&state, &rows).await?;
     let candidates: Vec<crate::search::Candidate> = rows
@@ -2260,13 +2276,23 @@ async fn feed_labels_handler(
     // before any work: a tag's count, the smallest among tags picked together, the sum among
     // either-of buckets or kinds. The posts themselves still narrow.
     let picked_size = picked_size(&whole, &narrow);
-    let facets = if picked_size.is_some_and(|n| n > THINNING_CAP) || !narrow.picks_any() {
+    let mut facets = if picked_size.is_some_and(|n| n > THINNING_CAP) || !narrow.picks_any() {
         whole
     } else {
         crate::search::facets_json_with(&state, &candidates, &narrow, Some(&root), 0, Some(&known))
             .await
             .map_err(AppError::Internal)?
     };
+    let ids: std::collections::BTreeSet<String> = per_group.keys().cloned().collect();
+    let names = crate::roster::group_names(&state, &ids).await.map_err(AppError::Internal)?;
+    facets["groups"] = serde_json::Value::Array(
+        per_group
+            .into_iter()
+            .map(|(id, count)| {
+                serde_json::json!({ "value": id, "count": count, "name": names.get(&id) })
+            })
+            .collect(),
+    );
     crate::search::keep_cloud(key, stamp, facets.clone());
     Ok(Json(facets))
 }

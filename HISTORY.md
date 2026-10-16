@@ -22406,3 +22406,42 @@ A claim in `groupposts.cjs` covers the slice:
 The group and MCP areas (76) pass, and the full integration suite (1853) passed
 before the hosted-members fix and again after it, with the Rust tests (629
 and 14) and clippy.
+
+## 2026-10-16: a groups row on the feed's strip
+
+Curtis asked for the groups he's in as a filter row, shown only when he's in
+any. And picking a group in the Feeds column should light that filter the way
+any pick does. The picks already carried groups (`group=`, `not_group=`, saved
+feeds), and the Feeds column already applied a group as a pick. Nothing lit
+because the strip had no groups row.
+
+- **The node.** `/feed/labels` answers a `groups` row: each group's posts in the
+  window, by id, with its name. Counted before the group picks narrow the rows,
+  so the row lists what there is to pick. The picks then narrow every other
+  row's counts to the groups picked, or leave the groups left out, as any pick
+  narrows the rest.
+- **The strip.** `LabelFacets` takes the reader's groups (`groups`, from the
+  feed's list) and draws a "groups" row after "by": every group you're in, by
+  name, with its count, three-state like every chip, with the group glyph.
+  `PickedFacets` names group chips too, so the folded strip says which group is
+  picked. A group in the Feeds column applies its pick, and now its chip lights.
+
+The groups-row claim in `groupposts.cjs` covers the counts and names, and the
+tag counts for a picked and a left-out group. The group and MCP areas (76) pass.
+The full suite passed 1852 with one flake (`onward.cjs`'s key-prefetch claim, 0
+of 5 reruns; in NEXT_STEPS), along with the strings check, the JS gate and
+clippy.
+
+Then Curtis found the group's row in the Feeds column set the filter but didn't
+light. A saved feed lights when its picks, curiosity, order and words all match
+what's on screen (`sameFeed`). A group's feed carries only its pick, and
+choosing it leaves the curiosity and order as they were, so it never matched. It
+now lights by its own rule (`pure/groups.js` `groupFeedOn`): the picks are that
+group alone and nothing is searched for, whatever the curiosity and order. A
+pure test covers it.
+
+And "all" stayed lit beside it. `anyPicks` (facets.js), which says whether
+anything is picked, named its rows by hand and had never been told about groups.
+So a group picked alone read as nothing picked: "all" stayed lit, and the tab
+didn't keep the pick. It now asks every row `LEFT_OUT` knows, so a row added
+later can't be missed the same way.

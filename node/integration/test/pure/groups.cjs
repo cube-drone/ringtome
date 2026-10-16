@@ -2,10 +2,23 @@
 // invite.
 const assert = require('node:assert');
 
-let groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds, membersAtAGlance;
+let groupsInOrder,
+    isInvite,
+    membersInOrder,
+    inviteCandidates,
+    groupFeeds,
+    membersAtAGlance,
+    groupFeedOn;
 before(async () => {
-    ({ groupsInOrder, isInvite, membersInOrder, inviteCandidates, groupFeeds, membersAtAGlance } =
-        await import('../../../js/pure/groups.js'));
+    ({
+        groupsInOrder,
+        isInvite,
+        membersInOrder,
+        inviteCandidates,
+        groupFeeds,
+        membersAtAGlance,
+        groupFeedOn,
+    } = await import('../../../js/pure/groups.js'));
 });
 
 describe('groups in People', () => {
@@ -86,5 +99,27 @@ describe('groups in People', () => {
         );
         assert.deepEqual(feeds[0].picks, { groups: ['b'.repeat(32)] });
         assert.equal(feeds[0].id, `group:${'b'.repeat(32)}`, 'never a saved feed id');
+    });
+
+    it("lights a group's feed while its pick alone is on, whatever the curiosity and the order", () => {
+        const id = 'b'.repeat(32);
+        const [feed] = groupFeeds([{ group: id, name: 'Potato Bunch', standing: 'member' }]);
+        const now = (picks, extra = {}) => ({
+            picks,
+            stop: 'trusted',
+            sort: 'best',
+            q: null,
+            ...extra,
+        });
+        assert.ok(groupFeedOn(feed, now({ groups: [id] })), 'the group alone: lit');
+        assert.ok(
+            !groupFeedOn(feed, now({ groups: [id], tags: ['spuds'] })),
+            'a tag beside it: not',
+        );
+        assert.ok(!groupFeedOn(feed, now({})), 'nothing picked: not');
+        assert.ok(
+            !groupFeedOn(feed, now({ groups: [id] }, { q: 'turnip' })),
+            'words searched: not',
+        );
     });
 });

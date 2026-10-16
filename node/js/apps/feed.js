@@ -86,7 +86,7 @@ import { tagCounts } from '../pure/contacttags.js';
 import { groupOfChoice, sealOfChoice } from '../pure/audience.js';
 import { AudienceSelect } from '../audience.js';
 import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
-import { groupFeeds } from '../pure/groups.js';
+import { groupFeeds, groupFeedOn } from '../pure/groups.js';
 import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
 import { STOP_WORDS } from '../curiosity.js';
@@ -296,6 +296,8 @@ export const FeedStream = ({
     onSettings = null,
     onSearch = null,
     loaded = null,
+    // The groups the reader is in (pure/groups.js `groupFeeds`): the strip's groups row.
+    groups = [],
 }) => {
     const feedDoor = feedUrl || (root ? `/api/identity/${root}/feed` : null);
     const labelsDoor = labelsUrl || (root ? `/api/identity/${root}/feed/labels` : null);
@@ -700,6 +702,7 @@ export const FeedStream = ({
                     lead=${settingWords.length ? settingWords : null}
                     labels=${labels}
                     free=${free}
+                    groups=${groups}
                 />`
             }
             ${
@@ -780,6 +783,7 @@ export const FeedStream = ({
                 meChip=${meChip}
                 self=${meChip ? root : null}
                 free=${free}
+                groups=${groups}
             />
             </div>`
             }
@@ -1256,7 +1260,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                           ${ofGroups.map(
                               (feed) => html`<div
                                   key=${feed.id}
-                                  class=${sameFeed(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
+                                  class=${groupFeedOn(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
                               >
                                   <span class="feed-saved-forget feed-saved-group" title=${t('apps.feed.a-group-youre-in', "a group you're in")}><${Icons.group} /></span>
                                   <button
@@ -1382,6 +1386,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                     onSearch=${onSearch}
                     onSave=${saveFeed}
                     applied=${applied}
+                    groups=${ofGroups}
                     loaded=${loaded}
                     onSettings=${setSettingsNow}
                 />

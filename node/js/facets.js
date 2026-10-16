@@ -239,6 +239,14 @@ export const FacetRow = ({
 /// A row of tags to narrow by - a `FacetRow`, shown once tags are owned (plans/UNLOCKS.md).
 export const TagFacetRow = (props) => (useOwns('tags') ? html`<${FacetRow} ...${props} />` : null);
 
+/// A group's chip words: its name, from the groups the reader is in.
+const groupNamer = (groups) => {
+    const names = {};
+    for (const g of groups || []) names[g.group || g.value] = () => g.name || '…';
+    return names;
+};
+const groupIcon = () => 'group';
+
 /// An author's chip words: the name the node knows, else the start of their root.
 const authorNamer = (authors) => {
     const names = {};
@@ -258,6 +266,7 @@ export const LabelFacets = ({
     note = null,
     free = false,
     self = null,
+    groups = [],
 }) => {
     // Filters are bought with tags (plans/UNLOCKS.md, "Reactions, tags & filters") - by a persona.
     // Someone who isn't signed in has none to buy them with, and reads a person's page or the
@@ -305,6 +314,19 @@ export const LabelFacets = ({
             return html`<${FacetRow} label=${t('facets.authors', 'by')} items=${authors} picked=${picks.authors} out=${picks[LEFT_OUT.authors]} onToggle=${toggle('authors')} names=${authorNamer(labels && labels.authors)} extra=${me} />`;
         })()}
         ${
+            /* Your groups (Curtis, 2026-10-16), a row of their own and only when you're in any:
+            every group you're in, by name, with how many of its posts the feed holds - picked,
+            the feed is that group's posts, and every other row counts within it. */ ''
+        }
+        ${(() => {
+            if (!groups.length) return null;
+            const counted = Object.fromEntries(
+                ((labels && labels.groups) || []).map((g) => [g.value, g.count]),
+            );
+            const items = groups.map((g) => ({ value: g.group, count: counted[g.group] || 0 }));
+            return html`<${FacetRow} label=${t('facets.groups', 'groups')} items=${items} picked=${picks.groups} out=${picks[LEFT_OUT.groups]} onToggle=${toggle('groups')} names=${groupNamer(groups)} icons=${groupIcon} />`;
+        })()}
+        ${
             /* The tag row split three ways (Curtis, 2026-10-02): a post's size, its media, and every
             other tag - each row only when it has something to pick, and each a row like the
             others (the node narrows across them). All three are the `tags` picks underneath. */ ''
@@ -325,7 +347,14 @@ export const LabelFacets = ({
 /// and order), then every chip that isn't left alone, in the strip's order - me, kinds, buckets,
 /// tags - each in its strip look, and a press cycles it as the strip would. Nothing to say, nothing
 /// drawn.
-export const PickedFacets = ({ picks, onPicks, lead = null, labels = null, free = false }) => {
+export const PickedFacets = ({
+    picks,
+    onPicks,
+    lead = null,
+    labels = null,
+    free = false,
+    groups = [],
+}) => {
     const owned = useOwns('tags') || free;
     const chips = [];
     const chip = (key, state, glyph, word, onClick) =>
@@ -340,11 +369,17 @@ export const PickedFacets = ({ picks, onPicks, lead = null, labels = null, free 
             );
         const icon = (role) => (role && Icons[role] ? html`<${Icons[role]} />` : null);
         const names = authorNamer(labels && labels.authors);
+        const groupNames = groupNamer([...((labels && labels.groups) || []), ...groups]);
         const rows = [
             ['kinds', (v) => icon(KIND_ICON[v]), (v) => (KIND_NAMES[v] ? KIND_NAMES[v]() : v)],
             ['buckets', () => null, (v) => v],
             ['authors', () => null, (v) => (names[v] ? names[v]() : `${v.slice(0, 8)}…`)],
             ['tags', (v) => icon(tagIconRole(v)), (v) => v],
+            [
+                'groups',
+                () => icon('group'),
+                (v) => (groupNames[v] ? groupNames[v]() : `${v.slice(0, 8)}…`),
+            ],
         ];
         for (const [row, glyph, word] of rows) {
             for (const v of [...(picks[row] || []), ...(picks[LEFT_OUT[row]] || [])]) {
@@ -445,7 +480,9 @@ export const anyPicks = (picks) =>
         picks &&
         (picks.me === false ||
             picks.me === 'only' ||
-            ['kinds', 'buckets', 'tags', 'authors'].some(
+            // Every row LEFT_OUT names - the groups row too (2026-10-16: a group picked alone left
+            // "all" lit, and wasn't kept for the tab).
+            Object.keys(LEFT_OUT).some(
                 (row) => (picks[row] || []).length || (picks[LEFT_OUT[row]] || []).length,
             ))
     );

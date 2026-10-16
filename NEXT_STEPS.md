@@ -77,6 +77,9 @@ are driving towards.
     setup failed once** in a full run on 2026-10-16 ("the sibling learned the
     rebroadcast-follow from the synced ledger") and passed three of three alone.
     A flake to chase.
+  - **`onward.cjs`'s "the key comes early: once the share is in cal's feed his
+    node asks bea's for it"** failed once in a full run on 2026-10-16, 0 of 5
+    reruns. Key-prefetch timing across nodes; another flake to chase.
 - From the group page on the feed's cards:
   - **The group page has no tag strip.** A persona's page lists its posts under
     the label facets. `/feed/labels` counts group posts now (ONE_FEED slice 3);

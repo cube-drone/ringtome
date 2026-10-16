@@ -1,5 +1,6 @@
 // Groups in People (plans/GROUPS.md, section 7): the orderings and choices the Groups tab and a
 // group's page make over what the node answered - values in, values out.
+import { canonicalPicks, searchWords } from './savedfeeds.js';
 
 /// How the Groups tab orders a persona's groups: invites first, since they wait on an answer -
 /// one never opened ahead of one opened - then the groups you keep, then the rest, each by name.
@@ -72,3 +73,13 @@ export const membersAtAGlance = (roster, posts, cap) => {
     const rest = members.map((m) => m.root);
     return [...new Set([...leading, ...posters, ...rest])].slice(0, cap);
 };
+
+/// Is this group's feed the one on screen? A group's feed is a pick, not a saved feed: it is lit
+/// while the picks are that group alone and nothing is searched for, whatever the curiosity and
+/// the order (choosing it leaves those as they were - Curtis, 2026-10-16: it set the filter, and
+/// didn't light).
+export const groupFeedOn = (feed, now) =>
+    !!feed &&
+    !!now &&
+    JSON.stringify(canonicalPicks(feed.picks)) === JSON.stringify(canonicalPicks(now.picks)) &&
+    !searchWords(now.q);
