@@ -21891,6 +21891,7 @@ meeting someone for the first time only has once the first exchange has brought
 it. So a newcomer's pulls were refused unless something earlier had introduced
 the two nodes. `sync_group` now pushes twice before it pulls, and the second
 push is the one the door can believe. Full `just ci` then passed (1819).
+
 ## 2026-10-15: custom domains, a plan; HTTPS recipes in SERVER.md
 
 Curtis wants cube-drone.com, now a Hugo blog, to serve his
@@ -21945,3 +21946,20 @@ that sets a cookie, a page included (sliding sessions renew on any response), is
 hand that session to strangers. `caching.cjs` gains the four claims, and
 SERVER.md's CDN advice now says to respect the node's headers and keep the whole
 query string in the cache key.
+
+## 2026-10-16: the relay's setup no longer rides a pull already under way
+
+CI went red twice running (the "custom domain chat" push and the merge after it)
+on the same two claims in `crowd.cjs`, "the crowd: holders pass moves on", each
+failing 2 of 5 reruns. Both came from the setup: C is meant to ask B for ada
+once while A is dark, so B has C among her askers and can relay to it later. The
+rig logs showed C's wake pass already mid-pull from A when the test unplugged A.
+The test's own pull found "a pull from that computer is already waiting" and
+waited on it, and A finished serving it, because the transport gate refuses new
+connections and lets an exchange already under way run out. So C was fresh
+without the crowd, B never recorded C, and both claims failed. The setup now
+pulls until B has C down as an asker (once the pull already under way is done,
+the next one finds A dark), and fails in the setup, naming B's askers, if B
+never does. Locally the race hardly ever fires; started on purpose (a pull from
+A begun just before the unplug), A served it after going dark in two of eight
+runs, and the next pull went to B each time.

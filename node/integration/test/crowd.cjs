@@ -348,10 +348,35 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
         await beat(HOST_C, 'mint', cyRoot);
         await beat(HOST_C, 'fold', cyRoot);
         await pullAndFold(HOST_C, adaRoot);
-        // C asks B once, the crowd rung, so B has C among ada's askers.
+        // C asks B once, the crowd rung, so B has C among ada's askers. The gate refuses new
+        // connections only, and C's wake pass may already be mid-pull from A when A goes dark:
+        // the beat's pull then waits on that one ("a pull from that computer is already
+        // waiting"), A finishes serving it, and C never needs the crowd (CI, 2026-10-16: two
+        // runs red, 2 of 5 reruns each). So C pulls until B has it down as an asker; once the
+        // pull already under way is done, the next one finds A dark.
+        const cEndpoint = String((await (await cy('api/node')).json()).endpoint_id).toLowerCase();
+        const bHasCy = async () =>
+            (
+                await sql(
+                    `SELECT 1 FROM identity_demand WHERE root_pubkey = '${adaRoot}'
+                     AND lower(endpoint_id) = '${cEndpoint}'`,
+                    HOST_B,
+                )
+            ).rows.length > 0;
         await withUnplugged([HOST], async () => {
-            await pullAndFold(HOST_C, adaRoot);
+            for (let i = 0; i < 10 && !(await bHasCy()); i++) {
+                if (i > 0) await new Promise((r) => setTimeout(r, 250));
+                await pullAndFold(HOST_C, adaRoot);
+            }
         });
+        const askers = await sql(
+            `SELECT lower(endpoint_id) AS e FROM identity_demand WHERE root_pubkey = '${adaRoot}'`,
+            HOST_B,
+        );
+        assert.ok(
+            await bHasCy(),
+            `C asked B for ada while A was dark, so B has C (${cEndpoint}) among her askers: ${JSON.stringify(askers.rows)}`,
+        );
     });
 
     after(async () => {
