@@ -15,7 +15,7 @@
 //!
 //! | tag | message | slots, in order                                                     |
 //! |-----|---------|---------------------------------------------------------------------|
-//! | 0   | Hello   | root, frontiers, proof, wanted, [ceiling, below], instances, key proofs, version, crowd |
+//! | 0   | Hello   | root, frontiers, proof, wanted, [ceiling, below], instances, key proofs, version, crowd, name |
 //! | 1   | Entry   | bstr envelope bytes (opaque; the author's exact bytes)              |
 //! | 2   | Done    | -                                                                   |
 //!
@@ -63,11 +63,14 @@ const HELLO_MIN_ARITY: u64 = 4;
 const ENTRY_MIN_ARITY: u64 = 2;
 const DONE_MIN_ARITY: u64 = 1;
 /// How many slots this build writes for a Hello, and the last one it reads.
-const HELLO_ARITY: u64 = 10;
+const HELLO_ARITY: u64 = 11;
 
 /// Cap on the version slot's text: a semver string is a dozen characters, and a page of it
 /// is not a version.
 pub const MAX_VERSION_LEN: usize = 64;
+
+/// Cap on the name slot: the node's device-name cap (plans/NETWORK.md).
+pub const MAX_NAME_LEN: usize = 120;
 
 /// Cap on the holders one Hello refers (plans/CROWD.md, ruling 2): a handful to try, never a
 /// directory of the persona's readers.
@@ -306,6 +309,10 @@ pub enum SyncMessage {
         /// The crowd slot (2026-10-11): who holds this persona besides its author. Default -
         /// holds nothing, refers nobody - from a sender that predates it.
         crowd: Crowd,
+        /// The sender's machine name (plans/NETWORK.md, ruling 1): what its operator named it,
+        /// else its hostname - a label for the other side's machine table, conferring nothing.
+        /// Empty from a sender that predates the slot.
+        name: String,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -328,6 +335,7 @@ impl SyncMessage {
                 key_proofs,
                 version,
                 crowd,
+                name,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
@@ -346,6 +354,9 @@ impl SyncMessage {
                 }
                 if crowd.holders.len() > MAX_HOLDERS {
                     return Err(ProtoError::BadEntry("too many holders"));
+                }
+                if name.len() > MAX_NAME_LEN {
+                    return Err(ProtoError::BadEntry("name text too long"));
                 }
                 // Every slot, every time: since readers skip what they don't know, there is no
                 // longer a reason to shorten the frame by leaving trailing empties off.
@@ -407,6 +418,8 @@ impl SyncMessage {
                 for h in &crowd.holders {
                     w.bytes(h);
                 }
+                // The name slot (2026-10-17).
+                w.text(name);
             }
             SyncMessage::Entry(bytes) => {
                 if bytes.len() > MAX_ENTRY_BYTES {
@@ -557,6 +570,16 @@ impl SyncMessage {
                 } else {
                     Crowd::default()
                 };
+                // Arity 11 carries the sender's name (2026-10-17); older shapes say nothing.
+                let name = if arity >= 11 {
+                    let text = r.text()?;
+                    if text.len() > MAX_NAME_LEN {
+                        return Err(ProtoError::BadEntry("name text too long"));
+                    }
+                    text.to_string()
+                } else {
+                    String::new()
+                };
                 skip_trailing(&mut r, arity, HELLO_ARITY)?;
                 SyncMessage::Hello {
                     root,
@@ -569,6 +592,7 @@ impl SyncMessage {
                     key_proofs,
                     version,
                     crowd,
+                    name,
                 }
             }
             TAG_ENTRY if arity >= ENTRY_MIN_ARITY => {
@@ -642,6 +666,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: String::new(),
             crowd: Crowd::default(),
+            name: String::new(),
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -654,6 +679,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: String::new(),
             crowd: Crowd::default(),
+            name: String::new(),
         };
         let scoped = SyncMessage::Hello {
             root: [7u8; 32],
@@ -666,6 +692,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: String::new(),
             crowd: Crowd::default(),
+            name: String::new(),
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
@@ -689,6 +716,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: "0.1.4".to_string(),
             crowd: Crowd::default(),
+            name: String::new(),
         };
         let bytes = hello.encode().unwrap();
         assert_eq!(SyncMessage::decode(&bytes).unwrap(), hello);
@@ -703,6 +731,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: "x".repeat(MAX_VERSION_LEN + 1),
             crowd: Crowd::default(),
+            name: String::new(),
         };
         assert_eq!(long.encode(), Err(ProtoError::BadEntry("version text too long")));
     }
@@ -719,6 +748,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: "0.2.0".to_string(),
             crowd,
+            name: String::new(),
         }
     }
 
@@ -749,6 +779,67 @@ mod tests {
         w.array(0); // key proofs
         w.text("0.2.0");
         assert_eq!(SyncMessage::decode(&w.into_bytes()).unwrap(), bare_hello(Crowd::default()));
+    }
+
+    /// The name slot (plans/NETWORK.md): a machine's name crosses, an older sender's Hello -
+    /// arity 10, no slot - reads as nameless, and a page of text is not a name.
+    #[test]
+    fn the_name_slot_round_trips_defaults_and_is_bounded() {
+        let named = |name: &str| {
+            let SyncMessage::Hello {
+                root,
+                frontiers,
+                proof,
+                wanted,
+                ceiling,
+                below,
+                instances,
+                key_proofs,
+                version,
+                crowd,
+                ..
+            } = bare_hello(Crowd::default())
+            else {
+                unreachable!()
+            };
+            SyncMessage::Hello {
+                root,
+                frontiers,
+                proof,
+                wanted,
+                ceiling,
+                below,
+                instances,
+                key_proofs,
+                version,
+                crowd,
+                name: name.to_string(),
+            }
+        };
+        let hello = named("curtis's mac mini");
+        assert_eq!(SyncMessage::decode(&hello.encode().unwrap()).unwrap(), hello);
+        assert_eq!(
+            named(&"x".repeat(MAX_NAME_LEN + 1)).encode(),
+            Err(ProtoError::BadEntry("name text too long"))
+        );
+
+        let mut w = Writer::new();
+        w.array(10);
+        w.uint(TAG_HELLO);
+        w.bytes(&[7u8; 32]);
+        w.array(0); // frontiers
+        w.array(0); // proof
+        w.array(0); // wanted
+        w.array(2); // depth
+        w.uint(0);
+        w.uint(0);
+        w.array(0); // instances
+        w.array(0); // key proofs
+        w.text("0.2.0");
+        w.array(2); // crowd
+        w.uint(0);
+        w.array(0);
+        assert_eq!(SyncMessage::decode(&w.into_bytes()).unwrap(), named(""));
     }
 
     /// The busy referral (plans/CROWD.md, ruling 3): a list per persona, inside its caps, and
@@ -836,6 +927,7 @@ mod tests {
                 key_proofs: Vec::new(),
                 version: String::new(),
                 crowd: Crowd::default(),
+                name: String::new(),
             }
         );
     }
@@ -853,6 +945,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: String::new(),
             crowd: Crowd::default(),
+            name: String::new(),
         };
         assert_eq!(msg.encode(), Err(ProtoError::BadEntry("too many wanted services")));
     }
@@ -905,6 +998,7 @@ mod tests {
         w.array(2); // crowd
         w.uint(0);
         w.array(0);
+        w.text("a machine"); // name
         w.text("a future slot"); // and four this build cannot name
         w.array(2);
         w.uint(1);
@@ -914,10 +1008,11 @@ mod tests {
         w.bytes(&[1, 2, 3]);
         w.uint(u64::MAX);
         let msg = SyncMessage::decode(&w.into_bytes()).unwrap();
-        let SyncMessage::Hello { version, wanted, .. } = msg else {
+        let SyncMessage::Hello { version, wanted, name, .. } = msg else {
             panic!("a Hello");
         };
         assert_eq!(version, "9.9.9");
+        assert_eq!(name, "a machine");
         assert!(wanted.is_empty());
 
         // The same for the two frames that have never grown, so that they can.
@@ -975,6 +1070,7 @@ mod tests {
             key_proofs: Vec::new(),
             version: String::new(),
             crowd: Crowd::default(),
+            name: String::new(),
         };
         assert!(bad.encode().is_err());
 

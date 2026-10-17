@@ -574,7 +574,11 @@ pub async fn complete(
         // still arriving, a missing label is a rename away - it never fails the adoption.
         match crate::record::store::open(&task_state, &task_account, &task_root).await {
             Ok(data) => {
-                if let Err(e) = data.devices().set_name(&leaf, &task_state.config.node_name).await {
+                if let Err(e) = data
+                    .devices()
+                    .set_name(&leaf, &crate::machines::node_name(&task_state.config.node_name))
+                    .await
+                {
                     tracing::warn!(root = %task_root, "could not write device name: {e}");
                 }
             }

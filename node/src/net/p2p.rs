@@ -170,6 +170,7 @@ pub async fn dial(
         ));
     }
     let connect = endpoint.connect(addr, alpn);
+    let started = std::time::Instant::now();
     let limit = dial_ceiling().or(dark_window().map(|_| CONNECT_DEADLINE));
     let conn = match limit {
         Some(limit) => match tokio::time::timeout(limit, connect).await {
@@ -182,13 +183,21 @@ pub async fn dial(
         },
         None => connect.await.map_err(|e| anyhow!("{e}")),
     };
+    // The machine table (plans/NETWORK.md) hears every outcome, in memory, as the dark book does.
+    let lane = alpn_name(alpn).unwrap_or("unknown");
     match conn {
         Ok(conn) => {
             remember(&conn);
+            crate::machines::connected(
+                &id.to_string(),
+                lane,
+                started.elapsed().as_secs_f64() * 1000.0,
+            );
             Ok(conn)
         }
         Err(e) => {
             went_dark(&id);
+            crate::machines::failed(&id.to_string(), lane, &format!("{e:#}"));
             Err(e)
         }
     }
@@ -227,6 +236,11 @@ fn dark_window() -> Option<std::time::Duration> {
     })
 }
 
+/// How much longer the machine at `endpoint` is dark, if it is: the Network page's "dark until".
+pub fn dark_left(endpoint: &str) -> Option<std::time::Duration> {
+    dark_for(&endpoint.parse::<iroh::PublicKey>().ok()?)
+}
+
 /// How much longer `id` is dark, if it is.
 fn dark_for(id: &iroh::PublicKey) -> Option<std::time::Duration> {
     let book = DARK.lock().ok()?;
@@ -249,6 +263,19 @@ fn went_dark(id: &iroh::PublicKey) {
 /// never past `DARK_MAX`.
 fn dark_span(window: std::time::Duration, strikes: u32) -> std::time::Duration {
     window.saturating_mul(1 << strikes.saturating_sub(1).min(10)).min(DARK_MAX)
+}
+
+/// Boot (machines.rs): the machines whose last word before the restart was a failure start dark
+/// for one window, as if they had just failed once - so a restart doesn't dial every sleeping
+/// laptop again at once.
+pub fn dark_at_boot(endpoints: &[String]) {
+    let Some(window) = dark_window() else { return };
+    let Ok(mut book) = DARK.lock() else { return };
+    for e in endpoints {
+        if let Ok(id) = e.parse::<iroh::PublicKey>() {
+            book.entry(id).or_insert((std::time::Instant::now() + window, 1));
+        }
+    }
 }
 
 /// Every dark mark gone - "sync now" means now.
@@ -446,6 +473,10 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                         // Where it came from: this computer can then reach it back, even when
                         // discovery can't (`remember`).
                         remember(&conn);
+                        crate::machines::dialed_in(
+                            &remote.to_string(),
+                            alpn_name(conn.alpn()).unwrap_or("unknown"),
+                        );
                         // Admission (PROJECT_PLAN's Peeks, ruling 14), before any dispatch so it covers every
                         // ALPN: over a ceiling the connection is closed now, never parked. The
                         // blob ALPN is proven at birth - hash-capability over public bytes; the

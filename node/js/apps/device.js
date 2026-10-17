@@ -1,7 +1,10 @@
 // The place's own settings: "Device" in the desktop app, "Server" in a browser (Curtis,
-// 2026-09-25). Administrators only - the registry hides the tile from everyone else, and the node
-// refuses them at every door regardless. Two pages for now:
+// 2026-09-25). Everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5), page by page: a regular
+// user sees the Network page alone; administrators every page, and the node refuses anyone else at
+// every admin door regardless.
 //
+// - Network (everyone): every machine this place talks to, by name, how reliably each answers,
+//   and the viewer's own links to them. An administrator renames this machine there.
 // - Registration (servers only): who may sign up - open, a shared sign-up password, or closed
 //   (node/src/registration.rs). A desktop app is its owner's alone, and what it would mean for one
 //   to host other people is not settled yet, so the Device app does not offer the page.
@@ -24,17 +27,32 @@ import { defaultName, defaultTaglines, refreshFront } from '../frontdoor.js';
 import { formatWhen } from '../pure/when.js';
 import { BANDS } from '../pure/contact.js';
 import { speakable, wordsFor } from '../speakable.js';
+import { agoUnit, agoWords } from '../pure/ago.js';
+import { machineLabel, machineStatus, machinesShown, reliabilityPct } from '../pure/machines.js';
+import { groupHref, personHref } from '../links.js';
 
 const html = htm.bind(h);
 
-/// The pages this app offers here: a desktop app has no Registration page (see above).
-// A desktop app's owner has the same sign-up choices a server's has (Curtis, 2026-09-28: every
-// desktop app is a localhost multi-user server now).
-const pages = () =>
-    isDevice() ? ['registration', 'backups'] : ['registration', 'backups', 'customization'];
+/// The pages this app offers this person: the Network page to everyone, and the rest to an
+/// administrator. A desktop app has no front page for strangers, so no Customization there. (A
+/// desktop app's owner has the same sign-up choices a server's has - Curtis, 2026-09-28: every
+/// desktop app is a localhost multi-user server now.)
+const pages = (admin) =>
+    !admin
+        ? ['network']
+        : isDevice()
+          ? ['network', 'registration', 'backups']
+          : ['network', 'registration', 'backups', 'customization'];
 
 /// Each page's name and what it's for, as the landing lists them.
 const PAGE_WORDS = () => ({
+    network: [
+        t('device.network', 'Network'),
+        t(
+            'device.the-machines-this-place-talks-to',
+            'the machines this place talks to, and how well each answers',
+        ),
+    ],
     registration: [
         t('device.registration', 'Registration'),
         t('device.who-may-sign-up-here', 'who may sign up here'),
@@ -55,7 +73,11 @@ const PAGE_WORDS = () => ({
     ],
 });
 
-export const DeviceApp = ({ page, admin }) => {
+export const DeviceApp = ({ page, admin, current }) => {
+    // Someone who isn't an administrator has one page, so they land on it.
+    if (page === 'network' || (!admin && !page)) {
+        return html`<${Network} current=${current} admin=${admin} />`;
+    }
     if (!admin) {
         return html`<div class="device">
             <p class="null-sub">${t('device.only-for-the-people-who-look-after-this', 'These settings are only for the people who look after this place.')}</p>
@@ -64,13 +86,13 @@ export const DeviceApp = ({ page, admin }) => {
     if (page === 'registration') return html`<${Registration} />`;
     if (page === 'backups') return html`<${Backups} />`;
     if (page === 'customization' && !isDevice()) return html`<${Customization} />`;
-    return html`<${Landing} />`;
+    return html`<${Landing} admin=${admin} />`;
 };
 
-const Landing = () => html`
+const Landing = ({ admin }) => html`
     <div class="device">
         <nav class="device-menu">
-            ${pages().map(
+            ${pages(admin).map(
                 (
                     page,
                 ) => html`<a class="removal-option" href=${`${appHref('device')}/${page}`} key=${page}>
@@ -635,6 +657,184 @@ const Customization = () => {
             <${SearchPolicy} />
             <h3 class="computers-subtitle">${t('device.tagged-audio', 'tagged songs')}</h3>
             <${AudioPolicy} />
+        </div>
+    `;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Network (plans/NETWORK.md)
+
+/// How often the page asks again: the table moves with every connection.
+const NETWORK_EVERY_MS = 10_000;
+
+const since = (ms, now) => {
+    if (!ms) return null;
+    const unit = agoUnit(ms, now);
+    return unit ? agoWords(unit.value, unit.unit) : t('device.just-now', 'just now');
+};
+
+/// A machine's standing, in words.
+const STATUS_WORDS = () => ({
+    dark: t('device.machine-dark', 'not answering'),
+    answering: t('device.machine-answering', 'answering'),
+    unanswered: t('device.machine-unanswered', "didn't answer last time"),
+    'dials-in': t('device.machine-dials-in', 'calls in, never called'),
+    unknown: t('device.machine-unknown', 'never tried'),
+});
+
+/// Each standing's class, spelled out so the CSS cop can find them.
+const STATUS_CLASS = {
+    dark: 'machine-status machine-status-dark',
+    answering: 'machine-status machine-status-answering',
+    unanswered: 'machine-status machine-status-unanswered',
+    'dials-in': 'machine-status',
+    unknown: 'machine-status',
+};
+
+/// One of the viewer's own links to a machine, in words, and where it goes.
+const LinkChip = ({ link }) => {
+    const name = link.name || t('device.someone', 'someone');
+    if (link.kind === 'own') {
+        return html`<span class="machine-link">${t('device.your-computer', 'your computer')}</span>`;
+    }
+    if (link.kind === 'group') {
+        return html`<a class="machine-link" href=${groupHref(link.group)}>${t('device.in-group', 'in {group}', { group: name })}</a>`;
+    }
+    const words =
+        link.kind === 'holds'
+            ? t('device.holds-person', 'holds {name}', { name })
+            : t('device.serves-person', 'serves {name}', { name });
+    return html`<a class="machine-link" href=${personHref(link.root)}>${words}</a>`;
+};
+
+const MachineRow = ({ m, now }) => {
+    const status = machineStatus(m, now);
+    const pct = reliabilityPct(m);
+    const facts = [
+        m.last_ok_ms &&
+            t('device.answered-when', 'answered {when}', { when: since(m.last_ok_ms, now) }),
+        m.last_fail_ms &&
+            t('device.failed-when', 'failed {when}', { when: since(m.last_fail_ms, now) }),
+        m.last_inbound_ms &&
+            t('device.called-in-when', 'called in {when}', { when: since(m.last_inbound_ms, now) }),
+    ].filter(Boolean);
+    const dark =
+        status === 'dark' &&
+        t('device.asking-again-when', 'asking again {when}', {
+            when: formatWhen(m.dark_until_ms, now),
+        });
+    return html`<li class="machine-row">
+        <div class="machine-head">
+            <span class="machine-name" title=${m.endpoint}>${machineLabel(m)}</span>
+            <span class=${STATUS_CLASS[status]}>${STATUS_WORDS()[status]}</span>
+        </div>
+        ${m.name && m.words && html`<span class="machine-words">${m.words}</span>`}
+        ${facts.length > 0 && html`<span class="machine-facts">${facts.join(' · ')}</span>`}
+        ${dark && html`<span class="machine-facts">${dark}</span>`}
+        ${
+            pct !== null &&
+            html`<div class="machine-reliability" title=${m.last_error || ''}>
+                <span class="machine-bar"><span class="machine-bar-fill" style=${`width: ${pct}%`}></span></span>
+                <span class="machine-facts">${t('device.answers-pct', 'answers {pct}%', { pct })}${m.connect_ms != null ? ` · ${t('device.connect-ms', '{ms} ms to connect', { ms: m.connect_ms })}` : ''}</span>
+            </div>`
+        }
+        <span class="machine-facts">
+            ${Object.keys(m.lanes || {}).join(', ')}${m.version ? ` · ${t('device.runs-version', 'runs {version}', { version: m.version })}` : ''}
+        </span>
+        ${
+            (m.links || []).length > 0 &&
+            html`<div class="machine-links">${m.links.map((link, i) => html`<${LinkChip} key=${i} link=${link} />`)}</div>`
+        }
+    </li>`;
+};
+
+/// This machine's name, renamed by an administrator: the next Hello says it.
+const ThisMachine = ({ me, admin, onSaved }) => {
+    const [name, setName] = useState(me.chosen ? me.name : '');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    useEffect(() => setName(me.chosen ? me.name : ''), [me.name, me.chosen]);
+    const save = async (value) => {
+        setBusy(true);
+        setError('');
+        try {
+            await api('/api/admin/machine-name', {
+                method: 'PUT',
+                body: JSON.stringify({ name: value }),
+            });
+            onSaved();
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<section class="machine-this">
+        <h3 class="computers-subtitle">${t('device.this-machine', 'this machine')}</h3>
+        <div class="machine-head">
+            <span class="machine-name" title=${me.endpoint}>${me.name}</span>
+            <span class="machine-facts">${t('device.runs-version', 'runs {version}', { version: me.version })}</span>
+        </div>
+        <span class="machine-words">${me.words}</span>
+        ${
+            admin &&
+            html`<label class="device-field">
+                <span>${t('device.what-other-machines-call-this-one', 'what other machines call this one')}</span>
+                <input type="text" maxlength="120" value=${name} placeholder=${me.name} onInput=${(e) => setName(e.currentTarget.value)} />
+            </label>
+            ${error && html`<p class="form-error">${error}</p>`}
+            <div class="device-actions">
+                <button class="removal-go" disabled=${busy} onClick=${() => save(name)}>${busy ? '…' : t('device.save', 'save')}</button>
+                ${
+                    me.chosen &&
+                    html`<button class="computer-remove" disabled=${busy} onClick=${() => save(null)}>
+                        ${t('device.back-to-its-own-name', 'back to its own name')}
+                    </button>`
+                }
+            </div>`
+        }
+    </section>`;
+};
+
+const Network = ({ current, admin }) => {
+    const root = current && current.root;
+    const [answer, setAnswer] = useState(null);
+    const [error, setError] = useState('');
+    const [mine, setMine] = useState(false);
+    const load = useCallback(() => {
+        if (!root) return;
+        api(`/api/identity/${root}/machines`)
+            .then((a) => {
+                setAnswer(a);
+                setError('');
+            })
+            .catch((e) => setError(e.message));
+    }, [root]);
+    useEffect(() => {
+        load();
+        const again = setInterval(load, NETWORK_EVERY_MS);
+        return () => clearInterval(again);
+    }, [load]);
+    if (!answer) {
+        return html`<div class="device">${error ? html`<p class="form-error">${error}</p>` : html`<p class="null-sub">${t('device.looking', 'looking…')}</p>`}</div>`;
+    }
+    const now = Date.now();
+    const shown = machinesShown(answer.machines, mine);
+    return html`
+        <div class="device">
+            <h2 class="computers-title">${t('device.network', 'Network')}</h2>
+            <p class="null-sub">${t('device.network-explained', 'Every machine this place has talked to, either way: what it calls itself, and how reliably it answers. Anyone on the network learns this much by calling, so everyone here sees it. Which of them carry your own computers, the people you follow and your groups is yours alone.')}</p>
+            <${ThisMachine} me=${answer.this} admin=${admin} onSaved=${load} />
+            <nav class="welcome-tabs">
+                <button class=${mine ? 'tab' : 'tab active'} onClick=${() => setMine(false)}>${t('device.all-machines', 'all machines ({n})', { n: answer.machines.length })}</button>
+                <button class=${mine ? 'tab active' : 'tab'} onClick=${() => setMine(true)}>${t('device.linked-to-you', 'linked to you')}</button>
+            </nav>
+            ${error && html`<p class="form-error">${error}</p>`}
+            ${
+                shown.length === 0
+                    ? html`<p class="null-sub">${mine ? t('device.none-linked-to-you', 'None of these machines carry anything of yours yet.') : t('device.no-machines-yet', "No machines yet - this place hasn't talked to any.")}</p>`
+                    : html`<ul class="machine-list">${shown.map((m) => html`<${MachineRow} key=${m.endpoint} m=${m} now=${now} />`)}</ul>`
+            }
         </div>
     `;
 };

@@ -114,7 +114,6 @@ are driving towards.
   - **Pictures from elsewhere** (an external link, someone else's public
     picture) are refused in a group post. The public pipeline's download and
     copy roads need a group twin.
-  - **Replies in a group**, on the replier's own lane for it.
   - **Rebroadcasts** (GROUPS.md §7): sharing a public post into a group, with
     the share button's destination picker; an explicit refusal, with a claim,
     for sharing a group post out, rather than trusting the rebroadcast route to
@@ -122,8 +121,13 @@ are driving towards.
 - From 1b:
   - **A send-side door.** A node dialing for a group sends its lanes to whatever
     node it dialed, unchecked.
-  - **One exchange per group.** A sync is now one per persona per node, which is
-    fine at a handful of members but not at hundreds.
+  - **One exchange per group.** Gossip (plans/NETWORK.md) asks three machines a
+    pass, but still one exchange per persona per machine: 3n a minute for an
+    idle group. A group digest, every lane's head in one message, would make an
+    idle pass three small messages; it is new wire, so it waits on gossip
+    proving itself.
+  - **The Network page wants a look in a browser**, hrseServer™ opened to
+    everyone with it.
 
 ### Notifications
 

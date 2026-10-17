@@ -1019,7 +1019,27 @@ pub async fn say_room_label(
     })?;
     say_label(data, group, &author, doc, key, value, present).await?;
     crate::fold::fold_now(state, me).await;
+    push_soon(state, me, *group);
     Ok(())
+}
+
+/// The machines each of `root`'s groups has been heard at, with the group's name: the Network
+/// page's "in {group}" links (plans/NETWORK.md). Only groups `root` is in.
+pub async fn machines_of_groups(state: &AppState, root: &str) -> Vec<(String, String, String)> {
+    state
+        .node_db
+        .fetch_all::<(Vec<u8>, String, String)>(
+            "SELECT DISTINCT p.group_id, r.name, g.endpoint_id FROM group_people p
+             JOIN group_rosters r ON r.group_id = p.group_id
+             JOIN group_peers g ON g.group_id = p.group_id
+             WHERE p.root = ?1 AND p.standing IN ('member', 'owner')",
+            (root,),
+        )
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(g, name, ep)| (hex::encode(g), name, ep))
+        .collect()
 }
 
 /// Where to reach the group's nodes - every member's holds its lanes and its rooms' chains.
@@ -1401,9 +1421,199 @@ pub async fn sync_group(state: &AppState, me: &str, group: &GroupId, seed: &[Str
     exchanged
 }
 
+// ---------------------------------------------------------------------------------------------
+// Gossip (plans/NETWORK.md, "Group gossip")
+
+/// Partners a gossip pass picks by reliability.
+const RELIABLE_PARTNERS: usize = 2;
+/// And the check-in slot: the machine least lately tried, so none is left out for good.
+const CHECK_INS: usize = 1;
+
+/// One machine a gossip pass might ask, as the machine table knows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Candidate {
+    pub endpoint: String,
+    pub reliability: f64,
+    pub last_ok_ms: Option<i64>,
+    pub last_tried_ms: Option<i64>,
+    /// Not answering lately, and not to be asked again yet (the dark book).
+    pub dark: bool,
+}
+
+/// This pass's partners (ruling 4): the `best` most reliable that aren't dark, ties to the most
+/// lately answered; then `check_ins` more from everyone else, the least lately tried first - the
+/// never tried before all - so a shut laptop or a new member is asked in its turn. A dark machine
+/// is a check-in only when nothing else is left, since the dial refuses it unasked. With no more
+/// candidates than slots, every one.
+pub fn pick_partners(mut candidates: Vec<Candidate>, best: usize, check_ins: usize) -> Vec<String> {
+    if candidates.len() <= best + check_ins {
+        return candidates.into_iter().map(|c| c.endpoint).collect();
+    }
+    candidates.sort_by(|a, b| {
+        a.dark
+            .cmp(&b.dark)
+            .then(b.reliability.total_cmp(&a.reliability))
+            .then(b.last_ok_ms.cmp(&a.last_ok_ms))
+            .then(a.endpoint.cmp(&b.endpoint))
+    });
+    let mut picked: Vec<String> = Vec::new();
+    let mut rest: Vec<Candidate> = Vec::new();
+    for c in candidates {
+        if picked.len() < best && !c.dark {
+            picked.push(c.endpoint);
+        } else {
+            rest.push(c);
+        }
+    }
+    let want = best + check_ins - picked.len();
+    rest.sort_by(|a, b| {
+        a.dark
+            .cmp(&b.dark)
+            .then(a.last_tried_ms.cmp(&b.last_tried_ms))
+            .then(a.endpoint.cmp(&b.endpoint))
+    });
+    picked.extend(rest.into_iter().take(want).map(|c| c.endpoint));
+    picked
+}
+
+/// The machines a gossip pass may ask (ruling 4's candidates): current members' machines. A
+/// machine qualifies when the group's peer ledger proved a current member there, or when it is
+/// where a current member is served and the ledger names nobody else there. A removed member's
+/// node is the one this leaves out: the ledger names only them at it, and every member's node
+/// holds every member's lanes, so "serves a member" alone would let it back in. Never this node.
+async fn gossip_candidates(state: &AppState, group: &GroupId) -> Vec<Candidate> {
+    let members: BTreeSet<String> = members_of(state, group).await.into_iter().collect();
+    let told: Vec<(String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT endpoint_id, root FROM group_peers WHERE group_id = ?1 AND root != ''",
+            (group.to_vec(),),
+        )
+        .await
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    for ep in endpoints(state, group, &members).await {
+        let named: Vec<&String> = told.iter().filter(|(e, _)| *e == ep).map(|(_, r)| r).collect();
+        let a_member_here = named.iter().any(|r| members.contains(*r));
+        let only_others = !named.is_empty() && !a_member_here;
+        if only_others {
+            continue;
+        }
+        if !a_member_here {
+            let mut served = false;
+            for m in &members {
+                if crate::net::sync::peers_for(&state.node_db, m)
+                    .await
+                    .unwrap_or_default()
+                    .contains(&ep)
+                {
+                    served = true;
+                    break;
+                }
+            }
+            if !served {
+                continue;
+            }
+        }
+        let m = crate::machines::machine(&ep);
+        out.push(Candidate {
+            reliability: m.as_ref().map_or(0.5, |m| m.reliability()),
+            last_ok_ms: m.as_ref().and_then(|m| m.last_ok_ms),
+            last_tried_ms: m.as_ref().and_then(|m| m.last_tried_ms()),
+            dark: crate::net::p2p::dark_left(&ep).is_some(),
+            endpoint: ep,
+        });
+    }
+    out
+}
+
+/// A pass's candidates, by endpoint, and the partners it picks from them.
+pub async fn gossip_partners(state: &AppState, group: &GroupId) -> (Vec<String>, Vec<String>) {
+    let candidates = gossip_candidates(state, group).await;
+    let all = candidates.iter().map(|c| c.endpoint.clone()).collect();
+    (all, pick_partners(candidates, RELIABLE_PARTNERS, CHECK_INS))
+}
+
+/// Has this group been heard at `endpoint` before? A machine met for the first time is exchanged
+/// with twice for `me`, as [`sync_group`] says why.
+async fn heard_at(state: &AppState, group: &GroupId, endpoint: &str) -> bool {
+    state
+        .node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT 1 FROM group_peers WHERE group_id = ?1 AND endpoint_id = ?2 LIMIT 1",
+            (group.to_vec(), endpoint),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+/// One gossip pass for `me` in a group: a few partners, and with each one exchange per persona
+/// the group's lanes name, `me` first. Each exchange runs both ways, so this node's news goes out
+/// and the partner's comes in; any member's node holds every lane, so any partner will do, and
+/// news reaches the whole group in about log₃(n) passes.
+pub async fn gossip_group(state: &AppState, me: &str, group: &GroupId) -> usize {
+    let mut names: Vec<String> =
+        named(&lanes_of(state, group).await.unwrap_or_default()).into_iter().collect();
+    names.retain(|n| n != me);
+    names.insert(0, me.to_string());
+    let (_, partners) = gossip_partners(state, group).await;
+    let mut exchanged = 0;
+    for ep in &partners {
+        let first = !heard_at(state, group, ep).await;
+        for who in &names {
+            let times = if first && who == me { 2 } else { 1 };
+            for _ in 0..times {
+                if exchange(state, who, ep, group).await {
+                    exchanged += 1;
+                }
+            }
+        }
+    }
+    for who in &names {
+        crate::fold::fold_now(state, who).await;
+    }
+    fetch_bodies(state, group, &names.iter().cloned().collect()).await;
+    exchanged
+}
+
+/// After a write: a gossip pass for that group within a few seconds, debounced per group, so news
+/// leaves at once and the minute beat only catches what a push missed (ruling 4's push). On the
+/// test rig only when a suite asks (`RINGTOME_TEST_GROUP_PUSH_MS`): a claim about what a node has
+/// or hasn't heard can't have a push deciding it halfway through, as with the beat.
+fn push_soon(state: &AppState, me: &str, group: GroupId) {
+    let delay_ms: u64 = if state.config.local_test {
+        match std::env::var("RINGTOME_TEST_GROUP_PUSH_MS").ok().and_then(|v| v.parse().ok()) {
+            Some(ms) => ms,
+            None => return,
+        }
+    } else {
+        3_000
+    };
+    type Due = std::collections::HashMap<GroupId, bool>;
+    static WAITING: std::sync::LazyLock<std::sync::Mutex<Due>> =
+        std::sync::LazyLock::new(Default::default);
+    {
+        let Ok(mut waiting) = WAITING.lock() else { return };
+        if waiting.insert(group, true).is_some() {
+            return; // one already waits, and it will carry this write too
+        }
+    }
+    let state = state.clone();
+    let me = me.to_string();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        if let Ok(mut waiting) = WAITING.lock() {
+            waiting.remove(&group);
+        }
+        gossip_group(&state, &me, &group).await;
+    });
+}
+
 /// The group-sync beat (lib.rs): every group each persona hosted here is in, owns or is
-/// invited to, brought up to date - the floor under the sync a person asks for, as the room
-/// beat is chat's.
+/// invited to, brought up to date by gossip (plans/NETWORK.md) - the floor under the push
+/// after a write and the sync a person asks for, as the room beat is chat's.
 pub async fn sync_pass(state: AppState) -> Result<()> {
     let rows: Vec<(Vec<u8>, String)> = state
         .node_db
@@ -1413,7 +1623,7 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
     for (group, root) in rows {
         let Ok(group) = <[u8; 16]>::try_from(group.as_slice()) else { continue };
         if crate::identity::is_agented(&state.node_db, &root).await.unwrap_or(false) {
-            sync_group(&state, &root, &group, &[]).await;
+            gossip_group(&state, &root, &group).await;
             // Refolded whether or not anything arrived: it writes nothing unless the lanes, or
             // who is hosted here, moved since - and a node that gained the tables in an upgrade
             // (node rung 91 marks every group) fills them here.
@@ -1464,6 +1674,7 @@ async fn write_signed(
     )
     .await?;
     crate::fold::fold_now(state, me).await;
+    push_soon(state, me, group);
     Ok(signed)
 }
 
@@ -2426,6 +2637,7 @@ async fn append_document(
     )
     .await?;
     crate::fold::fold_now(state, me).await;
+    push_soon(state, me, *group);
     Ok(*signed.hash())
 }
 
@@ -3424,6 +3636,7 @@ async fn label_handler(
         }
     }
     crate::fold::fold_now(&state, &root).await;
+    push_soon(&state, &root, group);
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "doc": hex::encode(doc) })))
 }
 
@@ -4036,4 +4249,73 @@ async fn face_thumb_route(
     Path((group, doc)): Path<(String, String)>,
 ) -> Result<axum::response::Response, AppError> {
     face_bytes(&state, &group, &doc, true).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn machine(endpoint: &str, reliability: f64, tried: Option<i64>, dark: bool) -> Candidate {
+        Candidate {
+            endpoint: endpoint.to_string(),
+            reliability,
+            last_ok_ms: tried,
+            last_tried_ms: tried,
+            dark,
+        }
+    }
+
+    /// Two by reliability, then the one least lately tried - a never-tried machine first - and a
+    /// dark one only when nothing else is left (plans/NETWORK.md, ruling 4).
+    #[test]
+    fn gossip_prefers_the_reliable_and_keeps_a_slot_for_the_rest() {
+        let picked = pick_partners(
+            vec![
+                machine("steady", 0.95, Some(100), false),
+                machine("good", 0.9, Some(90), false),
+                machine("flaky", 0.3, Some(50), false),
+                machine("shut", 0.2, Some(10), false),
+                machine("dark", 0.99, Some(99), true),
+                machine("new", 0.5, None, false),
+            ],
+            2,
+            1,
+        );
+        assert_eq!(picked, vec!["steady", "good", "new"], "the new machine gets the check-in");
+
+        let picked = pick_partners(
+            vec![
+                machine("steady", 0.95, Some(100), false),
+                machine("good", 0.9, Some(90), false),
+                machine("flaky", 0.3, Some(50), false),
+                machine("shut", 0.2, Some(10), false),
+            ],
+            2,
+            1,
+        );
+        assert_eq!(picked, vec!["steady", "good", "shut"], "then the one tried longest ago");
+
+        let picked = pick_partners(
+            vec![
+                machine("a", 0.9, Some(1), true),
+                machine("b", 0.9, Some(2), true),
+                machine("c", 0.4, Some(3), false),
+                machine("d", 0.9, Some(4), true),
+            ],
+            2,
+            1,
+        );
+        assert_eq!(picked, vec!["c", "a", "b"], "dark ones only to fill");
+    }
+
+    /// A small group asks everyone, in no particular order of merit.
+    #[test]
+    fn a_small_group_asks_every_machine() {
+        let picked = pick_partners(
+            vec![machine("a", 0.1, None, true), machine("b", 0.9, Some(1), false)],
+            2,
+            1,
+        );
+        assert_eq!(picked, vec!["a", "b"]);
+    }
 }

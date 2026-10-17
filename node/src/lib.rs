@@ -63,6 +63,7 @@ pub mod inspect;
 pub mod keyprefetch;
 pub mod keystore;
 pub mod loops;
+pub mod machines;
 pub mod made_with;
 pub mod mcp;
 pub mod media;
@@ -579,6 +580,11 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         upload_links: uploadlink::Links::default(),
         shell: shell::Shell::new(record_attention),
     };
+    // The machine table (plans/NETWORK.md) before the first connection either way, so what a
+    // restart remembers - names, reliability, who was dark - is there for the first dial.
+    if let Err(e) = machines::load(&state.node_db).await {
+        tracing::warn!(error = ?e, "the machine table didn't load; it starts empty");
+    }
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each
     // round marks from the node's own reference ledgers (reaper::live_set) and sweeps the rest.
@@ -788,6 +794,13 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         std::time::Duration::from_secs(60)
     };
     loops::periodic("group-sync", group_beat, state.clone(), roster::sync_pass);
+    // The machine book to node.db: what moved since the last flush.
+    loops::periodic(
+        "machine-flush",
+        std::time::Duration::from_secs(30),
+        state.clone(),
+        machines::flush,
+    );
     // The room pulse (Curtis, 2026-09-18): a busy room's feed time is its last word's, moved
     // periodically rather than per word.
     let pulse_beat = if local_test {
@@ -994,6 +1007,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/feed", get(nodeface::node_feed))
         .route("/api/node/front", get(frontdoor::front_handler))
         .route("/api/admin/front", axum::routing::put(frontdoor::set_handler))
+        // The Network page (plans/NETWORK.md): the machine table, and the operator's rename.
+        .route("/api/identity/{root}/machines", get(machines::machines_handler))
+        .route("/api/admin/machine-name", axum::routing::put(machines::set_name_handler))
         // Whether users may import here (import.rs): off on a server until its administrator says.
         .route(
             "/api/admin/import-policy",
@@ -1096,6 +1112,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             )
             .route("/test/plug-in", axum::routing::post(test_endpoints::plug_in))
             .route("/test/attention", axum::routing::get(test_endpoints::attention))
+            .route("/test/group-partners", axum::routing::get(test_endpoints::group_partners))
             .route("/test/backup-verify", axum::routing::post(test_endpoints::backup_verify))
             .route("/test/score-check", axum::routing::post(test_endpoints::score_check))
             .route("/test/shell", axum::routing::get(test_endpoints::shell_requests))

@@ -855,3 +855,20 @@ pub async fn backup_verify(
     .await;
     found.map(Json).map_err(AppError::Internal)
 }
+
+#[derive(serde::Deserialize)]
+pub struct GroupPartnersQuery {
+    group: String,
+}
+
+/// GET `/test/group-partners?group=` - the machines one group's gossip pass may ask, and the ones
+/// it would pick now (plans/NETWORK.md): the rig is shared, so "this node never dialed that one"
+/// can't be read off the machine table - other groups and other loops dial whom they like.
+pub async fn group_partners(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<GroupPartnersQuery>,
+) -> Result<Json<Value>, AppError> {
+    let group = crate::roster::group_of(&q.group)?;
+    let (candidates, picked) = crate::roster::gossip_partners(&state, &group).await;
+    Ok(Json(serde_json::json!({ "candidates": candidates, "picked": picked })))
+}

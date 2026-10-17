@@ -126,3 +126,99 @@
     border-top: 1px solid var(--border);
     margin: 1.4rem 0 0.2rem;
 }
+
+/* The Network page (plans/NETWORK.md, 2026-10-17): this machine, then one card per machine - a
+   card rather than a table row, so a phone's width holds it without running sideways. */
+.machine-this {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.machine-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.machine-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: var(--surface);
+    padding: 0.6rem 0.8rem;
+}
+
+.machine-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.machine-name {
+    color: var(--ink);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.machine-words {
+    color: var(--muted);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.8rem;
+}
+
+.machine-facts {
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
+
+.machine-status {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.machine-status-answering {
+    color: var(--teal);
+}
+
+.machine-status-dark,
+.machine-status-unanswered {
+    color: var(--coral);
+}
+
+.machine-reliability {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.machine-bar {
+    flex: 0 0 6rem;
+    height: 0.4rem;
+    background: var(--surface-2);
+}
+
+.machine-bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--teal);
+}
+
+.machine-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.machine-link {
+    font-size: 0.8rem;
+    color: var(--teal);
+    border: 1px solid var(--border);
+    padding: 0.1rem 0.45rem;
+    text-decoration: none;
+}

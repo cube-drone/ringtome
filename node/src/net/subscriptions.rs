@@ -431,6 +431,20 @@ pub async fn eager_follows(node_db: &crate::db::Db) -> Result<Vec<(String, Strin
 
 /// Does `local_root` follow `foreign_root` for feed purposes? The same criterion as
 /// `followers_of`, asked pointwise - the notifications fold's routing check.
+/// Everyone `local_root` follows, by the same rule as [`follows`]: an interest above zero. The
+/// Network page's "serves {name}" links (plans/NETWORK.md).
+pub async fn followed_by(node_db: &crate::db::Db, local_root: &str) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT foreign_root FROM subscriptions
+             WHERE local_root = ?1 AND eagerness IS NOT NULL AND eagerness > 0",
+            (local_root,),
+        )
+        .await
+        .context("listing whom a persona follows")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 pub async fn follows(
     node_db: &crate::db::Db,
     local_root: &str,

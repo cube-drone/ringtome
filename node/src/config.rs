@@ -194,8 +194,9 @@ pub struct Config {
     /// This node's human name - what a key hosted here is labeled with in its identity's
     /// device names (PROJECT_PLAN, Device Names). A desktop node defaults to the machine's
     /// hostname; a public operator sets the domain (`RINGTOME_NODE_NAME=ringtome.example`).
-    /// Purely a label: it appears only as private register values on identities this node
-    /// hosts, never in any public surface, and it confers no authority anywhere.
+    /// Purely a label, conferring no authority anywhere. Since 2026-10-17 it is also what every
+    /// Hello announces, for the other side's machine table (plans/NETWORK.md, ruling 1) - unless
+    /// the operator renamed the machine on the Network page, which wins (`machines::node_name`).
     pub node_name: String,
     /// `RINGTOME_ADMIN_PERSONA_ID`: the persona the operator means to administer this node,
     /// by its speakable address (`serve-gush-7hyc…`). When set, the account that comes to

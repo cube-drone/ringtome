@@ -719,8 +719,8 @@ const Inside = ({ session }) => {
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
             <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
-            <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} />
-            <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} />
+            <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} current=${persona.current} />
+            <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} current=${persona.current} />
             <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${ChatApp} path="/ringtome/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${RoomRoute} path="/ringtome/user/:seg/room/:doc" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />

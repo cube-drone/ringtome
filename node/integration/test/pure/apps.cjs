@@ -323,38 +323,35 @@ describe('app registry', () => {
             const none = () => false;
             assert.deepEqual(
                 appsFor(false, none).map((a) => a.id),
-                ['persona', 'settings', 'notifications', 'drawing', 'bank'],
-                "Settings is everyone's, second, and never sold (2026-10-09)",
+                ['persona', 'settings', 'notifications', 'drawing', 'bank', 'device'],
+                "Settings is everyone's, second, and never sold (2026-10-09); so is the server's Network page (2026-10-17)",
             );
             const friends = (id) => id === 'friends';
             assert.ok(appsFor(false, friends).some((a) => a.id === 'people'));
             assert.ok(!appsFor(false, friends).some((a) => a.id === 'notes'));
             assert.deepEqual(
                 appsFor(true, none).map((a) => a.id),
-                ['persona', 'settings', 'notifications', 'drawing', 'bank', 'device'],
-                'an administrator also has the server',
+                appsFor(false, none).map((a) => a.id),
+                'an administrator has the same tiles: the server app sorts its pages by who asks',
             );
             const cells = consoleCellsFor(false, 4, none);
             assert.equal(cells.length % 4, 0, 'the comb stays whole');
         });
     });
 
-    describe('administrator-only apps', () => {
-        it('shows the settings app to an administrator and nobody else', () => {
+    // hrseServer is everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5): the admin barrier
+    // is per page inside it, not on the tile.
+    describe('the server app', () => {
+        it('is on every console, administrator or not', () => {
             assert.ok(appsFor(true).some((a) => a.id === 'device'));
-            assert.ok(!appsFor(false).some((a) => a.id === 'device'));
+            assert.ok(appsFor(false).some((a) => a.id === 'device'));
             assert.deepEqual(
                 appsFor(false).map((a) => a.id),
-                appsFor(true)
-                    .map((a) => a.id)
-                    .filter((id) => id !== 'device'),
-                'and hides nothing else',
+                appsFor(true).map((a) => a.id),
             );
         });
 
         it('keeps the console honeycomb whole either way', () => {
-            assert.ok(consoleCellsFor(true).some((a) => a.id === 'device'));
-            assert.ok(!consoleCellsFor(false).some((a) => a.id === 'device'));
             for (const admin of [true, false]) {
                 for (const columns of [3, 4, 5]) {
                     const cells = consoleCellsFor(admin, columns);

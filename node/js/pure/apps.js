@@ -207,18 +207,19 @@ export const APPS = [
     },
     {
         id: 'device',
-        // The place's own settings, for its administrators only (apps/device.js): who may sign
-        // up, and backups (Curtis, 2026-09-25). Named for what the person is holding - "Device"
-        // in the desktop app, where it is their own computer, and "Server" in a browser reaching
-        // one - and never "node", a word people using this should not need. Not a documents app.
+        // The place's own settings (apps/device.js): its Network page for everyone, and for its
+        // administrators who may sign up, backups and the front page (Curtis, 2026-09-25). Named
+        // for what the person is holding - "Device" in the desktop app, where it is their own
+        // computer, and "Server" in a browser reaching one - and never "node", a word people
+        // using this should not need. Not a documents app.
         name: 'hrseServer™',
         deviceName: 'hrseDevice™',
         icon: 'server',
         deviceIcon: 'device',
         live: true,
-        // Shown only to an account holding `node_admin` (`appsFor`); the node refuses everyone
-        // else at every door regardless.
-        admin: true,
+        // Everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5): a regular user sees only its
+        // Network page, an administrator every page (apps/device.js), and the node refuses
+        // everyone else at every admin door regardless.
         itemNoun: 'setting',
     },
     { blank: true },

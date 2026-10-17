@@ -319,7 +319,7 @@ async fn create_handler(
         &state.keystore,
         &state.user_dbs,
         &session.account.id,
-        &state.config.node_name,
+        &crate::machines::node_name(&state.config.node_name),
         state.config.admin_persona,
     )
     .await?;

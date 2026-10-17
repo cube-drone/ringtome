@@ -50,6 +50,13 @@ struct Plan {
     changed: usize,
     #[serde(default)]
     removed: usize,
+    /// The pages this rollout has re-said so far, `(post, title)`, kept on the plan across passes:
+    /// a pass that stops to wait on a bake comes back on the next beat, which finds those pages
+    /// already at their heads and skips them, and the update must still name them (the
+    /// `combinations.cjs` flake, 2026-10-17, where a rollout came to rest with `changed: 0`).
+    /// Empty on a fresh ask: the rollout route writes a new plan.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    changed_pages: Vec<(String, String)>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
@@ -319,7 +326,8 @@ async fn rollout(
     // The pages, through the door - skipping any whose published version is already the head.
     let mut done = 0usize;
     let mut baking = false;
-    let mut changed: Vec<(String, String)> = Vec::new(); // (post hex, title) minted this pass
+    // (post hex, title) re-said by this rollout: the earlier passes' too, when a bake paused it.
+    let mut changed: Vec<(String, String)> = std::mem::take(&mut plan.changed_pages);
     let mut published: BTreeMap<[u8; 16], String> = BTreeMap::new();
     for doc_id in &pages {
         let head_hex = view
@@ -370,8 +378,10 @@ async fn rollout(
                 }
                 data.annotations().set_field(doc_id, PUBLISHED_VERSION, &head_hex).await?;
                 published.insert(*doc_id, hex::encode(post_id));
-                changed
-                    .push((hex::encode(post_id), titles.get(doc_id).cloned().unwrap_or_default()));
+                let post_hex = hex::encode(post_id);
+                if !changed.iter().any(|(p, _)| *p == post_hex) {
+                    changed.push((post_hex, titles.get(doc_id).cloned().unwrap_or_default()));
+                }
                 done += 1;
                 plan.done = done;
             }
@@ -390,6 +400,7 @@ async fn rollout(
     plan.done = done;
     if baking {
         plan.status = "baking".into();
+        plan.changed_pages = changed;
         return Ok(());
     }
 

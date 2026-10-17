@@ -1841,6 +1841,13 @@ fn ledger_scope(wanted: &[u32], instances: &[[u8; 16]], ask: Ask) -> String {
 /// disagree about an exchange, the log says which two - and loudly when the peer is AHEAD,
 /// because that is the one direction where the fix is on this end (the app updates itself,
 /// DESKTOP.md Stage 6). A peer that predates the slot says nothing, and is noted as such.
+/// What a peer's Hello said of its machine, for the machine table (plans/NETWORK.md).
+fn note_peer_name(peer_id: &[u8; 32], name: &str, version: &str) {
+    if let Ok(ep) = iroh::PublicKey::from_bytes(peer_id) {
+        crate::machines::announced(&ep.to_string(), name, version);
+    }
+}
+
 fn note_peer_version(state: &AppState, peer_id: &[u8; 32], theirs: &str) {
     let ours = state.config.app_version.as_str();
     if let Ok(ep) = iroh::PublicKey::from_bytes(peer_id) {
@@ -2036,6 +2043,7 @@ async fn exchange_on(
             // come to whoever can read them rather than only to the creator's own circle.
             key_proofs: crate::chat::key_proofs_for(state, instances, &our_id, &peer_id).await,
             version: state.config.app_version.clone(),
+            name: crate::machines::node_name(&state.config.node_name),
             // Our crowd word (plans/CROWD.md, ruling 2): whether we serve this persona to
             // strangers too, so its own node may send others our way.
             crowd: Crowd { holds: crate::crowd::holds(state, root_hex).await, holders: vec![] },
@@ -2051,6 +2059,7 @@ async fn exchange_on(
             proof,
             version,
             crowd,
+            name,
             // (the responder echoes our scope and zeros for depth; our own `wanted` and
             // `ask` are authoritative)
             ..
@@ -2059,6 +2068,7 @@ async fn exchange_on(
                 bail!("peer answered for a different identity");
             }
             note_peer_version(state, &peer_id, &version);
+            note_peer_name(&peer_id, &name, &version);
             (frontiers, proof, crowd.holders)
         }
         other => bail!("expected Hello from peer, got {other:?}"),
@@ -2375,8 +2385,10 @@ async fn serve_on(
                 key_proofs,
                 version,
                 crowd,
+                name,
             }) => {
                 note_peer_version(&state, &peer_id, &version);
+                note_peer_name(&peer_id, &name, &version);
                 (
                     root,
                     frontiers,
@@ -2434,6 +2446,7 @@ async fn serve_on(
                 key_proofs: Vec::new(),
                 version: state.config.app_version.clone(),
                 crowd: Crowd::default(),
+                name: crate::machines::node_name(&state.config.node_name),
             },
         )
         .await?;
@@ -2645,6 +2658,7 @@ async fn serve_on(
             key_proofs: Vec::new(),
             version: state.config.app_version.clone(),
             crowd: Crowd { holds: false, holders: referrals },
+            name: crate::machines::node_name(&state.config.node_name),
         },
     )
     .await?;

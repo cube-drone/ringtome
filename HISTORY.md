@@ -22864,3 +22864,60 @@ drawing is posted.
   as a group post whose words are its group picture, served laundered and never
   publicly. The groups list knows the draft. A second publish edits the post
   with a new picture. A note is refused at the drawing door.
+
+## 2026-10-17 — The machine table, the Network page, and group gossip
+
+Group sync dialed every member's node for every member every minute, about n²
+exchanges per node per minute and n³ across a group. Curtis asked for two things
+together (plans/NETWORK.md): a durable table by machine shared by every kind of
+sync, shown to every user, and group sync by gossip that prefers reliable
+partners but keeps a slot for the unreliable.
+
+- **The table.** `machines.rs` keeps a book of every machine this node has
+  connected with, either way: the name and version it announced, its last good
+  connect and last failure, the last time it called in, decayed counts of
+  connects that worked and didn't, the average connect time, and the protocols
+  that touched it. `p2p::dial` and the accept loop tell it in memory, a flush
+  writes what moved every 30 seconds (node rung 96), and boot loads it back
+  before the first connection. A machine whose last word was a failure comes
+  back dark for one window.
+- **Names.** The Hello carries the sender's machine name (arity 11): the name
+  the operator chose, else `RINGTOME_NODE_NAME`, else the hostname. Curtis:
+  "it's honestly a lot more convenient for me to see 'curtis's mac mini is
+  offline'". An administrator renames the machine on the Network page
+  (`PUT /api/admin/machine-name`), and a new key is labelled with the chosen
+  name too.
+- **The Network page.** First planned as an app, hrseP²P™, then a page of
+  hrseServer™ / hrseDevice™ (Curtis: "this functionality actually belongs as a
+  'Network' tab"). The app is now on everyone's console: a regular user sees the
+  Network page alone, an administrator every page. Each machine is a card: its
+  name or speakable words, whether it's answering, when it last answered, failed
+  and called in, reliability as a bar, the connect time, its version and
+  protocols. The viewer's own links ride beside: their computers, the machines
+  serving and holding the people they follow, their groups. Nobody else's are
+  shown (`GET /api/identity/{root}/machines`).
+- **Gossip.** The group-sync beat now asks three of the current members'
+  machines a pass: two by reliability, one check-in for the machine tried
+  longest ago (`pick_partners`). With each, one exchange per persona the lanes
+  name, both ways. A removed member's node is told apart by the group's peer
+  ledger. A write pushes a pass within three seconds, debounced per group. The
+  sync button, joining and opening an invite still exchange with everyone.
+- **Tests.** Unit tests for the book, the flush and boot load, and the partner
+  choice; a proto test for the name slot; pure tests for the page's rules.
+  `machines.cjs` (five claims) and `groupgossip.cjs` (two claims), with
+  `/test/group-partners` to ask what a pass would pick, since the shared rig's
+  machine table can't say who a pass dialed.
+
+## 2026-10-17 — A book rollout's flake settled
+
+CI on "group replies" went red in `combinations.cjs`, and the reruns called it a
+flake, 0 of 5. The trusted book's second rollout came to rest with `changed: 0`
+after its chapter was edited, so no update post was minted, and the takedown
+claim after it failed on the missing update. A rollout walks its pages in id
+order. When a page later in the walk had to wait on a bake, the pass stopped as
+"baking", and the pages it had already re-said were known only to that pass. The
+next beat found them at their heads and skipped them. The plan now keeps the
+re-said pages across passes (`changed_pages`), so the update names them however
+many passes the rollout takes. A fresh ask starts empty, because the rollout
+route writes a new plan. The combinations, export and import areas are green
+(34), and so are the node's tests.

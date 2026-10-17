@@ -165,6 +165,12 @@ lightly federated, unapologetically Old Internet.
   provenance tags, OAuth for claude.ai and its kind, a page in settings saying
   how to connect one, and (2026-10-11) notebooks, their trees, and an hour's API
   key for what the tools don't reach.
+- [`NETWORK.md`](plans/NETWORK.md) — the machine table: every machine this node
+  talks to, by the name it announces, with how reliably it answers, kept across
+  restarts and shared by every kind of sync; hrseServer™'s Network page, open to
+  every user, showing it with their own links; and group sync by gossip, three
+  partners a pass, two by reliability and one check-in slot. Rulings settled
+  2026-10-17.
 - [`ONE_FEED.md`](plans/ONE_FEED.md) — group posts in the one feed journal,
   filtered like any post, and a group's fold cached by a stamp rather than
   rebuilt on every read (built 2026-10-16; replaced GROUPS.md slice 4b's
