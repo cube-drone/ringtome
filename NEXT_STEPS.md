@@ -81,10 +81,6 @@ are driving towards.
     node asks bea's for it"** failed once in a full run on 2026-10-16, 0 of 5
     reruns. Key-prefetch timing across nodes; another flake to chase.
 - From group rooms (plans/GROUP_ROOMS.md, built 2026-10-16):
-  - **Closing a group room.** The server takes it (publish the room's draft to
-    the group again with `settled`), but the room's close chip finds its draft
-    through the mirror's `published_as`, which a group post's draft doesn't
-    carry, so the chip is hidden in a group's room for now.
   - **A removed member still hears a room's bells**, and its presence and
     typing: the topic is one they knew. Never a word. A topic that moves on a
     removal would end it.

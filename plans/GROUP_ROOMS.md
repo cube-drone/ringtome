@@ -108,6 +108,14 @@ anyone starts a room.
   `POST .../groups/{group}/general`, refused while the group's #general stands.
 - **Owners may replace it** (point the setting at another room) but not delete
   another person's room; its creator's node archives it as any room's does.
+- **It stays open.** Any other room's creator closes theirs with
+  `POST .../groups/{group}/docs/{doc}/close`: the node finds the room's draft in
+  `group_drafts` - a group post's draft carries no `published_as` - and
+  publishes it again, settled. The standing room has no draft, and the door
+  refuses to close it.
+- **It stays up.** Any other room's creator deletes theirs as they would any
+  group post, with `POST .../groups/{group}/docs/{doc}/retract`; that door
+  refuses the standing room.
 
 ## What changes in the app
 

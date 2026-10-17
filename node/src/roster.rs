@@ -712,6 +712,12 @@ pub async fn out_since(state: &AppState, group: &GroupId, root: &str) -> Option<
     newest
 }
 
+/// Is `(author, doc)` the group's standing room, its #general?
+pub async fn is_standing(state: &AppState, group: &GroupId, author: &str, doc: &[u8; 16]) -> bool {
+    let Ok(Some((roster, _))) = folded(state, group).await else { return false };
+    roster.room.is_some_and(|(a, d)| hex::encode(a) == author && d == *doc)
+}
+
 /// The group's owners now, as the door last folded it.
 pub async fn owners_of(state: &AppState, group: &GroupId) -> Vec<String> {
     state
@@ -1409,6 +1415,7 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/publish", post(publish_handler))
         .route("/api/identity/{root}/docs/{doc_id}/groups", get(draft_groups_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/retract", post(retract_handler))
+        .route("/api/identity/{root}/groups/{group}/docs/{doc}/close", post(close_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/hide", post(hide_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/pin", post(pin_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/labels", post(label_handler))
@@ -2810,6 +2817,12 @@ async fn retract_handler(
             "you can take down only your own posts"
         )));
     }
+    if roster.room == Some((me, doc)) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.general-stays",
+            "the group's #general can't be taken down"
+        )));
+    }
     append_document(
         &state,
         &data,
@@ -2830,6 +2843,72 @@ async fn retract_handler(
         .context("forgetting a taken-down post's draft")
         .map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "retracted": hex::encode(doc) })))
+}
+
+/// POST `.../groups/{group}/docs/{doc}/close` - close a room of your own in the group for good
+/// (CHAT.md, ruling 10): its draft published again, settled, as a public room is closed. The node
+/// finds the draft - the post's link to it is `group_drafts`, never a field on the draft - so the
+/// app needn't. The group's #general stays open: it is the group's, and has no draft.
+async fn close_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group, doc)): Path<(String, String, String)>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let doc = doc_of(&doc)?;
+    let (roster, _) = current(&state, &group, &me).await?;
+    if !roster.members.contains(&me) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "roster.members-only",
+            "only the group's members can post to it"
+        )));
+    }
+    if roster.room == Some((me, doc)) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.general-stays-open",
+            "the group's #general stays open"
+        )));
+    }
+    let (versions, gone) = documents_of(&state, &group, &roster).await?;
+    let shown = versions
+        .get(&doc)
+        .filter(|_| !gone.contains(&doc))
+        .and_then(|l| l.first().filter(|v| v.persona == me).and(display(l)))
+        .ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "roster.not-a-room-of-yours",
+                "that isn't a room of yours in this group"
+            ))
+        })?;
+    if shown.header.format != Some(ringtome_proto::registry::doc_format::ROOM) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.not-a-room",
+            "that post isn't a room"
+        )));
+    }
+    if shown.header.settled {
+        return Ok(Json(serde_json::json!({ "group": hex::encode(group), "closed": true })));
+    }
+    let dated_ms = shown.header.dated_ms;
+    let draft: Option<(Vec<u8>,)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT source FROM group_drafts WHERE root = ?1 AND group_id = ?2 AND post = ?3",
+            (root.as_str(), group.to_vec(), doc.to_vec()),
+        )
+        .await
+        .context("finding a group room's draft")
+        .map_err(AppError::Internal)?;
+    let draft: [u8; 16] = draft.and_then(|(d,)| d.try_into().ok()).ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "roster.the-rooms-draft-is-gone",
+            "this room's draft isn't on this computer"
+        ))
+    })?;
+    publish(&state, &data, &root, &group, &draft, Wishes { dated_ms, settled: true, room: true })
+        .await?;
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "closed": true })))
 }
 
 /// GET `/api/identity/{root}/docs/{doc_id}/groups` - the groups this draft is posted in, and as

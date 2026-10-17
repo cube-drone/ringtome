@@ -22724,3 +22724,29 @@ line stands everywhere, whose new one reaches nobody, and who sees nothing said
 after. Those six and the neighbouring chat, group, IM and MCP areas (77 claims)
 pass. Proto 171, node 629 and 14, clippy clean; the JS gate is at 1030 and
 strings at 2590 phrases.
+
+## 2026-10-17 — Closing a group room
+
+The room's close chip found its draft through the mirror's `published_as`, which
+the public publish writes on the draft. A group post's link to its draft is the
+node's `group_drafts` table instead, since one draft can be posted to several
+groups, so the chip had nothing to publish and was hidden in a group's room. Now
+`POST .../groups/{group}/docs/{doc}/close` closes a room of the caller's own:
+the node finds the draft and publishes it again, settled. The chip in a group's
+room asks that door. The group's #general has no draft and stays open: the door
+refuses it, and the room's door now says `standing` so the app hides the chip
+there. A seventh claim in `grouprooms.cjs` covers it: only the creator closes
+it, the closing reaches the other member's node and stops new lines there, the
+record stands, and #general is refused. All seven pass.
+
+## 2026-10-17 — Deleting a group room
+
+Curtis deleted a room he had made in a group and got "that post isn't on your
+public shelf". The room's delete chip asked the public takedown,
+`DELETE .../posts/{doc}`, which looks only at the public shelf; a group room is
+a group post, taken down by a retraction on its creator's lane for the group.
+The chip in a group's room now asks the group's `retract` door, and is hidden in
+#general, which that door now refuses as the close door does. An eighth claim in
+`grouprooms.cjs` covers it: the group's owner can't take down a member's room,
+its creator can, it leaves the chats and the group's page at both nodes, and
+#general is refused. All eight pass.

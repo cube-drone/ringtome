@@ -1546,13 +1546,21 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         loc.route(appHref('chat'));
     };
     const closeRoom = async () => {
-        if (!roomDraft || closing) return;
+        if ((!roomDraft && !room.group) || closing) return;
         setClosing(true);
         try {
-            await api(`/api/identity/${root}/docs/${roomDraft.doc_id}/publish`, {
-                method: 'POST',
-                body: JSON.stringify({ settled: true }),
-            });
+            // A group's room is closed by the group's door, which finds its draft itself: a
+            // group post's draft carries no `published_as` (roster.rs `close_handler`).
+            if (room.group) {
+                await api(`/api/identity/${root}/groups/${room.group}/docs/${doc}/close`, {
+                    method: 'POST',
+                });
+            } else {
+                await api(`/api/identity/${root}/docs/${roomDraft.doc_id}/publish`, {
+                    method: 'POST',
+                    body: JSON.stringify({ settled: true }),
+                });
+            }
             setRoom((r) => r && { ...r, closed: true });
             readHistory();
             if (onChanged) onChanged();
@@ -1629,7 +1637,13 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     const takeDown = async () => {
         setGoing(true);
         try {
-            await api(`/api/identity/${root}/posts/${doc}`, { method: 'DELETE' });
+            // A group room is a group post, taken down by a retraction on its creator's lane for
+            // the group; a public room, off the public shelf.
+            if (room && room.group)
+                await api(`/api/identity/${root}/groups/${room.group}/docs/${doc}/retract`, {
+                    method: 'POST',
+                });
+            else await api(`/api/identity/${root}/posts/${doc}`, { method: 'DELETE' });
             if (onChanged) onChanged();
             loc.route(appHref('chat'));
         } catch (e) {
@@ -1770,6 +1784,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 ${
                     !room.im &&
                     room.mine &&
+                    !room.standing &&
                     html`<button class="chip chip-button chip-worded chip-delete" type="button" title=${t('apps.chat.delete-the-room-title', 'delete this room')} onClick=${() => setDeleting(true)}>
                     <${Icons.trash} /><span class="chip-word">${t('chips.delete', 'delete')}</span>
                 </button>`
@@ -1882,11 +1897,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                         : room.closed
                           ? html`<span class="chip chip-worded chip-open" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /><span class="chip-word">${t('chips.closed', 'closed')}</span></span>`
                           : room.mine &&
-                            !room.group &&
+                            !room.standing &&
                             html`<button
                           class="chip chip-button chip-worded"
                           type="button"
-                          disabled=${closing || !roomDraft}
+                          disabled=${closing || (!roomDraft && !room.group)}
                           title=${t('apps.chat.close-the-room-title', 'close this room for good')}
                           onClick=${closeRoom}
                       >

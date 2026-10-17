@@ -331,4 +331,80 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         );
         assert.ok(!potluckAtCal.words.includes('and i the rolls'), JSON.stringify(potluckAtCal));
     });
+    it("a room's creator closes it, the closing reaches the members, and #general stays open", async () => {
+        // Only the room's own creator: ada owns the group, but potluck is bea's.
+        assert.equal(
+            (await j(ada, `api/identity/${adaRoot}/groups/${group}/docs/${potluck}/close`, {}))
+                .status,
+            404,
+        );
+        const closed = await j(
+            bea,
+            `api/identity/${beaRoot}/groups/${group}/docs/${potluck}/close`,
+            {},
+        );
+        assert.equal(closed.status, 200, await closed.text());
+        const atBea = await (await bea(room(beaRoot, beaRoot, potluck))).json();
+        assert.ok(atBea.closed, 'closed at bea');
+        assert.equal((await say(bea, beaRoot, beaRoot, potluck, 'one more thing')).status, 400);
+        await sync(bea, beaRoot);
+        await sync(ada, adaRoot);
+        const atAda = await (await ada(room(adaRoot, beaRoot, potluck))).json();
+        assert.ok(atAda.closed, 'and at ada');
+        assert.equal((await say(ada, adaRoot, beaRoot, potluck, 'wait')).status, 400);
+        const said = await wordsAt(ada, adaRoot, beaRoot, potluck);
+        assert.ok(said.words.includes('i have the salad'), 'the record stands');
+        // The group's #general is the group's, and stays open.
+        const general_ = await j(
+            ada,
+            `api/identity/${adaRoot}/groups/${group}/docs/${general.doc_id}/close`,
+            {},
+        );
+        assert.equal(general_.status, 400, await general_.text());
+        assert.ok((await (await ada(room(adaRoot, adaRoot, general.doc_id))).json()).standing);
+    });
+
+    it("a room's creator deletes it, the takedown reaches the members, and #general stays", async () => {
+        const draft = await (
+            await j(bea, `api/identity/${beaRoot}/docs`, {
+                title: 'bake sale',
+                body: 'who bakes what',
+                format: 'marquee',
+            })
+        ).json();
+        const sale = (await act(bea, beaRoot, 'publish', { doc: draft.doc_id, room: true })).post;
+        assert.equal((await say(bea, beaRoot, beaRoot, sale, 'scones')).status, 200);
+        await sync(bea, beaRoot);
+        await sync(ada, adaRoot);
+        assert.ok(
+            (await rooms(ada, adaRoot)).some((r) => r.doc_id === sale),
+            'listed at ada',
+        );
+        // Only the room's own creator: ada owns the group, but the sale is bea's.
+        assert.equal(
+            (await j(ada, `api/identity/${adaRoot}/groups/${group}/docs/${sale}/retract`, {}))
+                .status,
+            403,
+        );
+        const gone = await j(
+            bea,
+            `api/identity/${beaRoot}/groups/${group}/docs/${sale}/retract`,
+            {},
+        );
+        assert.equal(gone.status, 200, await gone.text());
+        assert.ok(!(await rooms(bea, beaRoot)).some((r) => r.doc_id === sale), 'gone at bea');
+        assert.notEqual((await bea(room(beaRoot, beaRoot, sale))).status, 200);
+        await sync(bea, beaRoot);
+        await sync(ada, adaRoot);
+        assert.ok(!(await rooms(ada, adaRoot)).some((r) => r.doc_id === sale), 'and at ada');
+        assert.notEqual((await ada(room(adaRoot, beaRoot, sale))).status, 200);
+        assert.ok(!(await groupPosts(ada, adaRoot)).some((p) => p.doc === sale));
+        // The group's #general is the group's, and stays.
+        const general_ = await j(
+            ada,
+            `api/identity/${adaRoot}/groups/${group}/docs/${general.doc_id}/retract`,
+            {},
+        );
+        assert.equal(general_.status, 400, await general_.text());
+    });
 });

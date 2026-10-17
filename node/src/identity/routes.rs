@@ -1546,6 +1546,11 @@ async fn room_enter_handler(
         // it - the creator, or an owner of the group.
         "group": group.map(hex::encode),
         "moderates": crate::chat::may_moderate(&state, &root, &author, &doc).await,
+        // Its #general, which stays open (roster.rs `close_handler`).
+        "standing": match &group {
+            Some(g) => crate::roster::is_standing(&state, g, &author, &doc_id).await,
+            None => false,
+        },
         // ...and who can't be muted there: the group's owners.
         "owners": match &group {
             Some(g) => crate::roster::owners_of(&state, g).await,
