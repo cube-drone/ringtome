@@ -1515,6 +1515,8 @@ pub struct GroupMark {
     pub hidden: bool,
     /// The reader is one of the group's owners, so the card offers hide and show.
     pub owns: bool,
+    /// Its pin (slice 4d): 0 none, 1 a member's, 2 an owner's.
+    pub pin: u8,
 }
 
 /// How many of a document's other sharers a feed row will carry. A count is exact; a LIST is a
@@ -1858,7 +1860,7 @@ impl<'a> JournalFilter<'a> {
     }
 }
 
-const JOURNAL_COLUMNS: &str = "author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms, group_id, hidden, owns";
+const JOURNAL_COLUMNS: &str = "author_root, via_root, suggested_via, doc_id, title, format, published_ms, updated_ms, arrived_ms, settled, trusted_only, onward, dated_ms, minted_ms, group_id, hidden, owns, pin";
 
 /// One page of a reader's journal through `filter`, newest first (ties by document id, highest
 /// first), after `before` (the last row shown's `(published_ms, doc_id)`).
@@ -2041,6 +2043,7 @@ pub async fn hot_page(
         i64,
         i64,
         i64,
+        i64,
     );
     let rows: Vec<Row> = node_db
         .fetch_all(&hot_scored_sql(filter), (filter.reader, from, to))
@@ -2050,8 +2053,8 @@ pub async fn hot_page(
         .into_iter()
         .map(|(r, row)| (HotRank { hot_ms: r.published_ms, doc_id: r.doc_id }, row, 0))
         .collect();
-    for (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, milli) in rows {
-        let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q));
+    for (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, milli) in rows {
+        let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r));
         let rank = HotRank { hot_ms: hot_of(row.published_ms, milli), doc_id: row.doc_id.clone() };
         let in_page = rank.hot_ms >= floor && after.as_ref().is_none_or(|c| c.before(&rank));
         if in_page {
@@ -2109,6 +2112,7 @@ async fn scored_run(
         i64,
         i64,
         i64,
+        i64,
     );
     // A month or less: read by the window; a year: off the score index.
     let by_window = filter
@@ -2126,8 +2130,8 @@ async fn scored_run(
     .context("reading a best page's scored run")?;
     Ok(rows
         .into_iter()
-        .map(|(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, milli)| {
-            let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q));
+        .map(|(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, milli)| {
+            let row = journal_row((a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r));
             (
                 crate::score::Rank {
                     milli,
@@ -2255,6 +2259,7 @@ type JournalTuple = (
     Vec<u8>,
     i64,
     i64,
+    i64,
 );
 
 fn journal_row(
@@ -2276,6 +2281,7 @@ fn journal_row(
         group_id,
         hidden,
         owns,
+        pin,
     ): JournalTuple,
 ) -> FeedRow {
     FeedRow {
@@ -2299,6 +2305,7 @@ fn journal_row(
             name: String::new(),
             hidden: hidden != 0,
             owns: owns != 0,
+            pin: pin as u8,
         }),
     }
 }

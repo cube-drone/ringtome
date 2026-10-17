@@ -2680,6 +2680,11 @@ async fn dress_feed(
             FeedItem {
                 group: r.group.map(|g| GroupCard {
                     name: group_names.get(&g.id).cloned().unwrap_or(g.name),
+                    pinned: match g.pin {
+                        2 => Some("owner"),
+                        1 => Some("member"),
+                        _ => None,
+                    },
                     id: g.id,
                     hidden: g.hidden,
                     owner: g.owns,
@@ -2751,6 +2756,9 @@ struct GroupCard {
     /// The reader owns the group, so the card offers hide and show.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     owner: bool,
+    /// Pinned in the group (slice 4d): by an `owner`, shown first, or by a `member`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pinned: Option<&'static str>,
 }
 
 /// The journal filter a feed request asks for: the reader's own posts or not, a window or not, and

@@ -771,7 +771,18 @@ Dropped:
      - A future date is a plan naming the group; the publish-due sweep posts it
        through `roster::publish_planned` while its author is still a member, and
        spends the plan either way.
-   - **4d, pins**: the two layers and the page's order.
+   - **4d, pins** (built 2026-10-16: proto `GroupEntry::Pin`, `MemberPin`,
+     `Roster::owner_pins`, `member_pins`; node rung 92; `roster.rs`
+     `pin_handler`; `postentry.js` `GroupPinButton`; `groups.js` the pinned
+     strip; `groupposts.cjs`). Any member pins any post (Curtis, 2026-10-16). An
+     owner's pin is an owner's act, wire kind 14, a register per post settled as
+     a hide is, by seniority. A member's is a member's own act, kind 15, counted
+     while they're in, and members have no ranks, so concurrent heads settle by
+     hash. A post an owner pinned is in the owners' layer alone. Unpinning takes
+     away what the caller may: an owner, every pin on the post; a member, a
+     member's pin (anyone's), never an owner's. The journal row carries the pin
+     (0 none, 1 member, 2 owner) for the card and the page: owners' pins first,
+     then members', above the rest.
 5. **Rooms for groups**: the standing room and ad-hoc ones.
 6. **The People side**: the Groups tab and the group's page come first, with the
    app for slices 1 and 2; then groups beside tags, mute, notifications, and

@@ -9,7 +9,8 @@ let groupsInOrder,
     groupFeeds,
     membersAtAGlance,
     groupFeedOn,
-    groupPostItem;
+    groupPostItem,
+    pinnedFirst;
 before(async () => {
     ({
         groupsInOrder,
@@ -20,6 +21,7 @@ before(async () => {
         membersAtAGlance,
         groupFeedOn,
         groupPostItem,
+        pinnedFirst,
     } = await import('../../../js/pure/groups.js'));
 });
 
@@ -145,5 +147,25 @@ describe('groups in People', () => {
             groupPostItem({ root: 'me', post: 'x', group: { group: 'g' }, now: 1 }).title,
             '',
         );
+    });
+
+    it("puts a group's pinned posts first, owners' above members', each listed once", () => {
+        const at = (doc, pinned) => ({ doc_id: doc, group: { id: 'g', pinned } });
+        const { pinned, rest } = pinnedFirst([
+            at('new', null),
+            at('m1', 'member'),
+            at('o1', 'owner'),
+            at('old', null),
+            at('o2', 'owner'),
+        ]);
+        assert.deepEqual(
+            pinned.map((i) => i.doc_id),
+            ['o1', 'o2', 'm1'],
+        );
+        assert.deepEqual(
+            rest.map((i) => i.doc_id),
+            ['new', 'old'],
+        );
+        assert.deepEqual(pinnedFirst(null), { pinned: [], rest: [] });
     });
 });

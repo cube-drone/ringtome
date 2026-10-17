@@ -481,6 +481,54 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         await act(bea, beaRoot, `docs/${fresh}/retract`);
     });
 
+    it("pins: a member's, an owner's above it, and who may take each down", async () => {
+        // Slice 4d (Curtis, 2026-10-15/16): owners and members both pin any post; an owner's pin
+        // is the owners' layer, shown first; owners unpin anything; members unpin members' pins.
+        const pinOf = async (who, root) =>
+            (
+                (
+                    (await (await who(`api/identity/${root}/feed?group=${group}`)).json()).items ||
+                    []
+                ).find((i) => i.doc_id === post) || {}
+            ).group?.pinned;
+        const settle = async (who, root, want) => {
+            let got;
+            for (let i = 0; i < 20; i++) {
+                await sync(ada, adaRoot);
+                await sync(bea, beaRoot);
+                got = await pinOf(who, root);
+                if (got === want) break;
+                await wait(300);
+            }
+            return got;
+        };
+        // Bea, a member, pins it - her own post, though any would do.
+        assert.equal(
+            (await act(bea, beaRoot, `docs/${post}/pin`, { pinned: true })).pinned,
+            'member',
+        );
+        assert.equal(await settle(ada, adaRoot, 'member'), 'member', "ada's node has bea's pin");
+        // Ada, an owner, pins it too: the owners' layer holds it.
+        assert.equal(
+            (await act(ada, adaRoot, `docs/${post}/pin`, { pinned: true })).pinned,
+            'owner',
+        );
+        assert.equal(await settle(bea, beaRoot, 'owner'), 'owner', "bea's node: an owner's pin");
+        // Bea can't take an owner's pin down.
+        const refused = await j(bea, `api/identity/${beaRoot}/groups/${group}/docs/${post}/pin`, {
+            pinned: false,
+        });
+        assert.equal(refused.status, 403, 'only an owner takes down an owner pin');
+        // Ada takes every pin on it down, the member's as well.
+        assert.equal((await act(ada, adaRoot, `docs/${post}/pin`, { pinned: false })).pinned, null);
+        assert.equal(await settle(bea, beaRoot, undefined), undefined, 'unpinned everywhere');
+        // A stranger pins nothing: the group isn't theirs to see.
+        const stranger = await j(dee, `api/identity/${deeRoot}/groups/${group}/docs/${post}/pin`, {
+            pinned: true,
+        });
+        assert.equal(stranger.status, 404);
+    });
+
     it('a dated draft posts under its date, with comments off if asked', async () => {
         const made = await (
             await j(bea, `api/identity/${beaRoot}/docs`, {

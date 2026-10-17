@@ -1484,6 +1484,7 @@ export default {
     'apps.groups.posts': 'posts',
     'apps.groups.to-post-here': 'to post here, write in the feed or in hrseWriter™ and choose this group as where it goes.',
     'apps.groups.nothing-posted-yet': 'nothing posted here yet.',
+    'apps.groups.pinned': 'pinned',
     'apps.groups.back-to-the-group': 'back to the group',
     'apps.groups.post-not-here': "this post isn't here - it may have been taken down or hidden, or you may not be in its group.",
     'apps.groups.fetching-the-post': 'fetching the post…',
@@ -1806,6 +1807,10 @@ export default {
     'postentry.post': 'post',
     'postentry.unpin-this-from-your-page': 'unpin this from your page',
     'postentry.pin-this-to-the-top': 'pin this to the top of your page',
+    'postentry.an-owner-pinned-this': 'an owner pinned this to the top of the group',
+    'chips.pinned': 'pinned',
+    'postentry.unpin-this-from-the-group': 'unpin this from the top of the group',
+    'postentry.pin-this-to-the-group': 'pin this to the top of the group',
     'postentry.take-this-post-back-off': 'take this post back off the network',
     'chips.unpublish': 'unpublish',
     'postentry.take-it-down': 'take it down',
@@ -2543,6 +2548,8 @@ export default {
     'roster.your-own-posts-only': 'you can take down only your own posts',
     'roster.members-only-label': "only the group's members can tag its posts",
     'roster.a-tag-is-a-word': 'a tag is a word or two, at most {cap} characters',
+    'roster.members-pin': "only the group's members pin its posts",
+    'roster.owners-pin-stays': 'an owner pinned that - only an owner takes it down',
     'roster.still-on-its-way': "still on its way from the group's other computers",
 
     // --- node/src/rss.rs ---

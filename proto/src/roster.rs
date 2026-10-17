@@ -250,6 +250,25 @@ pub enum GroupEntry {
         hidden: bool,
         replaces: Vec<Hash>,
     },
+    /// An owner's pin on a post, or its taking away (plans/GROUPS.md, slice 4d; Curtis,
+    /// 2026-10-15): a register per post, named by its first version's hash as a hide is, and
+    /// settled as a hide is - the heads no counted write replaces, the senior's winning. Owners'
+    /// pins show above members'.
+    Pin {
+        by: Hash,
+        post: Hash,
+        pinned: bool,
+        replaces: Vec<Hash>,
+    },
+    /// A member's pin on any post, or its taking away - anyone's, since members unpin each other's
+    /// (Curtis, 2026-10-15/16): a member's own act, counted while they're in the group, as a post
+    /// or a label is. Members have no seniority, so concurrent heads settle by their hashes - the
+    /// same answer on every node.
+    MemberPin {
+        post: Hash,
+        pinned: bool,
+        replaces: Vec<Hash>,
+    },
 }
 
 impl GroupEntry {
@@ -264,12 +283,14 @@ impl GroupEntry {
             | GroupEntry::Remove { by, .. }
             | GroupEntry::Unban { by, .. }
             | GroupEntry::Set { by, .. }
-            | GroupEntry::Hide { by, .. } => Some(by),
+            | GroupEntry::Hide { by, .. }
+            | GroupEntry::Pin { by, .. } => Some(by),
             GroupEntry::Found(_)
             | GroupEntry::Join { .. }
             | GroupEntry::Leave { .. }
             | GroupEntry::Document { .. }
-            | GroupEntry::Label { .. } => None,
+            | GroupEntry::Label { .. }
+            | GroupEntry::MemberPin { .. } => None,
         }
     }
 }
@@ -430,6 +451,23 @@ impl GroupEntry {
                 }
                 f.push((11, V::B(post)));
                 13
+            }
+            GroupEntry::Pin { by, post, pinned, replaces } => {
+                f.push((1, V::B(by)));
+                list!(7, replaces);
+                if *pinned {
+                    f.push((8, V::U(1)));
+                }
+                f.push((11, V::B(post)));
+                14
+            }
+            GroupEntry::MemberPin { post, pinned, replaces } => {
+                list!(7, replaces);
+                if *pinned {
+                    f.push((8, V::U(1)));
+                }
+                f.push((11, V::B(post)));
+                15
             }
         };
         f.push((0, V::U(kind)));
@@ -620,6 +658,8 @@ impl GroupEntry {
                 accepted,
             },
             13 => GroupEntry::Hide { by: need(by)?, post: need(link_ref)?, hidden: flag, replaces },
+            14 => GroupEntry::Pin { by: need(by)?, post: need(link_ref)?, pinned: flag, replaces },
+            15 => GroupEntry::MemberPin { post: need(link_ref)?, pinned: flag, replaces },
             _ => return Err(bad("unknown group entry kind")),
         };
         // One accepted byte form: what decodes must encode back to the same bytes.
@@ -674,6 +714,10 @@ pub struct Roster {
     /// ones an owner has hidden.
     pub posts: BTreeSet<Hash>,
     pub hidden: BTreeSet<Hash>,
+    /// The posts pinned (slice 4d), by first version as a hide names them: by an owner, shown
+    /// first, and by a member - a post an owner pinned is in the owners' set alone.
+    pub owner_pins: BTreeSet<Hash>,
+    pub member_pins: BTreeSet<Hash>,
     /// Personas under a ban no owner has lifted.
     pub banned: BTreeSet<Root>,
     /// Personas an invite that counts names, not yet in the group and not banned: whose nodes
@@ -941,6 +985,7 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
     let mut unbanned: BTreeSet<Hash> = BTreeSet::new();
     let mut settings: BTreeMap<u8, Vec<Write>> = BTreeMap::new();
     let mut hides: BTreeMap<Hash, Vec<Write>> = BTreeMap::new();
+    let mut pins: BTreeMap<Hash, Vec<Write>> = BTreeMap::new();
     for (h, appt) in &acts {
         let (_, e) = entry(h).expect("an act is held");
         match &e.body {
@@ -988,6 +1033,23 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
                     })
                     .collect();
                 hides.entry(*post).or_default().push(Write {
+                    hash: *h,
+                    path: path_of(appt),
+                    replaces,
+                });
+            }
+            GroupEntry::Pin { post, replaces, .. } => {
+                // A write replaces only that post's own pin history, the owners' layer.
+                let replaces = replaces
+                    .iter()
+                    .copied()
+                    .filter(|r| {
+                        entry(r).is_some_and(|(_, w)| {
+                            matches!(&w.body, GroupEntry::Pin { post: p, .. } if p == post)
+                        })
+                    })
+                    .collect();
+                pins.entry(*post).or_default().push(Write {
                     hash: *h,
                     path: path_of(appt),
                     replaces,
@@ -1094,6 +1156,8 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
     };
 
     let mut members: BTreeSet<Root> = BTreeSet::new();
+    // Every member pin that counts, settled into the members' layer below.
+    let mut member_pins: Vec<Hash> = Vec::new();
     let mut posts: BTreeSet<Hash> = BTreeSet::new();
     for lane in &lanes {
         // Where removals cut this lane, and the leaves written on the persona's other lanes.
@@ -1163,6 +1227,10 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
                 GroupEntry::Label { .. } if member => {
                     counted.insert(e.hash);
                 }
+                GroupEntry::MemberPin { .. } if member => {
+                    counted.insert(e.hash);
+                    member_pins.push(e.hash);
+                }
                 _ => {}
             }
         }
@@ -1187,6 +1255,43 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
         }
     }
 
+    // The pins (slice 4d): each layer a register per post, of the posts that count. The members'
+    // layer has no ranks, so every write sits at one rank and the hash settles concurrent heads.
+    let no_rank: Path = Vec::new();
+    let mut by_members: BTreeMap<Hash, Vec<Write>> = BTreeMap::new();
+    for h in &member_pins {
+        let Some((_, e)) = entry(h) else { continue };
+        let GroupEntry::MemberPin { post, replaces, .. } = &e.body else { continue };
+        let replaces = replaces
+            .iter()
+            .copied()
+            .filter(|r| {
+                counted.contains(r)
+                    && entry(r).is_some_and(|(_, w)| {
+                        matches!(&w.body, GroupEntry::MemberPin { post: p, .. } if p == post)
+                    })
+            })
+            .collect();
+        by_members.entry(*post).or_default().push(Write { hash: *h, path: &no_rank, replaces });
+    }
+    let pinned_in = |layer: &BTreeMap<Hash, Vec<Write>>| -> BTreeSet<Hash> {
+        layer
+            .iter()
+            .filter(|(post, _)| posts.contains(*post))
+            .filter_map(|(post, writes)| {
+                let h = head(writes)?;
+                matches!(
+                    entry(&h)?.1.body,
+                    GroupEntry::Pin { pinned: true, .. }
+                        | GroupEntry::MemberPin { pinned: true, .. }
+                )
+                .then_some(*post)
+            })
+            .collect()
+    };
+    let owner_pins = pinned_in(&pins);
+    let member_pins: BTreeSet<Hash> =
+        pinned_in(&by_members).into_iter().filter(|p| !owner_pins.contains(p)).collect();
     let hidden: BTreeSet<Hash> = hides
         .iter()
         .filter(|(post, _)| posts.contains(*post))
@@ -1255,6 +1360,8 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
         counted,
         posts,
         hidden,
+        owner_pins,
+        member_pins,
         banned,
         invited,
         appointments,
@@ -1795,6 +1902,43 @@ mod tests {
         assert!(!r.hidden.contains(&post) && r.posts.contains(&post));
     }
 
+    /// Pins, slice 4d (Curtis, 2026-10-15/16): owners and members both pin, any post; an owner's
+    /// pin is the owners' layer and wins the post from the members'; a member unpins another
+    /// member's pin; an owner unpins anything; and a non-member's pin counts for nothing.
+    #[test]
+    fn owners_and_members_pin_and_members_unpin_each_other() {
+        let mut w = World::new();
+        let found = w.found;
+        w.invite(B);
+        let post = w.post(B, 0);
+        let other = w.post(B, 0);
+        // B pins one of B's own posts in the members' layer.
+        let b_pin = w.add(B, 0, GroupEntry::MemberPin { post, pinned: true, replaces: vec![] });
+        let r = w.fold();
+        assert!(r.member_pins.contains(&post) && r.owner_pins.is_empty());
+        // The founder unpins it - an owner is a member, and members unpin each other's.
+        w.add(F, 0, GroupEntry::MemberPin { post, pinned: false, replaces: vec![b_pin] });
+        assert!(!w.fold().member_pins.contains(&post), "unpinned by someone else");
+        // The founder pins the other one as an owner; B pinning it too changes no layer.
+        let f_pin =
+            w.add(F, 0, GroupEntry::Pin { by: found, post: other, pinned: true, replaces: vec![] });
+        w.add(B, 0, GroupEntry::MemberPin { post: other, pinned: true, replaces: vec![] });
+        let r = w.fold();
+        assert!(r.owner_pins.contains(&other));
+        assert!(!r.member_pins.contains(&other), "an owner's pin holds the post alone");
+        w.add(
+            F,
+            0,
+            GroupEntry::Pin { by: found, post: other, pinned: false, replaces: vec![f_pin] },
+        );
+        let r = w.fold();
+        assert!(!r.owner_pins.contains(&other));
+        assert!(r.member_pins.contains(&other), "the member's pin shows once the owner's goes");
+        // A stranger's pin is no member's act.
+        w.add(C, 0, GroupEntry::MemberPin { post, pinned: true, replaces: vec![] });
+        assert!(!w.fold().member_pins.contains(&post), "a non-member's pin counts for nothing");
+    }
+
     #[test]
     fn a_founding_needs_the_group_keys_signature() {
         let mut w = World::new();
@@ -1851,6 +1995,8 @@ mod tests {
                 accepted: vec![],
             },
             GroupEntry::Hide { by: h(1), post: h(2), hidden: true, replaces: vec![] },
+            GroupEntry::Pin { by: h(1), post: h(2), pinned: true, replaces: vec![h(3)] },
+            GroupEntry::MemberPin { post: h(2), pinned: false, replaces: vec![h(3)] },
         ];
         for e in all {
             let bytes = e.encode().unwrap();

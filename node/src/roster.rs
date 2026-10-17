@@ -425,19 +425,28 @@ async fn rejournal(
         let published = post.shown.header.dated_ms.or(post.first.header.genesis_ms).unwrap_or(0);
         let updated = post.shown.header.genesis_ms.unwrap_or(published);
         let minted = post.first.header.genesis_ms.unwrap_or(0);
+        // Its pin (slice 4d): an owner's above a member's.
+        let pin: i64 = if roster.owner_pins.contains(&post.first.hash) {
+            2
+        } else if roster.member_pins.contains(&post.first.hash) {
+            1
+        } else {
+            0
+        };
         for reader in readers.iter().filter(|r| sees(roster, r, post)) {
             let owns = roster.owners.contains_key(reader);
             db.execute(
                 "INSERT INTO feed_journal (reader_root, author_root, doc_id, title, format,
                    published_ms, updated_ms, arrived_ms, settled, dated_ms, minted_ms, group_id,
-                   hidden, owns, noted)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                   hidden, owns, noted, pin)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                  ON CONFLICT (reader_root, author_root, doc_id) DO UPDATE SET
                    title = excluded.title, format = excluded.format,
                    published_ms = excluded.published_ms, updated_ms = excluded.updated_ms,
                    settled = excluded.settled, dated_ms = excluded.dated_ms,
                    minted_ms = excluded.minted_ms, group_id = excluded.group_id,
-                   hidden = excluded.hidden, owns = excluded.owns, noted = excluded.noted",
+                   hidden = excluded.hidden, owns = excluded.owns, noted = excluded.noted,
+                   pin = excluded.pin",
                 (
                     hex::encode(reader),
                     hex::encode(post.shown.persona),
@@ -453,6 +462,7 @@ async fn rejournal(
                     i64::from(post.hidden),
                     i64::from(owns),
                     noted,
+                    pin,
                 ),
             )
             .await
@@ -990,6 +1000,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/identity/{root}/docs/{doc_id}/groups", get(draft_groups_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/retract", post(retract_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/hide", post(hide_handler))
+        .route("/api/identity/{root}/groups/{group}/docs/{doc}/pin", post(pin_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/labels", post(label_handler))
         // A group's pictures and bodies, at one address for every member - the embed in a
         // post's words can't name the reader - so the door is the session: any persona on it
@@ -2350,6 +2361,91 @@ async fn hide_handler(
     write(&state, &data, &root, group, GroupEntry::Hide { by, post, hidden: req.hidden, replaces })
         .await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "hidden": req.hidden })))
+}
+
+#[derive(Deserialize)]
+struct PinRequest {
+    pinned: bool,
+}
+
+/// POST `.../groups/{group}/docs/{doc}/pin` - pin a post, or take its pin away (slice 4d;
+/// Curtis, 2026-10-15/16). Any member pins any post: an owner's pin goes in the owners' layer,
+/// shown first, anyone else's in the members'. Unpinning takes away what the caller may: an
+/// owner, every pin on it; a member, a member's pin - anyone's, since members unpin each other's -
+/// but never an owner's.
+async fn pin_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group, doc)): Path<(String, String, String)>,
+    Json(req): Json<PinRequest>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let doc = doc_of(&doc)?;
+    let (roster, lanes) = current(&state, &group, &me).await?;
+    if !roster.members.contains(&me) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "roster.members-pin",
+            "only the group's members pin its posts"
+        )));
+    }
+    let owner = roster.acting_as(&me);
+    let (versions, _) = documents_of(&state, &group, &roster).await?;
+    let post =
+        versions.get(&doc).and_then(|l| first_version(l)).map(|v| v.hash).ok_or_else(|| {
+            AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
+        })?;
+    // Every pin of it this node has seen, layer by layer, replaced so the newest word settles it.
+    let seen = |owners: bool| -> Vec<Hash> {
+        lanes
+            .iter()
+            .flat_map(|l| l.entries.iter())
+            .filter(|e| roster.counted.contains(&e.hash))
+            .filter(|e| match &e.body {
+                GroupEntry::Pin { post: p, .. } => owners && *p == post,
+                GroupEntry::MemberPin { post: p, .. } => !owners && *p == post,
+                _ => false,
+            })
+            .map(|e| e.hash)
+            .collect()
+    };
+    let member_entry = |pinned: bool| GroupEntry::MemberPin { post, pinned, replaces: seen(false) };
+    if req.pinned {
+        let entry = match owner {
+            Some(by) => GroupEntry::Pin { by, post, pinned: true, replaces: seen(true) },
+            None => member_entry(true),
+        };
+        write(&state, &data, &root, group, entry).await?;
+    } else {
+        if roster.owner_pins.contains(&post) {
+            let Some(by) = owner else {
+                return Err(AppError::Forbidden(crate::msg!(
+                    "roster.owners-pin-stays",
+                    "an owner pinned that - only an owner takes it down"
+                )));
+            };
+            write(
+                &state,
+                &data,
+                &root,
+                group,
+                GroupEntry::Pin { by, post, pinned: false, replaces: seen(true) },
+            )
+            .await?;
+        }
+        if !seen(false).is_empty() {
+            write(&state, &data, &root, group, member_entry(false)).await?;
+        }
+    }
+    let (roster, _) = current(&state, &group, &me).await?;
+    let pin = if roster.owner_pins.contains(&post) {
+        Some("owner")
+    } else if roster.member_pins.contains(&post) {
+        Some("member")
+    } else {
+        None
+    };
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "pinned": pin })))
 }
 
 /// GET `.../groups/{group}/posts` - the group's page: its posts, newest first, each at its

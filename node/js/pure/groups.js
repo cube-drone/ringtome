@@ -102,3 +102,18 @@ export const groupPostItem = ({ root, post, draft, group, settled = false, now }
     annotations: [],
     group: { id: group.group, name: group.name },
 });
+
+/// A group's page, pinned first (slice 4d; Curtis, 2026-10-15: "owner pins display above member
+/// pins"): the posts an owner pinned, then those a member pinned, each run newest first as the feed
+/// gave them, and every other post after - a pinned post isn't listed twice.
+export const pinnedFirst = (items) => {
+    const pin = (i) => (i.group && i.group.pinned) || null;
+    const all = items || [];
+    return {
+        pinned: [
+            ...all.filter((i) => pin(i) === 'owner'),
+            ...all.filter((i) => pin(i) === 'member'),
+        ],
+        rest: all.filter((i) => !pin(i)),
+    };
+};

@@ -265,6 +265,44 @@ const PinButton = ({ item, current, pinned, onPinned }) => {
     ><${Icons.pin} /><span class="chip-word">${pinned ? t('chips.unpin', 'unpin') : t('chips.pin', 'pin')}</span></button>`;
 };
 
+/// A group post's pin (plans/GROUPS.md, slice 4d; Curtis, 2026-10-15/16): any member pins any post
+/// to the top of the group's page - an owner's pin above a member's - and takes a pin away when
+/// they may: an owner, any pin; a member, a member's. `pin` is the card's word for it: 'owner',
+/// 'member' or null.
+const GroupPinButton = ({ item, current, pin, onPin }) => {
+    const [busy, setBusy] = useState(false);
+    const owner = !!(item.group && item.group.owner);
+    // An owner's pin is an owner's to take down: a member's card says so, and offers nothing.
+    if (pin === 'owner' && !owner) {
+        return html`<span
+            class="chip chip-worded chip-pinned"
+            title=${t('postentry.an-owner-pinned-this', 'an owner pinned this to the top of the group')}
+        ><${Icons.pin} /><span class="chip-word">${t('chips.pinned', 'pinned')}</span></span>`;
+    }
+    return html`<button
+        class=${pin ? 'chip chip-button chip-worded chip-pinned' : 'chip chip-button chip-worded'}
+        title=${
+            pin
+                ? t('postentry.unpin-this-from-the-group', 'unpin this from the top of the group')
+                : t('postentry.pin-this-to-the-group', 'pin this to the top of the group')
+        }
+        disabled=${busy}
+        onClick=${async () => {
+            setBusy(true);
+            try {
+                const made = await api(
+                    `/api/identity/${current.root}/groups/${item.group.id}/docs/${item.doc_id}/pin`,
+                    { method: 'POST', body: JSON.stringify({ pinned: !pin }) },
+                );
+                onPin(made.pinned || null);
+            } catch {
+                /* the next click retries; the chip stays honest to what the node holds */
+            }
+            setBusy(false);
+        }}
+    ><${Icons.pin} /><span class="chip-word">${pin ? t('chips.unpin', 'unpin') : t('chips.pin', 'pin')}</span></button>`;
+};
+
 const UnpublishButton = ({ item, current, onTakenDown }) => {
     const [asking, setAsking] = useState(false);
     const [going, setGoing] = useState(false);
@@ -783,6 +821,10 @@ const PostEntryBody = ({
     const serverHidden = !!(item.group && item.group.hidden);
     const [hidden, setHidden] = useState(serverHidden);
     useEffect(() => setHidden(serverHidden), [serverHidden]);
+    // And its pin there (slice 4d), the same way: the row's word, moved by the chip.
+    const serverGroupPin = (item.group && item.group.pinned) || null;
+    const [groupPin, setGroupPin] = useState(serverGroupPin);
+    useEffect(() => setGroupPin(serverGroupPin), [serverGroupPin]);
 
     useEffect(() => {
         let live = true;
@@ -1200,6 +1242,10 @@ const PostEntryBody = ({
             aria-label=${t('postentry.take-it-down-from-the-group', 'take it down from the group')}
             onClick=${takeDownFromGroup}
         ><${Icons.trash} /></button>`
+    }${
+        item.group &&
+        !!current &&
+        html`<${GroupPinButton} item=${item} current=${current} pin=${groupPin} onPin=${setGroupPin} />`
     }${
         /* Hiding is for someone else's post: your own you take down - unless another owner hid
         it, when you may ask to show it, and seniority decides (Curtis, 2026-10-15). */ ''

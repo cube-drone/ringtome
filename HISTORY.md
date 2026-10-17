@@ -22465,3 +22465,51 @@ fold, which writes the journal row the page reads, before it answers. A claim in
 `groupposts.cjs` proves it: publish, then open the post's page with no sync or
 beat between, and it's there. All 27 group claims pass, as do the JS gate and
 the strings check.
+
+## 2026-10-16: pins in a group (GROUPS slice 4d)
+
+Curtis's rules (2026-10-15/16): owners and members both pin, any post; owners'
+pins show above members'; owners unpin anything; members unpin members' pins.
+
+- **The protocol.** Two new group entries:
+  - `Pin` (kind 14) is an owner's act, a register per post named by its first
+    version as a hide is. It's settled as a hide is: the heads no counted write
+    replaces, the senior's winning.
+  - `MemberPin` (kind 15) is a member's own act, counted while they're in the
+    group, like a post or a label. Members have no ranks, so concurrent heads
+    settle by hash, the same answer on every node.
+
+  The fold answers `owner_pins` and `member_pins`; a post an owner pinned is in
+  the owners' set alone. A proto test walks it: a member pins; the founder
+  unpins it, as members unpin each other's; an owner's pin takes the post from
+  the members' layer and gives it back when lifted; a stranger's pin counts for
+  nothing. Both kinds round-trip.
+
+- **The node.** `POST .../groups/{g}/docs/{doc}/pin {pinned}`:
+  - Pinning: an owner pins in the owners' layer, anyone else in the members'.
+  - Unpinning: an owner takes every pin on the post away; a member takes a
+    member's (anyone's) and is refused an owner's (403).
+  - Each write replaces every write of its layer this node has seen.
+
+  Node rung 92 gives the journal row a `pin` (0 none, 1 member, 2 owner), and
+  marks every group to be written again. The card's group says `pinned`, owner
+  or member.
+
+- **The app.** A group post's card has a pin chip (`GroupPinButton`): pin,
+  unpin, or for a member looking at an owner's pin, a plain "pinned" that offers
+  nothing. The group's page leads with a pinned strip, owners' pins then
+  members' (`pure/groups.js` `pinnedFirst`, with a pure test), and doesn't list
+  those posts again below.
+
+A claim in `groupposts.cjs`, across the two members' nodes:
+
+- a member's pin;
+- an owner's above it;
+- the member refused the owner's pin;
+- the owner clearing both layers;
+- a stranger shown nothing.
+
+The full gate: clippy clean, the Rust tests (proto's included) and the full
+integration suite (1859) passing, the JS gate (1030) and the strings check too.
+Group pins aren't behind the Market's pins unlock, which gates a persona pinning
+its own posts to its page; no group feature is gated yet.

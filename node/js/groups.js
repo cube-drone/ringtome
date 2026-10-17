@@ -21,6 +21,7 @@ import {
     isInvite,
     membersAtAGlance,
     membersInOrder,
+    pinnedFirst,
 } from './pure/groups.js';
 import { speakable } from './speakable.js';
 import { Icons } from './icons.js';
@@ -471,6 +472,14 @@ function releaseGroupPost(group, doc) {
 /// as where it goes. The page fetches them, since its faces read them too.
 const GroupPosts = ({ answer, error, current }) => {
     const items = (answer && answer.items) || [];
+    const { pinned, rest } = pinnedFirst(items);
+    const card = (item) => html`<${PostEntry}
+        key=${item.doc_id}
+        item=${item}
+        current=${current}
+        editing=${null}
+        quote=${false}
+    />`;
     return html`<section class="group-posts">
         <div class="people-shelf-head">
             <span class="people-shelf-title">${t('apps.groups.posts', 'posts')}</span>
@@ -480,15 +489,17 @@ const GroupPosts = ({ answer, error, current }) => {
         </p>
         ${error && html`<p class="groups-error">${error.message}</p>`}
         ${answer && items.length === 0 && html`<p class="people-empty">${t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}</p>`}
-        ${items.map(
-            (item) => html`<${PostEntry}
-                key=${item.doc_id}
-                item=${item}
-                current=${current}
-                editing=${null}
-                quote=${false}
-            />`,
-        )}
+        ${/* Pinned to the top (slice 4d): owners' pins, then members'. */ ''}
+        ${
+            pinned.length > 0 &&
+            html`<div class="group-pinned">
+                <div class="people-shelf-head">
+                    <span class="people-shelf-title"><${Icons.pin} /> ${t('apps.groups.pinned', 'pinned')}</span>
+                </div>
+                ${pinned.map(card)}
+            </div>`
+        }
+        ${rest.map(card)}
     </section>`;
 };
 
