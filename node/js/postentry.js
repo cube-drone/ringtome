@@ -69,6 +69,7 @@ import { parseRingtome } from './pure/ringtome.js';
 import { parseSpeakable } from './speakable.js';
 import { agoUnit, agoWords } from './pure/ago.js';
 import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
+import { GroupMark, useGroupFace } from './groupface.js';
 import { parseBook } from './pure/books.js';
 import { useShared, markShared } from './shares.js';
 import { t } from './i18n.js';
@@ -816,6 +817,12 @@ const PostEntryBody = ({
     const [amended, setAmended] = useState(null);
     const itemRef = useRef(null);
     const groupId = item.group && item.group.id;
+    // The card's backdrop (Curtis, 2026-10-16, an experiment): the banner of whoever posted it -
+    // or, posted to a group, the group's - faint behind the top of the card and fading out down it.
+    // Only a banner someone chose: the tiled pattern standing in for none stays off the card.
+    const poster = usePerson(item.author, { current });
+    const groupFace = useGroupFace(groupId);
+    const backdrop = groupId ? (groupFace && groupFace.banner) || '' : poster.bannerUrl;
     // An owner hid it from the group (plans/GROUPS.md, section 7), as the card knows it: the row
     // says so, the owner's chip moves it, and a fresh row wins - the pin's discipline, above.
     const serverHidden = !!(item.group && item.group.hidden);
@@ -891,13 +898,14 @@ const PostEntryBody = ({
     const imageCap = item.mine ? null : postImageCap(interest);
     // Spelled out rather than interpolated, so the dead-CSS convention can see each class.
     // A post an owner hid from its group is faded for the few who still see it (GROUPS.md §7).
-    const entryClass = hidden
-        ? 'feed-entry feed-entry-hidden'
-        : emphasis === 'low'
-          ? 'feed-entry feed-entry-low'
-          : emphasis === 'high'
-            ? 'feed-entry feed-entry-high'
-            : 'feed-entry';
+    const entryClass =
+        (hidden
+            ? 'feed-entry feed-entry-hidden'
+            : emphasis === 'low'
+              ? 'feed-entry feed-entry-low'
+              : emphasis === 'high'
+                ? 'feed-entry feed-entry-high'
+                : 'feed-entry') + (backdrop ? ' feed-entry-backdrop' : '');
 
     // Today the time, another year the year (pure/when.js) - the cards used to drop the year
     // always, so five years of imported posts all read as this year's.
@@ -1359,6 +1367,7 @@ const PostEntryBody = ({
             ref=${itemRef}
             style=${[
                 `contain-intrinsic-size: ${heldAt}`,
+                backdrop ? `--post-backdrop: url(${backdrop})` : '',
                 scale === 1 ? '' : `--post-scale: ${scale}`,
                 imageCap === null || imageCap >= POST_IMAGE_MAX
                     ? ''
@@ -1397,16 +1406,24 @@ const PostEntryBody = ({
             }
             ${
                 /* A group post says which group, in the seat a share's line takes (plans/GROUPS.md,
-                slice 4b): it is here because you're in it. */ ''
+                slice 4b): it is here because you're in it. A band across the card's top in the
+                frame's colour, with the group's triangle (Curtis, 2026-10-16: the line was small). */ ''
             }
             ${
                 item.group &&
-                html`<p class="feed-entry-via feed-entry-group">
-                    <${Icons.group} />
-                    ${t('postentry.in-group', 'in')}
-                    <a href=${groupHref(item.group.id)}>${item.group.name}</a>
-                    ${hidden && html` · ${t('postentry.hidden-from-the-group-by-an-owner', 'hidden from the group by an owner')}`}
-                </p>`
+                html`<div class="feed-entry-group">
+                    <${GroupMark}
+                        group=${item.group.id}
+                        picture=${groupFace && groupFace.picture && `${groupFace.picture}/thumb`}
+                    />
+                    <a class="feed-entry-group-name" href=${groupHref(item.group.id)}>${item.group.name}</a>
+                    ${
+                        hidden &&
+                        html`<span class="feed-entry-group-note">
+                            ${t('postentry.hidden-from-the-group-by-an-owner', 'hidden from the group by an owner')}
+                        </span>`
+                    }
+                </div>`
             }
             ${
                 /* The speculative sibling: nobody you follow brought this - your trust graph

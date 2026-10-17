@@ -22647,7 +22647,33 @@ changes. A picture or banner change takes effect when it's chosen, as on a
 person's profile.
 
 Then Curtis asked for a group's picture in "the mighty triangle (point-side-up)"
-rather than a person's heptagon. `GroupMark` in `groups.js` draws it: the
-person widget's ring and picture with the clip swapped for an equilateral
-triangle (`group-tri`, mini and hero sizes). It's used on the group's page and
-in the Groups tab.
+rather than a person's heptagon. `GroupMark` in `groups.js` draws it: the person
+widget's ring and picture with the clip swapped for an equilateral triangle
+(`group-tri`, mini and hero sizes). It's used on the group's page and in the
+Groups tab.
+
+## 2026-10-16 — Experiment: each card wears its poster's banner
+
+Curtis, as an experiment he may abandon: every post uses its poster's banner as
+a faint background, fading out from the top down, or the group's banner when
+it's a group post. `PostEntry` asks `usePerson` for the author's banner; it
+reads it from the contact row or the kept stranger profile, so it costs no new
+requests. A group post asks the group's face door through `groupface.js`, a
+cache of one request per group per page, shared by every card. The group editor
+clears that group's cached face when an owner changes it. The card sets
+`--post-backdrop`, and `.feed-entry-backdrop::before` draws it at 22% opacity,
+full width and anchored to the top, masked by a gradient that has faded out by
+12rem down. Only a banner someone chose shows; the tiled pattern that stands in
+for no banner stays off the card. The JS gate passes.
+
+## 2026-10-16 — A group post's band
+
+Curtis: the "in [group]" line on a group post was a little small; make it a
+darker header the full width of the post, with the group's triangle. It is now a
+band across the card's top in the frame's colour, the app header's band, so it
+reads darker in every colourway (`.feed-entry-group`; negative margins undo the
+card's padding). It holds the group's triangle (its picture's thumbnail, or its
+pattern), the group's name as a link, and, for a hidden post, "hidden from the
+group by an owner" at the right. `GroupMark` moved to `groupface.js` so the card
+and the group's page share it, and the "in" string is retired. The JS gate and
+the strings check pass.

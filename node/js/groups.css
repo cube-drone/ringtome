@@ -248,8 +248,34 @@
     cursor: default;
 }
 
-.feed-entry-group a {
+/* A group post's band (Curtis, 2026-10-16): the card's full width across its top, in the frame's
+   colour as the app's header band is, with the group's triangle and its name. The negative
+   margins undo the card's padding (persona.css .feed-entry). */
+.feed-entry-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin: -0.7em -1em 0.6em;
+    padding: 0.4em 1em;
+    background: var(--frame);
+    color: var(--frame-text);
+    font-size: 0.9em;
+}
+
+.feed-entry-group-name {
     color: inherit;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.feed-entry-group-name:hover {
+    text-decoration: underline;
+}
+
+.feed-entry-group-note {
+    margin-left: auto;
+    font-size: 0.85em;
+    opacity: 0.8;
 }
 
 /* Hidden from its group by an owner: still there for the owners and its author, faded. */

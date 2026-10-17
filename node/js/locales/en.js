@@ -1875,7 +1875,6 @@ export default {
     'postentry.edit-this-note-in-writer': 'edit this note in hrseWriter™',
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.passed-this-along': 'passed this along',
-    'postentry.in-group': 'in',
     'postentry.hidden-from-the-group-by-an-owner': 'hidden from the group by an owner',
     'postentry.vouches-for-this-author': 'trusts this author',
     'postentry.scheduled-for': 'scheduled for {when}',

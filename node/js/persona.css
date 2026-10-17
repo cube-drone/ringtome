@@ -2156,6 +2156,26 @@ article:has(.label-emoji-strip) {
     container-type: inline-size;
 }
 
+/* The card's backdrop (Curtis, 2026-10-16, an experiment): the poster's banner - or, posted to a
+   group, the group's - faint across the top of the card and fading smoothly out down it, on a
+   layer under the frame so nothing it holds loses a click. The fade is the mask's alpha alone. */
+.feed-entry-backdrop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--post-backdrop);
+    background-size: 100% auto;
+    background-position: center top;
+    background-repeat: no-repeat;
+    opacity: 0.22;
+    mask-image: linear-gradient(to bottom, var(--ink) 0, transparent 12rem);
+    pointer-events: none;
+}
+
+.feed-entry-backdrop > .feed-entry-frame {
+    position: relative;
+}
+
 .feed-entry-head {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;

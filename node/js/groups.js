@@ -13,11 +13,10 @@ import { api } from './net.js';
 import { appHref, groupComposeHref, groupHref, groupsHref } from './links.js';
 import { openMirror, useLive } from './mirror.js';
 import { PersonChip, PersonRow, bannerStyle } from './person.js';
-import { identiconUri } from './pure/identicon.js';
 import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb } from './doc/drawing.js';
 import { avatarBytes } from './pickbytes.js';
-import { personaHue } from './pure/person.js';
+import { GroupMark, forgetGroupFace } from './groupface.js';
 import { PostEntry } from './postentry.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
 import { narrowParams } from './postsearch.js';
@@ -307,17 +306,6 @@ export const GroupPage = ({ group, current }) => {
     </div>`;
 };
 
-/// A group's picture in its own shape (Curtis, 2026-10-16): the mighty triangle, point up, where a
-/// person wears the heptagon - the same ring in the colour its id derives, and its picture, or the
-/// pattern its id makes until an owner chooses one. `size` is mini or hero.
-const TRI_SIZES = { mini: 'group-tri-mini', hero: 'group-tri-hero' };
-const GroupMark = ({ group, picture, size = 'mini' }) => html`<span
-    class="person-hex group-tri ${TRI_SIZES[size] || TRI_SIZES.mini}"
-    style="background: hsl(${personaHue(group)}, 60%, 55%)"
->
-    <img class="person-hex-img" src=${picture || identiconUri(group)} alt="" />
-</span>`;
-
 /// The top of a group's page (Curtis, 2026-10-16), shaped like a person's: the banner across it -
 /// or the group's pattern, tiled - with the picture and the name resting on its bottom edge. An
 /// owner's "edit" sits in its corner.
@@ -355,7 +343,10 @@ const GroupFaceEditor = ({ root, group, roster, onRoster, onDone }) => {
         setError(null);
         try {
             const r = await work();
-            if (r && r.members) onRoster(r);
+            if (r && r.members) {
+                forgetGroupFace(group);
+                onRoster(r);
+            }
             return r;
         } catch (e) {
             setError(e.message);
