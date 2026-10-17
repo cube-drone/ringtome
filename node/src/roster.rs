@@ -272,6 +272,10 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
     )
     .await
     .context("remembering a group")?;
+    // Who was in before this derivation: a line someone said in one of the group's rooms is kept
+    // only while they're in it (plans/GROUP_ROOMS.md), so a line that arrived before their joining
+    // did is folded again once it has (below).
+    let before: BTreeSet<String> = members_of(state, group).await.into_iter().collect();
     let mut people: Vec<(String, &str)> = Vec::new();
     for m in &roster.members {
         people
@@ -297,6 +301,16 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
     .await
     .context("forgetting who's no longer in a group")?;
     rejournal(state, group, &roster, &readers, noted).await?;
+    let newly: Vec<String> =
+        roster.members.iter().map(hex::encode).filter(|m| !before.contains(m)).collect();
+    if !newly.is_empty() && has_rooms(state, group).await {
+        let state = state.clone();
+        tokio::spawn(async move {
+            for m in newly {
+                crate::chat::refresh_from(&state, &m, false).await;
+            }
+        });
+    }
     db.execute(
         "UPDATE group_stamps SET derived_seq = ?2 WHERE group_id = ?1",
         (group.to_vec(), lanes_seq),
@@ -368,9 +382,13 @@ fn listed<'a>(
         .collect();
     versions
         .iter()
-        // Nor is the group's face: a picture or banner an owner set (Curtis, 2026-10-16).
-        .filter(|(doc, _)| {
-            !gone.contains(*doc) && !embedded.contains(*doc) && !roster.face_docs.contains(*doc)
+        // Nor is the group's face: a picture or banner an owner set (Curtis, 2026-10-16), nor a
+        // picture said in one of its rooms, which is part of the room (`room_media`).
+        .filter(|(doc, list)| {
+            !gone.contains(*doc)
+                && !embedded.contains(*doc)
+                && !roster.face_docs.contains(*doc)
+                && list.iter().all(|v| v.header.part_of.is_none())
         })
         .filter_map(|(doc, list)| {
             let (shown, first) = (display(list)?, first_version(list)?);
@@ -421,6 +439,7 @@ async fn rejournal(
         })
         .collect();
     crate::annotations::keep_group_labels(state, group, &memo, noted).await?;
+    keep_rooms(state, group, &posts, noted).await?;
     for post in &posts {
         let doc_hex = hex::encode(post.doc);
         let format = crate::record::documents::Format::from_wire(post.shown.header.format).as_str();
@@ -480,6 +499,380 @@ async fn rejournal(
     .context("sweeping a group's rows from the feed journal")?;
     crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
+}
+
+/// The group's rooms into `group_rooms` (plans/GROUP_ROOMS.md), as the group now stands: every
+/// room post it lists and no owner hid, with its first version's hash - the topic is derived from
+/// it - and when it was first seen closed. Then the group's rows not written swept: a room taken
+/// down or hidden is no room any more.
+async fn keep_rooms(
+    state: &AppState,
+    group: &GroupId,
+    posts: &[Listed<'_>],
+    noted: i64,
+) -> Result<()> {
+    let db = &state.node_db;
+    for post in posts {
+        let header = &post.shown.header;
+        if header.format != Some(ringtome_proto::registry::doc_format::ROOM) || post.hidden {
+            continue;
+        }
+        let bytes = header.encode().map_err(|e| anyhow!("encoding a room's header: {e}"))?;
+        let closed = header.settled.then(now_ms);
+        db.execute(
+            "INSERT INTO group_rooms (room_author, room_doc, group_id, first_hash, header, closed_ms, noted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT (room_author, room_doc) DO UPDATE SET header = excluded.header,
+               closed_ms = CASE WHEN excluded.closed_ms IS NULL THEN NULL
+                                ELSE COALESCE(closed_ms, excluded.closed_ms) END,
+               noted = excluded.noted",
+            (
+                hex::encode(post.shown.persona),
+                hex::encode(post.doc),
+                group.to_vec(),
+                post.first.hash.to_vec(),
+                bytes,
+                closed,
+                noted,
+            ),
+        )
+        .await
+        .context("remembering a group's room")?;
+    }
+    db.execute(
+        "DELETE FROM group_rooms WHERE group_id = ?1 AND noted < ?2",
+        (group.to_vec(), noted),
+    )
+    .await
+    .context("sweeping a group's rooms")?;
+    Ok(())
+}
+
+/// Does this node hold any room of the group?
+async fn has_rooms(state: &AppState, group: &GroupId) -> bool {
+    state
+        .node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT 1 FROM group_rooms WHERE group_id = ?1 LIMIT 1",
+            (group.to_vec(),),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+/// A room posted to a group, as this node holds it (plans/GROUP_ROOMS.md).
+pub struct GroupRoom {
+    pub group: GroupId,
+    pub header: DocHeaderPlain,
+    /// The hash of the room post's first version: only a node served the group's lanes learns it,
+    /// so the room's live topic is derived from it.
+    pub first_hash: Hash,
+    /// When this node first saw the room closed.
+    pub closed_ms: Option<i64>,
+}
+
+/// One `group_rooms` row: `(group, first hash, header, closed_ms)`.
+type RoomRow = (Vec<u8>, Vec<u8>, Vec<u8>, Option<i64>);
+
+/// The group room `(author, doc)`, if it is one this node holds.
+pub async fn room_of(state: &AppState, author: &str, doc_hex: &str) -> Option<GroupRoom> {
+    let row: Option<RoomRow> = state
+        .node_db
+        .fetch_optional(
+            "SELECT group_id, first_hash, header, closed_ms FROM group_rooms
+             WHERE room_author = ?1 AND room_doc = ?2",
+            (author, doc_hex),
+        )
+        .await
+        .ok()
+        .flatten();
+    let (group, first, header, closed_ms) = row?;
+    Some(GroupRoom {
+        group: group.try_into().ok()?,
+        header: DocHeaderPlain::decode(&header).ok()?,
+        first_hash: first.try_into().ok()?,
+        closed_ms,
+    })
+}
+
+/// The author of the group room a chain instance names, if this node holds one.
+pub async fn room_author_by_doc(node_db: &crate::db::Db, doc_hex: &str) -> Option<String> {
+    node_db
+        .fetch_optional::<(String,)>(
+            "SELECT room_author FROM group_rooms WHERE room_doc = ?1 LIMIT 1",
+            (doc_hex,),
+        )
+        .await
+        .ok()
+        .flatten()
+        .map(|(a,)| a)
+}
+
+/// One group room as the chats column lists it.
+pub struct ListedRoom {
+    pub group: String,
+    pub group_name: String,
+    pub author: String,
+    pub doc: String,
+    pub header: DocHeaderPlain,
+    /// The group's standing room, its #general.
+    pub standing: bool,
+}
+
+/// Every room of every group `root` is in, as this node holds them.
+pub async fn rooms_for(state: &AppState, root: &str) -> Result<Vec<ListedRoom>> {
+    type Row = (Vec<u8>, String, String, Vec<u8>, String);
+    let rows: Vec<Row> = state
+        .node_db
+        .fetch_all(
+            "SELECT r.group_id, r.room_author, r.room_doc, r.header, g.name FROM group_rooms r
+             JOIN group_people p ON p.group_id = r.group_id
+             JOIN group_rosters g ON g.group_id = r.group_id
+             WHERE p.root = ?1 AND p.standing IN ('member', 'owner')",
+            (root,),
+        )
+        .await
+        .context("listing a persona's group rooms")?;
+    let mut standing: BTreeMap<GroupId, Option<(Root, [u8; 16])>> = BTreeMap::new();
+    let mut out = Vec::with_capacity(rows.len());
+    for (group, author, doc, header, name) in rows {
+        let (Ok(group), Ok(header)) = (GroupId::try_from(group), DocHeaderPlain::decode(&header))
+        else {
+            continue;
+        };
+        let room = match standing.get(&group) {
+            Some(room) => *room,
+            None => {
+                let room = folded(state, &group).await.ok().flatten().and_then(|(r, _)| r.room);
+                standing.insert(group, room);
+                room
+            }
+        };
+        let is_standing =
+            room.is_some_and(|(a, d)| hex::encode(a) == author && hex::encode(d) == doc);
+        out.push(ListedRoom {
+            group: hex::encode(group),
+            group_name: name,
+            author,
+            doc,
+            header,
+            standing: is_standing,
+        });
+    }
+    Ok(out)
+}
+
+/// Is `root` an owner of the group now, as the door last folded it?
+pub async fn is_owner(state: &AppState, group: &GroupId, root: &str) -> bool {
+    state
+        .node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT 1 FROM group_people WHERE group_id = ?1 AND root = ?2 AND standing = 'owner'",
+            (group.to_vec(), root),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+/// When `root` stopped being in the group, if they once were and aren't now: the stamp of the
+/// newest counted entry that ended it - an owner's removal of them, or their own leave. A group
+/// room keeps what they said before it (plans/GROUP_ROOMS.md; Curtis, 2026-10-16: "Removed
+/// member's lines stay"), whenever a node first sees those lines. The stamps are the owners' and
+/// the leaver's own; a removed member who dates a line before their removal is the owners' to mute.
+pub async fn out_since(state: &AppState, group: &GroupId, root: &str) -> Option<i64> {
+    let target = root_of(root)?;
+    let (roster, lanes) = folded(state, group).await.ok().flatten()?;
+    if roster.members.contains(&target) {
+        return None;
+    }
+    let ends: Vec<(Root, Hash)> = lanes
+        .iter()
+        .flat_map(|l| l.entries.iter().map(move |e| (l.persona, e)))
+        .filter(|(_, e)| roster.counted.contains(&e.hash))
+        .filter(|(persona, e)| match &e.body {
+            GroupEntry::Remove { target: t, .. } => *t == target,
+            GroupEntry::Leave { .. } => *persona == target,
+            _ => false,
+        })
+        .map(|(persona, e)| (persona, e.hash))
+        .collect();
+    let mut newest: Option<i64> = None;
+    for (persona, hash) in ends {
+        // user-db open: the entry's own stamp, off the lane's persona as held here.
+        let Ok(Some(db)) = state.user_dbs.get(&hex::encode(persona)).await else { continue };
+        if let Ok(Some(entry)) = crate::record::imaol::entry_by_hash(&db, &hash).await {
+            let at = entry.entry().timestamp_ms;
+            newest = Some(newest.map_or(at, |n: i64| n.max(at)));
+        }
+    }
+    newest
+}
+
+/// The group's owners now, as the door last folded it.
+pub async fn owners_of(state: &AppState, group: &GroupId) -> Vec<String> {
+    state
+        .node_db
+        .fetch_all::<(String,)>(
+            "SELECT root FROM group_people WHERE group_id = ?1 AND standing = 'owner'",
+            (group.to_vec(),),
+        )
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(r,)| r)
+        .collect()
+}
+
+/// The group's members and owners now, as the door last folded it.
+pub async fn members_of(state: &AppState, group: &GroupId) -> Vec<String> {
+    state
+        .node_db
+        .fetch_all::<(String,)>(
+            "SELECT root FROM group_people WHERE group_id = ?1 AND standing IN ('member', 'owner')",
+            (group.to_vec(),),
+        )
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(r,)| r)
+        .collect()
+}
+
+/// The member a dialer speaks for, if any (plans/GROUP_ROOMS.md: a group room's door at the
+/// lane): `proven` when this exchange proved it, else what the group's peer ledger and the peer
+/// ledger say - the group door's two ways of knowing ([`dialer_may_hold`]), asked of members and
+/// owners only, since an invitee is not yet in the room.
+pub async fn dialer_member(
+    state: &AppState,
+    group: &GroupId,
+    dialer: &str,
+    proven: Option<&str>,
+) -> Option<String> {
+    let members: BTreeSet<String> = members_of(state, group).await.into_iter().collect();
+    if let Some(p) = proven.filter(|p| members.contains(*p)) {
+        return Some(p.to_string());
+    }
+    let told: Vec<(String,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT root FROM group_peers WHERE group_id = ?1 AND endpoint_id = ?2",
+            (group.to_vec(), dialer),
+        )
+        .await
+        .unwrap_or_default();
+    let served =
+        crate::net::sync::roots_served_by(&state.node_db, dialer).await.unwrap_or_default();
+    told.into_iter().map(|(r,)| r).chain(served).find(|r| members.contains(r))
+}
+
+/// Does the dialer speak for `root`, a member - proven by an earlier exchange (the group's peer
+/// ledger) or by the peer ledger? A group room's door on the fragment lane: the asker names the
+/// persona it asks for, and the door checks both halves.
+pub async fn dialer_speaks_for_member(
+    state: &AppState,
+    group: &GroupId,
+    dialer: &str,
+    root: &str,
+) -> bool {
+    if !is_member(state, group, root).await {
+        return false;
+    }
+    let told: Option<(i64,)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT 1 FROM group_peers WHERE group_id = ?1 AND endpoint_id = ?2 AND root = ?3",
+            (group.to_vec(), dialer, root),
+        )
+        .await
+        .ok()
+        .flatten();
+    told.is_some()
+        || crate::net::sync::roots_served_by(&state.node_db, dialer)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .any(|r| r == root)
+}
+
+/// The mutes standing in a group room (plans/GROUP_ROOMS.md; Curtis, 2026-10-16: "Group owners
+/// should be mods in every room"): `mute` labels on the room post, on the group's lanes, said by
+/// the room's creator or by an owner of the group now. Never the creator or an owner themself.
+pub async fn room_mutes(
+    state: &AppState,
+    group: &GroupId,
+    author: &str,
+    doc: &[u8; 16],
+) -> std::collections::HashSet<String> {
+    let Ok(Some((roster, _))) = folded(state, group).await else { return Default::default() };
+    let owners: BTreeSet<String> = roster.owners.keys().map(hex::encode).collect();
+    let Ok(mut labels) = labels_of(state, group, &roster).await else { return Default::default() };
+    labels
+        .remove(doc)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.key == crate::chat::MUTE_KEY)
+        .filter(|l| l.annotator == author || owners.contains(&l.annotator))
+        .map(|l| l.value)
+        .filter(|v| v != author && !owners.contains(v))
+        .collect()
+}
+
+/// Say a moderation label on a group room's post, on `me`'s lane for the group, or take it back.
+#[allow(clippy::too_many_arguments)]
+pub async fn say_room_label(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    author: &str,
+    doc: &[u8; 16],
+    key: &str,
+    value: &str,
+    present: bool,
+) -> Result<(), AppError> {
+    let author = root_of(author).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
+    })?;
+    say_label(data, group, &author, doc, key, value, present).await?;
+    crate::fold::fold_now(state, me).await;
+    Ok(())
+}
+
+/// Where to reach the group's nodes - every member's holds its lanes and its rooms' chains.
+pub async fn group_endpoints(state: &AppState, group: &GroupId) -> Vec<String> {
+    let names: BTreeSet<String> = members_of(state, group).await.into_iter().collect();
+    endpoints(state, group, &names).await
+}
+
+/// Bring the group's lanes in soon, for a hosted member: a room line named a picture whose
+/// media document rides the speaker's lane, and its bytes come with the group (`fetch_bodies`).
+/// At most once every few seconds a group, however many pictures arrive.
+pub fn catch_up_soon(state: &AppState, group: GroupId) {
+    type Last = std::collections::HashMap<GroupId, i64>;
+    static LAST: std::sync::LazyLock<std::sync::Mutex<Last>> =
+        std::sync::LazyLock::new(Default::default);
+    const EVERY_MS: i64 = 3_000;
+    {
+        let mut last = LAST.lock().expect("catch-up stamps poisoned");
+        let now = now_ms();
+        if last.get(&group).is_some_and(|at| now - at < EVERY_MS) {
+            return;
+        }
+        last.insert(group, now);
+    }
+    let state = state.clone();
+    tokio::spawn(async move {
+        for root in members_of(&state, &group).await {
+            if crate::identity::is_agented(&state.node_db, &root).await.unwrap_or(false) {
+                sync_group(&state, &root, &group, &[]).await;
+                return;
+            }
+        }
+    });
 }
 
 /// The names of these groups, by hex id, as this node last folded them: a group post's card says
@@ -967,6 +1360,11 @@ fn roster_json(group: &GroupId, roster: &Roster, lanes: &[Lane], me: &Root) -> s
         "description": roster.description,
         "picture": roster.picture.map(|d| face_url(group, &d)),
         "banner": roster.banner.map(|d| face_url(group, &d)),
+        // The standing room, #general (plans/GROUP_ROOMS.md).
+        "room": roster.room.map(|(author, doc)| serde_json::json!({
+            "author": hex::encode(author),
+            "doc_id": hex::encode(doc),
+        })),
         "join_mode": match roster.join_mode { JoinMode::InviteOnly => "invite-only", JoinMode::Open => "open" },
         "founder": hex::encode(roster.founder),
         "members": roster.members.iter().map(|m| serde_json::json!({
@@ -1002,6 +1400,7 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/demote", post(demote_handler))
         .route("/api/identity/{root}/groups/{group}/appoint", post(appoint_handler))
         .route("/api/identity/{root}/groups/{group}/settings", post(settings_handler))
+        .route("/api/identity/{root}/groups/{group}/general", post(general_handler))
         .route(
             "/api/identity/{root}/groups/{group}/face/{which}",
             post(set_face_handler).delete(clear_face_handler).layer(upload()),
@@ -1084,6 +1483,83 @@ async fn found_handler(
     let founding = Founding::sign(&ed25519_dalek::SigningKey::from_bytes(&seed), me, name);
     let group = founding.id();
     write(&state, &data, &root, group, GroupEntry::Found(founding)).await?;
+    // Its standing room, from the start (Curtis, 2026-10-16: "when a group is created a default
+    // #general is founded").
+    open_general(&state, &data, &root, group, &me).await?;
+    let (roster, lanes) = current(&state, &group, &me).await?;
+    Ok(Json(roster_json(&group, &roster, &lanes, &me)))
+}
+
+/// What the standing room is called.
+const GENERAL: &str = "general";
+
+/// Open the group's standing room as `me`, an owner: a room post on their lane for the group,
+/// named in the group's settings (plans/GROUP_ROOMS.md).
+async fn open_general(
+    state: &AppState,
+    data: &Store,
+    root: &str,
+    group: GroupId,
+    me: &Root,
+) -> Result<[u8; 16], AppError> {
+    let held = state.files.put_public(b"").await.map_err(AppError::Internal)?;
+    let doc_id = crate::record::documents::new_doc_id();
+    let header = DocHeaderPlain {
+        doc_id,
+        parents: Vec::new(),
+        file_hash: *held.hash.as_bytes(),
+        body_hash: *held.hash.as_bytes(),
+        title: GENERAL.to_string(),
+        sealed_title: None,
+        format: Some(ringtome_proto::registry::doc_format::ROOM),
+        width: None,
+        height: None,
+        duration_ms: None,
+        thumb_hash: None,
+        preview_hash: None,
+        refs: Vec::new(),
+        genesis_ms: Some(now_ms()),
+        reply_to: None,
+        thread_root: None,
+        settled: false,
+        trusted_only: false,
+        dated_ms: None,
+        animation: false,
+        im: false,
+        part_of: None,
+        seal_of: None,
+        onward: false,
+        prints: Default::default(),
+    };
+    let payload = header
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding a standing room's header: {e}")))?;
+    append_document(state, data, root, &group, entry_type::DOC_HEADER, payload).await?;
+    drop(held);
+    set_setting(state, data, root, group, me, Setting::Room(Some((*me, doc_id)))).await?;
+    Ok(doc_id)
+}
+
+/// POST `.../groups/{group}/general` - an owner opens the standing room of a group founded before
+/// every group had one, or of one whose room is gone (taken down, or hidden).
+async fn general_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let (roster, _) = current(&state, &group, &me).await?;
+    acting(&roster, &me)?;
+    if let Some((author, doc)) = roster.room {
+        if room_of(&state, &hex::encode(author), &hex::encode(doc)).await.is_some() {
+            return Err(AppError::BadRequest(crate::msg!(
+                "roster.the-group-has-its-room",
+                "the group already has its #general"
+            )));
+        }
+    }
+    open_general(&state, &data, &root, group, &me).await?;
     let (roster, lanes) = current(&state, &group, &me).await?;
     Ok(Json(roster_json(&group, &roster, &lanes, &me)))
 }
@@ -1740,7 +2216,53 @@ async fn group_media(
     group: &GroupId,
     source: &[u8; 16],
 ) -> Result<([u8; 16], crate::record::documents::Format, bool), AppError> {
+    media_in(state, data, me, group, source, None).await
+}
+
+/// One of the persona's own pictures, films or sounds said in a group room (plans/GROUP_ROOMS.md):
+/// a group media document as a post's are, marked part of the room (`part_of`), so the group's
+/// page never lists it as a post. Minted once per picture per room's group.
+pub async fn room_media(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    room: &[u8; 16],
+    source: &[u8; 16],
+) -> Result<([u8; 16], crate::record::documents::Format, bool), AppError> {
+    media_in(state, data, me, group, source, Some(*room)).await
+}
+
+/// The address a room line's group media document is embedded by.
+pub fn room_media_target(
+    group: &GroupId,
+    doc: &[u8; 16],
+    format: crate::record::documents::Format,
+    animation: bool,
+) -> String {
+    media_target(group, doc, format, animation)
+}
+
+async fn media_in(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    source: &[u8; 16],
+    part_of: Option<[u8; 16]>,
+) -> Result<([u8; 16], crate::record::documents::Format, bool), AppError> {
     use crate::record::documents::Format;
+    // What a picture became in the group's rooms is remembered apart from what it became in its
+    // posts: a post's picture is a post's, a room's is the room's.
+    let remembered: [u8; 16] = match part_of {
+        None => *source,
+        Some(_) => {
+            let mut h = blake3::Hasher::new();
+            h.update(b"ringtome-room-media/");
+            h.update(source);
+            h.finalize().as_bytes()[..16].try_into().expect("sixteen bytes")
+        }
+    };
     let docs = data.documents();
     let doc = docs.one(source).await?.ok_or_else(|| {
         AppError::BadRequest(crate::msg!(
@@ -1761,7 +2283,7 @@ async fn group_media(
             "something this post embeds isn't a picture, a film or a sound"
         )));
     }
-    if let Some(minted) = published_as(state, me, source, group).await {
+    if let Some(minted) = published_as(state, me, &remembered, group).await {
         return Ok((minted, format, head.header.animation));
     }
     let body = docs.body(head).await?.ok_or_else(|| {
@@ -1788,10 +2310,11 @@ async fn group_media(
             height: head.header.height,
             duration_ms: head.header.duration_ms,
             animation: head.header.animation,
+            part_of,
         },
     )
     .await?;
-    remember_published(state, me, source, group, &doc_id).await?;
+    remember_published(state, me, &remembered, group, &doc_id).await?;
     Ok((doc_id, format, head.header.animation))
 }
 
@@ -1805,6 +2328,8 @@ struct Minted<'a> {
     height: Option<u32>,
     duration_ms: Option<u64>,
     animation: bool,
+    /// The room a line's picture is part of (`room_media`).
+    part_of: Option<[u8; 16]>,
 }
 
 /// A media document on `me`'s lane for the group: its plaintext bytes and thumbnail in the blob
@@ -1845,7 +2370,7 @@ async fn mint_media(
         dated_ms: None,
         animation: m.animation,
         im: false,
-        part_of: None,
+        part_of: m.part_of,
         seal_of: None,
         onward: false,
         prints: Default::default(),
@@ -1947,6 +2472,12 @@ pub async fn publish(
         .filter(|post| !gone.contains(post))
         .and_then(|post| versions.get(&post).map(|list| (post, list)))
         .filter(|(_, list)| list.first().is_some_and(|v| v.persona == me_root));
+    // Once a room, always a room (CHAT.md, ruling 1), as the public publish carries it.
+    let room = wishes.room
+        || onto
+            .as_ref()
+            .and_then(|(_, list)| first_version(list))
+            .is_some_and(|v| v.header.format == Some(ringtome_proto::registry::doc_format::ROOM));
     let (doc_id, parents, genesis_ms) = match onto {
         Some((post, list)) => {
             let shown = display(list);
@@ -1966,7 +2497,11 @@ pub async fn publish(
         body_hash: *held.hash.as_bytes(),
         title,
         sealed_title: None,
-        format: format.to_wire(),
+        format: if room {
+            Some(ringtome_proto::registry::doc_format::ROOM)
+        } else {
+            format.to_wire()
+        },
         width: None,
         height: None,
         duration_ms: None,
@@ -2149,6 +2684,8 @@ async fn restate_labels(
 pub struct Wishes {
     pub dated_ms: Option<i64>,
     pub settled: bool,
+    /// A room (plans/GROUP_ROOMS.md): the post is the room, and its talk is said inside it.
+    pub room: bool,
 }
 
 #[derive(Deserialize)]
@@ -2158,6 +2695,9 @@ struct PublishRequest {
     settled: bool,
     #[serde(default)]
     tz_offset_min: i32,
+    /// A room for the group (plans/GROUP_ROOMS.md), as the public publish's `room`.
+    #[serde(default)]
+    room: bool,
 }
 
 fn doc_of(hex_doc: &str) -> Result<[u8; 16], AppError> {
@@ -2191,8 +2731,9 @@ async fn publish_handler(
         .await?
         .and_then(|v| crate::record::documents::claimed_ms(&v, now_ms(), req.tz_offset_min));
     // A future date is a schedule, as for any post (PUBLISH.md ruling 3): a plan on the draft,
-    // naming the group and this device, which the publish-due sweep mints (scheduled.rs).
-    if let Some(at) = dated_ms.filter(|at| *at > now_ms()) {
+    // naming the group and this device, which the publish-due sweep mints (scheduled.rs). A room
+    // opens now.
+    if let Some(at) = dated_ms.filter(|at| *at > now_ms() && !req.room) {
         let plan = serde_json::json!({
             "at": at,
             "by": data.leaf_hex(),
@@ -2202,9 +2743,15 @@ async fn publish_handler(
         data.annotations().set_field(&draft, store::PUBLISH_PLAN, &plan.to_string()).await?;
         return Ok(Json(serde_json::json!({ "group": hex::encode(group), "scheduled_for": at })));
     }
-    let post =
-        publish(&state, &data, &root, &group, &draft, Wishes { dated_ms, settled: req.settled })
-            .await?;
+    let post = publish(
+        &state,
+        &data,
+        &root,
+        &group,
+        &draft,
+        Wishes { dated_ms, settled: req.settled, room: req.room },
+    )
+    .await?;
     clear_plan(&data, &draft).await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "post": hex::encode(post) })))
 }
@@ -2837,6 +3384,7 @@ async fn set_face_handler(
             height: ingested.height,
             duration_ms: ingested.duration_ms,
             animation: ingested.animation,
+            part_of: None,
         },
     )
     .await?;

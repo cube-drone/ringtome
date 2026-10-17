@@ -10,7 +10,14 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
-import { appHref, groupComposeHref, groupHref, groupsHref } from './links.js';
+import {
+    appHref,
+    groupChatHref,
+    groupComposeHref,
+    groupHref,
+    groupsHref,
+    roomHref,
+} from './links.js';
 import { openMirror, useLive } from './mirror.js';
 import { PersonChip, PersonRow, bannerStyle } from './person.js';
 import { ImagePickModal } from './doc/imagepick.js';
@@ -292,6 +299,7 @@ export const GroupPage = ({ group, current }) => {
             onLeave=${you.member ? left : null}
         />
         ${you.member && html`<hr class="group-rule" />`}
+        ${you.member && html`<${GroupChats} group=${group} roster=${roster} act=${act} />`}
         ${
             you.member &&
             html`<${GroupPosts}
@@ -671,6 +679,32 @@ function releaseGroupPost(group, doc) {
 /// under a filter of its own, each one clicking through to a page of its own). Nobody writes here
 /// (Curtis, 2026-10-15): a post to the group is written in the feed or in Writer, with the group
 /// as where it goes - its "new post" opens the feed so. The page fetches them, since its faces read them too.
+/// The group's rooms, at a glance (plans/GROUP_ROOMS.md): its #general, and the way to start
+/// another - the chats column holds the rest, in the group's own section. A group founded before
+/// every group had a #general offers its owners one.
+const GroupChats = ({ group, roster, act }) => {
+    const general = roster.room;
+    const owner = roster.you && roster.you.owner;
+    return html`<section class="group-chats">
+        <div class="group-posts-head">
+            <h3 class="group-posts-title">${t('apps.groups.chats', 'chats')}</h3>
+            <a class="group-new-post jag-line" href=${groupChatHref(group)}>
+                <${Icons.plus} /> ${t('apps.groups.new-chat', 'new chat')}
+            </a>
+        </div>
+        ${
+            general
+                ? html`<a class="group-general" href=${roomHref(general.author, general.doc_id)}>
+                      <${Icons.chat} /> ${t('apps.groups.general', '#general')}
+                  </a>`
+                : owner &&
+                  html`<button class="group-general jag-line" onClick=${() => act('general', {})}>
+                      <${Icons.chat} /> ${t('apps.groups.open-general', 'open its #general')}
+                  </button>`
+        }
+    </section>`;
+};
+
 const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
     const items = (answer && answer.items) || [];
     const { pinned, rest } = pinnedFirst(items);

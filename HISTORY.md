@@ -22677,3 +22677,50 @@ pattern), the group's name as a link, and, for a hidden post, "hidden from the
 group by an owner" at the right. `GroupMark` moved to `groupface.js` so the card
 and the group's page share it, and the "in" string is retired. The JS gate and
 the strings check pass.
+
+## 2026-10-16 — Group rooms
+
+Curtis: give every group you're in its own section of chats, put the posts'
+"only show to" picker on the new-chat form, and work out how a group's chat runs
+on the server. His rulings: a group holds as many rooms as its members start,
+and founding one opens its **#general**; the group's owners moderate every room
+in it and nobody deputizes; a removed member's lines stay, but they can't keep
+posting or see what's said after ("tests for this pls"); pictures, sounds and
+films work as in any room. The design is `plans/GROUP_ROOMS.md`.
+
+A group room is a room post on its creator's lane for the group, and its door is
+the roster. The group's derivation keeps a `group_rooms` memo (node rung 93)
+that the chat lane reads to find the room's header and its group. Every door
+asks the roster: the routes and search admit current members; the sync lane
+serves a room's chains only to a node speaking for a member; the fragment lane's
+directory and archive check the asker the same way. Lines are plaintext, like
+the group's posts, so the room's live topic never carries them. It carries a
+bell, the speaker's root, and whoever hears one pulls that speaker's chain
+through the door. The topic derives from the room post's first-version hash,
+which only members' nodes learn. The chat fold keeps a line from a current
+member, or from someone who has gone if the line is dated before the entry that
+ended their membership. So an old line stands on every node whenever it arrives,
+and a new one lands nowhere. A line's pictures become the group's media
+documents, marked `part_of` the room so the group's page never lists them, and a
+reader's node syncs the group when a line names one. The standing room is a new
+owner setting, `Setting::Room` (proto kind 5); the founding opens it, and
+`POST .../groups/{group}/general` opens one for an older group. Mutes in a group
+room are labels on the group's lanes; owners and the room's creator say them,
+and neither can be muted there.
+
+In the app, the chats column gets a section per group under its triangle and
+name, #general first, with a "+" that opens the new-chat form on that group. The
+form uses the shared `AudienceSelect`, groups included, and a group choice posts
+the room to the group. The group page gets a chats line: #general, a new chat,
+and for an owner of an older group, the button that opens one. In a group room,
+owners get the mute controls, the deputize controls are gone, and the share and
+close chips are hidden.
+
+`integration/test/grouprooms.cjs` covers six claims across three nodes: #general
+at the founding; a member's room read and spoken in from another member's node;
+a stranger refused at every door; a picture said as the group's media and never
+a post; owners moderating with nobody deputizing; and a removed member whose old
+line stands everywhere, whose new one reaches nobody, and who sees nothing said
+after. Those six and the neighbouring chat, group, IM and MCP areas (77 claims)
+pass. Proto 171, node 629 and 14, clippy clean; the JS gate is at 1030 and
+strings at 2590 phrases.

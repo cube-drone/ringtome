@@ -62,6 +62,10 @@ const TOPIC_DOMAIN: &[u8] = b"ringtome-chat/";
 /// Frame kinds on a room's topic.
 const FRAME_ENTRY: u8 = 0;
 const FRAME_PRESENCE: u8 = 1;
+/// A group room's "I said something" (plans/GROUP_ROOMS.md): the speaker's root and nothing
+/// else. A group room's words are plaintext and go only where the room's door lets them, so its
+/// topic never carries them: whoever hears a bell pulls the speaker's chain through the door.
+const FRAME_BELL: u8 = 2;
 
 /// How recently a socket on this node must have beaconed to be announced to a new neighbor: a
 /// live socket beacons every ten seconds, so anyone quieter than this has left.
@@ -88,6 +92,8 @@ struct Presence {
 /// One room this node is live in.
 pub struct RoomLive {
     room_author: String,
+    /// The group whose room this is: its topic rings bells instead of carrying entries.
+    group: Option<ringtome_proto::roster::GroupId>,
     /// The hosted persona whose entering joined the topic - whose door the receive path
     /// pulls missing speakers through.
     viewer_root: String,
@@ -160,6 +166,15 @@ async fn topic_id(
 ) -> Option<iroh_gossip::TopicId> {
     let mut hasher = blake3::Hasher::new();
     hasher.update(TOPIC_DOMAIN);
+    // A group room's from its group, its doc and its first version's hash, which only a node
+    // served the group's lanes ever learns (plans/GROUP_ROOMS.md).
+    if let Some(room) = crate::roster::room_of(state, author_hex, &hex::encode(doc)).await {
+        hasher.update(b"group/");
+        hasher.update(&room.group);
+        hasher.update(doc);
+        hasher.update(&room.first_hash);
+        return Some(iroh_gossip::TopicId::from_bytes(*hasher.finalize().as_bytes()));
+    }
     if sealed {
         let key = room_key(state, author_hex, doc, viewer_hex).await?;
         hasher.update(&key);
@@ -189,9 +204,18 @@ pub async fn join(
         .await
         .ok_or_else(|| anyhow!("the room's key hasn't arrived - no topic without it"))?;
     let doc_hex = hex::encode(doc);
+    let group = room_group(state, author_hex, doc).await;
     let mut bootstrap: Vec<String> = creator_endpoints(state, author_hex).await;
     for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
         for ep in speaker_endpoints(state, &speaker).await {
+            if !bootstrap.contains(&ep) {
+                bootstrap.push(ep);
+            }
+        }
+    }
+    // ...and a group room's every member's node, which holds the group (ruling 2 of GROUPS.md).
+    if let Some(group) = &group {
+        for ep in crate::roster::group_endpoints(state, group).await {
             if !bootstrap.contains(&ep) {
                 bootstrap.push(ep);
             }
@@ -209,6 +233,7 @@ pub async fn join(
     let (events, _) = tokio::sync::broadcast::channel(64);
     let live = Arc::new(RoomLive {
         room_author: author_hex.to_string(),
+        group,
         viewer_root: viewer_hex.to_string(),
         sender: tokio::sync::Mutex::new(sender),
         events,
@@ -304,6 +329,23 @@ async fn on_frame(state: &AppState, doc: &[u8; 16], frame: &[u8], live: &Arc<Roo
             live.note_presence(&root_hex, typing);
             let _ = live.events.send(LiveEvent::Presence);
         }
+        // A group room's bell: a member said something, so pull their chain through the door. A
+        // bell from anyone else is nothing to this room.
+        FRAME_BELL => {
+            let Some(group) = live.group else { return };
+            if !crate::roster::is_member(state, &group, &root_hex).await {
+                return;
+            }
+            live.note_presence(&root_hex, Some(false));
+            let (state, doc, live) = (state.clone(), *doc, live.clone());
+            tokio::spawn(async move {
+                if pull_speaker(&state, &live.room_author, &doc, &root_hex, Some(&group)).await {
+                    let _ = live.events.send(LiveEvent::Message);
+                }
+            });
+        }
+        // A group room's words never ride its topic: an entry on one is nobody honest's.
+        FRAME_ENTRY if live.group.is_some() => {}
         FRAME_ENTRY => {
             let Ok(signed) = ringtome_proto::SignedEntry::decode(payload) else { return };
             let entry = signed.entry();
@@ -376,13 +418,55 @@ fn entry_frame(root_hex: &str, bytes: &[u8]) -> Option<bytes::Bytes> {
     Some(bytes::Bytes::from(frame))
 }
 
+fn bell_frame(root_hex: &str) -> Option<bytes::Bytes> {
+    let root = crate::pubkey::decode(root_hex)?;
+    let mut frame = Vec::with_capacity(33);
+    frame.push(FRAME_BELL);
+    frame.extend_from_slice(&root);
+    Some(bytes::Bytes::from(frame))
+}
+
+/// Pull one speaker's chain for a room, now: from their own nodes, the creator's, then (for a
+/// group room) every member's. Whether anything landed.
+async fn pull_speaker(
+    state: &AppState,
+    author_hex: &str,
+    doc: &[u8; 16],
+    speaker: &str,
+    group: Option<&ringtome_proto::roster::GroupId>,
+) -> bool {
+    if crate::identity::is_hosted(&state.node_db, speaker).await.unwrap_or(false) {
+        return false; // already here, whole
+    }
+    let mut candidates = speaker_endpoints(state, speaker).await;
+    let mut more = creator_endpoints(state, author_hex).await;
+    if let Some(group) = group {
+        more.extend(crate::roster::group_endpoints(state, group).await);
+    }
+    for ep in more {
+        if !candidates.contains(&ep) {
+            candidates.push(ep);
+        }
+    }
+    for endpoint in candidates {
+        let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
+        if let Ok(stats) = crate::net::sync::sync_room_with_peer(state, speaker, addr, *doc).await {
+            crate::fold::fold_now(state, speaker).await;
+            return stats.received > 0;
+        }
+    }
+    false
+}
+
 /// Publish a just-appended message on the room's topic (ruling 5: append first, publish
 /// after), and tell this node's own sockets.
 pub async fn broadcast_entry(state: &AppState, doc: &[u8; 16], root_hex: &str, bytes: &[u8]) {
     let Some(live) = state.live.get(doc) else { return };
     live.note_presence(root_hex, Some(false));
     let _ = live.events.send(LiveEvent::Message);
-    let Some(frame) = entry_frame(root_hex, bytes) else { return };
+    let frame =
+        if live.group.is_some() { bell_frame(root_hex) } else { entry_frame(root_hex, bytes) };
+    let Some(frame) = frame else { return };
     let sender = live.sender.lock().await;
     if let Err(e) = sender.broadcast(frame).await {
         tracing::debug!(room = %hex::encode(doc), error = ?e, "publishing a message on the topic failed");
@@ -620,6 +704,15 @@ pub async fn room_head(
     author_hex: &str,
     doc: &[u8; 16],
 ) -> Option<(ringtome_proto::registry::DocHeaderPlain, i64)> {
+    // A group room's post is on its author's lane for the group (plans/GROUP_ROOMS.md); closed,
+    // it closed when this node first saw it so.
+    if let Some(room) = crate::roster::room_of(state, author_hex, &hex::encode(doc)).await {
+        let stamp = match room.closed_ms {
+            Some(at) if room.header.settled => at,
+            _ => room.header.genesis_ms.unwrap_or(0),
+        };
+        return Some((room.header, stamp));
+    }
     if let Ok(Some(db)) = state.user_dbs.get(author_hex).await {
         if let Ok(Some(entry)) = crate::record::documents::public_header_entry(&db, doc).await {
             if let Payload::Inline(payload) = &entry.entry().payload {
@@ -636,6 +729,15 @@ pub async fn room_head(
     let Payload::Inline(payload) = &entry.entry().payload else { return None };
     let h = ringtome_proto::registry::DocHeaderPlain::decode(payload).ok()?;
     Some((h, entry.entry().timestamp_ms))
+}
+
+/// The group a room belongs to, when it is a group's (plans/GROUP_ROOMS.md).
+pub async fn room_group(
+    state: &AppState,
+    author_hex: &str,
+    doc: &[u8; 16],
+) -> Option<ringtome_proto::roster::GroupId> {
+    crate::roster::room_of(state, author_hex, &hex::encode(doc)).await.map(|r| r.group)
 }
 
 /// Is this post a room this node holds?
@@ -679,6 +781,10 @@ pub async fn im_other(
 async fn room_author_of(node_db: &Db, instance: &[u8; 16]) -> Result<Option<String>> {
     let doc_hex = hex::encode(instance);
     if let Some(author) = crate::nodeshelf::room_author(node_db, &doc_hex).await? {
+        return Ok(Some(author));
+    }
+    // A group's room (plans/GROUP_ROOMS.md): every member's node is in it.
+    if let Some(author) = crate::roster::room_author_by_doc(node_db, &doc_hex).await {
         return Ok(Some(author));
     }
     let row: Option<(String,)> = node_db
@@ -746,6 +852,18 @@ async fn fragment_door_admits(
     for_root: &[u8; 32],
     key_proof: Option<[u8; 32]>,
 ) -> bool {
+    // A group room's door is the roster (plans/GROUP_ROOMS.md): the asker a member now, and the
+    // dialing node one known to speak for them.
+    if let Some(group) = room_group(state, author_hex, doc).await {
+        let dialer = crate::net::sync::endpoint_to_id(&hex::encode(conn.remote_id().as_bytes()));
+        return crate::roster::dialer_speaks_for_member(
+            state,
+            &group,
+            &dialer,
+            &hex::encode(for_root),
+        )
+        .await;
+    }
     if !head.trusted_only {
         return true;
     }
@@ -817,10 +935,22 @@ pub async fn instances_dialer_may_hold(
     key_proofs: &[([u8; 16], [u8; 32])],
     dialer_hex: &str,
     our_endpoint: &[u8; 32],
+    // The persona whose chains this exchange carries, when the dialer proved itself one of its
+    // nodes - a member pushing their own room chain.
+    proven: Option<&str>,
 ) -> Vec<[u8; 16]> {
     let mut out = Vec::with_capacity(instances.len());
     for i in instances {
         let Some(author) = room_author_of(&state.node_db, i).await.ok().flatten() else { continue };
+        // A group room's chains go to a node speaking for a member now (plans/GROUP_ROOMS.md):
+        // a removed member's node is refused what was said after, and its own new lines with it.
+        if let Some(group) = room_group(state, &author, i).await {
+            let dialer = crate::net::sync::endpoint_to_id(dialer_hex);
+            if crate::roster::dialer_member(state, &group, &dialer, proven).await.is_some() {
+                out.push(*i);
+            }
+            continue;
+        }
         let Some((head, _)) = room_head(state, &author, i).await else { continue };
         if !head.trusted_only {
             out.push(*i);
@@ -1049,6 +1179,18 @@ pub async fn say(
             "this room is closed"
         )));
     }
+    // A group's room hears its members only (plans/GROUP_ROOMS.md; Curtis, 2026-10-16: a removed
+    // member "shouldn't be able to keep posting in a room"). The routes' door asked already; this
+    // is the say's own, for every road that reaches it.
+    let group = room_group(state, author_hex, doc).await;
+    if let Some(group) = &group {
+        if !crate::roster::is_member(state, group, root_hex).await {
+            return Err(AppError::Forbidden(crate::msg!(
+                "chat.this-room-is-the-groups",
+                "this room is the group's - only its members talk here"
+            )));
+        }
+    }
     // Muted (ruling 8): the room hid this persona, and an honest node does not grow a chain
     // whose words no floor will show. The creator's own notices are exempt, since the mute
     // is the creator's act and they are never muted in their own room.
@@ -1084,7 +1226,7 @@ pub async fn say(
     let (words, refs) = if (reacts_to.is_some() && !fresh_sticker) || deletes.is_some() {
         (words.to_string(), Vec::new())
     } else {
-        bake_words(state, data, root_hex, &author, doc, &head, key, words).await?
+        bake_words(state, data, root_hex, &author, doc, &head, key, group.as_ref(), words).await?
     };
     if words.len() > ChatMessage::MAX_BODY_BYTES {
         return Err(AppError::BadRequest(crate::msg!(
@@ -1111,6 +1253,12 @@ pub async fn say(
                 .await
         {
             continue;
+        }
+        // A group room's bell rings for its members only, for the same reason.
+        if let Some(group) = &group {
+            if !crate::roster::is_member(state, group, &named_hex).await {
+                continue;
+            }
         }
         mentions.push(named);
     }
@@ -1214,6 +1362,9 @@ async fn bake_words(
     doc: &[u8; 16],
     head: &ringtome_proto::registry::DocHeaderPlain,
     key: Option<[u8; 32]>,
+    // A group's room (plans/GROUP_ROOMS.md): its pictures become the group's media documents, on
+    // the speaker's lane for the group, never public twins.
+    group: Option<&ringtome_proto::roster::GroupId>,
     words: &str,
 ) -> Result<(String, Vec<[u8; 16]>), AppError> {
     use crate::record::bake::MediaRef;
@@ -1283,6 +1434,18 @@ async fn bake_words(
                 "that media is still being prepared - say it again in a moment"
             )));
         }
+        if let Some(group) = group {
+            let (minted, fmt, anim) =
+                crate::roster::room_media(state, data, root_hex, group, doc, media).await?;
+            swaps.push((
+                target.clone(),
+                crate::roster::room_media_target(group, &minted, fmt, anim),
+            ));
+            if !baked.contains(&minted) {
+                baked.push(minted);
+            }
+            continue;
+        }
         let (public, fmt, anim) = docs.bake_private_media(media, key, seal_of, head.onward).await?;
         swaps.push((
             target.clone(),
@@ -1292,7 +1455,10 @@ async fn bake_words(
             baked.push(public);
         }
     }
-    crate::record::bake::media_budget(state, data, &baked).await?;
+    // The public budget is for public twins; a group's pictures are the group's.
+    if group.is_none() {
+        crate::record::bake::media_budget(state, data, &baked).await?;
+    }
     let words =
         crate::record::bake::drop_embeds(&crate::record::bake::rewrite(words, &swaps), &missing);
     if words.is_empty() {
@@ -1377,6 +1543,13 @@ pub async fn muted_in(
     author_hex: &str,
     doc_hex: &str,
 ) -> std::collections::HashSet<String> {
+    // A group's room is moderated by its owners (plans/GROUP_ROOMS.md): their mutes and the
+    // creator's, said on the group's lanes.
+    if let Some(doc) = hex_doc(doc_hex) {
+        if let Some(room) = crate::roster::room_of(state, author_hex, doc_hex).await {
+            return crate::roster::room_mutes(state, &room.group, author_hex, &doc).await;
+        }
+    }
     // A deputy's mute is the creator's (ruling 8): the creator said whose word counts, and
     // this reads both lists off the same post. The creator is never muted in their own room,
     // whoever says otherwise.
@@ -1403,21 +1576,35 @@ pub async fn deputies_in(
     author_hex: &str,
     doc_hex: &str,
 ) -> std::collections::HashSet<String> {
+    // Nobody is deputized in a group's room (Curtis, 2026-10-16): its owners moderate it.
+    if crate::roster::room_of(state, author_hex, doc_hex).await.is_some() {
+        return Default::default();
+    }
     labels_by(state, viewer_hex, author_hex, doc_hex, DEPUTY_KEY, |annotator| {
         annotator == author_hex
     })
     .await
 }
 
-/// Whether this persona may mute in this room: its creator, or one of their deputies.
+/// Whether this persona may mute in this room: its creator, or one of their deputies - or, in a
+/// group's room, an owner of the group (Curtis, 2026-10-16: "Group owners should be mods in every
+/// room").
 pub async fn may_moderate(
     state: &AppState,
     viewer_hex: &str,
     author_hex: &str,
     doc_hex: &str,
 ) -> bool {
+    if let Some(room) = crate::roster::room_of(state, author_hex, doc_hex).await {
+        return viewer_hex == author_hex
+            || crate::roster::is_owner(state, &room.group, viewer_hex).await;
+    }
     viewer_hex == author_hex
         || deputies_in(state, viewer_hex, author_hex, doc_hex).await.contains(viewer_hex)
+}
+
+fn hex_doc(doc_hex: &str) -> Option<[u8; 16]> {
+    hex::decode(doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
 }
 
 /// The values of one label on the room post, by annotators the caller vouches for.
@@ -1744,8 +1931,12 @@ async fn room_verdict(
     if head.format != Some(ringtome_proto::registry::doc_format::ROOM) {
         return None;
     }
-    // The room's own door decides, as it does everywhere else.
-    if head.trusted_only && author_hex != viewer_hex {
+    // The room's own door decides, as it does everywhere else: a group's, its roster.
+    if let Some(group) = room_group(state, author_hex, &doc).await {
+        if !crate::roster::is_member(state, &group, viewer_hex).await {
+            return None;
+        }
+    } else if head.trusted_only && author_hex != viewer_hex {
         let via = crate::fanout::introducer(&state.node_db, viewer_hex, author_hex, doc_hex).await;
         if !crate::idface::seal_admits(state, author_hex, doc_hex, viewer_hex, via.as_deref()).await
         {
@@ -2463,6 +2654,14 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
     let hosted = crate::identity::is_hosted(&state.node_db, root).await.unwrap_or(false);
     let mut covers: Vec<(String, String, Vec<[u8; 16]>)> = Vec::new();
     let mut landed = 0u64;
+    // A group's rooms keep what its members say (plans/GROUP_ROOMS.md): a line from anyone the
+    // group doesn't count now is the room's only when it was said before they went - removed, or
+    // left - as their posts from before stay; a stranger's never is. Asked once a room per fold:
+    // the group, and until when this speaker's lines count (`i64::MAX` for a member).
+    type Door = Option<(ringtome_proto::roster::GroupId, i64)>;
+    let mut doors: HashMap<(String, String), Door> = HashMap::new();
+    let mut group_pictures: std::collections::BTreeSet<ringtome_proto::roster::GroupId> =
+        Default::default();
     for signed in &entries {
         let entry = signed.entry();
         let Some(instance) = entry.chain.instance else { continue };
@@ -2470,6 +2669,35 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
         let Ok(msg) = ChatMessage::decode(payload) else { continue };
         let room_author = hex::encode(msg.room_author);
         let room_doc = hex::encode(instance);
+        let door = match doors.get(&(room_author.clone(), room_doc.clone())) {
+            Some(d) => *d,
+            None => {
+                let d = match crate::roster::room_of(state, &room_author, &room_doc).await {
+                    Some(room) => {
+                        let until = if crate::roster::is_member(state, &room.group, root).await {
+                            i64::MAX
+                        } else {
+                            crate::roster::out_since(state, &room.group, root)
+                                .await
+                                .unwrap_or(i64::MIN)
+                        };
+                        Some((room.group, until))
+                    }
+                    None => None,
+                };
+                doors.insert((room_author.clone(), room_doc.clone()), d);
+                d
+            }
+        };
+        if let Some((group, until)) = door {
+            if entry.timestamp_ms >= until {
+                continue;
+            }
+            // Its pictures ride the speaker's lane for the group, and come with the group.
+            if !msg.refs.is_empty() && !hosted {
+                group_pictures.insert(group);
+            }
+        }
         rooms.insert((room_author.clone(), room_doc.clone()));
         if let Some(earlier) = msg.retracts {
             // Taken back (slices 8 and 9): the earlier entry of this speaker's stops
@@ -2545,7 +2773,7 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
                 .await
                 .context("noting a room reaction")?;
             // A sticker's picture travels as a line's does (2026-09-28).
-            if !msg.refs.is_empty() && !hosted {
+            if !msg.refs.is_empty() && !hosted && door.is_none() {
                 covers.push((room_author.clone(), hex::encode(signed.hash()), msg.refs.clone()));
             }
             continue;
@@ -2575,9 +2803,12 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             )
             .await
             .context("noting a room message")?;
-        if !msg.refs.is_empty() && !hosted {
+        if !msg.refs.is_empty() && !hosted && door.is_none() {
             covers.push((room_author.clone(), hex::encode(signed.hash()), msg.refs.clone()));
         }
+    }
+    for group in group_pictures {
+        crate::roster::catch_up_soon(state, group);
     }
     let mut pruned = false;
     for (room_author, room_doc) in rooms {
@@ -2974,8 +3205,16 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     }
     // The creator's node is dark: every other speaker's node instead (ruling 4), each of whom
     // mirrors every chain in the room (Curtis, 2026-09-29: the room goes on while its creator's
-    // computer is off).
+    // computer is off) - and a group room's every member's node first, which holds it whole.
     let doc_hex = hex::encode(doc);
+    if let Some(group) = room_group(state, author_hex, doc).await {
+        for endpoint in crate::roster::group_endpoints(state, &group).await {
+            let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
+            if crate::net::sync::sync_room_with_peer(state, root_hex, addr, *doc).await.is_ok() {
+                return;
+            }
+        }
+    }
     for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
         if speaker == root_hex
             || speaker == author_hex
@@ -3053,6 +3292,20 @@ pub async fn sync_room(
             speakers.push(known);
         }
     }
+    // A group's room: everyone in the group may have spoken, and every member's node holds the
+    // room (plans/GROUP_ROOMS.md) - the roster is the directory, before anyone is heard from.
+    let group = room_group(state, author_hex, doc).await;
+    let group_eps = match &group {
+        Some(g) => {
+            for m in crate::roster::members_of(state, g).await {
+                if !speakers.contains(&m) {
+                    speakers.push(m);
+                }
+            }
+            crate::roster::group_endpoints(state, g).await
+        }
+        None => Vec::new(),
+    };
     if !speakers.contains(&author_hex.to_string()) {
         speakers.push(author_hex.to_string());
     }
@@ -3077,6 +3330,11 @@ pub async fn sync_room(
                 if !candidates.contains(&ep) {
                     candidates.push(ep);
                 }
+            }
+        }
+        for ep in &group_eps {
+            if !candidates.contains(ep) {
+                candidates.push(ep.clone());
             }
         }
         for endpoint in candidates {

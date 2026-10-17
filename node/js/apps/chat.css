@@ -82,6 +82,45 @@
     opacity: 0.7;
 }
 
+/* A group's section (plans/GROUP_ROOMS.md): its triangle and name for a divider, louder than the
+   other dividers since it names a place, and a "+" that starts a room in it. */
+.chat-group-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.9rem;
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 0.85em;
+}
+
+.chat-group-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.chat-group-name:hover {
+    text-decoration: underline;
+}
+
+.chat-group-new {
+    padding: 0 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    text-decoration: none;
+}
+
+.chat-group-new:hover {
+    color: var(--ink);
+}
+
 .chat-left-note,
 .chat-muted-note {
     flex-wrap: wrap;

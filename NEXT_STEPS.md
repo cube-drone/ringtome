@@ -80,6 +80,20 @@ are driving towards.
   - **`onward.cjs`'s "the key comes early: once the share is in cal's feed his
     node asks bea's for it"** failed once in a full run on 2026-10-16, 0 of 5
     reruns. Key-prefetch timing across nodes; another flake to chase.
+- From group rooms (plans/GROUP_ROOMS.md, built 2026-10-16):
+  - **Closing a group room.** The server takes it (publish the room's draft to
+    the group again with `settled`), but the room's close chip finds its draft
+    through the mirror's `published_as`, which a group post's draft doesn't
+    carry, so the chip is hidden in a group's room for now.
+  - **A removed member still hears a room's bells**, and its presence and
+    typing: the topic is one they knew. Never a word. A topic that moves on a
+    removal would end it.
+  - **A removed member can backdate a line** to before their removal, and it
+    stands; the owners' mute is the answer today.
+  - **Mentions in a group room** ring members only, by the room-mention road; no
+    acceptance claim covers it yet.
+  - **The UI wants a look in a browser**: the chats column's group sections, the
+    new-chat form's picker, the group page's chats line.
 - From the group page on the feed's cards:
   - **The page lists everything at once.** The feed narrowed to a group answers
     up to `RESULTS_CAP` posts unpaged, as any narrowed feed does; a busy group

@@ -115,6 +115,10 @@ export const groupPostHref = (group, doc) => `${groupHref(group)}/posts/${doc}`;
 /// composer's "only show to" on it - read once by the feed, which then drops it from the address.
 export const groupComposeHref = (group) => `${appHref('feed')}?group=${encodeURIComponent(group)}`;
 
+/// The new-chat form, with "only show to" on a group (plans/GROUP_ROOMS.md): a group's section in
+/// the chats column, and its page, send here to start a room in it.
+export const groupChatHref = (group) => `${appHref('chat')}/new?group=${encodeURIComponent(group)}`;
+
 /// The Settings app and its pages (2026-10-09: "they deserve an app all to themselves") -
 /// `profile`, `app` (how the app behaves), `personas`, `computers`, `content`, `import-export`.
 /// They lived under the persona at `/ringtome/persona/<page>`, which still redirects here;

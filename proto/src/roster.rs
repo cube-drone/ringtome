@@ -148,6 +148,9 @@ pub enum Setting {
     /// on the setting owner's own lane for the group - `None`, back to none.
     Picture(Option<[u8; 16]>),
     Banner(Option<[u8; 16]>),
+    /// The group's standing room (plans/GROUP_ROOMS.md; Curtis, 2026-10-16: "when a group is
+    /// created a default #general is founded"): a room post in the group, by its author and doc.
+    Room(Option<(Root, [u8; 16])>),
 }
 
 impl Setting {
@@ -158,6 +161,7 @@ impl Setting {
             Setting::JoinMode(_) => 2,
             Setting::Picture(_) => 3,
             Setting::Banner(_) => 4,
+            Setting::Room(_) => 5,
         }
     }
 }
@@ -539,6 +543,16 @@ impl GroupEntry {
                             w.uint(if matches!(s, Setting::Picture(_)) { 3 } else { 4 });
                             w.bytes(d.as_ref().map_or(&[][..], |d| &d[..]));
                         }
+                        // The room's author and doc, 48 bytes, or empty bytes for none.
+                        Setting::Room(room) => {
+                            w.uint(5);
+                            let mut b = Vec::with_capacity(48);
+                            if let Some((author, doc)) = room {
+                                b.extend_from_slice(author);
+                                b.extend_from_slice(doc);
+                            }
+                            w.bytes(&b);
+                        }
                     }
                 }
             }
@@ -635,6 +649,17 @@ impl GroupEntry {
                                 Setting::Banner(doc)
                             }
                         }
+                        5 => Setting::Room(match map.bytes()? {
+                            [] => None,
+                            b if b.len() == 48 => {
+                                let (author, doc) = b.split_at(32);
+                                Some((
+                                    author.try_into().map_err(|_| bad("a room's author"))?,
+                                    doc.try_into().map_err(|_| bad("a room's doc"))?,
+                                ))
+                            }
+                            _ => return Err(bad("a group's room is an author and a document")),
+                        }),
                         _ => return Err(bad("unknown group setting")),
                     });
                 }
@@ -739,6 +764,8 @@ pub struct Roster {
     pub picture: Option<[u8; 16]>,
     pub banner: Option<[u8; 16]>,
     pub face_docs: BTreeSet<[u8; 16]>,
+    /// The standing room (#general): a room post in the group, by its author and doc.
+    pub room: Option<(Root, [u8; 16])>,
     /// Every entry that counts. Anything held and not here is void.
     pub counted: BTreeSet<Hash>,
     /// The document versions that count (each a `DOC_HEADER` entry's hash), and of those, the
@@ -1405,6 +1432,10 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
             _ => None,
         },
         face_docs,
+        room: match setting(5) {
+            Some(Setting::Room(r)) => r,
+            _ => None,
+        },
         counted,
         posts,
         hidden,
@@ -2020,6 +2051,25 @@ mod tests {
     }
 
     #[test]
+    fn the_standing_room_is_an_owners_setting() {
+        let mut w = World::new();
+        let found = w.found;
+        w.invite(B);
+        let set = |setting: Setting, replaces: Vec<Hash>| GroupEntry::Set {
+            by: found,
+            setting,
+            replaces,
+            accepted: vec![],
+        };
+        let general = w.add(F, 0, set(Setting::Room(Some((F, [7; 16]))), vec![]));
+        assert_eq!(w.fold().room, Some((F, [7; 16])));
+        w.add(B, 0, set(Setting::Room(Some((B, [8; 16]))), vec![general]));
+        assert_eq!(w.fold().room, Some((F, [7; 16])), "only an owner names the standing room");
+        w.add(F, 0, set(Setting::Room(Some((B, [8; 16]))), vec![general]));
+        assert_eq!(w.fold().room, Some((B, [8; 16])), "an owner may point it at another room");
+    }
+
+    #[test]
     fn a_founding_needs_the_group_keys_signature() {
         let mut w = World::new();
         let lane = w.lanes.get_mut(&dev(&F, 0)).unwrap();
@@ -2083,6 +2133,18 @@ mod tests {
             GroupEntry::Set {
                 by: h(1),
                 setting: Setting::Banner(None),
+                replaces: vec![],
+                accepted: vec![],
+            },
+            GroupEntry::Set {
+                by: h(1),
+                setting: Setting::Room(Some(([5; 32], [6; 16]))),
+                replaces: vec![h(2)],
+                accepted: vec![],
+            },
+            GroupEntry::Set {
+                by: h(1),
+                setting: Setting::Room(None),
                 replaces: vec![],
                 accepted: vec![],
             },

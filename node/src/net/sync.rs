@@ -2516,14 +2516,6 @@ async fn serve_on(
             rooms.push(*i);
         }
     }
-    let instances = crate::chat::instances_dialer_may_hold(
-        &state,
-        &rooms,
-        &key_proofs,
-        &hex::encode(peer_id),
-        &our_id,
-    )
-    .await;
 
     // create, and rightly: the `wanted` gate above is this door's Pull-Not-Push enforcement,
     // so we reach here only for a persona this node hosts, has fetched, or whose followers
@@ -2533,6 +2525,15 @@ async fn serve_on(
     // an identity, the node fronts it." A local human asked; this is the asking arriving.
     let db = state.user_dbs.create(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
+    let instances = crate::chat::instances_dialer_may_hold(
+        &state,
+        &rooms,
+        &key_proofs,
+        &hex::encode(peer_id),
+        &our_id,
+        peer_proven.then_some(root_hex.as_str()),
+    )
+    .await;
     let instances: Vec<[u8; 16]> = if groups.is_empty() {
         instances
     } else {

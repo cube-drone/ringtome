@@ -985,6 +985,15 @@ struct RoomItem {
     /// accepted. Saying something in it, or pressing accept, is the acceptance.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     request: bool,
+    /// A group's room (plans/GROUP_ROOMS.md): which group, and what it's called - the column
+    /// files these under their group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_name: Option<String>,
+    /// The group's standing room, its #general.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    standing: bool,
 }
 
 /// The rooms this persona entered by link and has not left: `(author_hex, doc_hex)`.
@@ -1165,6 +1174,9 @@ async fn rooms_handler(
             im: false,
             other: None,
             request: false,
+            group: None,
+            group_name: None,
+            standing: false,
         });
     }
     // The rooms my feed carries, through the feed's own gate.
@@ -1208,6 +1220,10 @@ async fn rooms_handler(
         }
     }
     for r in readable {
+        // A group's room is listed with its group, below.
+        if r.group.is_some() {
+            continue;
+        }
         if !seen.insert((r.author_root.clone(), r.doc_id.clone())) {
             continue;
         }
@@ -1232,10 +1248,44 @@ async fn rooms_handler(
             im: false,
             other: None,
             request: false,
+            group: None,
+            group_name: None,
+            standing: false,
         });
     }
     // The rooms I entered by link - still in, or left (Curtis, 2026-09-19).
     let (joined, left) = rooms_by_standing(&data).await?;
+    // Every room of every group I'm in (plans/GROUP_ROOMS.md): in each from the start, as a
+    // member is in the group's page, unless I left it.
+    for g in crate::roster::rooms_for(&state, &root).await.map_err(AppError::Internal)? {
+        let is_left = left.iter().any(|(a, d)| *a == g.author && *d == g.doc);
+        seen.insert((g.author.clone(), g.doc.clone()));
+        items.push(RoomItem {
+            mine: g.author == root,
+            author: g.author,
+            doc_id: g.doc,
+            title: g.header.title.clone(),
+            published_ms: g.header.genesis_ms.unwrap_or(0),
+            trusted_only: false,
+            onward: false,
+            via: None,
+            joined: !is_left,
+            left: is_left,
+            tags: Vec::new(),
+            closed: g.header.settled,
+            author_name: None,
+            author_avatar: None,
+            latest_ms: None,
+            seen_ms: None,
+            unread: false,
+            im: false,
+            other: None,
+            request: false,
+            group: Some(g.group),
+            group_name: Some(g.group_name),
+            standing: g.standing,
+        });
+    }
     for (author, doc, is_left) in joined
         .into_iter()
         .map(|(a, d)| (a, d, false))
@@ -1274,6 +1324,9 @@ async fn rooms_handler(
             im: false,
             other: None,
             request: false,
+            group: None,
+            group_name: None,
+            standing: false,
         });
     }
     // Every tag the room wears (Curtis, 2026-09-20), one lookup: the creator's word about
@@ -1342,6 +1395,9 @@ async fn rooms_handler(
             im: false,
             other: None,
             request: false,
+            group: None,
+            group_name: None,
+            standing: false,
         });
     }
     // The private chats (CHAT.md, ruling 12): which rooms are a pair's, and who the other
@@ -1417,34 +1473,19 @@ async fn room_enter_handler(
     Path((root, author, doc)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    hex_fixed::<32>(&author, "author root")?;
-    let doc_id = hex_fixed::<16>(&doc, "doc id")?;
-    let Some(h) = held_public_header(&state, &author, &doc).await? else {
+    let doc_id = room_admits(&state, &root, &author, &doc).await?;
+    let Some((h, _)) = crate::chat::room_head(&state, &author, &doc_id).await else {
         return Err(AppError::NotFound(crate::msg!(
             "identity.routes.no-such-room-is-held",
             "can't find that room"
         )));
     };
-    if h.format != Some(ringtome_proto::registry::doc_format::ROOM) {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.that-post-is-not-a-room",
-            "that post is not a room"
-        )));
-    }
-    let via = crate::fanout::introducer(&state.node_db, &root, &author, &doc).await;
-    if h.trusted_only
-        && author != root
-        && !room_seal_admits(&state, &root, &author, &doc, &doc_id, via.as_deref()).await
-    {
-        return Err(AppError::Forbidden(crate::msg!(
-            "identity.routes.this-room-is-sealed",
-            "this room is sealed - its author shares it only with people they trust"
-        )));
-    }
+    let group = crate::chat::room_group(&state, &author, &doc_id).await;
     let key = format!("{author}:{doc}");
     let (joined, left) = rooms_by_standing(&data).await?;
     let is_left = left.iter().any(|(a, d)| *a == author && *d == doc);
-    let already = joined.iter().any(|(a, d)| *a == author && *d == doc);
+    // A group's room is a member's from the start, as it lists (`rooms_handler`).
+    let already = group.is_some() || joined.iter().any(|(a, d)| *a == author && *d == doc);
     // A chat a stranger opened is a REQUEST until it is accepted (Curtis, 2026-09-20):
     // looking at it is not accepting it, so it neither joins nor goes on the sync beat.
     // The words are pulled once, here, because a request nobody can read is one nobody can
@@ -1501,6 +1542,15 @@ async fn room_enter_handler(
         // person's face and name, whichever of the two opened it.
         "im": if h.im { Some(true) } else { None },
         "other": other,
+        // A group's room (plans/GROUP_ROOMS.md): its group, and whether this persona moderates
+        // it - the creator, or an owner of the group.
+        "group": group.map(hex::encode),
+        "moderates": crate::chat::may_moderate(&state, &root, &author, &doc).await,
+        // ...and who can't be muted there: the group's owners.
+        "owners": match &group {
+            Some(g) => crate::roster::owners_of(&state, g).await,
+            None => Vec::new(),
+        },
     })))
 }
 
@@ -1563,7 +1613,13 @@ async fn room_leave_handler(
     let key = format!("{author}:{doc}");
     // Left, not forgotten (Curtis, 2026-09-19): the register keeps the room with a left
     // stamp, so it lists beneath the active rooms and can be rejoined.
-    if joined_rooms(&data).await?.iter().any(|(a, d)| *a == author && *d == doc) {
+    // A group's room is a member's without joining it (`rooms_handler`), so leaving one is said
+    // whether or not it was ever joined.
+    let group_room = match hex_fixed::<16>(&doc, "doc id") {
+        Ok(doc_id) => crate::chat::room_group(&state, &author, &doc_id).await.is_some(),
+        Err(_) => false,
+    };
+    if group_room || joined_rooms(&data).await?.iter().any(|(a, d)| *a == author && *d == doc) {
         data.private_registers(ROOMS_JOINED)
             .set(&key, &serde_json::json!({ "left_ms": crate::clock::now_ms() }).to_string())
             .await?;
@@ -1632,6 +1688,22 @@ async fn set_mute(
             "identity.routes.you-cant-mute-yourself",
             "you can't mute yourself"
         )));
+    }
+    // A group's room (plans/GROUP_ROOMS.md): its owners moderate it, and none of them can be
+    // muted in it, nor the room's creator.
+    if let Some(group) = crate::chat::room_group(&state, &author, &doc_id).await {
+        if crate::roster::is_owner(&state, &group, &who).await {
+            return Err(AppError::Forbidden(crate::msg!(
+                "identity.routes.an-owner-cant-be-muted",
+                "one of the group's owners can't be muted in its rooms"
+            )));
+        }
+        if who == author {
+            return Err(AppError::Forbidden(crate::msg!(
+                "identity.routes.the-creator-cant-be-muted",
+                "the room's creator can't be muted in their own room"
+            )));
+        }
     }
     // A deputy's badge does not reach the creator, nor another deputy: the creator hands it
     // out and the creator takes it back, and a mute war between deputies is not moderation.
@@ -1736,6 +1808,13 @@ async fn set_deputy(
             "there's no moderating a private chat - block them instead"
         )));
     }
+    // Nobody deputizes in a group's room (Curtis, 2026-10-16): its owners moderate it.
+    if crate::chat::room_group(&state, &author, &doc_id).await.is_some() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-groups-rooms-have-no-deputies",
+            "a group's rooms are moderated by its owners - there are no deputies"
+        )));
+    }
     if root != author {
         return Err(AppError::Forbidden(crate::msg!(
             "identity.routes.only-the-rooms-creator-deputizes",
@@ -1789,15 +1868,24 @@ async fn say_label(
     notice: u64,
 ) -> Result<(), AppError> {
     let target_author = hex_fixed::<32>(author, "author root")?;
-    let (label_key, value) = match crate::idface::seal_key_for(state, author, doc_id, root).await? {
-        Some((_, post_key)) => (
-            crate::annotations::SEALED_KEY.to_string(),
-            crate::annotations::seal_statement(&post_key, key, who).map_err(AppError::Internal)?,
-        ),
-        None => (key.to_string(), who.to_string()),
-    };
-    data.public_annotations().say(&target_author, doc_id, &label_key, &value, on).await?;
-    crate::fold::fold_now(state, root).await;
+    // A group's room keeps its moderation on the group's lanes, as its post's labels are
+    // (plans/GROUP_ROOMS.md): a public label would name the group's post in public.
+    if let Some(group) = crate::chat::room_group(state, author, doc_id).await {
+        crate::roster::say_room_label(state, data, root, &group, author, doc_id, key, who, on)
+            .await?;
+    } else {
+        let (label_key, value) =
+            match crate::idface::seal_key_for(state, author, doc_id, root).await? {
+                Some((_, post_key)) => (
+                    crate::annotations::SEALED_KEY.to_string(),
+                    crate::annotations::seal_statement(&post_key, key, who)
+                        .map_err(AppError::Internal)?,
+                ),
+                None => (key.to_string(), who.to_string()),
+            };
+        data.public_annotations().say(&target_author, doc_id, &label_key, &value, on).await?;
+        crate::fold::fold_now(state, root).await;
+    }
     // Plain English on purpose: this is the fallback a reader that does not know the notice
     // kind shows, and a reader that does says the act in its own words.
     let said = format!("{word} {}", crate::speakable::speakable(&subject));
@@ -1995,6 +2083,17 @@ async fn room_admits(
     // The onward hop (Contact tags, ruling 7): a room reached through somebody's share is
     // admitted on their trust, one hop, exactly as the body door admits a shared post. The
     // sharer is the feed journal's byline - a room has no card to carry a `via`.
+    // A group's room admits the group's members now (plans/GROUP_ROOMS.md; Curtis, 2026-10-16:
+    // a removed member shouldn't be "seeing a room's output").
+    if let Some(group) = crate::chat::room_group(state, author, &doc_id).await {
+        if !crate::roster::is_member(state, &group, root).await {
+            return Err(AppError::Forbidden(crate::msg!(
+                "identity.routes.this-room-is-the-groups",
+                "this room is the group's - only its members can be in it"
+            )));
+        }
+        return Ok(doc_id);
+    }
     let via = crate::fanout::introducer(&state.node_db, root, author, doc).await;
     if h.trusted_only
         && author != root

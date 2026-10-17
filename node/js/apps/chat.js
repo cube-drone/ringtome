@@ -70,7 +70,20 @@ import { pickedReference } from '../doc/pickref.js';
 import { DrawingThumb, drawingAsPicture } from '../doc/drawing.js';
 import { stickersOf } from '../pure/imagepick.js';
 import { togglePick } from '../pure/facets.js';
-import { personHref, postHref, roomHref, copyLink, appHref } from '../links.js';
+import {
+    personHref,
+    postHref,
+    roomHref,
+    copyLink,
+    appHref,
+    groupHref,
+    groupChatHref,
+    groupPostHref,
+} from '../links.js';
+import { AudienceSelect } from '../audience.js';
+import { groupOfChoice, sealOfChoice } from '../pure/audience.js';
+import { groupFeeds } from '../pure/groups.js';
+import { GroupMark, useGroupFace } from '../groupface.js';
 import { RoomTitle } from '../roomtitle.js';
 import { formatWhen } from '../pure/when.js';
 
@@ -119,7 +132,11 @@ const useRoomWords = (room) => {
         setWords({ title: room.title || '', body: undefined });
         if (!room.author || !room.doc_id) return undefined;
         const via = room.via ? `?via=${room.via}` : '';
-        apiTextTitled(`/id/${room.author}/docs/${room.doc_id}/body${via}`)
+        // A group's room is a group post: its words are behind the group's door.
+        const at = room.group
+            ? `/api/groups/${room.group}/docs/${room.doc_id}/body`
+            : `/id/${room.author}/docs/${room.doc_id}/body${via}`;
+        apiTextTitled(at)
             .then(
                 ({ text, title }) =>
                     live && setWords({ title: title || room.title || '', body: text }),
@@ -128,7 +145,7 @@ const useRoomWords = (room) => {
         return () => {
             live = false;
         };
-    }, [room.author, room.doc_id, room.title, room.via]);
+    }, [room.author, room.doc_id, room.title, room.via, room.group]);
     return words;
 };
 
@@ -192,6 +209,24 @@ const RoomRow = ({ room, current, selected }) => {
     </li>`;
 };
 
+/// One group's section of the chats column (plans/GROUP_ROOMS.md): the group's triangle and name
+/// for its divider, linking to its page, and a way to start another room in it.
+const GroupPile = ({ pile, children }) => {
+    const face = useGroupFace(pile.group);
+    return html`<div class="chat-group-pile">
+        <p class="chat-list-divider chat-group-divider">
+            <${GroupMark} group=${pile.group} picture=${face && face.picture && `${face.picture}/thumb`} />
+            <a class="chat-group-name" href=${groupHref(pile.group)}>${(face && face.name) || pile.name}</a>
+            <a
+                class="chat-group-new"
+                href=${groupChatHref(pile.group)}
+                title=${t('apps.chat.start-a-room-in-this-group', 'start a room in this group')}
+            >+</a>
+        </p>
+        ${children}
+    </div>`;
+};
+
 const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     const loc = useLocation();
     // Active rooms on top, the rooms this persona left beneath a divider (Curtis,
@@ -200,7 +235,21 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     // Private chats have their own shelf (CHAT.md, ruling 12; Curtis, 2026-09-20): above
     // what was left, below the rooms - they are not rooms one wanders into, and they never
     // close.
-    const active = (rooms || []).filter((r) => !r.left && !r.closed && !r.im);
+    const active = (rooms || []).filter((r) => !r.left && !r.closed && !r.im && !r.group);
+    // A section for every group you're in (plans/GROUP_ROOMS.md), after the rooms: its #general
+    // first, then the rest as the door sorts them, newest word first.
+    const ofGroups = [];
+    for (const r of rooms || []) {
+        if (!r.group || r.left || r.closed) continue;
+        let pile = ofGroups.find((p) => p.group === r.group);
+        if (!pile) {
+            pile = { group: r.group, name: r.group_name || '', rooms: [] };
+            ofGroups.push(pile);
+        }
+        pile.rooms.push(r);
+    }
+    for (const pile of ofGroups)
+        pile.rooms.sort((a, b) => Number(!!b.standing) - Number(!!a.standing));
     const ims = (rooms || []).filter((r) => r.im && !r.left && !r.request);
     // A chat somebody opened with a persona who has no relationship with them (Curtis,
     // 2026-09-20): its own pile, beneath the chats and above what was left, where it can be
@@ -223,6 +272,11 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
                 ? html`<p class="chat-rooms-empty">${filtered ? t('apps.chat.no-chats-wear-those-tags', 'no chats wear those tags') : t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
                 : html`<ul class="chat-list">${active.map(row)}</ul>`
         }
+        ${ofGroups.map(
+            (pile) => html`<${GroupPile} key=${pile.group} pile=${pile}>
+                <ul class="chat-list">${pile.rooms.map(row)}</ul>
+            </${GroupPile}>`,
+        )}
         ${
             ims.length > 0 &&
             html`<p class="chat-list-divider">${t('apps.chat.ims', 'IMs')}</p>
@@ -249,9 +303,30 @@ const NewRoom = ({ root, onMade }) => {
     // (plans/UNLOCKS.md).
     const tagging = useUnlocked(root, 'tags');
     const sealing = useUnlocked(root, 'sealing');
+    const loc = useLocation();
     const [name, setName] = useState('');
     const [words, setWords] = useState('');
-    const [audience, setAudience] = useState('');
+    // Where the room goes, as the feed's composer says it (pure/audience.js) - a group among the
+    // choices (plans/GROUP_ROOMS.md), and already chosen when a group's section sent us here.
+    const [audience, setAudience] = useState(() =>
+        loc.query && loc.query.group ? `group:${loc.query.group}` : '',
+    );
+    // ...and again when another group's section sends us here while the form is open.
+    const askedGroup = (loc.query && loc.query.group) || null;
+    useEffect(() => {
+        if (askedGroup) setAudience(`group:${askedGroup}`);
+    }, [askedGroup]);
+    const [groups, setGroups] = useState([]);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/groups`)
+            .then((rows) => live && setGroups(groupFeeds(rows)))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [root]);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     // What the room is about (Curtis, 2026-09-19): the creator's own labels on the room
@@ -303,22 +378,30 @@ const NewRoom = ({ root, onMade }) => {
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(CHAT_STYLE)}`,
                 { method: 'PUT' },
             );
-            const wish =
-                audience === ''
-                    ? {}
-                    : audience === 'trusted'
-                      ? { trusted_only: true }
-                      : audience === 'onward'
-                        ? { trusted_only: true, audience: '@onward' }
-                        : { trusted_only: true, audience: audience.slice(4) };
-            const posted = await api(`/api/identity/${root}/docs/${made.doc_id}/publish`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    room: true,
-                    tz_offset_min: new Date().getTimezoneOffset(),
-                    ...wish,
-                }),
-            });
+            // A group's room is posted to the group, its door the roster; anything else is a
+            // room of one's own, sealed or not.
+            const group = groupOfChoice(audience);
+            const posted = group
+                ? {
+                      post_id: (
+                          await api(`/api/identity/${root}/groups/${group}/publish`, {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                  doc: made.doc_id,
+                                  room: true,
+                                  tz_offset_min: new Date().getTimezoneOffset(),
+                              }),
+                          })
+                      ).post,
+                  }
+                : await api(`/api/identity/${root}/docs/${made.doc_id}/publish`, {
+                      method: 'POST',
+                      body: JSON.stringify({
+                          room: true,
+                          tz_offset_min: new Date().getTimezoneOffset(),
+                          ...(sealOfChoice(audience) || {}),
+                      }),
+                  });
             // The labels go on the POST (they travel with it), and a sealed room's seal
             // under its key - the door does both. Best-effort: a refused label costs a
             // label, never the room.
@@ -327,13 +410,21 @@ const NewRoom = ({ root, onMade }) => {
             const refused = [];
             for (const value of said) {
                 try {
-                    await api(
-                        `/api/identity/${root}/public-annotations/${root}/${posted.post_id}`,
-                        {
-                            method: 'PUT',
-                            body: JSON.stringify({ key: 'tag', value }),
-                        },
-                    );
+                    // A group room's tags are said on the group's lanes, as its posts' are.
+                    if (group) {
+                        await api(
+                            `/api/identity/${root}/groups/${group}/docs/${posted.post_id}/labels`,
+                            { method: 'POST', body: JSON.stringify({ value, present: true }) },
+                        );
+                    } else {
+                        await api(
+                            `/api/identity/${root}/public-annotations/${root}/${posted.post_id}`,
+                            {
+                                method: 'PUT',
+                                body: JSON.stringify({ key: 'tag', value }),
+                            },
+                        );
+                    }
                 } catch {
                     refused.push(value);
                 }
@@ -420,15 +511,18 @@ const NewRoom = ({ root, onMade }) => {
             }
             <div class="chat-new-foot">
                 ${
-                    sealing &&
+                    (sealing || groups.length > 0) &&
                     html`<label class="feed-settle">
                     ${t('apps.chat.only-show-to', 'only show to')}
-                    <select class="feed-audience jag-field" value=${audience} onChange=${(e) => setAudience(e.currentTarget.value)}>
-                        <option value="">${t('apps.chat.everyone', 'everyone')}</option>
-                        <option value="onward">${t('apps.chat.people-i-trust-and-onward', 'people I trust, and onward')}</option>
-                        <option value="trusted">${t('apps.chat.people-i-trust', 'people I trust')}</option>
-                        ${tags.map((tag) => html`<option value=${`tag:${tag}`} key=${tag}>${tag}</option>`)}
-                    </select>
+                    <${AudienceSelect}
+                        className="feed-audience jag-field"
+                        value=${audience}
+                        onChange=${setAudience}
+                        sealing=${sealing}
+                        tags=${tags}
+                        groups=${groups}
+                        mentions=${false}
+                    />
                 </label>`
                 }
                 <button class="chat-new-go" type="submit" disabled=${busy || !name.trim()}>
@@ -1072,7 +1166,12 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
         // line of the same room is readHistory's business, not a reason to ask for the room again.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, author, doc]);
-    const words = useRoomWords({ author, doc_id: doc, title: (room && room.title) || '' });
+    const words = useRoomWords({
+        author,
+        doc_id: doc,
+        title: (room && room.title) || '',
+        group: (room && room.group) || null,
+    });
 
     const readHistory = () => {
         if (!root) return;
@@ -1629,7 +1728,11 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     // Who may mute here (CHAT.md, ruling 8): the creator, and the deputies they named.
     // ...and nobody moderates a private chat (ruling 12): there is no third party to
     // protect anyone from, and the door refuses the act whatever the chrome offers.
-    const iModerate = !room.im && (room.mine || (room.deputies || []).includes(root));
+    // In a group's room the group's owners moderate too, and nobody deputizes (plans/GROUP_ROOMS.md):
+    // the door says which, and an owner is never muted there.
+    const iModerate =
+        !room.im && (room.mine || room.moderates || (room.deputies || []).includes(root));
+    const unmutable = (who) => (room.owners || []).includes(who);
     const others = (chatters || []).filter((c) => c.root !== author);
     // The floor: the room's post first, said by its creator, then every line oldest to
     // newest; a run of lines by one speaker is attributed once.
@@ -1724,7 +1827,12 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 </button>`
                 }
                 ${
+                    /* A group's room is passed along nowhere (plans/GROUP_ROOMS.md): its post is the
+                    group's, and a share is public. */ ''
+                }
+                ${
                     mayShare &&
+                    !room.group &&
                     html`<button
                     class=${shared ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
                     type="button"
@@ -1748,7 +1856,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 }
                 ${
                     !room.im &&
-                    html`<a class="chip chip-button chip-worded" href=${postHref(author, doc)} title=${t('apps.chat.the-rooms-post', "the room's post")}>
+                    html`<a class="chip chip-button chip-worded" href=${room.group ? groupPostHref(room.group, doc) : postHref(author, doc)} title=${t('apps.chat.the-rooms-post', "the room's post")}>
                     <${Icons.feed} /><span class="chip-word">${t('chips.post', 'post')}</span>
                 </a>`
                 }
@@ -1774,6 +1882,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                         : room.closed
                           ? html`<span class="chip chip-worded chip-open" title=${t('apps.chat.this-room-is-closed', 'this room is closed')}><${Icons.settled} /><span class="chip-word">${t('chips.closed', 'closed')}</span></span>`
                           : room.mine &&
+                            !room.group &&
                             html`<button
                           class="chip chip-button chip-worded"
                           type="button"
@@ -1832,6 +1941,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
             }
                             ${
                                 room.mine &&
+                                !room.group &&
                                 html`<button
                                 class=${c.deputy ? 'chat-chatters-mute chat-chatters-on' : 'chat-chatters-mute'}
                                 type="button"
@@ -1842,6 +1952,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                             ${
                                 iModerate &&
                                 !c.deputy &&
+                                !unmutable(c.root) &&
                                 html`<button
                                 class="chat-chatters-mute"
                                 type="button"
@@ -1972,7 +2083,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                               onReact=${m.post || m.pending || room.left || (history && history.closed) ? null : steady.react}
                               onEdit=${m.post || m.pending || room.left || (history && history.closed) ? null : steady.beginEdit}
                               onDelete=${m.post || m.pending || room.left || (history && history.closed) ? null : steady.deleteLine}
-                              onMute=${iModerate && !m.post && !m.pending && !room.left ? steady.mute : null}
+                              onMute=${iModerate && !m.post && !m.pending && !room.left && !unmutable(m.speaker) ? steady.mute : null}
                               onRetry=${m.pending ? steady.retryLine : null}
                               onDiscard=${m.pending ? steady.discardLine : null}
                               ${

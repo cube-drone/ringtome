@@ -85,8 +85,11 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
             // A group's plan posts to the group, through its own publish (roster.rs), while
             // the author is still in it.
             if let Some(group) = plan.group.as_deref() {
-                let wishes =
-                    crate::roster::Wishes { dated_ms: Some(plan.at), settled: plan.settled };
+                let wishes = crate::roster::Wishes {
+                    dated_ms: Some(plan.at),
+                    settled: plan.settled,
+                    room: false,
+                };
                 match crate::roster::publish_planned(state, &data, &root, group, &doc_id, wishes)
                     .await
                 {

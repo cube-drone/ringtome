@@ -139,6 +139,10 @@ lightly federated, unapologetically Old Internet.
   Proposed: public groups (a public roster, members posting as themselves for
   the group, carried to their followers) beside private ones, chosen at
   founding; and what a group owns (shared notebooks, drawings, playlists).
+- [`GROUP_ROOMS.md`](plans/GROUP_ROOMS.md) — chats that belong to a group
+  (GROUPS slice 5): a room posted to the group, its door the roster, its
+  messages the room machinery's own; the standing room; a pile per group in the
+  chats column. Proposed 2026-10-16.
 - [`HORSE_BASED_CURRENCIES.md`](plans/HORSE_BASED_CURRENCIES.md) — HorseBucks
   and the other currencies: never transferable, a balance is a fold over the
   persona's own ledger that may go negative and is never rolled back, interest

@@ -213,7 +213,7 @@ fn user_db_opens_are_deliberate() {
         ("ingest.rs", 1),
         ("profiles.rs", 2), // refresh: ONE persona per claim-change edge
         ("nodeshelf.rs", 2),
-        ("roster.rs", 1), // the fold leg: one persona per move of its GROUP chains (plans/GROUPS.md, slice 1b)
+        ("roster.rs", 2), // the fold leg: one persona per move of its GROUP chains (plans/GROUPS.md, slice 1b); `out_since`: the persona whose entry ended a speaker's membership, once per room per fold of an ex-member's room chain (plans/GROUP_ROOMS.md)
         ("chat.rs", 5), // the room post's header (once per door), the memo fold (one persona per CHAT-move edge), the live lane's ingest of one frame into its speaker's database, the archive's answer (one open per speaker on the page) and the reader's attribution check of an archived entry (one per speaker on the page) - CHAT.md slices 2 to 4, 2026-09-18 // the fold's re-say of a hosted persona's shelf (once per move of their chain) and a shared original hosted here (once per distinct original per fold) - PROJECT_PLAN's The node's public face slice 1, 2026-09-15
         ("notifications.rs", 1), // refresh_from: ONE author per frontier-move edge
         ("inbox.rs", 1), // accept: ONE recipient per delivered envelope
