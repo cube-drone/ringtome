@@ -567,11 +567,23 @@ export async function copyPictureInto(root, drawing, title, bucket, isNew) {
 /// date the way Writer's publish does (PUBLISH.md ruling 7).
 export async function publishDrawing(root, docId, drawing, extra = {}) {
     const picture = await flattenToBlob(root, drawing);
-    const query = new URLSearchParams({ tz_offset_min: String(-new Date().getTimezoneOffset()) });
+    const query = new URLSearchParams({ tz_offset_min: String(new Date().getTimezoneOffset()) });
     if (extra.settled) query.set('settled', 'true');
     if (extra.trusted_only !== undefined) query.set('trusted_only', String(!!extra.trusted_only));
     if (extra.audience !== undefined) query.set('audience', extra.audience);
     return xhrUpload(`/api/identity/${root}/docs/${docId}/publish/drawing?${query}`, picture);
+}
+
+/// Or to one of your groups (plans/GROUPS.md), by the group's drawing door: the same flattened
+/// picture, posted as the group's.
+export async function publishDrawingToGroup(root, docId, drawing, group, wishes = {}) {
+    const picture = await flattenToBlob(root, drawing);
+    const query = new URLSearchParams({
+        doc: docId,
+        tz_offset_min: String(new Date().getTimezoneOffset()),
+    });
+    if (wishes.settled) query.set('settled', 'true');
+    return xhrUpload(`/api/identity/${root}/groups/${group}/publish/drawing?${query}`, picture);
 }
 
 /// Duplicate a drawing (DRAWING.md): the node's own private copy door, strokes and tags and all, into
@@ -978,6 +990,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const publishThis = async (extra) => {
         await session.save(); // the node publishes the drawing's saved state as its draft
         return publishDrawing(root, docId, drawing, extra || {});
+    };
+    const publishToGroup = async (group, wishes) => {
+        await session.save();
+        return publishDrawingToGroup(root, docId, drawing, group, wishes);
     };
     const row = session.row;
     const differs = !!(
@@ -2533,7 +2549,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         <div class="drawing">
             ${header}
             ${pickingImage && html`<${ImagePickModal} root=${root} drawings=${true} DrawingThumb=${DrawingThumb} onPick=${placePicture} onClose=${() => setPickingImage(false)} />`}
-            ${(!chipMenu.narrow || publishOpen) && html`<${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} />`}
+            ${(!chipMenu.narrow || publishOpen) && html`<${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} publishToGroup=${publishToGroup} />`}
             <div
                 class="drawing-stage"
                 ref=${stageRef}

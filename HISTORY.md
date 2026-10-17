@@ -22838,3 +22838,29 @@ comments off refuses an answer, and so does the group to a stranger. Taken down,
 the reply leaves the thread. Groups posts, rooms, invites and the neighbouring
 reply, sealed-reply, scores, settled, audience, bell, mention and MCP areas pass
 (108); node 630 and 14, clippy clean.
+
+## 2026-10-17 — Drawings post to a group
+
+Drawing's publish bar now offers your groups, as Writer's does (Curtis: "Same as
+the way we publish from the writer"), with view, update and take down once a
+drawing is posted.
+
+- **The door.** `POST .../groups/{group}/publish/drawing?doc=` takes the page's
+  flattened picture, as the public drawing door does. It is laundered to AVIF,
+  minted as a group media document on the poster's lane (`mint_media`), and
+  posted as the drawing's version, with Marquee words that are that picture,
+  titled as the drawing is. Publishing again edits the post with a new picture.
+  As in public, a drawing takes no schedule.
+- **Shared, not copied.** The public door's checks, laundering and words are now
+  `identity::routes::drawing_draft`, `launder_drawing` and `drawing_words`, and
+  both doors call them. The second half of `roster::publish` (an edit or a new
+  post, the header, the draft's labels) is `post_version`, which Writer's road
+  and the drawing door both use.
+- **A date fix on the way.** The public drawing door sent the timezone negated
+  (`-getTimezoneOffset()`), unlike every other publish, so a dated drawing
+  posted at its claimed time shifted by twice the UTC offset. It now sends what
+  `claimed_ms` expects.
+- **Tests.** A new claim in `groupposts.cjs`: bea's drawing reaches ada's node
+  as a group post whose words are its group picture, served laundered and never
+  publicly. The groups list knows the draft. A second publish edits the post
+  with a new picture. A note is refused at the drawing door.

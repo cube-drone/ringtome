@@ -4281,6 +4281,82 @@ async fn resolve_reply_link(
     Ok((parent_link, root_link))
 }
 
+/// A drawing about to publish, by either door (this one, or a group's): its title, the version it
+/// publishes, and its claimed date.
+pub(crate) struct DrawingDraft {
+    pub title: String,
+    pub head: Option<String>,
+    pub dated_ms: Option<i64>,
+}
+
+/// Check that `doc_id` is a drawing and read what its publish needs. The date is resolved as
+/// Writer's publish resolves it (PUBLISH.md): a claim in the past dates the post; a future one is
+/// a schedule, which drawings do not have.
+pub(crate) async fn drawing_draft(
+    session: &Session,
+    data: &store::Store,
+    doc_id: &[u8; 16],
+    tz_offset_min: i32,
+) -> Result<DrawingDraft, AppError> {
+    use crate::record::documents::Format;
+    let docs = data.documents();
+    let doc = docs.one(doc_id).await?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!("identity.routes.no-such-drawing", "no such drawing"))
+    })?;
+    // Before the mint, as the words' door does (made_with.rs).
+    crate::made_with::mark(session, data, doc_id).await?;
+    if doc.display_head().map(|h| Format::from_wire(h.header.format)) != Some(Format::Drawing) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.only-a-drawing-publishes-here",
+            "only a drawing publishes by this door"
+        )));
+    }
+    let title = docs.resolved(&doc).await?.title;
+    let head = doc.display_head().map(|v| hex::encode(v.hash));
+    let dated_ms = data.annotations().field(doc_id, store::DISPLAY_DATE).await?.and_then(|v| {
+        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min)
+    });
+    if dated_ms.is_some_and(|at| at > crate::clock::now_ms()) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-drawing-cant-be-scheduled",
+            "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
+        )));
+    }
+    Ok(DrawingDraft { title, head, dated_ms })
+}
+
+/// The page's flattened picture of a drawing, given the laundering every picture gets - decode,
+/// re-encode, never trust the bytes - and refused unless it comes out a still.
+pub(crate) async fn launder_drawing(picture: Bytes) -> Result<crate::media::Ingested, AppError> {
+    let bytes = picture.to_vec();
+    let ingested =
+        crate::media::lane::crush(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("drawing crush task: {e}")))?
+            .map_err(|e| {
+                AppError::BadRequest(crate::msg!(
+                    "identity.routes.that-picture-didnt-work",
+                    "that picture didn't work: {e}",
+                    e = e
+                ))
+            })?;
+    if ingested.format != crate::record::documents::Format::Avif {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-drawing-is-a-still-picture",
+            "a drawing publishes as a still picture"
+        )));
+    }
+    Ok(ingested)
+}
+
+/// A drawing's post: Marquee words that are its picture, at `target`. The alt text is the title,
+/// kept to what Marquee's `![...]` holds without a question.
+pub(crate) fn drawing_words(title: &str, target: &str) -> String {
+    let alt: String =
+        title.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')' | '\n' | '\r')).collect();
+    format!("![{}]({target})\n", if alt.trim().is_empty() { "a drawing" } else { alt.trim() })
+}
+
 /// POST `/api/identity/{root}/docs/{doc_id}/publish/drawing` - publish a drawing as a picture
 /// (DRAWING.md). The body is the page's flattened picture of the drawing (webp or png); the node
 /// launders it as it does every picture - decode, re-encode to AVIF - mints its public twin, and
@@ -4321,31 +4397,8 @@ async fn publish_drawing_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let docs = data.documents();
-    let doc = docs.one(&doc_id).await?.ok_or_else(|| {
-        AppError::NotFound(crate::msg!("identity.routes.no-such-drawing", "no such drawing"))
-    })?;
-    // Before the mint, as the words' door does (made_with.rs).
-    crate::made_with::mark(&session, &data, &doc_id).await?;
-    if doc.display_head().map(|h| Format::from_wire(h.header.format)) != Some(Format::Drawing) {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.only-a-drawing-publishes-here",
-            "only a drawing publishes by this door"
-        )));
-    }
-    let title = docs.resolved(&doc).await?.title;
-    let head = doc.display_head().map(|v| hex::encode(v.hash));
-
-    // The date, resolved as Writer's publish resolves it (PUBLISH.md): a claim in the past dates
-    // the post; a future one is a schedule, which drawings do not have.
-    let dated_ms = data.annotations().field(&doc_id, store::DISPLAY_DATE).await?.and_then(|v| {
-        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), req.tz_offset_min)
-    });
-    if dated_ms.is_some_and(|at| at > crate::clock::now_ms()) {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.a-drawing-cant-be-scheduled",
-            "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
-        )));
-    }
+    let DrawingDraft { title, head, dated_ms } =
+        drawing_draft(&session, &data, &doc_id, req.tz_offset_min).await?;
     // Trusted only seals the post, and the picture under the post's own key - as baked media is -
     // or the post would ship a public copy of the very picture it seals. Once sealed, always sealed.
     // An audience is a seal too, as at the words' door.
@@ -4353,26 +4406,7 @@ async fn publish_drawing_handler(
     let post_key = docs.post_key_if(&doc_id, req.trusted_only || audience.is_some()).await?;
     let onward =
         post_key.is_some() && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
-
-    // The same laundering every picture gets - decode, re-encode, never trust the bytes.
-    let bytes = picture.to_vec();
-    let ingested =
-        crate::media::lane::crush(move || crate::media::crush_with_progress(&bytes, &|_| {}))
-            .await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("drawing crush task: {e}")))?
-            .map_err(|e| {
-                AppError::BadRequest(crate::msg!(
-                    "identity.routes.that-picture-didnt-work",
-                    "that picture didn't work: {e}",
-                    e = e
-                ))
-            })?;
-    if ingested.format != Format::Avif {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.a-drawing-is-a-still-picture",
-            "a drawing publishes as a still picture"
-        )));
-    }
+    let ingested = launder_drawing(picture).await?;
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let signer =
         super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
@@ -4391,12 +4425,8 @@ async fn publish_drawing_handler(
     )
     .await?;
 
-    // The alt text is the title, kept to what Marquee's `![...]` holds without a question.
-    let alt: String =
-        title.chars().filter(|c| !matches!(c, '[' | ']' | '(' | ')' | '\n' | '\r')).collect();
     let target = crate::record::bake::public_media_target(&root, &twin, Format::Avif, false);
-    let body =
-        format!("![{}]({target})\n", if alt.trim().is_empty() { "a drawing" } else { alt.trim() });
+    let body = drawing_words(&title, &target);
     let flags = crate::record::documents::PublishFlags {
         settled: req.settled,
         trusted_only: post_key.is_some(),

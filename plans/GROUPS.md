@@ -800,7 +800,10 @@ Dropped:
        to", Everyone or a group. Once posted, the bar says "posted in" the
        group, with view, update and unpublish there
        (`GET .../docs/{doc_id}/groups` says where a draft went; a takedown
-       forgets it). Drawings don't offer it: a group post is words.
+       forgets it). Drawing's bar offers it too (2026-10-17): the page's
+       flattened picture goes to `POST .../groups/{group}/publish/drawing`,
+       which launders it as the public drawing door does, mints it as the
+       group's media document and posts words that are that picture.
      - A group post's header carries the draft's claimed date and comments off,
        as any post's does, and sorts by the claimed date.
      - A future date is a plan naming the group; the publish-due sweep posts it

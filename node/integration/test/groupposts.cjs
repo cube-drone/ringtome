@@ -900,4 +900,85 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         await both();
         assert.deepEqual(await level(bea, beaRoot, seed), [], 'gone from the thread');
     });
+
+    it("a drawing posts to the group as a picture, by the group's drawing door", async () => {
+        const { writeBody } = await import('../../js/pure/drawing.js');
+        const strokes = [
+            {
+                id: 'a000000000000001',
+                t: 1,
+                tool: 'brush',
+                color: '#8a4b1f',
+                size: 8,
+                points: [10, 10, 5, 5, 5, 0],
+            },
+        ];
+        const drawn = await (
+            await j(bea, `api/identity/${beaRoot}/docs`, {
+                title: 'a potato, drawn',
+                body: writeBody({ strokes, undone: [] }),
+                format: 'drawing',
+            })
+        ).json();
+        const door = (doc) =>
+            bea(`api/identity/${beaRoot}/groups/${group}/publish/drawing?doc=${doc}`, {
+                method: 'POST',
+                body: makePng(80, 60),
+                file: true,
+            });
+        const posted = async () => {
+            const res = await door(drawn.doc_id);
+            const text = await res.text();
+            assert.equal(res.status, 200, text);
+            return JSON.parse(text).post;
+        };
+        const drawing = await posted();
+        await sync(bea, beaRoot);
+        await sync(ada, adaRoot);
+        const there = (await page(HOST, ada, adaRoot)).find((p) => p.doc === drawing);
+        assert.ok(there, 'the drawing is on the group page at ada');
+        assert.equal(there.title, 'a potato, drawn');
+        assert.equal(there.format, 'marquee', 'posted as words that are its picture');
+        assert.equal(there.media.length, 1);
+        const [pic] = there.media;
+        assert.equal(
+            there.words.trim(),
+            `![a potato, drawn](/api/groups/${group}/docs/${pic}/body/media.avif)`,
+        );
+        const bytes = await ada(`api/groups/${group}/docs/${pic}/body/media.avif`);
+        assert.equal(bytes.status, 200);
+        assert.equal(
+            bytes.headers.get('content-type'),
+            'image/avif',
+            'laundered, as every picture is',
+        );
+        assert.equal(
+            (await makeFetch(HOST_B)(`id/${beaRoot}/docs/${pic}/body`)).status,
+            404,
+            'nothing public',
+        );
+        const listed = (await (await bea(`api/identity/${beaRoot}/groups`)).json()).find(
+            (g) => g.group === group,
+        );
+        assert.ok(listed.drafts.includes(drawn.doc_id), 'the drawing knows where it went');
+
+        // Again: the same post, a new picture.
+        assert.equal(await posted(), drawing, 'publishing again edits the post');
+        await sync(bea, beaRoot);
+        await sync(ada, adaRoot);
+        const edited = (await page(HOST, ada, adaRoot)).find((p) => p.doc === drawing);
+        assert.ok(edited.edited);
+        assert.notEqual(edited.media[0], pic, 'with the new picture');
+
+        // Only a drawing comes through this door.
+        const note = await (
+            await j(bea, `api/identity/${beaRoot}/docs`, {
+                title: 'words',
+                body: 'words',
+                format: 'marquee',
+            })
+        ).json();
+        assert.equal((await door(note.doc_id)).status, 400);
+        await act(bea, beaRoot, `docs/${drawing}/retract`);
+    });
 });

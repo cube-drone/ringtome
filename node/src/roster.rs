@@ -1609,6 +1609,10 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/posts", get(posts_handler))
         .route("/api/identity/{root}/groups/{group}/posts/{doc}/replies", get(replies_handler))
         .route("/api/identity/{root}/groups/{group}/publish", post(publish_handler))
+        .route(
+            "/api/identity/{root}/groups/{group}/publish/drawing",
+            post(publish_drawing_handler).layer(upload()),
+        )
         .route("/api/identity/{root}/docs/{doc_id}/groups", get(draft_groups_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/retract", post(retract_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/close", post(close_handler))
@@ -2674,6 +2678,40 @@ pub async fn publish(
         }
         words = crate::record::bake::rewrite(&words, &swaps);
     }
+    post_version(
+        state,
+        data,
+        me,
+        group,
+        draft,
+        Body { title, format, words, refs, carried },
+        wishes,
+    )
+    .await
+}
+
+/// What a group post's version says: its words, already embedding the group's media documents,
+/// and what those are, for the post's implicit tags.
+struct Body {
+    title: String,
+    format: crate::record::documents::Format,
+    words: String,
+    refs: Vec<[u8; 16]>,
+    carried: Vec<(Option<u64>, bool)>,
+}
+
+/// Post `body` as `draft`'s version in the group: a new post, or an edit of the one the draft
+/// already became. The draft's labels go with it, as publishing restates them on the public chain.
+async fn post_version(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    draft: &[u8; 16],
+    body: Body,
+    wishes: Wishes,
+) -> Result<[u8; 16], AppError> {
+    let Body { title, format, words, refs, carried } = body;
     if refs.len() > DocHeaderPlain::MAX_REFS {
         return Err(AppError::BadRequest(crate::msg!(
             "roster.too-many-pictures",
@@ -3055,6 +3093,75 @@ async fn publish_handler(
     )
     .await?;
     clear_plan(&data, &draft).await?;
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "post": hex::encode(post) })))
+}
+
+#[derive(Deserialize, Default)]
+struct DrawingPublish {
+    doc: String,
+    #[serde(default)]
+    settled: bool,
+    #[serde(default)]
+    tz_offset_min: i32,
+}
+
+/// POST `.../groups/{group}/publish/drawing?doc=&settled=&tz_offset_min=` - publish a drawing to
+/// the group as a picture, as the public drawing door does (identity/routes.rs): the body is the
+/// page's flattened picture, laundered, minted as the group's media document, and posted as the
+/// drawing's version with words that are that picture. Publishing again is an edit, with a new
+/// picture. A drawing takes no schedule, here or in public.
+async fn publish_drawing_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+    axum::extract::Query(req): axum::extract::Query<DrawingPublish>,
+    picture: axum::body::Bytes,
+) -> Answer {
+    use crate::record::documents::Format;
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let (roster, _) = current(&state, &group, &me).await?;
+    if !roster.members.contains(&me) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "roster.members-only",
+            "only the group's members can post to it"
+        )));
+    }
+    let draft = doc_of(&req.doc)?;
+    let crate::identity::routes::DrawingDraft { title, dated_ms, .. } =
+        crate::identity::routes::drawing_draft(&session, &data, &draft, req.tz_offset_min).await?;
+    let ingested = crate::identity::routes::launder_drawing(picture).await?;
+    let media = mint_media(
+        &state,
+        &data,
+        &root,
+        &group,
+        Minted {
+            body: &ingested.body,
+            thumb: ingested.thumb_avif.as_deref(),
+            title: &title,
+            format: Format::Avif.to_wire(),
+            width: ingested.width,
+            height: ingested.height,
+            duration_ms: None,
+            animation: false,
+            part_of: None,
+        },
+    )
+    .await?;
+    let words = crate::identity::routes::drawing_words(
+        &title,
+        &media_target(&group, &media, Format::Avif, false),
+    );
+    let body = Body {
+        title,
+        format: Format::Marquee,
+        words,
+        refs: vec![media],
+        carried: vec![(Format::Avif.to_wire(), false)],
+    };
+    let wishes = Wishes { dated_ms, settled: req.settled, ..Default::default() };
+    let post = post_version(&state, &data, &root, &group, &draft, body, wishes).await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "post": hex::encode(post) })))
 }
 
