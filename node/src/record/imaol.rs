@@ -1621,24 +1621,28 @@ pub async fn group_entries_past(
     db: &Db,
     held: &std::collections::HashMap<(Vec<u8>, Vec<u8>), i64>,
 ) -> Result<Vec<SignedEntry>, AppError> {
-    let chains: Vec<(String, Vec<u8>)> = db
+    // Both lanes of a public group (plans/PUBLIC_GROUPS.md): `held` keys a public lane by the
+    // fold's name for it, `roster::lane_device`.
+    let chains: Vec<(String, i64, Vec<u8>)> = db
         .fetch_all(
-            "SELECT DISTINCT author_pubkey, instance FROM entries WHERE service = ?1",
-            (i64::from(service::GROUP),),
+            "SELECT DISTINCT author_pubkey, service, instance FROM entries WHERE service IN (?1, ?2)",
+            (i64::from(service::GROUP), i64::from(service::GROUP_PUBLIC)),
         )
         .await
         .context("listing the group lanes")
         .map_err(AppError::Internal)?;
     let mut out = Vec::new();
-    for (author, instance) in chains {
-        let device = hex::decode(&author).unwrap_or_default();
+    for (author, svc, instance) in chains {
+        let raw: [u8; 32] =
+            hex::decode(&author).ok().and_then(|b| b.try_into().ok()).unwrap_or_default();
+        let device = crate::roster::lane_device(svc as u32, &raw).to_vec();
         let past = held.get(&(instance.clone(), device)).copied().unwrap_or(-1);
         let rows: Vec<(Vec<u8>,)> = db
             .fetch_all(
                 "SELECT bytes FROM entries INDEXED BY sqlite_autoindex_entries_1
                  WHERE author_pubkey = ?1 AND service = ?2 AND instance = ?3 AND seq > ?4
                  ORDER BY seq",
-                (author.as_str(), i64::from(service::GROUP), instance, past),
+                (author.as_str(), svc, instance, past),
             )
             .await
             .context("reading a group lane")

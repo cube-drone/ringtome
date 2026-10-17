@@ -685,6 +685,10 @@ struct FeedItem {
     /// the group's own door, and it is never shared out.
     #[serde(skip_serializing_if = "Option::is_none")]
     group: Option<GroupCard>,
+    /// A public post a public group counts as its own (plans/PUBLIC_GROUPS.md): the card says
+    /// "(Cheese Group)" beside its author. The post is still theirs, in public.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_group: Option<AsGroupCard>,
     /// Hot's lift (PROJECT_PLAN's Scores and sort orders, slice 2): this reader's score for the
     /// post reached two whole likes, and the card takes its top emphasis. A flag, never the score.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -2669,6 +2673,16 @@ async fn dress_feed(
         rows.iter().filter_map(|r| r.group.as_ref().map(|g| g.id.clone())).collect();
     let group_names =
         crate::roster::group_names(state, &group_ids).await.map_err(AppError::Internal)?;
+    // The public groups counting these public posts as theirs.
+    let as_groups = crate::roster::public_groups_of(
+        state,
+        &rows
+            .iter()
+            .filter(|r| r.group.is_none())
+            .map(|r| (r.author_root.clone(), r.doc_id.clone()))
+            .collect::<Vec<_>>(),
+    )
+    .await;
     let reply_counts = crate::replies::known_counts(
         &state.node_db,
         &rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect::<Vec<_>>(),
@@ -2782,6 +2796,9 @@ async fn dress_feed(
             let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
             let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
+                as_group: as_groups
+                    .get(&(r.author_root.clone(), r.doc_id.clone()))
+                    .map(|(id, name)| AsGroupCard { id: id.clone(), name: name.clone() }),
                 group: r.group.map(|g| GroupCard {
                     name: group_names.get(&g.id).cloned().unwrap_or(g.name),
                     pinned: match g.pin {
@@ -2847,6 +2864,13 @@ async fn group_post_handler(
         })?;
     let mut items = dress_feed(&state, &root, vec![row], &Default::default()).await?;
     Ok(Json(serde_json::json!({ "item": items.pop() })))
+}
+
+/// The public group a public post is the group's in (plans/PUBLIC_GROUPS.md), as its card names it.
+#[derive(Serialize)]
+struct AsGroupCard {
+    id: String,
+    name: String,
 }
 
 /// A group post's group, as its card names it.
@@ -3739,6 +3763,9 @@ struct PublishRequest {
     /// An IM (CHAT.md, ruling 12): this room is a two-person chat, sealed to the one
     /// person its words name. Said once, at the mint; the header carries it after that.
     im: Option<bool>,
+    /// A public group (plans/PUBLIC_GROUPS.md, slice 2): post this in public as the group's -
+    /// the poster's own public post, which their lane for the group then claims. Open posts only.
+    as_group: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -4583,6 +4610,27 @@ async fn publish_handler(
             "a private chat can't be closed - stop talking, or block them"
         )));
     }
+    // As the group (plans/PUBLIC_GROUPS.md): a public group the poster is in, and an open post
+    // now - a sealed one has no public to speak to, and a schedule would claim nothing.
+    let as_group = match req.as_ref().and_then(|b| b.as_group.as_deref()).filter(|g| !g.is_empty())
+    {
+        Some(g) => {
+            if trusted_only || room || im {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "identity.routes.as-the-group-is-open",
+                    "a post as the group is an open post - not sealed, not a room"
+                )));
+            }
+            if dated_ms.is_some_and(|at| at > crate::clock::now_ms()) {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "identity.routes.as-the-group-isnt-scheduled",
+                    "a post as the group can't be scheduled yet - clear its date, or give it one that has passed"
+                )));
+            }
+            Some(crate::roster::may_post_as(&state, &root, g).await?)
+        }
+        None => None,
+    };
     let flags = crate::record::documents::PublishFlags {
         settled,
         trusted_only,
@@ -4646,6 +4694,9 @@ async fn publish_handler(
                 let t_mint = t.elapsed();
                 let t = std::time::Instant::now();
                 after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
+                if let Some(group) = as_group {
+                    crate::roster::claim_public(&state, &data, &root, group, post_id).await?;
+                }
                 let t_after = t.elapsed();
                 drop(held); // before the drain: under its own hold it would fold the burst half-written
                             // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a
@@ -4786,6 +4837,8 @@ async fn unpublish_handler(
         .await?
         .map(|p| (p.reply_to, p.thread_root));
     let signed = data.documents().retract_post(&post_id).await?;
+    // A post some public group counted as its own is the group's no longer (plans/PUBLIC_GROUPS.md).
+    crate::roster::unclaim_public(&state, &data, &root, &post_id).await?;
     if let Some((reply_to, thread_root)) = reply_pins {
         let mut pins: Vec<(String, String)> = Vec::new();
         pins.extend(reply_to);

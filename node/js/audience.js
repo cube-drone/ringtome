@@ -59,5 +59,20 @@ export const AudienceSelect = ({
                 ${groups.map((g) => html`<option value=${`group:${g.group}`} key=${g.group}>${g.name}</option>`)}
             </optgroup>`
         }
+        ${
+            /* In public, as one of your public groups (plans/PUBLIC_GROUPS.md): your own open post,
+            the group's too, reaching your followers and the group's. */ ''
+        }
+        ${
+            groups.some((g) => g.public) &&
+            html`<optgroup label=${t('audience.in-public-as-a-group', 'in public, as a group')}>
+                ${groups
+                    .filter((g) => g.public)
+                    .map(
+                        (g) =>
+                            html`<option value=${`as-group:${g.group}`} key=${`as-${g.group}`}>${g.name}</option>`,
+                    )}
+            </optgroup>`
+        }
     </select>`;
 };

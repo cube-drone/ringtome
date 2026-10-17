@@ -22941,3 +22941,51 @@ shows them under each machine and this one, as "hdt 0.4.7 · mac · accounts: 2 
 personas: 5". A proto test covers the slot's round trip, its default from an
 older sender, and its caps; `machines.cjs` checks that the rig's nodes say `hdt`
 and `server` and carry someone.
+
+## 2026-10-17 — Public groups
+
+Curtis asked for "a different option at creation that allows users to publish
+not just within but also On Behalf Of a group", with public membership, and a
+member's followers getting the group's public posts under the rebroadcast dial.
+His friend's own post as the group counts as a direct post. He ruled four more
+things: the open page is for anyone; following a group comes now; removal
+uncarries everything the member ever posted as the group's; and each member
+device has two lanes, keeping posts within the group members-only.
+plans/PUBLIC_GROUPS.md has the design; GROUPS.md's slice 12 points to it.
+
+- **Two lanes, one fold.** A public group adds `(device, GROUP_PUBLIC, group)`,
+  service 15, beside each members-only lane. The fold names it by a lane id
+  derived from the device, so `proto::roster::build` didn't change: each lane
+  already joins on its own, counts content while joined, and is cut by the
+  anchors that name it. The roster, the face and the public posts go on the
+  public lane; posts, labels and pins on the members-only one, which joins
+  first. The kind is signed into the founding, so it's in the group's id. Groups
+  founded before this stop verifying; none were in the wild.
+- **The door.** A public lane travels on every exchange, as a chain with no
+  instance does, so a follow of a member carries it. A node outside the group is
+  served the public lanes and never a members-only one, because the group's door
+  names it no instance.
+- **Posting as the group** is the poster's own public post, which their public
+  lane claims (`GroupEntry::Public`). The card says "(Cheese Group)". A claim
+  ends with a takedown, an owner's hide (said on the public lane) or the
+  member's removal, which ends every claim they made.
+- **The carry.** On a reader's node, each member's rebroadcast-followers get the
+  group's other public posts through them, by the share's road. Each post is
+  asked of its author, and the carry is recorded so an ended one withdraws
+  exactly its rows. The group-sync beat keeps the public lanes of a group this
+  node isn't in, from the group's machines, else each member's keys resolved as
+  a follow does. **Following a group** brings every member's post as the
+  group's, direct.
+- **What anyone sees.** `GET /api/groups/{group}/public` and
+  `/ringtome/groups/{group}`, signed in or out: the face, the members and the
+  public posts, with a follow button. A persona's card lists their public
+  groups. Founding offers public, and the join note says what that means. The
+  picker offers "in public, as a group". A private group appears on none of
+  these.
+- **Tests.** Proto tests for public lanes, members-only joins, a removal cutting
+  both lanes, the signed kind, and claims (retract, hide, removal, strangers). A
+  pure test for the new choice. `publicgroups.cjs`, eight claims across four
+  nodes: the lanes, a follower's node getting only the public lane, posting as
+  the group and its mark, hide, takedown and removal, the refusals, the carry
+  under the rebroadcast dial and its end on removal, following the group, and
+  the open pages. Node rungs 98-101.

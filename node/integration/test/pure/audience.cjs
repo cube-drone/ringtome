@@ -2,9 +2,9 @@
 // publish wishes it means.
 const assert = require('node:assert');
 
-let groupOfChoice, sealOfChoice, choiceOfDraft, publishWishes;
+let groupOfChoice, asGroupOfChoice, sealOfChoice, choiceOfDraft, publishWishes;
 before(async () => {
-    ({ groupOfChoice, sealOfChoice, choiceOfDraft, publishWishes } =
+    ({ groupOfChoice, asGroupOfChoice, sealOfChoice, choiceOfDraft, publishWishes } =
         await import('../../../js/pure/audience.js'));
 });
 
@@ -42,5 +42,18 @@ describe('where a post goes', () => {
         assert.deepEqual(publishWishes('', {}), {}, 'an open post sends nothing new');
         assert.deepEqual(publishWishes('', { seal: 'yes' }), { trusted_only: false, audience: '' });
         assert.deepEqual(publishWishes('group:ab', { seal: 'yes' }), {}, "a group's door decides");
+    });
+
+    it('posts in public as a public group: an open post, named for the group', () => {
+        assert.equal(asGroupOfChoice('as-group:ab'), 'ab');
+        assert.equal(asGroupOfChoice('group:ab'), null, 'members-only is another choice');
+        assert.equal(groupOfChoice('as-group:ab'), null);
+        assert.equal(sealOfChoice('as-group:ab'), null, 'never sealed');
+        assert.deepEqual(publishWishes('as-group:ab', {}), { as_group: 'ab' });
+        assert.deepEqual(
+            publishWishes('as-group:ab', { seal: 'yes' }),
+            { as_group: 'ab', trusted_only: false, audience: '' },
+            'open, over a sealed draft',
+        );
     });
 });

@@ -65,29 +65,34 @@ pub struct Founding {
     pub name: String,
     pub group_key: [u8; 32],
     pub sig: [u8; 64],
+    /// The group's kind (GROUPS.md ruling 8; plans/PUBLIC_GROUPS.md ruling 1): a public group's
+    /// roster and public posts are on public lanes. Signed, and so in the id: a group of the
+    /// other kind is another group.
+    pub public: bool,
 }
 
 impl Founding {
-    fn preimage(group_key: &[u8; 32], founder: &Root, name: &str) -> Vec<u8> {
-        let mut p = Vec::with_capacity(DOMAIN_FOUNDING.len() + 64 + name.len());
+    fn preimage(group_key: &[u8; 32], founder: &Root, public: bool, name: &str) -> Vec<u8> {
+        let mut p = Vec::with_capacity(DOMAIN_FOUNDING.len() + 65 + name.len());
         p.extend_from_slice(DOMAIN_FOUNDING);
         p.extend_from_slice(group_key);
         p.extend_from_slice(founder);
+        p.push(u8::from(public));
         p.extend_from_slice(name.as_bytes());
         p
     }
 
     /// Found a group: `key` is the group's own, minted for this and nothing after.
-    pub fn sign(key: &SigningKey, founder: Root, name: &str) -> Self {
+    pub fn sign(key: &SigningKey, founder: Root, name: &str, public: bool) -> Self {
         let group_key = key.verifying_key().to_bytes();
-        let sig = key.sign(&Self::preimage(&group_key, &founder, name)).to_bytes();
-        Self { founder, name: name.to_string(), group_key, sig }
+        let sig = key.sign(&Self::preimage(&group_key, &founder, public, name)).to_bytes();
+        Self { founder, name: name.to_string(), group_key, sig, public }
     }
 
     pub fn verify(&self) -> bool {
         let Ok(key) = VerifyingKey::from_bytes(&self.group_key) else { return false };
         key.verify(
-            &Self::preimage(&self.group_key, &self.founder, &self.name),
+            &Self::preimage(&self.group_key, &self.founder, self.public, &self.name),
             &Signature::from_bytes(&self.sig),
         )
         .is_ok()
@@ -95,7 +100,7 @@ impl Founding {
 
     /// The statement's hash: what the founder's acts cite as their authority.
     pub fn hash(&self) -> Hash {
-        let mut p = Self::preimage(&self.group_key, &self.founder, &self.name);
+        let mut p = Self::preimage(&self.group_key, &self.founder, self.public, &self.name);
         p.extend_from_slice(&self.sig);
         *blake3::hash(&p).as_bytes()
     }
@@ -105,6 +110,20 @@ impl Founding {
     pub fn id(&self) -> GroupId {
         self.hash()[..16].try_into().expect("16 of 32")
     }
+}
+
+/// Domain for a public lane's id in the fold (plans/PUBLIC_GROUPS.md).
+pub const DOMAIN_PUBLIC_LANE: &[u8] = b"ringtome-v0/group-public-lane";
+
+/// The fold's name for a device's public lane: a public group gives each member device two lanes,
+/// `(device, GROUP_PUBLIC, group)` beside `(device, GROUP, group)`, and the fold tells them apart
+/// by this id, so to [`build`] a public lane is one more lane of its persona - joined, counted and
+/// cut by anchors like any other. Anchors name it by this id too.
+pub fn public_lane(device: &Device) -> Device {
+    let mut h = blake3::Hasher::new();
+    h.update(DOMAIN_PUBLIC_LANE);
+    h.update(device);
+    *h.finalize().as_bytes()
 }
 
 /// How much of one device's lane an act lets stand: through `seq`, whose entry is `head_hash`.
@@ -279,6 +298,14 @@ pub enum GroupEntry {
         pinned: bool,
         replaces: Vec<Hash>,
     },
+    /// A public post as the group (plans/PUBLIC_GROUPS.md): the lane's persona says their own
+    /// public post `doc`, on their own public chain, is the group's - or, `retract`, no longer
+    /// is. Written on a public group's public lane, counted while the lane is a member, as a
+    /// post is. The post stays its author's, whatever becomes of the claim.
+    Public {
+        doc: [u8; 16],
+        retract: bool,
+    },
 }
 
 impl GroupEntry {
@@ -300,7 +327,8 @@ impl GroupEntry {
             | GroupEntry::Leave { .. }
             | GroupEntry::Document { .. }
             | GroupEntry::Label { .. }
-            | GroupEntry::MemberPin { .. } => None,
+            | GroupEntry::MemberPin { .. }
+            | GroupEntry::Public { .. } => None,
         }
     }
 }
@@ -361,6 +389,9 @@ impl GroupEntry {
                     return Err(ProtoError::BadEntry("a group's name is one line"));
                 }
                 f.push((2, V::B(&found.founder)));
+                if found.public {
+                    f.push((8, V::U(1)));
+                }
                 f.push((13, V::T(&found.name)));
                 f.push((14, V::B(&found.group_key)));
                 f.push((15, V::B(&found.sig)));
@@ -388,6 +419,9 @@ impl GroupEntry {
                 f.push((1, V::B(by)));
                 f.push((2, V::B(invitee)));
                 list!(5, readmits);
+                if founding.public {
+                    f.push((8, V::U(1)));
+                }
                 f.push((13, V::T(&founding.name)));
                 f.push((14, V::B(&founding.group_key)));
                 f.push((15, V::B(&founding.sig)));
@@ -478,6 +512,13 @@ impl GroupEntry {
                 }
                 f.push((11, V::B(post)));
                 15
+            }
+            GroupEntry::Public { doc, retract } => {
+                if *retract {
+                    f.push((8, V::U(1)));
+                }
+                f.push((10, V::B(doc)));
+                16
             }
         };
         f.push((0, V::U(kind)));
@@ -678,6 +719,7 @@ impl GroupEntry {
                 name: name.ok_or(bad("a founding names the group"))?,
                 group_key: need(group_key)?,
                 sig: sig.ok_or(bad("a founding is signed"))?,
+                public: flag,
             }),
             1 => GroupEntry::Join { grant: grant.ok_or(bad("a join names its grant"))? },
             2 => GroupEntry::Leave { anchors },
@@ -690,6 +732,7 @@ impl GroupEntry {
                     name: name.ok_or(bad("an invite names its group"))?,
                     group_key: need(group_key)?,
                     sig: sig.ok_or(bad("an invite's founding is signed"))?,
+                    public: flag,
                 },
             },
             5 => GroupEntry::Link { by: need(by)?, token: id16.ok_or(bad("a link has a token"))? },
@@ -710,6 +753,10 @@ impl GroupEntry {
             13 => GroupEntry::Hide { by: need(by)?, post: need(link_ref)?, hidden: flag, replaces },
             14 => GroupEntry::Pin { by: need(by)?, post: need(link_ref)?, pinned: flag, replaces },
             15 => GroupEntry::MemberPin { post: need(link_ref)?, pinned: flag, replaces },
+            16 => GroupEntry::Public {
+                doc: id16.ok_or(bad("a public post names its document"))?,
+                retract: flag,
+            },
             _ => return Err(bad("unknown group entry kind")),
         };
         // One accepted byte form: what decodes must encode back to the same bytes.
@@ -758,6 +805,8 @@ pub struct Roster {
     pub name: String,
     pub description: String,
     pub join_mode: JoinMode,
+    /// A public group (plans/PUBLIC_GROUPS.md): its founding says so.
+    pub public: bool,
     /// The group's face (Curtis, 2026-10-16): its picture and banner, media documents on an
     /// owner's lane - and every document a face setting that counts has ever named, which is
     /// the face's and never a post.
@@ -772,6 +821,11 @@ pub struct Roster {
     /// ones an owner has hidden.
     pub posts: BTreeSet<Hash>,
     pub hidden: BTreeSet<Hash>,
+    /// The group's public posts (plans/PUBLIC_GROUPS.md): each `(author, doc)` a counted
+    /// `Public` claims and none retracts, by a member now, not hidden - and the claim's hash,
+    /// which an owner's hide names. Removing a member ends every claim of theirs; their posts
+    /// stay theirs.
+    pub public_posts: BTreeMap<(Root, [u8; 16]), Hash>,
     /// The posts pinned (slice 4d), by first version as a hide names them: by an owner, shown
     /// first, and by a member - a post an owner pinned is in the owners' set alone.
     pub owner_pins: BTreeSet<Hash>,
@@ -1225,6 +1279,7 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
     // Every member pin that counts, settled into the members' layer below.
     let mut member_pins: Vec<Hash> = Vec::new();
     let mut posts: BTreeSet<Hash> = BTreeSet::new();
+    let mut claims: Vec<(Root, [u8; 16], bool, Hash)> = Vec::new();
     for lane in &lanes {
         // Where removals cut this lane, and the leaves written on the persona's other lanes.
         // `-1` is "before the first entry".
@@ -1297,6 +1352,10 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
                     counted.insert(e.hash);
                     member_pins.push(e.hash);
                 }
+                GroupEntry::Public { doc, retract } if member => {
+                    counted.insert(e.hash);
+                    claims.push((lane.persona, *doc, *retract, e.hash));
+                }
                 _ => {}
             }
         }
@@ -1358,9 +1417,25 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
     let owner_pins = pinned_in(&pins);
     let member_pins: BTreeSet<Hash> =
         pinned_in(&by_members).into_iter().filter(|p| !owner_pins.contains(p)).collect();
+    // A post is the group's while some counted claim says so and none takes it back - so the
+    // answer is the same whatever order a persona's devices' lanes are read in - named by its
+    // smallest claim's hash.
+    let mut claimed: BTreeMap<(Root, [u8; 16]), Hash> = BTreeMap::new();
+    let taken_back: BTreeSet<(Root, [u8; 16])> =
+        claims.iter().filter(|c| c.2).map(|c| (c.0, c.1)).collect();
+    for (author, doc, retract, h) in &claims {
+        if *retract || taken_back.contains(&(*author, *doc)) {
+            continue;
+        }
+        let at = claimed.entry((*author, *doc)).or_insert(*h);
+        if h < at {
+            *at = *h;
+        }
+    }
+    let claim_hashes: BTreeSet<Hash> = claimed.values().copied().collect();
     let hidden: BTreeSet<Hash> = hides
         .iter()
-        .filter(|(post, _)| posts.contains(*post))
+        .filter(|(post, _)| posts.contains(*post) || claim_hashes.contains(*post))
         .filter_map(|(post, writes)| {
             let h = head(writes)?;
             matches!(entry(&h)?.1.body, GroupEntry::Hide { hidden: true, .. }).then_some(*post)
@@ -1406,9 +1481,14 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
         })
         .collect();
 
+    let public_posts: BTreeMap<(Root, [u8; 16]), Hash> = claimed
+        .into_iter()
+        .filter(|((author, _), h)| members.contains(author) && !hidden.contains(h))
+        .collect();
     Some(Roster {
         id: group,
         founder: founding.founder,
+        public: founding.public,
         members,
         owners,
         name: match setting(0) {
@@ -1438,6 +1518,7 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
         },
         counted,
         posts,
+        public_posts,
         hidden,
         owner_pins,
         member_pins,
@@ -1478,7 +1559,8 @@ mod tests {
 
     impl World {
         fn new() -> Self {
-            let founding = Founding::sign(&SigningKey::from_bytes(&[42; 32]), F, "Potato Bunch");
+            let founding =
+                Founding::sign(&SigningKey::from_bytes(&[42; 32]), F, "Potato Bunch", false);
             let mut w = World {
                 group: founding.id(),
                 found: founding.hash(),
@@ -1554,6 +1636,54 @@ mod tests {
                 assert_eq!(build(self.group, &order).as_ref(), Some(&first), "order-dependent");
             }
             first
+        }
+    }
+
+    /// A public group's world (plans/PUBLIC_GROUPS.md): the roster on each device's public lane
+    /// (`public_lane`), content on its members-only lane.
+    impl World {
+        fn new_public() -> Self {
+            let founding =
+                Founding::sign(&SigningKey::from_bytes(&[44; 32]), F, "Cheese Group", true);
+            let mut w = World {
+                group: founding.id(),
+                found: founding.hash(),
+                founding: founding.clone(),
+                lanes: BTreeMap::new(),
+            };
+            w.add_public(F, 0, GroupEntry::Found(founding));
+            w
+        }
+
+        fn add_public(&mut self, persona: Root, k: u8, body: GroupEntry) -> Hash {
+            let device = public_lane(&dev(&persona, k));
+            let lane =
+                self.lanes.entry(device).or_insert(Lane { persona, device, entries: Vec::new() });
+            let seq = lane.entries.len() as u64;
+            let hash = *blake3::hash(format!("{device:?}/{seq}/{body:?}").as_bytes()).as_bytes();
+            lane.entries.push(LaneEntry { seq, hash, body });
+            hash
+        }
+
+        /// Invited on the founder's public lane; joined on the invitee's.
+        fn invite_public(&mut self, to: Root) -> Hash {
+            let by = self.found;
+            let founding = self.founding.clone();
+            let inv = self.add_public(
+                F,
+                0,
+                GroupEntry::Invite { by, invitee: to, readmits: vec![], founding },
+            );
+            self.add_public(to, 0, GroupEntry::Join { grant: Grant::Invite(inv) })
+        }
+
+        /// Only the public lanes: what a node outside the group holds.
+        fn public_only(&self) -> Vec<Lane> {
+            self.lanes
+                .values()
+                .filter(|l| (0..4).any(|k| l.device == public_lane(&dev(&l.persona, k))))
+                .cloned()
+                .collect()
         }
     }
 
@@ -2085,7 +2215,7 @@ mod tests {
     fn every_entry_round_trips() {
         let h = |n: u8| [n; 32];
         let a = LaneAnchor { device: h(9), seq: 4, head_hash: h(8) };
-        let founding = Founding::sign(&SigningKey::from_bytes(&[42; 32]), F, "Potato Bunch");
+        let founding = Founding::sign(&SigningKey::from_bytes(&[42; 32]), F, "Potato Bunch", false);
         let all = vec![
             GroupEntry::Found(founding.clone()),
             GroupEntry::Join { grant: Grant::Founder },
@@ -2151,6 +2281,8 @@ mod tests {
             GroupEntry::Hide { by: h(1), post: h(2), hidden: true, replaces: vec![] },
             GroupEntry::Pin { by: h(1), post: h(2), pinned: true, replaces: vec![h(3)] },
             GroupEntry::MemberPin { post: h(2), pinned: false, replaces: vec![h(3)] },
+            GroupEntry::Public { doc: [5; 16], retract: false },
+            GroupEntry::Public { doc: [6; 16], retract: true },
         ];
         for e in all {
             let bytes = e.encode().unwrap();
@@ -2238,7 +2370,7 @@ mod tests {
     fn an_invite_carrying_another_groups_founding_opens_nothing() {
         let mut w = World::new();
         let found = w.found;
-        let elsewhere = Founding::sign(&SigningKey::from_bytes(&[43; 32]), F, "Turnip Lot");
+        let elsewhere = Founding::sign(&SigningKey::from_bytes(&[43; 32]), F, "Turnip Lot", false);
         let inv = w.add(
             F,
             0,
@@ -2248,5 +2380,127 @@ mod tests {
         let r = w.fold();
         assert_eq!(r.members, set(&[F]));
         assert!(r.invited.is_empty(), "it names some other group");
+    }
+
+    /// A public group's roster folds from its public lanes alone, as a node outside the group
+    /// holds them - and the kind is the founding's (plans/PUBLIC_GROUPS.md, slice 1).
+    #[test]
+    fn a_public_groups_roster_needs_only_its_public_lanes() {
+        let mut w = World::new_public();
+        w.invite_public(B);
+        let outside = build(w.group, &w.public_only()).expect("founded on a public lane");
+        assert!(outside.public);
+        assert_eq!(outside.members, set(&[F, B]));
+        assert_eq!(outside.owners.keys().copied().collect::<BTreeSet<_>>(), set(&[F]));
+        assert!(!World::new().fold().public, "a private group says so too");
+        // The kind crosses the wire, in the founding and in an invite's copy of it - and it is
+        // signed: flipping it breaks the founding.
+        for entry in [
+            GroupEntry::Found(w.founding.clone()),
+            GroupEntry::Invite {
+                by: w.found,
+                invitee: B,
+                readmits: vec![],
+                founding: w.founding.clone(),
+            },
+        ] {
+            assert_eq!(GroupEntry::decode(&entry.encode().unwrap()).unwrap(), entry);
+        }
+        let mut flipped = w.founding.clone();
+        flipped.public = false;
+        assert!(!flipped.verify() && w.founding.verify());
+        assert_ne!(flipped.id(), w.founding.id());
+    }
+
+    /// Content counts through a members-only lane only once that lane has joined, citing the
+    /// persona's public-lane join; the founder's joins as the founder.
+    #[test]
+    fn a_members_only_lane_counts_from_its_own_join() {
+        let mut w = World::new_public();
+        w.invite_public(B);
+        let unjoined = w.post(B, 0);
+        let r = w.fold();
+        assert!(!r.posts.contains(&unjoined), "a members-only lane that never joined says nothing");
+
+        let mut w = World::new_public();
+        let joined_b = w.invite_public(B);
+        w.add(B, 0, GroupEntry::Join { grant: Grant::Device(joined_b) });
+        let b_post = w.post(B, 0);
+        w.add(F, 0, GroupEntry::Join { grant: Grant::Founder });
+        let f_post = w.post(F, 0);
+        let r = w.fold();
+        assert!(r.posts.contains(&b_post) && r.posts.contains(&f_post));
+        assert_eq!(r.members, set(&[F, B]));
+
+        // Outside the group, the roster is the same and the content isn't there.
+        let outside = build(w.group, &w.public_only()).unwrap();
+        assert_eq!(outside.members, r.members);
+        assert!(outside.posts.is_empty());
+    }
+
+    /// A removal anchors both of the member's lanes, and cuts both: their members-only posts after
+    /// it count for nothing, and they're out of the public roster.
+    #[test]
+    fn a_removal_cuts_both_lanes() {
+        let mut w = World::new_public();
+        let joined_b = w.invite_public(B);
+        w.add(B, 0, GroupEntry::Join { grant: Grant::Device(joined_b) });
+        let before = w.post(B, 0);
+        let anchors = w.anchors(&[B]);
+        assert_eq!(anchors.len(), 2, "both lanes named");
+        let by = w.found;
+        w.add_public(F, 0, GroupEntry::Remove { by, target: B, ends: vec![], anchors, ban: false });
+        let after = w.post(B, 0);
+        let r = w.fold();
+        assert_eq!(r.members, set(&[F]));
+        assert!(r.posts.contains(&before), "what they said while in stands");
+        assert!(!r.posts.contains(&after));
+        assert_eq!(build(w.group, &w.public_only()).unwrap().members, set(&[F]));
+    }
+
+    /// A public post as the group (plans/PUBLIC_GROUPS.md, slice 2): a member's claim makes it the
+    /// group's; a retract, an owner's hide or the member's removal ends that - the last for every
+    /// post they ever claimed.
+    #[test]
+    fn a_public_post_is_the_groups_while_its_claim_stands() {
+        let mut w = World::new_public();
+        w.invite_public(B);
+        let doc = [5u8; 16];
+        let claim = w.add_public(B, 0, GroupEntry::Public { doc, retract: false });
+        let earlier = [6u8; 16];
+        w.add_public(B, 0, GroupEntry::Public { doc: earlier, retract: false });
+        let r = w.fold();
+        assert_eq!(r.public_posts.get(&(B, doc)), Some(&claim));
+        assert_eq!(
+            build(w.group, &w.public_only()).unwrap().public_posts,
+            r.public_posts,
+            "anyone sees it"
+        );
+
+        let mut taken = w.clone();
+        taken.add_public(B, 0, GroupEntry::Public { doc, retract: true });
+        assert!(!taken.fold().public_posts.contains_key(&(B, doc)), "taken back");
+
+        let mut hid = w.clone();
+        let by = hid.found;
+        hid.add_public(F, 0, GroupEntry::Hide { by, post: claim, hidden: true, replaces: vec![] });
+        let r = hid.fold();
+        assert!(!r.public_posts.contains_key(&(B, doc)), "hidden by an owner");
+        assert!(r.public_posts.contains_key(&(B, earlier)), "and only that one");
+
+        let mut out = w.clone();
+        let anchors = out.anchors(&[B]);
+        let by = out.found;
+        out.add_public(
+            F,
+            0,
+            GroupEntry::Remove { by, target: B, ends: vec![], anchors, ban: false },
+        );
+        assert!(out.fold().public_posts.is_empty(), "a removal ends every claim of theirs");
+
+        // A claim on the members-only lane, or by someone who isn't in, is nothing.
+        let mut stray = World::new_public();
+        stray.add_public(C, 0, GroupEntry::Public { doc, retract: false });
+        assert!(stray.fold().public_posts.is_empty());
     }
 }

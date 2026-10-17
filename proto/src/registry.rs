@@ -84,6 +84,12 @@ pub mod service {
     /// sense (plaintext, never member-only encrypted) and served only through the group's door:
     /// to a node hosting a persona the roster counts in (section 6).
     pub const GROUP: u32 = 14;
+    /// A public group's public lane (plans/PUBLIC_GROUPS.md): one member device's roster entries
+    /// and public posts for one public group, one chain per `(key, GROUP_PUBLIC, group id)`
+    /// beside its members-only `GROUP` lane. Public and served to anyone: unlike every other
+    /// per-instance chain, it travels on any exchange, so a follower of a member learns the
+    /// groups they're in.
+    pub const GROUP_PUBLIC: u32 = 15;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -102,6 +108,7 @@ pub mod service {
             DOC_META_PRIVATE => "doc-meta-private",
             CHAT => "chat",
             GROUP => "group",
+            GROUP_PUBLIC => "group-public",
             _ => "unknown-service",
         }
     }

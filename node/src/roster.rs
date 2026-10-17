@@ -40,7 +40,7 @@ use crate::AppState;
 /// What a group-scoped exchange carries: the member's key tree and profile, to check their
 /// lanes by and name them with, and the lanes themselves.
 pub const GROUP_SCOPE: &[u32] =
-    &[service::IDENTITY_PUBLIC, service::PROFILE_PUBLIC, service::GROUP];
+    &[service::IDENTITY_PUBLIC, service::PROFILE_PUBLIC, service::GROUP, service::GROUP_PUBLIC];
 
 fn root_of(hex_root: &str) -> Option<Root> {
     hex::decode(hex_root).ok()?.try_into().ok()
@@ -103,18 +103,20 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             .node_db
             .execute(
                 "INSERT OR IGNORE INTO group_lanes
-                   (group_id, persona, device, seq, hash, entry_type, body, claimed_ms, arrived_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                   (group_id, persona, device, seq, hash, entry_type, body, claimed_ms, arrived_ms,
+                    service)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 (
                     group.to_vec(),
                     root,
-                    e.chain.author.to_vec(),
+                    lane_device(e.chain.service, &e.chain.author).to_vec(),
                     e.seq as i64,
                     signed.hash().to_vec(),
                     i64::from(e.entry_type),
                     body.clone(),
                     e.timestamp_ms,
                     crate::clock::now_ms(),
+                    i64::from(e.chain.service),
                 ),
             )
             .await
@@ -129,6 +131,16 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
         refold(state, &group).await?;
     }
     Ok(())
+}
+
+/// The fold's name for a chain's lane (plans/PUBLIC_GROUPS.md): a device's public lane is
+/// `public_lane(device)`, its members-only lane the device itself. The memo keys lanes so.
+pub fn lane_device(service: u32, author: &[u8; 32]) -> [u8; 32] {
+    if service == service::GROUP_PUBLIC {
+        ringtome_proto::roster::public_lane(author)
+    } else {
+        *author
+    }
 }
 
 /// The group's lanes moved: its stamp too, so a cached fold of it is stale.
@@ -258,19 +270,31 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
             readers.push(*m);
         }
     }
-    type Hosted = std::collections::HashMap<GroupId, Vec<Root>>;
+    // And whom the group's public posts are carried to here (plans/PUBLIC_GROUPS.md): a reader
+    // who turns a member's rebroadcasts on or off moves no lane, and must still be written for.
+    let carry = carry_readers(state, &roster).await;
+    type Hosted = std::collections::HashMap<GroupId, (Vec<Root>, Carry)>;
     static HOSTED: std::sync::LazyLock<std::sync::Mutex<Hosted>> =
         std::sync::LazyLock::new(Default::default);
-    let same_readers = HOSTED.lock().expect("hosted readers poisoned").get(group) == Some(&readers);
+    let same_readers = HOSTED.lock().expect("hosted readers poisoned").get(group)
+        == Some(&(readers.clone(), carry.clone()));
     if derived_seq == lanes_seq && same_readers {
         return Ok(Some((roster, lanes)));
     }
     let db = &state.node_db;
     let noted = next_noted();
     db.execute(
-        "INSERT INTO group_rosters (group_id, name, founder, folded_ms) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT (group_id) DO UPDATE SET name = excluded.name, folded_ms = excluded.folded_ms",
-        (group.to_vec(), roster.name.as_str(), hex::encode(roster.founder), now_ms()),
+        "INSERT INTO group_rosters (group_id, name, founder, folded_ms, public)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (group_id) DO UPDATE SET name = excluded.name, folded_ms = excluded.folded_ms,
+           public = excluded.public",
+        (
+            group.to_vec(),
+            roster.name.as_str(),
+            hex::encode(roster.founder),
+            now_ms(),
+            i64::from(roster.public),
+        ),
     )
     .await
     .context("remembering a group")?;
@@ -302,6 +326,8 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
     )
     .await
     .context("forgetting who's no longer in a group")?;
+    keep_public_posts(state, group, &roster, noted).await?;
+    recarry(state, group, &roster, &carry, noted).await?;
     rejournal(state, group, &roster, &readers, noted).await?;
     let newly: Vec<String> =
         roster.members.iter().map(hex::encode).filter(|m| !before.contains(m)).collect();
@@ -319,8 +345,376 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
     )
     .await
     .context("noting a group's tables written")?;
-    HOSTED.lock().expect("hosted readers poisoned").insert(*group, readers);
+    HOSTED.lock().expect("hosted readers poisoned").insert(*group, (readers, carry));
     Ok(Some((roster, lanes)))
+}
+
+/// The group's public posts as the fold counts them (plans/PUBLIC_GROUPS.md, slice 2), each
+/// stamped by when its claim was said; the rest swept.
+async fn keep_public_posts(
+    state: &AppState,
+    group: &GroupId,
+    roster: &Roster,
+    noted: i64,
+) -> Result<()> {
+    let db = &state.node_db;
+    for ((author, doc), claim) in &roster.public_posts {
+        let claimed_ms: i64 = db
+            .fetch_optional::<(Option<i64>,)>(
+                "SELECT claimed_ms FROM group_lanes WHERE group_id = ?1 AND hash = ?2",
+                (group.to_vec(), claim.to_vec()),
+            )
+            .await
+            .context("reading when a claim was said")?
+            .and_then(|(ms,)| ms)
+            .unwrap_or_else(now_ms);
+        db.execute(
+            "INSERT INTO group_public_posts (group_id, author, doc, claim, claimed_ms, noted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT (group_id, author, doc) DO UPDATE SET claim = excluded.claim,
+               noted = excluded.noted",
+            (
+                group.to_vec(),
+                hex::encode(author),
+                hex::encode(doc),
+                claim.to_vec(),
+                claimed_ms,
+                noted,
+            ),
+        )
+        .await
+        .context("remembering a group's public post")?;
+    }
+    db.execute(
+        "DELETE FROM group_public_posts WHERE group_id = ?1 AND noted < ?2",
+        (group.to_vec(), noted),
+    )
+    .await
+    .context("forgetting a group's former public posts")?;
+    Ok(())
+}
+
+/// Each member of a public group with readers here who follow them for their rebroadcasts, and
+/// those readers - never the member themselves (plans/PUBLIC_GROUPS.md, ruling 5: "if you don't
+/// want their rebroadcasts, you also don't want to hear from their groups"). Empty for a private
+/// group, which has no public voice.
+type Carry = Vec<(String, Vec<String>)>;
+
+async fn carry_readers(state: &AppState, roster: &Roster) -> Carry {
+    if !roster.public {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    // The group's own followers (ruling 7), under no via: every member's public post as the
+    // group's reaches them.
+    let mut followers = followers_of_group(state, &roster.id).await;
+    followers.sort();
+    if !followers.is_empty() {
+        out.push((String::new(), followers));
+    }
+    for m in &roster.members {
+        let via = hex::encode(m);
+        let mut readers = crate::net::subscriptions::rebroadcast_followers_of(&state.node_db, &via)
+            .await
+            .unwrap_or_default();
+        readers.retain(|r| *r != via);
+        readers.sort();
+        if !readers.is_empty() {
+            out.push((via, readers));
+        }
+    }
+    out
+}
+
+/// Carry the group's public posts (plans/PUBLIC_GROUPS.md, slice 3): to each member's
+/// rebroadcast-followers here, every public post as the group by its other members, journaled
+/// with the member as their via - the share's road, so a post this node doesn't hold comes from
+/// its author or its holders. A member's own post as the group is a post of theirs, under the
+/// follow. A carry that ended - hidden, its author removed, taken down - withdraws its rows.
+async fn recarry(
+    state: &AppState,
+    group: &GroupId,
+    roster: &Roster,
+    carry: &Carry,
+    noted: i64,
+) -> Result<()> {
+    let db = &state.node_db;
+    let stamps: std::collections::HashMap<(String, String), i64> = db
+        .fetch_all::<(String, String, i64)>(
+            "SELECT author, doc, claimed_ms FROM group_public_posts WHERE group_id = ?1",
+            (group.to_vec(),),
+        )
+        .await
+        .context("reading when a group's public posts were claimed")?
+        .into_iter()
+        .map(|(a, d, ms)| ((a, d), ms))
+        .collect();
+    for (via, readers) in carry {
+        let mut pointers = Vec::new();
+        for ((author, doc), claim) in &roster.public_posts {
+            let author = hex::encode(author);
+            if author == *via {
+                continue; // a member's own post as the group is theirs, under the follow
+            }
+            let at =
+                stamps.get(&(author.clone(), hex::encode(doc))).copied().unwrap_or_else(now_ms);
+            db.execute(
+                "INSERT INTO group_carries (group_id, via, author, doc, noted) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (group_id, via, author, doc) DO UPDATE SET noted = excluded.noted",
+                (group.to_vec(), via.as_str(), author.as_str(), hex::encode(doc), noted),
+            )
+            .await
+            .context("remembering a carried post")?;
+            pointers.push(crate::record::imaol::RebroadcastRow {
+                author_root: author,
+                doc_id: *doc,
+                version_seen: Some(*claim),
+                timestamp_ms: at,
+                received_at_ms: at,
+            });
+        }
+        crate::fanout::journal_shares_to(state, via, readers, &pointers, true).await;
+    }
+    let ended: Vec<(String, String, String)> = db
+        .fetch_all(
+            "SELECT via, author, doc FROM group_carries WHERE group_id = ?1 AND noted < ?2",
+            (group.to_vec(), noted),
+        )
+        .await
+        .context("reading the carries that ended")?;
+    for (via, author, doc) in ended {
+        if via.is_empty() {
+            let followers = followers_of_group(state, group).await;
+            crate::fanout::withdraw_followed(state, &followers, &author, &doc).await?;
+        } else {
+            crate::fanout::withdraw_carried(db, &via, &author, &doc).await?;
+        }
+    }
+    db.execute(
+        "DELETE FROM group_carries WHERE group_id = ?1 AND noted < ?2",
+        (group.to_vec(), noted),
+    )
+    .await
+    .context("forgetting the carries that ended")?;
+    Ok(())
+}
+
+/// Who on this node follows a group itself (ruling 7).
+async fn followers_of_group(state: &AppState, group: &GroupId) -> Vec<String> {
+    state
+        .node_db
+        .fetch_all::<(String,)>(
+            "SELECT local_root FROM group_follows WHERE group_id = ?1",
+            (group.to_vec(),),
+        )
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(r,)| r)
+        .collect()
+}
+
+/// Does `root` follow this group?
+pub async fn follows_group(state: &AppState, root: &str, group: &GroupId) -> bool {
+    state
+        .node_db
+        .fetch_optional::<(i64,)>(
+            "SELECT 1 FROM group_follows WHERE local_root = ?1 AND group_id = ?2",
+            (root, group.to_vec()),
+        )
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+#[derive(Deserialize, Default)]
+struct FollowRequest {
+    /// Where the group may be found, when this node holds nothing of it yet: endpoints its page
+    /// came from, and who to ask for there - its founder and members, as the page names them.
+    #[serde(default)]
+    via: Vec<String>,
+    #[serde(default)]
+    members: Vec<String>,
+}
+
+/// POST `.../groups/{group}/follow` - follow a public group itself (plans/PUBLIC_GROUPS.md,
+/// ruling 7): every member's public post as the group's, in your feed. Anyone may, member or not.
+async fn follow_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+    body: Option<Json<FollowRequest>>,
+) -> Answer {
+    me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let req = body.map(|Json(b)| b).unwrap_or_default();
+    for ep in req.via.iter().take(8) {
+        remember_peer(&state, &group, ep, "").await;
+    }
+    let seed: Vec<String> = req.members.into_iter().take(64).collect();
+    if !matches!(folded(&state, &group).await, Ok(Some(_))) {
+        public_sync(&state, &group, &seed).await;
+    }
+    let Some((roster, _)) = folded(&state, &group).await.map_err(AppError::Internal)? else {
+        return Err(AppError::NotFound(crate::msg!(
+            "roster.no-such-group-here",
+            "no such group here"
+        )));
+    };
+    if !roster.public {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.only-a-public-group-is-followed",
+            "only a public group can be followed"
+        )));
+    }
+    state
+        .node_db
+        .execute(
+            "INSERT INTO group_follows (local_root, group_id, followed_ms) VALUES (?1, ?2, ?3)
+             ON CONFLICT (local_root, group_id) DO NOTHING",
+            (root.as_str(), group.to_vec(), now_ms()),
+        )
+        .await
+        .context("following a group")
+        .map_err(AppError::Internal)?;
+    public_sync(&state, &group, &seed).await;
+    if let Some((roster, _)) = refold(&state, &group).await.map_err(AppError::Internal)? {
+        recarry(&state, &group, &roster, &carry_readers(&state, &roster).await, next_noted())
+            .await
+            .map_err(AppError::Internal)?;
+    }
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "following": true })))
+}
+
+/// DELETE `.../groups/{group}/follow` - stop following it: its public posts leave your feed,
+/// unless you follow their authors.
+async fn unfollow_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+) -> Answer {
+    me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    state
+        .node_db
+        .execute(
+            "DELETE FROM group_follows WHERE local_root = ?1 AND group_id = ?2",
+            (root.as_str(), group.to_vec()),
+        )
+        .await
+        .context("unfollowing a group")
+        .map_err(AppError::Internal)?;
+    let posts: Vec<(String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT author, doc FROM group_public_posts WHERE group_id = ?1",
+            (group.to_vec(),),
+        )
+        .await
+        .context("reading a group's public posts")
+        .map_err(AppError::Internal)?;
+    for (author, doc) in posts {
+        crate::fanout::withdraw_followed(&state, std::slice::from_ref(&root), &author, &doc)
+            .await
+            .map_err(AppError::Internal)?;
+    }
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "following": false })))
+}
+
+/// The public groups that count each of these posts as theirs (the cards' "(Cheese Group)"):
+/// `(author, doc)` to `(group, name)`, as this node holds them.
+pub async fn public_groups_of(
+    state: &AppState,
+    posts: &[(String, String)],
+) -> std::collections::HashMap<(String, String), (String, String)> {
+    let mut out = std::collections::HashMap::new();
+    for (author, doc) in posts {
+        let row: Option<(Vec<u8>, String)> = state
+            .node_db
+            .fetch_optional(
+                "SELECT p.group_id, r.name FROM group_public_posts p
+                 JOIN group_rosters r ON r.group_id = p.group_id
+                 WHERE p.author = ?1 AND p.doc = ?2 ORDER BY p.claimed_ms LIMIT 1",
+                (author.as_str(), doc.as_str()),
+            )
+            .await
+            .ok()
+            .flatten();
+        if let Some((g, name)) = row {
+            out.insert((author.clone(), doc.clone()), (hex::encode(g), name));
+        }
+    }
+    out
+}
+
+/// Before a public post as the group mints (plans/PUBLIC_GROUPS.md): the group is public and
+/// `root` is in it.
+pub async fn may_post_as(
+    state: &AppState,
+    root: &str,
+    group_hex: &str,
+) -> Result<GroupId, AppError> {
+    let group = group_of(group_hex)?;
+    let me = root_of(root).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
+    })?;
+    let (roster, _) = current(state, &group, &me).await?;
+    if !roster.public {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.not-a-public-group",
+            "only a public group's members post in public as the group"
+        )));
+    }
+    if !roster.members.contains(&me) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "roster.members-only",
+            "only the group's members can post to it"
+        )));
+    }
+    Ok(group)
+}
+
+/// After it mints: `root`'s public lane claims the post as the group's - once, so republishing an
+/// edit says nothing more.
+pub async fn claim_public(
+    state: &AppState,
+    data: &Store,
+    root: &str,
+    group: GroupId,
+    doc: [u8; 16],
+) -> Result<(), AppError> {
+    let me = root_of(root).unwrap_or_default();
+    if let Ok(Some((roster, _))) = folded(state, &group).await {
+        if roster.public_posts.contains_key(&(me, doc)) {
+            return Ok(());
+        }
+    }
+    write(state, data, root, group, GroupEntry::Public { doc, retract: false }).await?;
+    Ok(())
+}
+
+/// A post taken down: every group that counted it as theirs is told it no longer is.
+pub async fn unclaim_public(
+    state: &AppState,
+    data: &Store,
+    root: &str,
+    doc: &[u8; 16],
+) -> Result<(), AppError> {
+    let groups: Vec<(Vec<u8>,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT group_id FROM group_public_posts WHERE author = ?1 AND doc = ?2",
+            (root, hex::encode(doc)),
+        )
+        .await
+        .context("finding the groups a post was claimed in")
+        .map_err(AppError::Internal)?;
+    for (g,) in groups {
+        let Ok(group) = <[u8; 16]>::try_from(g.as_slice()) else { continue };
+        write(state, data, root, group, GroupEntry::Public { doc: *doc, retract: true }).await?;
+    }
+    Ok(())
 }
 
 /// The group as its held lanes fold now, nothing written: kept while the group's stamp stands,
@@ -1017,7 +1411,7 @@ pub async fn say_room_label(
     let author = root_of(author).ok_or_else(|| {
         AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
     })?;
-    say_label(data, group, &author, doc, key, value, present).await?;
+    say_label(state, me, data, group, &author, doc, key, value, present).await?;
     crate::fold::fold_now(state, me).await;
     push_soon(state, me, *group);
     Ok(())
@@ -1630,7 +2024,98 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
             refold(&state, &group).await?;
         }
     }
+    public_pass(&state).await?;
     Ok(())
+}
+
+/// The public groups this node holds but isn't in, kept in step for whoever here they reach
+/// (plans/PUBLIC_GROUPS.md, slice 3): a member's rebroadcast-follower. Their public lanes come
+/// from the group's machines - a stranger's node is served those and never a members-only one -
+/// so the roster, the claims and the carry stay current with no member here.
+async fn public_pass(state: &AppState) -> Result<()> {
+    let groups: Vec<(Vec<u8>,)> = state
+        .node_db
+        .fetch_all("SELECT group_id FROM group_rosters WHERE public = 1", ())
+        .await
+        .context("listing the public groups held here")?;
+    for (g,) in groups {
+        let Ok(group) = <[u8; 16]>::try_from(g.as_slice()) else { continue };
+        let Some((roster, _)) = folded(state, &group).await? else { continue };
+        let hosted_member = {
+            let mut any = false;
+            for m in &roster.members {
+                if crate::identity::is_agented(&state.node_db, &hex::encode(m))
+                    .await
+                    .unwrap_or(false)
+                {
+                    any = true;
+                    break;
+                }
+            }
+            any
+        };
+        let carry = carry_readers(state, &roster).await;
+        if carry.is_empty() {
+            continue; // nobody here wants it carried
+        }
+        // A member here keeps the lanes by gossip; otherwise they come from the group's machines.
+        if !hosted_member {
+            public_sync(state, &group, &[]).await;
+        }
+        // And the carry again, whether or not the lanes moved: a post asked of its author and not
+        // there yet is asked again now - a share's retry would journal it to the author's
+        // rebroadcast-followers, who aren't the ones it was carried for.
+        if let Some((roster, _)) = refold(state, &group).await? {
+            recarry(state, &group, &roster, &carry_readers(state, &roster).await, next_noted())
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+/// Bring a public group's public lanes in, as a node outside it: one exchange per persona its
+/// lanes name, from a few of its machines - the gossip pass's partners - each served only the
+/// public lanes, since this node proves no member.
+pub async fn public_sync(state: &AppState, group: &GroupId, seed: &[String]) -> usize {
+    let mut names: BTreeSet<String> = named(&lanes_of(state, group).await.unwrap_or_default());
+    names.extend(seed.iter().cloned());
+    let names: Vec<String> = names.into_iter().collect();
+    let (_, mut partners) = gossip_partners(state, group).await;
+    if partners.is_empty() {
+        // Nothing folded here yet, so no member to judge a machine by: wherever the group was
+        // said to be (a follow's `via`), and wherever the names given are served.
+        let named: BTreeSet<String> = names.iter().cloned().collect();
+        partners = endpoints(state, group, &named).await;
+        partners.truncate(RELIABLE_PARTNERS + CHECK_INS);
+    }
+    if partners.is_empty() {
+        // Nothing in the group's ledger here yet - a node that only follows a member. Their
+        // machines, as a follow finds them: each key of theirs resolved through its serving
+        // record, which must name them.
+        for m in members_of(state, group).await.iter().take(8) {
+            for leaf in crate::idface::stored_tree_leaves(state, m).await {
+                let ep = crate::idface::leaf_via_to_endpoint(state, m, &leaf).await;
+                if !partners.contains(&ep) && ep != state.endpoint.id().to_string() {
+                    partners.push(ep);
+                }
+            }
+            if partners.len() >= RELIABLE_PARTNERS + CHECK_INS {
+                break;
+            }
+        }
+    }
+    let mut exchanged = 0;
+    for ep in &partners {
+        for who in &names {
+            if exchange(state, who, ep, group).await {
+                exchanged += 1;
+            }
+        }
+    }
+    for who in &names {
+        crate::fold::fold_now(state, who).await;
+    }
+    exchanged
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1649,6 +2134,79 @@ async fn write(
     Ok(*write_signed(state, data, me, group, entry).await?.hash())
 }
 
+/// Is this group public (plans/PUBLIC_GROUPS.md)? Its founding says, as this node holds it.
+async fn is_public(state: &AppState, group: &GroupId) -> bool {
+    matches!(folded(state, group).await, Ok(Some((roster, _))) if roster.public)
+}
+
+/// Which of a member device's two lanes an entry goes on, in a public group: the roster's acts and
+/// the settings on the public lane, where anyone may read them; content - posts, labels, pins and
+/// hides - on the members-only lane. A private group has only the one.
+fn lane_service(entry: &GroupEntry, public: bool) -> u32 {
+    if !public {
+        return service::GROUP;
+    }
+    match entry {
+        GroupEntry::Document { .. }
+        | GroupEntry::Label { .. }
+        | GroupEntry::MemberPin { .. }
+        | GroupEntry::Hide { .. }
+        | GroupEntry::Pin { .. } => service::GROUP,
+        _ => service::GROUP_PUBLIC,
+    }
+}
+
+/// Before `me` writes content to a public group's members-only lane from this device: the lane's
+/// own join, so the fold counts what follows (plans/PUBLIC_GROUPS.md - each lane joins on its
+/// own). The founder's cites the founding; anyone else's their counted join on a public lane.
+async fn join_content_lane(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+) -> Result<(), AppError> {
+    let Ok(Some((roster, lanes))) = folded(state, group).await else { return Ok(()) };
+    if !roster.public {
+        return Ok(());
+    }
+    let device = data.signer().verifying_key().to_bytes();
+    if lanes.iter().any(|l| l.device == device) {
+        return Ok(()); // this device's members-only lane has begun
+    }
+    let me_root = root_of(me).unwrap_or_default();
+    let grant = if roster.founder == me_root {
+        Grant::Founder
+    } else {
+        let join = lanes
+            .iter()
+            .filter(|l| l.persona == me_root)
+            .flat_map(|l| l.entries.iter())
+            .find(|e| matches!(e.body, GroupEntry::Join { .. }) && roster.counted.contains(&e.hash))
+            .map(|e| e.hash)
+            .ok_or_else(|| {
+                AppError::Forbidden(crate::msg!(
+                    "roster.members-only",
+                    "only the group's members can post to it"
+                ))
+            })?;
+        Grant::Device(join)
+    };
+    let payload = GroupEntry::Join { grant }
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding a lane's join: {e}")))?;
+    crate::record::imaol::append_on(
+        data.db(),
+        data.signer(),
+        service::GROUP,
+        Some(*group),
+        entry_type::GROUP_ENTRY,
+        Payload::Inline(payload),
+    )
+    .await?;
+    crate::fold::fold_now(state, me).await;
+    Ok(())
+}
+
 /// [`write`], answering the entry itself - an invite's is the evidence its notice carries.
 async fn write_signed(
     state: &AppState,
@@ -1657,6 +2215,19 @@ async fn write_signed(
     group: GroupId,
     entry: GroupEntry,
 ) -> Result<ringtome_proto::SignedEntry, AppError> {
+    write_signed_on(state, data, me, group, entry, None).await
+}
+
+/// [`write_signed`] on a lane the caller names, where the entry's kind alone can't say: an
+/// owner's hide of a public post as the group goes on the public lane.
+async fn write_signed_on(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: GroupId,
+    entry: GroupEntry,
+    lane: Option<u32>,
+) -> Result<ringtome_proto::SignedEntry, AppError> {
     let payload = entry.encode().map_err(|e| {
         AppError::BadRequest(crate::msg!(
             "roster.not-a-group-entry",
@@ -1664,10 +2235,18 @@ async fn write_signed(
             why = e
         ))
     })?;
+    let public = match &entry {
+        GroupEntry::Found(f) => f.public,
+        _ => is_public(state, &group).await,
+    };
+    let lane = lane.unwrap_or_else(|| lane_service(&entry, public));
+    if lane == service::GROUP && public {
+        join_content_lane(state, data, me, &group).await?;
+    }
     let signed = crate::record::imaol::append_on(
         data.db(),
         data.signer(),
-        service::GROUP,
+        lane,
         Some(group),
         entry_type::GROUP_ENTRY,
         Payload::Inline(payload),
@@ -1770,6 +2349,8 @@ fn roster_json(group: &GroupId, roster: &Roster, lanes: &[Lane], me: &Root) -> s
         "group": hex::encode(group),
         "name": roster.name,
         "description": roster.description,
+        // Public or private, at founding and for good (plans/PUBLIC_GROUPS.md).
+        "public": roster.public,
         "picture": roster.picture.map(|d| face_url(group, &d)),
         "banner": roster.banner.map(|d| face_url(group, &d)),
         // The standing room, #general (plans/GROUP_ROOMS.md).
@@ -1821,6 +2402,10 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/posts/{doc}/replies", get(replies_handler))
         .route("/api/identity/{root}/groups/{group}/publish", post(publish_handler))
         .route(
+            "/api/identity/{root}/groups/{group}/follow",
+            get(follow_state_handler).post(follow_handler).delete(unfollow_handler),
+        )
+        .route(
             "/api/identity/{root}/groups/{group}/publish/drawing",
             post(publish_drawing_handler).layer(upload()),
         )
@@ -1840,6 +2425,8 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         // (Curtis, 2026-10-16: an invitee needs to know them, and a public group shows them):
         // no session, and only the face as it stands.
         .route("/api/groups/{group}/face", get(face_handler))
+        .route("/api/groups/{group}/public", get(public_page_handler))
+        .route("/api/id/{seg}/groups", get(persona_public_groups_handler))
         .route("/api/groups/{group}/face/{doc}", get(face_bytes_route))
         .route("/api/groups/{group}/face/{doc}/thumb", get(face_thumb_route))
 }
@@ -1875,6 +2462,10 @@ async fn me_of(state: &AppState, session: &Session, root: &str) -> Result<(Store
 #[derive(Deserialize)]
 struct FoundRequest {
     name: String,
+    /// A public group (plans/PUBLIC_GROUPS.md): its roster public, and its members may post
+    /// as the group. Chosen now and never changed.
+    #[serde(default)]
+    public: bool,
 }
 
 /// POST `/api/identity/{root}/groups` - found a group. Its key signs the founding and is then
@@ -1898,7 +2489,8 @@ async fn found_handler(
         use rand::RngCore;
         rand::rngs::OsRng.fill_bytes(&mut seed);
     }
-    let founding = Founding::sign(&ed25519_dalek::SigningKey::from_bytes(&seed), me, name);
+    let founding =
+        Founding::sign(&ed25519_dalek::SigningKey::from_bytes(&seed), me, name, req.public);
     let group = founding.id();
     write(&state, &data, &root, group, GroupEntry::Found(founding)).await?;
     // Its standing room, from the start (Curtis, 2026-10-16: "when a group is created a default
@@ -1991,10 +2583,10 @@ async fn list_handler(
     Path(root): Path<String>,
 ) -> Answer {
     let (data, _) = me_of(&state, &session, &root).await?;
-    let rows: Vec<(Vec<u8>, String, String)> = state
+    let rows: Vec<(Vec<u8>, String, String, i64)> = state
         .node_db
         .fetch_all(
-            "SELECT p.group_id, r.name, p.standing FROM group_people p
+            "SELECT p.group_id, r.name, p.standing, r.public FROM group_people p
              JOIN group_rosters r ON r.group_id = p.group_id
              WHERE p.root = ?1 ORDER BY r.name",
             (root.as_str(),),
@@ -2004,11 +2596,14 @@ async fn list_handler(
         .map_err(AppError::Internal)?;
     let mut out: Vec<serde_json::Value> = rows
         .iter()
-        .map(|(g, name, standing)| {
+        .map(|(g, name, standing, public)| {
             serde_json::json!({
                 "group": hex::encode(g),
                 "name": name,
                 "standing": standing,
+                // Public or private (plans/PUBLIC_GROUPS.md): a public one is also a place to post
+                // in public as.
+                "public": *public != 0,
             })
         })
         .collect();
@@ -2035,7 +2630,7 @@ async fn list_handler(
             row["picture"] = serde_json::json!(roster.picture.map(|d| face_url(&group, &d)));
         }
     }
-    let held: BTreeSet<String> = rows.iter().map(|(g, _, _)| hex::encode(g)).collect();
+    let held: BTreeSet<String> = rows.iter().map(|(g, _, _, _)| hex::encode(g)).collect();
     for (group, inviter, name) in invites_received(&data).await? {
         if !held.contains(&group) {
             out.push(serde_json::json!({
@@ -2219,19 +2814,25 @@ async fn join_handler(
     for ep in req.via.iter().take(8) {
         remember_peer(&state, &group, ep, "").await;
     }
+    let seed: Vec<String> = [req.founder, req.inviter].into_iter().flatten().collect();
+    // The join goes on the lane the group's kind says (plans/PUBLIC_GROUPS.md): a public group's
+    // on the public lane. Not held yet, the group is fetched first, so its founding says which.
+    if !matches!(folded(&state, &group).await, Ok(Some(_))) {
+        sync_group(&state, &root, &group, &seed).await;
+    }
     let imaol_entry = GroupEntry::Join { grant: Grant::Invite(invite) };
+    let lane = lane_service(&imaol_entry, is_public(&state, &group).await);
     let payload = imaol_entry.encode().map_err(|e| AppError::Internal(anyhow!("{e}")))?;
     crate::record::imaol::append_on(
         data.db(),
         data.signer(),
-        service::GROUP,
+        lane,
         Some(group),
         entry_type::GROUP_ENTRY,
         Payload::Inline(payload),
     )
     .await?;
     crate::fold::fold_now(&state, &root).await;
-    let seed: Vec<String> = [req.founder, req.inviter].into_iter().flatten().collect();
     sync_group(&state, &root, &group, &seed).await;
     let (roster, lanes) = current(&state, &group, &me).await?;
     Ok(Json(roster_json(&group, &roster, &lanes, &me)))
@@ -2282,11 +2883,13 @@ async fn leave_handler(
     let group = group_of(&group)?;
     let (roster, lanes) = current(&state, &group, &me).await?;
     let ours = anchors_of(&lanes, &BTreeSet::from([me]));
-    let others: Vec<LaneAnchor> = ours
-        .iter()
-        .filter(|a| a.device != data.signer().verifying_key().to_bytes())
-        .copied()
-        .collect();
+    // Every lane but the one the leave goes on, which the leave itself ends: in a public group,
+    // the public lane, so the members-only lane is among those anchored (plans/PUBLIC_GROUPS.md).
+    let leave_lane = lane_device(
+        lane_service(&GroupEntry::Leave { anchors: vec![] }, roster.public),
+        &data.signer().verifying_key().to_bytes(),
+    );
+    let others: Vec<LaneAnchor> = ours.iter().filter(|a| a.device != leave_lane).copied().collect();
     for (h, a) in &roster.appointments {
         if a.persona == me && a.standing {
             write(
@@ -2627,6 +3230,7 @@ async fn append_document(
     kind: u32,
     payload: Vec<u8>,
 ) -> Result<Hash, AppError> {
+    join_content_lane(state, data, me, group).await?;
     let signed = crate::record::imaol::append_on(
         data.db(),
         data.signer(),
@@ -3096,9 +3700,12 @@ async fn labels_of(
     Ok(out)
 }
 
-/// Say one label on the lane, or take it back.
+/// Say one label on the lane, or take it back: on the members-only lane, joined first in a
+/// public group.
 #[allow(clippy::too_many_arguments)]
 async fn say_label(
+    state: &AppState,
+    me: &str,
     data: &Store,
     group: &GroupId,
     target_author: &Root,
@@ -3122,6 +3729,7 @@ async fn say_label(
             why = e
         ))
     })?;
+    join_content_lane(state, data, me, group).await?;
     crate::record::imaol::append_on(
         data.db(),
         data.signer(),
@@ -3158,10 +3766,10 @@ async fn restate_labels(
         .map(|l| (l.key, l.value))
         .collect();
     for (k, v) in desired.difference(&mine) {
-        say_label(data, group, author, doc, k, v, true).await?;
+        say_label(state, me, data, group, author, doc, k, v, true).await?;
     }
     for (k, v) in mine.difference(desired) {
-        say_label(data, group, author, doc, k, v, false).await?;
+        say_label(state, me, data, group, author, doc, k, v, false).await?;
     }
     crate::fold::fold_now(state, me).await;
     Ok(())
@@ -3605,6 +4213,8 @@ async fn label_handler(
             AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
         })?;
     say_label(
+        &state,
+        &root,
         &data,
         &group,
         &author,
@@ -3659,10 +4269,27 @@ async fn hide_handler(
     let (roster, lanes) = current(&state, &group, &me).await?;
     let by = acting(&roster, &me)?;
     let (versions, _) = documents_of(&state, &group, &roster).await?;
-    let post =
-        versions.get(&doc).and_then(|l| first_version(l)).map(|v| v.hash).ok_or_else(|| {
-            AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
-        })?;
+    // A members-only post by its first version; a public post as the group (plans/PUBLIC_GROUPS.md)
+    // by its claim - the smallest counted, as the fold names it - hidden on the public lane, so
+    // everyone carrying it hears.
+    let members_only = versions.get(&doc).and_then(|l| first_version(l)).map(|v| v.hash);
+    let claim = lanes
+        .iter()
+        .flat_map(|l| l.entries.iter())
+        .filter(|e| roster.counted.contains(&e.hash))
+        .filter(|e| matches!(&e.body, GroupEntry::Public { doc: d, retract: false } if *d == doc))
+        .map(|e| e.hash)
+        .min();
+    let (post, lane) = match (members_only, claim) {
+        (Some(p), _) => (p, None),
+        (None, Some(c)) => (c, Some(service::GROUP_PUBLIC)),
+        (None, None) => {
+            return Err(AppError::NotFound(crate::msg!(
+                "roster.no-such-post",
+                "no such post in this group"
+            )))
+        }
+    };
     // Replace every hide of it this node has seen, so the newest word settles it.
     let replaces: Vec<Hash> = lanes
         .iter()
@@ -3671,8 +4298,15 @@ async fn hide_handler(
         .filter(|e| matches!(&e.body, GroupEntry::Hide { post: p, .. } if *p == post))
         .map(|e| e.hash)
         .collect();
-    write(&state, &data, &root, group, GroupEntry::Hide { by, post, hidden: req.hidden, replaces })
-        .await?;
+    write_signed_on(
+        &state,
+        &data,
+        &root,
+        group,
+        GroupEntry::Hide { by, post, hidden: req.hidden, replaces },
+        lane,
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "hidden": req.hidden })))
 }
 
@@ -4174,6 +4808,121 @@ async fn face_of(state: &AppState, group: &str) -> Result<(GroupId, Folded), App
 }
 
 /// GET `/api/groups/{group}/face` - the group's name, picture, banner and description, to anyone.
+/// GET `/api/groups/{group}/public` - a public group's open page (plans/PUBLIC_GROUPS.md, ruling
+/// 6), to anyone, signed in or not: its face, its members and owners with their names, and its
+/// public posts, newest claimed first - as this node holds them. A private group, or one this node
+/// doesn't hold, is no such group: nothing says a private one exists.
+async fn public_page_handler(State(state): State<AppState>, Path(group): Path<String>) -> Answer {
+    let missing =
+        || AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"));
+    let group = group_of(&group)?;
+    let Some((roster, _)) = folded(&state, &group).await.map_err(AppError::Internal)? else {
+        return Err(missing());
+    };
+    if !roster.public {
+        return Err(missing());
+    }
+    let roots: Vec<String> = roster.members.iter().map(hex::encode).collect();
+    let names =
+        crate::profiles::bylines(&state.node_db, &roots).await.map_err(AppError::Internal)?;
+    let members: Vec<serde_json::Value> = roster
+        .members
+        .iter()
+        .map(|m| {
+            let root = hex::encode(m);
+            let b = names.get(&root);
+            serde_json::json!({
+                "root": root,
+                "owner": roster.owners.contains_key(m),
+                "name": b.and_then(|b| b.name.clone()),
+                "avatar": b.and_then(|b| b.avatar.clone()),
+            })
+        })
+        .collect();
+    let posts: Vec<(String, String, i64)> = state
+        .node_db
+        .fetch_all(
+            "SELECT author, doc, claimed_ms FROM group_public_posts WHERE group_id = ?1
+             ORDER BY claimed_ms DESC LIMIT 200",
+            (group.to_vec(),),
+        )
+        .await
+        .context("reading a group's public posts")
+        .map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({
+        "group": hex::encode(group),
+        "public": true,
+        "name": roster.name,
+        "description": roster.description,
+        "picture": roster.picture.map(|d| face_url(&group, &d)),
+        "banner": roster.banner.map(|d| face_url(&group, &d)),
+        "founder": hex::encode(roster.founder),
+        "members": members,
+        "posts": posts.into_iter().map(|(author, doc, at)| serde_json::json!({
+            "author": author,
+            "doc_id": doc,
+            "claimed_ms": at,
+        })).collect::<Vec<_>>(),
+        // Where this page was answered: a follow from another node asks here first.
+        "endpoint": state.endpoint.id().to_string(),
+    })))
+}
+
+/// GET `/api/id/{seg}/groups` - the public groups a persona is in, as this node knows (ruling 4:
+/// membership is public). A private group's membership is never here.
+async fn persona_public_groups_handler(
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+) -> Answer {
+    let Some(root) = crate::speakable::parse(&root).and_then(|p| match p {
+        crate::speakable::Parsed::Ok(r) => Some(hex::encode(r)),
+        _ => None,
+    }) else {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.not-a-persona",
+            "that isn't a persona"
+        )));
+    };
+    let rows: Vec<(Vec<u8>, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT p.group_id, r.name FROM group_people p
+             JOIN group_rosters r ON r.group_id = p.group_id
+             WHERE p.root = ?1 AND r.public = 1 AND p.standing IN ('member', 'owner')
+             ORDER BY r.name",
+            (root.as_str(),),
+        )
+        .await
+        .context("listing a persona's public groups")
+        .map_err(AppError::Internal)?;
+    let mut out = Vec::new();
+    for (g, name) in rows {
+        let Ok(group) = <[u8; 16]>::try_from(g.as_slice()) else { continue };
+        let picture = match folded(&state, &group).await {
+            Ok(Some((roster, _))) => roster.picture.map(|d| face_url(&group, &d)),
+            _ => None,
+        };
+        out.push(
+            serde_json::json!({ "group": hex::encode(group), "name": name, "picture": picture }),
+        );
+    }
+    Ok(Json(serde_json::json!(out)))
+}
+
+/// GET `.../groups/{group}/follow` - whether `root` follows this group.
+async fn follow_state_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+) -> Answer {
+    me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    Ok(Json(serde_json::json!({
+        "group": hex::encode(group),
+        "following": follows_group(&state, &root, &group).await,
+    })))
+}
+
 async fn face_handler(State(state): State<AppState>, Path(group): Path<String>) -> Answer {
     let (group, (roster, _)) = face_of(&state, &group).await?;
     Ok(Json(serde_json::json!({

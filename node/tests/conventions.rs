@@ -76,6 +76,9 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("group_people", vec!["roster.rs"]),
         ("group_peers", vec!["roster.rs"]),
         ("group_stamps", vec!["roster.rs"]),
+        ("group_public_posts", vec!["roster.rs"]),
+        ("group_carries", vec!["roster.rs"]),
+        ("group_follows", vec!["roster.rs"]),
         ("census_days", vec!["census.rs"]),
         // The machine table (plans/NETWORK.md): the book's flush and its boot load.
         ("machines", vec!["machines.rs"]),

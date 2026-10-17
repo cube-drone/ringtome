@@ -16,6 +16,7 @@ import {
     groupComposeHref,
     groupHref,
     groupsHref,
+    publicGroupHref,
     roomHref,
 } from './links.js';
 import { openMirror, useLive } from './mirror.js';
@@ -26,6 +27,7 @@ import { avatarBytes } from './pickbytes.js';
 import { GroupMark, forgetGroupFace } from './groupface.js';
 import { PostEntry } from './postentry.js';
 import { GroupThread, ParentContexts } from './postpage.js';
+import { GroupPublicPosts, PublicGroupPage } from './publicgroup.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
 import { narrowParams } from './postsearch.js';
 import { filterContacts } from './pure/people.js';
@@ -92,6 +94,8 @@ export const GroupsTab = ({ current }) => {
     const loc = useLocation();
     const [rows, error, reload] = useAnswer(root ? `/api/identity/${root}/groups` : null);
     const [name, setName] = useState('');
+    // Public or private, chosen now and for good (plans/PUBLIC_GROUPS.md, ruling 1).
+    const [isPublic, setPublic] = useState(false);
     const [founding, setFounding] = useState(false);
     const [foundError, setFoundError] = useState(null);
     const found = async (e) => {
@@ -100,8 +104,12 @@ export const GroupsTab = ({ current }) => {
         setFounding(true);
         setFoundError(null);
         try {
-            const made = await post(`/api/identity/${root}/groups`, { name: name.trim() });
+            const made = await post(`/api/identity/${root}/groups`, {
+                name: name.trim(),
+                public: isPublic,
+            });
             setName('');
+            setPublic(false);
             reload();
             loc.route(groupHref(made.group));
         } catch (err) {
@@ -124,7 +132,17 @@ export const GroupsTab = ({ current }) => {
             <button class="groups-found-go jag-line" disabled=${founding || !name.trim()}>
                 <${Icons.plus} /> ${t('apps.groups.found-a-group', 'found a group')}
             </button>
+            <label class="groups-found-public">
+                <input type="checkbox" checked=${isPublic} onChange=${(e) => setPublic(e.currentTarget.checked)} />
+                ${t('apps.groups.public-group', 'public')}
+            </label>
         </form>
+        ${
+            isPublic &&
+            html`<p class="null-sub">
+                ${t('apps.groups.public-explained', "A public group's members are listed for anyone to see, and its members can post in public as the group - those posts reach their followers. Its other posts stay members-only. It can't be made private later.")}
+            </p>`
+        }
         ${foundError && html`<p class="groups-error">${foundError}</p>`}
         ${error && html`<p class="groups-error">${error.message}</p>`}
         ${
@@ -248,13 +266,8 @@ export const GroupPage = ({ group, current }) => {
     };
 
     if (!root) return null;
-    if (missing) {
-        return html`<div class="group-page">
-            <p class="people-empty">
-                ${t('apps.groups.not-here', "this group isn't here - you may not be in it, or it can't be reached just now.")}
-            </p>
-        </div>`;
-    }
+    // Not in it: a public group's open page, which says "no such group" of a private one.
+    if (missing) return html`<${PublicGroupPage} group=${group} current=${current} />`;
     if (!roster) {
         return html`<div class="group-page">
             ${error ? html`<p class="groups-error">${error}</p>` : html`<p class="people-empty">${t('apps.groups.fetching', 'fetching the group…')}</p>`}
@@ -277,6 +290,12 @@ export const GroupPage = ({ group, current }) => {
                     onDone=${() => setEditing(false)}
                 />`
             }
+            ${
+                roster.public &&
+                html`<p class="group-public-note">
+                    <a href=${publicGroupHref(group)}>${t('publicgroup.a-public-group', 'a public group: anyone can see who is in it, and its members post in public as the group')}</a>
+                </p>`
+            }
             ${roster.description && html`<p class="group-description">${roster.description}</p>`}
             <p class="group-count">
                 ${t('apps.groups.member-count', '{count} in the group', { count: (roster.members || []).length })}
@@ -287,6 +306,10 @@ export const GroupPage = ({ group, current }) => {
             !you.member &&
             html`<div class="group-invite jag-line-2">
                 <p>${t('apps.groups.youre-invited', "you're invited. Joining shows everyone in it who you are, and lets you read and post here.")}</p>
+                ${
+                    roster.public &&
+                    html`<p>${t('apps.groups.joining-a-public-group', "It's a public group: your membership will be public, and its members' public posts as the group will reach the people who follow you, through you.")}</p>`
+                }
                 <button class="group-join jag-line" onClick=${() => act('join')}>
                     <${Icons.plus} /> ${t('apps.groups.join', 'join')}
                 </button>
@@ -301,6 +324,7 @@ export const GroupPage = ({ group, current }) => {
         />
         ${you.member && html`<hr class="group-rule" />`}
         ${you.member && html`<${GroupChats} group=${group} roster=${roster} act=${act} />`}
+        ${you.member && roster.public && html`<${GroupPublicPosts} group=${group} />`}
         ${
             you.member &&
             html`<${GroupPosts}

@@ -83,7 +83,7 @@ import {
     BakeModal,
 } from '../postentry.js';
 import { tagCounts } from '../pure/contacttags.js';
-import { groupOfChoice, sealOfChoice } from '../pure/audience.js';
+import { asGroupOfChoice, groupOfChoice, sealOfChoice } from '../pure/audience.js';
 import { AudienceSelect } from '../audience.js';
 import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
 import { groupFeeds, groupFeedOn, groupPostItem } from '../pure/groups.js';
@@ -1065,6 +1065,8 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [askedGroup, ofGroups]);
     const sealNext = sealOfChoice(audienceNext);
+    // In public, as a public group (plans/PUBLIC_GROUPS.md): an open post the group counts too.
+    const asGroupNext = asGroupOfChoice(audienceNext);
     const trustNext = !!sealNext;
     const audienceTag = (sealNext && sealNext.audience) || '';
     const audienceTags = tagCounts(contactRows || []).map((c) => c.value);
@@ -1150,11 +1152,12 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                 root,
                 posted,
                 setBaking,
-                settleNext || trustNext
+                settleNext || trustNext || asGroupNext
                     ? {
                           ...(settleNext ? { settled: true } : {}),
                           ...(trustNext ? { trusted_only: true } : {}),
                           ...(audienceTag ? { audience: audienceTag } : {}),
+                          ...(asGroupNext ? { as_group: asGroupNext } : {}),
                       }
                     : undefined,
             );

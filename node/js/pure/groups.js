@@ -56,6 +56,7 @@ export const groupFeeds = (rows) =>
         id: `group:${g.group}`,
         name: g.name,
         group: g.group,
+        public: !!g.public,
         picks: { groups: [g.group] },
         stop: null,
         sort: null,

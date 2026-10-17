@@ -175,6 +175,12 @@ lightly federated, unapologetically Old Internet.
   filtered like any post, and a group's fold cached by a stamp rather than
   rebuilt on every read (built 2026-10-16; replaced GROUPS.md slice 4b's
   separate journal).
+- [`PUBLIC_GROUPS.md`](plans/PUBLIC_GROUPS.md) — a group whose membership is
+  public and whose members post in public as it: two lanes per member device (a
+  public roster lane, a members-only content lane), a post as the group that is
+  the member's own public post claimed on their lane, followers of a member
+  getting the group's posts under the rebroadcast dial, following a group
+  itself, and an open page for anyone. Rulings and all five slices 2026-10-17.
 - [`QR.md`](plans/QR.md) — QR codes of a person and of a public post: the web
   address where the node has a public URL, else a `ringtome://` address only the
   Android app opens, and an "open in the app" button on a phone's web page.

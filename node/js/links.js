@@ -109,6 +109,8 @@ export const appHref = (appId) => (appId ? `${PREFIX}/${appId}` : PREFIX);
 /// People's Groups tab, and one group's page under it (plans/GROUPS.md, section 7).
 export const groupsHref = () => `${appHref('people')}/groups`;
 export const groupHref = (group) => `${groupsHref()}/${group}`;
+/// A public group's open page (plans/PUBLIC_GROUPS.md): anyone's, signed in or out.
+export const publicGroupHref = (group) => `${PREFIX}/groups/${group}`;
 /// A group post's own page, inside its group (Curtis, 2026-10-16): there to members only.
 export const groupPostHref = (group, doc) => `${groupHref(group)}/posts/${doc}`;
 /// The feed opened to write in a group (its page's "new post"): that group's posts, and the

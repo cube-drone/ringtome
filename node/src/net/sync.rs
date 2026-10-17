@@ -127,7 +127,7 @@ fn scoped_frontiers(
     frontiers
         .into_iter()
         .filter(|f| wanted.is_empty() || wanted.contains(&f.service))
-        .filter(|f| instance_in_scope(f.instance, instances, member))
+        .filter(|f| instance_in_scope(f.service, f.instance, instances, member))
         .collect()
 }
 
@@ -136,10 +136,19 @@ fn scoped_frontiers(
 /// scope, between a persona's OWN computers: a proven member replicates all of the persona's
 /// chains, rooms included, as it always has (found 2026-09-18, when a message said on one
 /// computer never reached the persona's other one). A chain with no instance is in every
-/// scope.
-fn instance_in_scope(instance: Option<[u8; 16]>, instances: &[[u8; 16]], member: bool) -> bool {
+/// scope. A public group's public lane (plans/PUBLIC_GROUPS.md) travels as a chain with no
+/// instance does, on every exchange - so a follower of a member learns the groups they're in, and
+/// a node outside a public group, which the group's door never names an instance to, is still
+/// served its roster.
+fn instance_in_scope(
+    service: u32,
+    instance: Option<[u8; 16]>,
+    instances: &[[u8; 16]],
+    member: bool,
+) -> bool {
     match instance {
         None => true,
+        Some(_) if service == ringtome_proto::registry::service::GROUP_PUBLIC => true,
         Some(i) => member || instances.contains(&i),
     }
 }
@@ -487,7 +496,7 @@ async fn missing_plan(
         }
         // A room's chain travels on the room's lane, or between the persona's own computers
         // (CHAT.md, ruling 4; `include_private` is the member-proven flag).
-        if !instance_in_scope(instance, instances, include_private) {
+        if !instance_in_scope(svc as u32, instance, instances, include_private) {
             continue;
         }
         let author = pubkey::decode(&author_hex)

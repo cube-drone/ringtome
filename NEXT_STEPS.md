@@ -72,6 +72,15 @@ are driving towards.
 
 ### Groups (plans/GROUPS.md)
 
+- From public groups (plans/PUBLIC_GROUPS.md, built 2026-10-17):
+  - **The UI wants a look in a browser**: founding's choice, the open page at
+    `/ringtome/groups/{group}`, the follow button, "(Cheese Group)" on cards,
+    "in public, as a group" in the picker, the groups on a persona's card.
+  - **Drawings and schedules as the group**: Drawing's door takes no `as_group`,
+    and a post as the group can't be scheduled.
+  - **The public pass's cost**: the carry runs for every carried group on every
+    beat, one exchange per named persona per machine asked.
+
 - From ONE_FEED (built 2026-10-16):
   - **`cascade.cjs`'s "a share held only by a sibling reaches the waking node"
     setup failed once** in a full run on 2026-10-16 ("the sibling learned the

@@ -144,6 +144,7 @@ import {
     postHref,
     groupHref,
     groupPostHref,
+    publicGroupHref,
     docHref,
     roomHref,
     CopyLinkChip,
@@ -1465,6 +1466,12 @@ const PostEntryBody = ({
                 current=${current}
                 profile=${authorProfile}
                 actions=${html`${
+                    /* A public post a public group counts as its own (plans/PUBLIC_GROUPS.md): "Bill
+                    (Cheese Group)", the group beside its author, who it still belongs to. */ ''
+                }${
+                    item.as_group &&
+                    html`<a class="feed-entry-as-group" href=${publicGroupHref(item.as_group.id)}>(${item.as_group.name})</a>`
+                }${
                     item.scheduled
                         ? html`<span class="feed-entry-when feed-entry-scheduled"><${Icons.scheduled} /> ${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
                         : backdated

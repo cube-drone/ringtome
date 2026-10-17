@@ -860,7 +860,8 @@ Dropped:
 12. **Public groups** (section 10): the roster lanes split from the content
     lanes, a public post marked as the group's, the carry worked out by the
     reader under the rebroadcast dial, following a group, and the join screen
-    that says so.
+    that says so. **Built 2026-10-17**, with its own plan and rulings:
+    [PUBLIC_GROUPS.md](PUBLIC_GROUPS.md).
 13. **More that a group owns**: drawings (their merge exists), then playlists
     (ordered-list merging, new).
 

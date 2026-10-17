@@ -8,15 +8,21 @@
 //   'mentioned'   the people the words' user cards name
 //   'tag:<tag>'   a contact tag - "family" - narrower than trust
 //   'group:<id>'  one of your groups: a place, not a seal
+//   'as-group:<id>'  in public, as one of your public groups (plans/PUBLIC_GROUPS.md): an open
+//                 post of yours, which the group counts as its own
 
 /// The group a choice posts to, or null.
 export const groupOfChoice = (choice) =>
     choice && choice.startsWith('group:') ? choice.slice(6) : null;
 
+/// The public group a choice posts in public as, or null.
+export const asGroupOfChoice = (choice) =>
+    choice && choice.startsWith('as-group:') ? choice.slice(9) : null;
+
 /// The seal a choice asks the publish door for: `{ trusted_only, audience? }`, or null for an open
 /// post or a group, which the group's own door takes.
 export const sealOfChoice = (choice) => {
-    if (!choice || groupOfChoice(choice)) return null;
+    if (!choice || groupOfChoice(choice) || asGroupOfChoice(choice)) return null;
     if (choice === 'trusted') return { trusted_only: true };
     if (choice === 'onward') return { trusted_only: true, audience: '@onward' };
     if (choice === 'mentioned') return { trusted_only: true, audience: '@mentioned' };
@@ -41,6 +47,13 @@ export const choiceOfDraft = (fields) => {
 export const publishWishes = (choice, fields) => {
     const seal = sealOfChoice(choice);
     if (seal) return { audience: '', ...seal };
+    // An open post as the group: over a sealed draft, said open outright, as going to everyone is.
+    const asGroup = asGroupOfChoice(choice);
+    if (asGroup) {
+        return choiceOfDraft(fields) !== ''
+            ? { as_group: asGroup, trusted_only: false, audience: '' }
+            : { as_group: asGroup };
+    }
     if (!groupOfChoice(choice) && choiceOfDraft(fields) !== '')
         return { trusted_only: false, audience: '' };
     return {};

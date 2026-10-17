@@ -1246,7 +1246,7 @@ mod tests {
         let root = key(1);
         let leaf = key(2);
         let recipient = [7u8; 32];
-        let founding = crate::roster::Founding::sign(&key(9), pubkey(&root), "Potato Bunch");
+        let founding = crate::roster::Founding::sign(&key(9), pubkey(&root), "Potato Bunch", false);
         let group = founding.id();
         let invite = |to, group| {
             notice_of(

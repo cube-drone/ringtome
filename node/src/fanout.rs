@@ -714,6 +714,60 @@ pub async fn forget_sharer(
     Ok(())
 }
 
+/// A public group's carry ended (plans/PUBLIC_GROUPS.md, ruling 8: hidden, or its author
+/// removed): `via_root` no longer passes this post along, and a reader it reached through them
+/// alone loses the row. A reader who follows its author, or got it from someone else, keeps it.
+pub async fn withdraw_carried(
+    node_db: &crate::db::Db,
+    via_root: &str,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<()> {
+    forget_sharer(node_db, via_root, author_root, doc_id).await?;
+    node_db
+        .execute(
+            "DELETE FROM feed_journal
+             WHERE author_root = ?1 AND doc_id = ?2 AND via_root = ?3 AND group_id = x''
+               AND NOT EXISTS (SELECT 1 FROM feed_shares s
+                               WHERE s.reader_root = feed_journal.reader_root
+                                 AND s.author_root = ?1 AND s.doc_id = ?2)",
+            (author_root, doc_id, via_root),
+        )
+        .await
+        .context("withdrawing a carried post from feeds")?;
+    crate::search::journal_or_labels_moved();
+    Ok(())
+}
+
+/// A group's follower no longer gets this public post as the group's (plans/PUBLIC_GROUPS.md):
+/// the direct row it journaled leaves the feeds of these readers - unless they follow its author
+/// themselves, when it was theirs anyway.
+pub async fn withdraw_followed(
+    state: &AppState,
+    readers: &[String],
+    author_root: &str,
+    doc_id: &str,
+) -> Result<()> {
+    for reader in readers {
+        if reader == author_root
+            || crate::net::subscriptions::follows(&state.node_db, reader, author_root).await?
+        {
+            continue;
+        }
+        state
+            .node_db
+            .execute(
+                "DELETE FROM feed_journal WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3
+                   AND via_root IS NULL AND group_id = x''",
+                (reader.as_str(), author_root, doc_id),
+            )
+            .await
+            .context("withdrawing a group's public post from a follower's feed")?;
+    }
+    crate::search::journal_or_labels_moved();
+    Ok(())
+}
+
 /// Every trace of a departing persona's feed crowd: the rows in THEIR feed, and their name in
 /// everybody else's. The counterpart to `rebroadcast::forget_holder`, for the same moment.
 pub async fn forget_reader_shares(node_db: &crate::db::Db, root: &str) -> Result<()> {
@@ -912,6 +966,27 @@ pub async fn journal_shares_by(
             return;
         }
     };
+    journal_shares_to(state, sharer_root, &readers, pointers, false).await;
+}
+
+/// [`journal_shares_by`]'s delivery to readers the caller names, `sharer_root` the via each row
+/// is journaled with: a public group's carry (plans/PUBLIC_GROUPS.md), where a member's
+/// rebroadcast-followers get the group's public posts through them, and the member's own feed
+/// doesn't. `from_author`: a post this node doesn't hold is asked of its author's machines, not
+/// the via's - a member's node holds their group's lanes, not its members' public posts.
+pub async fn journal_shares_to(
+    state: &AppState,
+    sharer_root: &str,
+    readers: &[String],
+    pointers: &[crate::record::imaol::RebroadcastRow],
+    from_author: bool,
+) {
+    if readers.is_empty() {
+        return;
+    }
+    // A group's follower (plans/PUBLIC_GROUPS.md, ruling 7) gets the group's public posts direct:
+    // an empty sharer is no via.
+    let via = (!sharer_root.is_empty()).then_some(sharer_root);
     tracing::trace!(
         sharer = %sharer_root,
         readers = readers.len(),
@@ -960,8 +1035,9 @@ pub async fn journal_shares_by(
                 wanted.push(as_shared(held, r.received_at_ms));
                 continue;
             }
+            let origin = if from_author { author_root } else { sharer_root };
             if let Some(row) =
-                crate::fragments::journalable(state, sharer_root, author_root, &r.doc_id).await
+                crate::fragments::journalable(state, origin, author_root, &r.doc_id).await
             {
                 wanted.push(as_shared(&row, r.received_at_ms));
             }
@@ -970,9 +1046,7 @@ pub async fn journal_shares_by(
             continue;
         }
         let refs: Vec<&JournalRow> = wanted.iter().collect();
-        if let Err(e) =
-            journal_rows(&state.node_db, author_root, &readers, &refs, Some(sharer_root)).await
-        {
+        if let Err(e) = journal_rows(&state.node_db, author_root, readers, &refs, via).await {
             tracing::warn!(sharer = %sharer_root, author = %author_root, error = ?e, "journaling a share failed");
         }
     }

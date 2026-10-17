@@ -630,6 +630,7 @@ export default {
     'audience.the-people-mentioned': 'the people mentioned',
     'audience.your-tags': 'your tags',
     'audience.your-groups': 'your groups',
+    'audience.in-public-as-a-group': 'in public, as a group',
 
     // --- node/js/auth.js ---
     'auth.running-in-local-server-mode': 'Running in Local Server Mode:',
@@ -1486,11 +1487,14 @@ export default {
     'apps.groups.standing-member': 'member',
     'apps.groups.a-new-groups-name': "a new group's name",
     'apps.groups.found-a-group': 'found a group',
+    'apps.groups.public-group': 'public',
+    'apps.groups.public-explained': "A public group's members are listed for anyone to see, and its members can post in public as the group - those posts reach their followers. Its other posts stay members-only. It can't be made private later.",
     'apps.groups.no-groups-yet': "no groups yet - found one, or wait for someone's invite.",
-    'apps.groups.not-here': "this group isn't here - you may not be in it, or it can't be reached just now.",
     'apps.groups.fetching': 'fetching the group…',
+    'publicgroup.a-public-group': 'a public group: anyone can see who is in it, and its members post in public as the group',
     'apps.groups.member-count': '{count} in the group',
     'apps.groups.youre-invited': "you're invited. Joining shows everyone in it who you are, and lets you read and post here.",
+    'apps.groups.joining-a-public-group': "It's a public group: your membership will be public, and its members' public posts as the group will reach the people who follow you, through you.",
     'apps.groups.join': 'join',
     'apps.groups.edit-the-group': 'edit',
     'apps.groups.the-picture': 'picture',
@@ -1647,6 +1651,7 @@ export default {
     'person.opening': 'opening…',
     'person.chat': 'chat',
     'person.rss-title': 'follow their posts in a feed reader (RSS)',
+    'person.in-groups': 'in',
     'person.address': 'address',
     'person.see-this-personas-page': "see this persona's page",
     'person.copied': 'copied!',
@@ -2003,6 +2008,16 @@ export default {
 
     // --- node/js/progress.js ---
     'progress.share': '{percent}% - {done} of {total}',
+
+    // --- node/js/publicgroup.js ---
+    'publicgroup.public-posts': 'public posts',
+    'publicgroup.unfollow': 'stop following',
+    'publicgroup.follow': 'follow the group',
+    'publicgroup.following-explained': "Its members' public posts as the group come to your feed.",
+    'publicgroup.follow-explained': "Follow it to get its members' public posts as the group in your feed, without following each of them.",
+    'publicgroup.no-such-group': "there's no public group here by that name - it may be private, or not reached yet.",
+    'publicgroup.fetching': 'fetching the group…',
+    'publicgroup.open-your-group': 'open the group',
 
     // --- node/js/push.js ---
     'push.needs-https': 'notifications in this browser need https (or localhost)',
@@ -2383,6 +2398,8 @@ export default {
     'identity.routes.a-room-is-not-a-reply': 'a room is a post of its own, not a reply',
     'identity.routes.an-im-is-a-room-for-two': 'a private chat is a room for two - sealed to one other person, and nobody else',
     'identity.routes.a-private-chat-doesnt-close': "a private chat can't be closed - stop talking, or block them",
+    'identity.routes.as-the-group-is-open': 'a post as the group is an open post - not sealed, not a room',
+    'identity.routes.as-the-group-isnt-scheduled': "a post as the group can't be scheduled yet - clear its date, or give it one that has passed",
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.a-private-chat-doesnt-delete': "a private chat can't be deleted - it belongs to both of you",
@@ -2589,9 +2606,12 @@ export default {
     // --- node/src/roster.rs ---
     'roster.not-a-group-id': "that isn't a group id",
     'roster.not-an-entry-hash': "that isn't an entry hash",
-    'roster.not-a-persona': "that isn't a persona",
-    'roster.not-a-group-entry': "that isn't a group entry: {why}",
     'roster.no-such-group-here': 'no such group here',
+    'roster.only-a-public-group-is-followed': 'only a public group can be followed',
+    'roster.not-a-persona': "that isn't a persona",
+    'roster.not-a-public-group': "only a public group's members post in public as the group",
+    'roster.members-only': "only the group's members can post to it",
+    'roster.not-a-group-entry': "that isn't a group entry: {why}",
     'roster.owners-only': "only the group's owners can do that",
     'roster.a-group-needs-a-name': 'a group needs a name of one short line',
     'roster.the-group-has-its-room': 'the group already has its #general',
@@ -2613,7 +2633,6 @@ export default {
     'roster.comments-are-off': 'its author turned off comments for this post',
     'roster.a-room-takes-no-replies': 'a room takes no replies - its talk is inside it',
     'roster.not-a-document-id': "that isn't a document id",
-    'roster.members-only': "only the group's members can post to it",
     'roster.your-own-posts-only': 'you can take down only your own posts',
     'roster.general-stays': "the group's #general can't be taken down",
     'roster.general-stays-open': "the group's #general stays open",

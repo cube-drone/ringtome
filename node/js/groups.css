@@ -392,3 +392,81 @@
     gap: 0.35rem;
     font-weight: 600;
 }
+
+/* A public post as its group (plans/PUBLIC_GROUPS.md): "(Cheese Group)" beside its author. */
+.feed-entry-as-group {
+    color: var(--teal);
+    font-size: 0.85rem;
+    text-decoration: none;
+    margin-right: 0.4rem;
+}
+
+.feed-entry-as-group:hover {
+    text-decoration: underline;
+}
+
+/* Public groups (plans/PUBLIC_GROUPS.md): the founding's choice, the note that says so, and the
+   open page's members, follow and public posts. */
+.groups-found-public {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.group-public-note {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0.2rem 0;
+}
+
+.group-public-note a {
+    color: inherit;
+}
+
+.public-group-follow {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    align-items: flex-start;
+}
+
+.public-group-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.6rem 0;
+}
+
+.public-group-member {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.public-group-posts {
+    margin-top: 0.8rem;
+}
+
+.public-group-post-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+/* A persona's public groups, under their bio (person.js). */
+.person-card-groups {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0.2rem 0;
+}
+
+.person-card-groups a {
+    color: var(--teal);
+    text-decoration: none;
+}
+

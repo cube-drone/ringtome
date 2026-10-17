@@ -45,7 +45,7 @@ import {
     serialiseTags,
     TAG_MAX,
 } from './pure/contacttags.js';
-import { personHref, roomHref, writeClipboard } from './links.js';
+import { personHref, publicGroupHref, roomHref, writeClipboard } from './links.js';
 import { OpenInApp, QrBadge } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 
@@ -532,9 +532,33 @@ export const PersonCard = ({
             ${/* What follows your relationship (2026-09-28: who you know that trusts or follows them). */ ''}
             ${after}
             ${person.bio && html`<p class="person-card-bio">${person.bio}</p>`}
+            <${PublicGroups} root=${root} />
             <${ActiveLine} date=${person.lastActive} />
         </div>
     `;
+};
+
+/// The public groups they're in, as this node knows (plans/PUBLIC_GROUPS.md, ruling 4: a public
+/// group's membership is public). A private group's never shows.
+const PublicGroups = ({ root }) => {
+    const [groups, setGroups] = useState(null);
+    useEffect(() => {
+        let live = true;
+        api(`/api/id/${root}/groups`)
+            .then((g) => live && setGroups(g || []))
+            .catch(() => live && setGroups([]));
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    if (!groups || groups.length === 0) return null;
+    return html`<p class="person-card-groups">
+        ${t('person.in-groups', 'in')}
+        ${groups.map(
+            (g, i) =>
+                html`${i > 0 ? ', ' : ' '}<a key=${g.group} href=${publicGroupHref(g.group)}>${g.name}</a>`,
+        )}
+    </p>`;
 };
 
 // ---------------------------------------------------------------------------------------------

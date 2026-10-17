@@ -41,6 +41,7 @@ import { PostPage } from './postpage.js';
 import { PersonDemo } from './persondemo.js';
 import { PeopleApp, PeopleLookup } from './apps/people.js';
 import { GroupPage, GroupPostPage } from './groups.js';
+import { PublicGroupPage } from './publicgroup.js';
 import { PostHistory } from './posthistory.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
@@ -714,6 +715,7 @@ const Inside = ({ session }) => {
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
             <${PeopleApp} path="/ringtome/people/groups" tab="groups" current=${persona.current} />
             <${GroupPage} path="/ringtome/people/groups/:group" current=${persona.current} />
+            <${PublicGroupPage} path="/ringtome/groups/:group" current=${persona.current} />
             <${GroupPostPage} path="/ringtome/people/groups/:group/posts/:doc" current=${persona.current} />
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
@@ -1125,6 +1127,7 @@ const Outside = ({ session }) => {
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc/line/:line" />
                 <${KeptRoute} path="/ringtome/user/:seg" />
                 <${PersonOrPath} path="/ringtome/user/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${PublicGroupPage} path="/ringtome/groups/:group" current=${null} />
                 <${LegacyId} path="/id/:seg" />
                 <${LegacyId} path="/id/:seg/*" />
                 <${AtRoute} path="/:at" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
