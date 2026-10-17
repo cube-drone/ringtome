@@ -22921,3 +22921,23 @@ re-said pages across passes (`changed_pages`), so the update names them however
 many passes the rollout takes. A fresh ask starts empty, because the rollout
 route writes a new plan. The combinations, export and import areas are green
 (34), and so are the node's tests.
+
+## 2026-10-17 — Every Hello says what the machine is
+
+Curtis: "clients should also provide their 'client' ('hdt' always, only people
+building alternate clients would change this), 'version' ..., 'device' (android,
+mac, windows, server), and 'number of users carried' and 'number of personas
+carried'." The version already rode the Hello. A new about slot (arity 12)
+carries the rest as `[client, device, users, personas]`.
+
+- The client is `machines::CLIENT`, `hdt`.
+- The device is the operating system's word (mac, windows, linux, android) when
+  an app started the node, `server` otherwise.
+- The counts are the node's accounts and hosted personas, counted at most once a
+  minute rather than at every exchange.
+
+The machine table keeps them per machine (node rung 97), and the Network page
+shows them under each machine and this one, as "hdt 0.4.7 · mac · accounts: 2 ·
+personas: 5". A proto test covers the slot's round trip, its default from an
+older sender, and its caps; `machines.cjs` checks that the rig's nodes say `hdt`
+and `server` and carry someone.

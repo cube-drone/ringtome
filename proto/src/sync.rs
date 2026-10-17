@@ -15,7 +15,7 @@
 //!
 //! | tag | message | slots, in order                                                     |
 //! |-----|---------|---------------------------------------------------------------------|
-//! | 0   | Hello   | root, frontiers, proof, wanted, [ceiling, below], instances, key proofs, version, crowd, name |
+//! | 0   | Hello   | root, frontiers, proof, wanted, [ceiling, below], instances, key proofs, version, crowd, name, about |
 //! | 1   | Entry   | bstr envelope bytes (opaque; the author's exact bytes)              |
 //! | 2   | Done    | -                                                                   |
 //!
@@ -63,7 +63,7 @@ const HELLO_MIN_ARITY: u64 = 4;
 const ENTRY_MIN_ARITY: u64 = 2;
 const DONE_MIN_ARITY: u64 = 1;
 /// How many slots this build writes for a Hello, and the last one it reads.
-const HELLO_ARITY: u64 = 11;
+const HELLO_ARITY: u64 = 12;
 
 /// Cap on the version slot's text: a semver string is a dozen characters, and a page of it
 /// is not a version.
@@ -71,6 +71,23 @@ pub const MAX_VERSION_LEN: usize = 64;
 
 /// Cap on the name slot: the node's device-name cap (plans/NETWORK.md).
 pub const MAX_NAME_LEN: usize = 120;
+
+/// Caps on the about slot's words: a client's short name, a device's kind.
+pub const MAX_CLIENT_LEN: usize = 32;
+pub const MAX_DEVICE_LEN: usize = 16;
+
+/// The about slot (plans/NETWORK.md, 2026-10-17): debug facts about the sending machine, for the
+/// other side's machine table - which client it runs (`hdt`, unless someone built another), what
+/// kind of device it is (`android`, `mac`, `windows`, `linux`, `server`), and how many accounts and
+/// personas it carries. Facts, never switches: nothing in the exchange branches on them. Default -
+/// empty words, zero counts - from a sender that predates the slot.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct About {
+    pub client: String,
+    pub device: String,
+    pub users: u64,
+    pub personas: u64,
+}
 
 /// Cap on the holders one Hello refers (plans/CROWD.md, ruling 2): a handful to try, never a
 /// directory of the persona's readers.
@@ -313,6 +330,8 @@ pub enum SyncMessage {
         /// else its hostname - a label for the other side's machine table, conferring nothing.
         /// Empty from a sender that predates the slot.
         name: String,
+        /// The about slot (2026-10-17): see [`About`].
+        about: About,
     },
     /// One signed envelope, byte-exact. Opaque at this layer.
     Entry(Vec<u8>),
@@ -336,6 +355,7 @@ impl SyncMessage {
                 version,
                 crowd,
                 name,
+                about,
             } => {
                 if frontiers.len() > MAX_FRONTIERS {
                     return Err(ProtoError::BadEntry("too many frontiers"));
@@ -357,6 +377,9 @@ impl SyncMessage {
                 }
                 if name.len() > MAX_NAME_LEN {
                     return Err(ProtoError::BadEntry("name text too long"));
+                }
+                if about.client.len() > MAX_CLIENT_LEN || about.device.len() > MAX_DEVICE_LEN {
+                    return Err(ProtoError::BadEntry("about text too long"));
                 }
                 // Every slot, every time: since readers skip what they don't know, there is no
                 // longer a reason to shorten the frame by leaving trailing empties off.
@@ -420,6 +443,12 @@ impl SyncMessage {
                 }
                 // The name slot (2026-10-17).
                 w.text(name);
+                // The about slot (2026-10-17): [client, device, users, personas].
+                w.array(4);
+                w.text(&about.client);
+                w.text(&about.device);
+                w.uint(about.users);
+                w.uint(about.personas);
             }
             SyncMessage::Entry(bytes) => {
                 if bytes.len() > MAX_ENTRY_BYTES {
@@ -580,6 +609,22 @@ impl SyncMessage {
                 } else {
                     String::new()
                 };
+                // Arity 12 carries the about slot (2026-10-17); older shapes say nothing.
+                let about = if arity >= 12 {
+                    if r.array()? != 4 {
+                        return Err(ProtoError::BadEntry(
+                            "about must be [client, device, users, personas]",
+                        ));
+                    }
+                    let client = r.text()?.to_string();
+                    let device = r.text()?.to_string();
+                    if client.len() > MAX_CLIENT_LEN || device.len() > MAX_DEVICE_LEN {
+                        return Err(ProtoError::BadEntry("about text too long"));
+                    }
+                    About { client, device, users: r.uint()?, personas: r.uint()? }
+                } else {
+                    About::default()
+                };
                 skip_trailing(&mut r, arity, HELLO_ARITY)?;
                 SyncMessage::Hello {
                     root,
@@ -593,6 +638,7 @@ impl SyncMessage {
                     version,
                     crowd,
                     name,
+                    about,
                 }
             }
             TAG_ENTRY if arity >= ENTRY_MIN_ARITY => {
@@ -667,6 +713,7 @@ mod tests {
             version: String::new(),
             crowd: Crowd::default(),
             name: String::new(),
+            about: About::default(),
         };
         let proven = SyncMessage::Hello {
             root: [7u8; 32],
@@ -680,6 +727,7 @@ mod tests {
             version: String::new(),
             crowd: Crowd::default(),
             name: String::new(),
+            about: About::default(),
         };
         let scoped = SyncMessage::Hello {
             root: [7u8; 32],
@@ -693,6 +741,7 @@ mod tests {
             version: String::new(),
             crowd: Crowd::default(),
             name: String::new(),
+            about: About::default(),
         };
         let entry = SyncMessage::Entry(vec![0x82, 0x41, 0x00, 0x41, 0x00]);
         let done = SyncMessage::Done;
@@ -717,6 +766,7 @@ mod tests {
             version: "0.1.4".to_string(),
             crowd: Crowd::default(),
             name: String::new(),
+            about: About::default(),
         };
         let bytes = hello.encode().unwrap();
         assert_eq!(SyncMessage::decode(&bytes).unwrap(), hello);
@@ -732,6 +782,7 @@ mod tests {
             version: "x".repeat(MAX_VERSION_LEN + 1),
             crowd: Crowd::default(),
             name: String::new(),
+            about: About::default(),
         };
         assert_eq!(long.encode(), Err(ProtoError::BadEntry("version text too long")));
     }
@@ -749,6 +800,7 @@ mod tests {
             version: "0.2.0".to_string(),
             crowd,
             name: String::new(),
+            about: About::default(),
         }
     }
 
@@ -814,6 +866,7 @@ mod tests {
                 version,
                 crowd,
                 name: name.to_string(),
+                about: About::default(),
             }
         };
         let hello = named("curtis's mac mini");
@@ -840,6 +893,70 @@ mod tests {
         w.uint(0);
         w.array(0);
         assert_eq!(SyncMessage::decode(&w.into_bytes()).unwrap(), named(""));
+    }
+
+    /// The about slot (plans/NETWORK.md): a machine's client, device and counts cross; an older
+    /// sender's Hello reads as saying nothing; and a word past its cap is refused both ways.
+    #[test]
+    fn the_about_slot_round_trips_defaults_and_is_bounded() {
+        let with = |about: About| {
+            let SyncMessage::Hello {
+                root,
+                frontiers,
+                proof,
+                wanted,
+                ceiling,
+                below,
+                instances,
+                key_proofs,
+                version,
+                crowd,
+                name,
+                ..
+            } = bare_hello(Crowd::default())
+            else {
+                unreachable!()
+            };
+            SyncMessage::Hello {
+                root,
+                frontiers,
+                proof,
+                wanted,
+                ceiling,
+                below,
+                instances,
+                key_proofs,
+                version,
+                crowd,
+                name,
+                about,
+            }
+        };
+        let hello =
+            with(About { client: "hdt".into(), device: "android".into(), users: 3, personas: 7 });
+        assert_eq!(SyncMessage::decode(&hello.encode().unwrap()).unwrap(), hello);
+        let long = with(About { device: "x".repeat(MAX_DEVICE_LEN + 1), ..Default::default() });
+        assert_eq!(long.encode(), Err(ProtoError::BadEntry("about text too long")));
+
+        // An arity-11 Hello: the name, and no about.
+        let mut w = Writer::new();
+        w.array(11);
+        w.uint(TAG_HELLO);
+        w.bytes(&[7u8; 32]);
+        w.array(0);
+        w.array(0);
+        w.array(0);
+        w.array(2);
+        w.uint(0);
+        w.uint(0);
+        w.array(0);
+        w.array(0);
+        w.text("0.2.0");
+        w.array(2);
+        w.uint(0);
+        w.array(0);
+        w.text("");
+        assert_eq!(SyncMessage::decode(&w.into_bytes()).unwrap(), with(About::default()));
     }
 
     /// The busy referral (plans/CROWD.md, ruling 3): a list per persona, inside its caps, and
@@ -928,6 +1045,7 @@ mod tests {
                 version: String::new(),
                 crowd: Crowd::default(),
                 name: String::new(),
+                about: About::default(),
             }
         );
     }
@@ -946,6 +1064,7 @@ mod tests {
             version: String::new(),
             crowd: Crowd::default(),
             name: String::new(),
+            about: About::default(),
         };
         assert_eq!(msg.encode(), Err(ProtoError::BadEntry("too many wanted services")));
     }
@@ -999,6 +1118,11 @@ mod tests {
         w.uint(0);
         w.array(0);
         w.text("a machine"); // name
+        w.array(4); // about
+        w.text("hdt");
+        w.text("mac");
+        w.uint(1);
+        w.uint(2);
         w.text("a future slot"); // and four this build cannot name
         w.array(2);
         w.uint(1);
@@ -1008,11 +1132,12 @@ mod tests {
         w.bytes(&[1, 2, 3]);
         w.uint(u64::MAX);
         let msg = SyncMessage::decode(&w.into_bytes()).unwrap();
-        let SyncMessage::Hello { version, wanted, name, .. } = msg else {
+        let SyncMessage::Hello { version, wanted, name, about, .. } = msg else {
             panic!("a Hello");
         };
         assert_eq!(version, "9.9.9");
         assert_eq!(name, "a machine");
+        assert_eq!(about.device, "mac");
         assert!(wanted.is_empty());
 
         // The same for the two frames that have never grown, so that they can.
@@ -1071,6 +1196,7 @@ mod tests {
             version: String::new(),
             crowd: Crowd::default(),
             name: String::new(),
+            about: About::default(),
         };
         assert!(bad.encode().is_err());
 

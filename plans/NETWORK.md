@@ -32,6 +32,11 @@ Curtis's ask (2026-10-17), two pieces that need each other:
    also see Registration, Backups and Server customization. The admin barrier
    moves from the app to each page, and every admin route still refuses everyone
    else.
+6. **Every Hello says what the machine is** (Curtis, the same day): its client
+   (`hdt` always; only someone building another client would change it), its
+   version, its kind of device (android, mac, windows, linux, server), and how
+   many accounts and personas it carries. They are debug facts for the machine
+   table, and nothing in an exchange branches on them.
 
 ## Why the machinery is visible
 
@@ -83,6 +88,19 @@ forgets which machines don't answer.
 
 Names and versions come from the Hello: the sync lane reads it on both sides,
 and both sides tell the book.
+
+### What a machine says of itself
+
+The Hello's about slot (arity 12, ruling 6) is
+`[client, device, users, personas]`. The client is `machines::CLIENT`, `hdt`.
+The device is the operating system's word when a desktop or phone app started
+the node (its window token, or a single-tenant node, is the sign), and `server`
+otherwise. The counts are the node's accounts and hosted personas, counted at
+most once a minute. The table keeps them per machine (rung 97). An older Hello
+leaves what the machine said before.
+
+The counts tell every machine that dials a server how many accounts and personas
+it carries.
 
 ### The name
 

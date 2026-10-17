@@ -144,12 +144,36 @@
     gap: 0.5rem;
 }
 
+/* Each machine a rounded box (Curtis, 2026-10-17) - a soft corner on purpose, unlike the house's
+   jags - led by a large graph glyph. */
 .machine-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.7rem 0.9rem;
+}
+
+/* Not answering, or didn't last time (pure/machines.js `machineStatus`). */
+.machine-row-quiet {
+    opacity: 0.7;
+}
+
+.machine-icon {
+    flex: none;
+    font-size: 2.4rem;
+    line-height: 1;
+    color: var(--teal);
+}
+
+.machine-body {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    background: var(--surface);
-    padding: 0.6rem 0.8rem;
 }
 
 .machine-head {

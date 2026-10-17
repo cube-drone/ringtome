@@ -20,16 +20,16 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api, isDevice } from '../net.js';
+import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
-import { appHref } from '../links.js';
+import { appHref, groupHref, personHref } from '../links.js';
 import { defaultName, defaultTaglines, refreshFront } from '../frontdoor.js';
 import { formatWhen } from '../pure/when.js';
 import { BANDS } from '../pure/contact.js';
 import { speakable, wordsFor } from '../speakable.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { machineLabel, machineStatus, machinesShown, reliabilityPct } from '../pure/machines.js';
-import { groupHref, personHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -707,6 +707,18 @@ const LinkChip = ({ link }) => {
     return html`<a class="machine-link" href=${personHref(link.root)}>${words}</a>`;
 };
 
+/// What a machine says of itself, in one line: its client and version, its kind of device, and
+/// how many accounts and personas it carries (the Hello's about slot).
+const aboutLine = (m) =>
+    [
+        m.version && (m.client ? `${m.client} ${m.version}` : m.version),
+        m.device,
+        m.users != null && t('device.accounts-count', 'accounts: {n}', { n: m.users }),
+        m.personas != null && t('device.personas-count', 'personas: {n}', { n: m.personas }),
+    ]
+        .filter(Boolean)
+        .join(' · ');
+
 const MachineRow = ({ m, now }) => {
     const status = machineStatus(m, now);
     const pct = reliabilityPct(m);
@@ -723,7 +735,11 @@ const MachineRow = ({ m, now }) => {
         t('device.asking-again-when', 'asking again {when}', {
             when: formatWhen(m.dark_until_ms, now),
         });
-    return html`<li class="machine-row">
+    // Not answering, or didn't last time: the card fades, so the answering ones read first.
+    const quiet = status === 'dark' || status === 'unanswered';
+    return html`<li class=${quiet ? 'machine-row machine-row-quiet' : 'machine-row'}>
+        <span class="machine-icon"><${Icons.machine} /></span>
+        <div class="machine-body">
         <div class="machine-head">
             <span class="machine-name" title=${m.endpoint}>${machineLabel(m)}</span>
             <span class=${STATUS_CLASS[status]}>${STATUS_WORDS()[status]}</span>
@@ -738,13 +754,13 @@ const MachineRow = ({ m, now }) => {
                 <span class="machine-facts">${t('device.answers-pct', 'answers {pct}%', { pct })}${m.connect_ms != null ? ` · ${t('device.connect-ms', '{ms} ms to connect', { ms: m.connect_ms })}` : ''}</span>
             </div>`
         }
-        <span class="machine-facts">
-            ${Object.keys(m.lanes || {}).join(', ')}${m.version ? ` · ${t('device.runs-version', 'runs {version}', { version: m.version })}` : ''}
-        </span>
+        ${aboutLine(m) && html`<span class="machine-facts">${aboutLine(m)}</span>`}
+        <span class="machine-facts">${Object.keys(m.lanes || {}).join(', ')}</span>
         ${
             (m.links || []).length > 0 &&
             html`<div class="machine-links">${m.links.map((link, i) => html`<${LinkChip} key=${i} link=${link} />`)}</div>`
         }
+        </div>
     </li>`;
 };
 
@@ -773,7 +789,7 @@ const ThisMachine = ({ me, admin, onSaved }) => {
         <h3 class="computers-subtitle">${t('device.this-machine', 'this machine')}</h3>
         <div class="machine-head">
             <span class="machine-name" title=${me.endpoint}>${me.name}</span>
-            <span class="machine-facts">${t('device.runs-version', 'runs {version}', { version: me.version })}</span>
+            <span class="machine-facts">${aboutLine(me)}</span>
         </div>
         <span class="machine-words">${me.words}</span>
         ${

@@ -48,6 +48,12 @@ pub struct Machine {
     pub connect_ms: Option<f64>,
     /// Which protocols touched it, and when last.
     pub lanes: BTreeMap<String, i64>,
+    /// What its Hello's about slot said: the client, the kind of device, and how many accounts
+    /// and personas it carries.
+    pub client: Option<String>,
+    pub device: Option<String>,
+    pub users: Option<u64>,
+    pub personas: Option<u64>,
 }
 
 impl Machine {
@@ -140,12 +146,25 @@ impl Book {
     }
 
     /// What it said of itself in a Hello. An empty slot (an older build) leaves what it said
-    /// before.
-    pub fn announced(&mut self, endpoint: &str, name: &str, version: &str, now: i64) {
+    /// before; an about slot with no client is an older build's.
+    pub fn announced(
+        &mut self,
+        endpoint: &str,
+        name: &str,
+        version: &str,
+        about: &ringtome_proto::sync::About,
+        now: i64,
+    ) {
+        let said = !about.client.is_empty();
         let known = self.machines.get(endpoint);
         let same = known.is_some_and(|m| {
             (name.is_empty() || m.name.as_deref() == Some(name))
                 && (version.is_empty() || m.version.as_deref() == Some(version))
+                && (!said
+                    || (m.client.as_deref() == Some(about.client.as_str())
+                        && m.device.as_deref() == Some(about.device.as_str())
+                        && m.users == Some(about.users)
+                        && m.personas == Some(about.personas)))
         });
         if same {
             return;
@@ -156,6 +175,12 @@ impl Book {
         }
         if !version.is_empty() {
             m.version = Some(version.to_string());
+        }
+        if said {
+            m.client = Some(about.client.clone());
+            m.device = Some(about.device.clone()).filter(|d| !d.is_empty());
+            m.users = Some(about.users);
+            m.personas = Some(about.personas);
         }
     }
 
@@ -210,8 +235,8 @@ pub fn dialed_in(endpoint: &str, alpn: &str) {
 }
 
 /// The sync lane: a Hello named its sender.
-pub fn announced(endpoint: &str, name: &str, version: &str) {
-    with_book(|b| b.announced(endpoint, name, version, now_ms()));
+pub fn announced(endpoint: &str, name: &str, version: &str, about: &ringtome_proto::sync::About) {
+    with_book(|b| b.announced(endpoint, name, version, about, now_ms()));
 }
 
 /// One machine, as the book holds it.
@@ -239,6 +264,10 @@ type Row = (
     i64,
     i64,
     Option<i64>,
+    Option<String>,
+    Option<String>,
+    Option<i64>,
+    Option<i64>,
 );
 
 /// The counts are kept in thousandths: the table binds integers.
@@ -250,7 +279,7 @@ async fn load_into(db: &Db, book: &mut Book) -> Result<Vec<String>> {
     let rows: Vec<Row> = db
         .fetch_all(
             "SELECT endpoint_id, name, version, first_seen_ms, last_ok_ms, last_fail_ms, last_error,
-                    last_inbound_ms, oks, fails, connect_ms
+                    last_inbound_ms, oks, fails, connect_ms, client, device, users, personas
              FROM machines",
             (),
         )
@@ -261,7 +290,24 @@ async fn load_into(db: &Db, book: &mut Book) -> Result<Vec<String>> {
         .await
         .context("reading the machines' protocols")?;
     let mut dark = Vec::new();
-    for (endpoint, name, version, first, ok, fail, error, inbound, oks, fails, connect) in rows {
+    for (
+        endpoint,
+        name,
+        version,
+        first,
+        ok,
+        fail,
+        error,
+        inbound,
+        oks,
+        fails,
+        connect,
+        client,
+        device,
+        users,
+        personas,
+    ) in rows
+    {
         let m = Machine {
             endpoint: endpoint.clone(),
             name,
@@ -275,6 +321,10 @@ async fn load_into(db: &Db, book: &mut Book) -> Result<Vec<String>> {
             fails: fails as f64 / MILLI,
             connect_ms: connect.map(|c| c as f64),
             lanes: BTreeMap::new(),
+            client,
+            device,
+            users: users.and_then(|n| u64::try_from(n).ok()),
+            personas: personas.and_then(|n| u64::try_from(n).ok()),
         };
         if m.last_failed() {
             dark.push(endpoint.clone());
@@ -324,10 +374,13 @@ async fn flush_from(db: &Db, book: &Mutex<Book>, now: i64) -> Result<()> {
 async fn write_row(db: &Db, m: &Machine) -> Result<()> {
     db.execute(
         "INSERT INTO machines (endpoint_id, name, version, first_seen_ms, last_ok_ms, last_fail_ms,
-                               last_error, last_inbound_ms, oks, fails, connect_ms)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                               last_error, last_inbound_ms, oks, fails, connect_ms, client, device,
+                               users, personas)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
          ON CONFLICT (endpoint_id) DO UPDATE SET
              name = excluded.name, version = excluded.version,
+             client = excluded.client, device = excluded.device,
+             users = excluded.users, personas = excluded.personas,
              first_seen_ms = MIN(machines.first_seen_ms, excluded.first_seen_ms),
              last_ok_ms = excluded.last_ok_ms, last_fail_ms = excluded.last_fail_ms,
              last_error = excluded.last_error, last_inbound_ms = excluded.last_inbound_ms,
@@ -344,6 +397,10 @@ async fn write_row(db: &Db, m: &Machine) -> Result<()> {
             (m.oks * MILLI).round() as i64,
             (m.fails * MILLI).round() as i64,
             m.connect_ms.map(|c| c.round() as i64),
+            m.client.as_deref(),
+            m.device.as_deref(),
+            m.users.and_then(|n| i64::try_from(n).ok()),
+            m.personas.and_then(|n| i64::try_from(n).ok()),
         ),
     )
     .await
@@ -385,6 +442,60 @@ pub async fn load(db: &Db) -> Result<()> {
 /// The flush beat (lib.rs).
 pub async fn flush(state: crate::AppState) -> Result<()> {
     flush_from(&state.node_db, &BOOK, now_ms()).await
+}
+
+// ---------------------------------------------------------------------------------------------
+// What this node says of itself (the Hello's about slot)
+
+/// The client this build is. Someone building another client changes this, and nothing else does.
+pub const CLIENT: &str = "hdt";
+
+/// What kind of device this node runs on: the operating system's when a desktop or phone app
+/// started it (its window token is the sign), `server` otherwise.
+pub fn device_kind(config: &crate::config::Config) -> &'static str {
+    let app = config.launch_token.is_some() || config.tenancy == crate::config::Tenancy::Single;
+    if !app {
+        return "server";
+    }
+    match std::env::consts::OS {
+        "macos" => "mac",
+        "windows" => "windows",
+        "android" => "android",
+        "ios" => "ios",
+        "linux" => "linux",
+        _ => "other",
+    }
+}
+
+/// How long the counts are kept before they are asked again: every exchange says them, and a
+/// minute's staleness costs a debug page nothing.
+const ABOUT_FOR_MS: i64 = 60_000;
+
+static ABOUT: LazyLock<Mutex<Option<(i64, ringtome_proto::sync::About)>>> =
+    LazyLock::new(Default::default);
+
+/// The about slot this node sends: its client and device, and how many accounts and hosted
+/// personas it carries, counted at most once a minute.
+pub async fn about_us(state: &crate::AppState) -> ringtome_proto::sync::About {
+    let now = now_ms();
+    if let Some((at, about)) = ABOUT.lock().ok().and_then(|a| a.clone()) {
+        if now - at < ABOUT_FOR_MS {
+            return about;
+        }
+    }
+    let users = crate::auth::account_count(&state.node_db).await.unwrap_or(0);
+    let personas =
+        crate::identity::hosted_roots(&state.node_db).await.map(|r| r.len()).unwrap_or(0);
+    let about = ringtome_proto::sync::About {
+        client: CLIENT.to_string(),
+        device: device_kind(&state.config).to_string(),
+        users: u64::try_from(users).unwrap_or(0),
+        personas: personas as u64,
+    };
+    if let Ok(mut a) = ABOUT.lock() {
+        *a = Some((now, about.clone()));
+    }
+    about
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -537,11 +648,16 @@ pub async fn machines_handler(
                 "tries": m.oks + m.fails,
                 "connect_ms": m.connect_ms.map(|c| c.round() as i64),
                 "lanes": m.lanes,
+                "client": m.client,
+                "device": m.device,
+                "users": m.users,
+                "personas": m.personas,
                 "dark_until_ms": dark_until,
                 "links": mine.get(&m.endpoint).cloned().unwrap_or_default(),
             })
         })
         .collect();
+    let about = about_us(&state).await;
     Ok(axum::Json(serde_json::json!({
         "this": {
             "endpoint": ours,
@@ -549,6 +665,10 @@ pub async fn machines_handler(
             "name": node_name(&state.config.node_name),
             "chosen": name_is_chosen(),
             "version": state.config.app_version,
+            "client": about.client,
+            "device": about.device,
+            "users": about.users,
+            "personas": about.personas,
         },
         "machines": rows,
     })))
@@ -618,13 +738,21 @@ mod tests {
     #[test]
     fn a_name_sticks_until_the_machine_says_another() {
         let mut book = Book::default();
-        book.announced("m", "curtis's mac mini", "0.4.6", 1);
-        book.announced("m", "", "", 2);
+        let about = ringtome_proto::sync::About {
+            client: "hdt".into(),
+            device: "mac".into(),
+            users: 1,
+            personas: 2,
+        };
+        book.announced("m", "curtis's mac mini", "0.4.6", &about, 1);
+        book.announced("m", "", "", &Default::default(), 2);
         assert_eq!(book.get("m").unwrap().name.as_deref(), Some("curtis's mac mini"));
-        book.announced("m", "the attic", "", 3);
+        book.announced("m", "the attic", "", &Default::default(), 3);
         let m = book.get("m").unwrap();
         assert_eq!(m.name.as_deref(), Some("the attic"));
         assert_eq!(m.version.as_deref(), Some("0.4.6"));
+        assert_eq!((m.client.as_deref(), m.device.as_deref()), (Some("hdt"), Some("mac")));
+        assert_eq!((m.users, m.personas), (Some(1), Some(2)), "an older Hello leaves them be");
     }
 
     /// The flush writes what moved, boot reads it back whole, a machine whose last word was a
@@ -637,7 +765,18 @@ mod tests {
         {
             let mut b = book.lock().unwrap();
             b.connected("up", "sync", 40.0, now);
-            b.announced("up", "the server", "0.4.6", now);
+            b.announced(
+                "up",
+                "the server",
+                "0.4.6",
+                &ringtome_proto::sync::About {
+                    client: "hdt".into(),
+                    device: "server".into(),
+                    users: 40,
+                    personas: 55,
+                },
+                now,
+            );
             b.dialed_in("up", "gossip", now);
             b.connected("down", "sync", 40.0, now - 10);
             b.failed("down", "fragment", "timed out", now);
@@ -651,6 +790,10 @@ mod tests {
         assert_eq!(dark, vec!["down".to_string()]);
         let up = fresh.get("up").unwrap();
         assert_eq!(up.name.as_deref(), Some("the server"));
+        assert_eq!(
+            (up.device.as_deref(), up.users, up.personas),
+            (Some("server"), Some(40), Some(55))
+        );
         assert_eq!(up.last_inbound_ms, Some(now));
         assert_eq!(up.lanes.keys().cloned().collect::<Vec<_>>(), vec!["gossip", "sync"]);
         let kept = book.lock().unwrap().get("up").cloned().unwrap();

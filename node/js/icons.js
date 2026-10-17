@@ -205,6 +205,8 @@ export const Icons = {
     // Your computers' own page (2026-10-09): each computer in the persona's tree, the sync-now
     // button, and the sync report.
     computerNode: Graph,
+    // A machine on the Network page (plans/NETWORK.md): the same glyph, any machine's.
+    machine: Graph,
     syncNow: ArrowsClockwise,
     syncReport: FileCloud,
     // apps (the console tiles + each app's own header)

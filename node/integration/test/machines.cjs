@@ -70,6 +70,7 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
         const { this: me, machines } = await table(ada, adaRoot);
         assert.ok(me.name, 'this machine has a name');
         assert.ok(me.words, 'and speakable words');
+        assert.deepEqual([me.client, me.device], ['hdt', 'server'], 'and says what it is');
         assert.ok(!machines.some((m) => m.endpoint === me.endpoint), 'never itself');
         const bravo = machines.find((m) => m.name === 'bravo');
         assert.ok(bravo, `bravo is known by name: ${JSON.stringify(machines.map((m) => m.name))}`);
@@ -78,6 +79,12 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
         assert.ok(bravo.connect_ms != null, 'with a connect time');
         assert.ok(bravo.lanes.sync, 'over the sync lane');
         assert.ok(bravo.version, 'its version is known');
+        assert.equal(bravo.client, 'hdt', 'the client it runs');
+        assert.equal(bravo.device, 'server', 'a rig node is a server');
+        assert.ok(
+            bravo.users >= 1 && bravo.personas >= 1,
+            `what it carries: ${bravo.users}, ${bravo.personas}`,
+        );
         assert.ok(bravo.words, 'and its words');
     });
 
