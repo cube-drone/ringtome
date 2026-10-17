@@ -22513,3 +22513,65 @@ The full gate: clippy clean, the Rust tests (proto's included) and the full
 integration suite (1859) passing, the JS gate (1030) and the strings check too.
 Group pins aren't behind the Market's pins unlock, which gates a persona pinning
 its own posts to its page; no group feature is gated yet.
+
+## 2026-10-16 — The filter strip on a group's page
+
+Curtis: "let's add the feed filter to the top of the group-specific feed." The
+group's page now carries the feed's own strip (`LabelFacets`) above its posts:
+kinds, notebooks, who wrote it, sizes, media and tags, counted by
+`/feed/labels?group=` over the group's posts alone, with the reader's own chip
+reading "me". It has no groups row, since the page is the group. Picked, the
+list is the feed's narrowed answer (`/feed?group=…&tag=…`); the members' faces
+above still read the whole group's posts. The picks are the page's own: kept for
+the tab and in the address, as a person's page keeps its own. With nothing
+matching, the list says so.
+
+`groupposts.cjs` gains the page's query shape: a group pick with a tag picked,
+and with it left out. A duplicate copy of the "post's own page" claim, left by
+the last pass, is gone. The group posts area (16 claims), the JS gate (1030) and
+the strings check pass.
+
+## 2026-10-16 — "new post" on a group's page
+
+Curtis: make "posts" a bigger heading, and swap the note under it for a "new
+post" button that takes you to the feed with the group's filter on and "only
+show to" set to the group. The heading now has the members heading's weight,
+with a "new post" button on the same line (`group-new-post`). The button goes to
+`/apps/feed?group=<id>` (links.js `groupComposeHref`). The feed reads that once,
+when your groups have landed:
+
+- it applies the group's own entry from the Feeds column, which lights it;
+- it sets the composer's "only show to" to the group;
+- it opens the composer if it was tucked away;
+- it takes the argument out of the address.
+
+The old note's string is retired. The JS gate (1030) and the strings check pass.
+
+## 2026-10-16 — Leaving moves into the members box
+
+Curtis asked for three changes to a group's page:
+
+- **A rule between the members and the posts** (`group-rule`).
+- **The trash icon on "leave the group".**
+- **That button at the top right of the members box,** shown only while the box
+  is open. It sits in the box's heading, and pressing it doesn't fold the box.
+
+Its old row under the box is gone. The JS gate and the strings check pass.
+
+## 2026-10-16 — The header's back button walks a group's nesting
+
+Curtis: "when we're in a group post, it should back out to the specific group
+it's in. when we're in a specific group, it should back out to the groups tab."
+The header's back button (index.js `groupBack`) now goes:
+
+- from a group post's page to its group ("back to the group");
+- from a group's page to the Groups tab ("back to your groups");
+- everywhere else in People, to the list, as it did before.
+
+This mirrors how back on a person's post page climbs to their page. The JS gate
+and the strings check pass.
+
+Then Curtis asked to drop the page's own "back to groups" and "back to the
+group" links, since the app leans on the header's back button. The group's
+page, its post page and the "this group isn't here" page no longer carry them,
+and their two strings are retired.

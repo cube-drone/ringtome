@@ -111,6 +111,9 @@ export const groupsHref = () => `${appHref('people')}/groups`;
 export const groupHref = (group) => `${groupsHref()}/${group}`;
 /// A group post's own page, inside its group (Curtis, 2026-10-16): there to members only.
 export const groupPostHref = (group, doc) => `${groupHref(group)}/posts/${doc}`;
+/// The feed opened to write in a group (its page's "new post"): that group's posts, and the
+/// composer's "only show to" on it - read once by the feed, which then drops it from the address.
+export const groupComposeHref = (group) => `${appHref('feed')}?group=${encodeURIComponent(group)}`;
 
 /// The Settings app and its pages (2026-10-09: "they deserve an app all to themselves") -
 /// `profile`, `app` (how the app behaves), `personas`, `computers`, `content`, `import-export`.

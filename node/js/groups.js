@@ -10,10 +10,12 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
-import { appHref, groupHref, groupsHref } from './links.js';
+import { appHref, groupComposeHref, groupHref, groupsHref } from './links.js';
 import { openMirror, useLive } from './mirror.js';
 import { PersonChip, PersonRow } from './person.js';
 import { PostEntry } from './postentry.js';
+import { LabelFacets, useLabels, usePicks } from './facets.js';
+import { narrowParams } from './postsearch.js';
 import { filterContacts } from './pure/people.js';
 import {
     groupsInOrder,
@@ -158,10 +160,29 @@ export const GroupPage = ({ group, current }) => {
     const [posts, postsError, reloadPosts] = useAnswer(
         root && group ? `/api/identity/${root}/feed?group=${group}` : null,
     );
+    // The feed's filter strip over them (Curtis, 2026-10-16), the group's own picks kept for the
+    // tab and in the address as a person's page keeps its own: picked, the list is the feed's
+    // narrowed answer, and the faces above still read the whole group's.
+    const [picks, setPicks] = usePicks(group ? `group:${group}` : null, false, { inUrl: true });
+    const pickQuery = narrowParams('', picks);
+    const [found, foundError, reloadFound] = useAnswer(
+        root && group && pickQuery
+            ? `/api/identity/${root}/feed?group=${group}&${pickQuery}`
+            : null,
+    );
     useEffect(() => {
-        if (synced) reloadPosts();
-    }, [synced, reloadPosts]);
+        if (synced) {
+            reloadPosts();
+            reloadFound();
+        }
+    }, [synced, reloadPosts, reloadFound]);
     const items = (posts && posts.items) || [];
+    const labels = useLabels(
+        root && group
+            ? `/api/identity/${root}/feed/labels?group=${group}${pickQuery ? `&${pickQuery}` : ''}`
+            : null,
+        items.length,
+    );
     useEffect(() => {
         if (!base) return undefined;
         let live = true;
@@ -212,7 +233,6 @@ export const GroupPage = ({ group, current }) => {
     if (!root) return null;
     if (missing) {
         return html`<div class="group-page">
-            <a class="skip-link" href=${groupsHref()}>${t('apps.groups.back-to-groups', 'back to groups')}</a>
             <p class="people-empty">
                 ${t('apps.groups.not-here', "this group isn't here - you may not be in it, or it can't be reached just now.")}
             </p>
@@ -228,7 +248,6 @@ export const GroupPage = ({ group, current }) => {
         if (await act('leave')) loc.route(groupsHref());
     };
     return html`<div class="group-page">
-        <a class="skip-link" href=${groupsHref()}>${t('apps.groups.back-to-groups', 'back to groups')}</a>
         <header class="group-head">
             <h2 class="group-name">${roster.name}</h2>
             ${roster.description && html`<p class="group-description">${roster.description}</p>`}
@@ -246,16 +265,25 @@ export const GroupPage = ({ group, current }) => {
                 </button>
             </div>`
         }
-        <${Members} roster=${roster} current=${current} act=${act} posts=${items} />
+        <${Members}
+            roster=${roster}
+            current=${current}
+            act=${act}
+            posts=${items}
+            onLeave=${you.member ? left : null}
+        />
+        ${you.member && html`<hr class="group-rule" />`}
         ${
             you.member &&
-            html`<div class="group-leave-row">
-                <button class="group-leave jag-line" onClick=${left}>
-                    ${t('apps.groups.leave-the-group', 'leave the group')}
-                </button>
-            </div>`
+            html`<${GroupPosts}
+                answer=${pickQuery ? found : posts}
+                error=${pickQuery ? foundError : postsError}
+                narrowed=${!!pickQuery}
+                current=${current}
+                group=${group}
+                facets=${html`<${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} self=${root} />`}
+            />`
         }
-        ${you.member && html`<${GroupPosts} answer=${posts} error=${postsError} current=${current} />`}
     </div>`;
 };
 
@@ -268,12 +296,30 @@ const GLANCE = 14;
 /// roster, each name wearing its standing, with the invited and an owner's invite there too, off
 /// the group's front page. The box draws its jag behind it (`group-members-box`), so a face's
 /// pop-over isn't cut off at its edge.
-const Members = ({ roster, current, act, posts }) => {
+const Members = ({ roster, current, act, posts, onLeave }) => {
     const [open, setOpen] = useState(false);
     const glance = membersAtAGlance(roster, posts, GLANCE);
     return html`<details class="contact-ledger group-members-box" onToggle=${(e) => setOpen(e.currentTarget.open)}>
         <summary class="ledger-head group-members-head">
             <span class="group-members-title">${t('apps.groups.members', 'members')}</span>
+            ${
+                /* Leaving sits with the roster, at its top right, and only open (Curtis, 2026-10-16):
+                in the heading, so its press mustn't fold the box. */ ''
+            }
+            ${
+                open &&
+                onLeave &&
+                html`<button
+                    class="group-leave jag-line"
+                    onClick=${(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onLeave();
+                    }}
+                >
+                    <${Icons.trash} /> ${t('apps.groups.leave-the-group', 'leave the group')}
+                </button>`
+            }
             ${
                 !open &&
                 html`<span class="group-glance">
@@ -469,8 +515,8 @@ function releaseGroupPost(group, doc) {
 /// (Curtis, 2026-10-16: a persona's page is the bellwether - the same post objects as the feed,
 /// under a filter of its own, each one clicking through to a page of its own). Nobody writes here
 /// (Curtis, 2026-10-15): a post to the group is written in the feed or in Writer, with the group
-/// as where it goes. The page fetches them, since its faces read them too.
-const GroupPosts = ({ answer, error, current }) => {
+/// as where it goes - its "new post" opens the feed so. The page fetches them, since its faces read them too.
+const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
     const items = (answer && answer.items) || [];
     const { pinned, rest } = pinnedFirst(items);
     const card = (item) => html`<${PostEntry}
@@ -481,14 +527,25 @@ const GroupPosts = ({ answer, error, current }) => {
         quote=${false}
     />`;
     return html`<section class="group-posts">
-        <div class="people-shelf-head">
-            <span class="people-shelf-title">${t('apps.groups.posts', 'posts')}</span>
+        ${
+            /* A heading with the members' weight, and beside it the way to write here (Curtis,
+            2026-10-16): the feed, opened on this group with its composer's "only show to" on it. */ ''
+        }
+        <div class="group-posts-head">
+            <h3 class="group-posts-title">${t('apps.groups.posts', 'posts')}</h3>
+            <a class="group-new-post jag-line" href=${groupComposeHref(group)}>
+                <${Icons.plus} /> ${t('apps.groups.new-post', 'new post')}
+            </a>
         </div>
-        <p class="group-write-here">
-            ${t('apps.groups.to-post-here', 'to post here, write in the feed or in hrseWriter™ and choose this group as where it goes.')}
-        </p>
+        ${facets}
         ${error && html`<p class="groups-error">${error.message}</p>`}
-        ${answer && items.length === 0 && html`<p class="people-empty">${t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}</p>`}
+        ${
+            answer &&
+            items.length === 0 &&
+            html`<p class="people-empty">
+                ${narrowed ? t('facets.none-match', 'nothing matches') : t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}
+            </p>`
+        }
         ${/* Pinned to the top (slice 4d): owners' pins, then members'. */ ''}
         ${
             pinned.length > 0 &&
@@ -529,7 +586,6 @@ export const GroupPostPage = ({ group, doc, current }) => {
     if (!root) return null;
     const item = (answer && answer.item) || held;
     return html`<div class="group-page">
-        <a class="skip-link" href=${groupHref(group)}>${t('apps.groups.back-to-the-group', 'back to the group')}</a>
         ${
             error &&
             !item &&

@@ -1041,6 +1041,21 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     // A group is a place, not a seal (plans/GROUPS.md, section 7): 'group:<id>' posts there. Every
     // other choice but everyone is a seal (pure/audience.js says what each means).
     const groupNext = groupOfChoice(audienceNext);
+    // Sent here from a group's page (its "new post" - links.js `groupComposeHref`): the group's posts,
+    // as its entry in the Feeds column shows them, with the composer open and "only show to" on the
+    // group. Once, when the groups have landed; then the address is the feed's own again.
+    const askedGroup = (loc.query && loc.query.group) || null;
+    useEffect(() => {
+        if (!askedGroup) return;
+        const feed = ofGroups.find((g) => g.group === askedGroup);
+        if (!feed) return;
+        setApplied({ settings: feed, at: Date.now() });
+        setLoadedId(null);
+        setAudienceNext(`group:${askedGroup}`);
+        if (tucked.has('compose')) toggleTuck('compose');
+        loc.route(loc.path, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [askedGroup, ofGroups]);
     const sealNext = sealOfChoice(audienceNext);
     const trustNext = !!sealNext;
     const audienceTag = (sealNext && sealNext.audience) || '';

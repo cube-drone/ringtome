@@ -77,6 +77,8 @@ import {
     LAUNCHER,
     webAddress,
     webAddressKnown,
+    groupHref,
+    groupsHref,
 } from './links.js';
 import { parseSpeakable } from './speakable.js';
 import { api } from './net.js';
@@ -317,6 +319,11 @@ const Inside = ({ session }) => {
         appHere &&
         (ownDoc || (underApps && pathParts[3] && pathParts[3] !== 'notebook'))
     );
+    // Groups nest under People (Curtis, 2026-10-16), and back walks the nesting there as it does on
+    // a post's page: a group post backs out to its group, a group to the Groups tab.
+    const inGroup = pathParts[2] === 'people' && pathParts[3] === 'groups' && !!pathParts[4];
+    const inGroupPost = inGroup && pathParts[5] === 'posts';
+    const groupBack = inGroup ? (inGroupPost ? groupHref(pathParts[4]) : groupsHref()) : null;
 
     // The Persona app wears the current persona's name (live), everywhere its label shows - the
     // console tile and the app header. '' until a persona is open or named, and then `appLabel`
@@ -599,8 +606,20 @@ const Inside = ({ session }) => {
                     inDoc &&
                     html`<button
                     class="app-header-btn"
-                    title=${t('index.back-to-the-list', 'back to the list')}
-                    onClick=${() => loc.route(bucket && appHere.style ? bucketHref(bucket, roster) : appHref(appHere.id))}
+                    title=${
+                        groupBack
+                            ? inGroupPost
+                                ? t('index.back-to-the-group', 'back to the group')
+                                : t('index.back-to-your-groups', 'back to your groups')
+                            : t('index.back-to-the-list', 'back to the list')
+                    }
+                    onClick=${() =>
+                        loc.route(
+                            groupBack ||
+                                (bucket && appHere.style
+                                    ? bucketHref(bucket, roster)
+                                    : appHref(appHere.id)),
+                        )}
                 ><${Icons.back} /></button>`
                 }
                 <button

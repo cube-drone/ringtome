@@ -273,6 +273,22 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             tagged.some((i) => i.doc_id === post),
             'a tag picks it like any post',
         );
+        // The group page's own strip (2026-10-16): the group pick with any other beside it.
+        const within = await feed(ada, adaRoot, `?group=${group}&tag=spuds`);
+        assert.ok(
+            within.some((i) => i.doc_id === post),
+            'a tag within the group picks it',
+        );
+        assert.ok(
+            within.every((i) => i.group && i.group.id === group),
+            'and only the group',
+        );
+        assert.ok(
+            !(await feed(ada, adaRoot, `?group=${group}&not_tag=spuds`)).some(
+                (i) => i.doc_id === post,
+            ),
+            'and the tag left out drops it there',
+        );
 
         assert.ok(
             (await feed(bea, beaRoot)).some((i) => i.doc_id === post),
@@ -444,23 +460,6 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(after.derived_seq, after.lanes_seq, 'and the tables were written from them');
         assert.ok((await noted()) > wrote, 'the journal again, in place');
         await act(ada, adaRoot, `docs/${post}/labels`, { value: 'stamped', present: false });
-    });
-
-    it("a post's own page is there the moment it's posted, where the composer sends its author", async () => {
-        // The feed's composer goes to the new post's page (2026-10-16), so the page has to answer
-        // as soon as the publish has: no sync, no beat between.
-        const d = await (
-            await j(bea, `api/identity/${beaRoot}/docs`, {
-                title: '',
-                body: 'straight to my post',
-                format: 'marquee',
-            })
-        ).json();
-        const { post: fresh } = await act(bea, beaRoot, 'publish', { doc: d.doc_id });
-        const res = await bea(`api/identity/${beaRoot}/groups/${group}/posts/${fresh}`);
-        assert.equal(res.status, 200, await res.clone().text());
-        assert.equal((await res.json()).item.doc_id, fresh);
-        await act(bea, beaRoot, `docs/${fresh}/retract`);
     });
 
     it("a post's own page is there the moment it's posted, where the composer sends its author", async () => {

@@ -81,10 +81,6 @@ are driving towards.
     node asks bea's for it"** failed once in a full run on 2026-10-16, 0 of 5
     reruns. Key-prefetch timing across nodes; another flake to chase.
 - From the group page on the feed's cards:
-  - **The group page has no tag strip.** A persona's page lists its posts under
-    the label facets. `/feed/labels` counts group posts now (ONE_FEED slice 3);
-    the group's page wants that strip narrowed to the group (`group=` on the
-    labels route) and drawn.
   - **The page lists everything at once.** The feed narrowed to a group answers
     up to `RESULTS_CAP` posts unpaged, as any narrowed feed does; a busy group
     wants the time-ordered feed's cursor.
