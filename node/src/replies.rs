@@ -118,7 +118,8 @@ pub async fn forget_reply(node_db: &Db, reply_author: &str, reply_doc: &str) -> 
     }
     node_db
         .execute(
-            "DELETE FROM post_replies WHERE reply_author = ?1 AND reply_doc = ?2",
+            "DELETE FROM post_replies
+             WHERE reply_author = ?1 AND reply_doc = ?2 AND group_id IS NULL",
             (reply_author, reply_doc),
         )
         .await
@@ -168,7 +169,8 @@ async fn refresh_inner(state: &AppState, author_root: &str, force: bool) -> Resu
     state
         .node_db
         .execute(
-            "DELETE FROM post_replies WHERE reply_author = ?1 AND noted_ms < ?2",
+            "DELETE FROM post_replies
+             WHERE reply_author = ?1 AND noted_ms < ?2 AND group_id IS NULL",
             (author_root, now),
         )
         .await
@@ -299,17 +301,21 @@ pub const THREAD_LEVEL_CAP: i64 = 500;
 /// One level of a thread whole: a post's direct replies, oldest first, at most `THREAD_LEVEL_CAP`,
 /// and whether there were more. The thread used to read `REPLIES_PAGE` of them and never ask for
 /// the next page, so a post's twenty-first reply was never shown (found 2026-09-28).
+///
+/// `group` names the group a group post's thread is in, `None` a public post's: a public read
+/// never sees a group's rows.
 pub async fn replies_level(
     node_db: &Db,
     parent_author: &str,
     parent_doc: &str,
+    group: Option<&[u8; 16]>,
 ) -> Result<(Vec<KnownReply>, bool)> {
     let rows: Vec<(String, String, i64)> = node_db
         .fetch_all(
             "SELECT reply_author, reply_doc, claimed_ms FROM post_replies
-             WHERE parent_author = ?1 AND parent_doc = ?2
+             WHERE parent_author = ?1 AND parent_doc = ?2 AND group_id IS ?4
              ORDER BY claimed_ms, reply_doc LIMIT ?3",
-            (parent_author, parent_doc, THREAD_LEVEL_CAP + 1),
+            (parent_author, parent_doc, THREAD_LEVEL_CAP + 1, group.map(|g| g.to_vec())),
         )
         .await
         .context("reading a thread level")?;
@@ -330,15 +336,17 @@ pub async fn replies_of(
     parent_author: &str,
     parent_doc: &str,
     after: Option<(i64, String)>,
+    group: Option<&[u8; 16]>,
 ) -> Result<(Vec<KnownReply>, bool)> {
+    let group = group.map(|g| g.to_vec());
     let rows: Vec<(String, String, i64)> = match after {
         None => {
             node_db
                 .fetch_all(
                     "SELECT reply_author, reply_doc, claimed_ms FROM post_replies
-                     WHERE parent_author = ?1 AND parent_doc = ?2
+                     WHERE parent_author = ?1 AND parent_doc = ?2 AND group_id IS ?4
                      ORDER BY claimed_ms, reply_doc LIMIT ?3",
-                    (parent_author, parent_doc, REPLIES_PAGE + 1),
+                    (parent_author, parent_doc, REPLIES_PAGE + 1, group),
                 )
                 .await
         }
@@ -346,10 +354,10 @@ pub async fn replies_of(
             node_db
                 .fetch_all(
                     "SELECT reply_author, reply_doc, claimed_ms FROM post_replies
-                     WHERE parent_author = ?1 AND parent_doc = ?2
+                     WHERE parent_author = ?1 AND parent_doc = ?2 AND group_id IS ?6
                        AND (claimed_ms > ?3 OR (claimed_ms = ?3 AND reply_doc > ?4))
                      ORDER BY claimed_ms, reply_doc LIMIT ?5",
-                    (parent_author, parent_doc, ms, doc.as_str(), REPLIES_PAGE + 1),
+                    (parent_author, parent_doc, ms, doc.as_str(), REPLIES_PAGE + 1, group),
                 )
                 .await
         }
@@ -594,8 +602,8 @@ pub async fn ledger_for(
             "SELECT reply_author, reply_doc, parent_author, parent_doc,
                     claimed_ms, noted_ms, learned_via
              FROM post_replies
-             WHERE (parent_author = ?1 AND parent_doc = ?2)
-                OR (root_author = ?1 AND root_doc = ?2)
+             WHERE ((parent_author = ?1 AND parent_doc = ?2)
+                OR (root_author = ?1 AND root_doc = ?2)) AND group_id IS NULL
              ORDER BY noted_ms",
             (root, doc),
         )
@@ -642,7 +650,7 @@ pub async fn door_page(
         .node_db
         .fetch_all(
             "SELECT rowid, reply_author, reply_doc FROM post_replies
-             WHERE parent_author = ?1 AND parent_doc = ?2 AND rowid > ?3
+             WHERE parent_author = ?1 AND parent_doc = ?2 AND rowid > ?3 AND group_id IS NULL
              ORDER BY rowid LIMIT ?4",
             (parent_author, parent_doc, since as i64, DOOR_PAGE),
         )
@@ -775,9 +783,102 @@ pub async fn learn(
     }
 }
 
+/// One group reply's link, as the group's derivation finds it (roster.rs `rejournal`).
+pub struct GroupReply {
+    pub parent: (String, String),
+    pub root: (String, String),
+    pub reply: (String, String),
+    pub claimed_ms: i64,
+}
+
+/// A group's reply links, as the group now stands: `replies` noted with the group, then the
+/// group's rows not noted swept - a reply taken down or hidden, or its group's whole thread gone.
+pub async fn keep_group(node_db: &Db, group: &[u8; 16], replies: &[GroupReply]) -> Result<()> {
+    let cutoff = now_ms();
+    for r in replies {
+        node_db
+            .execute(
+                "INSERT INTO post_replies
+                   (parent_author, parent_doc, reply_author, reply_doc,
+                    root_author, root_doc, claimed_ms, noted_ms, learned_via, group_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'group', ?9)
+                 ON CONFLICT (parent_author, parent_doc, reply_author, reply_doc) DO UPDATE SET
+                   root_author = excluded.root_author,
+                   root_doc = excluded.root_doc,
+                   claimed_ms = excluded.claimed_ms,
+                   noted_ms = excluded.noted_ms,
+                   learned_via = excluded.learned_via,
+                   group_id = excluded.group_id",
+                (
+                    r.parent.0.as_str(),
+                    r.parent.1.as_str(),
+                    r.reply.0.as_str(),
+                    r.reply.1.as_str(),
+                    r.root.0.as_str(),
+                    r.root.1.as_str(),
+                    r.claimed_ms,
+                    now_ms(),
+                    group.to_vec(),
+                ),
+            )
+            .await
+            .context("noting a group reply link")?;
+    }
+    node_db
+        .execute(
+            "DELETE FROM post_replies WHERE group_id = ?1 AND noted_ms < ?2",
+            (group.to_vec(), cutoff),
+        )
+        .await
+        .context("sweeping a group's reply links")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A group's reply links share the memo but never its public reads (plans/GROUPS.md,
+    /// section 7): the public level and the door's index see none of them, the group's level
+    /// sees them, the replier's public sweep leaves them be, and the group's own sweep takes them.
+    #[tokio::test]
+    async fn a_groups_replies_stay_the_groups() {
+        let db = crate::db::test_node_db().await;
+        let (parent, group) = (("aa".repeat(32), "11".repeat(16)), [7u8; 16]);
+        let reply = ("bb".repeat(32), "22".repeat(16));
+        let link = GroupReply {
+            parent: parent.clone(),
+            root: parent.clone(),
+            reply: reply.clone(),
+            claimed_ms: 5,
+        };
+        keep_group(&db, &group, &[link]).await.unwrap();
+        let (public, _) = replies_level(&db, &parent.0, &parent.1, None).await.unwrap();
+        assert!(public.is_empty(), "a public read sees no group's reply");
+        let (paged, _) = replies_of(&db, &parent.0, &parent.1, None, None).await.unwrap();
+        assert!(paged.is_empty());
+        assert!(ledger_for(&db, &parent.0, &parent.1).await.unwrap().is_empty());
+        let (theirs, _) = replies_level(&db, &parent.0, &parent.1, Some(&group)).await.unwrap();
+        assert_eq!(theirs.len(), 1, "the group's level does");
+        assert_eq!(theirs[0].doc_id, reply.1);
+
+        // The replier's public fold sweeps their public rows only.
+        db.execute(
+            "DELETE FROM post_replies
+             WHERE reply_author = ?1 AND noted_ms < ?2 AND group_id IS NULL",
+            (reply.0.as_str(), now_ms() + 1),
+        )
+        .await
+        .unwrap();
+        let (theirs, _) = replies_level(&db, &parent.0, &parent.1, Some(&group)).await.unwrap();
+        assert_eq!(theirs.len(), 1, "the public sweep leaves the group's row");
+
+        // The group's derivation, seeing no reply now, takes it.
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        keep_group(&db, &group, &[]).await.unwrap();
+        let (theirs, _) = replies_level(&db, &parent.0, &parent.1, Some(&group)).await.unwrap();
+        assert!(theirs.is_empty(), "the group's sweep does");
+    }
 
     /// The memo's lifecycle in miniature: noted, re-noted (idempotent), paged in claimed
     /// order, and receded by the stamp sweep when a rewrite no longer sees it.
@@ -790,7 +891,7 @@ mod tests {
         note(&db, &parent, &root, &"cc".repeat(32), &"33".repeat(16), 3, "chain").await.unwrap();
         note(&db, &parent, &root, &"bb".repeat(32), &"22".repeat(16), 5, "chain").await.unwrap();
 
-        let (page, more) = replies_of(&db, &parent.0, &parent.1, None).await.unwrap();
+        let (page, more) = replies_of(&db, &parent.0, &parent.1, None, None).await.unwrap();
         assert!(!more);
         assert_eq!(page.len(), 2, "idempotent noting: one row per reply");
         assert_eq!(page[0].claimed_ms, 3, "oldest first - a conversation reads downward");
@@ -808,7 +909,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let (page, _) = replies_of(&db, &parent.0, &parent.1, None).await.unwrap();
+        let (page, _) = replies_of(&db, &parent.0, &parent.1, None, None).await.unwrap();
         assert_eq!(page.len(), 1, "the header left the shelf; the row went with it");
         assert_eq!(page[0].author, "cc".repeat(32));
     }

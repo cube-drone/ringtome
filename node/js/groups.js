@@ -25,6 +25,7 @@ import { DrawingThumb } from './doc/drawing.js';
 import { avatarBytes } from './pickbytes.js';
 import { GroupMark, forgetGroupFace } from './groupface.js';
 import { PostEntry } from './postentry.js';
+import { GroupThread, ParentContexts } from './postpage.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
 import { narrowParams } from './postsearch.js';
 import { filterContacts } from './pure/people.js';
@@ -713,7 +714,6 @@ const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
         item=${item}
         current=${current}
         editing=${null}
-        quote=${false}
     />`;
     return html`<section class="group-posts">
         ${
@@ -785,6 +785,7 @@ export const GroupPostPage = ({ group, doc, current }) => {
                 : html`<p class="groups-error">${error.message}</p>`)
         }
         ${!item && !error && html`<p class="people-empty">${t('apps.groups.fetching-the-post', 'fetching the post…')}</p>`}
+        ${item && html`<${ParentContexts} post=${item} group=${group} />`}
         ${
             item &&
             html`<${PostEntry}
@@ -796,6 +797,7 @@ export const GroupPostPage = ({ group, doc, current }) => {
                 standalone=${true}
             />`
         }
+        ${answer && answer.item && html`<${GroupThread} group=${group} item=${answer.item} current=${current} />`}
     </div>`;
 };
 

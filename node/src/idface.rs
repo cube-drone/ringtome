@@ -3814,7 +3814,7 @@ pub async fn id_post_replies(
             "that isn't a document id"
         )));
     }
-    let after = match (query.after_ms, query.after_doc) {
+    let after = match (query.after_ms, query.after_doc.clone()) {
         (Some(ms), Some(d)) => Some((ms, d)),
         _ => None,
     };
@@ -3849,9 +3849,9 @@ pub async fn id_post_replies(
     }
     // A level whole (2026-09-28), unless a caller pages it by cursor as the API always allowed.
     let (mut replies, more) = match after {
-        None => crate::replies::replies_level(&state.node_db, &root_hex, &doc).await,
+        None => crate::replies::replies_level(&state.node_db, &root_hex, &doc, None).await,
         Some(after) => {
-            crate::replies::replies_of(&state.node_db, &root_hex, &doc, Some(after)).await
+            crate::replies::replies_of(&state.node_db, &root_hex, &doc, Some(after), None).await
         }
     }
     .map_err(AppError::Internal)?;
@@ -3899,55 +3899,8 @@ pub async fn id_post_replies(
             });
         }
     }
-    // Hot or best (slice 3): the siblings ordered by the viewer's own scores - only for a signed-in
-    // viewer asking as a persona of theirs, since the scores are that persona's dials read aloud.
-    if let (Some(order @ ("hot" | "best")), Some(sess), Some(viewer)) =
-        (query.sort.as_deref(), &session, query.as_root.as_deref())
-    {
-        if let Ok(data) = crate::record::store::open(&state, &sess.account.id, viewer).await {
-            let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
-            crate::score::refresh_dials(&state, viewer, &facts)
-                .await
-                .map_err(AppError::Internal)?;
-            let pairs: Vec<(String, String)> =
-                replies.iter().map(|r| (r.author.clone(), r.doc_id.clone())).collect();
-            let scores = crate::score::stored_for(&state.node_db, viewer, &pairs)
-                .await
-                .map_err(AppError::Internal)?;
-            let milli = |r: &crate::replies::KnownReply| {
-                scores.get(&(r.author.clone(), r.doc_id.clone())).copied().unwrap_or(0)
-            };
-            if order == "hot" {
-                // Each at its time plus an hour a like, the hottest first.
-                replies.sort_by_key(|r| {
-                    std::cmp::Reverse((
-                        crate::score::hot_of(r.claimed_ms, milli(r)),
-                        r.doc_id.clone(),
-                    ))
-                });
-            } else {
-                // The best first; among equals, the conversation's own order.
-                replies
-                    .sort_by_key(|r| (std::cmp::Reverse(milli(r)), r.claimed_ms, r.doc_id.clone()));
-            }
-        }
-    }
-    // The repliers' bylines ride the answer (Curtis, 2026-09-05: a trusted-but-unread
-    // replier rendered as their speakable words): the page's own mirror knows only the
-    // people the reader follows, and this node knows everyone it holds.
-    let authors: Vec<String> = replies
-        .iter()
-        .map(|r| r.author.clone())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let bylines: serde_json::Map<String, serde_json::Value> =
-        crate::profiles::bylines_healed(&state, &authors)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(root, b)| (root, serde_json::json!({ "name": b.name, "avatar": b.avatar })))
-            .collect();
+    order_level(&state, session.as_ref(), &query, &mut replies).await?;
+    let bylines = level_bylines(&state, &replies).await;
     Ok(axum::Json(serde_json::json!({ "replies": replies, "more": more, "seeking": seeking, "bylines": bylines }))
         .into_response())
 }
@@ -4055,6 +4008,70 @@ pub async fn id_post_dossier(
         "annotations": annotations,
     }))
     .into_response())
+}
+
+/// One thread level in the order asked for: oldest first by default; `hot` or `best` by the scores
+/// of the persona a signed-in viewer asks `as`. The public thread's and a group's (roster.rs).
+pub(crate) async fn order_level(
+    state: &AppState,
+    session: Option<&Session>,
+    query: &RepliesQuery,
+    replies: &mut [crate::replies::KnownReply],
+) -> Result<(), AppError> {
+    // Hot or best (slice 3): the siblings ordered by the viewer's own scores - only for a signed-in
+    // viewer asking as a persona of theirs, since the scores are that persona's dials read aloud.
+    if let (Some(order @ ("hot" | "best")), Some(sess), Some(viewer)) =
+        (query.sort.as_deref(), session, query.as_root.as_deref())
+    {
+        if let Ok(data) = crate::record::store::open(state, &sess.account.id, viewer).await {
+            let facts: crate::selectivity::Facts = data.contacts().await?.into_iter().collect();
+            crate::score::refresh_dials(state, viewer, &facts).await.map_err(AppError::Internal)?;
+            let pairs: Vec<(String, String)> =
+                replies.iter().map(|r| (r.author.clone(), r.doc_id.clone())).collect();
+            let scores = crate::score::stored_for(&state.node_db, viewer, &pairs)
+                .await
+                .map_err(AppError::Internal)?;
+            let milli = |r: &crate::replies::KnownReply| {
+                scores.get(&(r.author.clone(), r.doc_id.clone())).copied().unwrap_or(0)
+            };
+            if order == "hot" {
+                // Each at its time plus an hour a like, the hottest first.
+                replies.sort_by_key(|r| {
+                    std::cmp::Reverse((
+                        crate::score::hot_of(r.claimed_ms, milli(r)),
+                        r.doc_id.clone(),
+                    ))
+                });
+            } else {
+                // The best first; among equals, the conversation's own order.
+                replies
+                    .sort_by_key(|r| (std::cmp::Reverse(milli(r)), r.claimed_ms, r.doc_id.clone()));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The bylines of a thread level's repliers, as the answer carries them.
+pub(crate) async fn level_bylines(
+    state: &AppState,
+    replies: &[crate::replies::KnownReply],
+) -> serde_json::Map<String, serde_json::Value> {
+    // The repliers' bylines ride the answer (Curtis, 2026-09-05: a trusted-but-unread
+    // replier rendered as their speakable words): the page's own mirror knows only the
+    // people the reader follows, and this node knows everyone it holds.
+    let authors: Vec<String> = replies
+        .iter()
+        .map(|r| r.author.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    crate::profiles::bylines_healed(state, &authors)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(root, b)| (root, serde_json::json!({ "name": b.name, "avatar": b.avatar })))
+        .collect()
 }
 
 #[derive(serde::Deserialize)]

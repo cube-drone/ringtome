@@ -642,6 +642,23 @@ async fn bell_alert(
                 crate::msg!("attention.labelled-a-post", "labelled one of your posts").english
             }
         },
+        (k::KIND_GROUP_COMMENT, _) => match group_name(state, item).await {
+            Some(group) => {
+                crate::msg!(
+                    "attention.replied-to-group-post",
+                    "replied to your post in {group}",
+                    group = group
+                )
+                .english
+            }
+            None => {
+                crate::msg!(
+                    "attention.replied-to-one-of-your-posts",
+                    "replied to one of your posts"
+                )
+                .english
+            }
+        },
         (k::KIND_GROUP_INVITE, _) => match &item.detail {
             Some(group) => {
                 crate::msg!(

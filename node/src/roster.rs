@@ -442,6 +442,23 @@ async fn rejournal(
         .collect();
     crate::annotations::keep_group_labels(state, group, &memo, noted).await?;
     keep_rooms(state, group, &posts, noted).await?;
+    // The group's replies into the node's one replies memo, marked with the group: its threads,
+    // counts and "in reply to" cards are the public ones'. A hidden reply is out of its thread.
+    let replies: Vec<crate::replies::GroupReply> = posts
+        .iter()
+        .filter(|p| !p.hidden)
+        .filter_map(|p| {
+            let (pa, pd) = p.first.header.reply_to?;
+            let (ra, rd) = p.first.header.thread_root.unwrap_or((pa, pd));
+            Some(crate::replies::GroupReply {
+                parent: (hex::encode(pa), hex::encode(pd)),
+                root: (hex::encode(ra), hex::encode(rd)),
+                reply: (hex::encode(p.first.persona), hex::encode(p.doc)),
+                claimed_ms: p.shown.header.dated_ms.or(p.first.header.genesis_ms).unwrap_or(0),
+            })
+        })
+        .collect();
+    crate::replies::keep_group(db, group, &replies).await?;
     let news = bell_news(state, group, roster, readers, &posts, &labels).await?;
     crate::notifications::keep_group_rows(state, group, &news).await?;
     for post in &posts {
@@ -507,6 +524,8 @@ async fn rejournal(
 
 /// One label entry of a group's lanes: `(persona, hash, body, claimed_ms, arrived_ms)`.
 type StampedLabel = (String, Vec<u8>, Vec<u8>, Option<i64>, Option<i64>);
+/// A post's version as this node took it: `(hash, claimed_ms, arrived_ms)`.
+type StampedHeader = (Vec<u8>, Option<i64>, Option<i64>);
 /// A statement as said: `(labeller, post, key, value)`.
 type LabelAt = (String, [u8; 16], String, String);
 
@@ -523,7 +542,9 @@ async fn bell_news(
     posts: &[Listed<'_>],
     labels: &BTreeMap<[u8; 16], Vec<GroupLabel>>,
 ) -> Result<Vec<crate::notifications::GroupNews>> {
-    use crate::notifications::{GroupNews, KIND_GROUP_MENTIONED, KIND_GROUP_TAGGED};
+    use crate::notifications::{
+        GroupNews, KIND_GROUP_COMMENT, KIND_GROUP_MENTIONED, KIND_GROUP_TAGGED,
+    };
     let mention = ringtome_proto::PublicAnnotation::MENTION_KEY;
     let quiet = [mention, crate::chat::MUTE_KEY, crate::chat::DEPUTY_KEY];
     // When each statement was said and reached this node, the newest saying of it.
@@ -547,6 +568,50 @@ async fn bell_news(
     }
     let readers: BTreeMap<String, &Root> = readers.iter().map(|r| (hex::encode(r), r)).collect();
     let mut out: Vec<GroupNews> = Vec::new();
+    // A reply to a member's post (the comment row's group twin): stamped by the reply's first
+    // version as this node took it, one row per (reader, replier, post) as a comment's is.
+    let headers: Vec<StampedHeader> = state
+        .node_db
+        .fetch_all(
+            "SELECT hash, claimed_ms, arrived_ms FROM group_lanes
+             WHERE group_id = ?1 AND entry_type = ?2",
+            (group.to_vec(), i64::from(entry_type::DOC_HEADER)),
+        )
+        .await
+        .context("reading when a group's posts were said")?;
+    let stamped: BTreeMap<Vec<u8>, (i64, i64)> = headers
+        .into_iter()
+        .filter_map(|(hash, claimed, arrived)| Some((hash, (claimed?, arrived?))))
+        .collect();
+    let by_doc: BTreeMap<[u8; 16], &Listed<'_>> = posts.iter().map(|p| (p.doc, p)).collect();
+    let mut answered: BTreeMap<(String, String, String), (i64, i64)> = BTreeMap::new();
+    for reply in posts.iter().filter(|p| !p.hidden) {
+        let Some((parent_author, parent_doc)) = reply.first.header.reply_to else { continue };
+        let Some(&(claimed, arrived)) = stamped.get(reply.first.hash.as_slice()) else {
+            continue;
+        };
+        let (reader, replier) = (hex::encode(parent_author), hex::encode(reply.first.persona));
+        let Some(parent) = by_doc.get(&parent_doc).filter(|p| p.first.persona == parent_author)
+        else {
+            continue;
+        };
+        if reader == replier || !readers.get(&reader).is_some_and(|r| sees(roster, r, parent)) {
+            continue;
+        }
+        let e = answered.entry((reader, replier, hex::encode(parent_doc))).or_insert((0, 0));
+        *e = (e.0.max(claimed), e.1.max(arrived));
+    }
+    for ((reader, author, doc), (claimed_ms, arrived_ms)) in answered {
+        out.push(GroupNews {
+            reader,
+            author,
+            kind: KIND_GROUP_COMMENT,
+            doc,
+            detail: None,
+            arrived_ms,
+            claimed_ms,
+        });
+    }
     for post in posts {
         let author = hex::encode(post.shown.persona);
         let doc = hex::encode(post.doc);
@@ -1542,6 +1607,7 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
             post(set_face_handler).delete(clear_face_handler).layer(upload()),
         )
         .route("/api/identity/{root}/groups/{group}/posts", get(posts_handler))
+        .route("/api/identity/{root}/groups/{group}/posts/{doc}/replies", get(replies_handler))
         .route("/api/identity/{root}/groups/{group}/publish", post(publish_handler))
         .route("/api/identity/{root}/docs/{doc_id}/groups", get(draft_groups_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/retract", post(retract_handler))
@@ -2615,6 +2681,26 @@ pub async fn publish(
             .as_ref()
             .and_then(|(_, list)| first_version(list))
             .is_some_and(|v| v.header.format == Some(ringtome_proto::registry::doc_format::ROOM));
+    // A reply's link (section 7), as the public publish keeps it: named at the first publish and
+    // carried by every edit, so an edit never moves a reply to another post.
+    let (reply_to, thread_root) = match onto {
+        Some((_, list)) => first_version(list)
+            .map(|v| (v.header.reply_to, v.header.thread_root))
+            .unwrap_or_default(),
+        None => match wishes.reply_to {
+            Some(parent) => {
+                let root = reply_link(&roster, &versions, &gone, &me_root, parent)?;
+                (Some(parent), Some(root))
+            }
+            None => (None, None),
+        },
+    };
+    if room && reply_to.is_some() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.a-reply-isnt-a-room",
+            "a reply can't be a room"
+        )));
+    }
     let (doc_id, parents, genesis_ms) = match onto {
         Some((post, list)) => {
             let shown = display(list);
@@ -2646,8 +2732,8 @@ pub async fn publish(
         preview_hash: None,
         refs,
         genesis_ms: Some(genesis_ms),
-        reply_to: None,
-        thread_root: None,
+        reply_to,
+        thread_root,
         settled: wishes.settled,
         trusted_only: false,
         dated_ms: wishes.dated_ms,
@@ -2815,14 +2901,59 @@ async fn restate_labels(
     Ok(())
 }
 
+/// The thread a reply to `parent` joins, its root: the parent's own root, or the parent when it is
+/// one. Refused unless the parent is a post in the group that the replier may see, takes replies,
+/// and isn't a room - the public publish's `resolve_reply_link`, read off the group's lanes.
+fn reply_link(
+    roster: &Roster,
+    versions: &BTreeMap<[u8; 16], Vec<Version>>,
+    gone: &BTreeSet<[u8; 16]>,
+    me: &Root,
+    (author, doc): (Root, [u8; 16]),
+) -> Result<(Root, [u8; 16]), AppError> {
+    let list = versions.get(&doc).filter(|_| !gone.contains(&doc));
+    let first = list.and_then(|l| first_version(l)).filter(|v| v.persona == author);
+    let shown = list.and_then(|l| display(l));
+    let (Some(first), Some(shown)) = (first, shown) else {
+        return Err(AppError::NotFound(crate::msg!(
+            "roster.no-such-post-to-answer",
+            "that post isn't in this group"
+        )));
+    };
+    let hidden_from_me =
+        roster.hidden.contains(&first.hash) && author != *me && !roster.owners.contains_key(me);
+    if hidden_from_me || shown.header.part_of.is_some() {
+        return Err(AppError::NotFound(crate::msg!(
+            "roster.no-such-post-to-answer",
+            "that post isn't in this group"
+        )));
+    }
+    if shown.header.settled {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.comments-are-off",
+            "its author turned off comments for this post"
+        )));
+    }
+    if shown.header.format == Some(ringtome_proto::registry::doc_format::ROOM) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.a-room-takes-no-replies",
+            "a room takes no replies - its talk is inside it"
+        )));
+    }
+    Ok(first.header.thread_root.unwrap_or((author, doc)))
+}
+
 /// What a group post's header carries from its publish, as any post's does: the author's claimed
-/// date, and comments off.
+/// date, comments off, and what it answers.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Wishes {
     pub dated_ms: Option<i64>,
     pub settled: bool,
     /// A room (plans/GROUP_ROOMS.md): the post is the room, and its talk is said inside it.
     pub room: bool,
+    /// The post this answers, `(author, doc)`, when it's a reply (section 7): another post in the
+    /// group. Read at the first publish only - an edit keeps the link it was posted with.
+    pub reply_to: Option<(Root, [u8; 16])>,
 }
 
 #[derive(Deserialize)]
@@ -2835,6 +2966,15 @@ struct PublishRequest {
     /// A room for the group (plans/GROUP_ROOMS.md), as the public publish's `room`.
     #[serde(default)]
     room: bool,
+    /// A reply to another post in the group, as the public publish's `reply_to`.
+    #[serde(default)]
+    reply_to: Option<ReplyTo>,
+}
+
+#[derive(Deserialize)]
+struct ReplyTo {
+    author: String,
+    doc_id: String,
 }
 
 fn doc_of(hex_doc: &str) -> Result<[u8; 16], AppError> {
@@ -2860,6 +3000,15 @@ async fn publish_handler(
         )));
     }
     let draft = doc_of(&req.doc)?;
+    let reply_to = match &req.reply_to {
+        Some(r) => Some((
+            root_of(&r.author).ok_or_else(|| {
+                AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
+            })?,
+            doc_of(&r.doc_id)?,
+        )),
+        None => None,
+    };
     // The preferred date, as the public publish resolves it (identity/routes.rs): the draft's
     // `display_date` with the request's timezone, re-read at every publish.
     let dated_ms = data
@@ -2869,8 +3018,8 @@ async fn publish_handler(
         .and_then(|v| crate::record::documents::claimed_ms(&v, now_ms(), req.tz_offset_min));
     // A future date is a schedule, as for any post (PUBLISH.md ruling 3): a plan on the draft,
     // naming the group and this device, which the publish-due sweep mints (scheduled.rs). A room
-    // opens now.
-    if let Some(at) = dated_ms.filter(|at| *at > now_ms() && !req.room) {
+    // opens now, and so does a reply: it answers what's there now.
+    if let Some(at) = dated_ms.filter(|at| *at > now_ms() && !req.room && reply_to.is_none()) {
         let plan = serde_json::json!({
             "at": at,
             "by": data.leaf_hex(),
@@ -2886,7 +3035,7 @@ async fn publish_handler(
         &root,
         &group,
         &draft,
-        Wishes { dated_ms, settled: req.settled, room: req.room },
+        Wishes { dated_ms, settled: req.settled, room: req.room, reply_to },
     )
     .await?;
     clear_plan(&data, &draft).await?;
@@ -3036,8 +3185,15 @@ async fn close_handler(
             "this room's draft isn't on this computer"
         ))
     })?;
-    publish(&state, &data, &root, &group, &draft, Wishes { dated_ms, settled: true, room: true })
-        .await?;
+    publish(
+        &state,
+        &data,
+        &root,
+        &group,
+        &draft,
+        Wishes { dated_ms, settled: true, room: true, reply_to: None },
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "closed": true })))
 }
 
@@ -3271,6 +3427,60 @@ async fn pin_handler(
 
 /// GET `.../groups/{group}/posts` - the group's page: its posts, newest first, each at its
 /// newest version, hidden ones marked (an owner sees them; the app decides how).
+/// GET `.../groups/{group}/posts/{doc}/replies` - one level of a group post's thread, for its
+/// members: the public thread's answer (idface.rs `id_post_replies`), off the one replies memo's
+/// rows for this group, in the order asked for. A post with comments off has none to show.
+async fn replies_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group, doc)): Path<(String, String, String)>,
+    axum::extract::Query(query): axum::extract::Query<crate::idface::RepliesQuery>,
+) -> Answer {
+    let (_, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let doc_id = doc_of(&doc)?;
+    let (roster, _) = current(&state, &group, &me).await?;
+    if !roster.members.contains(&me) {
+        return Err(AppError::NotFound(crate::msg!(
+            "roster.no-such-group-here",
+            "no such group here"
+        )));
+    }
+    let (versions, gone) = documents_of(&state, &group, &roster).await?;
+    let list = versions.get(&doc_id).filter(|_| !gone.contains(&doc_id));
+    let (Some(first), Some(shown)) =
+        (list.and_then(|l| first_version(l)), list.and_then(|l| display(l)))
+    else {
+        return Err(AppError::NotFound(crate::msg!(
+            "roster.no-such-post",
+            "no such post in this group"
+        )));
+    };
+    if shown.header.settled {
+        return Ok(Json(serde_json::json!({
+            "replies": [], "more": false, "seeking": false, "settled": true,
+        })));
+    }
+    let author = hex::encode(first.persona);
+    let after = match (query.after_ms, query.after_doc.clone()) {
+        (Some(ms), Some(d)) => Some((ms, d)),
+        _ => None,
+    };
+    let (mut replies, more) = match after {
+        None => crate::replies::replies_level(&state.node_db, &author, &doc, Some(&group)).await,
+        Some(after) => {
+            crate::replies::replies_of(&state.node_db, &author, &doc, Some(after), Some(&group))
+                .await
+        }
+    }
+    .map_err(AppError::Internal)?;
+    crate::idface::order_level(&state, Some(&session), &query, &mut replies).await?;
+    let bylines = crate::idface::level_bylines(&state, &replies).await;
+    Ok(Json(serde_json::json!({
+        "replies": replies, "more": more, "seeking": false, "bylines": bylines,
+    })))
+}
+
 async fn posts_handler(
     session: Session,
     State(state): State<AppState>,

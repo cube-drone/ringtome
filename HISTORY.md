@@ -22781,3 +22781,49 @@ the row away; in `grouprooms.cjs`, a line naming a member rings them with the
 room by name and a non-member named is never told. The group posts and group
 rooms areas pass (26), as do the neighbouring bell, mention, annotation, chat,
 MCP and group areas (77); node 629 and 14, clippy clean.
+
+## 2026-10-17 — Replies in a group
+
+Group posts took no replies; a card's "reply" link opened a page with nowhere to
+answer. Now a reply to a group post is a group post whose header names its
+parent and thread root, posted through the group's publish with a `reply_to`
+(Curtis: "do good engineering and reuse code where appropriate"):
+
+- **Posting.** `roster::publish` resolves the link as the public publish does
+  (`reply_link`): the parent must be a post in the group that the replier may
+  see, takes comments, and isn't a room. The link is set at the first publish
+  and carried by every edit. A reply never schedules.
+- **The thread is the public one.** The group's derivation (`rejournal`) writes
+  its replies into the node's one `post_replies` memo, marked with the group
+  (node rung 95), and sweeps them by group. Every public read (the thread door,
+  the author's index, the dossier ledger) asks for rows with no group, and the
+  public fold's per-author sweeps leave group rows alone. A unit test pins that
+  boundary. So the counts, the feed's "in reply to" and "thread" cards and the
+  reply kind come for free. Those cards now open the group post when the reply
+  is a group's.
+- **The route.** `GET .../groups/{group}/posts/{doc}/replies` is for members
+  only. It answers in the public thread door's shape and shares its ordering and
+  bylines, now `idface::order_level` and `level_bylines`.
+- **The page.** `postpage.js`'s `Thread`, `ThreadReply` and `ReplyBox` take a
+  road: the public doors, or a group's. The group post page shows `GroupThread`
+  under its card: the order select, the thread and the reply box, with no held
+  replies and no refresh, since every member's node holds every reply. A group
+  reply needs no Social unlock, as posting to the group needs none.
+- **The context.** A group reply shows what it answers, and the thread's root
+  when that differs, as a public reply does. The group page's cards no longer
+  pass `quote=false`, and the group post page draws `ParentContexts` above its
+  card. That block is now shared with the public post page. The group's links
+  come already dressed from the reader's journal, so nothing is fetched from a
+  public door.
+- **The bell.** The group bell fold rings a post's author when a member replies
+  (`group-comment`, one row per replier and post, stamped by the reply's first
+  version). Alerts say "replied to your post in {group}".
+
+`groupposts.cjs` gains a claim. Ada answers bea's post from her node, and the
+reply is in the thread at both nodes. Its card says what it answers, the parent
+counts it, bea's bell rings, and the public thread door serves nothing. A reply
+to the reply joins the same thread, and an edit keeps the link. A post with
+comments off refuses an answer, and so does the group to a stranger. Taken down,
+the reply leaves the thread. Groups posts, rooms, invites and the neighbouring
+reply, sealed-reply, scores, settled, audience, bell, mention and MCP areas pass
+(108); node 630 and 14, clippy clean.

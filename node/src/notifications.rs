@@ -61,6 +61,9 @@ pub const KIND_GROUP_MENTIONED: &str = "group-mentioned";
 /// Another member labelled the reader's post in a group: [`KIND_TAGGED`]'s shape - one row per
 /// (reader, annotator, post), its detail the labels - from the group's lanes.
 pub const KIND_GROUP_TAGGED: &str = "group-tagged";
+/// Another member replied to the reader's post in a group: [`KIND_COMMENT`]'s shape - its doc the
+/// reader's own post, one row per (reader, replier, post) - from the group's lanes.
+pub const KIND_GROUP_COMMENT: &str = "group-comment";
 
 /// "You completed a contract." The bank's own news (2026-10-04): written once, by the computer
 /// that first recorded the completion on the persona's private chain (bank.rs), so the row's author

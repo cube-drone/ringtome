@@ -448,7 +448,23 @@ How each post feature carries over:
       ever wanted, the precedent is sealed posts' "people I trust, and onward":
       a per-post setting by the author, "members may share this out", never the
       sharer's choice.
-  - **Replies stay in the group**, on the replier's own lane for it.
+  - **Replies stay in the group**, on the replier's own lane for it (built
+    2026-10-17). A reply is a group post whose header names its parent and its
+    thread's root, as a public reply's does: any member answers any post they
+    may see, unless its author turned comments off or it's a room, and an edit
+    keeps the link it was posted with. Its link goes into the node's one replies
+    memo, `post_replies`, marked with the group (node rung 95), so the thread,
+    its order, the counts and the "in reply to" cards are the public ones'.
+    Every public read of the memo asks for rows with no group. The group's
+    derivation writes and sweeps the group's rows, and the public fold's
+    per-author sweep never touches them. The group post page shows the public
+    post page's thread and reply box over the group's routes
+    (`GET .../groups/{group}/posts/{doc}/replies`, and the group publish with a
+    `reply_to`). The post's author hears of a reply in the bell
+    (`group-comment`). There are no held replies and nothing to ask a door for:
+    every member's node holds every reply. A reply is a card of its own on the
+    group's page, as a public reply is in the feed, and owners hide it as they
+    hide any post.
   - **No seal inside a group.** The group is already members-only.
   - **Nothing public lists or serves it**: not the anonymous `/id` door, the
     shelves, RSS, the crawl or the front page. Members read it through the

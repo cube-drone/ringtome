@@ -1518,6 +1518,7 @@ const PostEntryBody = ({
                     doc_id=${item.thread_root.doc_id}
                     title=${item.thread_root.title}
                     published_ms=${item.thread_root.published_ms}
+                    href=${item.group && groupPostHref(item.group.id, item.thread_root.doc_id)}
                 />
             </p>`
             }
@@ -1544,6 +1545,7 @@ const PostEntryBody = ({
                     doc_id=${item.reply_to.doc_id}
                     title=${item.reply_to.title}
                     published_ms=${item.reply_to.published_ms}
+                    href=${item.group && groupPostHref(item.group.id, item.reply_to.doc_id)}
                 />
             </p>`
             }

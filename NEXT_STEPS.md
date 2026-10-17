@@ -97,8 +97,6 @@ are driving towards.
     (`editor.js` `hasPublishBar` still asks for the unlock): someone in a group
     without the unlock gets no bar to post there from Writer; the feed's
     composer works.
-  - **Comments off on a group post** rides its header, but group posts take no
-    replies yet, so it changes nothing until they do.
 - From 4b (the feed):
   - **Editing a group post from its card**: the card finds a post's draft
     through the mirror's `published_as`, which a group post's draft doesn't

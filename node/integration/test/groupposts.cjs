@@ -756,4 +756,137 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         rows = await until(HOST, ada, adaRoot, 'group-mentioned', digPost, (r) => !r.length);
         assert.equal(rows.length, 0, 'the card dropped, the row with it');
     });
+
+    it("a member answers a group post: the thread, its card and the bell are the group's, and nothing public", async () => {
+        const { speakable } = await import('../../js/speakable.js');
+        const draftOf = async (who, root, title, body) =>
+            (await j(who, `api/identity/${root}/docs`, { title, body, format: 'marquee' })).json();
+        const level = async (who, root, doc) => {
+            const res = await who(`api/identity/${root}/groups/${group}/posts/${doc}/replies`);
+            const text = await res.text();
+            assert.equal(res.status, 200, text);
+            return (JSON.parse(text).replies || []).map((r) => `${r.author}:${r.doc_id}`);
+        };
+        const both = async () => {
+            for (let i = 0; i < 2; i++) {
+                await sync(ada, adaRoot);
+                await sync(bea, beaRoot);
+            }
+            for (const r of [adaRoot, beaRoot]) {
+                await beat(HOST, 'fold', r);
+                await beat(HOST_B, 'fold', r);
+            }
+        };
+        const seed = (
+            await act(bea, beaRoot, 'publish', {
+                doc: (await draftOf(bea, beaRoot, 'seed swap', 'bring your seeds')).doc_id,
+            })
+        ).post;
+        await both();
+
+        // Ada answers from her node.
+        const answer = await draftOf(ada, adaRoot, '', 'i have beans');
+        const reply = (
+            await act(ada, adaRoot, 'publish', {
+                doc: answer.doc_id,
+                reply_to: { author: beaRoot, doc_id: seed },
+            })
+        ).post;
+        await both();
+        let atBea = [];
+        for (let i = 0; i < 20 && !atBea.includes(`${adaRoot}:${reply}`); i++) {
+            atBea = await level(bea, beaRoot, seed);
+            if (!atBea.includes(`${adaRoot}:${reply}`)) {
+                await both();
+                await wait(300);
+            }
+        }
+        assert.deepEqual(
+            atBea,
+            [`${adaRoot}:${reply}`],
+            "ada's reply is in the thread at bea's node",
+        );
+        assert.deepEqual(await level(ada, adaRoot, seed), [`${adaRoot}:${reply}`], "and at ada's");
+        // Its card says what it answers, and the post counts it.
+        const card = (
+            await (await bea(`api/identity/${beaRoot}/groups/${group}/posts/${reply}`)).json()
+        ).item;
+        assert.equal(card.reply_to && card.reply_to.doc_id, seed, JSON.stringify(card));
+        const parent = (
+            await (await bea(`api/identity/${beaRoot}/groups/${group}/posts/${seed}`)).json()
+        ).item;
+        assert.equal(parent.replies, 1);
+        // Bea hears of it.
+        const bell = (
+            (await (await bea(`api/identity/${beaRoot}/notifications`)).json()).items || []
+        ).filter((i) => i.kind === 'group-comment' && i.doc_id === seed);
+        assert.equal(bell.length, 1, "the reply rang bea's bell");
+        assert.equal(bell[0].author, adaRoot);
+        assert.equal(bell[0].group, group);
+        assert.equal(bell[0].doc_title, 'seed swap');
+        // No public door knows of it.
+        const open = await (await bea(`api/id/${speakable(beaRoot)}/posts/${seed}/replies`)).json();
+        assert.deepEqual(open.replies || [], [], 'the public thread door serves none of it');
+
+        // A reply to the reply joins the same thread.
+        const deeper = (
+            await act(bea, beaRoot, 'publish', {
+                doc: (await draftOf(bea, beaRoot, '', 'what kind?')).doc_id,
+                reply_to: { author: adaRoot, doc_id: reply },
+            })
+        ).post;
+        await both();
+        assert.deepEqual(await level(ada, adaRoot, reply), [`${beaRoot}:${deeper}`]);
+        const deep = (
+            await (await ada(`api/identity/${adaRoot}/groups/${group}/posts/${deeper}`)).json()
+        ).item;
+        assert.equal(
+            deep.thread_root && deep.thread_root.doc_id,
+            seed,
+            'its thread is the seed swap',
+        );
+
+        // An edit keeps the link, whatever it's asked.
+        await j(
+            ada,
+            `api/identity/${adaRoot}/docs/${answer.doc_id}`,
+            { title: '', body: 'i have beans, and peas', parents: [answer.version] },
+            'PUT',
+        );
+        assert.equal((await act(ada, adaRoot, 'publish', { doc: answer.doc_id })).post, reply);
+        await both();
+        assert.deepEqual(
+            await level(bea, beaRoot, seed),
+            [`${adaRoot}:${reply}`],
+            'still an answer',
+        );
+
+        // Comments off: no answer. A stranger: no answer.
+        const quiet = (
+            await act(bea, beaRoot, 'publish', {
+                doc: (await draftOf(bea, beaRoot, 'quiet', 'no replies')).doc_id,
+                settled: true,
+            })
+        ).post;
+        await both();
+        const refused = await j(ada, `api/identity/${adaRoot}/groups/${group}/publish`, {
+            doc: (await draftOf(ada, adaRoot, '', 'hello?')).doc_id,
+            reply_to: { author: beaRoot, doc_id: quiet },
+        });
+        assert.equal(refused.status, 400, await refused.text());
+        const stranger = await j(dee, `api/identity/${deeRoot}/groups/${group}/publish`, {
+            doc: (await draftOf(dee, deeRoot, '', 'me too')).doc_id,
+            reply_to: { author: beaRoot, doc_id: seed },
+        });
+        assert.notEqual(stranger.status, 200);
+        assert.notEqual(
+            (await dee(`api/identity/${deeRoot}/groups/${group}/posts/${seed}/replies`)).status,
+            200,
+        );
+
+        // Taken down, it leaves the thread.
+        await act(ada, adaRoot, `docs/${reply}/retract`);
+        await both();
+        assert.deepEqual(await level(bea, beaRoot, seed), [], 'gone from the thread');
+    });
 });

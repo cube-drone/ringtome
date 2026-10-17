@@ -3219,7 +3219,8 @@ async fn notifications_handler(
         else {
             continue;
         };
-        let post_author = if item.kind == crate::notifications::KIND_GROUP_TAGGED {
+        // A label or a reply is on the reader's own post; a mention, on its author's.
+        let post_author = if item.kind != crate::notifications::KIND_GROUP_MENTIONED {
             root.as_str()
         } else {
             item.author.as_str()
@@ -4682,7 +4683,7 @@ async fn own_post_replies_handler(
         (Some(ms), Some(d)) => Some((ms, d)),
         _ => None,
     };
-    let (replies, more) = crate::replies::replies_of(&state.node_db, &root, &post_id, after)
+    let (replies, more) = crate::replies::replies_of(&state.node_db, &root, &post_id, after, None)
         .await
         .map_err(AppError::Internal)?;
     let mut rows = Vec::with_capacity(replies.len());

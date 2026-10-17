@@ -139,6 +139,11 @@ const sentence = (r) => {
               )
             : t('apps.notifications.labelled-in-group', 'labelled your post in {group}', { group });
     }
+    if (r.kind === 'group-comment') {
+        return t('apps.notifications.replied-in-group', 'replied to your post in {group}', {
+            group: r.group_name || t('apps.notifications.a-group', 'a group'),
+        });
+    }
     // A message in a room naming you (CHAT.md, slice 6): the verb, and the room itself as
     // the object - a link into the room, worn as its name.
     if (r.kind === 'room-mention') {
@@ -307,7 +312,8 @@ export const NotificationsApp = ({ current }) => {
                                               r.kind === 'tagged' ||
                                               r.kind === 'mentioned' ||
                                               r.kind === 'group-mentioned' ||
-                                              r.kind === 'group-tagged') &&
+                                              r.kind === 'group-tagged' ||
+                                              r.kind === 'group-comment') &&
                                           r.doc_id &&
                                           html`<${MiniPost}
                                           author=${r.kind === 'mentioned' || r.kind === 'group-mentioned' ? r.author : root}

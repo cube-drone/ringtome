@@ -13,7 +13,7 @@
 // for members whatever this node already reached), which answers one honest 404 for
 // never-was, private, and taken-down alike.
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useMemo } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -42,7 +42,7 @@ const CopyChain = ({ author, annotations }) => {
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 import { BookReader } from './doc/bookreader.js';
-import { postHref, useSlugOf } from './links.js';
+import { groupPostHref, postHref, useSlugOf } from './links.js';
 import { OpenInApp } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 
@@ -55,28 +55,10 @@ const REPLY_WORDS = {
     best: () => t('postpage.reply-order-best', 'best'),
 };
 
-export const PostPage = ({ seg, doc, page, current, onTitle }) => {
-    const loc = useLocation();
-    const parsed = parseSpeakable(decodeURIComponent(seg || ''));
-    const root = parsed && parsed.ok ? parsed.root : null;
-    // The address's reachability hints ride through, the person page's idiom: a permalink
-    // pasted across the network should resolve the same way the person's own page does.
-    const via = (loc.query && loc.query.via) || '';
-    // undefined = loading, null = not held here, object = the post
-    const [post, setPost] = useState(undefined);
-    // The author's profile, from the visit that warms the node anyway: the card's face (2026-10-03).
-    const [authorProfile, setAuthorProfile] = useState(null);
-    // Replies said from THIS page, ahead of the fold: the memo notes a fresh reply on the
-    // fold lane's next pass, so the thread read may not list it yet - the view runs ahead
-    // of the stream without disagreeing with it (the feed's own overlay idiom).
-    const [said, setSaid] = useState([]);
-    // The refresh affordance's counter: bumping it re-mounts the thread's read with
-    // refresh=1, the deliberate re-ask past the door's cooldown.
-    const [refreshKey, setRefreshKey] = useState(0);
-    // The thread's order (slice 3): oldest first until the reader picks another, kept beside the
-    // feed's order in the same private register so it follows them to their other devices.
+/// The thread's order (slice 3): oldest first until the reader picks another, kept beside the
+/// feed's order in the same private register so it follows them to their other devices.
+const useReplyOrder = (reader) => {
     const [replyOrder, setReplyOrder] = useState('old');
-    const reader = current ? current.root : null;
     useEffect(() => {
         if (!reader) return undefined;
         let live = true;
@@ -98,6 +80,138 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
             body: JSON.stringify({ value: key }),
         }).catch(() => {});
     };
+    return [replyOrder, moveReplyOrder];
+};
+
+/// The thread's order, as a select: for a signed-in reader, whose scores order hot and best.
+const ReplyOrderSelect = ({ order, onOrder }) => html`<select
+    class="thread-order"
+    title=${t('postpage.reply-order-title', 'how each level of replies is ordered - hot and best by what the people you trust and follow liked')}
+    value=${order}
+    onChange=${(e) => onOrder(e.currentTarget.value)}
+>
+    ${REPLY_SORTS.map((key) => html`<option value=${key} key=${key}>${REPLY_WORDS[key]()}</option>`)}
+</select>`;
+
+/// Where a thread lives: a public post's doors, or a group's (plans/GROUPS.md, section 7) - the
+/// same thread, cards and reply box over another set of routes.
+/// - `level(author, doc, query)`: one level of replies, the public door's answer.
+/// - `entry(author, doc, viewer)`: one reply as a card's item (no byline, which the level carries).
+/// - `href(author, doc)`: a post's own page.
+/// - `post(root, draft, onBaking, parent, sealed)`: publish a draft as a reply; answers its doc id.
+const PUBLIC_ROAD = {
+    level: (author, doc, query) => api(`/api/id/${author}/posts/${doc}/replies${query}`),
+    entry: async (author, doc, viewer) => {
+        const post = await api(`/api/id/${author}/posts/${doc}${viewer ? `?as=${viewer}` : ''}`);
+        return {
+            author,
+            doc_id: post.doc_id,
+            title: post.title,
+            format: post.format,
+            published_ms: post.published_ms,
+            // The stamps the card reads for its marks: "written {date}" on a backdated post, "edited {date}"
+            // when its words changed after it went out (2026-10-02 - the page dropped both).
+            dated_ms: post.dated_ms,
+            minted_ms: post.minted_ms,
+            updated_ms: post.updated_ms,
+            replies: post.replies,
+            annotations: post.annotations,
+        };
+    },
+    href: (author, doc) => postHref(author, doc),
+    post: async (root, draft, onBaking, parent, sealed) =>
+        (
+            await publishWithBaking(root, draft, onBaking, {
+                reply_to: { author: parent.author, doc_id: parent.doc_id },
+                ...(sealed ? { trusted_only: true } : {}),
+            })
+        ).post_id,
+    note: () => t('postpage.replying-is-public-and-shares', 'replies are public'),
+    // A reply is publication, and publishing is Social's (plans/UNLOCKS.md).
+    unlocked: false,
+};
+
+/// A group's thread: its members' replies, on their lanes for the group, read and posted through
+/// the group's own routes - never a public door. Any member may answer, as any member may post.
+const groupRoad = (root, group) => ({
+    level: (author, doc, query) =>
+        api(`/api/identity/${root}/groups/${group}/posts/${doc}/replies${query}`),
+    entry: async (author, doc) =>
+        (await api(`/api/identity/${root}/groups/${group}/posts/${doc}`)).item,
+    href: (author, doc) => groupPostHref(group, doc),
+    post: async (root, draft, onBaking, parent) =>
+        (
+            await api(`/api/identity/${root}/groups/${group}/publish`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    doc: draft,
+                    reply_to: { author: parent.author, doc_id: parent.doc_id },
+                    tz_offset_min: new Date().getTimezoneOffset(),
+                }),
+            })
+        ).post,
+    note: () => t('postpage.replies-stay-in-the-group', "replies are for the group's members"),
+    unlocked: true,
+});
+
+/// A group post's conversation, under its card on the group post page (groups.js): the public
+/// post page's thread section over the group's road - its order, its thread, its reply box. No
+/// held replies and nothing to ask again: every member's node holds every reply.
+export const GroupThread = ({ group, item, current }) => {
+    const root = current && current.root;
+    const [said, setSaid] = useState([]);
+    const [replyOrder, moveReplyOrder] = useReplyOrder(root);
+    const road = useMemo(() => groupRoad(root, group), [root, group]);
+    if (!root || !item) return null;
+    if (item.settled) {
+        return html`<p class="thread-settled">
+            ${t('postpage.the-author-settled-this', 'the author turned off comments for this post')}
+        </p>`;
+    }
+    if (item.format === 'room') return null;
+    return html`<section class="thread">
+        <h2 class="thread-head">
+            ${t('postpage.replies', 'replies')}
+            <${ReplyOrderSelect} order=${replyOrder} onOrder=${moveReplyOrder} />
+        </h2>
+        <${Thread}
+            author=${item.author}
+            doc=${item.doc_id}
+            current=${current}
+            depth=${0}
+            extra=${said}
+            refreshKey=${0}
+            order=${replyOrder}
+            road=${road}
+        />
+        <${ReplyBox}
+            current=${current}
+            parent=${{ author: item.author, doc_id: item.doc_id }}
+            onReplied=${(mint) => setSaid((have) => [...have, mint])}
+            road=${road}
+        />
+    </section>`;
+};
+
+export const PostPage = ({ seg, doc, page, current, onTitle }) => {
+    const loc = useLocation();
+    const parsed = parseSpeakable(decodeURIComponent(seg || ''));
+    const root = parsed && parsed.ok ? parsed.root : null;
+    // The address's reachability hints ride through, the person page's idiom: a permalink
+    // pasted across the network should resolve the same way the person's own page does.
+    const via = (loc.query && loc.query.via) || '';
+    // undefined = loading, null = not held here, object = the post
+    const [post, setPost] = useState(undefined);
+    // The author's profile, from the visit that warms the node anyway: the card's face (2026-10-03).
+    const [authorProfile, setAuthorProfile] = useState(null);
+    // Replies said from THIS page, ahead of the fold: the memo notes a fresh reply on the
+    // fold lane's next pass, so the thread read may not list it yet - the view runs ahead
+    // of the stream without disagreeing with it (the feed's own overlay idiom).
+    const [said, setSaid] = useState([]);
+    // The refresh affordance's counter: bumping it re-mounts the thread's read with
+    // refresh=1, the deliberate re-ask past the door's cooldown.
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [replyOrder, moveReplyOrder] = useReplyOrder(current ? current.root : null);
 
     // `?as=`: the viewing persona, so the labels a sealed post shows are the ones its
     // holder admits THIS reader to (ruling 7; Curtis, 2026-09-14: the post page read
@@ -226,15 +340,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                 (Curtis, 2026-08-28) - the conversation's subject, then the words these
                 answer, then the reply: reading downward like the thread itself. */ ''
             }
-            ${
-                post &&
-                post.thread_root &&
-                post.reply_to &&
-                (post.thread_root.author !== post.reply_to.author ||
-                    post.thread_root.doc_id !== post.reply_to.doc_id) &&
-                html`<${ParentContext} link=${post.thread_root} root=${true} />`
-            }
-            ${post && post.reply_to && html`<${ParentContext} link=${post.reply_to} />`}
+            ${post && html`<${ParentContexts} post=${post} />`}
             ${
                 /* A book opens as its reader (PROJECT_PLAN's Books, slice 4), and so does a page of one:
                 the book's tree beside the page, since a page is a place in a book first. */ ''
@@ -281,14 +387,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     ${
                         current &&
                         current.root &&
-                        html`<select
-                        class="thread-order"
-                        title=${t('postpage.reply-order-title', 'how each level of replies is ordered - hot and best by what the people you trust and follow liked')}
-                        value=${replyOrder}
-                        onChange=${(e) => moveReplyOrder(e.currentTarget.value)}
-                    >
-                        ${REPLY_SORTS.map((key) => html`<option value=${key} key=${key}>${REPLY_WORDS[key]()}</option>`)}
-                    </select>`
+                        html`<${ReplyOrderSelect} order=${replyOrder} onOrder=${moveReplyOrder} />`
                     }
                     ${
                         !item.mine &&
@@ -440,10 +539,25 @@ const popularityLines = (pop, who) => {
 /// One hop up: the post this page's post replies to, as a mini-card. The title comes from
 /// the parent's own held header when this node can read it; a parent not held here still
 /// gets its link - "in reply to: link" is the honest hollow rendering.
-const ParentContext = ({ link, root }) => {
-    const [head, setHead] = useState(null);
+/// The thread's root, when it isn't the parent, then the parent: a reply's context above it. A
+/// group's post carries its links dressed by the group's node (`group`), so nothing is fetched and
+/// the cards open the group's posts; a public one's are read from their authors' doors.
+export const ParentContexts = ({ post, group }) => html`
+    ${
+        post.thread_root &&
+        post.reply_to &&
+        (post.thread_root.author !== post.reply_to.author ||
+            post.thread_root.doc_id !== post.reply_to.doc_id) &&
+        html`<${ParentContext} link=${post.thread_root} root=${true} group=${group} />`
+    }
+    ${post.reply_to && html`<${ParentContext} link=${post.reply_to} group=${group} />`}
+`;
+
+const ParentContext = ({ link, root, group }) => {
+    const [fetched, setHead] = useState(null);
     const [gone, setGone] = useState(false);
     useEffect(() => {
+        if (group) return undefined;
         let live = true;
         api(`/api/id/${link.author}/posts/${link.doc_id}`)
             .then((p) => live && setHead(p))
@@ -451,7 +565,8 @@ const ParentContext = ({ link, root }) => {
         return () => {
             live = false;
         };
-    }, [link.author, link.doc_id]);
+    }, [link.author, link.doc_id, group]);
+    const head = group ? link : fetched;
     return html`<p class="postpage-parent">
         ${
             root
@@ -470,6 +585,7 @@ const ParentContext = ({ link, root }) => {
             doc_id=${link.doc_id}
             title=${head && head.title}
             published_ms=${head && head.published_ms}
+            href=${group && groupPostHref(group, link.doc_id)}
         />
     </p>`;
 };
@@ -567,11 +683,15 @@ const HeldReplyBody = ({ author, doc }) => {
 /// permalink visit would mint an empty document per view, and a mint behind a click is
 /// ref-guarded so a double-click cannot mint two. An abandoned draft lands in the feed
 /// app's own "older drafts" stack, editable like any other.
-/// A reply is publication, and publishing is Social's (plans/UNLOCKS.md).
-const ReplyBox = (props) =>
-    useUnlocked(props.current.root, 'social') ? html`<${ReplyBoxOpen} ...${props} />` : null;
+/// A public reply is publication, and publishing is Social's (plans/UNLOCKS.md); a group's road
+/// needs no unlock, as posting to the group needs none.
+const ReplyBox = (props) => {
+    const road = props.road || PUBLIC_ROAD;
+    const unlocked = useUnlocked(props.current.root, 'social');
+    return unlocked || road.unlocked ? html`<${ReplyBoxOpen} ...${props} road=${road} />` : null;
+};
 
-const ReplyBoxOpen = ({ current, parent, onReplied, sealed = false }) => {
+const ReplyBoxOpen = ({ current, parent, onReplied, sealed = false, road }) => {
     const [draftId, setDraftId] = useState(null);
     const [posting, setPosting] = useState(false);
     const [baking, setBaking] = useState(null);
@@ -604,11 +724,8 @@ const ReplyBoxOpen = ({ current, parent, onReplied, sealed = false }) => {
         setPosting(true);
         setError(null);
         try {
-            const made = await publishWithBaking(root, draftId, setBaking, {
-                reply_to: { author: parent.author, doc_id: parent.doc_id },
-                ...(sealed ? { trusted_only: true } : {}),
-            });
-            onReplied({ author: root, doc_id: made.post_id });
+            const posted = await road.post(root, draftId, setBaking, parent, sealed);
+            onReplied({ author: root, doc_id: posted });
             // Said: the box returns to rest, ready to mint a fresh page for the next
             // thought - the posted document is done and lives with your other posts.
             setDraftId(null);
@@ -636,7 +753,7 @@ const ReplyBoxOpen = ({ current, parent, onReplied, sealed = false }) => {
         ${
             draftId &&
             html`<p class="replybox-note">
-            ${t('postpage.replying-is-public-and-shares', 'replies are public')}
+            ${road.note()}
         </p>`
         }
         ${
@@ -666,7 +783,16 @@ const ReplyBoxOpen = ({ current, parent, onReplied, sealed = false }) => {
 /// never assembles a tree - this page is the only place one forms.
 const THREAD_DEPTH_CAP = 6;
 
-const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' }) => {
+const Thread = ({
+    author,
+    doc,
+    current,
+    depth,
+    extra,
+    refreshKey,
+    order = 'old',
+    road = PUBLIC_ROAD,
+}) => {
     const [page, setPage] = useState(null);
     const viewer = current ? current.root : null;
     useEffect(() => {
@@ -682,7 +808,8 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
             .join('&');
         const force = params ? `?${params}` : '';
         const look = () =>
-            api(`/api/id/${author}/posts/${doc}/replies${force}`)
+            road
+                .level(author, doc, force)
                 .then((p) => {
                     if (!live) return;
                     setPage(p);
@@ -692,8 +819,12 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
                     if (depth === 0 && p.seeking) {
                         setTimeout(() => {
                             if (!live) return;
-                            api(
-                                `/api/id/${author}/posts/${doc}/replies${replySortParams(order, viewer) ? `?${replySortParams(order, viewer)}` : ''}`,
+                            road.level(
+                                author,
+                                doc,
+                                replySortParams(order, viewer)
+                                    ? `?${replySortParams(order, viewer)}`
+                                    : '',
                             )
                                 .then((p2) => live && setPage({ ...p2, seeking: false }))
                                 .catch(() => {});
@@ -705,7 +836,7 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
         return () => {
             live = false;
         };
-    }, [author, doc, depth, refreshKey, order, viewer]);
+    }, [author, doc, depth, refreshKey, order, viewer, road]);
     const fetched = (page && page.replies) || [];
     const have = new Set(fetched.map((r) => `${r.author}:${r.doc_id}`));
     const replies = [
@@ -741,25 +872,26 @@ const Thread = ({ author, doc, current, depth, extra, refreshKey, order = 'old' 
                 current=${current}
                 depth=${depth}
                 order=${order}
+                road=${road}
             />`,
         )}
     </div>`;
 };
 
-const ThreadReply = ({ author, doc, byline, current, depth, order }) => {
+const ThreadReply = ({ author, doc, byline, current, depth, order, road }) => {
     // undefined = loading, null = not readable here (the memo knew it, the shelf moved -
     // a takedown between fold and render), object = the reply's header.
     const [post, setPost] = useState(undefined);
     const viewer = current ? current.root : null;
     useEffect(() => {
         let live = true;
-        api(`/api/id/${author}/posts/${doc}${viewer ? `?as=${viewer}` : ''}`)
-            .then((p) => live && setPost(p))
+        road.entry(author, doc, viewer)
+            .then((p) => live && setPost(p || null))
             .catch(() => live && setPost(null));
         return () => {
             live = false;
         };
-    }, [author, doc, viewer]);
+    }, [author, doc, viewer, road]);
     if (post === undefined) return null;
     if (post === null) {
         // The memo knows the claim; the shelf cannot answer for it right now - deleted
@@ -773,34 +905,23 @@ const ThreadReply = ({ author, doc, byline, current, depth, order }) => {
         </div>`;
     }
     const item = {
-        author,
-        doc_id: post.doc_id,
-        title: post.title,
-        format: post.format,
-        published_ms: post.published_ms,
-        // The stamps the card reads for its marks: "written {date}" on a backdated post, "edited {date}"
-        // when its words changed after it went out (2026-10-02 - the page dropped both).
-        dated_ms: post.dated_ms,
-        minted_ms: post.minted_ms,
-        updated_ms: post.updated_ms,
-        replies: post.replies,
-        annotations: post.annotations,
+        ...post,
         // The door's byline for the replier: what this node knows of them, whoever the
         // reader follows (the page's mirror knows only those).
-        author_name: byline && byline.name,
-        author_avatar: byline && byline.avatar,
+        author_name: (byline && byline.name) || post.author_name,
+        author_avatar: (byline && byline.avatar) || post.author_avatar,
         mine: !!(current && current.root === author),
     };
     return html`<div class="thread-reply">
         <${PostEntry} key=${post.doc_id} item=${item} current=${current} editing=${null} quote=${false} />
         ${
             depth + 1 < THREAD_DEPTH_CAP &&
-            html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} order=${order} />`
+            html`<${Thread} author=${author} doc=${doc} current=${current} depth=${depth + 1} order=${order} road=${road} />`
         }
         ${
             depth + 1 >= THREAD_DEPTH_CAP &&
             html`<p class="thread-deeper">
-            <a href=${postHref(author, doc)}>
+            <a href=${road.href(author, doc)}>
                 ${t('postpage.continue-this-thread', 'continue this thread')}
             </a>
         </p>`
