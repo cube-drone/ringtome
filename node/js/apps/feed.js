@@ -959,7 +959,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     const { resizer, colStyle } = useColWidths(
         root,
         'feed',
-        ['feeds', 'compose'],
+        ['compose', 'feeds'],
         { compose: 260 },
         ['compose'],
     );
@@ -1262,78 +1262,6 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
             <${BakeModal} items=${baking} />
             <div class="feed-columns panes" style=${colStyle}>
                 ${
-                    /* Feeds (Curtis, 2026-10-11): the saved piles of filters, leftmost - there only
-                    while one is saved. A press puts the feed back as it was saved; the one on screen
-                    is lit. */ ''
-                }
-                ${
-                    (saved.length > 0 || ofGroups.length > 0) &&
-                    (tucked.has('feeds')
-                        ? html`<${Rail}
-                          icon=${Icons.filter}
-                          label=${t('apps.feed.feeds', 'feeds')}
-                          onClick=${() => toggleTuck('feeds')}
-                      />`
-                        : html`${tab('feeds', Icons.filter, t('apps.feed.feeds', 'feeds'))}<aside class="feed-saved">
-                          <${PaneHead} icon=${Icons.filter} label=${t('apps.feed.feeds', 'feeds')} onTuck=${() => toggleTuck('feeds')} />
-                          ${
-                              /* "all" heads the list (Curtis, 2026-10-11): the feed unpicked, as "clear
-                              all" leaves it - lit while nothing is picked. Nobody's to forget, so a
-                              blank where the trash would be keeps the names in line. */ ''
-                          }
-                          <div class=${settingsNow && !anyPicks(settingsNow.picks) && !settingsNow.q ? 'feed-saved-row active' : 'feed-saved-row'}>
-                              <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
-                              <button
-                                  class="feed-saved-name"
-                                  title=${t('apps.feed.clear-all-title', 'show everything again - every type and tag back to unpicked')}
-                                  onClick=${() => {
-                                      setApplied({ all: true, at: Date.now() });
-                                      setLoadedId(null);
-                                      settle();
-                                  }}
-                              >${t('apps.feed.all', 'all')}</button>
-                          </div>
-                          ${ofGroups.map(
-                              (feed) => html`<div
-                                  key=${feed.id}
-                                  class=${groupFeedOn(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
-                              >
-                                  <span class="feed-saved-forget feed-saved-group" title=${t('apps.feed.a-group-youre-in', "a group you're in")}><${Icons.group} /></span>
-                                  <button
-                                      class="feed-saved-name"
-                                      onClick=${() => {
-                                          setApplied({ settings: feed, at: Date.now() });
-                                          setLoadedId(null);
-                                          settle();
-                                      }}
-                                  >${feed.name}</button>
-                              </div>`,
-                          )}
-                          ${saved.map(
-                              (feed) => html`<div
-                                  key=${feed.id}
-                                  class=${sameFeed(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
-                              >
-                                  <button
-                                      class="feed-saved-forget"
-                                      title=${t('apps.feed.forget-this-feed', 'forget this feed')}
-                                      aria-label=${t('apps.feed.forget-this-feed', 'forget this feed')}
-                                      onClick=${() => forgetFeed(feed)}
-                                  ><${Icons.trash} /></button>
-                                  <button
-                                      class="feed-saved-name"
-                                      onClick=${() => {
-                                          setApplied({ settings: feed, at: Date.now() });
-                                          setLoadedId(feed.id);
-                                          settle();
-                                      }}
-                                  >${feed.name}</button>
-                              </div>`,
-                          )}
-                      </aside>
-                      ${resizer('feeds')}`)
-                }
-                ${
                     tucked.has('compose')
                         ? html`<${Rail}
                           icon=${Icons.notes}
@@ -1410,6 +1338,78 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                               }
                           </aside>
                           ${resizer('compose')}`
+                }
+                ${
+                    /* Feeds (Curtis, 2026-10-11): the saved piles of filters, after the composer
+                    (Curtis, 2026-10-16: write first, feeds second) - there only while one is
+                    saved. A press puts the feed back as it was saved; the one on screen is lit. */ ''
+                }
+                ${
+                    (saved.length > 0 || ofGroups.length > 0) &&
+                    (tucked.has('feeds')
+                        ? html`<${Rail}
+                          icon=${Icons.filter}
+                          label=${t('apps.feed.feeds', 'feeds')}
+                          onClick=${() => toggleTuck('feeds')}
+                      />`
+                        : html`${tab('feeds', Icons.filter, t('apps.feed.feeds', 'feeds'))}<aside class="feed-saved">
+                          <${PaneHead} icon=${Icons.filter} label=${t('apps.feed.feeds', 'feeds')} onTuck=${() => toggleTuck('feeds')} />
+                          ${
+                              /* "all" heads the list (Curtis, 2026-10-11): the feed unpicked, as "clear
+                              all" leaves it - lit while nothing is picked. Nobody's to forget, so a
+                              blank where the trash would be keeps the names in line. */ ''
+                          }
+                          <div class=${settingsNow && !anyPicks(settingsNow.picks) && !settingsNow.q ? 'feed-saved-row active' : 'feed-saved-row'}>
+                              <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
+                              <button
+                                  class="feed-saved-name"
+                                  title=${t('apps.feed.clear-all-title', 'show everything again - every type and tag back to unpicked')}
+                                  onClick=${() => {
+                                      setApplied({ all: true, at: Date.now() });
+                                      setLoadedId(null);
+                                      settle();
+                                  }}
+                              >${t('apps.feed.all', 'all')}</button>
+                          </div>
+                          ${ofGroups.map(
+                              (feed) => html`<div
+                                  key=${feed.id}
+                                  class=${groupFeedOn(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
+                              >
+                                  <span class="feed-saved-forget feed-saved-group" title=${t('apps.feed.a-group-youre-in', "a group you're in")}><${Icons.group} /></span>
+                                  <button
+                                      class="feed-saved-name"
+                                      onClick=${() => {
+                                          setApplied({ settings: feed, at: Date.now() });
+                                          setLoadedId(null);
+                                          settle();
+                                      }}
+                                  >${feed.name}</button>
+                              </div>`,
+                          )}
+                          ${saved.map(
+                              (feed) => html`<div
+                                  key=${feed.id}
+                                  class=${sameFeed(feed, settingsNow) ? 'feed-saved-row active' : 'feed-saved-row'}
+                              >
+                                  <button
+                                      class="feed-saved-forget"
+                                      title=${t('apps.feed.forget-this-feed', 'forget this feed')}
+                                      aria-label=${t('apps.feed.forget-this-feed', 'forget this feed')}
+                                      onClick=${() => forgetFeed(feed)}
+                                  ><${Icons.trash} /></button>
+                                  <button
+                                      class="feed-saved-name"
+                                      onClick=${() => {
+                                          setApplied({ settings: feed, at: Date.now() });
+                                          setLoadedId(feed.id);
+                                          settle();
+                                      }}
+                                  >${feed.name}</button>
+                              </div>`,
+                          )}
+                      </aside>
+                      ${resizer('feeds')}`)
                 }
                 <${FeedStream}
                     root=${root}

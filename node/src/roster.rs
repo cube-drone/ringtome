@@ -26,7 +26,7 @@ use axum::{Json, Router};
 use ringtome_proto::registry::{entry_type, service, DocHeaderPlain, PostRetraction};
 use ringtome_proto::roster::{
     self as fold, Founding, Grant, GroupEntry, GroupId, Hash, JoinMode, Lane, LaneAnchor,
-    LaneEntry, Root, Roster,
+    LaneEntry, Root, Roster, Setting,
 };
 use ringtome_proto::Payload;
 use serde::Deserialize;
@@ -368,7 +368,10 @@ fn listed<'a>(
         .collect();
     versions
         .iter()
-        .filter(|(doc, _)| !gone.contains(*doc) && !embedded.contains(*doc))
+        // Nor is the group's face: a picture or banner an owner set (Curtis, 2026-10-16).
+        .filter(|(doc, _)| {
+            !gone.contains(*doc) && !embedded.contains(*doc) && !roster.face_docs.contains(*doc)
+        })
         .filter_map(|(doc, list)| {
             let (shown, first) = (display(list)?, first_version(list)?);
             Some(Listed {
@@ -962,6 +965,8 @@ fn roster_json(group: &GroupId, roster: &Roster, lanes: &[Lane], me: &Root) -> s
         "group": hex::encode(group),
         "name": roster.name,
         "description": roster.description,
+        "picture": roster.picture.map(|d| face_url(group, &d)),
+        "banner": roster.banner.map(|d| face_url(group, &d)),
         "join_mode": match roster.join_mode { JoinMode::InviteOnly => "invite-only", JoinMode::Open => "open" },
         "founder": hex::encode(roster.founder),
         "members": roster.members.iter().map(|m| serde_json::json!({
@@ -981,7 +986,8 @@ fn roster_json(group: &GroupId, roster: &Roster, lanes: &[Lane], me: &Root) -> s
 // ---------------------------------------------------------------------------------------------
 // Routes
 
-pub fn router() -> Router<AppState> {
+pub fn router(upload_limit: usize) -> Router<AppState> {
+    let upload = || axum::extract::DefaultBodyLimit::max(upload_limit);
     Router::new()
         .route("/api/identity/{root}/groups", get(list_handler).post(found_handler))
         .route("/api/identity/{root}/group-posts/{author}/{doc}", get(post_group_handler))
@@ -995,6 +1001,11 @@ pub fn router() -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/unban", post(unban_handler))
         .route("/api/identity/{root}/groups/{group}/demote", post(demote_handler))
         .route("/api/identity/{root}/groups/{group}/appoint", post(appoint_handler))
+        .route("/api/identity/{root}/groups/{group}/settings", post(settings_handler))
+        .route(
+            "/api/identity/{root}/groups/{group}/face/{which}",
+            post(set_face_handler).delete(clear_face_handler).layer(upload()),
+        )
         .route("/api/identity/{root}/groups/{group}/posts", get(posts_handler))
         .route("/api/identity/{root}/groups/{group}/publish", post(publish_handler))
         .route("/api/identity/{root}/docs/{doc_id}/groups", get(draft_groups_handler))
@@ -1008,6 +1019,12 @@ pub fn router() -> Router<AppState> {
         .route("/api/groups/{group}/docs/{doc}/body", get(group_body_route))
         .route("/api/groups/{group}/docs/{doc}/body/{name}", get(group_body_named_route))
         .route("/api/groups/{group}/docs/{doc}/thumb", get(group_thumb_route))
+        // A group's face - its name, picture, banner and description - to anyone who asks
+        // (Curtis, 2026-10-16: an invitee needs to know them, and a public group shows them):
+        // no session, and only the face as it stands.
+        .route("/api/groups/{group}/face", get(face_handler))
+        .route("/api/groups/{group}/face/{doc}", get(face_bytes_route))
+        .route("/api/groups/{group}/face/{doc}/thumb", get(face_thumb_route))
 }
 
 type Answer = Result<Json<serde_json::Value>, AppError>;
@@ -1101,6 +1118,13 @@ async fn list_handler(
             })
         })
         .collect();
+    // Each group's picture, off its fold (kept in RAM by its stamp).
+    for row in &mut out {
+        let Some(group) = row["group"].as_str().and_then(|g| group_of(g).ok()) else { continue };
+        if let Ok(Some((roster, _))) = folded(&state, &group).await {
+            row["picture"] = serde_json::json!(roster.picture.map(|d| face_url(&group, &d)));
+        }
+    }
     let held: BTreeSet<String> = rows.iter().map(|(g, _, _)| hex::encode(g)).collect();
     for (group, inviter, name) in invites_received(&data).await? {
         if !held.contains(&group) {
@@ -1750,9 +1774,51 @@ async fn group_media(
         Some(h) => docs.blob(h).await?,
         None => None,
     };
+    let doc_id = mint_media(
+        state,
+        data,
+        me,
+        group,
+        Minted {
+            body: &body,
+            thumb: thumb.as_deref(),
+            title: &head.header.title,
+            format: head.header.format,
+            width: head.header.width,
+            height: head.header.height,
+            duration_ms: head.header.duration_ms,
+            animation: head.header.animation,
+        },
+    )
+    .await?;
+    remember_published(state, me, source, group, &doc_id).await?;
+    Ok((doc_id, format, head.header.animation))
+}
+
+/// A picture's bytes and what its header says of them, for [`mint_media`].
+struct Minted<'a> {
+    body: &'a [u8],
+    thumb: Option<&'a [u8]>,
+    title: &'a str,
+    format: Option<u64>,
+    width: Option<u32>,
+    height: Option<u32>,
+    duration_ms: Option<u64>,
+    animation: bool,
+}
+
+/// A media document on `me`'s lane for the group: its plaintext bytes and thumbnail in the blob
+/// store, its header on the lane - the public twin's shape, minus the public chain.
+async fn mint_media(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    m: Minted<'_>,
+) -> Result<[u8; 16], AppError> {
     // HELD (`files::Put`) until the header naming them is on the lane.
-    let held_body = state.files.put_public(&body).await.map_err(AppError::Internal)?;
-    let held_thumb = match &thumb {
+    let held_body = state.files.put_public(m.body).await.map_err(AppError::Internal)?;
+    let held_thumb = match m.thumb {
         Some(t) => Some(state.files.put_public(t).await.map_err(AppError::Internal)?),
         None => None,
     };
@@ -1762,12 +1828,12 @@ async fn group_media(
         parents: Vec::new(),
         file_hash: *held_body.hash.as_bytes(),
         body_hash: *held_body.hash.as_bytes(),
-        title: head.header.title.clone(),
+        title: m.title.to_string(),
         sealed_title: None,
-        format: head.header.format,
-        width: head.header.width,
-        height: head.header.height,
-        duration_ms: head.header.duration_ms,
+        format: m.format,
+        width: m.width,
+        height: m.height,
+        duration_ms: m.duration_ms,
         thumb_hash: held_thumb.as_ref().map(|t| *t.hash.as_bytes()),
         preview_hash: None,
         refs: Vec::new(),
@@ -1777,7 +1843,7 @@ async fn group_media(
         settled: false,
         trusted_only: false,
         dated_ms: None,
-        animation: head.header.animation,
+        animation: m.animation,
         im: false,
         part_of: None,
         seal_of: None,
@@ -1789,8 +1855,7 @@ async fn group_media(
         .map_err(|e| AppError::Internal(anyhow!("encoding a group media header: {e}")))?;
     append_document(state, data, me, group, entry_type::DOC_HEADER, payload).await?;
     drop((held_body, held_thumb));
-    remember_published(state, me, source, group, &doc_id).await?;
-    Ok((doc_id, format, head.header.animation))
+    Ok(doc_id)
 }
 
 /// Publish one of `me`'s drafts to a group: its pictures as group media documents, its words as a
@@ -2587,4 +2652,298 @@ async fn group_thumb_route(
     Path((group, doc)): Path<(String, String)>,
 ) -> Result<axum::response::Response, AppError> {
     group_bytes(&state, &session, &group, &doc, true).await
+}
+
+// ---------------------------------------------------------------------------------------------
+// The group's face (Curtis, 2026-10-16): a name, a picture, a banner and a description, set by
+// owners only, as owner settings - the picture and banner media documents on the setting owner's
+// lane, which every member's node fetches with the group's other pictures. Shown to anyone who
+// asks, since an invitee needs to know them and a public group shows them.
+
+/// Where a face picture is served, to anyone: its document id in the address, so it is kept.
+fn face_url(group: &GroupId, doc: &[u8; 16]) -> String {
+    format!("/api/groups/{}/face/{}", hex::encode(group), hex::encode(doc))
+}
+
+/// Write one of the group's settings as an owner, replacing every write of that setting this
+/// node has seen - so the newest word settles it, whatever its writer's rank.
+async fn set_setting(
+    state: &AppState,
+    data: &Store,
+    root: &str,
+    group: GroupId,
+    me: &Root,
+    setting: Setting,
+) -> Result<(), AppError> {
+    let (roster, lanes) = current(state, &group, me).await?;
+    let by = acting(&roster, me)?;
+    let kind = std::mem::discriminant(&setting);
+    let replaces: Vec<Hash> = lanes
+        .iter()
+        .flat_map(|l| l.entries.iter())
+        .filter(|e| roster.counted.contains(&e.hash))
+        .filter(|e| {
+            matches!(&e.body, GroupEntry::Set { setting: s, .. }
+                if std::mem::discriminant(s) == kind)
+        })
+        .map(|e| e.hash)
+        .collect();
+    write(state, data, root, group, GroupEntry::Set { by, setting, replaces, accepted: vec![] })
+        .await?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct SettingsRequest {
+    name: Option<String>,
+    description: Option<String>,
+}
+
+/// POST `.../groups/{group}/settings {name?, description?}` - an owner renames the group or
+/// rewrites its description.
+async fn settings_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+    Json(req): Json<SettingsRequest>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    if let Some(name) = &req.name {
+        let name = name.trim();
+        if name.is_empty() || name.len() > GroupEntry::MAX_NAME_BYTES || name.contains('\n') {
+            return Err(AppError::BadRequest(crate::msg!(
+                "roster.a-name-is-one-short-line",
+                "a group's name is one short line"
+            )));
+        }
+    }
+    if let Some(d) = &req.description {
+        if d.len() > GroupEntry::MAX_DESCRIPTION_BYTES {
+            return Err(AppError::BadRequest(crate::msg!(
+                "roster.that-description-is-too-long",
+                "that description is too long"
+            )));
+        }
+    }
+    if let Some(name) = req.name {
+        set_setting(&state, &data, &root, group, &me, Setting::Name(name.trim().to_string()))
+            .await?;
+    }
+    if let Some(d) = req.description {
+        set_setting(&state, &data, &root, group, &me, Setting::Description(d.trim().to_string()))
+            .await?;
+    }
+    let (roster, lanes) = current(&state, &group, &me).await?;
+    Ok(Json(roster_json(&group, &roster, &lanes, &me)))
+}
+
+/// Which of the face's pictures an address names.
+fn face_which(which: &str) -> Result<bool, AppError> {
+    match which {
+        "picture" => Ok(true),
+        "banner" => Ok(false),
+        _ => Err(AppError::NotFound(crate::msg!(
+            "roster.no-such-picture",
+            "a group has a picture and a banner, nothing else"
+        ))),
+    }
+}
+
+/// POST `.../groups/{group}/face/{picture|banner}` (multipart `image`) - an owner sets the group's
+/// picture or banner: laundered as every upload is, minted as a media document on the owner's
+/// lane, and named by the setting. A picture may move (a small animation, as a person's may); a
+/// banner is a still.
+async fn set_face_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group, which)): Path<(String, String, String)>,
+    mut parts: axum::extract::Multipart,
+) -> Answer {
+    use crate::record::documents::Format;
+    let picture = face_which(&which)?;
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    // An owner's, checked before the upload is worked on.
+    let (roster, _) = current(&state, &group, &me).await?;
+    acting(&roster, &me)?;
+    let mut image: Option<Vec<u8>> = None;
+    while let Some(field) = parts.next_field().await.map_err(|e| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.bad-multipart-body-e-2",
+            "bad multipart body: {e}",
+            e = e
+        ))
+    })? {
+        if field.name().unwrap_or("") == "image" {
+            image = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|e| {
+                        AppError::BadRequest(crate::msg!(
+                            "identity.routes.bad-multipart-part-image-e",
+                            "bad multipart part `image`: {e}",
+                            e = e
+                        ))
+                    })?
+                    .to_vec(),
+            );
+        }
+    }
+    let bytes = image.ok_or_else(|| {
+        AppError::BadRequest(crate::msg!(
+            "identity.routes.missing-image-part",
+            "missing `image` part"
+        ))
+    })?;
+    let ingested =
+        crate::media::lane::crush(move || crate::media::crush_with_progress(&bytes, &|_| {}))
+            .await
+            .map_err(|e| AppError::Internal(anyhow!("group picture crush task: {e}")))?
+            .map_err(|e| {
+                AppError::BadRequest(crate::msg!(
+                    "roster.that-doesnt-work-as-a-picture",
+                    "that doesn't work as the group's picture: {e}",
+                    e = e
+                ))
+            })?;
+    let fits = match ingested.format {
+        Format::Avif => true,
+        Format::Apng => picture,
+        _ => false,
+    };
+    if !fits {
+        return Err(AppError::BadRequest(if picture {
+            crate::msg!(
+                "roster.a-groups-picture-is-a-picture",
+                "a group's picture is a still image or a small animation"
+            )
+        } else {
+            crate::msg!("roster.a-groups-banner-is-a-still", "a group's banner is a still picture")
+        }));
+    }
+    let doc = mint_media(
+        &state,
+        &data,
+        &root,
+        &group,
+        Minted {
+            body: &ingested.body,
+            thumb: ingested.thumb_avif.as_deref(),
+            title: if picture { "picture" } else { "banner" },
+            format: ingested.format.to_wire(),
+            width: ingested.width,
+            height: ingested.height,
+            duration_ms: ingested.duration_ms,
+            animation: ingested.animation,
+        },
+    )
+    .await?;
+    let setting = if picture { Setting::Picture(Some(doc)) } else { Setting::Banner(Some(doc)) };
+    set_setting(&state, &data, &root, group, &me, setting).await?;
+    let (roster, lanes) = current(&state, &group, &me).await?;
+    Ok(Json(roster_json(&group, &roster, &lanes, &me)))
+}
+
+/// DELETE `.../groups/{group}/face/{picture|banner}` - back to none.
+async fn clear_face_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group, which)): Path<(String, String, String)>,
+) -> Answer {
+    let picture = face_which(&which)?;
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let setting = if picture { Setting::Picture(None) } else { Setting::Banner(None) };
+    set_setting(&state, &data, &root, group, &me, setting).await?;
+    let (roster, lanes) = current(&state, &group, &me).await?;
+    Ok(Json(roster_json(&group, &roster, &lanes, &me)))
+}
+
+/// The group as this node holds it, for its face: any group held here, to anyone.
+async fn face_of(state: &AppState, group: &str) -> Result<(GroupId, Folded), AppError> {
+    let group = group_of(group)?;
+    let folded = folded(state, &group).await.map_err(AppError::Internal)?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"))
+    })?;
+    Ok((group, folded))
+}
+
+/// GET `/api/groups/{group}/face` - the group's name, picture, banner and description, to anyone.
+async fn face_handler(State(state): State<AppState>, Path(group): Path<String>) -> Answer {
+    let (group, (roster, _)) = face_of(&state, &group).await?;
+    Ok(Json(serde_json::json!({
+        "group": hex::encode(group),
+        "name": roster.name,
+        "description": roster.description,
+        "picture": roster.picture.map(|d| face_url(&group, &d)),
+        "banner": roster.banner.map(|d| face_url(&group, &d)),
+    })))
+}
+
+/// The bytes of the face as it stands - the picture or the banner the settings name now, and no
+/// other document of the group's, past or present.
+async fn face_bytes(
+    state: &AppState,
+    group: &str,
+    doc: &str,
+    thumb: bool,
+) -> Result<axum::response::Response, AppError> {
+    use axum::http::header;
+    use axum::response::IntoResponse;
+    let missing = || {
+        AppError::NotFound(crate::msg!("roster.not-the-groups-face", "that isn't the group's face"))
+    };
+    let (group, (roster, _)) = face_of(state, group).await?;
+    let doc = doc_of(doc)?;
+    if roster.picture != Some(doc) && roster.banner != Some(doc) {
+        return Err(missing());
+    }
+    let (versions, gone) = documents_of(state, &group, &roster).await?;
+    if gone.contains(&doc) {
+        return Err(missing());
+    }
+    let shown = versions.get(&doc).and_then(|l| display(l)).ok_or_else(missing)?;
+    let format = crate::record::documents::Format::from_wire(shown.header.format);
+    let (hash, mime) = if thumb {
+        (shown.header.thumb_hash.ok_or_else(missing)?, "image/avif")
+    } else {
+        (shown.header.file_hash, format.mime())
+    };
+    let bytes = crate::idface::public_blob(state, hash)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "roster.still-on-its-way",
+                "still on its way from the group's other computers"
+            ))
+        })?;
+    // A media document never changes, and its id is in the address: kept.
+    Ok((
+        [
+            (header::CONTENT_TYPE, mime),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// GET `/api/groups/{group}/face/{doc}`.
+async fn face_bytes_route(
+    State(state): State<AppState>,
+    Path((group, doc)): Path<(String, String)>,
+) -> Result<axum::response::Response, AppError> {
+    face_bytes(&state, &group, &doc, false).await
+}
+
+/// GET `/api/groups/{group}/face/{doc}/thumb`.
+async fn face_thumb_route(
+    State(state): State<AppState>,
+    Path((group, doc)): Path<(String, String)>,
+) -> Result<axum::response::Response, AppError> {
+    face_bytes(&state, &group, &doc, true).await
 }

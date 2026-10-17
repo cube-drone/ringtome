@@ -144,6 +144,10 @@ pub enum Setting {
     Name(String),
     Description(String),
     JoinMode(JoinMode),
+    /// The group's face (Curtis, 2026-10-16): its picture and its banner, each a media document
+    /// on the setting owner's own lane for the group - `None`, back to none.
+    Picture(Option<[u8; 16]>),
+    Banner(Option<[u8; 16]>),
 }
 
 impl Setting {
@@ -152,6 +156,8 @@ impl Setting {
             Setting::Name(_) => 0,
             Setting::Description(_) => 1,
             Setting::JoinMode(_) => 2,
+            Setting::Picture(_) => 3,
+            Setting::Banner(_) => 4,
         }
     }
 }
@@ -528,6 +534,11 @@ impl GroupEntry {
                                 JoinMode::Open => 1,
                             });
                         }
+                        // A document id, or empty bytes for none.
+                        Setting::Picture(d) | Setting::Banner(d) => {
+                            w.uint(if matches!(s, Setting::Picture(_)) { 3 } else { 4 });
+                            w.bytes(d.as_ref().map_or(&[][..], |d| &d[..]));
+                        }
                     }
                 }
             }
@@ -610,6 +621,20 @@ impl GroupEntry {
                             1 => JoinMode::Open,
                             _ => return Err(bad("unknown join mode")),
                         }),
+                        k @ (3 | 4) => {
+                            let doc = match map.bytes()? {
+                                [] => None,
+                                b => Some(
+                                    <[u8; 16]>::try_from(b)
+                                        .map_err(|_| bad("a group's picture is a document id"))?,
+                                ),
+                            };
+                            if k == 3 {
+                                Setting::Picture(doc)
+                            } else {
+                                Setting::Banner(doc)
+                            }
+                        }
                         _ => return Err(bad("unknown group setting")),
                     });
                 }
@@ -708,6 +733,12 @@ pub struct Roster {
     pub name: String,
     pub description: String,
     pub join_mode: JoinMode,
+    /// The group's face (Curtis, 2026-10-16): its picture and banner, media documents on an
+    /// owner's lane - and every document a face setting that counts has ever named, which is
+    /// the face's and never a post.
+    pub picture: Option<[u8; 16]>,
+    pub banner: Option<[u8; 16]>,
+    pub face_docs: BTreeSet<[u8; 16]>,
     /// Every entry that counts. Anything held and not here is void.
     pub counted: BTreeSet<Hash>,
     /// The document versions that count (each a `DOC_HEADER` entry's hash), and of those, the
@@ -1064,6 +1095,14 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
             _ => None,
         })
     };
+    let face_docs: BTreeSet<[u8; 16]> = [3u8, 4]
+        .iter()
+        .flat_map(|k| settings.get(k).into_iter().flatten())
+        .filter_map(|w| match &entry(&w.hash)?.1.body {
+            GroupEntry::Set { setting: Setting::Picture(d) | Setting::Banner(d), .. } => *d,
+            _ => None,
+        })
+        .collect();
     let banned: BTreeSet<Root> = removals
         .iter()
         .filter(|r| r.ban && !unbanned.contains(&r.hash))
@@ -1357,6 +1396,15 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
             Some(Setting::JoinMode(m)) => m,
             _ => JoinMode::InviteOnly,
         },
+        picture: match setting(3) {
+            Some(Setting::Picture(d)) => d,
+            _ => None,
+        },
+        banner: match setting(4) {
+            Some(Setting::Banner(d)) => d,
+            _ => None,
+        },
+        face_docs,
         counted,
         posts,
         hidden,
@@ -1940,6 +1988,38 @@ mod tests {
     }
 
     #[test]
+    fn owners_set_the_groups_face_and_every_face_document_is_kept_from_the_posts() {
+        let mut w = World::new();
+        let found = w.found;
+        w.invite(B);
+        let set = |setting: Setting, replaces: Vec<Hash>| GroupEntry::Set {
+            by: found,
+            setting,
+            replaces,
+            accepted: vec![],
+        };
+        let first = w.add(F, 0, set(Setting::Picture(Some([1; 16])), vec![]));
+        let r = w.fold();
+        assert_eq!(r.picture, Some([1; 16]));
+        assert_eq!(r.banner, None);
+        // A member who isn't an owner can't: B citing the founding's authority counts for nothing.
+        w.add(B, 0, set(Setting::Picture(Some([2; 16])), vec![first]));
+        assert_eq!(w.fold().picture, Some([1; 16]), "only an owner sets the face");
+        let second = w.add(F, 0, set(Setting::Picture(Some([3; 16])), vec![first]));
+        w.add(F, 0, set(Setting::Banner(Some([4; 16])), vec![]));
+        let r = w.fold();
+        assert_eq!(r.picture, Some([3; 16]));
+        assert_eq!(r.banner, Some([4; 16]), "the banner is a register of its own");
+        assert_eq!(
+            r.face_docs,
+            BTreeSet::from([[1; 16], [3; 16], [4; 16]]),
+            "every picture an owner named, the replaced one too, and never the member's"
+        );
+        w.add(F, 0, set(Setting::Picture(None), vec![second]));
+        assert_eq!(w.fold().picture, None, "and back to none");
+    }
+
+    #[test]
     fn a_founding_needs_the_group_keys_signature() {
         let mut w = World::new();
         let lane = w.lanes.get_mut(&dev(&F, 0)).unwrap();
@@ -1991,6 +2071,18 @@ mod tests {
             GroupEntry::Set {
                 by: h(1),
                 setting: Setting::Description(String::new()),
+                replaces: vec![],
+                accepted: vec![],
+            },
+            GroupEntry::Set {
+                by: h(1),
+                setting: Setting::Picture(Some([9; 16])),
+                replaces: vec![h(2)],
+                accepted: vec![],
+            },
+            GroupEntry::Set {
+                by: h(1),
+                setting: Setting::Banner(None),
                 replaces: vec![],
                 accepted: vec![],
             },

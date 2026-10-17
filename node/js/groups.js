@@ -12,7 +12,12 @@ import { useLocation } from 'preact-iso';
 import { api } from './net.js';
 import { appHref, groupComposeHref, groupHref, groupsHref } from './links.js';
 import { openMirror, useLive } from './mirror.js';
-import { PersonChip, PersonRow } from './person.js';
+import { PersonChip, PersonRow, bannerStyle } from './person.js';
+import { identiconUri } from './pure/identicon.js';
+import { ImagePickModal } from './doc/imagepick.js';
+import { DrawingThumb } from './doc/drawing.js';
+import { avatarBytes } from './pickbytes.js';
+import { personaHue } from './pure/person.js';
 import { PostEntry } from './postentry.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
 import { narrowParams } from './postsearch.js';
@@ -129,7 +134,10 @@ export const GroupsTab = ({ current }) => {
                     class=${isInvite(g) ? 'group-row group-row-invite jag-line-2' : 'group-row jag-line-2'}
                     href=${groupHref(g.group)}
                 >
-                    <span class="group-row-name">${g.name}</span>
+                    <span class="group-row-name">
+                        <${GroupMark} group=${g.group} picture=${g.picture && `${g.picture}/thumb`} />
+                        ${g.name}
+                    </span>
                     <span class="group-row-standing">
                         ${(STANDING_WORDS[g.standing] || (() => g.standing))()}
                     </span>
@@ -151,6 +159,8 @@ export const GroupPage = ({ group, current }) => {
     const base = root && group ? `/api/identity/${root}/groups/${group}` : null;
     const [roster, setRoster] = useState(null);
     const [missing, setMissing] = useState(false);
+    // An owner editing the group's face, in place under it.
+    const [editing, setEditing] = useState(false);
     const [error, setError] = useState(null);
     const [turn, setTurn] = useState(0);
     const refresh = useCallback(() => setTurn((n) => n + 1), []);
@@ -249,7 +259,17 @@ export const GroupPage = ({ group, current }) => {
     };
     return html`<div class="group-page">
         <header class="group-head">
-            <h2 class="group-name">${roster.name}</h2>
+            <${GroupHero} group=${group} roster=${roster} onEdit=${you.owner ? () => setEditing(!editing) : null} />
+            ${
+                editing &&
+                html`<${GroupFaceEditor}
+                    root=${root}
+                    group=${group}
+                    roster=${roster}
+                    onRoster=${setRoster}
+                    onDone=${() => setEditing(false)}
+                />`
+            }
             ${roster.description && html`<p class="group-description">${roster.description}</p>`}
             <p class="group-count">
                 ${t('apps.groups.member-count', '{count} in the group', { count: (roster.members || []).length })}
@@ -282,6 +302,150 @@ export const GroupPage = ({ group, current }) => {
                 current=${current}
                 group=${group}
                 facets=${html`<${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} self=${root} />`}
+            />`
+        }
+    </div>`;
+};
+
+/// A group's picture in its own shape (Curtis, 2026-10-16): the mighty triangle, point up, where a
+/// person wears the heptagon - the same ring in the colour its id derives, and its picture, or the
+/// pattern its id makes until an owner chooses one. `size` is mini or hero.
+const TRI_SIZES = { mini: 'group-tri-mini', hero: 'group-tri-hero' };
+const GroupMark = ({ group, picture, size = 'mini' }) => html`<span
+    class="person-hex group-tri ${TRI_SIZES[size] || TRI_SIZES.mini}"
+    style="background: hsl(${personaHue(group)}, 60%, 55%)"
+>
+    <img class="person-hex-img" src=${picture || identiconUri(group)} alt="" />
+</span>`;
+
+/// The top of a group's page (Curtis, 2026-10-16), shaped like a person's: the banner across it -
+/// or the group's pattern, tiled - with the picture and the name resting on its bottom edge. An
+/// owner's "edit" sits in its corner.
+const GroupHero = ({ group, roster, onEdit }) => html`<div
+    class="person-card-hero group-hero"
+    style=${roster.banner ? `background-image: url(${roster.banner})` : bannerStyle(group, '')}
+>
+    <div class="person-card-top">
+        <${GroupMark} group=${group} picture=${roster.picture} size="hero" />
+        ${
+            onEdit &&
+            html`<span class="person-card-corner">
+                <button class="group-edit-face jag-line" onClick=${onEdit}>
+                    <${Icons.rename} /> ${t('apps.groups.edit-the-group', 'edit')}
+                </button>
+            </span>`
+        }
+    </div>
+    <h2 class="person-card-name group-name">${roster.name}</h2>
+</div>`;
+
+/// An owner's editor for the group's face (Curtis, 2026-10-16: a picture, a banner and a bio, as a
+/// person has; owners only): the picture and banner chosen as your own are - from your drawings
+/// and media - and the name and description saved with a button, since each save is an entry on
+/// your lane for the group.
+const GroupFaceEditor = ({ root, group, roster, onRoster, onDone }) => {
+    const base = `/api/identity/${root}/groups/${group}`;
+    const [name, setName] = useState(roster.name);
+    const [about, setAbout] = useState(roster.description || '');
+    const [choosing, setChoosing] = useState(null); // 'picture' | 'banner' | null
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const run = async (work) => {
+        setBusy(true);
+        setError(null);
+        try {
+            const r = await work();
+            if (r && r.members) onRoster(r);
+            return r;
+        } catch (e) {
+            setError(e.message);
+            return null;
+        } finally {
+            setBusy(false);
+        }
+    };
+    const pick = (which) => async (picked) => {
+        setChoosing(null);
+        await run(async () => {
+            const form = new FormData();
+            form.append('image', await avatarBytes(root, picked), `${which}.png`);
+            return api(`${base}/face/${which}`, { method: 'POST', body: form });
+        });
+    };
+    const clear = (which) => run(() => api(`${base}/face/${which}`, { method: 'DELETE' }));
+    const changed = {
+        ...(name.trim() !== roster.name ? { name } : {}),
+        ...(about.trim() !== (roster.description || '') ? { description: about } : {}),
+    };
+    const save = async () => {
+        const r = await run(() => post(`${base}/settings`, changed));
+        if (r) onDone();
+    };
+    const which = (key, has, words) => html`<div class="group-face-row">
+        <span class="group-face-label">${words.label}</span>
+        <button class="group-act jag-line" disabled=${busy} onClick=${() => setChoosing(key)}>
+            ${has ? words.change : words.add}
+        </button>
+        ${
+            has &&
+            html`<button class="group-act jag-line" disabled=${busy} onClick=${() => clear(key)}>
+                <${Icons.trash} /> ${words.remove}
+            </button>`
+        }
+    </div>`;
+    return html`<div class="group-face-editor jag-line-2">
+        ${which('picture', !!roster.picture, {
+            label: t('apps.groups.the-picture', 'picture'),
+            change: t('apps.groups.change-the-picture', 'change the picture'),
+            add: t('apps.groups.add-a-picture', 'add a picture'),
+            remove: t('apps.groups.remove-the-picture', 'back to its pattern'),
+        })}
+        ${which('banner', !!roster.banner, {
+            label: t('apps.groups.the-banner', 'banner'),
+            change: t('apps.groups.change-the-banner', 'change the banner'),
+            add: t('apps.groups.add-a-banner', 'add a banner'),
+            remove: t('apps.groups.remove-the-banner', 'back to its pattern'),
+        })}
+        <label class="profile-field">
+            <span class="profile-field-label">${t('apps.groups.the-name', 'name')}</span>
+            <input class="name-input jag-field" value=${name} onInput=${(e) => setName(e.currentTarget.value)} />
+        </label>
+        <label class="profile-field">
+            <span class="profile-field-label">${t('apps.groups.about-the-group', 'about the group')}</span>
+            <textarea
+                class="profile-bio jag-field"
+                rows="4"
+                value=${about}
+                placeholder=${t('apps.groups.what-the-group-is-for', "what the group is for, and who it's for")}
+                onInput=${(e) => setAbout(e.currentTarget.value)}
+            ></textarea>
+        </label>
+        ${error && html`<p class="groups-error">${error}</p>`}
+        <div class="group-face-acts">
+            <button class="profile-save group-face-cancel" disabled=${busy} onClick=${onDone}>
+                ${t('apps.groups.cancel-editing', 'cancel')}
+            </button>
+            <button
+                class="profile-save"
+                disabled=${busy || !name.trim() || Object.keys(changed).length === 0}
+                onClick=${save}
+            >
+                ${busy ? t('apps.groups.saving', 'saving…') : t('apps.groups.save', 'save')}
+            </button>
+        </div>
+        ${
+            choosing &&
+            html`<${ImagePickModal}
+                root=${root}
+                drawings=${true}
+                DrawingThumb=${DrawingThumb}
+                heading=${
+                    choosing === 'picture'
+                        ? t('apps.groups.choose-the-groups-picture', "choose the group's picture")
+                        : t('apps.groups.choose-the-groups-banner', "choose the group's banner")
+                }
+                onPick=${pick(choosing)}
+                onClose=${() => setChoosing(null)}
             />`
         }
     </div>`;

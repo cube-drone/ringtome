@@ -22572,6 +22572,82 @@ This mirrors how back on a person's post page climbs to their page. The JS gate
 and the strings check pass.
 
 Then Curtis asked to drop the page's own "back to groups" and "back to the
-group" links, since the app leans on the header's back button. The group's
-page, its post page and the "this group isn't here" page no longer carry them,
-and their two strings are retired.
+group" links, since the app leans on the header's back button. The group's page,
+its post page and the "this group isn't here" page no longer carry them, and
+their two strings are retired.
+
+## 2026-10-16 — Write first, then feeds
+
+Curtis: "write should be first and feeds second." In the Feed app the composer
+column now leads, the Feeds column of saved filters and groups follows it, and
+then comes the stream. On a narrow screen the tabs follow the same order. Widths
+and tucks are stored per column, so nobody's choices move. The JS gate and the
+strings check pass.
+
+## 2026-10-16 — A group's face: picture, banner and bio
+
+Curtis: "let's add a profile picture, a banner image, and a bio to groups.
+Owners only. Should show for public groups. I'd consider showing name, image,
+banner, and bio to ANYONE who asks: if you've been invited, these are some
+things you'd need to know." The bio is the description a group already had. A
+group has no profile chain, so its face lives where its name always did: owner
+settings in the roster.
+
+- **The protocol.** Two new setting kinds: `Setting::Picture` (3) and
+  `Setting::Banner` (4), each a document id or empty bytes for none. The fold
+  gives `Roster::picture`, `banner`, and `face_docs`, which is every document a
+  counted face setting ever named. These settle as every setting does: a write
+  replaces what its writer saw, so a junior owner's later change wins, and
+  seniority settles only simultaneous writes. A new protocol test covers an
+  owner setting and clearing both, a member's attempt counting for nothing, and
+  `face_docs` keeping a replaced picture. Both kinds round-trip.
+- **The node.**
+  - `POST .../groups/{g}/settings {name?, description?}` is the first route that
+    can rename a group or change its description after founding.
+  - `POST` and `DELETE .../groups/{g}/face/{picture|banner}` take the profile
+    avatar's multipart upload and its usual image processing. The picture may be
+    a small animation; the banner is a still.
+  - The image becomes a media document on the owner's lane for the group, the
+    same shape as a group post's picture (`mint_media`, now shared with
+    `group_media`). Every member's node fetches it with the group's other
+    pictures.
+  - Every setting write replaces each write of that setting the node holds.
+  - The face is never a post: `listed()` skips `face_docs`.
+  - The roster answer and the Groups list carry the picture's address.
+  - The face door, with no session: `GET /api/groups/{g}/face` gives the name,
+    description, picture and banner, and `/api/groups/{g}/face/{doc}` (and
+    `/thumb`) gives the bytes of the current picture and banner only. A replaced
+    picture's address returns 404, and so does a node that doesn't hold the
+    group.
+- **The app.**
+  - The group's page opens on a hero shaped like a person's: the banner, or the
+    group's pattern tiled, with the picture and the name resting on its bottom
+    edge.
+  - An owner's "edit" opens `GroupFaceEditor` in place, with:
+    - the picture and the banner, chosen from your drawings and media as your
+      own are (the helper moved to `pickbytes.js`, shared with `persona.js`);
+    - removing either;
+    - the name and the description, saved with a button.
+  - The Groups tab shows each group's picture.
+
+A claim in `groupposts.cjs` covers:
+
+- a member refused both kinds of change;
+- the owner's description, picture and banner;
+- the face told to an anonymous asker, and its bytes served;
+- all of it reaching the other member's node;
+- a node without the group answering 404;
+- neither picture listed as a post;
+- a replaced picture's address going dark;
+- clearing and renaming.
+
+Then, at Curtis's ask, the editor's "done" became "cancel": the same size as
+"save" and quieter (`group-face-cancel`). It drops unsaved name and description
+changes. A picture or banner change takes effect when it's chosen, as on a
+person's profile.
+
+Then Curtis asked for a group's picture in "the mighty triangle (point-side-up)"
+rather than a person's heptagon. `GroupMark` in `groups.js` draws it: the
+person widget's ring and picture with the clip swapped for an equilateral
+triangle (`group-tri`, mini and hero sizes). It's used on the group's page and
+in the Groups tab.

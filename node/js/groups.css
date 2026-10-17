@@ -273,3 +273,84 @@
     font-size: 1.1rem;
     font-weight: 700;
 }
+
+/* The top of a group's page (2026-10-16): the person page's hero (person.css), the group's. */
+.group-hero {
+    margin: 0 0 0.3rem;
+}
+
+.group-edit-face {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--ink);
+    background: var(--plate);
+    --line: var(--border);
+    --j: 0.25em;
+    padding: 0.2rem 0.7rem;
+    cursor: pointer;
+}
+
+/* An owner's editor for the face, in place under it. */
+.group-face-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.8rem 1rem;
+    background: var(--surface);
+    --line: var(--border);
+}
+
+.group-face-row,
+.group-face-acts {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.group-face-label {
+    min-width: 4rem;
+    font-weight: 600;
+}
+
+.group-face-acts {
+    justify-content: flex-end;
+}
+
+.group-row-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+/* Cancel beside save, the same size and quieter (Curtis, 2026-10-16). */
+.group-face-acts .profile-save {
+    min-width: 6.5rem;
+}
+
+.group-face-acts .group-face-cancel {
+    background: var(--surface-2);
+    --line: var(--border);
+    color: var(--ink-soft);
+}
+
+/* A group's picture in the mighty triangle, point up (Curtis, 2026-10-16), where a person wears
+   the heptagon (person.css): the same ring and picture, the clip swapped. Equilateral: h = w *
+   0.866. The ring sits thicker along the base than up the sides, which only steadies it. */
+.group-tri {
+    --face-clip: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.group-tri-mini {
+    width: 1.6rem;
+    height: 1.386rem;
+}
+
+.group-tri-hero {
+    width: 10rem;
+    height: 8.66rem;
+    padding: 6px;
+}

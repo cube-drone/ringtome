@@ -528,6 +528,89 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(stranger.status, 404);
     });
 
+    it("the group's face: owners set its name, bio, picture and banner, and anyone may ask for it", async () => {
+        // Curtis, 2026-10-16: a picture, a banner and a bio, as a person has - owners only, owner
+        // settings on their lanes - shown to anyone who asks, since an invitee needs to know them.
+        const roster = async (who, root) =>
+            await (await who(`api/identity/${root}/groups/${group}`)).json();
+        const face = async (host) =>
+            await (await makeFetch(host)(`api/groups/${group}/face`)).json();
+        const setFace = (who, root, which) => {
+            const form = new FormData();
+            form.append('image', new Blob([makePng(48, 32)], { type: 'image/png' }), 'face.png');
+            return who(`api/identity/${root}/groups/${group}/face/${which}`, {
+                method: 'POST',
+                body: form,
+                file: true,
+            });
+        };
+        // A member who isn't an owner can't, either way.
+        assert.equal((await setFace(bea, beaRoot, 'picture')).status, 403);
+        assert.equal(
+            (
+                await j(bea, `api/identity/${beaRoot}/groups/${group}/settings`, {
+                    description: 'mine',
+                })
+            ).status,
+            403,
+        );
+        // The owner does.
+        let r = await act(ada, adaRoot, 'settings', { description: 'we grow potatoes' });
+        assert.equal(r.description, 'we grow potatoes');
+        const res = await setFace(ada, adaRoot, 'picture');
+        assert.equal(res.status, 200, await res.clone().text());
+        r = await res.json();
+        assert.match(r.picture || '', /^\/api\/groups\/[0-9a-f]+\/face\/[0-9a-f]{32}$/);
+        r = await (await setFace(ada, adaRoot, 'banner')).json();
+        assert.ok(r.banner && r.banner !== r.picture, 'a banner of its own');
+        const { picture, banner } = r;
+
+        // Anyone may ask: no session, the face and nothing more.
+        const told = await face(HOST);
+        assert.deepEqual(
+            told,
+            { group, name: 'Potato Bunch', description: 'we grow potatoes', picture, banner },
+            'the face, to a stranger',
+        );
+        const bytes = await makeFetch(HOST)(picture.replace(/^\//, ''));
+        assert.equal(bytes.status, 200);
+        assert.equal(bytes.headers.get('content-type'), 'image/avif');
+        assert.equal((await makeFetch(HOST)(`${picture.replace(/^\//, '')}/thumb`)).status, 200);
+
+        // It reaches the other member's node, bytes and all, as the group's pictures do.
+        await sync(ada, adaRoot);
+        await sync(bea, beaRoot);
+        assert.equal((await roster(bea, beaRoot)).picture, picture);
+        assert.equal((await face(HOST_B)).description, 'we grow potatoes');
+        assert.equal((await makeFetch(HOST_B)(banner.replace(/^\//, ''))).status, 200);
+        // A node that doesn't hold the group knows nothing of it.
+        assert.equal((await makeFetch(HOST_C)(`api/groups/${group}/face`)).status, 404);
+
+        // The face is never a post.
+        const docOf = (url) => url.split('/').pop();
+        const posts = (await page(HOST, ada, adaRoot)).map((p) => p.doc);
+        assert.ok(
+            !posts.includes(docOf(picture)) && !posts.includes(docOf(banner)),
+            'neither picture is listed as a post',
+        );
+
+        // A new picture replaces the old, whose address then answers nothing; cleared, none.
+        const next = (await (await setFace(ada, adaRoot, 'picture')).json()).picture;
+        assert.notEqual(next, picture);
+        assert.equal((await makeFetch(HOST)(picture.replace(/^\//, ''))).status, 404);
+        const posted = (await page(HOST, ada, adaRoot)).map((p) => p.doc);
+        assert.ok(!posted.includes(docOf(picture)), 'the replaced picture is no post either');
+        const cleared = await ada(`api/identity/${adaRoot}/groups/${group}/face/picture`, {
+            method: 'DELETE',
+        });
+        assert.equal(cleared.status, 200);
+        assert.equal((await cleared.json()).picture, null);
+        assert.equal((await face(HOST)).picture, null);
+        // The rename rides the same road.
+        r = await act(ada, adaRoot, 'settings', { name: 'Potato Bunch' });
+        assert.equal(r.name, 'Potato Bunch');
+    });
+
     it('a dated draft posts under its date, with comments off if asked', async () => {
         const made = await (
             await j(bea, `api/identity/${beaRoot}/docs`, {

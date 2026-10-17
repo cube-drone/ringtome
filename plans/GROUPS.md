@@ -451,26 +451,36 @@ How each post feature carries over:
   (People is per persona, like everything else in the app), the invites waiting
   for them, and founding one. A group opens at its own address under People,
   `/ringtome/people/groups/{id}`.
+- **The group's face** (Curtis, 2026-10-16): a name, a picture, a banner and a
+  description (its bio), as a person has. **Owners only** set them, as owner
+  settings. A setting names what it replaces (rule 7 of the fold, above), so a
+  junior owner's later change wins, and seniority settles only two changes made
+  without seeing each other. The picture and banner are media documents on the
+  setting owner's own lane for the group, never posts, fetched by every member's
+  node with the group's other pictures. **The face is shown to anyone who asks**
+  a node that holds the group: an invitee needs to know whom they'd be joining,
+  and a public group shows it. Nothing else of a private group is. The group's
+  id is what anyone asking must know.
 - **The group's page** is shaped like a persona's: the group's details on top
-  (name, description, the roster with owners marked, and an owner's management
-  controls), and its posts beneath, newest first. Only a member sees any of it.
-  The posts are the feed's own cards, from the feed narrowed to the group, as a
-  persona's page lists the feed's cards for one person; each opens at its own
-  address inside the group, `/ringtome/people/groups/{id}/posts/{doc}`, there to
-  members alone (Curtis, 2026-10-16). "Members" is the disclosure a person's
-  page keeps your relationship in: closed, under its heading, a line or two of
-  faces at a glance (the founder, the owners, whoever posted last), each naming
-  its person on a point; open, the whole roster, each name with a cowboy hat
-  (founder or owner) or a cow (member) beside it that says which on a point,
-  with the invited and an owner's invite there rather than on the group's front
-  page, and at its foot whoever was removed or banned and isn't back, so an
-  owner can invite the removed back or lift a ban (Curtis, 2026-10-16: a banned
-  persona nobody can see is lost for good). An owner can **hide** a post from
-  the group's page: a hide entry the fold honours. They can't delete it, since
-  it's the member's. A hidden post is out of sight for members, but owners see
-  it, faded, to show it again, and so does its author, so they know it was
-  hidden (Curtis, 2026-10-15). An owner's own post isn't theirs to hide: they
-  take it down.
+  (its banner with the picture and name on it, its description, the roster with
+  owners marked, and an owner's management controls), and its posts beneath,
+  newest first. Only a member sees any of it. The posts are the feed's own
+  cards, from the feed narrowed to the group, as a persona's page lists the
+  feed's cards for one person; each opens at its own address inside the group,
+  `/ringtome/people/groups/{id}/posts/{doc}`, there to members alone (Curtis,
+  2026-10-16). "Members" is the disclosure a person's page keeps your
+  relationship in: closed, under its heading, a line or two of faces at a glance
+  (the founder, the owners, whoever posted last), each naming its person on a
+  point; open, the whole roster, each name with a cowboy hat (founder or owner)
+  or a cow (member) beside it that says which on a point, with the invited and
+  an owner's invite there rather than on the group's front page, and at its foot
+  whoever was removed or banned and isn't back, so an owner can invite the
+  removed back or lift a ban (Curtis, 2026-10-16: a banned persona nobody can
+  see is lost for good). An owner can **hide** a post from the group's page: a
+  hide entry the fold honours. They can't delete it, since it's the member's. A
+  hidden post is out of sight for members, but owners see it, faded, to show it
+  again, and so does its author, so they know it was hidden (Curtis,
+  2026-10-15). An owner's own post isn't theirs to hide: they take it down.
 - **The group's room.** Each group has one standing room, and any member can
   start more, with the group as their audience.
 - **Mute** a group, per member, in the bell and in the feed.
@@ -793,6 +803,18 @@ Dropped:
      members and owners with an owner's verbs (invite from your contacts, make
      owner, demote, remove, ban), joining and leaving, and its posts beneath
      with a quick composer, takedown and hiding.
+   - **The group's face built** (2026-10-16: proto `Setting::Picture`,
+     `Setting::Banner`, setting kinds 3 and 4 holding a document id or empty
+     bytes for none, and `Roster::picture`, `banner` and `face_docs`, every
+     document a counted face setting ever named, which `listed()` keeps out of
+     the posts; `roster.rs` `settings_handler`, `set_face_handler`,
+     `clear_face_handler`, and the face door, `GET /api/groups/{g}/face` and the
+     current picture's and banner's bytes at `/api/groups/{g}/face/{doc}`, with
+     no session; `groups.js` `GroupHero` and `GroupFaceEditor`; the Groups tab
+     shows each group's picture; `groupposts.cjs`). A replaced picture's address
+     answers nothing; the face door serves only the face as it stands. A node
+     that doesn't hold the group knows nothing of its face: reaching another
+     node's is for public groups (slice 12).
 7. **The sign-up group becomes a real group.** `groups.rs` admits the joiner to
    the node's group instead of pairing them with every member.
 8. **For phones**: membership without keeping the media.
