@@ -23,7 +23,7 @@ import { MiniPost } from '../postentry.js';
 import { PushToggle } from '../push.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
-import { groupHref, roomHref } from '../links.js';
+import { groupHref, groupPostHref, roomHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -119,6 +119,25 @@ const sentence = (r) => {
         return r.doc_id
             ? t('apps.notifications.mentioned-you-in', 'mentioned you in')
             : t('apps.notifications.mentioned-you-in-a-post', 'mentioned you in a post');
+    }
+    // The same two in a group (plans/GROUPS.md, section 7): the group's name says where.
+    if (r.kind === 'group-mentioned') {
+        return t('apps.notifications.mentioned-you-in-group', 'mentioned you in {group}', {
+            group: r.group_name || t('apps.notifications.a-group', 'a group'),
+        });
+    }
+    if (r.kind === 'group-tagged') {
+        const group = r.group_name || t('apps.notifications.a-group', 'a group');
+        return r.detail
+            ? t(
+                  'apps.notifications.labelled-in-group-words',
+                  'labelled your post in {group} "{words}"',
+                  {
+                      group,
+                      words: r.detail,
+                  },
+              )
+            : t('apps.notifications.labelled-in-group', 'labelled your post in {group}', { group });
     }
     // A message in a room naming you (CHAT.md, slice 6): the verb, and the room itself as
     // the object - a link into the room, worn as its name.
@@ -286,13 +305,16 @@ export const NotificationsApp = ({ current }) => {
                                           (r.kind === 'rebroadcast' ||
                                               r.kind === 'comment' ||
                                               r.kind === 'tagged' ||
-                                              r.kind === 'mentioned') &&
+                                              r.kind === 'mentioned' ||
+                                              r.kind === 'group-mentioned' ||
+                                              r.kind === 'group-tagged') &&
                                           r.doc_id &&
                                           html`<${MiniPost}
-                                          author=${r.kind === 'mentioned' ? r.author : root}
+                                          author=${r.kind === 'mentioned' || r.kind === 'group-mentioned' ? r.author : root}
                                           doc_id=${r.doc_id}
                                           title=${r.doc_title}
                                           published_ms=${r.doc_published_ms}
+                                          href=${r.group && groupPostHref(r.group, r.doc_id)}
                                       />`
                                       }
                                       ${

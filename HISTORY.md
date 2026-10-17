@@ -22750,3 +22750,34 @@ The chip in a group's room now asks the group's `retract` door, and is hidden in
 `grouprooms.cjs` covers it: the group's owner can't take down a member's room,
 its creator can, it leaves the chats and the group's page at both nodes, and
 #general is refused. All eight pass.
+
+## 2026-10-17 — The bell for a group's mentions and labels
+
+A mention in a group post rang nobody, and neither did a label on someone's
+group post. The bell's two roads both read public records: the envelope's proof
+must be a public annotation (`verify_claim`), and the fold for people you follow
+reads their public labels. A group's labels are on its lanes. Every member's
+node already holds those lanes, so the group stands in for the follow: the
+group's derivation (`rejournal`) now folds a bell row for each hosted member
+named by a post's author (`group-mentioned`) and for each member whose post
+another member labelled (`group-tagged`, one row per labeller and post, its
+labels as words), then sweeps the group's rows it no longer carries. No
+envelope, no protocol change. Mutes and deputies are quiet. Node rung 94 gives
+`group_lanes` each entry's signed and arrival times, which stamp the rows, and
+gives `notifications` a `group_id`. Entries taken before the rung carry no time
+and never ring, so the upgrade doesn't light the bell with old labels. The bell
+names the group and opens the group post (`MiniPost` takes an `href`), alerts
+say "mentioned you in a post in {group}", and the MCP's notification says
+`group_post`.
+
+A mention in a group room already rang by the room-mention road, but the bell
+looked for the room's title only on public shelves; it now falls back to the
+group's record of the room, in the bell and in alerts.
+
+New claims: in `groupposts.cjs`, a member named in a group post hears it with
+the group and title and a non-member named hears nothing, a label rings the
+post's author and leaves when taken back, and an edit that drops the card takes
+the row away; in `grouprooms.cjs`, a line naming a member rings them with the
+room by name and a non-member named is never told. The group posts and group
+rooms areas pass (26), as do the neighbouring bell, mention, annotation, chat,
+MCP and group areas (77); node 629 and 14, clippy clean.

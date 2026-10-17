@@ -3032,6 +3032,12 @@ pub(crate) struct NotificationItem {
     /// The row's own words, for kinds that carry some - 'tagged': the label(s) themselves.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) detail: Option<String>,
+    /// The group the row is about, hex - the group kinds' (notifications.rs `KIND_GROUP_*`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) group: Option<String>,
+    /// The group's name, joined server-side beside the group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) group_name: Option<String>,
     /// The referenced post's title and date, joined server-side for the bell's mini-card
     /// (2026-08-26): the doc is the READER's own post, so their open store answers in one
     /// read - no client fan-out, and the bell renders instantly. Absent when the row names
@@ -3169,6 +3175,7 @@ async fn notifications_handler(
         !i.doc_id.is_empty()
             && i.kind != crate::notifications::KIND_MENTIONED
             && i.kind != crate::notifications::KIND_ROOM_MENTION
+            && i.group.is_none()
     }) {
         let Some(doc_id) =
             hex::decode(&item.doc_id).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
@@ -3188,12 +3195,47 @@ async fn notifications_handler(
         .filter(|i| i.kind == crate::notifications::KIND_ROOM_MENTION && !i.doc_id.is_empty())
     {
         let Some(author) = item.detail.clone() else { continue };
-        if let Ok(Some(h)) = held_public_header(&state, &author, &item.doc_id).await {
+        // A group's room, off the group's record of it when it isn't a public one.
+        let header = match held_public_header(&state, &author, &item.doc_id).await {
+            Ok(Some(h)) => Some(h),
+            _ => crate::roster::room_of(&state, &author, &item.doc_id).await.map(|r| r.header),
+        };
+        if let Some(h) = header {
             if !h.title.trim().is_empty() {
                 item.doc_title = Some(h.title.clone());
             }
             item.doc_published_ms = h.genesis_ms;
         }
+    }
+
+    // A group row's post, by title, and its group by name: the reader's own journal row of it,
+    // which a member's node writes for every group post they may see.
+    for item in items.iter_mut() {
+        let Some(group) = item
+            .group
+            .as_deref()
+            .and_then(|g| hex::decode(g).ok())
+            .and_then(|g| <ringtome_proto::roster::GroupId>::try_from(g).ok())
+        else {
+            continue;
+        };
+        let post_author = if item.kind == crate::notifications::KIND_GROUP_TAGGED {
+            root.as_str()
+        } else {
+            item.author.as_str()
+        };
+        let post =
+            crate::roster::journalled_post(&state, &root, post_author, &item.doc_id, &group).await;
+        if let Some((title, published)) = post {
+            item.doc_title = Some(title).filter(|t| !t.trim().is_empty());
+            item.doc_published_ms = Some(published);
+        }
+    }
+    let groups: std::collections::BTreeSet<String> =
+        items.iter().filter_map(|i| i.group.clone()).collect();
+    let names = crate::roster::group_names(&state, &groups).await.map_err(AppError::Internal)?;
+    for item in items.iter_mut() {
+        item.group_name = item.group.as_ref().and_then(|g| names.get(g).cloned());
     }
 
     Ok(Json(serde_json::json!({ "items": items, "watermark": watermark })))
@@ -3420,6 +3462,8 @@ pub(crate) async fn notification_items(
                 trust: r.trust,
                 interest: r.interest,
                 detail: r.detail,
+                group: r.group,
+                group_name: None,
                 updated_ms: stamp,
             }
         })
@@ -3488,6 +3532,8 @@ pub(crate) async fn notification_items(
         trust: n.trust,
         interest: n.interest,
         detail: n.detail,
+        group: None,
+        group_name: None,
         doc_title: None,
         doc_published_ms: None,
         updated_ms: n.timestamp_ms,
@@ -9817,6 +9863,8 @@ mod notification_dedup_tests {
             trust: None,
             interest: None,
             detail: None,
+            group: None,
+            group_name: None,
             updated_ms: 1,
             seen: false,
             stranger: false,

@@ -312,6 +312,12 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0093_group_rooms.sql"),
         refold: &[],
     },
+    Rung {
+        version: 94,
+        name: "0094_group_bell.sql",
+        sql: include_str!("../migrations/node/0094_group_bell.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).

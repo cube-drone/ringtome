@@ -103,8 +103,8 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
             .node_db
             .execute(
                 "INSERT OR IGNORE INTO group_lanes
-                   (group_id, persona, device, seq, hash, entry_type, body)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                   (group_id, persona, device, seq, hash, entry_type, body, claimed_ms, arrived_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 (
                     group.to_vec(),
                     root,
@@ -113,6 +113,8 @@ async fn refresh_inner(state: &AppState, root: &str) -> Result<()> {
                     signed.hash().to_vec(),
                     i64::from(e.entry_type),
                     body.clone(),
+                    e.timestamp_ms,
+                    crate::clock::now_ms(),
                 ),
             )
             .await
@@ -440,6 +442,8 @@ async fn rejournal(
         .collect();
     crate::annotations::keep_group_labels(state, group, &memo, noted).await?;
     keep_rooms(state, group, &posts, noted).await?;
+    let news = bell_news(state, group, roster, readers, &posts, &labels).await?;
+    crate::notifications::keep_group_rows(state, group, &news).await?;
     for post in &posts {
         let doc_hex = hex::encode(post.doc);
         let format = crate::record::documents::Format::from_wire(post.shown.header.format).as_str();
@@ -499,6 +503,111 @@ async fn rejournal(
     .context("sweeping a group's rows from the feed journal")?;
     crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
     Ok(())
+}
+
+/// One label entry of a group's lanes: `(persona, hash, body, claimed_ms, arrived_ms)`.
+type StampedLabel = (String, Vec<u8>, Vec<u8>, Option<i64>, Option<i64>);
+/// A statement as said: `(labeller, post, key, value)`.
+type LabelAt = (String, [u8; 16], String, String);
+
+/// The group's labels as bell news for its hosted members (section 7; 2026-10-17): a mention of
+/// a member said by a post's author, and another member's labels on a member's post, one row per
+/// (reader, labeller, post). Every member's node holds the group's lanes, so this is the follow's
+/// fold and no envelope is sent. A label this node took before rung 94 carries no stamps: old news,
+/// never rung. A reader is told only of a post they may see.
+async fn bell_news(
+    state: &AppState,
+    group: &GroupId,
+    roster: &Roster,
+    readers: &[Root],
+    posts: &[Listed<'_>],
+    labels: &BTreeMap<[u8; 16], Vec<GroupLabel>>,
+) -> Result<Vec<crate::notifications::GroupNews>> {
+    use crate::notifications::{GroupNews, KIND_GROUP_MENTIONED, KIND_GROUP_TAGGED};
+    let mention = ringtome_proto::PublicAnnotation::MENTION_KEY;
+    let quiet = [mention, crate::chat::MUTE_KEY, crate::chat::DEPUTY_KEY];
+    // When each statement was said and reached this node, the newest saying of it.
+    let rows: Vec<StampedLabel> = state
+        .node_db
+        .fetch_all(
+            "SELECT persona, hash, body, claimed_ms, arrived_ms FROM group_lanes
+             WHERE group_id = ?1 AND entry_type = ?2 ORDER BY rowid",
+            (group.to_vec(), i64::from(entry_type::PUBLIC_ANNOTATION)),
+        )
+        .await
+        .context("reading when a group's labels were said")?;
+    let mut said: BTreeMap<LabelAt, Option<(i64, i64)>> = BTreeMap::new();
+    for (persona, hash, body, claimed, arrived) in rows {
+        let Ok(hash) = <[u8; 32]>::try_from(hash) else { continue };
+        if !roster.counted.contains(&hash) {
+            continue;
+        }
+        let Ok(a) = ringtome_proto::PublicAnnotation::decode(&body) else { continue };
+        said.insert((persona, a.target_doc, a.key, a.value), claimed.zip(arrived));
+    }
+    let readers: BTreeMap<String, &Root> = readers.iter().map(|r| (hex::encode(r), r)).collect();
+    let mut out: Vec<GroupNews> = Vec::new();
+    for post in posts {
+        let author = hex::encode(post.shown.persona);
+        let doc = hex::encode(post.doc);
+        // A labeller's labels on this post: their words, and the newest stamps among them.
+        let mut tagged: BTreeMap<String, (Vec<String>, Vec<String>, i64, i64)> = BTreeMap::new();
+        for l in labels.get(&post.doc).into_iter().flatten() {
+            let Some(Some((claimed, arrived))) =
+                said.get(&(l.annotator.clone(), post.doc, l.key.clone(), l.value.clone()))
+            else {
+                continue;
+            };
+            if l.key == mention {
+                let Some(reader) = readers.get(&l.value) else { continue };
+                if l.annotator != author || l.value == author || !sees(roster, reader, post) {
+                    continue;
+                }
+                out.push(GroupNews {
+                    reader: l.value.clone(),
+                    author: author.clone(),
+                    kind: KIND_GROUP_MENTIONED,
+                    doc: doc.clone(),
+                    detail: None,
+                    arrived_ms: *arrived,
+                    claimed_ms: *claimed,
+                });
+                continue;
+            }
+            if quiet.contains(&l.key.as_str())
+                || l.annotator == author
+                || !readers.contains_key(&author)
+            {
+                continue;
+            }
+            let e = tagged.entry(l.annotator.clone()).or_insert((Vec::new(), Vec::new(), 0, 0));
+            if l.key == ringtome_proto::PublicAnnotation::TAG_KEY {
+                e.0.push(l.value.clone());
+            } else {
+                e.1.push(format!("{}: {}", l.key, l.value));
+            }
+            e.2 = e.2.max(*arrived);
+            e.3 = e.3.max(*claimed);
+        }
+        if !readers.get(&author).is_some_and(|r| sees(roster, r, post)) {
+            continue;
+        }
+        for (annotator, (mut tags, rest, arrived, claimed)) in tagged {
+            tags.sort_unstable();
+            tags.dedup();
+            tags.extend(rest);
+            out.push(GroupNews {
+                reader: author.clone(),
+                author: annotator,
+                kind: KIND_GROUP_TAGGED,
+                doc: doc.clone(),
+                detail: Some(tags.join(", ")),
+                arrived_ms: arrived,
+                claimed_ms: claimed,
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// The group's rooms into `group_rooms` (plans/GROUP_ROOMS.md), as the group now stands: every
@@ -879,6 +988,27 @@ pub fn catch_up_soon(state: &AppState, group: GroupId) {
             }
         }
     });
+}
+
+/// A group post's title and date as `reader`'s journal row of it holds them - there for every
+/// group post the reader may see (the bell's group rows).
+pub async fn journalled_post(
+    state: &AppState,
+    reader: &str,
+    author: &str,
+    doc_hex: &str,
+    group: &GroupId,
+) -> Option<(String, i64)> {
+    state
+        .node_db
+        .fetch_optional(
+            "SELECT title, published_ms FROM feed_journal
+             WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3 AND group_id = ?4",
+            (reader, author, doc_hex, group.to_vec()),
+        )
+        .await
+        .ok()
+        .flatten()
 }
 
 /// The names of these groups, by hex id, as this node last folded them: a group post's card says

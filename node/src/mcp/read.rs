@@ -899,7 +899,8 @@ impl Tools {
 
 /// One notification, in words an agent can act on. Each kind's `doc_id` names something
 /// different (notifications.rs, the `KIND_` docs): for a reply, a label or a share it is the
-/// READER's own post; for a mention, the author's post; for a room mention, the room, whose author
+/// READER's own post; for a mention, the author's post - and the group kinds' the same, in the
+/// group named beside it, so as `group_post`; for a room mention, the room, whose author
 /// rides in `detail`; for a contract, the contract's id, its name and reward in `detail`. So the
 /// post address is built per kind, and a kind this doesn't know keeps only who and when.
 fn notification(item: &Value, reader: &str) -> Value {
@@ -931,6 +932,16 @@ fn notification(item: &Value, reader: &str) -> Value {
         }
         (notifications::KIND_MENTIONED, Some(doc)) => {
             line["post"] = json!(format!("{from}/{doc}"));
+        }
+        (notifications::KIND_GROUP_MENTIONED | notifications::KIND_GROUP_TAGGED, Some(doc)) => {
+            let author = if kind == notifications::KIND_GROUP_TAGGED { reader } else { from };
+            line["group_post"] = json!(format!("{author}/{doc}"));
+            line["group"] = item.get("group").cloned().unwrap_or(Value::Null);
+            line["group_name"] = item.get("group_name").cloned().unwrap_or(Value::Null);
+            line["title"] = item.get("doc_title").cloned().unwrap_or(Value::Null);
+            if kind == notifications::KIND_GROUP_TAGGED {
+                line["labels"] = json!(detail);
+            }
         }
         (notifications::KIND_ROOM_MENTION, Some(doc)) => {
             if let Some(room_author) = detail {

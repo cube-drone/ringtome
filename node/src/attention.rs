@@ -519,6 +519,7 @@ async fn bell_alert(
     let title = if item.doc_id.is_empty()
         || item.kind == crate::notifications::KIND_MENTIONED
         || item.kind == crate::notifications::KIND_GROUP_INVITE
+        || item.group.is_some()
     {
         None
     } else if item.kind == crate::notifications::KIND_ROOM_MENTION {
@@ -598,6 +599,49 @@ async fn bell_alert(
         (k::KIND_ROOM_MENTION, None) => {
             crate::msg!("attention.mentioned-you-in-a-room", "mentioned you in a room").english
         }
+        (k::KIND_GROUP_MENTIONED, _) => match group_name(state, item).await {
+            Some(group) => {
+                crate::msg!(
+                    "attention.mentioned-you-in-group",
+                    "mentioned you in a post in {group}",
+                    group = group
+                )
+                .english
+            }
+            None => {
+                crate::msg!("attention.mentioned-you-in-a-post", "mentioned you in a post").english
+            }
+        },
+        (k::KIND_GROUP_TAGGED, _) => match (&item.detail, group_name(state, item).await) {
+            (Some(words), Some(group)) => {
+                crate::msg!(
+                    "attention.labelled-group-post-words",
+                    "labelled your post in {group} \"{words}\"",
+                    group = group,
+                    words = words
+                )
+                .english
+            }
+            (Some(words), None) => {
+                crate::msg!(
+                    "attention.labelled-a-post-words",
+                    "labelled one of your posts \"{words}\"",
+                    words = words
+                )
+                .english
+            }
+            (None, Some(group)) => {
+                crate::msg!(
+                    "attention.labelled-group-post",
+                    "labelled your post in {group}",
+                    group = group
+                )
+                .english
+            }
+            (None, None) => {
+                crate::msg!("attention.labelled-a-post", "labelled one of your posts").english
+            }
+        },
         (k::KIND_GROUP_INVITE, _) => match &item.detail {
             Some(group) => {
                 crate::msg!(
@@ -648,10 +692,25 @@ async fn bell_alert(
         }
     } else if item.kind == crate::notifications::KIND_GROUP_INVITE {
         crate::roster::group_route(&item.doc_id)
+    } else if let Some(group) = &item.group {
+        format!("{}/posts/{}", crate::roster::group_route(group), item.doc_id)
     } else {
         BELL_ROUTE.to_string()
     };
     Alert { root: root.to_string(), title: who, body, route, picture: None, picture_png: None }
+}
+
+/// A group row's group, by name, as this node last folded it.
+async fn group_name(
+    state: &AppState,
+    item: &crate::identity::routes::NotificationItem,
+) -> Option<String> {
+    if let Some(name) = &item.group_name {
+        return Some(name.clone());
+    }
+    let group = item.group.clone()?;
+    let ids = std::collections::BTreeSet::from([group.clone()]);
+    crate::roster::group_names(state, &ids).await.ok()?.remove(&group)
 }
 
 /// A completed contract as an alert, in the bell's words (js/apps/notifications.js
@@ -778,8 +837,13 @@ const MAX_PICTURE_BYTES: usize = 16 * 1024 * 1024;
 /// A room's name for a notification: `# <title>` (Curtis, 2026-09-28 - a room is marked as one
 /// wherever its title stands), or the bare title of a private chat for two, which names a person.
 pub(crate) async fn room_name(state: &AppState, author: &str, doc: &str) -> String {
-    let title = match crate::identity::routes::held_public_header(state, author, doc).await {
-        Ok(Some(h)) if !h.title.trim().is_empty() => h.title,
+    // A group's room is on its creator's lane for the group, not their public shelf.
+    let header = match crate::identity::routes::held_public_header(state, author, doc).await {
+        Ok(Some(h)) => Some(h),
+        _ => crate::roster::room_of(state, author, doc).await.map(|r| r.header),
+    };
+    let title = match header {
+        Some(h) if !h.title.trim().is_empty() => h.title,
         _ => return crate::msg!("attention.a-room", "a room").english,
     };
     let im = match hex::decode(doc).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
@@ -917,6 +981,8 @@ mod tests {
             trust: None,
             interest: None,
             detail: Some(r#"{"name":"Draw a horse","pennies":"500000"}"#.to_string()),
+            group: None,
+            group_name: None,
             doc_title: None,
             doc_published_ms: None,
             updated_ms: 0,

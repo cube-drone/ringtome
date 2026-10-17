@@ -498,12 +498,14 @@ const MADE_WITH_TITLES = {
     'api-key': () => t('postentry.made-with-api-key', 'made with an API key'),
 };
 
-export const MiniPost = ({ author, doc_id, title, published_ms }) => {
+/// `href` sends it somewhere other than the post's public page - a group post's own (the bell's
+/// group rows), whose title the caller joined, so nothing is asked of the public shelf.
+export const MiniPost = ({ author, doc_id, title, published_ms, href }) => {
     const person = usePerson(author);
     const [words, setWords] = useState('');
     useEffect(() => {
         setWords('');
-        if (title || !author || !doc_id) return undefined;
+        if (title || href || !author || !doc_id) return undefined;
         let live = true;
         (async () => {
             try {
@@ -540,9 +542,9 @@ export const MiniPost = ({ author, doc_id, title, published_ms }) => {
         return () => {
             live = false;
         };
-    }, [author, doc_id, title]);
+    }, [author, doc_id, title, href]);
     const when = published_ms && formatWhen(published_ms, undefined, { time: false });
-    return html`<a class="minipost" href=${postHref(author, doc_id)}>
+    return html`<a class="minipost" href=${href || postHref(author, doc_id)}>
         <span class="minipost-who" title=${person.primary}><${PersonHex} person=${person} size="mini" /></span>
         <span class=${title ? 'minipost-title' : 'minipost-words'}>${title || words || t('postentry.link', 'link')}</span>
         ${when && html`<span class="minipost-when">${when}</span>`}

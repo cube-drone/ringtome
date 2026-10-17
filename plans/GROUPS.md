@@ -387,6 +387,15 @@ How each post feature carries over:
   (2026-10-16): either would name the post on the labeller's public chain. The
   node knows a group post by the group journal and its own personas' group
   drafts.
+- **The bell hears a group's labels from its lanes** (2026-10-17). A member
+  named in a group post by its author, and a member whose group post another
+  member labels, get a bell row (`group-mentioned`, `group-tagged`) folded by
+  the group's derivation from the lanes their node holds. Every member's node
+  holds them, so the group stands in for the follow, and no envelope is sent:
+  the gate would drop it as already pulled. The row names its group, its card
+  opens the group post, and a label taken back, a post taken down or hidden, or
+  a member gone takes the row with it. Labels taken before node rung 94 carry no
+  time and never ring.
 - **The date and comments-off ride the post's header**, as they already do for
   any post (`dated_ms`, `settled`). The sealed bits don't: a group has no seal.
 - **Scheduled posting** keeps its plan on the draft (`publish_plan`), which

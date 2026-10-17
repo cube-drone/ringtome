@@ -331,6 +331,38 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         );
         assert.ok(!potluckAtCal.words.includes('and i the rolls'), JSON.stringify(potluckAtCal));
     });
+    it('a line naming a member rings their bell with the room by name; a stranger named hears nothing', async () => {
+        const { speakable } = await import('../../js/speakable.js');
+        const bell = async (who, root) =>
+            ((await (await who(`api/identity/${root}/notifications`)).json()).items || []).filter(
+                (i) => i.kind === 'room-mention' && i.doc_id === potluck,
+            );
+        const said = await say(
+            bea,
+            beaRoot,
+            beaRoot,
+            potluck,
+            `[user id=/id/${speakable(adaRoot)}]ada[/user] and [user id=/id/${speakable(deeRoot)}]dee[/user], rolls?`,
+        );
+        assert.equal(said.status, 200, await said.text());
+        let rows = [];
+        for (let i = 0; i < 30 && rows.length === 0; i++) {
+            await beat(HOST_B, 'outbox');
+            rows = await bell(ada, adaRoot);
+            if (rows.length === 0) await wait(400);
+        }
+        assert.equal(rows.length, 1, "the mention rang ada's bell");
+        assert.equal(rows[0].author, beaRoot);
+        assert.equal(rows[0].detail, beaRoot, "the room's author - its address");
+        assert.equal(
+            rows[0].doc_title,
+            'potluck',
+            "worn as the room's name, off the group's record",
+        );
+        await beat(HOST_B, 'outbox');
+        assert.equal((await bell(dee, deeRoot)).length, 0, 'dee, no member, is never told');
+    });
+
     it("a room's creator closes it, the closing reaches the members, and #general stays open", async () => {
         // Only the room's own creator: ada owns the group, but potluck is bea's.
         assert.equal(

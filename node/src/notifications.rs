@@ -53,6 +53,15 @@ pub const KIND_ROOM_MENTION: &str = "room-mention";
 /// Envelope road only: the reader's node has never heard of the group.
 pub const KIND_GROUP_INVITE: &str = "group-invite";
 
+/// A group post names the reader (plans/GROUPS.md, section 7; 2026-10-17): `mention=<reader>`
+/// said by the post's author on their lane for the group. The row's doc is the AUTHOR's post and
+/// its `group` the group. Folded from the group's lanes, which every member's node holds - so,
+/// like the follow it stands in for, never an envelope.
+pub const KIND_GROUP_MENTIONED: &str = "group-mentioned";
+/// Another member labelled the reader's post in a group: [`KIND_TAGGED`]'s shape - one row per
+/// (reader, annotator, post), its detail the labels - from the group's lanes.
+pub const KIND_GROUP_TAGGED: &str = "group-tagged";
+
 /// "You completed a contract." The bank's own news (2026-10-04): written once, by the computer
 /// that first recorded the completion on the persona's private chain (bank.rs), so the row's author
 /// is the reader themselves and its doc is the contract's id; `detail` carries the contract's name
@@ -83,6 +92,9 @@ pub struct NotificationRow {
     /// that annotator has on that post, joined.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// The group the row is about, hex - the group kinds'.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     pub updated_ms: i64,
     /// The winning statement's signed time - what names this news to the persona's other
     /// computers (routes.rs `persona_stamp`). `None` on a row folded before node rung 75.
@@ -600,16 +612,105 @@ async fn delete_row(
     Ok(())
 }
 
+/// One row of a group's bell news, as the group's derivation finds it (roster.rs `rejournal`).
+pub struct GroupNews {
+    pub reader: String,
+    /// Who said it: the post's author for a mention, the labeller for a label.
+    pub author: String,
+    pub kind: &'static str,
+    pub doc: String,
+    pub detail: Option<String>,
+    pub arrived_ms: i64,
+    pub claimed_ms: i64,
+}
+
+/// A group's bell rows, as the group now stands: `news` upserted, and the group's rows it doesn't
+/// carry swept - a label taken back, a post taken down or hidden, a member gone.
+pub async fn keep_group_rows(
+    state: &AppState,
+    group: &ringtome_proto::roster::GroupId,
+    news: &[GroupNews],
+) -> Result<()> {
+    let mut touched: std::collections::BTreeSet<String> = Default::default();
+    let mut fresh: std::collections::BTreeSet<(String, String, String, String)> =
+        Default::default();
+    for n in news {
+        fresh.insert((n.reader.clone(), n.author.clone(), n.kind.to_string(), n.doc.clone()));
+        let stands: Option<(Option<String>, Option<i64>)> = state
+            .node_db
+            .fetch_optional(
+                "SELECT detail, claimed_ms FROM notifications
+                 WHERE reader_root = ?1 AND author_root = ?2 AND kind = ?3 AND doc_id = ?4",
+                (n.reader.as_str(), n.author.as_str(), n.kind, n.doc.as_str()),
+            )
+            .await
+            .context("reading a group bell row")?;
+        // The same news folded again is no news: only a change rewrites the row, and its stamps.
+        if stands.is_some_and(|(d, c)| d == n.detail && c == Some(n.claimed_ms)) {
+            continue;
+        }
+        upsert_row(
+            &state.node_db,
+            &n.reader,
+            &n.author,
+            n.kind,
+            &n.doc,
+            None,
+            None,
+            n.detail.as_deref(),
+            n.arrived_ms,
+            n.claimed_ms,
+        )
+        .await?;
+        state
+            .node_db
+            .execute(
+                "UPDATE notifications SET group_id = ?5
+                 WHERE reader_root = ?1 AND author_root = ?2 AND kind = ?3 AND doc_id = ?4",
+                (n.reader.as_str(), n.author.as_str(), n.kind, n.doc.as_str(), group.to_vec()),
+            )
+            .await
+            .context("naming a bell row's group")?;
+        touched.insert(n.reader.clone());
+    }
+    let standing: Vec<(String, String, String, String)> = state
+        .node_db
+        .fetch_all(
+            "SELECT reader_root, author_root, kind, doc_id FROM notifications WHERE group_id = ?1",
+            (group.to_vec(),),
+        )
+        .await
+        .context("reading a group's bell rows")?;
+    for (reader, author, kind, doc) in standing {
+        if !fresh.contains(&(reader.clone(), author.clone(), kind.clone(), doc.clone())) {
+            delete_row(&state.node_db, &reader, &author, &kind, &doc).await?;
+            touched.insert(reader);
+        }
+    }
+    nudge_streams(state, &touched);
+    Ok(())
+}
+
 /// One reader's notifications, newest first. Small and bounded on purpose: the memo collapses
 /// per (author, kind), so the row count is the reader's social circle, not their history.
 pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<NotificationRow>> {
-    /// `(author_root, kind, doc_id, trust, interest, detail, updated_ms, claimed_ms)`, as the
-    /// row comes back.
-    type Row =
-        (String, String, String, Option<String>, Option<String>, Option<String>, i64, Option<i64>);
+    /// `(author_root, kind, doc_id, trust, interest, detail, updated_ms, claimed_ms, group_id)`,
+    /// as the row comes back.
+    type Row = (
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        Option<i64>,
+        Option<Vec<u8>>,
+    );
     let rows: Vec<Row> = node_db
         .fetch_all(
-            "SELECT author_root, kind, doc_id, trust, interest, detail, updated_ms, claimed_ms
+            "SELECT author_root, kind, doc_id, trust, interest, detail, updated_ms, claimed_ms,
+                    group_id
              FROM notifications
              WHERE reader_root = ?1 ORDER BY updated_ms DESC LIMIT ?2",
             (reader_root, i64::from(limit)),
@@ -618,18 +719,31 @@ pub async fn page(node_db: &Db, reader_root: &str, limit: u32) -> Result<Vec<Not
         .context("reading notifications")?;
     Ok(rows
         .into_iter()
-        .map(|(author_root, kind, doc_id, trust, interest, detail, updated_ms, claimed_ms)| {
-            NotificationRow {
+        .map(
+            |(
                 author_root,
                 kind,
-                detail,
                 doc_id,
                 trust,
                 interest,
+                detail,
                 updated_ms,
                 claimed_ms,
-            }
-        })
+                group,
+            )| {
+                NotificationRow {
+                    author_root,
+                    kind,
+                    detail,
+                    doc_id,
+                    trust,
+                    interest,
+                    group: group.map(hex::encode),
+                    updated_ms,
+                    claimed_ms,
+                }
+            },
+        )
         .collect())
 }
 

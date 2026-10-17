@@ -690,4 +690,70 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             'ada has it',
         );
     });
+
+    it('a member mentioned in a group post, or whose post is labelled, hears it in the bell', async () => {
+        const { speakable } = await import('../../js/speakable.js');
+        const bell = async (who, root, kind, doc) =>
+            ((await (await who(`api/identity/${root}/notifications`)).json()).items || []).filter(
+                (i) => i.kind === kind && i.doc_id === doc,
+            );
+        const until = async (host, who, root, kind, doc, test) => {
+            let rows = [];
+            for (let i = 0; i < 20; i++) {
+                await sync(ada, adaRoot);
+                await sync(bea, beaRoot);
+                for (const r of [adaRoot, beaRoot]) await beat(host, 'fold', r);
+                rows = await bell(who, root, kind, doc);
+                if (test(rows)) return rows;
+                await wait(300);
+            }
+            return rows;
+        };
+        // Bea names ada, a member, and dee, who isn't one.
+        const words = (names) =>
+            `dig day\n\n${names.map((r) => `:::user id=/id/${speakable(r)}:::`).join('\n\n')}\n`;
+        const dig = await (
+            await j(bea, `api/identity/${beaRoot}/docs`, {
+                title: 'dig day',
+                body: words([adaRoot, deeRoot]),
+                format: 'marquee',
+            })
+        ).json();
+        const digPost = (await act(bea, beaRoot, 'publish', { doc: dig.doc_id })).post;
+        let rows = await until(HOST, ada, adaRoot, 'group-mentioned', digPost, (r) => r.length);
+        assert.equal(rows.length, 1, "the mention rang ada's bell");
+        assert.equal(rows[0].author, beaRoot);
+        assert.equal(rows[0].group, group);
+        assert.equal(rows[0].group_name, 'Potato Bunch');
+        assert.equal(rows[0].doc_title, 'dig day', "its title, off ada's own journal row");
+        assert.ok(!rows[0].stranger, 'folded, never an envelope');
+        assert.equal(
+            (await bell(dee, deeRoot, 'group-mentioned', digPost)).length,
+            0,
+            'a stranger named in a group post hears nothing of it',
+        );
+
+        // Ada labels bea's post: bea hears of it, with the words.
+        await act(ada, adaRoot, `docs/${digPost}/labels`, { value: 'muddy', present: true });
+        rows = await until(HOST_B, bea, beaRoot, 'group-tagged', digPost, (r) => r.length);
+        assert.equal(rows.length, 1, "the label rang bea's bell");
+        assert.equal(rows[0].author, adaRoot);
+        assert.ok(rows[0].detail.includes('muddy'), JSON.stringify(rows[0]));
+        assert.equal(rows[0].group, group);
+        // Taken back, the row leaves.
+        await act(ada, adaRoot, `docs/${digPost}/labels`, { value: 'muddy', present: false });
+        rows = await until(HOST_B, bea, beaRoot, 'group-tagged', digPost, (r) => !r.length);
+        assert.equal(rows.length, 0, 'the label taken back, the row with it');
+
+        // An edit that drops the card takes the mention back, and ada's row with it.
+        await j(
+            bea,
+            `api/identity/${beaRoot}/docs/${dig.doc_id}`,
+            { title: 'dig day', body: words([]), parents: [dig.version] },
+            'PUT',
+        );
+        await act(bea, beaRoot, 'publish', { doc: dig.doc_id });
+        rows = await until(HOST, ada, adaRoot, 'group-mentioned', digPost, (r) => !r.length);
+        assert.equal(rows.length, 0, 'the card dropped, the row with it');
+    });
 });

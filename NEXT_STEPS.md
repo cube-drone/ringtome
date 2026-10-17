@@ -86,8 +86,6 @@ are driving towards.
     removal would end it.
   - **A removed member can backdate a line** to before their removal, and it
     stands; the owners' mute is the answer today.
-  - **Mentions in a group room** ring members only, by the room-mention road; no
-    acceptance claim covers it yet.
   - **The UI wants a look in a browser**: the chats column's group sections, the
     new-chat form's picker, the group page's chats line.
 - From the group page on the feed's cards:
@@ -106,10 +104,6 @@ are driving towards.
     through the mirror's `published_as`, which a group post's draft doesn't
     carry (its link is the node's `group_drafts`). Publishing the draft again
     from Writer edits it.
-- From 4a (labels):
-  - **A mention in a group post rings nobody.** The mention and tagged notices'
-    evidence must be a public annotation (`deliver::verify_claim`), so the
-    group's own wants a notice kind, or room for a group lane in those two.
 - From the app's first part:
   - **Two invites from one person collapse in the bell.** The inbox keeps one
     row per (sender, kind), as it does for mentions, so a second group's invite
