@@ -896,12 +896,20 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     // A feed for every group you're in (plans/GROUPS.md, section 7), made from your groups rather
     // than kept: it comes with joining and goes with leaving.
     const [ofGroups, setOfGroups] = useState([]);
+    // The drafts posted in a group: out of the stack below the composer, as a draft posted in public
+    // is by its `published_as`. Said here at once on a group publish, ahead of the next list.
+    const [inGroups, setInGroups] = useState(() => new Set());
     useEffect(() => {
         setOfGroups([]);
+        setInGroups(new Set());
         if (!root) return undefined;
         let live = true;
         api(`/api/identity/${root}/groups`)
-            .then((rows) => live && setOfGroups(groupFeeds(rows)))
+            .then((rows) => {
+                if (!live) return;
+                setOfGroups(groupFeeds(rows));
+                setInGroups(new Set((rows || []).flatMap((g) => g.drafts || [])));
+            })
             .catch(() => {});
         return () => {
             live = false;
@@ -1111,6 +1119,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                 // Scheduled, it waits on the draft's plan; posted, to its own page, inside its group -
                 // drawn there at once from what this composer knows, until the node's card answers.
                 if (made.post) {
+                    setInGroups((held) => new Set(held).add(posted));
                     const draft = await openMirror(root)
                         .docs.get(posted)
                         .catch(() => null);
@@ -1232,6 +1241,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
             d.doc_id !== draftId &&
             isTextDoc(d) && // an uploaded image in the feed bucket is media, never a draft
             !publishedState(overlayPosted(d, postedAs[d.doc_id])).published &&
+            !inGroups.has(d.doc_id) &&
             !scheduledPlan(d), // a scheduled draft lives in the stream, badged, not down here
     );
     // Every scheduled draft of this persona - any bucket, since Writer publishes too -

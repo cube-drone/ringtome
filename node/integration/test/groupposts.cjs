@@ -477,7 +477,18 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         const res = await bea(`api/identity/${beaRoot}/groups/${group}/posts/${fresh}`);
         assert.equal(res.status, 200, await res.clone().text());
         assert.equal((await res.json()).item.doc_id, fresh);
+        // The groups list names the draft as posted here, so the composer's stack leaves it out,
+        // and a takedown gives it back.
+        const posted = async () =>
+            (await (await bea(`api/identity/${beaRoot}/groups`)).json()).find(
+                (g) => g.group === group,
+            ).drafts;
+        assert.ok(
+            (await posted()).includes(d.doc_id),
+            'the draft is listed as posted in the group',
+        );
         await act(bea, beaRoot, `docs/${fresh}/retract`);
+        assert.ok(!(await posted()).includes(d.doc_id), 'taken down, the draft is a draft again');
     });
 
     it("pins: a member's, an owner's above it, and who may take each down", async () => {

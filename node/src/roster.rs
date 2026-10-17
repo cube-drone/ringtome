@@ -1797,6 +1797,22 @@ async fn list_handler(
             })
         })
         .collect();
+    // The drafts posted in each, so the composer's stack leaves them out as it does a draft posted
+    // in public, whose `published_as` says so. A takedown drops its row, and the draft comes back.
+    let posted: Vec<(Vec<u8>, Vec<u8>)> = state
+        .node_db
+        .fetch_all("SELECT group_id, source FROM group_drafts WHERE root = ?1", (root.as_str(),))
+        .await
+        .context("listing the drafts a persona posted in groups")
+        .map_err(AppError::Internal)?;
+    for row in &mut out {
+        let drafts: Vec<String> = posted
+            .iter()
+            .filter(|(g, _)| row["group"].as_str() == Some(hex::encode(g).as_str()))
+            .map(|(_, source)| hex::encode(source))
+            .collect();
+        row["drafts"] = serde_json::json!(drafts);
+    }
     // Each group's picture, off its fold (kept in RAM by its stamp).
     for row in &mut out {
         let Some(group) = row["group"].as_str().and_then(|g| group_of(g).ok()) else { continue };

@@ -22815,6 +22815,17 @@ parent and thread root, posted through the group's publish with a `reply_to`
   card. That block is now shared with the public post page. The group's links
   come already dressed from the reader's journal, so nothing is fetched from a
   public door.
+
+A draft posted in a group stayed in the feed's stack of drafts under the
+composer, because only a public post marks its draft (`published_as`). A group
+post's link to its draft lives in `group_drafts` instead. Now the groups list
+(`GET .../groups`) names each group's posted drafts (`drafts`), and the feed
+leaves those out of the stack, adding a draft the moment its group publish
+answers. A takedown deletes the row, so the draft comes back, as a public one
+does. That covers drafts posted before this change too, since the rows were
+already there. The claim "a post's own page is there the moment it's posted"
+checks both directions.
+
 - **The bell.** The group bell fold rings a post's author when a member replies
   (`group-comment`, one row per replier and post, stamped by the reply's first
   version). Alerts say "replied to your post in {group}".
