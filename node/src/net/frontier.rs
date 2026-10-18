@@ -56,6 +56,33 @@ pub struct Held {
 // ---------------------------------------------------------------------------------------------
 // The chain-heads memo: fed at write time, read here, reconciled by the sweep.
 
+/// Every chain head this node holds for one instance on these services, across every persona:
+/// `(persona, author, service, head seq, head hash)` - a group's lanes, for its digest
+/// (plans/NETWORK.md).
+pub async fn instance_heads(
+    node_db: &Db,
+    instance: &[u8; 16],
+    services: &[u32],
+) -> Result<Vec<(String, String, u32, u64, [u8; 32])>> {
+    let mut out = Vec::new();
+    for service in services {
+        let rows: Vec<(String, String, i64, Vec<u8>)> = node_db
+            .fetch_all(
+                "SELECT root_pubkey, author_pubkey, head_seq, head_hash FROM chain_heads
+                 WHERE instance = ?1 AND service = ?2",
+                (instance.to_vec(), i64::from(*service)),
+            )
+            .await
+            .context("reading an instance's chain heads")?;
+        for (root, author, head, hash) in rows {
+            if let Ok(hash) = <[u8; 32]>::try_from(hash.as_slice()) {
+                out.push((root, author, *service, head as u64, hash));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Record a chain's new tip, at the moment a writer stores the entry and holds the fact in
 /// hand. Monotonic on seq: an out-of-order arrival (a re-offered older entry the gate
 /// deduplicates) must not drag the memo backwards.

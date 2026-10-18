@@ -186,12 +186,38 @@ The cost per node per pass is about 3n exchanges, on connections already open to
 three machines, instead of about n². An idle group still costs 3n per minute,
 because an exchange carries one persona's lanes.
 
-### Later: a group digest
+### The group digest (built 2026-10-17)
 
-A partner could answer "here is the head of every lane of this group" in one
-message. Then a pass would exchange only the lanes that differ, and an idle
-group would cost three small messages a minute. That is a new message on the
-wire, so it waits for this to prove itself first.
+A partner answers "here is the head of every lane of this group" in one
+question, so a pass exchanges only for the lanes that differ. Curtis: "very
+similar to our existing frontier awareness". It is that idea one level up, and
+mostly reuse of `net/frontier.rs`:
+
+- **The heads are the `chain_heads` memo's**, which every writer and the sync
+  ingest already keep, read for the group's instance
+  (`frontier::instance_heads`).
+- **The question** is `WantGroupHeads { group, members, fingerprint }` on the
+  fragment lane. The asker's fingerprint is blake3 over the heads it holds,
+  sorted by chain, each `author ‖ service ‖ head ‖ the hash's first 8 bytes`
+  (`fragment::group_heads_fingerprint`).
+- **The answer** is `GroupHeads`: `same` when the fingerprints agree, else the
+  heads, a run of frames ended by an empty one.
+- **The door is the group's.** A dialer serving one of its people
+  (`dialer_may_hold`) is told about both kinds of lane when it asks. Anyone else
+  is told about a public group's public lanes alone, and nothing of a private
+  group.
+- **A head is a claim**, as a frontier claim is: it says where to look. The
+  exchange that follows validates.
+- **Both passes use it.** Members' gossip (`gossip_group`) and the public pass
+  of a node outside the group (`public_sync`) ask each partner first, and
+  exchange only for the personas whose lanes differ (`roster::differing`), plus
+  anyone the partner names that this node doesn't hold.
+- **Two cases still exchange in full:** a machine met for the first time, which
+  must learn the member proof, and a machine too old to answer.
+
+An idle pass is now one small question per partner. A new post costs exchanges
+for its author's lanes alone. `groupgossip.cjs` checks both (via
+`/test/group-pass`, which runs one pass and counts its exchanges).
 
 ## Slices
 

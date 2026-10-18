@@ -1949,6 +1949,117 @@ pub async fn gossip_partners(state: &AppState, group: &GroupId) -> (Vec<String>,
     (all, pick_partners(candidates, RELIABLE_PARTNERS, CHECK_INS))
 }
 
+// ---------------------------------------------------------------------------------------------
+// The group digest (plans/NETWORK.md): one question for the heads of every lane, so a pass
+// exchanges only for the lanes that differ - and nothing, when none do.
+
+/// The heads this node holds of a group's lanes: its public lanes, and its members-only ones too
+/// when `members`.
+pub async fn group_heads(
+    state: &AppState,
+    group: &GroupId,
+    members: bool,
+) -> Vec<ringtome_proto::fragment::GroupHead> {
+    let services: &[u32] =
+        if members { &[service::GROUP, service::GROUP_PUBLIC] } else { &[service::GROUP_PUBLIC] };
+    crate::net::frontier::instance_heads(&state.node_db, group, services)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(persona, author, service, head, hash)| {
+            Some(ringtome_proto::fragment::GroupHead {
+                persona: root_of(&persona)?,
+                author: crate::pubkey::decode(&author)?,
+                service,
+                head,
+                hash: hash[..8].try_into().ok()?,
+            })
+        })
+        .collect()
+}
+
+/// The fragment lane's answer to `WantGroupHeads`, through the group's door: a dialer serving one
+/// of its people is told about both kinds of lane when it asks for them; anyone else, about a
+/// public group's public lanes alone, and nothing of a private group. `same` when the asker's
+/// fingerprint is ours over what it may see.
+pub async fn answer_heads(
+    state: &AppState,
+    dialer: &str,
+    group: GroupId,
+    members: bool,
+    fingerprint: [u8; 32],
+) -> (bool, bool, Vec<ringtome_proto::fragment::GroupHead>) {
+    let Ok(Some((roster, _))) = folded(state, &group).await else { return (false, false, vec![]) };
+    let member_door = !dialer_may_hold(state, &[group], dialer, None).await.is_empty();
+    let granted = members && member_door;
+    if !granted && !roster.public {
+        return (false, false, Vec::new());
+    }
+    let heads = group_heads(state, &group, granted).await;
+    let same = granted == members
+        && ringtome_proto::fragment::group_heads_fingerprint(&heads) == fingerprint;
+    (same, granted, if same { Vec::new() } else { heads })
+}
+
+/// Who, of the personas these heads and ours name, holds a lane the two sides don't agree on:
+/// ahead, behind, or held on one side only. Their exchanges are the ones worth making.
+pub fn differing(
+    ours: &[ringtome_proto::fragment::GroupHead],
+    theirs: &[ringtome_proto::fragment::GroupHead],
+) -> BTreeSet<Root> {
+    let key = |h: &ringtome_proto::fragment::GroupHead| (h.author, h.service);
+    let mine: BTreeMap<_, _> = ours.iter().map(|h| (key(h), h)).collect();
+    let yours: BTreeMap<_, _> = theirs.iter().map(|h| (key(h), h)).collect();
+    let mut out = BTreeSet::new();
+    for (k, h) in &yours {
+        match mine.get(k) {
+            Some(m) if m.head == h.head && m.hash == h.hash => {}
+            _ => {
+                out.insert(h.persona);
+            }
+        }
+    }
+    for (k, m) in &mine {
+        if !yours.contains_key(k) {
+            out.insert(m.persona);
+        }
+    }
+    out
+}
+
+/// The personas a pass asks a partner about: everyone the lanes here name, and anyone the partner's
+/// digest names that they don't - a newcomer whose lane only the partner holds yet.
+fn with_news(names: &[String], worth: Option<&BTreeSet<String>>) -> Vec<String> {
+    let mut out = names.to_vec();
+    for w in worth.into_iter().flatten() {
+        if !out.contains(w) {
+            out.push(w.clone());
+        }
+    }
+    out
+}
+
+/// What a partner's digest says to exchange: `None` when it couldn't say (an older node, or no
+/// answer) - exchange for everyone, as before the digest - else the personas whose lanes differ,
+/// empty when everything agrees.
+async fn worth_exchanging(
+    state: &AppState,
+    group: &GroupId,
+    endpoint: &str,
+    members: bool,
+) -> Option<BTreeSet<String>> {
+    let ours = group_heads(state, group, members).await;
+    let fp = ringtome_proto::fragment::group_heads_fingerprint(&ours);
+    let (same, granted, theirs) =
+        crate::net::fragment::fetch_group_heads(state, endpoint, group, members, fp).await.ok()?;
+    if same {
+        return Some(BTreeSet::new());
+    }
+    // Told about fewer lanes than we hold: compare like with like.
+    let ours = if granted == members { ours } else { group_heads(state, group, granted).await };
+    Some(differing(&ours, &theirs).into_iter().map(hex::encode).collect())
+}
+
 /// Has this group been heard at `endpoint` before? A machine met for the first time is exchanged
 /// with twice for `me`, as [`sync_group`] says why.
 async fn heard_at(state: &AppState, group: &GroupId, endpoint: &str) -> bool {
@@ -1977,7 +2088,14 @@ pub async fn gossip_group(state: &AppState, me: &str, group: &GroupId) -> usize 
     let mut exchanged = 0;
     for ep in &partners {
         let first = !heard_at(state, group, ep).await;
-        for who in &names {
+        // The digest first (plans/NETWORK.md): only the personas whose lanes the two sides
+        // disagree on are worth an exchange - none, on a quiet pass. A machine met for the first
+        // time is exchanged with in full, `me` twice, so it learns this node speaks for `me`.
+        let worth = if first { None } else { worth_exchanging(state, group, ep, true).await };
+        for who in &with_news(&names, worth.as_ref()) {
+            if worth.as_ref().is_some_and(|w| !w.contains(who)) {
+                continue;
+            }
             let times = if first && who == me { 2 } else { 1 };
             for _ in 0..times {
                 if exchange(state, who, ep, group).await {
@@ -2079,19 +2197,49 @@ async fn public_pass(state: &AppState) -> Result<()> {
         if carry.is_empty() {
             continue; // nobody here wants it carried
         }
+        // Paced, outside the group: what it carries is a rebroadcast's kind of news, which nobody
+        // waits on by the minute - unless whom it's carried for changed since the last pass.
+        if !hosted_member && !public_pass_due(&group, &carry, state.config.local_test, now_ms()) {
+            continue;
+        }
         // A member here keeps the lanes by gossip; otherwise they come from the group's machines.
         if !hosted_member {
             public_sync(state, &group, &[]).await;
         }
-        // And the carry again, whether or not the lanes moved: a post asked of its author and not
-        // there yet is asked again now - a share's retry would journal it to the author's
-        // rebroadcast-followers, who aren't the ones it was carried for.
-        if let Some((roster, _)) = refold(state, &group).await? {
+        let Some((roster, _)) = refold(state, &group).await? else { continue };
+        // The derivation carried what moved. Again only while some post the group counts isn't
+        // here yet: asked of its author and not there, it's asked again now - a share's retry
+        // would journal it to the author's rebroadcast-followers, not the ones it was carried for.
+        let claims: Vec<(String, [u8; 16])> =
+            roster.public_posts.keys().map(|(a, d)| (hex::encode(a), *d)).collect();
+        if crate::idface::group_shelf(state, &claims).await.len() < claims.len() {
             recarry(state, &group, &roster, &carry_readers(state, &roster).await, next_noted())
                 .await?;
         }
     }
     Ok(())
+}
+
+/// How often a public group this node isn't in is brought up to date for the readers it carries
+/// for (plans/PUBLIC_GROUPS.md).
+const PUBLIC_EVERY_MS: i64 = 10 * 60 * 1000;
+
+/// Is a public group's pass due: its time come round, or whom it carries for changed since its last
+/// - so a new follower doesn't wait out the pace. Always on the test rig, where the beat decides.
+fn public_pass_due(group: &GroupId, carry: &Carry, local_test: bool, now: i64) -> bool {
+    type Last = std::collections::HashMap<GroupId, (i64, Carry)>;
+    static LAST: std::sync::LazyLock<std::sync::Mutex<Last>> =
+        std::sync::LazyLock::new(Default::default);
+    let Ok(mut last) = LAST.lock() else { return true };
+    let due = local_test
+        || match last.get(group) {
+            Some((at, readers)) => now - at >= PUBLIC_EVERY_MS || readers != carry,
+            None => true,
+        };
+    if due {
+        last.insert(*group, (now, carry.clone()));
+    }
+    due
 }
 
 /// Bring a public group's public lanes in, as a node outside it: one exchange per persona its
@@ -2127,7 +2275,12 @@ pub async fn public_sync(state: &AppState, group: &GroupId, seed: &[String]) -> 
     }
     let mut exchanged = 0;
     for ep in &partners {
-        for who in &names {
+        // The digest, over the public lanes: only what differs (plans/NETWORK.md).
+        let worth = worth_exchanging(state, group, ep, false).await;
+        for who in &with_news(&names, worth.as_ref()) {
+            if worth.as_ref().is_some_and(|w| !w.contains(who)) {
+                continue;
+            }
             if exchange(state, who, ep, group).await {
                 exchanged += 1;
             }
@@ -5148,6 +5301,48 @@ mod tests {
             1,
         );
         assert_eq!(picked, vec!["c", "a", "b"], "dark ones only to fill");
+    }
+
+    /// Outside a group, its pass comes round every ten minutes - at once when whom it carries for
+    /// changed, and every beat on the test rig.
+    #[test]
+    fn a_public_pass_is_paced_unless_its_readers_change() {
+        let group = [9u8; 16];
+        let carry: Carry = vec![("ada".into(), vec!["dee".into()])];
+        assert!(public_pass_due(&group, &carry, false, 1_000), "the first pass");
+        assert!(!public_pass_due(&group, &carry, false, 2_000), "not again a second later");
+        let more: Carry = vec![("ada".into(), vec!["dee".into(), "eve".into()])];
+        assert!(public_pass_due(&group, &more, false, 3_000), "a new reader doesn't wait");
+        assert!(!public_pass_due(&group, &more, false, 4_000));
+        assert!(public_pass_due(&group, &more, false, 3_000 + PUBLIC_EVERY_MS), "its time came");
+        assert!(public_pass_due(&[8u8; 16], &more, true, 1), "the rig's beat decides");
+        assert!(public_pass_due(&[8u8; 16], &more, true, 2));
+    }
+
+    /// The digest's comparison (plans/NETWORK.md): only the personas whose lanes the two sides
+    /// disagree on - ahead, behind, or held on one side alone.
+    #[test]
+    fn a_digest_names_only_the_lanes_that_differ() {
+        use ringtome_proto::fragment::GroupHead;
+        let head = |p: u8, a: u8, n: u64| GroupHead {
+            persona: [p; 32],
+            author: [a; 32],
+            service: service::GROUP_PUBLIC,
+            head: n,
+            hash: [n as u8; 8],
+        };
+        let ours = vec![head(1, 11, 5), head(2, 22, 7), head(3, 33, 2)];
+        assert!(differing(&ours, &ours).is_empty(), "the same: nothing to exchange");
+        let theirs = vec![head(1, 11, 6), head(2, 22, 7), head(4, 44, 1)];
+        assert_eq!(
+            differing(&ours, &theirs),
+            BTreeSet::from([[1u8; 32], [3u8; 32], [4u8; 32]]),
+            "ahead, ours alone, theirs alone"
+        );
+        assert_eq!(
+            with_news(&["a".into()], Some(&BTreeSet::from(["b".to_string(), "a".to_string()]))),
+            vec!["a".to_string(), "b".to_string()],
+        );
     }
 
     /// A small group asks everyone, in no particular order of merit.

@@ -23043,3 +23043,41 @@ note "a public group: anybody can see who's in it" left the page for a small box
 at the top-left corner of the group's triangle: a bullhorn for a public group, a
 keyhole for a private one (`GroupKind`, groupface.js), saying what that means in
 a person chip's pop-over on a point or a focus.
+
+## 2026-10-17 — The group digest, and a paced public pass
+
+A node outside a public group re-synced it every minute: one exchange per
+persona the lanes name, per machine asked, plus the carry re-run every time.
+That's about 150 a minute for a 50-member group, nearly all moving nothing.
+Curtis asked for both the cheap fixes and the digest, and noted it's "very
+similar to our existing frontier awareness". It is, one level up.
+
+- **The pace.** Outside the group, a group's pass comes round every ten minutes,
+  or at once when whom it carries for changes (`public_pass_due`, unit-tested).
+  The test rig's beat still decides there. The carry re-runs only while a
+  counted post isn't here yet; the derivation already re-runs it when lanes move
+  or readers change.
+- **The digest.** A new fragment question, `WantGroupHeads`, asks for the heads
+  of every lane of a group the asker may see. It answers `same` when the asker's
+  fingerprint matches, else the heads in frames. They come from the
+  `chain_heads` memo the frontier work already keeps
+  (`frontier::instance_heads`), through the group's door: public lanes alone for
+  a node outside the group. Members' gossip and the outside node's public sync
+  both ask first, and exchange only for the personas whose lanes differ
+  (`roster::differing`). A first meeting and an older node still exchange in
+  full.
+- **Tests.** Proto tests for the pair (round trip, frame cap, the fingerprint a
+  set's). Unit tests for the comparison and the pace. A claim in
+  `groupgossip.cjs`, through `/test/group-pass`: once every node agrees, a pass
+  exchanges nothing; after a post, only for its author, from each partner at
+  most. The gossip and public-group suites are green (12).
+
+**2026-10-18 — A front-page flake.** CI on "public group stylin" went red in
+`nodeface.cjs`, 0 of 5 reruns: a post was on the node's front page without its
+author's name ("with the byline the node holds"). The front page read the byline
+cache plainly, so a post whose author's row hadn't been written yet named
+nobody. It now reads it healed, as the thread and the bell do
+(`profiles::bylines_healed`): a missing row whose database this node holds is
+refreshed on the spot. A row written before the name arrived is still not
+healed; that would open a database for every nameless persona on every read. The
+public-face suite is green (7); the race wasn't reproduced.

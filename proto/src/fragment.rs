@@ -202,6 +202,24 @@ pub enum FragmentMessage {
     Census {
         sketches: Vec<(u32, Vec<u8>)>,
     },
+    /// A group's lane heads (plans/NETWORK.md, the group digest): the asker's fingerprint over
+    /// the heads it holds of the group's lanes - its public lanes, or both kinds when `members`
+    /// and it speaks for a member - so an answerer holding the same can say only that. The door
+    /// is the group's: a node outside it is answered about the public lanes alone.
+    WantGroupHeads {
+        group: [u8; 16],
+        members: bool,
+        fingerprint: [u8; 32],
+    },
+    /// The answer: `same` when the fingerprints agree, else the answerer's heads a frame's worth
+    /// at a time, the answer a run of frames ended by an empty one. `members` says which lanes
+    /// the heads cover - fewer than asked, if the door said so. A head is a claim: where to look,
+    /// never what is there; the exchange that follows validates.
+    GroupHeads {
+        same: bool,
+        members: bool,
+        heads: Vec<GroupHead>,
+    },
     /// The archive's history (CHAT.md, ruling 6): the room's messages said before
     /// `before_ms`, newest first, at most `limit` - asked of the creator's node, which keeps
     /// the room whole, by a reader whose own node keeps only the budget. `for_root` is the
@@ -235,6 +253,37 @@ pub const MAX_ROOM_PARTICIPANTS: usize = 1000;
 pub const MAX_ROOM_REACH: usize = 50;
 /// Cap on the endpoints named for one speaker: fifty speakers at four each fit a frame.
 pub const MAX_REACH_ENDPOINTS: usize = 4;
+
+/// One lane's head in a group digest: whose lane, which chain (its author key and service), how
+/// far it goes, and the first eight bytes of its head entry's hash - enough to tell two heads
+/// apart, not to prove one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GroupHead {
+    pub persona: [u8; 32],
+    pub author: [u8; 32],
+    pub service: u32,
+    pub head: u64,
+    pub hash: [u8; 8],
+}
+
+/// Heads in one `GroupHeads` frame, at most: about 90 bytes each, well under the frame cap.
+pub const MAX_GROUP_HEADS_PER_FRAME: usize = 120;
+
+/// The digest of a set of lane heads, the same on every node that holds the same: blake3 over
+/// them sorted by chain, each `author || service || head || hash`.
+pub fn group_heads_fingerprint(heads: &[GroupHead]) -> [u8; 32] {
+    let mut sorted: Vec<&GroupHead> = heads.iter().collect();
+    sorted.sort_by_key(|h| (h.author, h.service));
+    let mut h = blake3::Hasher::new();
+    h.update(b"ringtome-v0/group-heads");
+    for head in sorted {
+        h.update(&head.author);
+        h.update(&head.service.to_be_bytes());
+        h.update(&head.head.to_be_bytes());
+        h.update(&head.hash);
+    }
+    *h.finalize().as_bytes()
+}
 
 /// A census sketch's size: 1,024 one-byte registers, about 3% error.
 pub const CENSUS_REGISTERS: usize = 1024;
@@ -313,6 +362,8 @@ const TAG_WANT_ROOM_REACH: u64 = 16;
 const TAG_ROOM_REACH: u64 = 17;
 const TAG_WANT_CENSUS: u64 = 18;
 const TAG_CENSUS: u64 = 19;
+const TAG_WANT_GROUP_HEADS: u64 = 20;
+const TAG_GROUP_HEADS: u64 = 21;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -454,6 +505,28 @@ impl FragmentMessage {
                     w.array(2);
                     w.uint(u64::from(*day));
                     w.bytes(registers);
+                }
+            }
+            Self::WantGroupHeads { group, members, fingerprint } => {
+                w.array(4);
+                w.uint(TAG_WANT_GROUP_HEADS);
+                w.bytes(group);
+                w.uint(u64::from(*members));
+                w.bytes(fingerprint);
+            }
+            Self::GroupHeads { same, members, heads } => {
+                w.array(4);
+                w.uint(TAG_GROUP_HEADS);
+                w.uint(u64::from(*same));
+                w.uint(u64::from(*members));
+                w.array(heads.len() as u64);
+                for head in heads {
+                    w.array(5);
+                    w.bytes(&head.persona);
+                    w.bytes(&head.author);
+                    w.uint(u64::from(head.service));
+                    w.uint(head.head);
+                    w.bytes(&head.hash);
                 }
             }
             Self::RoomReach { speakers } => {
@@ -641,6 +714,36 @@ impl FragmentMessage {
                     speakers.push((root, endpoints));
                 }
                 Self::RoomReach { speakers }
+            }
+            (TAG_WANT_GROUP_HEADS, 4) => Self::WantGroupHeads {
+                group: r.bytes_fixed::<16>()?,
+                members: r.uint()? == 1,
+                fingerprint: r.bytes_fixed::<32>()?,
+            },
+            (TAG_GROUP_HEADS, 4) => {
+                let same = r.uint()? == 1;
+                let members = r.uint()? == 1;
+                let count = r.array()?;
+                if count > MAX_GROUP_HEADS_PER_FRAME as u64 {
+                    return Err(ProtoError::BadEntry("too many group heads in a frame"));
+                }
+                let mut heads = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    if r.array()? != 5 {
+                        return Err(ProtoError::BadEntry(
+                            "a group head is [persona, author, service, head, hash]",
+                        ));
+                    }
+                    heads.push(GroupHead {
+                        persona: r.bytes_fixed::<32>()?,
+                        author: r.bytes_fixed::<32>()?,
+                        service: u32::try_from(r.uint()?)
+                            .map_err(|_| ProtoError::BadEntry("service id out of range"))?,
+                        head: r.uint()?,
+                        hash: r.bytes_fixed::<8>()?,
+                    });
+                }
+                Self::GroupHeads { same, members, heads }
             }
             (tag @ (TAG_WANT_CENSUS | TAG_CENSUS), 2) => {
                 let count = r.array()?;
@@ -935,6 +1038,48 @@ mod tests {
         let short =
             FragmentMessage::Census { sketches: vec![(1, vec![0u8; CENSUS_REGISTERS - 1])] };
         assert!(FragmentMessage::decode(&short.encode()).is_err(), "not a sketch's size");
+    }
+
+    /// The group digest's pair (plans/NETWORK.md): round-trips, a full frame fits the cap, a frame
+    /// past it is refused, and the fingerprint is the set's, whatever order the heads come in.
+    #[test]
+    fn group_heads_round_trip_fit_a_frame_and_fingerprint_a_set() {
+        let head = |n: u8| GroupHead {
+            persona: [n; 32],
+            author: [n.wrapping_add(1); 32],
+            service: 15,
+            head: u64::from(n) * 1000,
+            hash: [n; 8],
+        };
+        let full = FragmentMessage::GroupHeads {
+            same: false,
+            members: true,
+            heads: (0..MAX_GROUP_HEADS_PER_FRAME as u8).map(head).collect(),
+        };
+        for message in [
+            FragmentMessage::WantGroupHeads {
+                group: [1; 16],
+                members: false,
+                fingerprint: [2; 32],
+            },
+            FragmentMessage::GroupHeads { same: true, members: false, heads: Vec::new() },
+            FragmentMessage::GroupHeads { same: false, members: false, heads: vec![head(3)] },
+            full.clone(),
+        ] {
+            assert_eq!(FragmentMessage::decode(&message.encode()).unwrap(), message);
+        }
+        assert!(full.encode().len() <= MAX_FRAGMENT_FRAME_BYTES, "a full frame fits");
+        let over = FragmentMessage::GroupHeads {
+            same: false,
+            members: true,
+            heads: (0..=MAX_GROUP_HEADS_PER_FRAME as u8).map(head).collect(),
+        };
+        assert!(FragmentMessage::decode(&over.encode()).is_err(), "past the frame's heads");
+        let (a, b) = (vec![head(1), head(2), head(3)], vec![head(3), head(1), head(2)]);
+        assert_eq!(group_heads_fingerprint(&a), group_heads_fingerprint(&b), "a set, not a list");
+        let mut moved = a.clone();
+        moved[0].head += 1;
+        assert_ne!(group_heads_fingerprint(&a), group_heads_fingerprint(&moved), "a head moved");
     }
 
     /// The reach pair (2026-09-29): round-trips, a full answer fits one frame, and a list past

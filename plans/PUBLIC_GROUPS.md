@@ -220,7 +220,10 @@ All five built 2026-10-17. Acceptance: `integration/test/publicgroups.cjs`
 
 - **Drawings and schedules.** Drawing's door takes no `as_group`, and a post as
   the group can't be scheduled yet.
-- **The cost of the public pass.** It runs the carry for every carried group on
-  every beat, one exchange per named persona per machine asked. A group digest
-  (plans/NETWORK.md) would make that one message.
+- ~~The cost of the public pass~~ (settled 2026-10-17). Outside the group it
+  runs a group's pass every ten minutes, at once when whom it carries for
+  changes, and every beat on the test rig (`public_pass_due`). It re-runs the
+  carry only while a counted post isn't here yet. The group digest
+  (plans/NETWORK.md) turns its exchanges into one question per partner when
+  nothing moved.
 - **The UI wants a look in a browser.**

@@ -162,7 +162,10 @@ pub async fn feed_items(
     roots.extend(rows.iter().filter_map(|r| r.via_root.clone()));
     roots.sort();
     roots.dedup();
-    let bylines = crate::profiles::bylines(&state.node_db, &roots).await.unwrap_or_default();
+    // Healed, as the thread and the bell read them: a post whose author's byline row hasn't been
+    // written yet - its fold raced the shelf's - names them anyway (the nodeface flake on "public
+    // group stylin", 2026-10-18, 0 of 5 reruns: "with the byline the node holds").
+    let bylines = crate::profiles::bylines_healed(state, &roots).await.unwrap_or_default();
     let pairs: Vec<(String, String)> =
         rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
     let labels =

@@ -78,8 +78,6 @@ are driving towards.
     "in public, as a group" in the picker, the groups on a persona's card.
   - **Drawings and schedules as the group**: Drawing's door takes no `as_group`,
     and a post as the group can't be scheduled.
-  - **The public pass's cost**: the carry runs for every carried group on every
-    beat, one exchange per named persona per machine asked.
 
 - From ONE_FEED (built 2026-10-16):
   - **`cascade.cjs`'s "a share held only by a sibling reaches the waking node"
@@ -130,11 +128,6 @@ are driving towards.
 - From 1b:
   - **A send-side door.** A node dialing for a group sends its lanes to whatever
     node it dialed, unchecked.
-  - **One exchange per group.** Gossip (plans/NETWORK.md) asks three machines a
-    pass, but still one exchange per persona per machine: 3n a minute for an
-    idle group. A group digest, every lane's head in one message, would make an
-    idle pass three small messages; it is new wire, so it waits on gossip
-    proving itself.
   - **The Network page wants a look in a browser**, hrseServer™ opened to
     everyone with it.
 

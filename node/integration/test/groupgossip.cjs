@@ -4,7 +4,9 @@
     both ways, so news spreads from node to node without anyone dialing everyone. Four members on
     four nodes. A post said at alpha reaches the other three by beats alone, and once a member is
     removed, the beat never asks their node again: the removal and what follows it reach the
-    others, and the removed member's machine at alpha goes unasked.
+    others, and the removed member's machine at alpha goes unasked. And the digest: once every
+    node agrees, a pass asks each partner for its lanes' heads and exchanges nothing; a new post
+    costs exchanges for its author alone.
 */
 const assert = require('node:assert');
 const dns = require('node:dns');
@@ -116,5 +118,29 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
                 (await has(HOST_B, bea, beaRoot, said)) && (await has(HOST_C, cal, calRoot, said));
         }
         assert.ok(reached, 'the members still hear');
+    });
+
+    it("a quiet pass exchanges nothing, and a new post only its author's lanes", async () => {
+        const pass = async () =>
+            (
+                await (
+                    await makeFetch(HOST)(`test/group-pass?group=${group}&root=${adaRoot}`, {
+                        method: 'POST',
+                    })
+                ).json()
+            ).exchanged;
+        // Every node in step: a few rounds, until a pass at alpha has nothing to say.
+        let quiet = null;
+        for (let i = 0; i < 6 && quiet !== 0; i++) {
+            for (const host of [HOST, HOST_B, HOST_C]) await beat(host, 'group-sync');
+            quiet = await pass();
+        }
+        assert.equal(quiet, 0, 'everyone agrees: no exchange at all');
+
+        const said = await post(bea, beaRoot, 'news by digest');
+        const busy = await pass();
+        assert.ok(busy >= 1, `bea's lanes moved, so alpha asks for them: ${busy}`);
+        assert.ok(busy <= 2, `and only them, from each partner at most: ${busy}`);
+        assert.ok(await has(HOST, ada, adaRoot, said), 'and it arrived');
     });
 });

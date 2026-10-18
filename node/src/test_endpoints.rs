@@ -872,3 +872,20 @@ pub async fn group_partners(
     let (candidates, picked) = crate::roster::gossip_partners(&state, &group).await;
     Ok(Json(serde_json::json!({ "candidates": candidates, "picked": picked })))
 }
+
+#[derive(serde::Deserialize)]
+pub struct GroupPassQuery {
+    group: String,
+    root: String,
+}
+
+/// POST `/test/group-pass?group=&root=` - one gossip pass for `root` in a group, answering how many
+/// exchanges it made (plans/NETWORK.md, the group digest): none, on a quiet pass.
+pub async fn group_pass(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<GroupPassQuery>,
+) -> Result<Json<Value>, AppError> {
+    let group = crate::roster::group_of(&q.group)?;
+    let exchanged = crate::roster::gossip_group(&state, &q.root, &group).await;
+    Ok(Json(serde_json::json!({ "exchanged": exchanged })))
+}

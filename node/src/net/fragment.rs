@@ -94,6 +94,29 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantCensus { sketches }) => {
             crate::census::answer(&state, sketches).await
         }
+        Some(FragmentMessage::WantGroupHeads { group, members, fingerprint }) => {
+            // The group digest (plans/NETWORK.md): its lane heads, through the group's door, a
+            // run of frames ended by an empty one - or `same`, in one.
+            let dialer =
+                crate::net::sync::endpoint_to_id(&hex::encode(conn.remote_id().as_bytes()));
+            let (same, granted, heads) =
+                crate::roster::answer_heads(&state, &dialer, group, members, fingerprint).await;
+            for chunk in heads.chunks(ringtome_proto::fragment::MAX_GROUP_HEADS_PER_FRAME) {
+                write_frame(
+                    &mut send,
+                    &FragmentMessage::GroupHeads { same, members: granted, heads: chunk.to_vec() },
+                )
+                .await?;
+            }
+            write_frame(
+                &mut send,
+                &FragmentMessage::GroupHeads { same, members: granted, heads: Vec::new() },
+            )
+            .await?;
+            send.finish().ok();
+            conn.closed().await;
+            return Ok(());
+        }
         Some(FragmentMessage::WantRoomReach { author, doc_id, for_root, key_proof }) => {
             crate::chat::answer_room_reach(&state, &conn, &author, &doc_id, &for_root, key_proof)
                 .await
@@ -270,6 +293,51 @@ pub async fn fetch_census(
         Some(FragmentMessage::Census { sketches }) => Ok(sketches),
         other => Err(anyhow!("unexpected answer to a census ask: {other:?}")),
     }
+}
+
+/// A group's lane heads, as the node at `endpoint_id` holds them (plans/NETWORK.md, the group
+/// digest): `(same, members, heads)`. An `Err` from a node that predates the question is the
+/// caller's cue to exchange for everyone, as before.
+pub async fn fetch_group_heads(
+    state: &AppState,
+    endpoint_id: &str,
+    group: &[u8; 16],
+    members: bool,
+    fingerprint: [u8; 32],
+) -> Result<(bool, bool, Vec<ringtome_proto::fragment::GroupHead>)> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id).await?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for a group's heads: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(
+        &mut send,
+        &FragmentMessage::WantGroupHeads { group: *group, members, fingerprint },
+    )
+    .await?;
+    send.finish().ok();
+    let mut heads = Vec::new();
+    // A group of thousands of lanes is a few dozen frames; past that, a node is sending nonsense.
+    for _ in 0..64 {
+        let frame = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv))
+            .await
+            .context("a group's heads timed out")??;
+        match frame {
+            Some(FragmentMessage::GroupHeads { same, members, heads: page }) => {
+                if page.is_empty() {
+                    conn.close(0u8.into(), b"done");
+                    return Ok((same, members, heads));
+                }
+                heads.extend(page);
+            }
+            other => {
+                conn.close(0u8.into(), b"done");
+                return Err(anyhow!("unexpected answer to a group's heads: {other:?}"));
+            }
+        }
+    }
+    conn.close(0u8.into(), b"done");
+    Err(anyhow!("a group's heads ran past every frame they could need"))
 }
 
 /// The room's recent speakers and where each is served (2026-09-29): `WantRoomReach`. An `Err`

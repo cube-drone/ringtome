@@ -1113,6 +1113,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route("/test/plug-in", axum::routing::post(test_endpoints::plug_in))
             .route("/test/attention", axum::routing::get(test_endpoints::attention))
             .route("/test/group-partners", axum::routing::get(test_endpoints::group_partners))
+            .route("/test/group-pass", axum::routing::post(test_endpoints::group_pass))
             .route("/test/backup-verify", axum::routing::post(test_endpoints::backup_verify))
             .route("/test/score-check", axum::routing::post(test_endpoints::score_check))
             .route("/test/shell", axum::routing::get(test_endpoints::shell_requests))
