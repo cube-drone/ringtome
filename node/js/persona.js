@@ -1507,11 +1507,21 @@ const DomainClaim = ({ root }) => {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root]);
-    const ask = async (path, init) => {
+    // `checked`: say what a check found when it found nothing new, or a press looks like no press.
+    const ask = async (path, init, checked) => {
         setBusy(true);
         setNote(null);
         try {
-            answered(await api(path, init));
+            const r = await api(path, init);
+            answered(r);
+            if (checked && r.domain && r.state !== 'verified')
+                setNote(
+                    t(
+                        'persona.domain-not-yet',
+                        'Checked just now: {name} has no record naming you yet. A new record can take a while to spread.',
+                        { name: r.record_name },
+                    ),
+                );
         } catch (e) {
             setNote(e.message || t('persona.that-domain-did-not-take', 'that domain did not take'));
         }
@@ -1522,7 +1532,7 @@ const DomainClaim = ({ root }) => {
             method: 'PUT',
             body: JSON.stringify({ domain: draft }),
         });
-    const check = () => ask(`/api/identity/${root}/domain/check`, { method: 'POST' });
+    const check = () => ask(`/api/identity/${root}/domain/check`, { method: 'POST' }, true);
     if (!held) return null;
     const same = (draft || '').trim().toLowerCase() === (held.domain || '');
     const copy = (text) => writeClipboard(text).catch(() => {});

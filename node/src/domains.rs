@@ -112,7 +112,7 @@ enum Said {
 }
 
 /// The TXT records the integration rig pretends DNS holds (`/test/dns-txt`): name -> values.
-/// Consulted instead of DNS under `RINGTOME_LOCAL_TEST`, so a suite never asks the real one.
+/// Consulted instead of DNS for a pretend domain ([`pretend`]), so a suite never asks the real one.
 static TEST_TXT: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>,
 > = std::sync::LazyLock::new(Default::default);
@@ -127,10 +127,17 @@ pub fn set_test_txt(name: &str, values: Vec<String>) {
     }
 }
 
+/// A domain the rig's records answer for: a `.test` one (a name DNS never holds, RFC 6761) under
+/// `RINGTOME_LOCAL_TEST`. Any other domain is asked about for real, even by a dev node
+/// (2026-10-18: a real record on a real domain, and a dev node's "check now" never looked).
+fn pretend(state: &AppState, domain: &str) -> bool {
+    state.config.local_test && domain.ends_with(".test")
+}
+
 /// Ask DNS for `_ringtome.<domain>`.
 async fn txt_says(state: &AppState, domain: &str, root: &[u8; 32]) -> Said {
     let name = record_name(domain);
-    if state.config.local_test {
+    if pretend(state, domain) {
         let held = TEST_TXT.lock().unwrap();
         let said = held.get(&name).is_some_and(|vs| vs.iter().any(|v| names(v, root)));
         return if said { Said::Yes } else { Said::No };
@@ -175,7 +182,7 @@ struct WellKnown {
 }
 
 /// The well-known files the integration rig pretends domains serve (`/test/well-known`):
-/// domain -> body. Consulted instead of the web under `RINGTOME_LOCAL_TEST`.
+/// domain -> body. Consulted instead of the web for a pretend domain ([`pretend`]).
 static TEST_WELL_KNOWN: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>,
 > = std::sync::LazyLock::new(Default::default);
@@ -202,7 +209,7 @@ fn well_known_of(body: &[u8], root: &[u8; 32]) -> WellKnown {
 
 /// Ask the domain's website for `/.well-known/ringtome`, through the unfurler's guarded fetch.
 async fn well_known_says(state: &AppState, domain: &str, root: &[u8; 32]) -> WellKnown {
-    if state.config.local_test {
+    if pretend(state, domain) {
         let held = TEST_WELL_KNOWN.lock().unwrap();
         return match held.get(domain) {
             Some(body) => well_known_of(body, root),

@@ -1833,6 +1833,7 @@ export default {
     'persona.domain-flatten': 'A domain with nothing before it, like example.com, needs a DNS provider that can flatten a CNAME.',
     'persona.checking': 'checking…',
     'persona.check-now': 'check now',
+    'persona.domain-not-yet': 'Checked just now: {name} has no record naming you yet. A new record can take a while to spread.',
     'persona.that-domain-did-not-take': 'that domain did not take',
     'persona.your-web-address': 'your web address',
     'persona.domain-hint': 'a domain of your own, like example.com',

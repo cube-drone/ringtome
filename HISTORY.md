@@ -23345,3 +23345,15 @@ The rig sends the Host header itself and pretends well-known files
 (`/test/well-known`). `test/domains.cjs` follows the canonical address to the
 domain and back again when Hugo returns. Not yet: nobody has looked at the
 domain in a browser, and the plan's slice 3 lists the rest.
+
+## 2026-10-18: a dev node checks a real domain for real
+
+Curtis put a real record at `_ringtome.gooble.email` and pressed "check now" on
+a dev node, and nothing happened. A node under `RINGTOME_LOCAL_TEST`, which is
+every dev node, never asked DNS or the domain's website. It read only the rig's
+pretend records, so every check said no. The pretend records now answer only for
+a `.test` domain, a name DNS never holds and the only kind the suites claim.
+Every other domain is looked up for real (`domains::pretend`).
+
+A check that finds nothing new now says so ("Checked just now: ... has no record
+naming you yet"); before, a press looked like no press.
