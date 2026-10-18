@@ -165,3 +165,44 @@ describe('caching: an answer says who may keep it', function () {
         assert.equal(login.headers.get('cache-control'), 'private, no-store');
     });
 });
+
+/*
+    Outside /api/ too, every answer says how it may be kept (Curtis, 2026-10-18: the app's shell and
+    /health said nothing, and BunnyCDN kept both thirty days - a release reached nobody whose shell
+    named the old bundle, and a monitor asking through the CDN heard yesterday). The rig is a dev
+    node, so its bundles are asked about each time; a prod node keeps the running version's for
+    good (ui.rs `bundle_cache`).
+*/
+describe('caching: a page or a file says how it may be kept', function () {
+    this.timeout(60000);
+
+    const anon = makeFetch();
+    const cacheOf = async (path, opts) => {
+        const r = await anon(path, opts);
+        assert.ok(r.status < 400, `${path}: ${r.status}`);
+        return r.headers.get('cache-control') || '';
+    };
+
+    it("the app's shell is a CDN's for five minutes, a browser's to ask about", async () => {
+        for (const path of ['', 'home', 'home/notes', 'in/anything', 'ringtome']) {
+            assert.equal(await cacheOf(path), 'public, max-age=0, s-maxage=300', `/${path}`);
+        }
+    });
+
+    it('health is kept by nobody', async () => {
+        assert.equal(await cacheOf('health'), 'no-store');
+    });
+
+    it('a dev node asks about its bundles each time; fonts are kept a day', async () => {
+        const { version } = await (await anon('health')).json();
+        assert.equal(await cacheOf(`static/${version}/app.js`), 'no-cache');
+        assert.equal(await cacheOf(`static/${version}/app.css`), 'no-cache');
+        assert.equal(await cacheOf('fonts/lexend.woff2'), 'public, max-age=86400');
+    });
+
+    it('an answer that names no rule is asked about each time', async () => {
+        // The legacy /id/ redirect says nothing of its own.
+        const cc = await cacheOf(`id/${'ab'.repeat(32)}`, { redirect: 'manual' });
+        assert.equal(cc, 'no-cache');
+    });
+});

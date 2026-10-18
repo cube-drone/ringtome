@@ -78,10 +78,12 @@ pub fn for_anyone(body: Json<serde_json::Value>) -> Response {
 /// kept a persona's shelf - which said nothing - for thirty days, under one cache key for every
 /// filter and every page, so "load more" brought the first page back). An `/api/` answer that
 /// names no rule is `private, no-cache`: a CDN keys on the URL, not the cookie, so one reader's
-/// answer must never reach another's unless it says so (`for_anyone`). And an answer that sets a
-/// cookie - a login, a sliding session's renewal (`auth::renew_cookie`), on a page or anywhere -
-/// is stored nowhere, whatever it claimed: a shared cache holding it would hand that session to
-/// strangers.
+/// answer must never reach another's unless it says so (`for_anyone`). Any other answer that names
+/// no rule is `no-cache` (2026-10-18: the app's shell said nothing, and Bunny kept it thirty days):
+/// a CDN fills a silence with its own default, so no silence is left to it - an answer worth
+/// keeping says so itself. And an answer that sets a cookie - a login, a sliding session's renewal
+/// (`auth::renew_cookie`), on a page or anywhere - is stored nowhere, whatever it claimed: a
+/// shared cache holding it would hand that session to strangers.
 pub async fn label_caching(req: axum::extract::Request, next: axum::middleware::Next) -> Response {
     let api = req.uri().path().starts_with("/api/");
     let mut response = next.run(req).await;
@@ -89,9 +91,9 @@ pub async fn label_caching(req: axum::extract::Request, next: axum::middleware::
     if headers.contains_key(header::SET_COOKIE) {
         headers
             .insert(header::CACHE_CONTROL, header::HeaderValue::from_static("private, no-store"));
-    } else if api && !headers.contains_key(header::CACHE_CONTROL) {
-        headers
-            .insert(header::CACHE_CONTROL, header::HeaderValue::from_static("private, no-cache"));
+    } else if !headers.contains_key(header::CACHE_CONTROL) {
+        let unsaid = if api { "private, no-cache" } else { "no-cache" };
+        headers.insert(header::CACHE_CONTROL, header::HeaderValue::from_static(unsaid));
     }
     response
 }

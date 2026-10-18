@@ -253,11 +253,16 @@ struct Health {
 
 /// Liveness check. Verifies the node database is actually reachable, not just that HTTP responds -
 /// a node whose database is wedged is not healthy.
-async fn health(State(state): State<AppState>) -> Result<Json<Health>, AppError> {
+async fn health(State(state): State<AppState>) -> Result<impl axum::response::IntoResponse, AppError> {
     // fetch, not execute: turso's execute refuses statements that return rows.
     state.node_db.fetch_one::<(i64,)>("SELECT 1", ()).await.map_err(AppError::Internal)?;
 
-    Ok(Json(Health { status: "ok", version: state.config.app_version.clone() }))
+    // Kept by nobody (2026-10-18: BunnyCDN kept it thirty days): an answer about now, which a
+    // monitor asking through a CDN must get from the node, not from yesterday.
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(Health { status: "ok", version: state.config.app_version.clone() }),
+    ))
 }
 
 async fn get_config(State(state): State<AppState>) -> Result<Json<PublicConfig>, AppError> {

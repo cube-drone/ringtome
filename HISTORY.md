@@ -23221,3 +23221,32 @@ members', and an owner's pin is an owner's to take down.
 New claim in `publicgroups.cjs`: an owner's pin tops the open feed for a
 stranger, and an unpin takes it off. Public groups (12), group posts (19) and
 proto (180) are green.
+
+## 2026-10-18 — Pages and files say how they may be kept
+
+87bd7bd made every `/api/` answer say who may keep it. Everything outside it
+that said nothing still got BunnyCDN's thirty days, at the edge and in the
+browser. That included the app's shell: `/` was a `HIT` cached a day before.
+After a release, a reader whose shell still named the old
+`/static/<version>/app.js` ran the old app until it expired or someone purged.
+And `/health` was cached thirty days, so a monitor asking through the CDN heard
+yesterday's answer.
+
+- **The shell** (`/`, `/home…`, `/in/…`, `/ringtome…`; `ui::homepage`) is kept
+  as `/feed` is, `crawl::public_cache`: five minutes at the edge, and a browser
+  asks each time.
+- **The bundles** are `public, max-age=31536000, immutable` when their URL names
+  the running version, since every release bumps it (`ui::bundle_cache`). An
+  older version's URL is answered with today's bundle, which isn't what it
+  names, so it's `no-cache`, as is anything from a dev node, which rereads the
+  bundle from disk.
+- **Fonts** are kept a day, as the icons are. **`/health`** is `no-store`.
+- **The net** (`crawl::label_caching`): a non-API answer that names no rule is
+  now `no-cache`, so no silence is left to a CDN's default. That covers the
+  legacy `/id/` redirects, epubs and the OAuth metadata, which could each say
+  something better when they matter.
+
+New `caching.cjs` claims: the shell's five minutes, `/health`, a dev node's
+bundles and fonts, and the net, on a legacy redirect. A Rust test covers the
+version rule. Caching (10) and the node's unit tests are green. Deploying this
+doesn't evict what Bunny already holds: purge the pull zone after the release.

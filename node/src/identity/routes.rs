@@ -4348,7 +4348,8 @@ pub(crate) struct DrawingDraft {
 
 /// Check that `doc_id` is a drawing and read what its publish needs. The date is resolved as
 /// Writer's publish resolves it (PUBLISH.md): a claim in the past dates the post; a future one is
-/// a schedule, which drawings do not have.
+/// a schedule, which drawings do not have. Not for want of a painter (drawing_paint.rs could make
+/// the picture on the day): Curtis kept the refusal (2026-10-18) when asked.
 pub(crate) async fn drawing_draft(
     session: &Session,
     data: &store::Store,

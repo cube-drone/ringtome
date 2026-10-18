@@ -224,9 +224,10 @@ reach the node over plain HTTP. Then:
 - turn on its WebSocket support, if it's a switch;
 - have it **respect the node's `Cache-Control`**, and nothing more. Every answer
   says who may keep it: what is the same for everyone (a stranger's view of a
-  shelf, the front page, published pages, media) says `public` with an
-  `s-maxage`; what was answered for a signed-in reader says `private`; an answer
-  that sets a cookie says `no-store`. Don't vary on cookies, and don't override
+  shelf, the front page, published pages, media, the app's own files) says
+  `public` with an `s-maxage`; what was answered for a signed-in reader says
+  `private`; an answer that sets a cookie says `no-store`; `/health` says
+  `no-store`, and anything else says `no-cache`. Don't vary on cookies, and don't override
   the node's lifetimes;
 - **put the whole query string in the cache key** (BunnyCDN: Vary Cache → URL
   Query String, with no list of parameters). Filters and "load more" pages are

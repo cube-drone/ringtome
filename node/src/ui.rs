@@ -180,9 +180,15 @@ pub(crate) const EMBEDDED_FONTS: &[(&str, &[u8])] = &[
 
 // ---- handlers ----
 
-/// Render the SPA shell, replacing `$VERSION$` with the running app version.
-pub async fn homepage(State(state): State<AppState>) -> Html<String> {
-    Html(app_page(&state, "<title>Horse Drawing Tycoon 2</title>"))
+/// Render the SPA shell, replacing `$VERSION$` with the running app version. The same for every
+/// reader, so kept as `/feed` is (`crawl::public_cache`): a CDN five minutes, a browser asking each
+/// time (2026-10-18: it said nothing, so BunnyCDN kept it - and told browsers to keep it - thirty
+/// days, and a release reached nobody whose shell still named the old bundle).
+pub async fn homepage(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        [(axum::http::header::CACHE_CONTROL, crate::crawl::public_cache(None))],
+        Html(app_page(&state, "<title>Horse Drawing Tycoon 2</title>")),
+    )
 }
 
 /// The app's page with a head of the caller's choosing (PROJECT_PLAN's The node's public face, ruling 8): the title
@@ -273,7 +279,10 @@ pub async fn app_js(
     Path(version): Path<String>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_version(&version, &state.config.app_version)?;
+    let cache = bundle_cache(
+        check_version(&version, &state.config.app_version)?,
+        state.config.is_dev(),
+    );
 
     if state.config.is_dev() {
         tracing::info!("dev mode: reloading JS from disk");
@@ -284,9 +293,21 @@ pub async fn app_js(
                 e
             ))
         })?;
-        Ok(([(axum::http::header::CONTENT_TYPE, "application/javascript")], contents))
+        Ok((
+            [
+                (axum::http::header::CONTENT_TYPE, "application/javascript"),
+                (axum::http::header::CACHE_CONTROL, cache),
+            ],
+            contents,
+        ))
     } else {
-        Ok(([(axum::http::header::CONTENT_TYPE, "application/javascript")], JS.to_string()))
+        Ok((
+            [
+                (axum::http::header::CONTENT_TYPE, "application/javascript"),
+                (axum::http::header::CACHE_CONTROL, cache),
+            ],
+            JS.to_string(),
+        ))
     }
 }
 
@@ -351,7 +372,10 @@ pub async fn app_css(
     Path(version): Path<String>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
-    check_version(&version, &state.config.app_version)?;
+    let cache = bundle_cache(
+        check_version(&version, &state.config.app_version)?,
+        state.config.is_dev(),
+    );
 
     if state.config.is_dev() {
         tracing::info!("dev mode: reloading CSS from disk");
@@ -362,9 +386,28 @@ pub async fn app_css(
                 e
             ))
         })?;
-        Ok(([(axum::http::header::CONTENT_TYPE, "text/css")], contents))
+        Ok((
+            [(axum::http::header::CONTENT_TYPE, "text/css"), (axum::http::header::CACHE_CONTROL, cache)],
+            contents,
+        ))
     } else {
-        Ok(([(axum::http::header::CONTENT_TYPE, "text/css")], CSS.to_string()))
+        Ok((
+            [(axum::http::header::CONTENT_TYPE, "text/css"), (axum::http::header::CACHE_CONTROL, cache)],
+            CSS.to_string(),
+        ))
+    }
+}
+
+/// How a bundle may be kept (2026-10-18: they said nothing, so BunnyCDN kept them its default
+/// thirty days). Its URL names a version and every release bumps it, so the running version's
+/// address is that build's alone: anyone may keep it for good. An older version's URL is answered
+/// with what runs now, which is not what it names, and a dev node rereads the bundle from disk at
+/// every request: those are asked about each time.
+fn bundle_cache(current: bool, dev: bool) -> &'static str {
+    if current && !dev {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
     }
 }
 
@@ -393,7 +436,7 @@ pub async fn font(
                 error = e
             ))
         })?;
-        Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2")], bytes))
+        Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2"), (axum::http::header::CACHE_CONTROL, FONT_CACHE)], bytes))
     } else {
         let bytes = EMBEDDED_FONTS
             .iter()
@@ -406,14 +449,22 @@ pub async fn font(
                     filename = filename
                 ))
             })?;
-        Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2")], bytes.to_vec()))
+        Ok((
+            [(axum::http::header::CONTENT_TYPE, "font/woff2"), (axum::http::header::CACHE_CONTROL, FONT_CACHE)],
+            bytes.to_vec(),
+        ))
     }
 }
+
+/// A font's address names no version - the face changes when the fonts package does, about never -
+/// so it is kept a day, as the icons are.
+const FONT_CACHE: &str = "public, max-age=86400";
 
 /// Reject requests for versions newer than the running binary. Older-or-equal is fine: a CDN
 /// might still be serving a stale HTML shell that references the old version, and that's
 /// harmless. A *future* version, though, could let a malicious request poison the cache.
-fn check_version(requested: &str, current: &str) -> Result<(), AppError> {
+/// Answers whether it names the running version itself (`bundle_cache`).
+fn check_version(requested: &str, current: &str) -> Result<bool, AppError> {
     let req = semver::semver_to_comparable_integer(requested).map_err(|_| {
         AppError::BadRequest(crate::msg!(
             "ui.invalid-version-requested",
@@ -431,7 +482,7 @@ fn check_version(requested: &str, current: &str) -> Result<(), AppError> {
             current = current
         )));
     }
-    Ok(())
+    Ok(req == cur)
 }
 
 #[cfg(test)]
@@ -453,6 +504,16 @@ mod tests {
         );
         assert_eq!(branch_from_head("ref: "), None);
         assert_eq!(branch_from_head("not a head"), None);
+    }
+
+    #[test]
+    fn only_the_running_versions_bundle_is_kept_for_good() {
+        assert!(check_version("0.4.6", "0.4.6").unwrap(), "the running version names itself");
+        assert!(!check_version("0.4.5", "0.4.6").unwrap(), "an older one is served, not named");
+        assert!(check_version("0.4.7", "0.4.6").is_err(), "a newer one is refused");
+        assert_eq!(bundle_cache(true, false), "public, max-age=31536000, immutable");
+        assert_eq!(bundle_cache(false, false), "no-cache", "an old URL holds today's bundle");
+        assert_eq!(bundle_cache(true, true), "no-cache", "dev rereads the bundle from disk");
     }
 
     #[test]
