@@ -103,12 +103,11 @@ export const GroupsTab = ({ current, searchQuery = '' }) => {
     const loc = useLocation();
     const [rows, error, reload] = useAnswer(root ? `/api/identity/${root}/groups` : null);
     const [name, setName] = useState('');
-    // Public or private, chosen now and for good (plans/PUBLIC_GROUPS.md, ruling 1).
-    const [isPublic, setPublic] = useState(false);
     const [founding, setFounding] = useState(false);
     const [foundError, setFoundError] = useState(null);
-    const found = async (e) => {
-        e.preventDefault();
+    // Public or private, chosen now and for good (plans/PUBLIC_GROUPS.md, ruling 1): which button
+    // founds it.
+    const found = async (isPublic) => {
         if (!name.trim()) return;
         setFounding(true);
         setFoundError(null);
@@ -118,7 +117,6 @@ export const GroupsTab = ({ current, searchQuery = '' }) => {
                 public: isPublic,
             });
             setName('');
-            setPublic(false);
             reload();
             loc.route(groupHref(made.group));
         } catch (err) {
@@ -133,29 +131,47 @@ export const GroupsTab = ({ current, searchQuery = '' }) => {
     const all = groupsInOrder(rows || []);
     const list = words ? all.filter((g) => (g.name || '').toLowerCase().includes(words)) : all;
     return html`<div class="groups">
-        <form class="groups-found" onSubmit=${found}>
-            <input
-                class="groups-found-name jag-field"
-                value=${name}
-                maxlength="100"
-                placeholder=${t('apps.groups.a-new-groups-name', "a new group's name")}
-                onInput=${(e) => setName(e.currentTarget.value)}
-            />
-            <button class="groups-found-go jag-line" disabled=${founding || !name.trim()}>
-                <${Icons.plus} /> ${t('apps.groups.found-a-group', 'found a group')}
-            </button>
-            <label class="groups-found-public">
-                <input type="checkbox" checked=${isPublic} onChange=${(e) => setPublic(e.currentTarget.checked)} />
-                ${t('apps.groups.public-group', 'public')}
-            </label>
-        </form>
         ${
-            isPublic &&
-            html`<p class="null-sub">
-                ${t('apps.groups.public-explained', "A public group's members are listed for anyone to see, and its members can post in public as the group - those posts reach their followers. Its other posts stay members-only. It can't be made private later.")}
-            </p>`
+            /* Founding folds into a box of its own, as a group's members do (Curtis, 2026-10-18),
+            the name above a button for each kind in place of a checkbox, each saying what its kind
+            means. */ ''
         }
-        ${foundError && html`<p class="groups-error">${foundError}</p>`}
+        <details class="contact-ledger group-members-box groups-found-box">
+            <summary class="ledger-head">
+                <span class="group-members-title">${t('apps.groups.new-group', 'new group')}</span>
+            </summary>
+            <form class="groups-found" onSubmit=${(e) => e.preventDefault()}>
+                <input
+                    class="groups-found-name jag-field"
+                    value=${name}
+                    maxlength="100"
+                    placeholder=${t('apps.groups.a-new-groups-name', "a new group's name")}
+                    onInput=${(e) => setName(e.currentTarget.value)}
+                />
+                <span class="groups-found-kinds">
+                    <button
+                        type="button"
+                        class="groups-found-go jag-line"
+                        disabled=${founding || !name.trim()}
+                        title=${t('publicgroup.a-public-group', "a public group: anybody can see who's in it")}
+                        onClick=${() => found(true)}
+                    >
+                        <${Icons.groupPublic} /> ${t('apps.groups.found-a-public-group', 'found a new public group')}
+                    </button>
+                    <button
+                        type="button"
+                        class="groups-found-go jag-line"
+                        disabled=${founding || !name.trim()}
+                        title=${t('publicgroup.a-private-group', "a private group: only its members can see who's in it")}
+                        onClick=${() => found(false)}
+                    >
+                        <${Icons.groupPrivate} /> ${t('apps.groups.found-a-private-group', 'found a new private group')}
+                    </button>
+                </span>
+            </form>
+            ${foundError && html`<p class="groups-error">${foundError}</p>`}
+        </details>
+
         ${error && html`<p class="groups-error">${error.message}</p>`}
         ${
             rows &&

@@ -10,9 +10,23 @@
     gap: 0.9rem;
 }
 
+/* The name stands atop the founding buttons. */
 .groups-found {
     display: flex;
+    flex-direction: column;
     gap: 0.5rem;
+}
+
+/* The two founding buttons, one per kind, side by side, wrapping on a narrow screen. */
+.groups-found-kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* The founding box heads the Groups tab, so it drops the ledger's gap above. */
+.groups-found-box {
+    margin-top: 0;
 }
 
 .groups-found-name,
@@ -410,16 +424,6 @@
     align-items: center;
     gap: 0.35rem;
     font-weight: 600;
-}
-
-/* Public groups (plans/PUBLIC_GROUPS.md): the founding's choice, the note that says so, and the
-   open page's members, follow and public posts. */
-.groups-found-public {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: var(--muted);
-    font-size: 0.9rem;
 }
 
 /* The group's kind at its triangle's top-left corner (2026-10-17): a bullhorn or a keyhole in a

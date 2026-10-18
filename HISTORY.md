@@ -23555,3 +23555,17 @@ its "further back") stay the surfaces' own: they differ on purpose.
 Checked by the jsdom probe on a scratch node, which now also drives the feed's
 and a person's page's search: finds marked on all four, and each surface's own
 words for a search that finds nothing.
+
+## 2026-10-18: founding a group, in a box
+
+Curtis: "let's put this all in a box, 'new group', that expands to show the full
+group creation UI (like the box we use for group members) ... replace the 'found
+a group' plus check box with two buttons."
+
+The Groups tab's founding form is now a folded "new group" box, drawn as a
+group's members box is. Open, it holds the name and, under it, two buttons:
+"found a new public group" and "found a new private group". Each button's
+tooltip is its kind's words from the group page's badge ("a public group:
+anybody can see who's in it" / "...only its members can see who's in it").
+Checked by a jsdom probe on a scratch node: the box folded, both buttons titled,
+and one group of each kind founded and routed to.
