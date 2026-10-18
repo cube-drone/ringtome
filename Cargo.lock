@@ -5834,7 +5834,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.4.6"
+version = "0.5.0"
 dependencies = [
  "ab_glyph",
  "aes-gcm",
@@ -5909,7 +5909,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.4.6"
+version = "0.5.0"
 dependencies = [
  "blake3",
  "ed25519-dalek 2.2.0",
@@ -5922,7 +5922,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-supervisor"
-version = "0.4.6"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
