@@ -57,6 +57,13 @@ struct Plan {
     /// Empty on a fresh ask: the rollout route writes a new plan.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     changed_pages: Vec<(String, String)>,
+    /// Where the book goes, at its first rollout (plans/GROUPS.md, books in groups): one of the
+    /// author's groups, for its members alone, or - `as_group` - in public as a public group.
+    /// Later rollouts follow the notebook's own word (`BookFacts::group`, `as_group`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    as_group: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
@@ -78,6 +85,13 @@ struct BookFacts {
     /// current: none of those is a page's words, and the ledger only sees words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     front: Option<serde_json::Value>,
+    /// The group the book was rolled out into, for its members alone: its pages and the book are
+    /// the group's documents, never public. Fixed at the first rollout, as the book's id is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
+    /// The public group the public book is the group's in (plans/PUBLIC_GROUPS.md).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    as_group: Option<String>,
 }
 
 /// The periodic pass: every agented persona, every plan that is pending or mid-flight.
@@ -286,6 +300,22 @@ async fn rollout(
         }
     };
     plan.book = Some(hex::encode(book_id));
+    // Where it goes: what the notebook said at its first rollout, or what this one asks for the
+    // first time. A published book stays where it went - moving it is taking it down first.
+    if !facts.published && (facts.group != plan.group || facts.as_group != plan.as_group) {
+        facts.group = plan.group.clone();
+        facts.as_group = plan.as_group.clone();
+        data.private_registers(BOOKS_KV)
+            .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
+            .await?;
+    }
+    let group: Option<crate::roster::GroupIdOf> = match facts.group.as_deref() {
+        Some(g) => Some(crate::roster::group_of(g).map_err(|e| anyhow!("{e:?}"))?),
+        None => None,
+    };
+    if group.is_some() && plan.trusted_only {
+        return Err(anyhow!("a book in a group is for its members: it isn't sealed too"));
+    }
     let book_key: Option<[u8; 32]> = if plan.trusted_only {
         match facts
             .key
@@ -313,7 +343,12 @@ async fn rollout(
 
     // What the book said last time (slice 3): the pages it named, so removed and newly hidden
     // ones can be retracted and the update can name them; none before the first rollout.
-    let previous = previous_payload(state, data, &book_id, book_key).await?;
+    let previous = match &group {
+        Some(g) => crate::roster::group_doc_body(state, g, &book_id)
+            .await
+            .and_then(|words| serde_json::from_str::<serde_json::Value>(&words).ok()),
+        None => previous_payload(state, data, &book_id, book_key).await?,
+    };
     let previous_pages: BTreeMap<String, String> = previous
         .as_ref()
         .map(|p| {
@@ -338,6 +373,37 @@ async fn rollout(
             .unwrap_or_default();
         let already =
             data.annotations().field(doc_id, PUBLISHED_VERSION).await?.unwrap_or_default();
+        // Into the group (books in groups): each page the group's document, part of the book,
+        // through the group's own door - its pictures the group's media - and skipped as the
+        // public road skips it, when what it published is still the head.
+        if let Some(g) = &group {
+            if let Some(post) = crate::roster::group_post_of(state, root, doc_id, g).await {
+                if already == head_hex {
+                    done += 1;
+                    published.insert(*doc_id, hex::encode(post));
+                    continue;
+                }
+            }
+            let wishes = crate::roster::Wishes {
+                dated_ms: claimed_date(data, doc_id, plan.tz_offset_min).await?,
+                settled: plan.settled,
+                room: false,
+                reply_to: None,
+                part_of: Some(book_id),
+            };
+            let post = crate::roster::publish(state, data, root, g, doc_id, wishes)
+                .await
+                .map_err(|e| anyhow!("a page couldn't go into the group: {e:?}"))?;
+            data.annotations().set_field(doc_id, PUBLISHED_VERSION, &head_hex).await?;
+            let post_hex = hex::encode(post);
+            published.insert(*doc_id, post_hex.clone());
+            if !changed.iter().any(|(p, _)| *p == post_hex) {
+                changed.push((post_hex, titles.get(doc_id).cloned().unwrap_or_default()));
+            }
+            done += 1;
+            plan.done = done;
+            continue;
+        }
         let post_hex =
             data.annotations().field(doc_id, store::PUBLISHED_AS).await?.unwrap_or_default();
         // Unchanged words skip - unless a picture the page names has been retracted since, which
@@ -418,6 +484,13 @@ async fn rollout(
         else {
             continue;
         };
+        if let Some(g) = &group {
+            crate::roster::retract_doc(state, data, root, g, &post_id)
+                .await
+                .map_err(|e| anyhow!("a page couldn't leave the group: {e:?}"))?;
+            removed.push(title.clone());
+            continue;
+        }
         if crate::record::documents::public_head(data.db(), &post_id).await?.is_none() {
             continue; // already gone
         }
@@ -502,6 +575,33 @@ async fn rollout(
         Some(page) => claimed_date(data, &page, plan.tz_offset_min).await?,
         None => None,
     };
+    // Into the group: the book the group's document too, its payload naming the group's pages.
+    if let Some(g) = &group {
+        let wishes = crate::roster::Wishes {
+            dated_ms: book_date,
+            settled: plan.settled,
+            room: false,
+            reply_to: None,
+            part_of: None,
+        };
+        crate::roster::publish_book_doc(state, data, root, g, book_id, &book_title, &body, wishes)
+            .await
+            .map_err(|e| anyhow!("the book couldn't go into the group: {e:?}"))?;
+        if !facts.published {
+            facts.published = true;
+            data.private_registers(BOOKS_KV)
+                .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
+                .await?;
+        }
+        plan.changed = changed.len();
+        plan.removed = removed.len();
+        drop(held);
+        let generation = crate::fold::nudge(state, root);
+        crate::fold::drain(root, generation).await;
+        plan.status = "done".into();
+        tracing::info!(root = %root, bucket = %bucket, pages = done, "book rolled out into a group");
+        return Ok(());
+    }
     let parents = crate::record::documents::public_head(data.db(), &book_id)
         .await?
         .map(|h| vec![h.head])
@@ -539,6 +639,14 @@ async fn rollout(
     // as its bucket - restated the way a post's own draft labels are.
     if let Err(e) = restate_book_labels(data, root, &minted, bucket, cover_doc, book_key).await {
         tracing::warn!(error = ?e, "the book's labels could not be restated; the book stands");
+    }
+    // In public as a public group (plans/PUBLIC_GROUPS.md): the book post is the group's, and its
+    // pages with it.
+    if let Some(g) = facts.as_group.as_deref() {
+        let g = crate::roster::group_of(g).map_err(|e| anyhow!("{e:?}"))?;
+        crate::roster::claim_public(state, data, root, g, minted)
+            .await
+            .map_err(|e| anyhow!("the book couldn't be the group's: {e:?}"))?;
     }
     let front = match cover_doc {
         Some(page) => Some(front_matter(data, &page).await?),
@@ -948,6 +1056,39 @@ pub async fn take_down(
         .and_then(|h| hex::decode(h).ok())
         .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok());
     let mut took = Takedown::default();
+    // A book in a group goes as any of its documents does, its pages with it.
+    if let Some(g) = facts.group.as_deref() {
+        let g = crate::roster::group_of(g).map_err(|e| anyhow!("{e:?}"))?;
+        if let Some(previous) = crate::roster::group_doc_body(state, &g, &book_id)
+            .await
+            .and_then(|w| serde_json::from_str::<serde_json::Value>(&w).ok())
+        {
+            let mut named = BTreeMap::new();
+            collect_pages(&previous, &mut named);
+            took.pages = named.len();
+        }
+        crate::roster::retract_doc(state, data, root, &g, &book_id)
+            .await
+            .map_err(|e| anyhow!("the book couldn't leave the group: {e:?}"))?;
+        took.book = true;
+        facts.published_as_book = None;
+        facts.published = false;
+        facts.group = None;
+        data.private_registers(BOOKS_KV)
+            .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
+            .await?;
+        data.private_registers(ROLLOUT_KV).set(bucket, "").await?;
+        drop(held);
+        let generation = crate::fold::nudge(state, root);
+        crate::fold::drain(root, generation).await;
+        return Ok(took);
+    }
+    // In public as a group: the group counts it no longer.
+    if facts.as_group.is_some() {
+        crate::roster::unclaim_public(state, data, root, &book_id)
+            .await
+            .map_err(|e| anyhow!("{e:?}"))?;
+    }
     // The pages, off the book's last payload.
     if let Some(previous) = previous_payload(state, data, &book_id, book_key).await? {
         let mut named = BTreeMap::new();
@@ -987,6 +1128,7 @@ pub async fn take_down(
     facts.published_as_book = None;
     facts.published = false;
     facts.key = None;
+    facts.as_group = None;
     data.private_registers(BOOKS_KV)
         .set(bucket, &serde_json::to_string(&facts).unwrap_or_default())
         .await?;

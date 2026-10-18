@@ -26,6 +26,7 @@ import { avatarBytes } from './pickbytes.js';
 import { GroupHeroMark, GroupMark, GroupTabHead, forgetGroupFace } from './groupface.js';
 import { PostEntry } from './postentry.js';
 import { GroupThread, ParentContexts } from './postpage.js';
+import { BookReader } from './doc/bookreader.js';
 import { GroupFeed, PublicGroupPage } from './publicgroup.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
 import { narrowParams } from './postsearch.js';
@@ -800,7 +801,7 @@ const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
 
 /// A group post's own page, inside its group: the feed's card, alone. There to the group's members
 /// only, and not to one it's hidden from - the node answers no such post to anyone else.
-export const GroupPostPage = ({ group, doc, current }) => {
+export const GroupPostPage = ({ group, doc, page, current }) => {
     const root = current && current.root;
     const [answer, error, reload] = useAnswer(
         root && group && doc ? `/api/identity/${root}/groups/${group}/posts/${doc}` : null,
@@ -823,6 +824,8 @@ export const GroupPostPage = ({ group, doc, current }) => {
     }, [answer, group, doc]);
     if (!root) return null;
     const item = (answer && answer.item) || held;
+    // Chosen out here: inside the template, a quoted format reads to the strings cop as copy.
+    const isBook = !!item && item.format === 'book';
     return html`<div class="group-page">
         ${
             error &&
@@ -836,7 +839,16 @@ export const GroupPostPage = ({ group, doc, current }) => {
         ${!item && !error && html`<p class="people-empty">${t('apps.groups.fetching-the-post', 'fetching the post…')}</p>`}
         ${item && html`<${ParentContexts} post=${item} group=${group} />`}
         ${
+            /* A book in the group opens as its reader (plans/GROUPS.md, books in groups), as a
+            public book's page does: the tree beside the page, through the group's door. */ ''
+        }
+        ${
+            isBook &&
+            html`<${BookReader} root=${item.author} book=${item.doc_id} page=${page || null} title=${item.title} group=${group} />`
+        }
+        ${
             item &&
+            !isBook &&
             html`<${PostEntry}
                 key=${item.doc_id}
                 item=${item}

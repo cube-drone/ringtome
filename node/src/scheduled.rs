@@ -90,6 +90,7 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
                     settled: plan.settled,
                     room: false,
                     reply_to: None,
+                    part_of: None,
                 };
                 match crate::roster::publish_planned(state, &data, &root, group, &doc_id, wishes)
                     .await

@@ -4152,6 +4152,12 @@ struct BookRolloutRequest {
     /// page's claimed dates resolve in - the publish door's rule, carried into the background.
     #[serde(default)]
     tz_offset_min: i32,
+    /// Into one of the author's groups, for its members alone (plans/GROUPS.md, books in groups).
+    #[serde(default)]
+    group: Option<String>,
+    /// In public as a public group (plans/PUBLIC_GROUPS.md).
+    #[serde(default)]
+    as_group: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -4182,6 +4188,28 @@ async fn book_rollout_handler(
             "this notebook is not switched to publish as a book"
         )));
     }
+    // Where it goes, asked now and kept by the notebook at its first rollout (books.rs): a group
+    // the author is in, for its members, or in public as a public group - never both, never sealed.
+    let group = req.group.as_deref().filter(|g| !g.is_empty());
+    let as_group = req.as_group.as_deref().filter(|g| !g.is_empty());
+    if (group.is_some() || as_group.is_some()) && req.trusted_only {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-groups-book-isnt-sealed",
+            "a book in a group, or as one, isn't sealed too"
+        )));
+    }
+    if group.is_some() && as_group.is_some() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.one-place-for-a-book",
+            "a book goes to one place: into a group, or in public as one"
+        )));
+    }
+    if let Some(g) = group {
+        crate::roster::may_post_in(&state, &root, g).await?;
+    }
+    if let Some(g) = as_group {
+        crate::roster::may_post_as(&state, &root, g).await?;
+    }
     let plan = serde_json::json!({
         "by": data.leaf_hex(),
         "status": "pending",
@@ -4190,6 +4218,8 @@ async fn book_rollout_handler(
         "tz_offset_min": req.tz_offset_min,
         "total": 0,
         "done": 0,
+        "group": group,
+        "as_group": as_group,
     });
     data.private_registers(crate::books::ROLLOUT_KV).set(&bucket, &plan.to_string()).await?;
     Ok(Json(BookRolloutResponse { status: "pending" }))

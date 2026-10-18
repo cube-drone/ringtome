@@ -30,7 +30,8 @@ import {
 } from '../pure/books.js';
 import { Annotations } from './annotations.js';
 import { isTextDoc } from '../pure/feed.js';
-import { postHref, docHref } from '../links.js';
+import { postHref, docHref, groupPostHref } from '../links.js';
+import { groupFeeds } from '../pure/groups.js';
 
 const ROLLOUT_KV = 'book_rollout';
 
@@ -199,6 +200,21 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
     const on = isBookBucket(modes, bucket);
     // "View the book" only once the book exists: its id is chosen before the pages roll out.
     const published = books[bucket] && books[bucket].published && books[bucket].published_as_book;
+    // Where it went (plans/GROUPS.md, books in groups): into a group for its members, or in public -
+    // as a public group, or not. Chosen at the first rollout, as `where` below.
+    const wentTo = (books[bucket] && books[bucket].group) || null;
+    const [where, setWhere] = useState('');
+    const [groups, setGroups] = useState([]);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/groups`)
+            .then((rows) => live && setGroups(groupFeeds(rows)))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [root]);
     const [wishes, setWishes] = useState({ settled: false, trusted_only: false });
     const [asking, setAsking] = useState(false);
     const [askError, setAskError] = useState(null);
@@ -267,6 +283,12 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                 // The zone the title page's and the pages' claimed dates resolve in.
                 body: JSON.stringify({
                     ...(published ? {} : wishes),
+                    ...(!published && where.startsWith('group:')
+                        ? { group: where.slice(6), trusted_only: false }
+                        : {}),
+                    ...(!published && where.startsWith('as-group:')
+                        ? { as_group: where.slice(9), trusted_only: false }
+                        : {}),
                     tz_offset_min: new Date().getTimezoneOffset(),
                 }),
             });
@@ -374,10 +396,40 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                           <input type="checkbox" checked=${wishes.settled} onChange=${(e) => setWishes((w) => ({ ...w, settled: e.currentTarget.checked }))} />
                           ${t('doc.bookcol.turn-off-rebroadcast-and-comment', 'turn off comments')}
                       </label>
-                      <label class="book-switch" title=${t('doc.bookcol.trusted-only-means', 'the pages go only to readers you have published trust for')}>
+                      ${
+                          !where &&
+                          html`<label class="book-switch" title=${t('doc.bookcol.trusted-only-means', 'the pages go only to readers you have published trust for')}>
                           <input type="checkbox" checked=${wishes.trusted_only} onChange=${(e) => setWishes((w) => ({ ...w, trusted_only: e.currentTarget.checked }))} />
                           ${t('doc.bookcol.trusted-only', 'trusted only')}
                       </label>`
+                      }
+                      ${
+                          /* Into a group, or in public as a public group (plans/GROUPS.md, books in
+                          groups): where the book goes, for good - moving it is taking it down first. */ ''
+                      }
+                      ${
+                          groups.length > 0 &&
+                          html`<label class="book-switch">
+                          ${t('doc.bookcol.publish-to', 'publish to')}
+                          <select value=${where} onChange=${(e) => setWhere(e.currentTarget.value)}>
+                              <option value="">${t('audience.everyone', 'everyone')}</option>
+                              <optgroup label=${t('audience.your-groups', 'your groups')}>
+                                  ${groups.map((g) => html`<option value=${`group:${g.group}`} key=${g.group}>${g.name}</option>`)}
+                              </optgroup>
+                              ${
+                                  groups.some((g) => g.public) &&
+                                  html`<optgroup label=${t('audience.in-public-as-a-group', 'in public, as a group')}>
+                                      ${groups
+                                          .filter((g) => g.public)
+                                          .map(
+                                              (g) =>
+                                                  html`<option value=${`as-group:${g.group}`} key=${`as-${g.group}`}>${g.name}</option>`,
+                                          )}
+                                  </optgroup>`
+                              }
+                          </select>
+                      </label>`
+                      }`
                   }
                   <button
                       class="book-publish"
@@ -413,7 +465,7 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                   ${askError && html`<p class="form-error">${askError}</p>`}
                   ${
                       published &&
-                      html`<a class="book-view" data-settles href=${postHref(root, published)}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`
+                      html`<a class="book-view" data-settles href=${wentTo ? groupPostHref(wentTo, published) : postHref(root, published)}><${Icons.book} /> ${t('doc.bookcol.view-the-book', 'view the book')}</a>`
                   }
                   ${published && takedownUi}
                   </div>`

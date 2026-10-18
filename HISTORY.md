@@ -23098,3 +23098,65 @@ the guide says how groups work. The group door now marks an agent's post
 and a post in public as the group, with the refusals. MCP (54) and the group
 suites (52) are green.
 
+## 2026-10-18 — Books in groups
+
+Curtis: books "should be publishable both within and via groups". A notebook
+published as a book now goes to one place, chosen at its first rollout in
+Writer's Publish column ("publish to": everyone, one of your groups, or in
+public as a public group). The notebook keeps that choice (`BookFacts::group`,
+`as_group`).
+
+- **Into a group, for its members.** The rollout's page loop publishes each page
+  through the group's door (`roster::publish`, with a new `Wishes::part_of`), so
+  the group's page lists the book and never its pages. The book itself is a
+  group document (`roster::publish_book_doc`), its payload naming the group's
+  pages and read back from the group on the next rollout. Removed pages leave
+  the group, and a takedown takes the book and its pages (`roster::retract_doc`,
+  which the group's retract route now shares and which takes a book's parts with
+  it). Pages are skipped when unchanged, as public ones are. The book reader
+  takes a `group`: the payload and the pages through the group's door, the pages
+  turned under the group post (`.../posts/{doc}/page/{page}`), and no ePub.
+- **In public as a public group.** The public rollout, then `claim_public` on
+  the book post; a takedown ends the claim.
+- **Refusals.** A group book is never sealed. It goes to one place, never both a
+  group and as one, and into a group only for a member.
+- **Copying and republishing** stays a fork with credit. GROUPS.md 11b says so,
+  and points to section 11's group-owned notebooks for a knowledge base a group
+  keeps together.
+- **Tests.** `groupbooks.cjs` has four claims: into a group, read at the other
+  member's node and served nowhere public; edited in place, then taken down with
+  its pages; in public as the group, claimed and unclaimed; and the refusals.
+  The book, combination, export, import, ePub, rights, web-address and group
+  suites are green (121 between them).
+
+**2026-10-18 — An upload's refusal raced its body.** CI on "mcp group postin"
+went red in `groupposts.cjs`'s group-face claim, 0 of 5 reruns: "write EPIPE"
+where a non-owner's picture upload should have been told 403. The face door
+refused before reading the upload, so its answer could arrive while the picture
+was still being sent, and the sender saw a broken pipe instead. It now reads the
+upload first, then checks the owner, then works on the picture. The person
+uploads (avatar, banner, video) refuse early only for a persona that isn't
+yours, which no claim sends; they keep their order. The group-post suite is
+green (19).
+
+## 2026-10-18 — The test-data generator makes public groups and group books
+
+`just test-data` now exercises the last two days' group work:
+
+- **Public groups.** `found-a-group` founds about four in ten public.
+  `post-in-public-as-a-group` posts a member's public post as one, through the
+  public door's `as_group`. `follow-a-public-group` has someone outside follow
+  one, with the `via` and members the founder's node gives on the group's open
+  page, as the follow button does.
+- **Books in groups.** The little book's notebook-making is a helper,
+  `littleBook`, shared by `publish-a-little-book`, `publish-a-book-into-a-group`
+  (for the members) and `publish-a-book-as-a-public-group`.
+- **A standing failure gone.** `reply-to-something` picked rooms off the feed
+  and was refused ("say it in the room instead"); it skips them now.
+
+Two runs on scratch nodes (5 x 60, 8 x 120). The second made public groups with
+public posts, private groups with books and a book in public as a group, and
+logged no failures of the new actions. Its only failures were the
+`reply-to-something` refusals and the roster-lag ones the generator already
+expects.
+

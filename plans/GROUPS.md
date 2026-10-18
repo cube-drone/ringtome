@@ -658,6 +658,40 @@ edits by default.
 and playlists; a group that collects audio and video wants the storage budgets a
 persona has.
 
+### 11b. Books in groups (built 2026-10-18)
+
+Curtis: books "should be publishable both within and via groups". A notebook
+published as a book goes to one place, chosen at its first rollout in Writer's
+Publish column ("publish to"):
+
+- **Everyone**, as before.
+- **Into one of the author's groups, for its members alone.** Every page goes
+  through the group's own door as a group post marked part of the book. Its
+  pictures become the group's media, so the group's page lists the book and
+  never the pages. The book itself is a group document, its payload naming those
+  pages (`roster::publish_book_doc`). Nothing of it is public. A later rollout
+  edits pages and book in place. Taking it down takes the book with its pages
+  (`roster::retract_doc` takes a book's parts with it). It opens in the book
+  reader at the group post's address, reading through the group's door.
+- **In public as a public group.** The public book, which the group counts as
+  its own (`claim_public` on the book post). A takedown ends the claim.
+
+Two rules, chosen as defaults:
+
+- **One place per notebook.** Where a book goes is the notebook's word from its
+  first rollout (`BookFacts::group`, `as_group`). Moving it means taking it down
+  first, since the book's id and its pages' links belong to one place.
+- **No update post in a group yet.** A public book's later rollouts thread an
+  "updated" post under it. A group's book doesn't, yet.
+
+A group's book is never sealed too, and goes to a group only for a member. The
+claims are in `integration/test/groupbooks.cjs`.
+
+Copying a book and publishing the copy is a fork with credit, never a merge
+(PROJECT_PLAN's _Copying a post_: each copied page is a new note, carrying its
+authors and not its versions). A notebook a group keeps together is section 11's
+group-owned notebook.
+
 ### 12. A lesson from drafting sections 10 and 11
 
 The first drafts of section 10 gave the group a persona with a crown, then

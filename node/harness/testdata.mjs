@@ -480,56 +480,56 @@ const ACTIONS = [
         name: 'publish-a-little-book',
         weight: 3,
         run: async (ctx, p, rng) => {
-            const name = `${ctx.pick(rng, WORDS)}-${ctx.pick(rng, WORDS)}`;
-            await api(p, 'POST', `/api/identity/${p.root}/buckets`, { name, app: 'default' });
-            p.buckets.push(name);
-            const page = async (title) => {
-                const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
-                    title,
-                    body: ctx.lorem(rng, 1 + Math.floor(rng() * 2)),
-                    format: 'marquee',
-                });
-                await api(
-                    p,
-                    'PUT',
-                    `/api/identity/${p.root}/docs/${d.doc_id}/buckets/${encodeURIComponent(name)}`,
-                );
-                return d.doc_id;
-            };
-            const opening = await page(`on ${ctx.pick(rng, WORDS)}`);
-            const chapters = [];
-            for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++)
-                chapters.push(await page(`chapter ${i + 1}`));
-            const root = (
-                await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, {
-                    title: `wiki:${name}`,
-                })
-            ).taxonomy_id;
-            const part = (
-                await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, { title: 'part one' })
-            ).taxonomy_id;
-            await api(
-                p,
-                'PUT',
-                `/api/identity/${p.root}/taxonomies/${root}/members/${opening}`,
-                {},
-            );
-            await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${root}/members/${part}`, {});
-            for (const c of chapters)
-                await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${part}/members/${c}`, {});
-            await api(
-                p,
-                'PUT',
-                `/api/identity/${p.root}/private/kv/books/${encodeURIComponent(name)}`,
-                { value: JSON.stringify({ mode: 'book' }) },
-            );
+            const book = await littleBook(ctx, p, rng);
             await api(
                 p,
                 'POST',
-                `/api/identity/${p.root}/books/${encodeURIComponent(name)}/rollout`,
+                `/api/identity/${p.root}/books/${encodeURIComponent(book.name)}/rollout`,
                 {},
             );
-            p.books.push({ name, pages: [opening, ...chapters] });
+            p.books.push(book);
+        },
+    },
+    {
+        // A little book into one of the persona's groups, for its members alone (plans/GROUPS.md,
+        // 11b): every page the group's, part of the book, the book on the group's page.
+        name: 'publish-a-book-into-a-group',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.members.has(p.root)),
+            );
+            if (!g) return;
+            const book = await littleBook(ctx, p, rng);
+            await api(
+                p,
+                'POST',
+                `/api/identity/${p.root}/books/${encodeURIComponent(book.name)}/rollout`,
+                { group: g.group },
+            );
+            p.books.push({ ...book, group: g.group });
+        },
+    },
+    {
+        // A little book in public as a public group (plans/PUBLIC_GROUPS.md): the public book, which
+        // the group counts as its own.
+        name: 'publish-a-book-as-a-public-group',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.public && x.members.has(p.root)),
+            );
+            if (!g) return;
+            const book = await littleBook(ctx, p, rng);
+            await api(
+                p,
+                'POST',
+                `/api/identity/${p.root}/books/${encodeURIComponent(book.name)}/rollout`,
+                { as_group: g.group },
+            );
+            p.books.push({ ...book, as_group: g.group });
         },
     },
     {
@@ -635,8 +635,11 @@ const ACTIONS = [
         weight: 12,
         run: async (ctx, p, rng) => {
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
-            // Never a group post: replies in a group aren't built yet (NEXT_STEPS).
-            const theirs = (feed.items || []).filter((i) => i.author !== p.root && !i.group);
+            // Never a group post, which this action's public reply can't answer, and never a room,
+            // which is answered by saying something in it ("say it in the room instead").
+            const theirs = (feed.items || []).filter(
+                (i) => i.author !== p.root && !i.group && i.format !== 'room',
+            );
             const inThread = theirs.filter((i) => i.reply_to);
             const item = ctx.pick(rng, inThread.length && rng() < 0.4 ? inThread : theirs);
             if (!item) return;
@@ -838,10 +841,17 @@ const ACTIONS = [
         weight: 1.5,
         run: async (ctx, p, rng) => {
             const name = `the ${ctx.pick(rng, WORDS)} ${ctx.pick(rng, ['club', 'bunch', 'society', 'gang', 'circle', 'team'])}`;
-            const made = await api(p, 'POST', `/api/identity/${p.root}/groups`, { name });
+            // About four in ten public (plans/PUBLIC_GROUPS.md): its roster for anyone to see, and
+            // its members posting in public as it.
+            const isPublic = rng() < 0.4;
+            const made = await api(p, 'POST', `/api/identity/${p.root}/groups`, {
+                name,
+                public: isPublic,
+            });
             const g = {
                 group: made.group,
                 name,
+                public: isPublic,
                 founder: p.root,
                 members: new Set([p.root]),
                 owners: new Set([p.root]),
@@ -1001,6 +1011,52 @@ const ACTIONS = [
             const made = await groupAct(p, g, 'publish', { doc: d.doc_id });
             if (made.post) g.posts.push({ post: made.post, author: p.root });
             await groupAct(p, g, 'sync');
+        },
+    },
+    {
+        // A post in public as a public group (plans/PUBLIC_GROUPS.md): the persona's own public post,
+        // which their public lane claims for the group - so it reaches their followers, and the
+        // group's, wearing its band.
+        name: 'post-in-public-as-a-group',
+        weight: 10,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.public && x.members.has(p.root)),
+            );
+            if (!g) return;
+            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+                title: rng() < 0.6 ? ctx.lorem(rng, 1).slice(0, 40).replace(/\.$/, '') : '',
+                body: ctx.lorem(rng, 1 + Math.floor(rng() * 2)),
+                format: 'marquee',
+            });
+            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+            const made = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {
+                as_group: g.group,
+            });
+            if (made.post_id) p.posts.push({ doc_id: d.doc_id, post_id: made.post_id });
+            await groupAct(p, g, 'sync');
+        },
+    },
+    {
+        // Someone outside a public group follows it (ruling 7): its public posts come to their feed
+        // direct. The follow says where the group's page was answered and who's in it, as the
+        // page's button does, for a node that holds none of it yet.
+        name: 'follow-a-public-group',
+        weight: 3,
+        run: async (ctx, p, rng) => {
+            const g = ctx.pick(
+                rng,
+                ctx.groups.filter((x) => x.public && !x.members.has(p.root)),
+            );
+            if (!g) return;
+            const founder = ctx.personas.find((q) => q.root === g.founder);
+            if (!founder) return;
+            const page = await api(founder, 'GET', `/api/groups/${g.group}/public`);
+            await api(p, 'POST', `/api/identity/${p.root}/groups/${g.group}/follow`, {
+                via: page.endpoint ? [page.endpoint] : [],
+                members: [page.founder, ...(page.members || []).map((m) => m.root)],
+            });
         },
     },
     {
@@ -1220,6 +1276,47 @@ async function upload(p, path, bytes) {
     } catch {
         return {};
     }
+}
+
+/// A little book's notebook (2026-09-08): three or four pages, two of them nested under a part, its
+/// tree named for the notebook the way the wiki does, switched to book mode - ready to roll out,
+/// wherever it goes. `{ name, pages }`.
+async function littleBook(ctx, p, rng) {
+    const name = `${ctx.pick(rng, WORDS)}-${ctx.pick(rng, WORDS)}`;
+    await api(p, 'POST', `/api/identity/${p.root}/buckets`, { name, app: 'default' });
+    p.buckets.push(name);
+    const page = async (title) => {
+        const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+            title,
+            body: ctx.lorem(rng, 1 + Math.floor(rng() * 2)),
+            format: 'marquee',
+        });
+        await api(
+            p,
+            'PUT',
+            `/api/identity/${p.root}/docs/${d.doc_id}/buckets/${encodeURIComponent(name)}`,
+        );
+        return d.doc_id;
+    };
+    const opening = await page(`on ${ctx.pick(rng, WORDS)}`);
+    const chapters = [];
+    for (let i = 0, n = 2 + Math.floor(rng() * 2); i < n; i++)
+        chapters.push(await page(`chapter ${i + 1}`));
+    const root = (
+        await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, {
+            title: `wiki:${name}`,
+        })
+    ).taxonomy_id;
+    const part = (await api(p, 'POST', `/api/identity/${p.root}/taxonomies`, { title: 'part one' }))
+        .taxonomy_id;
+    await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${root}/members/${opening}`, {});
+    await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${root}/members/${part}`, {});
+    for (const c of chapters)
+        await api(p, 'PUT', `/api/identity/${p.root}/taxonomies/${part}/members/${c}`, {});
+    await api(p, 'PUT', `/api/identity/${p.root}/private/kv/books/${encodeURIComponent(name)}`, {
+        value: JSON.stringify({ mode: 'book' }),
+    });
+    return { name, pages: [opening, ...chapters] };
 }
 
 /// One of a group's routes, as `p`: `.../groups/{group}/{path}`.

@@ -717,6 +717,7 @@ const Inside = ({ session }) => {
             <${GroupPage} path="/ringtome/people/groups/:group" current=${persona.current} />
             <${ToGroup} path="/ringtome/groups/:group" />
             <${GroupPostPage} path="/ringtome/people/groups/:group/posts/:doc" current=${persona.current} />
+            <${GroupPostPage} path="/ringtome/people/groups/:group/posts/:doc/page/:page" current=${persona.current} />
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />

@@ -72,6 +72,15 @@ are driving towards.
 
 ### Groups (plans/GROUPS.md)
 
+- From books in groups (plans/GROUPS.md, section 11b, built 2026-10-18):
+  - **The book reader in a group wants a look in a browser**, and so does the
+    Publish column's "publish to".
+  - **No update post** for a group's book's later rollouts, as a public book
+    has.
+  - **A group book's own labels** (its title page's tags and description) aren't
+    restated on the book as a public book's are; its pages carry their own.
+  - **One place per notebook**: moving a published book to another place means
+    taking it down first.
 - From public groups (plans/PUBLIC_GROUPS.md, built 2026-10-17):
   - **The UI wants a look in a browser**: founding's choice, the open page at
     `/ringtome/groups/{group}`, the follow button, "(Cheese Group)" on cards,

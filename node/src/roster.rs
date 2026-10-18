@@ -46,7 +46,7 @@ fn root_of(hex_root: &str) -> Option<Root> {
     hex::decode(hex_root).ok()?.try_into().ok()
 }
 
-pub(crate) fn group_of(hex_group: &str) -> Result<GroupId, AppError> {
+pub fn group_of(hex_group: &str) -> Result<GroupId, AppError> {
     hex::decode(hex_group).ok().and_then(|b| b.try_into().ok()).ok_or_else(|| {
         AppError::BadRequest(crate::msg!("roster.not-a-group-id", "that isn't a group id"))
     })
@@ -3358,6 +3358,22 @@ fn media_target(
     )
 }
 
+/// The group's id type, for books.rs.
+pub type GroupIdOf = GroupId;
+
+/// The post a persona's own document became in a group, if it's still standing (books.rs).
+pub async fn group_post_of(
+    state: &AppState,
+    root: &str,
+    source: &[u8; 16],
+    group: &GroupId,
+) -> Option<[u8; 16]> {
+    let post = published_as(state, root, source, group).await?;
+    let (roster, _) = folded(state, group).await.ok()??;
+    let (versions, gone) = documents_of(state, group, &roster).await.ok()?;
+    (versions.contains_key(&post) && !gone.contains(&post)).then_some(post)
+}
+
 /// What `source` - a persona's own document - already became in this group.
 async fn published_as(
     state: &AppState,
@@ -3729,6 +3745,10 @@ async fn post_version(
             .is_some_and(|v| v.header.format == Some(ringtome_proto::registry::doc_format::ROOM));
     // A reply's link (section 7), as the public publish keeps it: named at the first publish and
     // carried by every edit, so an edit never moves a reply to another post.
+    let part_of = match &onto {
+        Some((_, list)) => first_version(list).and_then(|v| v.header.part_of),
+        None => wishes.part_of,
+    };
     let (reply_to, thread_root) = match onto {
         Some((_, list)) => first_version(list)
             .map(|v| (v.header.reply_to, v.header.thread_root))
@@ -3785,7 +3805,7 @@ async fn post_version(
         dated_ms: wishes.dated_ms,
         animation: false,
         im: false,
-        part_of: None,
+        part_of,
         seal_of: None,
         onward: false,
         prints: Default::default(),
@@ -4004,6 +4024,9 @@ pub struct Wishes {
     /// The post this answers, `(author, doc)`, when it's a reply (section 7): another post in the
     /// group. Read at the first publish only - an edit keeps the link it was posted with.
     pub reply_to: Option<(Root, [u8; 16])>,
+    /// The book a page is part of (books.rs, a book in a group): kept off the group's page, read
+    /// in the book. Read at the first publish only, as the reply's link is.
+    pub part_of: Option<[u8; 16]>,
 }
 
 #[derive(Deserialize)]
@@ -4087,7 +4110,7 @@ async fn publish_handler(
         &root,
         &group,
         &draft,
-        Wishes { dated_ms, settled: req.settled, room: req.room, reply_to },
+        Wishes { dated_ms, settled: req.settled, room: req.room, reply_to, part_of: None },
     )
     .await?;
     clear_plan(&data, &draft).await?;
@@ -4199,6 +4222,152 @@ pub async fn clear_plan(data: &Store, draft: &[u8; 16]) -> Result<(), AppError> 
     Ok(())
 }
 
+/// Take down `me`'s own document in a group: a retraction on the lane, and its draft a draft again.
+/// A book goes with its pages (books.rs), which are part of it.
+pub async fn retract_doc(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    doc: &[u8; 16],
+) -> Result<(), AppError> {
+    let me_root = root_of(me).unwrap_or_default();
+    let mut gone_with: Vec<[u8; 16]> = Vec::new();
+    if let Ok(Some((roster, _))) = folded(state, group).await {
+        let (versions, gone) = documents_of(state, group, &roster).await?;
+        for (d, list) in &versions {
+            if gone.contains(d) || d == doc {
+                continue;
+            }
+            if first_version(list)
+                .is_some_and(|v| v.persona == me_root && v.header.part_of == Some(*doc))
+            {
+                gone_with.push(*d);
+            }
+        }
+    }
+    for d in std::iter::once(*doc).chain(gone_with) {
+        append_document(
+            state,
+            data,
+            me,
+            group,
+            entry_type::POST_RETRACT,
+            PostRetraction { doc_id: d }.encode(),
+        )
+        .await?;
+        // Its draft is a draft again: publishing it now makes a new post (Writer's bar reads this).
+        state
+            .node_db
+            .execute(
+                "DELETE FROM group_drafts WHERE root = ?1 AND group_id = ?2 AND post = ?3",
+                (me, group.to_vec(), d.to_vec()),
+            )
+            .await
+            .context("forgetting a taken-down post's draft")
+            .map_err(AppError::Internal)?;
+    }
+    Ok(())
+}
+
+/// Before a book (or anything) goes into a group for its members: `root` is in it.
+pub async fn may_post_in(
+    state: &AppState,
+    root: &str,
+    group_hex: &str,
+) -> Result<GroupId, AppError> {
+    let group = group_of(group_hex)?;
+    let me = root_of(root).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
+    })?;
+    let (roster, _) = current(state, &group, &me).await?;
+    if !roster.members.contains(&me) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "roster.members-only",
+            "only the group's members can post to it"
+        )));
+    }
+    Ok(group)
+}
+
+/// A group document's words as this node holds them - its shown version's body - for a book's
+/// payload read back (books.rs).
+pub async fn group_doc_body(state: &AppState, group: &GroupId, doc: &[u8; 16]) -> Option<String> {
+    let (roster, _) = folded(state, group).await.ok()??;
+    let (versions, gone) = documents_of(state, group, &roster).await.ok()?;
+    if gone.contains(doc) {
+        return None;
+    }
+    let shown = versions.get(doc).and_then(|l| display(l))?;
+    let bytes = crate::idface::public_blob(state, shown.header.file_hash).await.ok()??;
+    String::from_utf8(bytes).ok()
+}
+
+/// A book's own version in a group (books.rs): its payload as its words, at the id the notebook
+/// keeps for it - a new version of it when `me` posted it before and it stands, else its first.
+#[allow(clippy::too_many_arguments)]
+pub async fn publish_book_doc(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    book: [u8; 16],
+    title: &str,
+    payload: &str,
+    wishes: Wishes,
+) -> Result<(), AppError> {
+    let (roster, _) = refold(state, group).await.map_err(AppError::Internal)?.ok_or_else(|| {
+        AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"))
+    })?;
+    let me_root = root_of(me).unwrap_or_default();
+    let (versions, gone) = documents_of(state, group, &roster).await?;
+    let standing = versions
+        .get(&book)
+        .filter(|_| !gone.contains(&book))
+        .filter(|list| list.first().is_some_and(|v| v.persona == me_root));
+    let (parents, genesis_ms) = match standing {
+        Some(list) => (
+            display(list).map(|v| vec![v.hash]).unwrap_or_default(),
+            first_version(list).and_then(|v| v.header.genesis_ms).unwrap_or_else(now_ms),
+        ),
+        None => (Vec::new(), now_ms()),
+    };
+    let held = state.files.put_public(payload.as_bytes()).await.map_err(AppError::Internal)?;
+    let header = DocHeaderPlain {
+        doc_id: book,
+        parents,
+        file_hash: *held.hash.as_bytes(),
+        body_hash: *held.hash.as_bytes(),
+        title: title.to_string(),
+        sealed_title: None,
+        format: crate::record::documents::Format::Book.to_wire(),
+        width: None,
+        height: None,
+        duration_ms: None,
+        thumb_hash: None,
+        preview_hash: None,
+        refs: Vec::new(),
+        genesis_ms: Some(genesis_ms),
+        reply_to: None,
+        thread_root: None,
+        settled: wishes.settled,
+        trusted_only: false,
+        dated_ms: wishes.dated_ms,
+        animation: false,
+        im: false,
+        part_of: None,
+        seal_of: None,
+        onward: false,
+        prints: Default::default(),
+    };
+    let encoded = header
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding a group book's header: {e}")))?;
+    append_document(state, data, me, group, entry_type::DOC_HEADER, encoded).await?;
+    drop(held);
+    Ok(())
+}
+
 /// POST `.../groups/{group}/docs/{doc}/retract` - take down your own post, as any post is taken
 /// down: a retraction on the lane it was posted to.
 async fn retract_handler(
@@ -4223,25 +4392,7 @@ async fn retract_handler(
             "the group's #general can't be taken down"
         )));
     }
-    append_document(
-        &state,
-        &data,
-        &root,
-        &group,
-        entry_type::POST_RETRACT,
-        PostRetraction { doc_id: doc }.encode(),
-    )
-    .await?;
-    // Its draft is a draft again: publishing it now makes a new post (Writer's bar reads this).
-    state
-        .node_db
-        .execute(
-            "DELETE FROM group_drafts WHERE root = ?1 AND group_id = ?2 AND post = ?3",
-            (root.as_str(), group.to_vec(), doc.to_vec()),
-        )
-        .await
-        .context("forgetting a taken-down post's draft")
-        .map_err(AppError::Internal)?;
+    retract_doc(&state, &data, &root, &group, &doc).await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "retracted": hex::encode(doc) })))
 }
 
@@ -4312,7 +4463,7 @@ async fn close_handler(
         &root,
         &group,
         &draft,
-        Wishes { dated_ms, settled: true, room: true, reply_to: None },
+        Wishes { dated_ms, settled: true, room: true, reply_to: None, part_of: None },
     )
     .await?;
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "closed": true })))
@@ -4878,9 +5029,10 @@ async fn set_face_handler(
     let picture = face_which(&which)?;
     let (data, me) = me_of(&state, &session, &root).await?;
     let group = group_of(&group)?;
-    // An owner's, checked before the upload is worked on.
-    let (roster, _) = current(&state, &group, &me).await?;
-    acting(&roster, &me)?;
+    // The upload is read before anything refuses it, so a refusal answers a finished request: an
+    // answer sent while the picture is still on its way lands as a broken pipe at the sender, never
+    // as the refusal (the groupposts flake on "mcp group postin", 2026-10-18: "write EPIPE" where a
+    // non-owner's upload should have been told 403). The owner is checked before it's worked on.
     let mut image: Option<Vec<u8>> = None;
     while let Some(field) = parts.next_field().await.map_err(|e| {
         AppError::BadRequest(crate::msg!(
@@ -4905,6 +5057,8 @@ async fn set_face_handler(
             );
         }
     }
+    let (roster, _) = current(&state, &group, &me).await?;
+    acting(&roster, &me)?;
     let bytes = image.ok_or_else(|| {
         AppError::BadRequest(crate::msg!(
             "identity.routes.missing-image-part",

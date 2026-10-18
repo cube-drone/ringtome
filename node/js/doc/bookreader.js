@@ -13,7 +13,7 @@ import { t } from '../i18n.js';
 import { parseBook, neighbours, bookTags, filterBook } from '../pure/books.js';
 import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
-import { pathHref, postHref, useSlugOf } from '../links.js';
+import { groupPostHref, pathHref, postHref, useSlugOf } from '../links.js';
 import { useArrowNav } from './docapp.js';
 import { EpubButton } from './epubbutton.js';
 
@@ -21,13 +21,20 @@ const html = htm.bind(h);
 
 /// A page's link: its web address when the book says one (plans/WEB_ADDRESSES.md) - what a hover, a
 /// middle-click or a copy gets - while a plain click turns the page in place, by its id.
-const pageLink = (root, book, p, slug) =>
-    p.path ? pathHref(root, p.path, slug) : postHref(root, book, p.post);
-const turnTo = (loc, root, book, p) => (e) => {
+/// A book in a group (plans/GROUPS.md, books in groups) turns its pages under the group's post.
+const bookHref = (root, book, page, group) =>
+    group
+        ? page
+            ? `${groupPostHref(group, book)}/page/${page}`
+            : groupPostHref(group, book)
+        : postHref(root, book, page);
+const pageLink = (root, book, p, slug, group) =>
+    !group && p.path ? pathHref(root, p.path, slug) : bookHref(root, book, p.post, group);
+const turnTo = (loc, root, book, p, group) => (e) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
         return;
     e.preventDefault();
-    loc.route(postHref(root, book, p.post));
+    loc.route(bookHref(root, book, p.post, group));
 };
 
 const Tree = ({
@@ -38,23 +45,27 @@ const Tree = ({
     depth,
     loc,
     slug,
+    group,
 }) => html`<ul class=${depth === 0 ? 'book-reader-list book-reader-list-top' : 'book-reader-list'}>
     ${section.pages.map(
         (
             p,
         ) => html`<li class=${p.post === page ? 'book-reader-page book-reader-page-current' : 'book-reader-page'} key=${p.post}>
-            <a href=${pageLink(root, book, p, slug)} onClick=${turnTo(loc, root, book, p)}>${p.title || t('doc.bookreader.untitled-page', 'untitled page')}</a>
+            <a href=${pageLink(root, book, p, slug, group)} onClick=${turnTo(loc, root, book, p, group)}>${p.title || t('doc.bookreader.untitled-page', 'untitled page')}</a>
         </li>`,
     )}
     ${section.sections.map(
         (s, i) => html`<li class="book-reader-section" key=${`${depth}-${i}`}>
             <span class="book-reader-section-title"><${Icons.section} /> ${s.title || t('doc.bookreader.untitled-section', '(untitled section)')}</span>
-            <${Tree} section=${s} root=${root} book=${book} page=${page} depth=${depth + 1} loc=${loc} slug=${slug} />
+            <${Tree} section=${s} root=${root} book=${book} page=${page} depth=${depth + 1} loc=${loc} slug=${slug} group=${group} />
         </li>`,
     )}
 </ul>`;
 
-export const BookReader = ({ root, book, page: asked, title }) => {
+/// `group`: a book in that group, its pages and payload read through the group's own door.
+export const BookReader = ({ root, book, page: asked, title, group = null }) => {
+    const bodyOf = (doc) =>
+        group ? `/api/groups/${group}/docs/${doc}/body` : `/id/${root}/docs/${doc}/body`;
     const loc = useLocation();
     const [payload, setPayload] = useState(undefined); // undefined loading, null unreadable
     const [words, setWords] = useState(undefined);
@@ -75,13 +86,14 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     useEffect(() => {
         if (!root || !book) return undefined;
         let live = true;
-        apiText(`/id/${root}/docs/${book}/body`)
+        apiText(bodyOf(book))
             .then((text) => live && setPayload(parseBook(text)))
             .catch(() => live && setPayload(null));
         return () => {
             live = false;
         };
-    }, [root, book]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `bodyOf` is this root and group
+    }, [root, book, group]);
     useEffect(() => {
         if (!root || !page) {
             setWords(undefined);
@@ -89,13 +101,14 @@ export const BookReader = ({ root, book, page: asked, title }) => {
         }
         let live = true;
         setWords(undefined);
-        apiText(`/id/${root}/docs/${page}/body`)
+        apiText(bodyOf(page))
             .then((text) => live && setWords(text))
             .catch(() => live && setWords(null));
         return () => {
             live = false;
         };
-    }, [root, page]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `bodyOf` is this root and group
+    }, [root, page, group]);
     const tlProfile = useTurbolinks(words || '', 'marquee');
     // A tall page gets the buttons again at its foot (Curtis, 2026-09-04): measured, not
     // guessed, so a short page keeps one row and a long one is not a scroll back up.
@@ -119,7 +132,7 @@ export const BookReader = ({ root, book, page: asked, title }) => {
             ? neighbours(payload, page)
             : { prev: null, next: null, order: neighbours(payload, '').order }
         : null;
-    const go = (post) => loc.route(postHref(root, book, post || null));
+    const go = (post) => loc.route(bookHref(root, book, post || null, group));
     useArrowNav(
         walk && { prev: walk.prev && walk.prev.post, next: walk.next && walk.next.post, go },
         walk ? walk.order.map((p) => p.post) : [],
@@ -131,7 +144,8 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     // shortest this node can vouch for, once the author's @name is known.
     const slug = useSlugOf(root);
     useEffect(() => {
-        if (!walk || walk.index === undefined || walk.index < 0 || slug === undefined) return;
+        if (group || !walk || walk.index === undefined || walk.index < 0 || slug === undefined)
+            return;
         const entry = walk.order[walk.index];
         if (!entry || !entry.path) return;
         const shortest = pathHref(root, entry.path, slug);
@@ -170,10 +184,14 @@ export const BookReader = ({ root, book, page: asked, title }) => {
     return html`<section class="book-reader">
         <aside class="book-reader-tree">
             <p class="book-reader-book"><${Icons.book} /> ${title || payload.title || t('doc.bookreader.a-book', 'a book')}</p>
-            <div class="book-reader-epub">
-                <${EpubButton} path=${`/ringtome/user/${root}/post/${book}/epub`} fallback="book.epub" className="book-reader-step" />
-            </div>
-            <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} slug=${slug} />
+            ${/* The book as an .epub is its public form's (epub.rs): none for a group's. */ ''}
+            ${
+                !group &&
+                html`<div class="book-reader-epub">
+                    <${EpubButton} path=${`/ringtome/user/${root}/post/${book}/epub`} fallback="book.epub" className="book-reader-step" />
+                </div>`
+            }
+            <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} slug=${slug} group=${group} />
             ${
                 picked.size > 0 &&
                 shownBook.pages.length === 0 &&
