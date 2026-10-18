@@ -4427,7 +4427,9 @@ pub(crate) fn drawing_words(title: &str, target: &str) -> String {
 /// The query carries what Writer's publish bar sends in its body (the bar is shared, doc/publishbar.js):
 /// `settled`, `trusted_only` and `audience`, the wishes, and `tz_offset_min` for a claimed date. A claimed
 /// date in the past dates the post, as Writer's does; a future one would be a schedule, and the
-/// sweep that mints schedules publishes words, not drawings - so it is refused, in words. After
+/// sweep that mints schedules publishes words, not drawings - so it is refused, in words. `as_group`
+/// posts it in public as one of the poster's public groups, as the words' door does
+/// (plans/PUBLIC_GROUPS.md): an open post, claimed on the poster's public lane once it's minted. After
 /// posting, the drawing is stamped with the version it published (`published_head`), which is how
 /// the bar knows a drawing has changed since.
 #[derive(serde::Deserialize, Default)]
@@ -4441,6 +4443,9 @@ struct DrawingPublish {
     audience: Option<String>,
     #[serde(default)]
     tz_offset_min: i32,
+    /// In public, as this public group (plans/PUBLIC_GROUPS.md).
+    #[serde(default)]
+    as_group: Option<String>,
 }
 
 async fn publish_drawing_handler(
@@ -4463,6 +4468,20 @@ async fn publish_drawing_handler(
     let post_key = docs.post_key_if(&doc_id, req.trusted_only || audience.is_some()).await?;
     let onward =
         post_key.is_some() && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
+    // As the group: an open post by a member, judged before anything is minted. A future date
+    // was refused already (drawing_draft), so no schedule can carry it either.
+    let as_group = match req.as_group.as_deref().filter(|g| !g.is_empty()) {
+        Some(g) => {
+            if post_key.is_some() {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "identity.routes.as-the-group-is-open",
+                    "a post as the group is an open post - not sealed, not a room"
+                )));
+            }
+            Some(crate::roster::may_post_as(&state, &root, g).await?)
+        }
+        None => None,
+    };
     let ingested = launder_drawing(picture).await?;
     let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
     let signer =
@@ -4496,6 +4515,9 @@ async fn publish_drawing_handler(
     };
     let post_id = docs.publish(&doc_id, Some(body), vec![twin], None, flags).await?;
     after_posted(&state, &data, &root, &doc_id, post_id, None, flags).await?;
+    if let Some(group) = as_group {
+        crate::roster::claim_public(&state, &data, &root, group, post_id).await?;
+    }
     if let Some(head) = head {
         data.annotations().set_field(&doc_id, store::PUBLISHED_HEAD, &head).await?;
     }

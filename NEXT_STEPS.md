@@ -87,8 +87,7 @@ are driving towards.
   - **The UI wants a look in a browser**: founding's choice, the open page at
     `/ringtome/groups/{group}`, the follow button, "(Cheese Group)" on cards,
     "in public, as a group" in the picker, the groups on a persona's card.
-  - **Drawings and schedules as the group**: Drawing's door takes no `as_group`,
-    and a post as the group can't be scheduled.
+  - **Schedules as the group**: a post as the group can't be scheduled.
 
 - From ONE_FEED (built 2026-10-16):
   - **`cascade.cjs`'s "a share held only by a sibling reaches the waking node"

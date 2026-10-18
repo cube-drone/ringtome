@@ -23169,3 +23169,20 @@ roster doesn't say who's senior among owners, and the node refuses a junior's
 act against a senior. `reply-to-something` skips posts with comments off. The 8
 x 120 rerun logged 5 failures, none in a group: 4 replies to posts with comments
 off (fixed since), and 1 room knock that is a node gap. It's in NEXT_STEPS.
+
+## 2026-10-18 — A drawing posts in public as the group
+
+Drawing's publish door took no `as_group`, though its publish bar (shared with
+Writer) already offered "in public, as a group". Picking it published the
+drawing as the poster's plain public post, with no claim and no word that the
+group part was dropped. The door now takes `as_group` as the words' door does:
+
+- It refuses a sealed drawing.
+- It asks `roster::may_post_as` before anything is minted, so no stranger posts
+  as the group.
+- It claims the post once it's minted (`roster::claim_public`).
+
+Drawings already refuse a future date, so there's no schedule to refuse.
+`publishDrawing` forwards the choice. New claim in `publicgroups.cjs`: the
+drawing is claimed, its card wears the group, a stranger and a seal are refused,
+and the takedown ends the claim. Public groups (10) and drawings (18) are green.

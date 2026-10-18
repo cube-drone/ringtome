@@ -571,6 +571,7 @@ export async function publishDrawing(root, docId, drawing, extra = {}) {
     if (extra.settled) query.set('settled', 'true');
     if (extra.trusted_only !== undefined) query.set('trusted_only', String(!!extra.trusted_only));
     if (extra.audience !== undefined) query.set('audience', extra.audience);
+    if (extra.as_group) query.set('as_group', extra.as_group);
     return xhrUpload(`/api/identity/${root}/docs/${docId}/publish/drawing?${query}`, picture);
 }
 

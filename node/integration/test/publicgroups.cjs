@@ -10,7 +10,7 @@
     Slice 2, posting as the group: a member's public post as the group is their own public post,
     which their public lane claims. Its card says "(Cheese Group)". An owner's hide ends that, and
     so does taking the post down; removing a member ends every claim of theirs. Nobody outside
-    the group, and no sealed post, posts as it.
+    the group, and no sealed post, posts as it. A drawing posts as it too, by the drawing's door.
 
     Slice 3, the carry: dee follows ada. Her own post as the group is a post of hers, and comes
     with the follow, marked. Bea's comes through ada only once dee wants ada's rebroadcasts - with
@@ -27,7 +27,7 @@ const assert = require('node:assert');
 const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch } = require('./helpers.cjs');
+const { makeUserFetch, makePng } = require('./helpers.cjs');
 const { beat, pullAndFold } = require('./beat.cjs');
 const { HOST, HOST_B, HOST_C, HOST_E, makeFetch, sql } = require('./fetch.cjs');
 
@@ -221,6 +221,63 @@ const DOC_HEADER = 7;
                 },
             );
             assert.equal(sealed.status, 400, 'a sealed post has no public to speak to');
+        });
+
+        it("a drawing posts in public as the group, by the drawing's own door", async () => {
+            const { writeBody } = await import('../../js/pure/drawing.js');
+            const drawn = async (who, root) =>
+                (
+                    await (
+                        await j(who, `api/identity/${root}/docs`, {
+                            title: 'a cheese, drawn',
+                            body: writeBody({
+                                strokes: [
+                                    {
+                                        id: 'a000000000000001',
+                                        t: 1,
+                                        tool: 'brush',
+                                        color: '#e8c33a',
+                                        size: 8,
+                                        points: [10, 10, 5, 5, 5, 0],
+                                    },
+                                ],
+                                undone: [],
+                            }),
+                            format: 'drawing',
+                        })
+                    ).json()
+                ).doc_id;
+            const door = (who, root, doc, query = '') =>
+                who(
+                    `api/identity/${root}/docs/${doc}/publish/drawing?tz_offset_min=0&as_group=${group}${query}`,
+                    { method: 'POST', body: makePng(80, 60), file: true },
+                );
+            const res = await door(ada, adaRoot, await drawn(ada, adaRoot));
+            const text = await res.text();
+            assert.equal(res.status, 200, text);
+            const said = JSON.parse(text).post_id;
+            assert.ok(
+                (await claims(HOST)).some((c) => c.author === adaRoot && c.doc === said),
+                'claimed',
+            );
+            const card = await cardOf(ada, adaRoot, said);
+            assert.ok(card, 'in her own feed, a public post');
+            assert.deepEqual(card.as_group, { id: group, name: 'Cheese Group' });
+
+            // The words' door's refusals, at the drawing's: no stranger, no seal.
+            const stranger = await door(dee, deeRoot, await drawn(dee, deeRoot));
+            assert.notEqual(stranger.status, 200, 'dee is no member');
+            const sealed = await door(
+                ada,
+                adaRoot,
+                await drawn(ada, adaRoot),
+                '&trusted_only=true',
+            );
+            assert.equal(sealed.status, 400, 'a sealed drawing has no public to speak to');
+
+            const down = await ada(`api/identity/${adaRoot}/posts/${said}`, { method: 'DELETE' });
+            assert.equal(down.status, 200, await down.text());
+            assert.ok(!(await claims(HOST)).some((c) => c.doc === said), 'taken down');
         });
 
         it('removing a member ends every claim they made', async () => {

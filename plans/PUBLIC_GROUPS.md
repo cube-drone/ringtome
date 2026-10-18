@@ -158,8 +158,8 @@ cards, with the filter strip and the header's search:
 
 ## Slices
 
-All five built 2026-10-17. Acceptance: `integration/test/publicgroups.cjs`
-(eight claims, across four nodes).
+All five built 2026-10-17. Acceptance: `integration/test/publicgroups.cjs` (ten
+claims, across four nodes).
 
 1. **The lanes.**
    - `Founding.public` is in the signed preimage, and in the founding's and an
@@ -218,8 +218,9 @@ All five built 2026-10-17. Acceptance: `integration/test/publicgroups.cjs`
 
 ## What's still open
 
-- **Drawings and schedules.** Drawing's door takes no `as_group`, and a post as
-  the group can't be scheduled yet.
+- **Schedules.** A post as the group can't be scheduled yet. ~~Drawings~~
+  (2026-10-18): the drawing's door takes `as_group`, with the words' door's
+  refusals, and claims the post once it's minted.
 - ~~The cost of the public pass~~ (settled 2026-10-17). Outside the group it
   runs a group's pass every ten minutes, at once when whom it carries for
   changes, and every beat on the test rig (`public_pass_due`). It re-runs the
