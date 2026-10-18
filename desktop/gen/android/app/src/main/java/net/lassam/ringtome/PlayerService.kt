@@ -71,12 +71,22 @@ class PlayerService : MediaLibraryService() {
       .build()
     // A song that won't play - not on this phone yet, offline, not carried here - is passed over for
     // the next, so a car's music never stops on one bad file (section 7). The list's end stops it.
+    // And the car's place in a shuffled list is kept as it moves and as it pauses (AutoLibrary), so
+    // the next drive goes on from it; a list played out starts over.
     player.addListener(object : Player.Listener {
       override fun onPlayerError(error: PlaybackException) {
         if (player.hasNextMediaItem()) {
           player.seekToNextMediaItem()
           player.prepare()
           player.play()
+        }
+      }
+
+      override fun onEvents(player: Player, events: Player.Events) {
+        if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) && player.playbackState == Player.STATE_ENDED) {
+          AutoLibrary.forget(this@PlayerService, player.currentMediaItem)
+        } else if (events.containsAny(Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_IS_PLAYING_CHANGED)) {
+          AutoLibrary.remember(this@PlayerService, player.currentMediaItem, player.currentPosition)
         }
       }
     })
@@ -181,8 +191,8 @@ class PlayerService : MediaLibraryService() {
       mediaItems: MutableList<MediaItem>,
     ): ListenableFuture<MutableList<MediaItem>> = whenUp { mediaItems.map(::playable).toMutableList() }
 
-    // A list picked in the car plays from its top; a song picked plays with the rest of its list
-    // after it, as a person picking one song from an album expects.
+    // A list picked in the car plays from where it was left (AutoLibrary.expand); a song picked
+    // plays with the rest of its list after it, as a person picking one song from an album expects.
     override fun onSetMediaItems(
       mediaSession: MediaSession,
       controller: MediaSession.ControllerInfo,
@@ -193,7 +203,11 @@ class PlayerService : MediaLibraryService() {
       return whenUp {
         val picked = if (mediaItems.size == 1) AutoLibrary.expand(this@PlayerService, mediaItems[0].mediaId) else null
         if (picked != null) {
-          MediaSession.MediaItemsWithStartPosition(picked.first.map(::atNode), picked.second, startPositionMs)
+          MediaSession.MediaItemsWithStartPosition(
+            picked.songs.map(::atNode),
+            picked.at,
+            picked.positionMs ?: startPositionMs,
+          )
         } else {
           MediaSession.MediaItemsWithStartPosition(mediaItems.map(::playable), startIndex, startPositionMs)
         }

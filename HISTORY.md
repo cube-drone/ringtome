@@ -23371,6 +23371,7 @@ The rest of [plans/ONE_PUBLISH.md](plans/ONE_PUBLISH.md).
     publication revalidation. They failed the same way on the committed tree,
     and each passes alone. The grep caught single claims of files without their
     setup.
+
 ## 2026-10-16: custom domains, the claim and its proof
 
 The plan (`plans/CUSTOM_DOMAINS.md`) took its rulings first. Curtis: one domain

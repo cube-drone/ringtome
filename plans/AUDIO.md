@@ -564,6 +564,12 @@ phone):
   only Android Auto is granted, fetched with the sign-in and kept a day.
 - **A sideloaded app isn't in the car's list** until Auto's developer settings
   allow unknown sources. Nothing to build; a store install won't need it.
+- **A shuffle in the car keeps its place between drives** (Curtis, 2026-10-18).
+  The lists are dealt by the page, so with the page asleep a list picked again
+  dealt the same shuffle from its first song every drive. `AutoLibrary` now
+  keeps the car's place in each list but mixtapes (the song, its index, how far
+  in), and a list picked again goes on from there - from its top once played
+  out, or once the page has dealt it anew.
 
 ### Stretch goals
 
