@@ -123,6 +123,12 @@ pub struct PublishArgs {
     /// Only people the persona trusts can read it (needs the "Trusted only posts & post
     /// audiences" unlock).
     trusted_only: Option<bool>,
+    /// Post into one of the persona's groups instead, by its name or its id (whoami lists them):
+    /// for its members only, unless `in_public`.
+    group: Option<String>,
+    /// With `group`, a public group: post in public as the group - the persona's own public post,
+    /// which the group counts as its own, reaching their followers and the group's.
+    in_public: Option<bool>,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -487,8 +493,28 @@ impl Tools {
     async fn publish_answer(&self, parts: &Parts, args: PublishArgs) -> Answer {
         let persona = self.persona(parts, args.persona.as_deref()).await?;
         let owned = self.unlocks(parts, &persona.root).await?;
-        owned.require("social")?;
+        let in_public = args.in_public == Some(true);
+        // Into a group (plans/GROUPS.md, PUBLIC_GROUPS.md): one the persona is in, by its name or
+        // id - and public, to post in public as it.
+        let group = match args.group.as_deref().map(str::trim).filter(|g| !g.is_empty()) {
+            Some(g) => Some(self.group_of(parts, &persona, g, in_public).await?),
+            None if in_public => {
+                return Err(stop("`in_public` posts as a group: name it in `group`"))
+            }
+            None => None,
+        };
+        // A post within a group is the group's own place, and needs no Social, as in the app; in
+        // public - as the group or not - it does.
+        let members_only = group.is_some() && !in_public;
+        if !members_only {
+            owned.require("social")?;
+        }
         let trusted_only = args.trusted_only == Some(true);
+        if trusted_only && group.is_some() {
+            return Err(stop(
+                "a group post isn't sealed too: its members are who reads it, or everyone",
+            ));
+        }
         if trusted_only {
             owned.require("sealing")?;
         }
@@ -522,7 +548,9 @@ impl Tools {
                         None,
                     )
                     .await?;
-                if facts.get("fields").and_then(|f| f.get("published_as")).is_some() {
+                if !members_only
+                    && facts.get("fields").and_then(|f| f.get("published_as")).is_some()
+                {
                     owned.require("post-editing")?;
                 }
                 document.to_string()
@@ -531,19 +559,109 @@ impl Tools {
                 let draft = self
                     .draft(parts, &persona, args.title.as_deref().unwrap_or_default(), words)
                     .await?;
+                if let (true, Some((id, name))) = (members_only, &group) {
+                    let posted = self.publish_to_group(parts, &persona, &draft, id, name).await;
+                    if posted.is_err() {
+                        self.take_back(parts, &persona, &draft).await;
+                    }
+                    return posted;
+                }
                 let mut body = json!({ "tz_offset_min": 0 });
                 if trusted_only {
                     body["trusted_only"] = json!(true);
+                }
+                if let Some((id, _)) = &group {
+                    body["as_group"] = json!(id);
                 }
                 return self.publish_fresh(parts, &persona, &draft, body).await;
             }
             _ => return Err(stop("give either `document` or `words`")),
         };
+        if let (true, Some((id, name))) = (members_only, &group) {
+            return self.publish_to_group(parts, &persona, &doc, id, name).await;
+        }
         let mut body = json!({ "tz_offset_min": 0 });
         if trusted_only {
             body["trusted_only"] = json!(true);
         }
+        if let Some((id, _)) = &group {
+            body["as_group"] = json!(id);
+        }
         self.publish_draft(parts, &persona, &doc, body).await
+    }
+
+    /// One of the persona's groups, by its id or its name: `(id, name)`. One they're in, and - to
+    /// post in public as it - a public one.
+    async fn group_of(
+        &self,
+        parts: &Parts,
+        persona: &Persona,
+        asked: &str,
+        in_public: bool,
+    ) -> Result<(String, String), CallToolResult> {
+        let rows = self
+            .call(parts, Method::GET, &format!("/api/identity/{}/groups", persona.root), None)
+            .await?;
+        let rows = rows.as_array().cloned().unwrap_or_default();
+        let found = rows.iter().find(|g| {
+            g.get("group").and_then(Value::as_str) == Some(asked)
+                || g.get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|n| n.eq_ignore_ascii_case(asked))
+        });
+        let Some(found) = found else {
+            return Err(stop(format!("the persona isn't in a group called \"{asked}\"")));
+        };
+        let standing = found.get("standing").and_then(Value::as_str).unwrap_or_default();
+        if standing != "member" && standing != "owner" {
+            return Err(stop(format!("the persona is {standing}, not in the group")));
+        }
+        if in_public && found.get("public").and_then(Value::as_bool) != Some(true) {
+            return Err(stop(
+                "that group is private: its posts are for its members, never in public",
+            ));
+        }
+        let id = found.get("group").and_then(Value::as_str).unwrap_or_default().to_string();
+        let name = found.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+        Ok((id, name))
+    }
+
+    /// Post a draft into a group, for its members only, through the group's own door.
+    async fn publish_to_group(
+        &self,
+        parts: &Parts,
+        persona: &Persona,
+        doc: &str,
+        group: &str,
+        name: &str,
+    ) -> Answer {
+        let made = self
+            .call(
+                parts,
+                Method::POST,
+                &format!("/api/identity/{}/groups/{group}/publish", persona.root),
+                Some(json!({ "doc": doc, "tz_offset_min": 0 })),
+            )
+            .await?;
+        let Some(post) = made.get("post").and_then(Value::as_str) else {
+            return Err(stop("the group didn't take the post"));
+        };
+        answer(json!({
+            "post": format!("{}/{post}", persona.root),
+            "document": doc,
+            "group": group,
+            "group_name": name,
+            "note": "posted in the group: only its members see it",
+            "labelled": crate::made_with::AI_AGENT,
+        }))
+    }
+
+    /// A draft this tool made for a post that was refused, taken away again.
+    async fn take_back(&self, parts: &Parts, persona: &Persona, draft: &str) {
+        let path = format!("/api/identity/{}/docs/{draft}", persona.root);
+        if let Err(refused) = self.call(parts, Method::DELETE, &path, None).await {
+            tracing::warn!(status = %refused.status, "a refused post's draft was not taken away");
+        }
     }
 
     /// Publish a draft this tool just made for the purpose, and take it away again if the
@@ -725,8 +843,10 @@ impl Tools {
     #[tool(
         description = "Post to the persona's feed, for everyone who follows them: a note by its \
             id (posted again, it updates the post), or words given here. Public, and in their \
-            name - ask the person first. The post carries the tag \"ai-agent\", so readers know \
-            an agent made it. Needs the Social unlock.",
+            name - ask the person first. Or into one of their groups (`group`, by name): for its \
+            members only, or, for a public group with `in_public`, in public as the group. The \
+            post carries the tag \"ai-agent\", so readers know an agent made it. In public, it \
+            needs the Social unlock.",
         annotations(title = "Post", read_only_hint = false, destructive_hint = true)
     )]
     async fn publish(

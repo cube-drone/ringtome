@@ -510,7 +510,8 @@ impl Tools {
         description = "Who you're acting as: the account's username, and each of its personas - \
             a persona is one public identity, with its own posts, drawings, followers and \
             HorseBucks. For each: its name, its root (the id other tools take), its HorseBucks \
-            balance and the unlocks it owns. Most tools act as one persona.",
+            balance, the unlocks it owns, and the groups it's in (by name, which `publish` \
+            takes). Most tools act as one persona.",
         annotations(title = "Who am I?", read_only_hint = true)
     )]
     async fn whoami(
@@ -592,12 +593,30 @@ impl Tools {
                     });
                 json!(owned)
             };
+            // The groups it's in or invited to (plans/GROUPS.md): `publish` posts into one by name.
+            let groups: Vec<Value> = self
+                .call(parts, Method::GET, &format!("/api/identity/{}/groups", persona.root), None)
+                .await?
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|g| {
+                    json!({
+                        "name": g.get("name"),
+                        "id": g.get("group"),
+                        "standing": g.get("standing"),
+                        "public": g.get("public").and_then(Value::as_bool).unwrap_or(false),
+                    })
+                })
+                .collect();
             personas.push(json!({
                 "name": persona.name,
                 "root": persona.root,
                 "standing": persona.standing,
                 "horsebucks": bank.get("balance").and_then(Value::as_str).map(horsebucks),
                 "unlocks": unlocks,
+                "groups": groups,
             }));
         }
         answer(json!({ "username": account.get("username"), "personas": personas }))

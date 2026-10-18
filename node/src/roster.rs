@@ -4050,6 +4050,8 @@ async fn publish_handler(
         )));
     }
     let draft = doc_of(&req.doc)?;
+    // Before the post, as the public door does (made_with.rs): an agent's post says so.
+    crate::made_with::mark(&session, &data, &draft).await?;
     let reply_to = match &req.reply_to {
         Some(r) => Some((
             root_of(&r.author).ok_or_else(|| {

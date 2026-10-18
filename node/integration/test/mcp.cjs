@@ -1618,3 +1618,86 @@ describe('MCP: notebooks, their trees, and an hour of key', function () {
         assert.ok(!after.some((k) => k.name.startsWith("an hour's key")), JSON.stringify(after));
     });
 });
+
+// Posting into a group (2026-10-18): `publish` takes one of the persona's groups by name - for its
+// members only, or, for a public group with `in_public`, in public as the group - and whoami lists
+// them. Either way the post says an agent made it.
+describe('MCP: posting into groups', function () {
+    this.timeout(120000);
+
+    let ada, adaRoot, agent, bunch, cheese;
+
+    before(async () => {
+        ({ me: ada, root: adaRoot, agent } = await keyed('mcpgrouper'));
+        bunch = (
+            await (await j(ada, `api/identity/${adaRoot}/groups`, { name: 'Agent Bunch' })).json()
+        ).group;
+        cheese = (
+            await (
+                await j(ada, `api/identity/${adaRoot}/groups`, {
+                    name: 'Agent Cheese',
+                    public: true,
+                })
+            ).json()
+        ).group;
+    });
+
+    it("whoami lists the persona's groups, by name, and which are public", async () => {
+        const me = await tool(agent, 'whoami');
+        const groups = me.personas.find((p) => p.root === adaRoot).groups;
+        assert.ok(groups.some((g) => g.name === 'Agent Bunch' && g.id === bunch && !g.public));
+        assert.ok(groups.some((g) => g.name === 'Agent Cheese' && g.id === cheese && g.public));
+    });
+
+    it("posts into a group for its members, labelled as an agent's", async () => {
+        const made = await tool(agent, 'publish', {
+            words: 'hay for the bunch',
+            group: 'agent bunch',
+        });
+        assert.ok(!made.stopped, made.stopped);
+        assert.equal(made.group, bunch);
+        const [, doc] = made.post.split('/');
+        const posts = (await (await ada(`api/identity/${adaRoot}/groups/${bunch}/posts`)).json())
+            .posts;
+        const post = posts.find((p) => p.doc === doc);
+        assert.ok(post, 'on the group page');
+        assert.ok(
+            post.annotations.some((a) => a.key === 'tag' && a.value === 'ai-agent'),
+            `an agent made it: ${JSON.stringify(post.annotations)}`,
+        );
+        const nowhere = await makeFetch()(`api/id/${adaRoot}/posts/${doc}`);
+        assert.notEqual(nowhere.status, 200, 'and nothing public serves it');
+    });
+
+    it('posts in public as a public group, and never as a private one', async () => {
+        const made = await tool(agent, 'publish', {
+            words: 'cheese, said by an agent',
+            group: 'Agent Cheese',
+            in_public: true,
+        });
+        assert.ok(!made.stopped, made.stopped);
+        const [, doc] = made.post.split('/');
+        const page = await (await makeFetch()(`api/groups/${cheese}/public`)).json();
+        assert.ok(
+            page.posts.some((p) => p.doc_id === doc),
+            'the group counts it as its own',
+        );
+        const post = await (await makeFetch()(`api/id/${adaRoot}/posts/${doc}`)).json();
+        assert.ok(post.annotations.some((a) => a.key === 'tag' && a.value === 'ai-agent'));
+
+        const refused = await tool(agent, 'publish', {
+            words: 'secret, in public?',
+            group: 'Agent Bunch',
+            in_public: true,
+        });
+        assert.ok(refused.stopped && /private/.test(refused.stopped), refused.stopped);
+        const stranger = await tool(agent, 'publish', { words: 'who?', group: 'Nobody Here' });
+        assert.ok(stranger.stopped && /isn't in a group/.test(stranger.stopped), stranger.stopped);
+        const sealed = await tool(agent, 'publish', {
+            words: 'sealed?',
+            group: 'Agent Bunch',
+            trusted_only: true,
+        });
+        assert.ok(sealed.stopped, 'a group post is never sealed too');
+    });
+});

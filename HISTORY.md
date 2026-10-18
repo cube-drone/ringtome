@@ -23081,3 +23081,20 @@ nobody. It now reads it healed, as the thread and the bell do
 refreshed on the spot. A row written before the name arrived is still not
 healed; that would open a database for every nameless persona on every read. The
 public-face suite is green (7); the race wasn't reproduced.
+
+## 2026-10-18 — An agent posts into groups
+
+MCP's `publish` could post only to the persona's public feed: a group's posts,
+members-only or in public as a public group, were out of an agent's reach. Now
+`publish` takes `group`, the persona's group by name or id, and posts there for
+its members through the group's own door; that needs no Social unlock, as in the
+app. With `in_public`, a public group's post goes out in public as the group,
+through the public door's `as_group`. A private group refuses `in_public`, and a
+group post refuses `trusted_only`. A draft made for a refused post is taken away
+again. `whoami` lists each persona's groups by name, id, standing and kind, and
+the guide says how groups work. The group door now marks an agent's post
+"ai-agent" as the public door does (`made_with::mark`). Three claims in
+`mcp.cjs` cover the list, a members-only post (labelled, served nowhere public)
+and a post in public as the group, with the refusals. MCP (54) and the group
+suites (52) are green.
+

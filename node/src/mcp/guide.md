@@ -35,6 +35,15 @@ give that to `read_post` for all its words and its replies.
 people put on it - a reaction is a label that's an emoji. A post may also be
 **trusted only**: sealed so that only people its author trusts can read it.
 
+## Groups
+
+A persona may be in **groups**; `whoami` lists them by name. `publish` posts
+into one with `group`: its members alone see the post. A **public** group's
+members are listed for anyone to see, and `in_public` posts there in public, as
+the group: the persona's own public post, which the group counts as its own and
+which reaches the persona's followers and the group's. A private group is never
+posted to in public. A group post is never sealed as well.
+
 ## People
 
 People **follow** each other (to see their posts) and **trust** each other ("I
