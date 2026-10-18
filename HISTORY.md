@@ -23038,8 +23038,8 @@ gone. The "{count} in the group" line under a group's header is gone; the count
 sits beside the members heading instead, small and italic: "members (3)", on the
 member's page and the open page alike. A group's description now sits in a
 person's bio box (`person-card-bio`), below the roster as a bio sits below a
-person's panel, and on the open page below the member chips, above the feed. The note "a public group: anybody can see who's in it" left the page for a small
-box at the top-left corner of the group's triangle: a bullhorn for a public
-group, a keyhole for a private one (`GroupKind`, groupface.js), saying what that
-means in a person chip's pop-over on a point or a focus.
-
+person's panel, and on the open page below the member chips, above the feed. The
+note "a public group: anybody can see who's in it" left the page for a small box
+at the top-left corner of the group's triangle: a bullhorn for a public group, a
+keyhole for a private one (`GroupKind`, groupface.js), saying what that means in
+a person chip's pop-over on a point or a focus.

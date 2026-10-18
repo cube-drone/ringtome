@@ -315,7 +315,12 @@
 
 /* The top of a group's page (2026-10-16): the person page's hero (person.css), the group's. */
 .group-hero {
-    margin: 0 0 0.3rem;
+    margin: 0;
+}
+
+/* The members box hangs straight from the banner (2026-10-17), with no page gap between them. */
+.group-head + .group-members-box {
+    margin-top: -0.9rem; /* .group-page's gap */
 }
 
 .group-edit-face {
