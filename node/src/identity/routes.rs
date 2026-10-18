@@ -4402,10 +4402,12 @@ pub(crate) async fn drawing_draft(
     let (dated_ms, date_kept) =
         match crate::publication::when(claimed, shape, crate::clock::now_ms())? {
             crate::publication::When::Now { dated_ms, kept } => (dated_ms, kept),
-            crate::publication::When::Later(_) => return Err(AppError::BadRequest(crate::msg!(
+            crate::publication::When::Later(_) => {
+                return Err(AppError::BadRequest(crate::msg!(
                 "identity.routes.a-drawing-cant-be-scheduled",
                 "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
-            ))),
+            )))
+            }
         };
     Ok(DrawingDraft { title, head, dated_ms, date_kept })
 }

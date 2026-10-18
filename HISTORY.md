@@ -23285,6 +23285,7 @@ day is spent, and the draft says why.
 In passing: my first write of this module replaced the existing
 `node/src/publish.rs` (the edge-publication mint). It was restored from git
 before anything else touched it. The new module is `publication.rs`.
+
 ## 2026-10-16: custom domains, the claim and its proof
 
 The plan (`plans/CUSTOM_DOMAINS.md`) took its rulings first. Curtis: one domain
