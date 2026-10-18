@@ -3020,6 +3020,146 @@ pub async fn id_labels(
     Ok(axum::Json(facets).into_response())
 }
 
+/// A public group's shelf (plans/PUBLIC_GROUPS.md): each post the group counts as its own,
+/// `(author, doc)`, as this node holds it - the author's own shelf here, else the fragment ledger
+/// the group's derivation keeps it in. Newest first; a post not held yet is left out until it is.
+pub(crate) async fn group_shelf(
+    state: &AppState,
+    claims: &[(String, [u8; 16])],
+) -> Vec<(String, crate::record::documents::PublicDoc)> {
+    let mut by_author: std::collections::BTreeMap<&str, Vec<[u8; 16]>> = Default::default();
+    for (author, doc) in claims {
+        by_author.entry(author.as_str()).or_default().push(*doc);
+    }
+    let mut out = Vec::new();
+    for (author, docs) in by_author {
+        let mut shelf = whole_shelf(state, author).await;
+        let missing = docs.iter().any(|d| !shelf.iter().any(|p| p.doc_id == *d));
+        if missing {
+            shelf.extend(
+                crate::fragments::shelf_of(&state.node_db, author, 5000).await.unwrap_or_default(),
+            );
+        }
+        let mut seen: std::collections::BTreeSet<[u8; 16]> = Default::default();
+        for p in shelf {
+            if docs.contains(&p.doc_id) && seen.insert(p.doc_id) {
+                out.push((author.to_string(), p));
+            }
+        }
+    }
+    out.sort_by(|a, b| b.1.display_ms().cmp(&a.1.display_ms()).then(a.1.doc_id.cmp(&b.1.doc_id)));
+    out
+}
+
+fn group_candidates(
+    shelf: &[(String, crate::record::documents::PublicDoc)],
+) -> Vec<crate::search::Candidate> {
+    shelf
+        .iter()
+        .map(|(author, p)| crate::search::Candidate {
+            author_root: author.clone(),
+            doc_hex: hex::encode(p.doc_id),
+            title: p.title.clone(),
+            updated_ms: p.head_ms,
+            kind: post_kind(p),
+        })
+        .collect()
+}
+
+/// A public group's feed page: its shelf past the cursor, narrowed as a persona's is (the words
+/// and the picks), dressed as a persona's shelf rows are, each naming its author.
+pub(crate) async fn group_feed_json(
+    state: &AppState,
+    claims: &[(String, [u8; 16])],
+    after: Option<(i64, [u8; 16])>,
+    raw: Option<&str>,
+    q: Option<&str>,
+    viewer: Option<&str>,
+) -> Result<serde_json::Value, AppError> {
+    let mut shelf: Vec<_> = group_shelf(state, claims)
+        .await
+        .into_iter()
+        .filter(|(_, p)| match &after {
+            Some((ms, doc)) => p.display_ms() < *ms || (p.display_ms() == *ms && p.doc_id > *doc),
+            None => true,
+        })
+        .collect();
+    let narrow = crate::search::Narrow::parse(raw, q);
+    if !narrow.is_empty() {
+        let keep = crate::search::matching_first(
+            state,
+            &group_candidates(&shelf),
+            &narrow,
+            viewer,
+            (POSTS_PAGE + 1) as usize,
+        )
+        .await
+        .map_err(AppError::Internal)?;
+        shelf = shelf
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| keep.contains(i))
+            .map(|(_, p)| p)
+            .collect();
+    }
+    let more = shelf.len() as i64 > POSTS_PAGE;
+    shelf.truncate(POSTS_PAGE as usize);
+    let pairs: Vec<(String, String)> =
+        shelf.iter().map(|(a, p)| (a.clone(), hex::encode(p.doc_id))).collect();
+    let counts = crate::replies::known_counts(&state.node_db, &pairs).await.unwrap_or_default();
+    let authors: Vec<String> = {
+        let mut a: Vec<String> = shelf.iter().map(|(a, _)| a.clone()).collect();
+        a.sort();
+        a.dedup();
+        a
+    };
+    let names = crate::profiles::bylines(&state.node_db, &authors).await.unwrap_or_default();
+    let mut items: Vec<serde_json::Value> = Vec::with_capacity(shelf.len());
+    for author in &authors {
+        let mut theirs: Vec<serde_json::Value> = shelf
+            .iter()
+            .filter(|(a, _)| a == author)
+            .map(|(a, p)| {
+                let n = counts.get(&(a.clone(), hex::encode(p.doc_id))).copied().unwrap_or(0);
+                let mut v = post_json(p, n);
+                v["author"] = serde_json::json!(a);
+                v["author_name"] = serde_json::json!(names.get(a).and_then(|b| b.name.clone()));
+                v["author_avatar"] = serde_json::json!(names.get(a).and_then(|b| b.avatar.clone()));
+                v
+            })
+            .collect();
+        attach_annotations(state, author, &mut theirs, viewer).await;
+        items.extend(theirs);
+    }
+    // Back into the shelf's order, which the per-author dressing set aside.
+    let order: std::collections::HashMap<String, usize> =
+        pairs.iter().enumerate().map(|(i, (a, d))| (format!("{a}/{d}"), i)).collect();
+    items.sort_by_key(|v| {
+        let key = format!(
+            "{}/{}",
+            v["author"].as_str().unwrap_or_default(),
+            v["doc_id"].as_str().unwrap_or_default()
+        );
+        order.get(&key).copied().unwrap_or(usize::MAX)
+    });
+    Ok(serde_json::json!({ "posts": items, "more": more }))
+}
+
+/// A public group's facets, counted over its shelf as a persona's are over theirs.
+pub(crate) async fn group_labels_json(
+    state: &AppState,
+    claims: &[(String, [u8; 16])],
+    raw: Option<&str>,
+    q: Option<&str>,
+    viewer: Option<&str>,
+) -> Result<serde_json::Value, AppError> {
+    let shelf = group_shelf(state, claims).await;
+    let narrow = crate::search::Narrow::parse(raw, q);
+    crate::search::facets_json(state, &group_candidates(&shelf), &narrow, viewer, 0)
+        .await
+        .map_err(AppError::Internal)
+}
+
 /// A shelf post's kind (search.rs KINDS): a book by its format, a reply by its link, a
 /// post otherwise; shares are not posts and are counted beside them.
 fn post_kind(p: &crate::record::documents::PublicDoc) -> &'static str {

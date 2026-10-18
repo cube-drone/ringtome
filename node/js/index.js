@@ -715,7 +715,7 @@ const Inside = ({ session }) => {
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
             <${PeopleApp} path="/ringtome/people/groups" tab="groups" current=${persona.current} />
             <${GroupPage} path="/ringtome/people/groups/:group" current=${persona.current} />
-            <${PublicGroupPage} path="/ringtome/groups/:group" current=${persona.current} />
+            <${ToGroup} path="/ringtome/groups/:group" />
             <${GroupPostPage} path="/ringtome/people/groups/:group/posts/:doc" current=${persona.current} />
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
@@ -1127,7 +1127,8 @@ const Outside = ({ session }) => {
                 <${PrivateDoc} path="/ringtome/user/:seg/room/:doc/line/:line" />
                 <${KeptRoute} path="/ringtome/user/:seg" />
                 <${PersonOrPath} path="/ringtome/user/:seg/*" current=${null} persona=${null} session=${null} onTitle=${setIdTitle} searchQuery=${query} />
-                <${PublicGroupPage} path="/ringtome/groups/:group" current=${null} />
+                <${PublicGroupPage} path="/ringtome/people/groups/:group" current=${null} onTitle=${setIdTitle} searchQuery=${query} />
+                <${ToGroup} path="/ringtome/groups/:group" />
                 <${LegacyId} path="/id/:seg" />
                 <${LegacyId} path="/id/:seg/*" />
                 <${AtRoute} path="/:at" fallback=${Welcome} current=${null} persona=${null} session=${session} onTitle=${setIdTitle} searchQuery=${query} />
@@ -1136,6 +1137,13 @@ const Outside = ({ session }) => {
             </${Router}>
         </div>
     </div>`;
+};
+
+/// The public group page's first address (2026-10-17), now its address in People.
+const ToGroup = ({ group }) => {
+    const loc = useLocation();
+    useEffect(() => loc.route(groupHref(group), true), [loc, group]);
+    return null;
 };
 
 const App = () => {

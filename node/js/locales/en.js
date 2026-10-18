@@ -1478,6 +1478,10 @@ export default {
     'chips.unfeature': 'unfeature',
     'chips.feature': 'feature',
 
+    // --- node/js/groupface.js ---
+    'publicgroup.a-public-group': "a public group: anybody can see who's in it",
+    'publicgroup.a-private-group': "a private group: only its members can see who's in it",
+
     // --- node/js/groups.js ---
     'apps.groups.tab-people': 'people',
     'apps.groups.tab-groups': 'groups',
@@ -1485,14 +1489,15 @@ export default {
     'apps.groups.standing-invited': 'invited',
     'apps.groups.standing-owner': 'owner',
     'apps.groups.standing-member': 'member',
+    'apps.groups.tab-public-posts': 'public posts',
+    'apps.groups.tab-private-posts': 'private posts',
+    'apps.groups.tab-chats': 'chats',
     'apps.groups.a-new-groups-name': "a new group's name",
     'apps.groups.found-a-group': 'found a group',
     'apps.groups.public-group': 'public',
     'apps.groups.public-explained': "A public group's members are listed for anyone to see, and its members can post in public as the group - those posts reach their followers. Its other posts stay members-only. It can't be made private later.",
     'apps.groups.no-groups-yet': "no groups yet - found one, or wait for someone's invite.",
     'apps.groups.fetching': 'fetching the group…',
-    'publicgroup.a-public-group': 'a public group: anyone can see who is in it, and its members post in public as the group',
-    'apps.groups.member-count': '{count} in the group',
     'apps.groups.youre-invited': "you're invited. Joining shows everyone in it who you are, and lets you read and post here.",
     'apps.groups.joining-a-public-group': "It's a public group: your membership will be public, and its members' public posts as the group will reach the people who follow you, through you.",
     'apps.groups.join': 'join',
@@ -1536,7 +1541,7 @@ export default {
     'apps.groups.new-chat': 'new chat',
     'apps.groups.general': '#general',
     'apps.groups.open-general': 'open its #general',
-    'apps.groups.posts': 'posts',
+    'apps.groups.private-posts': 'private posts',
     'apps.groups.new-post': 'new post',
     'apps.groups.nothing-posted-yet': 'nothing posted here yet.',
     'apps.groups.pinned': 'pinned',
@@ -1915,6 +1920,8 @@ export default {
     'postentry.edit-this-note-in-writer': 'edit this note in hrseWriter™',
     'postentry.open-this-for-editing': 'open this for editing',
     'postentry.passed-this-along': 'passed this along',
+    'postentry.group-private': '(group-private)',
+    'postentry.group-public': '(public)',
     'postentry.hidden-from-the-group-by-an-owner': 'hidden from the group by an owner',
     'postentry.vouches-for-this-author': 'trusts this author',
     'postentry.scheduled-for': 'scheduled for {when}',
@@ -2011,6 +2018,9 @@ export default {
 
     // --- node/js/publicgroup.js ---
     'publicgroup.public-posts': 'public posts',
+    'publicgroup.fetching-posts': 'fetching its posts…',
+    'publicgroup.nothing-matches': 'nothing posted as the group says that.',
+    'publicgroup.no-public-posts-yet': 'nothing posted in public as the group yet.',
     'publicgroup.unfollow': 'stop following',
     'publicgroup.follow': 'follow the group',
     'publicgroup.following-explained': "Its members' public posts as the group come to your feed.",

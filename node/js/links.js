@@ -109,13 +109,19 @@ export const appHref = (appId) => (appId ? `${PREFIX}/${appId}` : PREFIX);
 /// People's Groups tab, and one group's page under it (plans/GROUPS.md, section 7).
 export const groupsHref = () => `${appHref('people')}/groups`;
 export const groupHref = (group) => `${groupsHref()}/${group}`;
-/// A public group's open page (plans/PUBLIC_GROUPS.md): anyone's, signed in or out.
-export const publicGroupHref = (group) => `${PREFIX}/groups/${group}`;
+/// A public group's open page (plans/PUBLIC_GROUPS.md): its address in People, the same as its
+/// members' page - anyone's, signed in or out, inside the People app's frame. `/ringtome/groups/`
+/// sends here.
+export const publicGroupHref = (group) => groupHref(group);
 /// A group post's own page, inside its group (Curtis, 2026-10-16): there to members only.
 export const groupPostHref = (group, doc) => `${groupHref(group)}/posts/${doc}`;
 /// The feed opened to write in a group (its page's "new post"): that group's posts, and the
 /// composer's "only show to" on it - read once by the feed, which then drops it from the address.
 export const groupComposeHref = (group) => `${appHref('feed')}?group=${encodeURIComponent(group)}`;
+/// The feed opened to write in public as a public group (plans/PUBLIC_GROUPS.md): the composer's
+/// "only show to" on "in public, as" it - read once by the feed, which then drops it.
+export const publicComposeHref = (group) =>
+    `${appHref('feed')}?as_group=${encodeURIComponent(group)}`;
 
 /// The new-chat form, with "only show to" on a group (plans/GROUP_ROOMS.md): a group's section in
 /// the chats column, and its page, send here to start a room in it.

@@ -16,7 +16,6 @@ import {
     groupComposeHref,
     groupHref,
     groupsHref,
-    publicGroupHref,
     roomHref,
 } from './links.js';
 import { openMirror, useLive } from './mirror.js';
@@ -24,10 +23,10 @@ import { PersonChip, PersonRow, bannerStyle } from './person.js';
 import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb } from './doc/drawing.js';
 import { avatarBytes } from './pickbytes.js';
-import { GroupMark, forgetGroupFace } from './groupface.js';
+import { GroupHeroMark, GroupMark, GroupTabHead, forgetGroupFace } from './groupface.js';
 import { PostEntry } from './postentry.js';
 import { GroupThread, ParentContexts } from './postpage.js';
-import { GroupPublicPosts, PublicGroupPage } from './publicgroup.js';
+import { GroupFeed, PublicGroupPage } from './publicgroup.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
 import { narrowParams } from './postsearch.js';
 import { filterContacts } from './pure/people.js';
@@ -87,6 +86,13 @@ const STANDING_WORDS = {
     invited: () => t('apps.groups.standing-invited', 'invited'),
     owner: () => t('apps.groups.standing-owner', 'owner'),
     member: () => t('apps.groups.standing-member', 'member'),
+};
+
+/// A group page's tabs, in words.
+const TAB_WORDS = {
+    public: () => t('apps.groups.tab-public-posts', 'public posts'),
+    private: () => t('apps.groups.tab-private-posts', 'private posts'),
+    chats: () => t('apps.groups.tab-chats', 'chats'),
 };
 
 export const GroupsTab = ({ current }) => {
@@ -274,6 +280,11 @@ export const GroupPage = ({ group, current }) => {
         </div>`;
     }
     const you = roster.you || {};
+    const tabs = [roster.public && 'public', you.member && 'private', you.member && 'chats'].filter(
+        Boolean,
+    );
+    const asked = loc.query && loc.query.tab;
+    const tab = tabs.includes(asked) ? asked : tabs[0];
     const left = async () => {
         if (await act('leave')) loc.route(groupsHref());
     };
@@ -290,16 +301,6 @@ export const GroupPage = ({ group, current }) => {
                     onDone=${() => setEditing(false)}
                 />`
             }
-            ${
-                roster.public &&
-                html`<p class="group-public-note">
-                    <a href=${publicGroupHref(group)}>${t('publicgroup.a-public-group', 'a public group: anyone can see who is in it, and its members post in public as the group')}</a>
-                </p>`
-            }
-            ${roster.description && html`<p class="group-description">${roster.description}</p>`}
-            <p class="group-count">
-                ${t('apps.groups.member-count', '{count} in the group', { count: (roster.members || []).length })}
-            </p>
         </header>
         ${error && html`<p class="groups-error">${error}</p>`}
         ${
@@ -322,11 +323,32 @@ export const GroupPage = ({ group, current }) => {
             posts=${items}
             onLeave=${you.member ? left : null}
         />
-        ${you.member && html`<hr class="group-rule" />`}
-        ${you.member && html`<${GroupChats} group=${group} roster=${roster} act=${act} />`}
-        ${you.member && roster.public && html`<${GroupPublicPosts} group=${group} />`}
         ${
-            you.member &&
+            /* Its description in a box below the roster, as a person's bio sits below their panel on
+            their page (Curtis, 2026-10-17). */ ''
+        }
+        ${roster.description && html`<p class="person-card-bio">${roster.description}</p>`}
+        ${
+            /* Three tabs under the group (Curtis, 2026-10-17): its public posts, its private posts and
+            its chats - so a long run of public posts never buries the members' own. Private posts and
+            chats only for those who can see them; each tab its own address. */ ''
+        }
+        ${
+            tabs.length > 1 &&
+            html`<nav class="group-tabs">
+                ${tabs.map(
+                    (name) => html`<button
+                        key=${name}
+                        class=${name === tab ? 'tab jag-line-top active' : 'tab jag-line-top'}
+                        onClick=${() => loc.route(`${loc.path}?tab=${name}`, true)}
+                    >${TAB_WORDS[name]()}</button>`,
+                )}
+            </nav>`
+        }
+        ${tab === 'chats' && html`<${GroupChats} group=${group} roster=${roster} act=${act} />`}
+        ${tab === 'public' && html`<${GroupFeed} group=${group} name=${roster.name} current=${current} member=${!!you.member} />`}
+        ${
+            tab === 'private' &&
             html`<${GroupPosts}
                 answer=${pickQuery ? found : posts}
                 error=${pickQuery ? foundError : postsError}
@@ -347,7 +369,7 @@ const GroupHero = ({ group, roster, onEdit }) => html`<div
     style=${roster.banner ? `background-image: url(${roster.banner})` : bannerStyle(group, '')}
 >
     <div class="person-card-top">
-        <${GroupMark} group=${group} picture=${roster.picture} size="hero" />
+        <${GroupHeroMark} group=${group} picture=${roster.picture} isPublic=${!!roster.public} />
         ${
             onEdit &&
             html`<span class="person-card-corner">
@@ -489,7 +511,10 @@ const Members = ({ roster, current, act, posts, onLeave }) => {
     const glance = membersAtAGlance(roster, posts, GLANCE);
     return html`<details class="contact-ledger group-members-box" onToggle=${(e) => setOpen(e.currentTarget.open)}>
         <summary class="ledger-head group-members-head">
-            <span class="group-members-title">${t('apps.groups.members', 'members')}</span>
+            <span class="group-members-title">
+                ${t('apps.groups.members', 'members')}
+                <span class="group-members-count">(${(roster.members || []).length})</span>
+            </span>
             ${
                 /* Leaving sits with the roster, at its top right, and only open (Curtis, 2026-10-16):
                 in the heading, so its press mustn't fold the box. */ ''
@@ -710,13 +735,13 @@ function releaseGroupPost(group, doc) {
 const GroupChats = ({ group, roster, act }) => {
     const general = roster.room;
     const owner = roster.you && roster.you.owner;
-    return html`<section class="group-chats">
-        <div class="group-posts-head">
-            <h3 class="group-posts-title">${t('apps.groups.chats', 'chats')}</h3>
-            <a class="group-new-post jag-line" href=${groupChatHref(group)}>
+    return html`<section class="group-posts">
+        <${GroupTabHead}
+            title=${t('apps.groups.chats', 'chats')}
+            action=${html`<a class="group-new-post jag-line" href=${groupChatHref(group)}>
                 <${Icons.plus} /> ${t('apps.groups.new-chat', 'new chat')}
-            </a>
-        </div>
+            </a>`}
+        />
         ${
             general
                 ? html`<a class="group-general" href=${roomHref(general.author, general.doc_id)}>
@@ -744,12 +769,12 @@ const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
             /* A heading with the members' weight, and beside it the way to write here (Curtis,
             2026-10-16): the feed, opened on this group with its composer's "only show to" on it. */ ''
         }
-        <div class="group-posts-head">
-            <h3 class="group-posts-title">${t('apps.groups.posts', 'posts')}</h3>
-            <a class="group-new-post jag-line" href=${groupComposeHref(group)}>
+        <${GroupTabHead}
+            title=${t('apps.groups.private-posts', 'private posts')}
+            action=${html`<a class="group-new-post jag-line" href=${groupComposeHref(group)}>
                 <${Icons.plus} /> ${t('apps.groups.new-post', 'new post')}
-            </a>
-        </div>
+            </a>`}
+        />
         ${facets}
         ${error && html`<p class="groups-error">${error.message}</p>`}
         ${

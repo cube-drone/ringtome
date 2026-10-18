@@ -85,8 +85,8 @@ Publishing chooses "public, as Cheese Group" (a public group's members-only
 `Roster::public_posts` is the pointers that count: by a current member, not
 hidden, not retracted (ruling 8). The derivation writes them to
 `group_public_posts (group_id, author, doc, claimed_ms)` on every node that
-holds the group's public lanes. That table is what the cards' "(Cheese Group)"
-mark, the group's public page and the carry all read.
+holds the group's public lanes. That table is what the cards' public band, the
+group's public page and the carry all read.
 
 ### The carry (ruling 5)
 
@@ -122,8 +122,31 @@ On a reader's node:
   to the signed-out web too.
 - **A persona's public groups** on their profile: `GET /api/id/{root}/groups`
   lists the public groups the node knows they're a member of.
-- **The card** of a public post the group counts says "(Cheese Group)" beside
-  its author, linking to the group's page.
+- **The card** of a public post the group counts wears the group's band, as a
+  post within a group does, but bigger, with a bigger triangle. After the
+  group's name it says "(public)", and a post within a group says
+  "(group-private)", each small, italic and fainter than the name (Curtis,
+  2026-10-17). It links to the group's open page.
+
+### The open page is a feed (Curtis, 2026-10-17)
+
+"Can we give the public groups outward-facing page a full-feed view with filters
+and such?" The open page lives at the group's address in People, inside the
+app's frame with its header, signed in or out. Its public posts are the feed's
+cards, with the filter strip and the header's search:
+
+- `GET /api/groups/{group}/posts` and `/labels`, to anyone, answer as a
+  persona's shelf does (`idface::group_feed_json`, `group_labels_json`). They
+  read each counted post from its author's shelf as this node holds it, else
+  from the fragment ledger, and narrow it by the same words and picks.
+- Every node holding a public group fetches the posts it counts but doesn't
+  hold, from their authors, in the background of the group's derivation, as a
+  share's fragment is fetched. So its feed fills wherever the group is held.
+- Members see the same feed on their own page of the group, as the first of
+  three tabs under its header: "public posts", "private posts" and "chats"
+  (Curtis, 2026-10-17), so a long run of public posts never buries the members'
+  own. The last two show only to members, and a private group has just those
+  two. Each tab is its own address, `?tab=`.
 
 ### What a member sees
 
@@ -162,7 +185,7 @@ All five built 2026-10-17. Acceptance: `integration/test/publicgroups.cjs`
    - The public publish takes `as_group`, refusing it on a sealed post, a room,
      an IM and a schedule. Taking a post down retracts its claims.
      `group_public_posts` is rung 99, and so is `group_rosters.public`.
-   - The card says "(Cheese Group)", linking to the open page.
+   - The card wears the group's band, bigger, saying "(public)".
 3. **The carry.**
    - `group_carries` (rung 100) is what this node carried and through whom, so
      an ended carry withdraws exactly its rows (`fanout::withdraw_carried`).

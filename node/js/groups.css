@@ -107,14 +107,18 @@
     margin: 0;
 }
 
-.group-description {
+/* A group's description, in a person's bio box (person.css): the page's own gap spaces it. */
+.group-page > .person-card-bio {
     margin: 0;
 }
 
-.group-count {
-    margin: 0;
+/* "members (3)": the count beside the heading, small and italic (2026-10-17). */
+.group-members-count {
+    margin-left: 0.3em; /* the markup's line break between them collapses to nothing */
+    font-size: 0.75em;
+    font-style: italic;
+    font-weight: normal;
     color: var(--muted);
-    font-size: 0.85rem;
 }
 
 .group-invite {
@@ -229,13 +233,6 @@
     margin-left: auto;
 }
 
-.group-rule {
-    width: 100%;
-    margin: 0.4rem 0;
-    border: none;
-    border-top: 1px solid var(--border);
-}
-
 .group-invite-sent {
     margin: 0;
     color: var(--teal);
@@ -270,6 +267,22 @@
 
 .feed-entry-group-name:hover {
     text-decoration: underline;
+}
+
+/* Which kind of group post it is, after the group's name: "(public)" or "(group-private)" -
+   small, italic, and fainter than the name. */
+.feed-entry-group-kind {
+    font-size: 0.8em;
+    font-style: italic;
+    font-weight: normal;
+    opacity: 0.7;
+}
+
+/* Posted in public as the group (plans/PUBLIC_GROUPS.md): the same band, bigger. */
+.feed-entry-group-public {
+    padding: 0.7em 1em;
+    font-size: 1.05em;
+    gap: 0.7em;
 }
 
 .feed-entry-group-note {
@@ -375,6 +388,11 @@
     height: 1.386rem;
 }
 
+.group-tri-band {
+    width: 2.6rem;
+    height: 2.252rem;
+}
+
 .group-tri-hero {
     width: 10rem;
     height: 8.66rem;
@@ -382,27 +400,11 @@
 }
 
 /* The group's rooms (plans/GROUP_ROOMS.md): its #general, above its posts. */
-.group-chats {
-    margin-bottom: 1.2rem;
-}
-
 .group-general {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
     font-weight: 600;
-}
-
-/* A public post as its group (plans/PUBLIC_GROUPS.md): "(Cheese Group)" beside its author. */
-.feed-entry-as-group {
-    color: var(--teal);
-    font-size: 0.85rem;
-    text-decoration: none;
-    margin-right: 0.4rem;
-}
-
-.feed-entry-as-group:hover {
-    text-decoration: underline;
 }
 
 /* Public groups (plans/PUBLIC_GROUPS.md): the founding's choice, the note that says so, and the
@@ -415,14 +417,41 @@
     font-size: 0.9rem;
 }
 
-.group-public-note {
-    color: var(--muted);
-    font-size: 0.85rem;
-    margin: 0.2rem 0;
+/* The group's kind at its triangle's top-left corner (2026-10-17): a bullhorn or a keyhole in a
+   small box, saying what it means on a point or a focus, as a person's chip says their name. */
+.group-hero-mark {
+    position: relative;
+    display: inline-block;
 }
 
-.group-public-note a {
-    color: inherit;
+.group-kind {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem;
+    font-size: 1.2rem;
+    color: var(--ink);
+    background: var(--surface);
+    border: var(--lw) solid var(--border-strong);
+    cursor: help;
+}
+
+/* Opening downward and rightward, as a chip's in a post does (person.css): the box sits at the
+   banner's top, where a pop-over above would be cut off. */
+.group-kind .group-kind-label {
+    bottom: auto;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    transform: none;
+    align-items: flex-start;
+}
+
+.group-kind:hover .group-kind-label,
+.group-kind:focus-visible .group-kind-label {
+    opacity: 1;
 }
 
 .public-group-follow {
@@ -445,19 +474,6 @@
     gap: 0.3rem;
 }
 
-.public-group-posts {
-    margin-top: 0.8rem;
-}
-
-.public-group-post-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-
 /* A persona's public groups, under their bio (person.js). */
 .person-card-groups {
     color: var(--muted);
@@ -468,5 +484,29 @@
 .person-card-groups a {
     color: var(--teal);
     text-decoration: none;
+}
+
+/* A group page's tabs (2026-10-17): public posts, private posts, chats - under its header, as
+   proper tabs (Curtis): cut at the top only, standing centred on one shared line, the open one in
+   the page's own colour over it, so it reads as joined to what's beneath. */
+.group-tabs {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 0.4rem;
+    margin: 0.8rem 0;
+    border-bottom: var(--lw) solid var(--border);
+}
+
+.group-tabs .tab {
+    --line: var(--border);
+    font-size: 0.95rem;
+    padding: 0.4rem 0.9rem;
+    margin-bottom: calc(-1 * var(--lw)); /* the open bottom stands on the shared line */
+}
+
+.group-tabs .tab.active {
+    color: var(--teal);
+    background: var(--surface); /* the page's panel (shell.css .app-frame-inner) */
 }
 

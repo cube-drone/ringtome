@@ -1064,6 +1064,17 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         loc.route(loc.path, true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [askedGroup, ofGroups]);
+    // Sent from a public group's "new post" (links.js `publicComposeHref`): the composer open, on
+    // "in public, as" the group, over the feed as it was - its posts are in the feed itself.
+    const askedAsGroup = (loc.query && loc.query.as_group) || null;
+    useEffect(() => {
+        if (!askedAsGroup) return;
+        if (!ofGroups.some((g) => g.group === askedAsGroup && g.public)) return;
+        setAudienceNext(`as-group:${askedAsGroup}`);
+        if (tucked.has('compose')) toggleTuck('compose');
+        loc.route(loc.path, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [askedAsGroup, ofGroups]);
     const sealNext = sealOfChoice(audienceNext);
     // In public, as a public group (plans/PUBLIC_GROUPS.md): an open post the group counts too.
     const asGroupNext = asGroupOfChoice(audienceNext);

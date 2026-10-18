@@ -391,6 +391,27 @@ async fn keep_public_posts(
     )
     .await
     .context("forgetting a group's former public posts")?;
+    // Its feed reads them here (plans/PUBLIC_GROUPS.md): each post this node doesn't hold is
+    // fetched from its author as a share's fragment is, in the background - a derivation holds
+    // the group's lock, and a fetch can take seconds.
+    let wanted: Vec<(String, [u8; 16])> =
+        roster.public_posts.keys().map(|(a, d)| (hex::encode(a), *d)).collect();
+    if !wanted.is_empty() {
+        let state = state.clone();
+        tokio::spawn(async move {
+            for (author, doc) in wanted {
+                if crate::fragments::held(&state.node_db, &author, &hex::encode(doc))
+                    .await
+                    .ok()
+                    .flatten()
+                    .is_some()
+                {
+                    continue;
+                }
+                let _ = crate::fragments::journalable(&state, &author, &author, &doc).await;
+            }
+        });
+    }
     Ok(())
 }
 
@@ -2426,6 +2447,8 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         // no session, and only the face as it stands.
         .route("/api/groups/{group}/face", get(face_handler))
         .route("/api/groups/{group}/public", get(public_page_handler))
+        .route("/api/groups/{group}/posts", get(public_feed_handler))
+        .route("/api/groups/{group}/labels", get(public_labels_handler))
         .route("/api/id/{seg}/groups", get(persona_public_groups_handler))
         .route("/api/groups/{group}/face/{doc}", get(face_bytes_route))
         .route("/api/groups/{group}/face/{doc}/thumb", get(face_thumb_route))
@@ -4866,6 +4889,76 @@ async fn public_page_handler(State(state): State<AppState>, Path(group): Path<St
         // Where this page was answered: a follow from another node asks here first.
         "endpoint": state.endpoint.id().to_string(),
     })))
+}
+
+/// The posts a public group counts as its own, `(author, doc)`, for its feed - or no such group,
+/// for a private one or one this node doesn't hold.
+async fn public_claims(
+    state: &AppState,
+    group: &GroupId,
+) -> Result<Vec<(String, [u8; 16])>, AppError> {
+    let missing =
+        || AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"));
+    let Some((roster, _)) = folded(state, group).await.map_err(AppError::Internal)? else {
+        return Err(missing());
+    };
+    if !roster.public {
+        return Err(missing());
+    }
+    Ok(roster.public_posts.keys().map(|(a, d)| (hex::encode(a), *d)).collect())
+}
+
+fn cursor_of(q: &crate::idface::PostsQuery) -> Result<Option<(i64, [u8; 16])>, AppError> {
+    match (q.after_ms, q.after_doc.as_deref()) {
+        (Some(ms), Some(doc)) => Ok(Some((ms, doc_of(doc)?))),
+        _ => Ok(None),
+    }
+}
+
+/// GET `/api/groups/{group}/posts` - a public group's feed (plans/PUBLIC_GROUPS.md, ruling 6), to
+/// anyone: its public posts as full cards, newest first, a page at a time, narrowed by the words
+/// and the picks as a persona's shelf is.
+async fn public_feed_handler(
+    State(state): State<AppState>,
+    Path(group): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<crate::idface::PostsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Answer {
+    let group = group_of(&group)?;
+    let claims = public_claims(&state, &group).await?;
+    let after = cursor_of(&q)?;
+    Ok(Json(
+        crate::idface::group_feed_json(
+            &state,
+            &claims,
+            after,
+            raw.as_deref(),
+            q.q.as_deref(),
+            q.as_root.as_deref(),
+        )
+        .await?,
+    ))
+}
+
+/// GET `/api/groups/{group}/labels` - its feed's facets, as a persona's page counts theirs.
+async fn public_labels_handler(
+    State(state): State<AppState>,
+    Path(group): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<crate::idface::PostsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Answer {
+    let group = group_of(&group)?;
+    let claims = public_claims(&state, &group).await?;
+    Ok(Json(
+        crate::idface::group_labels_json(
+            &state,
+            &claims,
+            raw.as_deref(),
+            q.q.as_deref(),
+            q.as_root.as_deref(),
+        )
+        .await?,
+    ))
 }
 
 /// GET `/api/id/{seg}/groups` - the public groups a persona is in, as this node knows (ruling 4:

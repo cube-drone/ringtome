@@ -824,7 +824,9 @@ const PostEntryBody = ({
     // or, posted to a group, the group's - faint behind the top of the card and fading out down it.
     // Only a banner someone chose: the tiled pattern standing in for none stays off the card.
     const poster = usePerson(item.author, { current });
-    const groupFace = useGroupFace(groupId);
+    // The band's group: the one it was posted within, or the public group it was posted as.
+    const bandGroup = item.group || item.as_group || null;
+    const groupFace = useGroupFace(bandGroup && bandGroup.id);
     const backdrop = groupId ? (groupFace && groupFace.banner) || '' : poster.bannerUrl;
     // An owner hid it from the group (plans/GROUPS.md, section 7), as the card knows it: the row
     // says so, the owner's chip moves it, and a fresh row wins - the pin's discipline, above.
@@ -1413,13 +1415,24 @@ const PostEntryBody = ({
                 frame's colour, with the group's triangle (Curtis, 2026-10-16: the line was small). */ ''
             }
             ${
-                item.group &&
-                html`<div class="feed-entry-group">
+                /* Posted in public as a public group (plans/PUBLIC_GROUPS.md) wears the same band,
+                bigger, its triangle too, and says "(public)"; posted within a group, "(group-private)"
+                (Curtis, 2026-10-17). */ ''
+            }
+            ${
+                bandGroup &&
+                html`<div class=${item.group ? 'feed-entry-group' : 'feed-entry-group feed-entry-group-public'}>
                     <${GroupMark}
-                        group=${item.group.id}
+                        group=${bandGroup.id}
                         picture=${groupFace && groupFace.picture && `${groupFace.picture}/thumb`}
+                        size=${item.group ? 'mini' : 'band'}
                     />
-                    <a class="feed-entry-group-name" href=${groupHref(item.group.id)}>${item.group.name}</a>
+                    <a class="feed-entry-group-name" href=${item.group ? groupHref(bandGroup.id) : publicGroupHref(bandGroup.id)}>${bandGroup.name}</a>
+                    ${
+                        item.group
+                            ? html`<span class="feed-entry-group-kind">${t('postentry.group-private', '(group-private)')}</span>`
+                            : html`<span class="feed-entry-group-kind">${t('postentry.group-public', '(public)')}</span>`
+                    }
                     ${
                         hidden &&
                         html`<span class="feed-entry-group-note">
@@ -1466,12 +1479,6 @@ const PostEntryBody = ({
                 current=${current}
                 profile=${authorProfile}
                 actions=${html`${
-                    /* A public post a public group counts as its own (plans/PUBLIC_GROUPS.md): "Bill
-                    (Cheese Group)", the group beside its author, who it still belongs to. */ ''
-                }${
-                    item.as_group &&
-                    html`<a class="feed-entry-as-group" href=${publicGroupHref(item.as_group.id)}>(${item.as_group.name})</a>`
-                }${
                     item.scheduled
                         ? html`<span class="feed-entry-when feed-entry-scheduled"><${Icons.scheduled} /> ${t('postentry.scheduled-for', 'scheduled for {when}', { when })}</span>`
                         : backdated

@@ -1,18 +1,22 @@
 // A public group's open page (plans/PUBLIC_GROUPS.md, ruling 6): its face, its members and its
-// public posts, to anyone - signed out at `/ringtome/groups/:group`, and to someone signed in who
-// isn't in it, with a follow button (ruling 7). A member sees its public posts on their own page of
-// it too (`PublicPosts`). A private group has no open page: the node says there's no such group.
+// public posts as a feed, to anyone - at the group's address in People, signed out or signed in
+// and not in it, with a follow button (ruling 7). A member sees its public feed on their own page
+// of it too (`GroupFeed`). A private group has no open page: the node says there's no such group.
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
-import { GroupMark } from './groupface.js';
-import { MiniPost } from './postentry.js';
+import { GroupHeroMark, GroupTabHead } from './groupface.js';
+import { PostEntry } from './postentry.js';
 import { PersonChip, bannerStyle } from './person.js';
-import { groupHref } from './links.js';
+import { groupHref, publicComposeHref } from './links.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { mergePosts, postCursor } from './pure/feed.js';
+import { shelfItem } from './pure/shelf.js';
+import { useSearch, narrowParams } from './postsearch.js';
+import { LabelFacets, useLabels, usePicks } from './facets.js';
 
 const html = htm.bind(h);
 
@@ -33,26 +37,116 @@ const usePublicGroup = (group, turn = 0) => {
     return [page, error];
 };
 
-/// The group's public posts, newest first: each a member's own post, which the group counts as
-/// its own.
-export const PublicPosts = ({ posts }) =>
-    !!posts &&
-    posts.length > 0 &&
-    html`<section class="public-group-posts">
-        <h3 class="group-posts-title">${t('publicgroup.public-posts', 'public posts')}</h3>
-        <ul class="public-group-post-list">
-            ${posts.map(
-                (p) => html`<li key=${`${p.author}/${p.doc_id}`}>
-                    <${MiniPost} author=${p.author} doc_id=${p.doc_id} />
-                </li>`,
-            )}
-        </ul>
+/// The group's public posts as a feed (Curtis, 2026-10-17: "a full-feed view with filters and
+/// such"): the feed's cards, newest first, a page at a time, with the filter strip over them and
+/// the header's search - each post its author's own, wearing the group's public band.
+export const GroupFeed = ({ group, name, current, searchQuery = '', member = false }) => {
+    const viewer = current ? `?as=${current.root}` : '';
+    const base = `/api/groups/${group}/posts${viewer}`;
+    const [list, setList] = useState(null);
+    const [more, setMore] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    useEffect(() => {
+        let live = true;
+        setList(null);
+        api(base)
+            .then((page) => {
+                if (!live) return;
+                setList(page.posts || []);
+                setMore(!!page.more);
+            })
+            .catch((e) => live && setError(e.message));
+        return () => {
+            live = false;
+        };
+    }, [base]);
+    const [picks, setPicks] = usePicks(`group-public:${group}`, !current, { inUrl: true });
+    const pickQuery = narrowParams('', picks);
+    const labels = useLabels(
+        `/api/groups/${group}/labels${viewer}${pickQuery ? `${viewer ? '&' : '?'}${pickQuery}` : ''}`,
+        (list || []).length,
+    );
+    const search = useSearch(base, searchQuery, picks);
+    const page = async (rows, set, setMoreOf) => {
+        const cursor = postCursor(rows);
+        if (!cursor) return;
+        setLoading(true);
+        try {
+            const next = await api(
+                `${base}${viewer ? '&' : '?'}after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}`,
+            );
+            set((seen) => mergePosts(seen, next.posts));
+            setMoreOf(!!next.more);
+        } catch (e) {
+            setError(e.message);
+        }
+        setLoading(false);
+    };
+    const loadMoreFound = () => {
+        const cursor = postCursor(search.results);
+        if (cursor) search.loadMore(`after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}`);
+    };
+    const asItem = (p) => ({
+        ...shelfItem(p, {
+            root: p.author,
+            authorName: p.author_name,
+            authorAvatar: p.author_avatar,
+            mine: !!current && current.root === p.author,
+        }),
+        as_group: { id: group, name },
+    });
+    const shown = (search.active ? search.results || [] : list || []).map(asItem);
+    return html`<section class="group-posts">
+        ${
+            /* A member's way to say something here, as the private tab's (2026-10-17): the feed's
+            composer, on "in public, as" this group. */ ''
+        }
+        <${GroupTabHead}
+            title=${search.active ? t('posts.matching-posts', 'matching posts') : t('publicgroup.public-posts', 'public posts')}
+            action=${
+                member &&
+                html`<a class="group-new-post jag-line" href=${publicComposeHref(group)}>
+                    <${Icons.plus} /> ${t('apps.groups.new-post', 'new post')}
+                </a>`
+            }
+        />
+        <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} free=${!current} />
+        ${!list && !error && html`<p class="null-sub">${t('publicgroup.fetching-posts', 'fetching its posts…')}</p>`}
+        ${
+            search.active &&
+            search.searching &&
+            html`<p class="null-sub"><span class="waiting-dot"></span> ${t('posts.searching', 'searching…')}</p>`
+        }
+        ${
+            list &&
+            !search.searching &&
+            shown.length === 0 &&
+            html`<p class="null-sub">
+                ${search.active ? search.error || t('publicgroup.nothing-matches', 'nothing posted as the group says that.') : t('publicgroup.no-public-posts-yet', 'nothing posted in public as the group yet.')}
+            </p>`
+        }
+        ${shown.map(
+            (item) => html`<${PostEntry}
+                key=${`${item.author}:${item.doc_id}`}
+                item=${item}
+                current=${current}
+                found=${search.active ? searchQuery : null}
+                editing=${null}
+            />`,
+        )}
+        ${error && html`<p class="form-error">${error}</p>`}
+        ${
+            (search.active ? search.more : more) &&
+            html`<button
+                class="public-posts-more"
+                disabled=${search.active ? search.loading : loading}
+                onClick=${search.active ? loadMoreFound : () => page(list, setList, setMore)}
+            >
+                ${(search.active ? search.loading : loading) ? t('posts.reading-further-back', 'reading further back…') : t('posts.load-more', 'load more')}
+            </button>`
+        }
     </section>`;
-
-/// The public posts list for a member's own page of the group.
-export const GroupPublicPosts = ({ group }) => {
-    const [page] = usePublicGroup(group);
-    return html`<${PublicPosts} posts=${page && page.posts} />`;
 };
 
 /// Follow the group itself, or stop, for someone signed in (ruling 7): its public posts come to
@@ -118,8 +212,13 @@ const FollowGroup = ({ group, page, current }) => {
     </div>`;
 };
 
-export const PublicGroupPage = ({ group, current }) => {
+export const PublicGroupPage = ({ group, current, onTitle, searchQuery = '' }) => {
     const [page, error] = usePublicGroup(group);
+    // The page's title, where the frame shows one (signed out: `outside-page-title`).
+    useEffect(() => {
+        if (onTitle && page) onTitle(page.name);
+        return () => onTitle && onTitle(null);
+    }, [onTitle, page]);
     if (error) {
         return html`<div class="group-page">
             <p class="people-empty">
@@ -147,21 +246,20 @@ export const PublicGroupPage = ({ group, current }) => {
                 style=${page.banner ? `background-image: url(${page.banner})` : bannerStyle(group, '')}
             >
                 <div class="person-card-top">
-                    <${GroupMark} group=${group} picture=${page.picture} size="hero" />
+                    <${GroupHeroMark} group=${group} picture=${page.picture} isPublic=${true} />
                 </div>
             </div>
             <h2 class="group-name">${page.name}</h2>
-            <p class="group-public-note">${t('publicgroup.a-public-group', 'a public group: anyone can see who is in it, and its members post in public as the group')}</p>
-            ${page.description && html`<p class="group-description">${page.description}</p>`}
-            <p class="group-count">
-                ${t('apps.groups.member-count', '{count} in the group', { count: page.members.length })}
-            </p>
         </header>
         ${
             mine
                 ? html`<a class="group-general" href=${groupHref(group)}>${t('publicgroup.open-your-group', 'open the group')}</a>`
                 : html`<${FollowGroup} group=${group} page=${page} current=${current} />`
         }
+        <span class="group-members-title">
+            ${t('apps.groups.members', 'members')}
+            <span class="group-members-count">(${page.members.length})</span>
+        </span>
         <section class="public-group-members">
             ${page.members.map(
                 (m) => html`<span key=${m.root} class="public-group-member">
@@ -170,6 +268,7 @@ export const PublicGroupPage = ({ group, current }) => {
                 </span>`,
             )}
         </section>
-        <${PublicPosts} posts=${page.posts} />
+        ${page.description && html`<p class="person-card-bio">${page.description}</p>`}
+        <${GroupFeed} group=${group} name=${page.name} current=${current} searchQuery=${searchQuery} />
     </div>`;
 };

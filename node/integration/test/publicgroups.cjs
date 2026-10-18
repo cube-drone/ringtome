@@ -371,5 +371,43 @@ const DOC_HEADER = 7;
             );
             assert.ok(!hers.some((g) => g.group === secret.group), 'never a private one');
         });
+
+        it("a public group's feed answers anyone: full rows, searched and faceted as a persona's shelf is", async () => {
+            const stranger = makeFetch(HOST);
+            const feed = await (await stranger(`api/groups/${group}/posts`)).json();
+            const row = feed.posts.find((p) => p.doc_id === adasPost);
+            assert.ok(row, `its post, as a feed row: ${JSON.stringify(feed)}`);
+            assert.equal(row.author, adaRoot, 'naming its author');
+            const found = await (await stranger(`api/groups/${group}/posts?q=brie`)).json();
+            assert.ok(
+                found.posts.some((p) => p.doc_id === adasPost),
+                'the words find it',
+            );
+            const none = await (
+                await stranger(`api/groups/${group}/posts?q=nothingsaysthis`)
+            ).json();
+            assert.equal(none.posts.length, 0);
+            assert.equal(
+                (await stranger(`api/groups/${group}/labels`)).status,
+                200,
+                'and its facets',
+            );
+
+            // A node that held none of ada's posts - eve's, which followed the group - fetches
+            // the group's own, and its feed fills.
+            let there = [];
+            for (let i = 0; i < 20 && !there.some((p) => p.doc_id === adasPost); i++) {
+                await beat(HOST_E, 'group-sync');
+                there =
+                    (await (await makeFetch(HOST_E)(`api/groups/${group}/posts`)).json()).posts ||
+                    [];
+                if (!there.some((p) => p.doc_id === adasPost))
+                    await new Promise((r) => setTimeout(r, 300));
+            }
+            assert.ok(
+                there.some((p) => p.doc_id === adasPost),
+                "at another node, from the group's own fetch",
+            );
+        });
     },
 );

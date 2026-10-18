@@ -143,6 +143,7 @@ import {
     ShieldSlash,
     Cloud,
     Graph,
+    Keyhole,
     ArrowsClockwise,
     FileCloud,
     CloudArrowDown,
@@ -207,6 +208,10 @@ export const Icons = {
     computerNode: Graph,
     // A machine on the Network page (plans/NETWORK.md): the same glyph, any machine's.
     machine: Graph,
+    // A group's kind, at the corner of its triangle (2026-10-17): a bullhorn for a public group,
+    // a keyhole for a private one.
+    groupPublic: Megaphone,
+    groupPrivate: Keyhole,
     syncNow: ArrowsClockwise,
     syncReport: FileCloud,
     // apps (the console tiles + each app's own header)

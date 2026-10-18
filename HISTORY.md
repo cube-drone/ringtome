@@ -22989,3 +22989,57 @@ plans/PUBLIC_GROUPS.md has the design; GROUPS.md's slice 12 points to it.
   the group and its mark, hide, takedown and removal, the refusals, the carry
   under the rebroadcast dial and its end on removal, following the group, and
   the open pages. Node rungs 98-101.
+
+**2026-10-17 — Both kinds of group post wear the band.** Curtis: a post in
+public as a group should use "the same 'group header' design as when something
+is posted privately within a group", bigger, with a bigger triangle, and say
+"(public)" with Phosphor's megaphone. A post within a group says
+"(group-private)" with the keyhole. The inline "(Cheese Group)" mark beside the
+author is gone. The triangle gained a `band` size, and the public band links to
+the group's open page. `just ui-check` and `just strings-check` are green. Then,
+the same day (Curtis: "let's remove those newly contributed icons"): no
+megaphone and no keyhole, and the "(public)" or "(group-private)" is small,
+italic and fainter than the group's name.
+
+**2026-10-17 — A public group's page is a feed.** Curtis, following a group's
+link: the page was "a brief description of the group, and a _list_ of public
+posts", with no title bar, "a lot less useful than the full feed view that
+internal users get". The open page now lives at the group's address in People,
+inside the app's frame, signed in or out; the old `/ringtome/groups/{group}`
+redirects there. Its posts are the feed's cards, with the filter strip and the
+header's search, paged (`GroupFeed`). Two new routes,
+`GET /api/groups/{group}/posts` and `/labels`, answer anyone as a persona's
+shelf does, over the posts the group counts. Every node holding the group
+fetches those it doesn't hold from their authors, as a share's fragment. A new
+claim in `publicgroups.cjs` covers the rows, the words, the facets and another
+node's feed filling.
+
+**2026-10-17 — A group's page in tabs.** Curtis: "public posts" and "posts"
+should be "public posts" and "private posts", in separate tabs, "and chats a tab
+too", the private ones shown only to those who can see them, "otherwise a group
+with a long history of public posts, it'll be hard to see its private posts".
+Under the group's header and members, a member's page now has those three tabs
+(the public one only for a public group). Each tab is its own address
+(`?tab=public|private|chats`), and a bare address opens the first. Switching
+tabs clears the address's filter picks, since both feeds keep theirs there.
+Someone outside sees the public feed alone, with no tab row. The divider above
+chats went with the stack. `just ui-check` and `just strings-check` are green.
+Then, proper tabs (Curtis): cut at the top only (`jag-line-top`, as Writer's
+are), centred on one shared line, the open one in the panel's own colour over
+the line, so it reads as joined to what's beneath. And the public tab has its "+
+new post" too, for members, as the private tab's does: the feed's composer
+opened on "in public, as" the group (`publicComposeHref`, `?as_group=`), over
+the feed as it was. The three tabs' tops sat at slightly different heights
+(Curtis: "these should probably be taking advantage of a shared element"). Each
+section brought its own margins: chats had one below, the public feed one above.
+Now all three are a `.group-posts` column headed by one `GroupTabHead`
+(groupface.js), its title with its "new" link beside it, and the two margins are
+gone. The "{count} in the group" line under a group's header is gone; the count
+sits beside the members heading instead, small and italic: "members (3)", on the
+member's page and the open page alike. A group's description now sits in a
+person's bio box (`person-card-bio`), below the roster as a bio sits below a
+person's panel, and on the open page below the member chips, above the feed. The note "a public group: anybody can see who's in it" left the page for a small
+box at the top-left corner of the group's triangle: a bullhorn for a public
+group, a keyhole for a private one (`GroupKind`, groupface.js), saying what that
+means in a person chip's pop-over on a point or a focus.
+
