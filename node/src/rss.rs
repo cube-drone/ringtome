@@ -94,7 +94,7 @@ pub async fn rss_handler(
         let doc_hex = hex::encode(post.doc_id);
         let said = crate::idface::post_words(&state, &db, &root_hex, post, &name).await?;
         // Its canonical address (plans/WEB_ADDRESSES.md): its path, where it has one.
-        let link = format!("{base}{}", crate::webpath::post_address(&state, &root, &doc_hex).await);
+        let link = crate::webpath::post_url(&state, &root, &doc_hex, &base).await;
         // The picture it carries: its own, for a picture or a drawing, else the first its words embed.
         let picture = if post.thumb_hash.is_some() {
             Some(format!("{page}/doc/{doc_hex}/thumb"))
@@ -119,15 +119,21 @@ pub async fn rss_handler(
         ));
     }
     let description = if bio.is_empty() { name.clone() } else { bio };
+    // Its home is their canonical address; read at their own domain, the feed is that domain's own.
+    let home = crate::webpath::person_url(&state, &root, &base).await;
+    let own = match crate::domainsite::current() {
+        Some(site) if site.root == root => format!("https://{}/feed.xml", site.domain),
+        _ => format!("{page}/rss.xml"),
+    };
     let feed = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n<channel>\n\
          <title>{}</title>\n<link>{}</link>\n<description>{}</description>\n\
          <atom:link href=\"{}\" rel=\"self\" type=\"application/rss+xml\"/>\n{}</channel>\n</rss>\n",
         xml(&name),
-        xml(&page),
+        xml(&home),
         xml(&description),
-        xml(&format!("{page}/rss.xml")),
+        xml(&own),
         items,
     );
     Ok((

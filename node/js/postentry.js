@@ -149,7 +149,8 @@ import {
     roomHref,
     CopyLinkChip,
     postHistoryHref,
-    pathHref,
+    shareHrefOf,
+    useDomainOf,
     useSlugOf,
 } from './links.js';
 import { QrChip } from './qr.js';
@@ -940,7 +941,14 @@ const PostEntryBody = ({
         (a) => a.annotator === item.author && a.key === 'path',
     );
     const slug = useSlugOf(item.author, !!pathLabel);
-    const shareHref = pathLabel ? pathHref(item.author, pathLabel.value, slug) : href;
+    // ...and at their own domain ahead of either, where it is their canonical address
+    // (plans/CUSTOM_DOMAINS.md).
+    const domain = useDomainOf(item.author, !item.private_doc);
+    const shareHref = shareHrefOf(item.author, item.doc_id, {
+        path: pathLabel ? pathLabel.value : null,
+        slug,
+        domain,
+    });
     // The words as shown: after an in-place edit, the buffer the user just confirmed - not a
     // refetch of what they typed. The item prop's copies are snapshots; a page refresh
     // reconciles everything against the canonical fold anyway.

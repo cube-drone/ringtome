@@ -33,31 +33,56 @@ export const postHref = (rootHex, doc, page = null) =>
 export const pathHref = (rootHex, path, slug = null) =>
     slug ? `/@${slug}/${path}` : ringtomePath({ seg: seg(rootHex), kind: 'path', at: path });
 
-/// The short name this node gave a persona, or null - asked once per persona per page load.
-const slugsAsked = new Map();
-export function slugOf(rootHex) {
-    if (!slugsAsked.has(rootHex))
-        slugsAsked.set(
+/// What this node says a persona's addresses may wear - `{ slug, domain }`, each or null: the short
+/// name it gave them, and their own domain where that is their canonical address
+/// (plans/CUSTOM_DOMAINS.md, ruling 7) - asked once per persona per page load.
+const namesAsked = new Map();
+function namesOf(rootHex) {
+    if (!namesAsked.has(rootHex))
+        namesAsked.set(
             rootHex,
             api(`/api/node/slug-of/${rootHex}`)
-                .then((r) => (r && r.slug) || null)
-                .catch(() => null),
+                .then((r) => ({ slug: (r && r.slug) || null, domain: (r && r.domain) || null }))
+                .catch(() => ({ slug: null, domain: null })),
         );
-    return slugsAsked.get(rootHex);
+    return namesAsked.get(rootHex);
 }
 
-/// `slugOf` for a component: undefined while it's asked, and nothing asked unless `wanted`.
-export function useSlugOf(rootHex, wanted = true) {
-    const [slug, setSlug] = useState(undefined);
+/// The short name this node gave a persona, or null.
+export const slugOf = (rootHex) => namesOf(rootHex).then((n) => n.slug);
+
+/// `namesOf` for a component: undefined while it's asked, and nothing asked unless `wanted`.
+function useNamesOf(rootHex, wanted) {
+    const [names, setNames] = useState(undefined);
     useEffect(() => {
         if (!rootHex || !wanted) return undefined;
         let live = true;
-        slugOf(rootHex).then((s) => live && setSlug(s));
+        namesOf(rootHex).then((n) => live && setNames(n));
         return () => {
             live = false;
         };
     }, [rootHex, wanted]);
-    return slug;
+    return names;
+}
+
+/// `slugOf` for a component: undefined while it's asked, and nothing asked unless `wanted`.
+export function useSlugOf(rootHex, wanted = true) {
+    const names = useNamesOf(rootHex, wanted);
+    return names && names.slug;
+}
+
+/// A persona's own domain, where it's their canonical address - undefined while it's asked.
+export function useDomainOf(rootHex, wanted = true) {
+    const names = useNamesOf(rootHex, wanted);
+    return names && names.domain;
+}
+
+/// A public post's address to hand out: at its author's own domain where that is their canonical
+/// address - `https://cube-drone.com/<path>`, the whole URL - else its web address under the @name,
+/// else its identity address. `path` is the author's own `path` label, or null.
+export function shareHrefOf(rootHex, doc, { path = null, slug = null, domain = null } = {}) {
+    if (domain) return `https://${domain}/${path || `post/${doc}`}`;
+    return path ? pathHref(rootHex, path, slug) : postHref(rootHex, doc);
 }
 
 /// Another node's `@name` address, opened here (plans/WEB_ADDRESSES.md, slice 3): this node asks that
@@ -178,6 +203,7 @@ export const nodeKey = () => {
 /// The whole URL for an address path: the public URL, or this page's origin (a desktop app's
 /// `localhost` - a Ringtome reader rehomes it; outside Ringtome it is only good on this computer).
 export async function shareUrl(path) {
+    if (/^https?:\/\//.test(path)) return path; // already whole: a person's own domain
     const declared = await base();
     return `${declared || window.location.origin}${path}`;
 }
@@ -248,4 +274,12 @@ export const CopyLinkChip = ({ path, title }) => {
         word=${copied ? t('chips.copied', 'copied') : t('chips.link', 'link')}
         onClick=${copy}
     />`;
+};
+
+/// Whose own domain this page is on (plans/CUSTOM_DOMAINS.md; the node says so in the page,
+/// `<meta name="ringtome-site">`) - their short address - or null on the node's own name.
+export const siteSeg = () => {
+    if (typeof document === 'undefined') return null;
+    const meta = document.querySelector('meta[name="ringtome-site"]');
+    return (meta && meta.getAttribute('content')) || null;
 };

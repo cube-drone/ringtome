@@ -249,3 +249,11 @@ export function mediaPath(text, origin = '') {
     m = new RegExp(`^/api/identity/[0-9a-f]{64}/docs/[0-9a-f]{32}${body}`).exec(path);
     return m ? path : null;
 }
+
+/// Where an address in this grammar is on `seg`'s own domain (plans/CUSTOM_DOMAINS.md, js/domainsite.js):
+/// their address's rest, `'/'` for their page itself, or null for an address that isn't theirs.
+export function atHome(seg, path) {
+    const prefix = `${USER}${seg}`;
+    if (path === prefix || path === `${prefix}/`) return '/';
+    return path.startsWith(`${prefix}/`) ? path.slice(prefix.length) : null;
+}

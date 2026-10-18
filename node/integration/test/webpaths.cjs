@@ -196,7 +196,10 @@ describe('web addresses: a post lives at a readable path', function () {
         const name = `paths${Date.now() % 1000000}`;
         const claim = await j(ada, `api/identity/${root}/slug`, { slug: name }, 'PUT');
         assert.equal(claim.status, 200, await claim.clone().text());
-        assert.deepEqual(await (await stranger(`api/node/slug-of/${root}`)).json(), { slug: null });
+        assert.deepEqual(await (await stranger(`api/node/slug-of/${root}`)).json(), {
+            slug: null,
+            domain: null,
+        });
         const page = await (await stranger(`@${name}/cybergamer-canada--ad-viewmagic`)).text();
         assert.ok(
             page.includes('property="og:title" content="CyberGamer Canada: Ad ViewMagic"'),

@@ -212,6 +212,14 @@ fn beat_pass<'a>(
             tracing::info!(given = n, "TEST BEAT: web-path-backfill");
             Ok(())
         }),
+        // Every custom domain claim this node holds, or one persona's, asked about NOW.
+        ("domain-proofs", Some(r)) => {
+            Box::pin(async move { crate::domains::check(state, r).await.map(|_| ()) })
+        }
+        ("domain-proofs", None) => Box::pin(async move {
+            state.node_db.execute("UPDATE domain_proofs SET checked_ms = 0", ()).await?;
+            crate::domains::pass(state.clone()).await
+        }),
         ("book-rollout", scope) => Box::pin(async move {
             let n = crate::books::rollout_due(state, scope).await?;
             tracing::info!(touched = n, "TEST BEAT: book-rollout");
@@ -527,6 +535,35 @@ pub async fn unplug(
     );
     state.unplugged.arm(&state.config, refusals).map_err(AppError::Internal)?;
     Ok(Json(state.unplugged.refusals().into()))
+}
+
+#[derive(Deserialize)]
+pub struct DnsTxtRequest {
+    pub name: String,
+    #[serde(default)]
+    pub values: Vec<String>,
+}
+
+/// Pretend DNS holds these TXT records at `name` (none clears it), for this node's custom domain
+/// checks (domains.rs): the rig's domains are made up, and a suite never asks the real DNS.
+pub async fn dns_txt(Json(req): Json<DnsTxtRequest>) -> Json<Value> {
+    crate::domains::set_test_txt(&req.name, req.values);
+    Json(serde_json::json!({ "ok": true }))
+}
+
+#[derive(Deserialize)]
+pub struct WellKnownRequest {
+    pub domain: String,
+    /// The file's body, as the domain would serve it; absent, the domain serves none.
+    #[serde(default)]
+    pub body: Option<Value>,
+}
+
+/// Pretend `domain` serves this `/.well-known/ringtome` (none clears it), for this node's custom
+/// domain checks: whether the domain says it's served (domains.rs, ruling 7).
+pub async fn well_known(Json(req): Json<WellKnownRequest>) -> Json<Value> {
+    crate::domains::set_test_well_known(&req.domain, req.body.map(|b| b.to_string().into_bytes()));
+    Json(serde_json::json!({ "ok": true }))
 }
 
 /// Plug the node back in: refuse nothing. Idempotent, and safe to call on a node that was never

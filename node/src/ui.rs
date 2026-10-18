@@ -221,8 +221,16 @@ pub fn app_page_with(state: &AppState, head: &str, body: &str) -> String {
     } else {
         format!("<div class=\"reading-copy\">{body}</div>")
     };
+    // On a person's own domain (domainsite.rs), whose site this is: the app reads it as a reading
+    // site of theirs, with its paths under them (js/domainsite.js).
+    let head = match crate::domainsite::current() {
+        Some(site) => {
+            format!("{head}\n<meta name=\"ringtome-site\" content=\"{}\">", escape_attr(&site.seg))
+        }
+        None => head.to_string(),
+    };
     HOME_PAGE
-        .replace("$HEAD$", head)
+        .replace("$HEAD$", &head)
         .replace("$VERSION$", version)
         .replace("$BRANCH$", &branch)
         .replace("$ENVIRONMENT$", environment)

@@ -96,6 +96,9 @@ pkarr = "5"
 # pkarr, so this direct dependency costs nothing new. rustls only, no native TLS.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2"] }
 url = "2"
+# TXT lookups for custom domains (domains.rs, plans/CUSTOM_DOMAINS.md) - already in the tree
+# through iroh, with the features iroh asks for, so it adds no crate to the build.
+hickory-resolver = { version = "0.26", default-features = false, features = ["tokio", "system-config"] }
 base64 = "0.22.1"
 # Web Push (webpush.rs): RFC 8291 payload encryption (P-256 ECDH, HKDF-SHA256, AES-128-GCM) and
 # RFC 8292 VAPID (an ES256 JWT). Hand-rolled on RustCrypto rather than the `web-push` crate, whose

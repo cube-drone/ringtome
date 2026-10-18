@@ -319,11 +319,16 @@ pub async fn slug_of(
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let root = root.to_ascii_lowercase();
-    let slug = match decode_root(&root) {
-        Some(_) => crate::webpath::public_slug(&state, &root).await,
-        None => None,
+    let (slug, domain) = match decode_root(&root) {
+        Some(_) => (
+            crate::webpath::public_slug(&state, &root).await,
+            crate::domains::canonical(&state.node_db, &root).await,
+        ),
+        None => (None, None),
     };
-    Ok(Json(serde_json::json!({ "slug": slug })))
+    // ...and their own domain, where it is their canonical address (plans/CUSTOM_DOMAINS.md): what
+    // "copy link" hands out ahead of either.
+    Ok(Json(serde_json::json!({ "slug": slug, "domain": domain })))
 }
 
 /// `GET /api/node/at/{slug}[/{*path}]`: what an address under this node's short name names
@@ -420,6 +425,11 @@ pub async fn slug_path_page(
                     return Ok(axum::response::Redirect::permanent(&to).into_response());
                 }
             }
+            if let Some(home) =
+                crate::domainsite::sent_home(&state, &root, &rest, query.as_deref()).await
+            {
+                return Ok(home);
+            }
             crate::idface::deep_page(&state, key, &rest, query.as_deref()).await
         }
         None => slug_page(State(state), Path(slug), axum::extract::RawQuery(None)).await,
@@ -443,6 +453,11 @@ pub async fn slug_page(
                     "nobody on this node goes by that name"
                 )));
             };
+            if let Some(home) =
+                crate::domainsite::sent_home(&state, &root, "", query.as_deref()).await
+            {
+                return Ok(home);
+            }
             crate::idface::deep_page(&state, key, "", query.as_deref()).await
         }
         Some((root, false)) => {

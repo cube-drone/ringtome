@@ -5858,6 +5858,7 @@ dependencies = [
  "fs4",
  "gethostname",
  "hex",
+ "hickory-resolver",
  "hkdf",
  "image",
  "imgref",

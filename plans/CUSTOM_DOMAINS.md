@@ -1,6 +1,6 @@
 # Custom domains - a person at their own web address
 
-A design draft (2026-10-15). Nothing built.
+A design draft (2026-10-15), with rulings (2026-10-16). Slices 1 to 3 built.
 
 ## The ask (Curtis, 2026-10-15)
 
@@ -16,8 +16,47 @@ And, once the first answer was given: "once a CUSTOM_DOMAIN exists, it very much
 CAN live with the persona, right? 'This person can always be found at this real
 actual web location'?"
 
-Everything below is Claude's proposal; nothing here is a ruling yet. The
-questions waiting on Curtis are under _Open questions_.
+The proposal below is Claude's; the rulings that settle parts of it come first.
+
+## Rulings (Curtis, 2026-10-16)
+
+1. **One domain per persona**, exactly the name claimed. `cube-drone.com` and
+   `www.cube-drone.com` are two domains, and the node gives `www.` no meaning of
+   its own (Curtis: "worrying about it too much is wasting our time"). Pointing
+   a name at the front - a bare domain behind a front that takes only a CNAME
+   included - is the person's DNS provider's to solve, not the node's.
+2. **No free subdomains of the operator's domain**
+   (`cube-drone.horsedrawingtycoon.com`), now and perhaps ever: they need a
+   wildcard certificate or the operator's own HTTPS for every name, "a big ol'
+   'not yet'/'nah'", and `domain/@person` is a well-known pattern already.
+3. **Custom domains are on by default.** An operator can turn them off
+   (`RINGTOME_CUSTOM_DOMAINS=off`). Being on costs a node nothing until a domain
+   points at it: a domain no DNS record sends here never arrives, and one that
+   does but has no certificate fails at the browser, before the node.
+4. **Well-known proof earns the ✓**, but never serving (section 2) - nor, on its
+   own, the canonical address (ruling 7, which amends this one).
+5. **A node that isn't serving the domain doesn't redirect to it**; it only
+   names it as the canonical address (section 4). Accepted from Claude's
+   proposal "for now".
+6. **The Hugo site's links aren't kept.** Redirecting every old address would
+   need machinery horsedrawingtycoon.com would have to maintain forever (Curtis:
+   "maintaining links perfectly would require intricate functionality I'm not
+   willing to maintain"). An old link lands on the person's page under a 404,
+   saying nothing lives at that address - what `/@name/<anything>` already
+   does - so the reader keeps the identity and loses only the post. One
+   exception, because it costs one route: `/index.xml`, Hugo's feed address,
+   answers with the persona's feed on the domain, so existing subscribers follow
+   along without doing anything.
+7. **The canonical address waits for the domain to be served** (Curtis,
+   2026-10-16, amending 4). A verified claim says the domain is the persona's,
+   not that anything at it serves their posts: while Hugo answers
+   cube-drone.com, `https://cube-drone.com/<path>` is a Hugo 404, and naming it
+   canonical would hand every reader and search engine a dead link. So the
+   domain becomes the canonical address only once the claim is verified **and**
+   a Ringtome node answers at it. The serving node says so in its own
+   `/.well-known/ringtome` (`"served": true`), which every node fetches in its
+   check anyway (section 2). Serving (slice 3) is built before the canonical
+   address (slice 2).
 
 ## The frame: the claim is the persona's, the serving is the node's
 
@@ -90,9 +129,7 @@ punycode for international names, no scheme, no path, no port. `cube-drone.com`
 or `art.lassam.net`. It's signed and last-writer-wins like the other fields, and
 a peek carries it.
 
-One domain per persona (see _Open questions_). A claimed apex also covers its
-`www.`: the node answers both and redirects the one not claimed to the one that
-is.
+One domain per persona, exactly the name claimed (ruling 1).
 
 The claim on its own proves nothing; anyone can type any domain into a profile.
 It counts only once DNS agrees (section 2), and until then nothing displays it.
@@ -125,25 +162,36 @@ and just wants to say who it is. It can't get a node to serve the domain,
 because a node can't fetch a well-known file from a domain that points at itself
 before it has agreed to serve it. TXT is the proof for serving.
 
+**Served** is a second fact, beside the verdict (ruling 7). A node serving the
+domain answers `/.well-known/ringtome` there itself, with the persona's root and
+`"served": true`; every check fetches the file, whatever proved the claim, and
+notes whether the domain said so. A file that's missing or doesn't say served
+means another site is answering - Hugo, still - and the domain isn't canonical
+yet. A fetch that fails keeps what was noted.
+
 ### 3. The serving: routing by Host
 
 A node serves a domain when all three hold:
 
-- the operator has turned custom domains on (`RINGTOME_CUSTOM_DOMAINS`; see
-  _Open questions_ on the default);
+- the operator hasn't turned custom domains off (`RINGTOME_CUSTOM_DOMAINS`, on
+  by default: ruling 3);
 - a persona **hosted here** (an account on this node, not a peek) claims the
   domain;
 - the claim is verified.
 
 A request whose `Host` is a served domain is routed:
 
-| Path                                          | Answer                                         |
-| --------------------------------------------- | ---------------------------------------------- |
-| `/`                                           | the persona's page                             |
-| `/<path>`, `/<folder>`, `/<folder>/<path>`    | the post, or the folder, as under `/@name/`    |
-| `/feed.xml`, `/sitemap.xml`, `/robots.txt`    | this persona's own, in the domain's addresses  |
-| `/api/...`, assets, `/ringtome/...`, the rest | passed through untouched (`webpath::RESERVED`) |
-| a former path (WEB_ADDRESSES slice 4)         | a permanent redirect to the current one        |
+| Path                                       | Answer                                        |
+| ------------------------------------------ | --------------------------------------------- |
+| `/`                                        | the persona's page                            |
+| `/<path>`, `/<folder>`, `/<folder>/<path>` | the post, or the folder, as under `/@name/`   |
+| `/feed.xml`, `/sitemap.xml`, `/robots.txt` | this persona's own, in the domain's addresses |
+| `/api/...`, the app's files, pictures      | passed through untouched                      |
+| `/ringtome/...`, someone else's `/@name`   | the node's public URL (their own: home)       |
+| `/index.xml`                               | this persona's feed (ruling 6)                |
+| `/.well-known/ringtome`                    | the root, and `"served": true` (ruling 7)     |
+| an address that names nothing              | the persona's page under a 404 (ruling 6)     |
+| a former path (WEB_ADDRESSES slice 4)      | a permanent redirect to the current one       |
 
 A `Host` that matches nothing keeps today's behaviour.
 
@@ -155,7 +203,8 @@ already draws, with the domain's addresses in them.
 The canonical address becomes the shortest form that can be vouched for, in this
 order:
 
-1. **the verified domain** - `https://cube-drone.com/<path>`;
+1. **the verified and served domain** (ruling 7) -
+   `https://cube-drone.com/<path>`;
 2. the @name form, where the persona has one on this node;
 3. the identity form, `/ringtome/user/<seg>/<path>`.
 
@@ -229,8 +278,8 @@ Adapters are built when an operator needs one:
     whether this one does is unchecked.
 
   Bunny wants a CNAME to the pull zone and refuses A records to its addresses,
-  so an apex domain needs Bunny DNS (which flattens the CNAME), or the apex
-  redirecting to `www.`.
+  so a bare domain needs a DNS provider that flattens the CNAME (Bunny DNS
+  does) - the person's to arrange (ruling 1).
 
 - **Caddy, on a bare server** - if an operator asks. Caddy's `on_demand_tls`
   asks a URL before issuing a certificate for a name it hasn't seen; a door
@@ -249,8 +298,9 @@ the record that points the domain at the front - a CNAME to
 `RINGTOME_DOMAINS_TARGET`, a hostname the operator declares (behind Bunny, the
 pull zone's `*.b-cdn.net` name; on a bare server, a name like
 `domains.example.com` the operator can move without every user editing an IP
-address), and what to do about an apex where the front allows only CNAMEs. The
-page checks as the user goes and says which record is missing.
+address), and, for a bare domain behind a CNAME-only front, that their DNS
+provider must flatten the CNAME. The page checks as the user goes and says which
+record is missing.
 
 ### 7. Finding a person by their domain
 
@@ -293,61 +343,74 @@ persona meant to stay unlinked shouldn't claim a domain.
 
 ### 10. Moving cube-drone.com off Hugo
 
-The case that started this. The order matters, because every link to the Hugo
-site has to survive the switch:
+The case that started this. The old site's links aren't kept (ruling 6), so the
+order only has to keep the site up through the switch:
 
 1. **Import the posts** (in progress).
-2. **Keep the old URLs as former paths.** The importer stores each post's Hugo
-   URL (`/posts/<slug>/`, `/<year>/<month>/<slug>/`, whatever the site used) as
-   a former path, so the domain router redirects it. This needs WEB_ADDRESSES
-   slice 4, which isn't built, and former paths deeper than `<folder>/<path>`,
-   which that slice doesn't yet anticipate. Hugo's feed (`/index.xml`) gets a
-   former path to the persona's feed too, so existing subscribers follow along.
-3. **Publish the TXT record and claim the domain** while Hugo is still serving.
-   The ✓ and canonical addresses start working, with nothing changing for
-   visitors.
-4. **Add the domain to the Bunny pull zone** and have Bunny issue its
+2. **Publish the TXT record and claim the domain** while Hugo is still serving.
+   The ✓ starts showing, with nothing changing for visitors; the canonical
+   addresses stay as they are, because the domain doesn't say it's served yet
+   (ruling 7).
+3. **Add the domain to the Bunny pull zone** and have Bunny issue its
    certificate, with Forward Host Header and Vary Cache by hostname already on
    (section 6). Nothing points at it yet, so nothing changes for visitors.
-5. **Point the domain at the pull zone.** `www.cube-drone.com` takes a CNAME;
-   the apex needs Bunny DNS or a redirect to `www.` (section 6). The cutover is
-   one DNS change, and reverting it is one more.
-
-## Open questions
-
-1. **One domain per persona, or several?** Proposed: one (plus its `www.`).
-   Several means choosing which one is canonical.
-2. **Do subdomains of the operator's domain**
-   (`cube-drone.horsedrawingtycoon.com`) come free? They're cheap with a
-   wildcard certificate and need no DNS from the user, but they belong to the
-   node, like an @name, not to the persona: they don't travel. Proposed: later,
-   if anyone asks.
-3. **Custom domains on or off by default for operators?** Proposed: off. Serving
-   them needs the front set up for them (section 6), and the operator takes on
-   certificate issuance and whatever the domains serve.
-4. **Is the apex worth supporting behind a CNAME-only front?** Proposed: the
-   settings page explains the choices (move DNS to one that flattens, or
-   redirect the apex to `www.`) rather than the node working around it.
-5. **Does well-known proof earn the ✓?** Proposed: yes, for the badge and
-   canonical addresses, but never for serving (section 2).
-6. **Can a node that isn't serving the domain redirect to it?** Proposed: no;
-   canonical only (section 4).
+4. **Point the domain at the pull zone**: a CNAME, which for the bare
+   `cube-drone.com` means a DNS provider that flattens it (Bunny DNS does;
+   section 6). The cutover is one DNS change, and reverting it is one more. Each
+   node's next check finds `"served": true`, and the canonical addresses move to
+   the domain within a day.
 
 ## Slices
 
-0. **Former paths** - WEB_ADDRESSES slice 4, with former paths of any depth. A
-   prerequisite for the Hugo move, and useful on its own.
-1. **The claim and its proof** - the `domain` profile field, the TXT check and
-   its memo, well-known for the badge, the ✓ on bylines. Useful with no node
-   serving anything: it's the verified handle.
-2. **Canonical everywhere** - the domain form first in `post_address` and
-   `person_address`, on every node that has verified the claim.
-3. **Serving** - the `Host` router, `RINGTOME_CUSTOM_DOMAINS` and
-   `RINGTOME_DOMAINS_TARGET`, `GET /api/node/domains`, the @name-to-domain
-   redirect, the settings page with its live DNS check, the per-domain feed and
-   sitemap, and a SERVER.md section on serving custom domains (the front's two
-   jobs: forward the Host header, keep the cache apart by hostname). Enough for
-   cube-drone.com, with its certificate added by hand in Bunny.
+1. **The claim and its proof** - _built 2026-10-16._ The `domain` profile field
+   takes a bare hostname (`domains::normalise`; the store refuses anything
+   else). `profiles::refresh`, the byline cache's edge, notes each claim in the
+   `domain_proofs` memo (node rung 102) and checks it at once; the
+   `domain-proofs` loop asks again daily, hourly while lookups fail, with a
+   three-day grace for a verified claim whose way of proof stops answering. TXT
+   through `hickory-resolver`, well-known through the unfurler's guarded fetch.
+   The profile answer and contact rows carry `domain` only when verified, and
+   `usePerson` shows it as `cube-drone.com ✓` under the names. The owner's doors
+   are `GET`/`PUT /api/identity/<root>/domain` and `POST .../check`, and the
+   profile settings page shows the record to add. The rig pretends DNS per node
+   through `/test/dns-txt` (`test/domains.cjs`). Not yet: a feed row's author
+   who is neither a contact nor fetched shows no ✓, because the row's byline
+   doesn't carry it.
+2. **Canonical everywhere** - _built 2026-10-16, after slice 3_ (ruling 7).
+   `webpath::person_url` and `post_url` give the domain form first, on every
+   node whose memo has the claim verified and served (`domains::canonical`): the
+   post and person heads (`<link rel="canonical">`, `og:url`, the structured
+   data), the feeds, the reading copies. A persona whose domain is canonical
+   leaves the node's sitemaps for the domain's own, and is indexed by the
+   domain's terms, not the node's public URL. `GET /api/node/slug-of/<root>`
+   also answers `domain`, so a post card's "link" and QR code and the person
+   card's QR code hand out `https://<domain>/<path>`. In-app links stay this
+   node's own addresses: following a post in the feed must not leave the app.
+3. **Serving** - _built 2026-10-16_ (domainsite.rs). A service around the whole
+   router rewrites a served domain's paths to the persona's address before
+   anything routes them, and answers `/.well-known/ringtome` (`"served": true`),
+   `/robots.txt` and `/sitemap.xml` itself; `/feed.xml` and `/index.xml` are
+   their feed; an address that names nothing is their page under a 404. Only GET
+   and HEAD, no `Set-Cookie`, and the node's own pages - someone else's,
+   `/ringtome/...`, `/@name` - go to the node's public URL; their own address in
+   the node's form comes home. Served means TXT-proved, published from here, and
+   `RINGTOME_CUSTOM_DOMAINS` not `off`. Every check now fetches the well-known
+   file and notes `served_ms` (node rung 103); a 404 or an oversized page there
+   is "another site answers", not "no answer". On the serving node `/@name/...`
+   redirects (temporary: a domain can lapse) to the domain once served.
+   `GET /api/node/domains` lists what's served. The page says
+   `<meta name="ringtome-site">`, and the app becomes a reading site of theirs
+   (`js/domainsite.js`). The settings page names the CNAME to
+   `RINGTOME_DOMAINS_TARGET` and whether the domain answers yet. SERVER.md has
+   _People's own domains_. The rig sends the Host header itself, and pretends
+   well-known files through `/test/well-known` (`test/domains.cjs`). Not yet:
+   - the settings page doesn't look the CNAME up itself; "check now" learns only
+     whether the domain answers;
+   - a folder named `api`, `static` or `fonts` is hidden on the domain by the
+     node's own doors of those names;
+   - an `/@name/<path>` link inside the domain's pages reloads the page, through
+     the node's redirect home, instead of routing in place;
+   - not yet looked at in a browser.
 4. **Certificates without an operator** - the Bunny adapter first, since it's
    the front horsedrawingtycoon.com runs; Caddy's `domain-ok` door and a certbot
    loop when an operator asks for one. Needed once other people add domains.

@@ -233,7 +233,8 @@ lightly federated, unapologetically Old Internet.
   root back, and only when both agree does a node serve the domain (routing by
   `Host`, certificates through Caddy's on-demand `ask`) and every node make it
   the canonical address. The claim travels with the persona; DNS decides which
-  node answers. A design draft (2026-10-15); nothing built.
+  node answers. A design draft (2026-10-15), with rulings (2026-10-16); nothing
+  built.
 - **The delivery-shape trio** — what kind of application this is, one document
   per candidate surface. Their relationship to canon differs and each says which
   at the top: **DESKTOP is canon-aligned** (PROJECT_PLAN's _Desktop mode: Tauri,

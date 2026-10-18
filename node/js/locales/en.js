@@ -1401,6 +1401,9 @@ export default {
     // --- node/js/doc/usercard.js ---
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
 
+    // --- node/js/domainsite.js ---
+    'domainsite.on-the-node': 'on Horse Drawing Tycoon 2',
+
     // --- node/js/downloads.js ---
     'auth.download-mac': 'macOS',
     'auth.download-windows': 'Windows',
@@ -1653,6 +1656,7 @@ export default {
     'person.active-today': 'active today',
     'person.active-yesterday': 'active yesterday',
     'person.active-days-ago': 'active {n} days ago',
+    'person.domain-verified': '{domain} says this is them',
     'person.storage-title': 'on this node: moving them carries {move}; evicting them would free {evict}',
     'person.storage': 'move {move} · evict {evict}',
     'person.chat-with-them-privately': 'chat with them, privately',
@@ -1818,6 +1822,26 @@ export default {
     'persona.change': 'change',
     'persona.claim': 'claim',
     'persona.also-answers-to': 'also @{last}',
+    'persona.domain-node-serves-none': 'This node doesn’t serve custom domains.',
+    'persona.domain-needs-txt': 'A file on your site proves it’s you, which is enough for the ✓. For this node to serve {domain}, add the TXT record too.',
+    'persona.domain-needs-publishing': 'Publish this persona for this node to serve {domain}.',
+    'persona.domain-served': 'This node serves {domain}, and your posts are shared at it.',
+    'persona.domain-point-here': 'This node will serve {domain}. Point it here; once it answers, your posts are shared at it.',
+    'persona.domain-record-name': 'name',
+    'persona.domain-record-type': 'type',
+    'persona.domain-record-value': 'value',
+    'persona.domain-flatten': 'A domain with nothing before it, like example.com, needs a DNS provider that can flatten a CNAME.',
+    'persona.checking': 'checking…',
+    'persona.check-now': 'check now',
+    'persona.that-domain-did-not-take': 'that domain did not take',
+    'persona.your-web-address': 'your web address',
+    'persona.domain-hint': 'a domain of your own, like example.com',
+    'persona.domain-placeholder': 'example.com',
+    'persona.remove': 'remove',
+    'persona.domain-is-public': 'Your domain is public: anyone can see it is yours, and through it who registered it.',
+    'persona.domain-proved': '{domain} says this is you ✓',
+    'persona.domain-lapsed': '{domain} has stopped saying this is you. Its record is gone, or names someone else.',
+    'persona.domain-add-record': 'Nobody is shown it until {domain} says this is you. Add this record where your domain keeps its DNS, then check:',
     'persona.your-personas-2': 'your personas',
     'persona.personas-hint': 'each has its own name, pages and people',
     'persona.this-browser': 'this browser',
@@ -2335,6 +2359,13 @@ export default {
     'crawl.no-sitemap': 'this node keeps no sitemap',
     'crawl.no-such-sitemap': 'no such sitemap',
 
+    // --- node/src/domains.rs ---
+    'domains.bad-root': 'bad root pubkey',
+    'domains.not-a-domain': "that isn't a domain - give just the name, like example.com",
+
+    // --- node/src/domainsite.rs ---
+    'domainsite.reading-only': "a person's own domain is for reading",
+
     // --- node/src/epub.rs ---
     'epub.nothing-to-read': 'that notebook has nothing to read yet',
     'epub.no-such-book': 'no such book here',
@@ -2585,6 +2616,7 @@ export default {
     'record.store.this-node-does-not-agent': 'this node does not agent that persona',
     'record.store.identity-not-found': 'identity not found',
     'record.store.unknown-profile-field-allowed': 'unknown profile field {field} (allowed: {allowed})',
+    'record.store.not-a-domain': 'a domain is a bare name, like example.com',
     'record.store.device-names-are-capped-at': 'that name is too long ({limit} bytes at most)',
     'record.store.too-many-embedded-documents': 'this note embeds {count} documents - one document may hold {cap}. A collection this size wants a notebook, not one page.',
     'record.store.that-has-no-thumbnail': 'that has no thumbnail to lend',

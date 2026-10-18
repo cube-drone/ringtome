@@ -464,6 +464,33 @@
     color: var(--ink-soft);
 }
 
+/* Your web address (plans/CUSTOM_DOMAINS.md): the claim, and the record that proves it. */
+.profile-domain-note {
+    color: var(--ink-soft);
+}
+.profile-domain-record {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    --j: 5px;
+    clip-path: var(--jag);
+    padding: 0.7rem 1rem;
+}
+.profile-domain-line {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: 100%;
+}
+.profile-domain-line code {
+    min-width: 0;
+    word-break: break-all;
+    font-size: 0.78rem;
+}
+
 .profile-bio {
     background-color: var(--field);
     --line: var(--border-strong);

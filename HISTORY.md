@@ -23285,3 +23285,62 @@ day is spent, and the draft says why.
 In passing: my first write of this module replaced the existing
 `node/src/publish.rs` (the edge-publication mint). It was restored from git
 before anything else touched it. The new module is `publication.rs`.
+## 2026-10-16: custom domains, the claim and its proof
+
+The plan (`plans/CUSTOM_DOMAINS.md`) took its rulings first. Curtis: one domain
+per persona, exactly the name claimed, with `www.` meaning nothing of its own;
+no free subdomains of the operator's; custom domains on by default. Then he
+dropped the old site's links: "maintaining links perfectly would require
+intricate functionality I'm not willing to maintain". So former paths left the
+plan. An old Hugo address lands on the person's page under a 404, which
+`/@name/<anything>` already does, and `/index.xml` alone will answer with the
+feed on the domain, for existing subscribers. cube-drone.com already sits on
+Bunny DNS, pointed at the pull zone with a flattened record that the dashboard
+shows as an A record, so the cutover needs nothing new there.
+
+Slice 1 is built. A persona claims a domain in its profile (`domain`, a bare
+hostname); a TXT record at `_ringtome.<domain>` saying `ringtome-root=<root>`
+proves it, and a `/.well-known/ringtome` file proves it for the ✓ alone. Every
+node checks for itself (`domains.rs`): the byline cache's edge notes a claim and
+checks it at once, an hourly loop asks again about each claim a day old, and a
+verified claim rides out three days of lookups that fail outright before it
+lapses. The verdict lives in a node memo, `domain_proofs`, and the profile
+answer and contact rows carry the domain only when it's verified. The app shows
+`cube-drone.com ✓` under a person's names, and the profile settings page takes
+the claim and shows the record to add, with a "check now". The integration rig
+pretends DNS per node (`/test/dns-txt`), and `test/domains.cjs` shows a reader's
+node refusing the ✓ until its own lookup agrees.
+
+## 2026-10-16: custom domains, served, and the canonical address
+
+Building slice 2 turned up a hole in the plan. A verified claim says the domain
+is the persona's, not that anything at it serves their posts; while Hugo still
+answers cube-drone.com, naming `https://cube-drone.com/<path>` canonical would
+hand every reader and search engine a Hugo 404. Curtis agreed to ruling 7: the
+domain is the canonical address only once it's verified **and** served, which
+the serving node says in its own `/.well-known/ringtome` (`"served": true`), and
+serving (slice 3) came first. Every check now fetches that file and notes when
+it last said so (node rung 103). A 404 there counts as "another site answers",
+not as "no answer".
+
+Slice 3 serves the domain (`domainsite.rs`). A service around the whole router
+reads the Host header and, for a domain a persona published here has proved by
+TXT, rewrites `/leek-soup` to their address before anything routes it. It
+answers the well-known file, `robots.txt` and the domain's own sitemap itself,
+gives `/feed.xml` and Hugo's `/index.xml` the persona's feed, and puts an
+address that names nothing on their page under a 404. It's a reading site: GET
+and HEAD only, no cookie, and the node's own pages are sent to its public URL.
+The page carries `<meta name="ringtome-site">`, and the app becomes their
+reading site (`js/domainsite.js`). On the serving node, `/@name/...` redirects
+to the domain once it's served. `GET /api/node/domains` lists what's served, and
+the settings page names the CNAME to point at `RINGTOME_DOMAINS_TARGET`.
+SERVER.md has _People's own domains_.
+
+Slice 2 makes the domain canonical on every node whose own check found it
+verified and served (`webpath::person_url`, `post_url`): the heads, the feeds,
+the reading copies, and "copy link" and the QR codes through
+`/api/node/slug-of`. Such a persona leaves the node's sitemaps for the domain's.
+The rig sends the Host header itself and pretends well-known files
+(`/test/well-known`). `test/domains.cjs` follows the canonical address to the
+domain and back again when Hugo returns. Not yet: nobody has looked at the
+domain in a browser, and the plan's slice 3 lists the rest.

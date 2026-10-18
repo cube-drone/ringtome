@@ -46,8 +46,31 @@ pub async fn indexable(
     root_hex: &str,
     fields: &[crate::record::imaol::ProfileField],
 ) -> bool {
-    crate::webpath::has_public_url(state)
-        && crate::idface::profile_value(fields, SEARCH_FIELD) != Some(SEARCH_NO)
+    crate::webpath::has_public_url(state) && wants_indexing(state, root_hex, fields).await
+}
+
+/// Is a persona's public face indexed where its canonical address is: at their own domain once it
+/// is (plans/CUSTOM_DOMAINS.md, ruling 7), else at this node's public URL - what a page's head says.
+pub async fn indexed(
+    state: &AppState,
+    root_hex: &str,
+    fields: &[crate::record::imaol::ProfileField],
+) -> bool {
+    if crate::domains::canonical(&state.node_db, root_hex).await.is_some() {
+        wants_indexing(state, root_hex, fields).await
+    } else {
+        indexable(state, root_hex, fields).await
+    }
+}
+
+/// `indexable`, but for the public URL: what a persona's own domain asks (plans/CUSTOM_DOMAINS.md),
+/// whose addresses are the domain's, not the node's.
+pub async fn wants_indexing(
+    state: &AppState,
+    root_hex: &str,
+    fields: &[crate::record::imaol::ProfileField],
+) -> bool {
+    crate::idface::profile_value(fields, SEARCH_FIELD) != Some(SEARCH_NO)
         && crate::nodeshelf::listed(&state.node_db, root_hex).await.unwrap_or(true)
         && node_indexed(state).await
 }
@@ -234,7 +257,9 @@ async fn indexed_personas(
     for root_hex in crate::identity::hosted_roots(&state.node_db).await.unwrap_or_default() {
         let Some(root) = crate::pubkey::decode(&root_hex) else { continue };
         let fields = crate::idface::public_profile(state, &root_hex).await.unwrap_or_default();
-        if indexable(state, &root_hex, &fields).await {
+        // One whose own domain is their canonical address is listed there, in its own sitemap.
+        let elsewhere = crate::domains::canonical(&state.node_db, &root_hex).await.is_some();
+        if !elsewhere && indexable(state, &root_hex, &fields).await {
             out.push((root_hex, root, fields));
         }
     }
@@ -269,8 +294,7 @@ pub async fn sitemap_index_handler(State(state): State<AppState>) -> Result<Resp
 }
 
 /// GET `/sitemap/{name}.xml` - `node.xml`, the front page and the people page; or a person's, by
-/// their short address: their page, and every post a stranger may read that has a page of its
-/// own - posts, books and a book's pages, never a reply, a room or a sealed post.
+/// their short address.
 pub async fn sitemap_handler(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -280,7 +304,54 @@ pub async fn sitemap_handler(
     if !crate::webpath::has_public_url(&state) || !node_indexed(&state).await {
         return Err(missing());
     }
-    let base = crate::webpath::public_url(&state);
+    let urls = if name == "node" {
+        let base = crate::webpath::public_url(&state);
+        format!(
+            "<url><loc>{}</loc></url>\n<url><loc>{}</loc></url>\n",
+            xml(&format!("{base}/feed")),
+            xml(&format!("{base}/people"))
+        )
+    } else {
+        let Some(crate::speakable::Parsed::Ok(root)) = crate::speakable::parse(name) else {
+            return Err(missing());
+        };
+        person_urls(&state, &root, None).await?.ok_or_else(missing)?
+    };
+    Ok(urlset(urls))
+}
+
+/// A person's sitemap entries - their page, and every post a stranger may read that has a page of
+/// its own: posts, books and a book's pages, never a reply, a room or a sealed post - at this
+/// node's addresses, or (`on`) at their own domain's (plans/CUSTOM_DOMAINS.md). None for a person
+/// not hosted here, or not to be indexed.
+async fn person_urls(
+    state: &AppState,
+    root: &[u8; 32],
+    on: Option<&str>,
+) -> Result<Option<String>, AppError> {
+    let root_hex = hex::encode(root);
+    if !crate::idface::hosted_here(state, &root_hex).await? {
+        return Ok(None);
+    }
+    let fields = crate::idface::public_profile(state, &root_hex).await.unwrap_or_default();
+    // Listed at their canonical address only: the domain once it is theirs and served, else here.
+    let canonical = crate::domains::canonical(&state.node_db, &root_hex).await;
+    let wanted = match on {
+        Some(domain) => {
+            canonical.as_deref() == Some(domain) && wants_indexing(state, &root_hex, &fields).await
+        }
+        None => canonical.is_none() && indexable(state, &root_hex, &fields).await,
+    };
+    if !wanted {
+        return Ok(None);
+    }
+    let Some(db) = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? else {
+        return Ok(None);
+    };
+    let base = match on {
+        Some(domain) => format!("https://{domain}"),
+        None => crate::webpath::public_url(state),
+    };
     let url = |loc: &str, lastmod: Option<i64>| match lastmod {
         Some(ms) => format!(
             "<url><loc>{}</loc><lastmod>{}</lastmod></url>\n",
@@ -289,60 +360,75 @@ pub async fn sitemap_handler(
         ),
         None => format!("<url><loc>{}</loc></url>\n", xml(&format!("{base}{loc}"))),
     };
-    let mut urls = String::new();
-    if name == "node" {
-        urls.push_str(&url("/feed", None));
-        urls.push_str(&url("/people", None));
-    } else {
-        let Some(crate::speakable::Parsed::Ok(root)) = crate::speakable::parse(name) else {
-            return Err(missing());
-        };
-        let root_hex = hex::encode(root);
-        if !crate::idface::hosted_here(&state, &root_hex).await? {
-            return Err(missing());
-        }
-        let fields = crate::idface::public_profile(&state, &root_hex).await.unwrap_or_default();
-        if !indexable(&state, &root_hex, &fields).await {
-            return Err(missing());
-        }
-        let Some(db) = state.user_dbs.get(&root_hex).await.map_err(AppError::Internal)? else {
-            return Err(missing());
-        };
-        urls.push_str(&url(&crate::webpath::person_address(&state, &root).await, None));
-        let mut after = None;
-        let mut count = 1usize;
-        'pages: loop {
-            let page = crate::record::documents::public_docs(&db, after, 500).await?;
-            let full = page.len() == 500;
-            after = page.last().map(|p| (p.display_ms(), p.doc_id));
-            for post in &page {
-                if post.trusted_only
-                    || post.reply_to.is_some()
-                    || post.format == Some(ringtome_proto::registry::doc_format::ROOM)
-                {
-                    continue;
-                }
-                let doc_hex = hex::encode(post.doc_id);
-                let loc = crate::webpath::post_address(&state, &root, &doc_hex).await;
-                urls.push_str(&url(&loc, Some(post.head_ms)));
-                count += 1;
-                if count >= SITEMAP_MAX {
-                    break 'pages;
-                }
+    let mut urls = match on {
+        Some(_) => url("/", None),
+        None => url(&crate::webpath::person_address(state, root).await, None),
+    };
+    let mut after = None;
+    let mut count = 1usize;
+    'pages: loop {
+        let page = crate::record::documents::public_docs(&db, after, 500).await?;
+        let full = page.len() == 500;
+        after = page.last().map(|p| (p.display_ms(), p.doc_id));
+        for post in &page {
+            if post.trusted_only
+                || post.reply_to.is_some()
+                || post.format == Some(ringtome_proto::registry::doc_format::ROOM)
+            {
+                continue;
             }
-            if !full {
-                break;
+            let doc_hex = hex::encode(post.doc_id);
+            let loc = match on {
+                Some(_) => crate::webpath::under_person(state, root, &doc_hex).await,
+                None => crate::webpath::post_address(state, root, &doc_hex).await,
+            };
+            urls.push_str(&url(&loc, Some(post.head_ms)));
+            count += 1;
+            if count >= SITEMAP_MAX {
+                break 'pages;
             }
+        }
+        if !full {
+            break;
         }
     }
-    Ok(text(
+    Ok(Some(urls))
+}
+
+fn urlset(urls: String) -> Response {
+    text(
         StatusCode::OK,
         "application/xml; charset=utf-8",
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
              <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n{urls}</urlset>\n"
         ),
-    ))
+    )
+}
+
+/// `/robots.txt` on a persona's own domain (plans/CUSTOM_DOMAINS.md): the whole site is theirs to
+/// welcome, but for the node's doors; turned away like everyone when the node or they say no.
+pub async fn domain_robots(state: &AppState, root: &[u8; 32], domain: &str) -> Response {
+    let root_hex = hex::encode(root);
+    let fields = crate::idface::public_profile(state, &root_hex).await.unwrap_or_default();
+    let body = if wants_indexing(state, &root_hex, &fields).await {
+        format!(
+            "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /ringtome/\n\nSitemap: https://{domain}/sitemap.xml\n"
+        )
+    } else {
+        "User-agent: *\nDisallow: /\n".to_string()
+    };
+    text(StatusCode::OK, "text/plain; charset=utf-8", body)
+}
+
+/// `/sitemap.xml` on a persona's own domain: their page and posts, at the domain's addresses.
+pub async fn domain_sitemap(state: &AppState, root: &[u8; 32], domain: &str) -> Response {
+    match person_urls(state, root, Some(domain)).await {
+        Ok(Some(urls)) => urlset(urls),
+        Ok(None) => AppError::NotFound(crate::msg!("crawl.no-such-sitemap", "no such sitemap"))
+            .into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 /// GET `/feed.xml` - the node's front page as RSS (ruling 4): its newest posts, every listed
@@ -380,8 +466,7 @@ pub async fn node_feed_handler(
         } else {
             row.title.clone()
         };
-        let link =
-            format!("{base}{}", crate::webpath::post_address(&state, &root, &row.doc_id).await);
+        let link = crate::webpath::post_url(&state, &root, &row.doc_id, &base).await;
         items.push_str(&format!(
             "<item><title>{}</title><link>{}</link><guid isPermaLink=\"true\">{}</guid><pubDate>{}</pubDate><dc:creator>{}</dc:creator></item>\n",
             xml(&title),

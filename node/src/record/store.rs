@@ -106,7 +106,10 @@ pub const AUDIENCE: &str = "audience";
 /// page sees it in it (js/colorway.js). `search` (2026-10-11, plans/CRAWLING.md ruling 2) is their
 /// word to search engines: `no` keeps their pages out of every index, and is public because it is
 /// said to every crawler anyway, as each page's `noindex`.
-pub const PROFILE_FIELDS: &[&str] = &["name", "bio", "avatar", "banner", "colorway", "search"];
+/// `domain` (2026-10-16, plans/CUSTOM_DOMAINS.md) is the web address they claim - a bare hostname,
+/// counted only once DNS names them back (domains.rs).
+pub const PROFILE_FIELDS: &[&str] =
+    &["name", "bio", "avatar", "banner", "colorway", "search", "domain"];
 
 /// Write credentials for one identity on this node: the leaf signing key and the private-chain
 /// epoch keys it can open.
@@ -446,6 +449,15 @@ impl Profile<'_> {
                 "unknown profile field {field} (allowed: {allowed})",
                 field = format!("{field:?}"),
                 allowed = PROFILE_FIELDS.join(", "),
+            )));
+        }
+        if field == crate::domains::FIELD
+            && !value.is_empty()
+            && crate::domains::normalise(value).as_deref() != Some(value)
+        {
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.not-a-domain",
+                "a domain is a bare name, like example.com"
             )));
         }
         imaol::set_profile_field(&self.store.db, &self.store.authorship.signer, field, value).await

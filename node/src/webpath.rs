@@ -267,6 +267,43 @@ pub async fn post_address(state: &crate::AppState, root: &[u8; 32], doc_hex: &st
     }
 }
 
+/// A persona's canonical address, whole (plans/CUSTOM_DOMAINS.md, section 4): their own domain once
+/// it's proved theirs and served (ruling 7) - on every node that has checked it, not only the one
+/// serving it - else `base` (the node's public URL, or "" for a path) before `person_address`.
+pub async fn person_url(state: &crate::AppState, root: &[u8; 32], base: &str) -> String {
+    match crate::domains::canonical(&state.node_db, &hex::encode(root)).await {
+        Some(domain) => format!("https://{domain}"),
+        None => format!("{base}{}", person_address(state, root).await),
+    }
+}
+
+/// A post's canonical address, whole: at its author's own domain where `person_url` is one.
+pub async fn post_url(
+    state: &crate::AppState,
+    root: &[u8; 32],
+    doc_hex: &str,
+    base: &str,
+) -> String {
+    match crate::domains::canonical(&state.node_db, &hex::encode(root)).await {
+        Some(domain) => format!("https://{domain}{}", under_person(state, root, doc_hex).await),
+        None => format!("{base}{}", post_address(state, root, doc_hex).await),
+    }
+}
+
+/// A post's address under its person's: `/<path>`, or `/post/<id>` for a post with no path - what
+/// it is at the person's own domain (plans/CUSTOM_DOMAINS.md), which is the person's address.
+pub async fn under_person(state: &crate::AppState, root: &[u8; 32], doc_hex: &str) -> String {
+    let path = crate::annotations::path_of(&state.node_db, &hex::encode(root), doc_hex)
+        .await
+        .ok()
+        .flatten()
+        .filter(|p| well_formed(p));
+    match path {
+        Some(path) => format!("/{path}"),
+        None => format!("/post/{doc_hex}"),
+    }
+}
+
 /// How long another node's answer about one of its addresses is kept.
 const WEB_ADDRESS_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 /// The most of another node's answer read.

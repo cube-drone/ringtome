@@ -74,6 +74,7 @@ export function identityAddress({ publicUrl, root, via = [] }) {
 /// `@name` means nothing off this node - carrying `via`, this node's key, so the scanning app knows
 /// whom to ask.
 export function qrAddress({ publicUrl, webPath, appPath = webPath, via = '' }) {
+    if (/^https?:\/\//.test(webPath)) return webPath; // whole already: a person's own domain
     const base = (publicUrl || '').trim().replace(/\/+$/, '');
     return base ? `${base}${webPath}` : appAddress(appPath, via);
 }

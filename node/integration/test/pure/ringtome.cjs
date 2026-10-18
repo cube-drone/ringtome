@@ -264,3 +264,15 @@ describe("another node's @name address (plans/WEB_ADDRESSES.md, slice 3)", () =>
         assert.equal(r.localOfAnswer(null, SEG), null);
     });
 });
+
+describe('an address on a person’s own domain', () => {
+    it('is their address’s rest, and nobody else’s address at all', () => {
+        assert.equal(r.atHome(SEG, `/ringtome/user/${SEG}`), '/');
+        assert.equal(r.atHome(SEG, `/ringtome/user/${SEG}/`), '/');
+        assert.equal(r.atHome(SEG, `/ringtome/user/${SEG}/recipes/leek`), '/recipes/leek');
+        assert.equal(r.atHome(SEG, `/ringtome/user/${SEG}/post/${DOC}`), `/post/${DOC}`);
+        assert.equal(r.atHome(SEG, `/ringtome/user/${SEG}x/post/${DOC}`), null, 'a longer name');
+        assert.equal(r.atHome(SEG, '/ringtome/user/someone-else'), null);
+        assert.equal(r.atHome(SEG, '/leek'), null);
+    });
+});

@@ -13,7 +13,7 @@ import { t } from '../i18n.js';
 import { parseBook, neighbours, bookTags, filterBook } from '../pure/books.js';
 import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
-import { groupPostHref, pathHref, postHref, useSlugOf } from '../links.js';
+import { groupPostHref, pathHref, postHref, siteSeg, useSlugOf } from '../links.js';
 import { useArrowNav } from './docapp.js';
 import { EpubButton } from './epubbutton.js';
 
@@ -148,7 +148,8 @@ export const BookReader = ({ root, book, page: asked, title, group = null }) => 
             return;
         const entry = walk.order[walk.index];
         if (!entry || !entry.path) return;
-        const shortest = pathHref(root, entry.path, slug);
+        // On the author's own domain (domainsite.js) the shortest is the path itself.
+        const shortest = siteSeg() ? `/${entry.path}` : pathHref(root, entry.path, slug);
         const here = decodeURIComponent(window.location.pathname);
         const ours =
             here.includes(`/post/${book}`) ||
