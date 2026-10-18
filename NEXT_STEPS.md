@@ -12,11 +12,6 @@ are driving towards.
 
 ### Demo Output
 
-- every page, on load, has a "flash of default-colored content" before adopting
-  my color scheme: can we load the color scheme _with the HTML_ ?
-- every button in the entire mobile app is a little too small and delicate for
-  human fingies, and some of the drawing tools are WAY too small
-- vim mode i needs it
 - the big-search crawl's residuals (HISTORY 2026-10-02 has what was found and
   cut):
   - the server's fold costs a median 851 ms with nothing else in flight; a
@@ -33,9 +28,6 @@ are driving towards.
 - check if HorseBucks are actually using a bigint
 - when I tag stuff in my personal feed (which is huge) it doesn't update right
   away
-- everything I've posted to the public internet in the past 6 years clocks in at
-  about 110 MB all-in
-  - so following 10 of me would entail a solid gigabyte of load?
 - feed/user search result highlighting
 - An article on Managing Operator Liability
 - Probably a bad idea: An open demo server (free registration, but it deletes
