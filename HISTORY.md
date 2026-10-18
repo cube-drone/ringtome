@@ -23471,3 +23471,24 @@ can still withdraw. A node serves only its administrators' domains
 (`domainsite::read_sites`), so nobody else's domain can be served or become
 their canonical address. The ✓ itself is not gated: the profile door still takes
 the field, and every node checks a claim it sees for itself.
+
+## 2026-10-18: the car keeps its place in a shuffle, and Playlists takes pins
+
+**The car's shuffle** (Curtis: back in the car after an evening out, the same
+station played the same songs in the same order again). The car's lists are
+dealt by the page, and with the page asleep a list picked again started from its
+first song every drive. `AutoLibrary.kt` now keeps the car's place in each list
+except mixtapes: the song, its index and how far into it, saved as songs change
+and as playback pauses. A list picked again carries on from there. It starts
+from its top once played out, or once the page has dealt it anew. Not yet built
+or tried on a phone: the Android build is CI-only.
+
+**Pins** (Curtis: "pinned ones show up at the top of the playlists column for
+easy access"). A pin at the end of each filter, mixtape and station row, shown
+on hover where a pointer hovers and always on a pinned row. Pinned lists leave
+their group for a "pinned" group at the top, each wearing its kind's glyph,
+oldest pin first. The car's lists put them first too. Pins are private registers
+(`pure/amppins.js`, `amp_pins`), so they follow the persona to every computer;
+forgetting a list takes its pin. Checked by vectors and by a jsdom probe on a
+scratch node: two pinned, a reload keeping them, one unpinned back into its
+group.

@@ -1249,3 +1249,42 @@
         font-size: 1.2rem;
     }
 }
+
+/* Pins (pure/amppins.js): a pin at each Playlists row's end, lit on a pinned one; where a pointer
+   hovers, an unpinned row shows its pin only under it. A pinned row wears its kind's glyph. */
+.amp-pin {
+    background: none;
+    border: 0;
+    cursor: pointer;
+    display: inline-flex;
+    padding: 0.28rem 0.3rem;
+    color: var(--muted);
+    opacity: 0.6;
+}
+
+.amp-pin:hover,
+.amp-pin-on {
+    opacity: 1;
+}
+
+.amp-pin-on {
+    color: var(--teal);
+}
+
+@media (hover: hover) {
+    .feed-saved-row:not(:hover) .amp-pin:not(.amp-pin-on) {
+        visibility: hidden;
+    }
+}
+
+.amp-pinned-kind {
+    display: inline-flex;
+    margin-right: 0.25rem;
+    color: var(--muted);
+}
+
+/* On the lit row's solid fill, both take the fill's light foreground. */
+.feed-saved-row.active .amp-pin,
+.feed-saved-row.active .amp-pinned-kind {
+    color: var(--surface);
+}

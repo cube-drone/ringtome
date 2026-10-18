@@ -275,6 +275,13 @@ The **Playlists** column lists, in three groups:
 Choosing one sets what the table shows and what the player plays. Each has a
 trash button, as saved feeds do.
 
+**Pins** (Curtis, 2026-10-18). Any filter, mixtape or station can be pinned. A
+pinned one leaves its group for a "pinned" group at the top of the column,
+wearing its kind's glyph, oldest pin first, and its list comes first in the
+car's too. Pins are private registers like the filters (`amp_pins`, keyed
+`<kind>:<id>`, valued with the moment pinned), so they follow you to every
+computer; forgetting a list takes its pin.
+
 ### 4. The player
 
 **It plays across the whole app** (ruling 1). The audio element, the queue and

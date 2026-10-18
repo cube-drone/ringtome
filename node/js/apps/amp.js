@@ -32,6 +32,7 @@ import { SoundTags } from '../doc/soundtags.js';
 import { BulkPanel } from '../doc/bulk.js';
 import { usePlayer, PlayerBar, Cassette, Thumbs, SHUFFLE, songForPhone } from '../player.js';
 import { spreadOrder } from '../pure/shuffle.js';
+import { AMP_PINS, readPins, pinKey, pinnedLists, pinnedFirst } from '../pure/amppins.js';
 import { postHref } from '../links.js';
 import { Icons } from '../icons.js';
 import { toast } from '../toasts.js';
@@ -636,8 +637,9 @@ const FilterStrip = ({
 };
 
 /// The Playlists column (section 3): filters - "all" first, always there, then each saved one, lit
-/// while it is what the table shows - and the mixtapes (section 5). Radio stations join it in their
-/// slice.
+/// while it is what the table shows - the mixtapes (section 5) and the radio stations (section 6).
+/// Above them all, what's pinned (pure/amppins.js), each wearing its kind's glyph, since a pinned
+/// filter and a pinned mixtape can share a name.
 const Playlists = ({
     filters,
     now,
@@ -655,70 +657,102 @@ const Playlists = ({
     onOpenStation,
     onForgetStation,
     onNewStation,
-}) => html`<aside class="amp-playlists">
-    <${PaneHead} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onTuck=${onTuck} />
-    <p class="amp-playlists-group">${t('amp.filters', 'filters')}</p>
-    <div class=${now && !anyAmpPicks(now.picks) && !now.q ? 'feed-saved-row active' : 'feed-saved-row'}>
-        <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
+    pins,
+    onPin,
+}) => {
+    const isPinned = (kind, x) => pins.has(pinKey(kind, x.id));
+    const pin = (kind, x) => {
+        const on = isPinned(kind, x);
+        const label = on
+            ? t('amp.unpin', 'unpin it from the top of playlists')
+            : t('amp.pin', 'pin it to the top of playlists');
+        return html`<button
+            class=${on ? 'amp-pin amp-pin-on' : 'amp-pin'}
+            title=${label}
+            aria-label=${label}
+            aria-pressed=${on}
+            onClick=${() => onPin(kind, x)}
+        ><${Icons.pin} /></button>`;
+    };
+    const kindGlyph = (icon, shown) =>
+        shown && html`<span class="amp-pinned-kind"><${icon} /></span>`;
+    const filterRow = (f, pinnedRow) => html`<div
+        key=${pinKey('filter', f.id)}
+        class=${sameFilter(f, now) ? 'feed-saved-row active' : 'feed-saved-row'}
+    >
         <button
-            class="feed-saved-name"
-            title=${t('amp.all-title', 'every song you can see - every chip back to unpicked')}
-            onClick=${onAll}
-        >${t('apps.feed.all', 'all')}</button>
-    </div>
-    ${filters.map(
-        (
-            f,
-        ) => html`<div key=${f.id} class=${sameFilter(f, now) ? 'feed-saved-row active' : 'feed-saved-row'}>
+            class="feed-saved-forget"
+            title=${t('amp.forget-this-filter', 'forget this filter')}
+            aria-label=${t('amp.forget-this-filter', 'forget this filter')}
+            onClick=${() => onForget(f)}
+        ><${Icons.trash} /></button>
+        <button class="feed-saved-name" onClick=${() => onPick(f)}>${kindGlyph(Icons.filter, pinnedRow)}${f.name}</button>
+        ${pin('filter', f)}
+    </div>`;
+    const tapeRow = (tape, pinnedRow) => html`<div
+        key=${pinKey('mixtape', tape.id)}
+        class=${openTape === tape.id ? 'feed-saved-row active' : 'feed-saved-row'}
+    >
+        <button
+            class="feed-saved-forget"
+            title=${t('amp.forget-this-mixtape', 'forget this mixtape - its songs stay where they are')}
+            aria-label=${t('amp.forget-this-mixtape', 'forget this mixtape - its songs stay where they are')}
+            onClick=${() => onForgetTape(tape)}
+        ><${Icons.trash} /></button>
+        <button class="feed-saved-name" onClick=${() => onOpenTape(tape)}>${kindGlyph(Icons.cassette, pinnedRow)}${tape.name}</button>
+        ${pin('mixtape', tape)}
+    </div>`;
+    const stationRow = (st, pinnedRow) => html`<div
+        key=${pinKey('station', st.id)}
+        class=${openStation === st.id ? 'feed-saved-row active' : 'feed-saved-row'}
+    >
+        <button
+            class="feed-saved-forget"
+            title=${t('amp.forget-this-station', 'forget this station')}
+            aria-label=${t('amp.forget-this-station', 'forget this station')}
+            onClick=${() => onForgetStation(st)}
+        ><${Icons.trash} /></button>
+        <button class="feed-saved-name" onClick=${() => onOpenStation(st)}>
+            ${
+                playingStation === st.id
+                    ? html`<span class="amp-on-air" title=${t('amp.on-air', 'playing now')}><${Icons.radio} /></span>`
+                    : kindGlyph(Icons.radio, pinnedRow)
+            }
+            ${st.name}
+        </button>
+        ${pin('station', st)}
+    </div>`;
+    const ROWS = { filter: filterRow, mixtape: tapeRow, station: stationRow };
+    const pinned = pinnedLists(pins, { filters, tapes, stations });
+    const restTapes = tapes.filter((x) => !isPinned('mixtape', x));
+    return html`<aside class="amp-playlists">
+        <${PaneHead} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onTuck=${onTuck} />
+        ${pinned.length > 0 && html`<p class="amp-playlists-group">${t('amp.pinned', 'pinned')}</p>`}
+        ${pinned.map((l) => ROWS[l.kind](l.item, true))}
+        <p class="amp-playlists-group">${t('amp.filters', 'filters')}</p>
+        <div class=${now && !anyAmpPicks(now.picks) && !now.q ? 'feed-saved-row active' : 'feed-saved-row'}>
+            <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
             <button
-                class="feed-saved-forget"
-                title=${t('amp.forget-this-filter', 'forget this filter')}
-                aria-label=${t('amp.forget-this-filter', 'forget this filter')}
-                onClick=${() => onForget(f)}
-            ><${Icons.trash} /></button>
-            <button class="feed-saved-name" onClick=${() => onPick(f)}>${f.name}</button>
-        </div>`,
-    )}
-    ${/* Mixtapes (section 5): each a name and an order, opened into the table in that order. */ ''}
-    ${tapes.length > 0 && html`<p class="amp-playlists-group">${t('amp.mixtapes', 'mixtapes')}</p>`}
-    ${tapes.map(
-        (
-            tape,
-        ) => html`<div key=${tape.id} class=${openTape === tape.id ? 'feed-saved-row active' : 'feed-saved-row'}>
-            <button
-                class="feed-saved-forget"
-                title=${t('amp.forget-this-mixtape', 'forget this mixtape - its songs stay where they are')}
-                aria-label=${t('amp.forget-this-mixtape', 'forget this mixtape - its songs stay where they are')}
-                onClick=${() => onForgetTape(tape)}
-            ><${Icons.trash} /></button>
-            <button class="feed-saved-name" onClick=${() => onOpenTape(tape)}>${tape.name}</button>
-        </div>`,
-    )}
-    ${
-        /* Radio stations (section 6): each a pie of filters, mixtapes and stations, opened to edit
-        and play. */ ''
-    }
-    <p class="amp-playlists-group amp-playlists-group-new">
-        ${t('amp.radio-stations', 'radio stations')}
-        <button class="amp-playlists-new" title=${t('amp.new-station', 'a new radio station')} aria-label=${t('amp.new-station', 'a new radio station')} onClick=${onNewStation}><${Icons.plus} /></button>
-    </p>
-    ${stations.map(
-        (
-            st,
-        ) => html`<div key=${st.id} class=${openStation === st.id ? 'feed-saved-row active' : 'feed-saved-row'}>
-            <button
-                class="feed-saved-forget"
-                title=${t('amp.forget-this-station', 'forget this station')}
-                aria-label=${t('amp.forget-this-station', 'forget this station')}
-                onClick=${() => onForgetStation(st)}
-            ><${Icons.trash} /></button>
-            <button class="feed-saved-name" onClick=${() => onOpenStation(st)}>
-                ${playingStation === st.id && html`<span class="amp-on-air" title=${t('amp.on-air', 'playing now')}><${Icons.radio} /></span>`}
-                ${st.name}
-            </button>
-        </div>`,
-    )}
-</aside>`;
+                class="feed-saved-name"
+                title=${t('amp.all-title', 'every song you can see - every chip back to unpicked')}
+                onClick=${onAll}
+            >${t('apps.feed.all', 'all')}</button>
+        </div>
+        ${filters.filter((f) => !isPinned('filter', f)).map((f) => filterRow(f, false))}
+        ${/* Mixtapes (section 5): each a name and an order, opened into the table in that order. */ ''}
+        ${restTapes.length > 0 && html`<p class="amp-playlists-group">${t('amp.mixtapes', 'mixtapes')}</p>`}
+        ${restTapes.map((x) => tapeRow(x, false))}
+        ${
+            /* Radio stations (section 6): each a pie of filters, mixtapes and stations, opened to edit
+            and play. */ ''
+        }
+        <p class="amp-playlists-group amp-playlists-group-new">
+            ${t('amp.radio-stations', 'radio stations')}
+            <button class="amp-playlists-new" title=${t('amp.new-station', 'a new radio station')} aria-label=${t('amp.new-station', 'a new radio station')} onClick=${onNewStation}><${Icons.plus} /></button>
+        </p>
+        ${stations.filter((st) => !isPinned('station', st)).map((st) => stationRow(st, false))}
+    </aside>`;
+};
 
 /// A slice's colour, the pie's and its swatch's alike (apps/amp.css), by its place in the station.
 const SLICE_CLASSES = [
@@ -1125,6 +1159,47 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             .catch(() => {})
             .finally(() => setStationsRead(true));
     }, [root]);
+    // What's pinned to the top of Playlists (pure/amppins.js), per persona.
+    const [pins, setPins] = useState(() => new Map());
+    useEffect(() => {
+        if (!root) return;
+        setPins(new Map());
+        api(`/api/identity/${root}/private/kv/${AMP_PINS}`)
+            .then((r) => setPins(readPins(r && r.values)))
+            .catch(() => {});
+    }, [root]);
+    // A pin made or taken out: on screen at once, put back if the node refused it.
+    const setPin = async (kind, id, on) => {
+        const key = pinKey(kind, id);
+        const at = Date.now();
+        const swap = (pinIt) =>
+            setPins((have) => {
+                const next = new Map(have);
+                if (pinIt) next.set(key, at);
+                else next.delete(key);
+                return next;
+            });
+        swap(on);
+        try {
+            await api(`/api/identity/${root}/private/kv/${AMP_PINS}/${encodeURIComponent(key)}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: on ? String(at) : '' }),
+            });
+        } catch (e) {
+            swap(!on);
+            toast(
+                t('amp.couldnt-pin', "couldn't change the pin: {message}", {
+                    message: e.message,
+                }),
+                { kind: 'error' },
+            );
+        }
+    };
+    const togglePin = (kind, x) => setPin(kind, x.id, !pins.has(pinKey(kind, x.id)));
+    // A list forgotten takes its pin with it.
+    const unpinGone = (kind, id) => {
+        if (pins.has(pinKey(kind, id))) setPin(kind, id, false);
+    };
     // A drag in an open mixtape: the song lifted, and where it would land.
     const dragKey = useRef(null);
     const [dropAt, setDropAt] = useState(null); // { key, after }
@@ -1267,6 +1342,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             });
             setFilters((have) => have.filter((x) => x.id !== f.id));
             if (loadedId === f.id) setLoadedId(null);
+            unpinGone('filter', f.id);
         } catch (e) {
             toast(
                 t('amp.couldnt-forget-it', "couldn't forget it: {message}", {
@@ -1376,6 +1452,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             await api(`/api/identity/${root}/taxonomies/${x.id}`, { method: 'DELETE' });
             if (openTape === x.id) setOpenTape(null);
             setTapes((have) => have.filter((y) => y.id !== x.id));
+            unpinGone('mixtape', x.id);
         } catch (e) {
             failed(e);
         }
@@ -1458,8 +1535,9 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             .join(' › ');
     // Android Auto's lists (plans/AUDIO.md, section 10): on a phone, hrseAmp hands the phone's player
     // what the car may browse - everything, shuffled; each mixtape in its order; each saved filter;
-    // each station as a long run of its picks - a few seconds after the library settles, so the car
-    // has the last set even once the page is gone. Only what this server carries.
+    // each station as a long run of its picks, the pinned ones first (pure/amppins.js) - a few
+    // seconds after the library settles, so the car has the last set even once the page is gone.
+    // Only what this server carries.
     useEffect(() => {
         const phone = typeof window !== 'undefined' && window.__ringtomePlayer;
         if (!phone || loading || !root || !stationsRead) return undefined;
@@ -1470,32 +1548,37 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                 random: Math.random,
             };
             const items = (songs) => songs.map((r) => songForPhone(r, root));
-            const lists = [
-                {
-                    id: 'all',
-                    title: t('amp.everything-shuffled', 'everything, shuffled'),
-                    items: items(spreadOrder(playable(rows), order).slice(0, 2000)),
-                },
-                ...tapes.map((x) => ({
-                    id: `mixtape:${x.id}`,
-                    title: x.name,
-                    items: items(playable(inMixtapeOrder(rows, x))),
-                })),
-                ...filters.map((f) => ({
-                    id: `filter:${f.id}`,
-                    title: f.name,
-                    items: items(spreadOrder(songsOf({ kind: 'filter', id: f.id }), order)),
-                })),
-                ...stations.map((st) => {
-                    const station = runFor(st);
-                    station.next();
-                    return {
-                        id: `station:${st.id}`,
-                        title: st.name,
-                        items: items([station.current(), ...station.ahead(150)].filter(Boolean)),
-                    };
-                }),
-            ].filter((l) => l.items.length);
+            const lists = pinnedFirst(
+                [
+                    {
+                        id: 'all',
+                        title: t('amp.everything-shuffled', 'everything, shuffled'),
+                        items: items(spreadOrder(playable(rows), order).slice(0, 2000)),
+                    },
+                    ...tapes.map((x) => ({
+                        id: `mixtape:${x.id}`,
+                        title: x.name,
+                        items: items(playable(inMixtapeOrder(rows, x))),
+                    })),
+                    ...filters.map((f) => ({
+                        id: `filter:${f.id}`,
+                        title: f.name,
+                        items: items(spreadOrder(songsOf({ kind: 'filter', id: f.id }), order)),
+                    })),
+                    ...stations.map((st) => {
+                        const station = runFor(st);
+                        station.next();
+                        return {
+                            id: `station:${st.id}`,
+                            title: st.name,
+                            items: items(
+                                [station.current(), ...station.ahead(150)].filter(Boolean),
+                            ),
+                        };
+                    }),
+                ].filter((l) => l.items.length),
+                pins,
+            );
             try {
                 phone.library(JSON.stringify({ lists }));
             } catch {
@@ -1504,7 +1587,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         }, 3000);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rows, tapes, filters, stations, stationsRead, loading, root]);
+    }, [rows, tapes, filters, stations, stationsRead, loading, root, pins]);
     const playStation = (st) => {
         if (!player) return;
         const run = runFor(st);
@@ -1593,6 +1676,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             });
             setStations((have) => have.filter((x) => x.id !== st.id));
             if (openStation === st.id) setOpenStation(null);
+            unpinGone('station', st.id);
         } catch (e) {
             failed(e);
         }
@@ -1919,6 +2003,8 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           onOpenStation=${openStationView}
                           onForgetStation=${forgetStation}
                           onNewStation=${newStation}
+                          pins=${pins}
+                          onPin=${togglePin}
                       />${resizer('playlists')}`
             }
             ${nowColumn}
