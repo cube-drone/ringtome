@@ -136,6 +136,14 @@ pub struct Config {
     /// personas it hosts - for a metered link, or an operator who would rather not.
     /// `RINGTOME_SERVE_CROWD` (default on; `0` or `false` turns it off).
     pub serve_crowd: bool,
+    /// Whether this node serves the custom domains its personas claim and prove
+    /// (plans/CUSTOM_DOMAINS.md, ruling 3). It costs nothing until a domain points here.
+    /// `RINGTOME_CUSTOM_DOMAINS` (default on; `off`, `0` or `false` turns it off).
+    pub custom_domains: bool,
+    /// `RINGTOME_DOMAINS_TARGET`: the hostname a person points their domain at - behind Bunny, the
+    /// pull zone's `*.b-cdn.net` name - which the settings page tells them to CNAME to. Unset,
+    /// the page names no record to point with.
+    pub domains_target: Option<String>,
     /// How long a changed identity must sit quiet before its peers get an eager push - batches
     /// a burst of writes into one exchange. Local writes ring the eager loop's doorbell
     /// (`Db::nudge_sync`) so the debounce clock starts at the write itself; the ~1s tick then
@@ -330,6 +338,14 @@ impl Config {
         let follow_posts_ceiling = dial("RINGTOME_FOLLOW_POSTS_CEILING", 5_000);
         let serve_crowd =
             !matches!(env::var("RINGTOME_SERVE_CROWD").as_deref(), Ok("0") | Ok("false"));
+        let custom_domains = !matches!(
+            env::var("RINGTOME_CUSTOM_DOMAINS").as_deref(),
+            Ok("off") | Ok("0") | Ok("false")
+        );
+        let domains_target = env::var("RINGTOME_DOMAINS_TARGET")
+            .ok()
+            .map(|s| s.trim().trim_end_matches('.').to_ascii_lowercase())
+            .filter(|s| !s.is_empty());
 
         // Floored at 8: a cache too small to hold the handles one request touches would
         // thrash on a single operation, which is worse than any descriptor it saves.
@@ -449,6 +465,8 @@ impl Config {
             peek_expiry_ms,
             follow_posts_ceiling,
             serve_crowd,
+            custom_domains,
+            domains_target,
             max_open_databases,
             sync_debounce_ms,
             pow_requested_bits,

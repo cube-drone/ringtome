@@ -22,7 +22,7 @@ import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
 import { personaHue, shortcode } from './pure/person.js';
-import { bannerStyle } from './person.js';
+import { bannerStyle, ownDomainAnswered } from './person.js';
 import { Icons } from './icons.js';
 import { t, tNodes } from './i18n.js';
 import { askYes } from './modal.js';
@@ -1280,6 +1280,7 @@ export const Profile = ({ current }) => {
                 />
             </label>
             ${!isDevice() && html`<${NodeSlug} root=${root} />`}
+            <${DomainClaim} root=${root} />
             <label class="profile-field">
                 <${FieldLabel} label=${t('persona.bio', 'bio')} field=${bio} />
                 <textarea
@@ -1425,6 +1426,187 @@ const NodeSlug = ({ root }) => {
             }
             ${note && html`<span class="profile-flash">${note}</span>`}
         </label>
+    `;
+};
+
+/// Your web address (plans/CUSTOM_DOMAINS.md, slice 1): a domain of your own, claimed in your profile
+/// and proved by a TXT record there that names you back. Until it does, nobody is shown it.
+/// A proved domain's serving (plans/CUSTOM_DOMAINS.md, slice 3): whether this node answers it, the
+/// record that points it here, and whether it has started answering - which is when it becomes the
+/// address the posts are shared under (ruling 7).
+const DomainServing = ({ held, busy, onCheck, copy }) => {
+    if (!held.serving) {
+        const why = !held.custom_domains
+            ? t('persona.domain-node-serves-none', 'This node doesn’t serve custom domains.')
+            : held.proof !== 'txt'
+              ? t(
+                    'persona.domain-needs-txt',
+                    'A file on your site proves it’s you, which is enough for the ✓. For this node to serve {domain}, add the TXT record too.',
+                    { domain: held.domain },
+                )
+              : t(
+                    'persona.domain-not-hosted',
+                    'This persona lives on another node, so this one doesn’t serve {domain}.',
+                    { domain: held.domain },
+                );
+        return html`<small class="profile-domain-note">${why}</small>`;
+    }
+    if (held.served_ms)
+        return html`<small class="profile-domain-note">${t('persona.domain-served', 'This node serves {domain}, and your posts are shared at it.', { domain: held.domain })}</small>`;
+    // Always a name to point at, never "here" (Curtis, 2026-10-18): a person doesn't know where
+    // here is. No name at all is a node with no public address, which nothing can point at.
+    if (!held.target)
+        return html`<small class="profile-domain-note">${t('persona.domain-no-target', 'This node has no public address yet, so there is nothing to point {domain} at.', { domain: held.domain })}</small>`;
+    return html`<div class="profile-domain-record">
+        <small>
+            ${t(
+                'persona.domain-point-at',
+                'For this node to serve {domain}, add this record where your domain keeps its DNS. Once it answers, your posts are shared at it.',
+                { domain: held.domain },
+            )}
+        </small>
+        ${html`<span class="profile-domain-line">
+                    <span class="persona-address-label">${t('persona.domain-record-name', 'name')}</span>
+                    <code>${held.domain}</code>
+                </span>
+                <span class="profile-domain-line">
+                    <span class="persona-address-label">${t('persona.domain-record-type', 'type')}</span>
+                    <code>CNAME</code>
+                </span>
+                <span class="profile-domain-line">
+                    <span class="persona-address-label">${t('persona.domain-record-value', 'value')}</span>
+                    <code>${held.target}</code>
+                    <button class="persona-address-copy" onClick=${() => copy(held.target)}>${t('person.copy', 'copy')}</button>
+                </span>
+                <small>${t('persona.domain-flatten', 'A domain with nothing before it, like example.com, needs a DNS provider that can flatten a CNAME.')}</small>
+                <small>${t('persona.domain-operator-too', 'Whoever runs this node may need to add {domain} at their end as well.', { domain: held.domain })}</small>`}
+        <button class="profile-save" disabled=${busy} onClick=${onCheck}>
+            ${busy ? t('persona.checking', 'checking…') : t('persona.check-now', 'check now')}
+        </button>
+    </div>`;
+};
+
+const DomainClaim = ({ root }) => {
+    const [held, setHeld] = useState(null); // the door's answer
+    const [draft, setDraft] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [note, setNote] = useState(null);
+    const answered = (r) => {
+        setHeld(r);
+        setDraft(r.domain || '');
+        ownDomainAnswered(root, r);
+    };
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/domain`)
+            .then((r) => live && answered(r))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root]);
+    // `checked`: say what a check found when it found nothing new, or a press looks like no press.
+    const ask = async (path, init, checked) => {
+        setBusy(true);
+        setNote(null);
+        try {
+            const r = await api(path, init);
+            answered(r);
+            if (checked && r.domain && r.state !== 'verified')
+                setNote(
+                    t(
+                        'persona.domain-not-yet',
+                        'Checked just now: {name} has no record naming you yet. A new record can take a while to spread.',
+                        { name: r.record_name },
+                    ),
+                );
+        } catch (e) {
+            setNote(e.message || t('persona.that-domain-did-not-take', 'that domain did not take'));
+        }
+        setBusy(false);
+    };
+    const claim = () =>
+        ask(`/api/identity/${root}/domain`, {
+            method: 'PUT',
+            body: JSON.stringify({ domain: draft }),
+        });
+    const check = () => ask(`/api/identity/${root}/domain/check`, { method: 'POST' }, true);
+    // A node's administrators only, for now (2026-10-18); anyone else sees the field only to
+    // withdraw a claim they already hold.
+    if (!held || (!held.allowed && !held.domain)) return null;
+    const same = (draft || '').trim().toLowerCase() === (held.domain || '');
+    const copy = (text) => writeClipboard(text).catch(() => {});
+    return html`
+        <div class="profile-field profile-domain">
+            <span class="profile-field-label">
+                ${t('persona.your-web-address', 'your web address')}
+                <small>${t('persona.domain-hint', 'a domain of your own, like example.com')}</small>
+            </span>
+            <span class="profile-slug-row">
+                <input
+                    class="profile-slug-input jag-field"
+                    type="text"
+                    maxlength="253"
+                    placeholder=${t('persona.domain-placeholder', 'example.com')}
+                    value=${draft}
+                    onInput=${(e) => setDraft(e.currentTarget.value)}
+                    onKeyDown=${(e) => e.key === 'Enter' && !same && claim()}
+                />
+                <button class="profile-save" disabled=${busy || same} onClick=${claim}>
+                    ${held.domain && !draft.trim() ? t('persona.remove', 'remove') : t('persona.claim', 'claim')}
+                </button>
+            </span>
+            ${
+                !held.domain &&
+                html`<small class="profile-domain-note">${t('persona.domain-is-public', 'Your domain is public: anyone can see it is yours, and through it who registered it.')}</small>`
+            }
+            ${
+                held.state === 'verified' &&
+                html`<small class="profile-domain-note">${t('persona.domain-proved', '{domain} says this is you ✓', { domain: held.domain })}</small>`
+            }
+            ${held.state === 'verified' && html`<${DomainServing} held=${held} busy=${busy} onCheck=${check} copy=${copy} />`}
+            ${
+                held.domain &&
+                held.state !== 'verified' &&
+                html`<div class="profile-domain-record">
+                    <small>
+                        ${
+                            held.state === 'lapsed'
+                                ? t(
+                                      'persona.domain-lapsed',
+                                      '{domain} has stopped saying this is you. Its record is gone, or names someone else.',
+                                      { domain: held.domain },
+                                  )
+                                : t(
+                                      'persona.domain-add-record',
+                                      'Nobody is shown it until {domain} says this is you. Add this record where your domain keeps its DNS, then check:',
+                                      { domain: held.domain },
+                                  )
+                        }
+                    </small>
+                    <span class="profile-domain-line">
+                        <span class="persona-address-label">${t('persona.domain-record-name', 'name')}</span>
+                        <code>${held.record_name}</code>
+                        <button class="persona-address-copy" onClick=${() => copy(held.record_name)}>${t('person.copy', 'copy')}</button>
+                    </span>
+                    <span class="profile-domain-line">
+                        <span class="persona-address-label">${t('persona.domain-record-type', 'type')}</span>
+                        <code>TXT</code>
+                    </span>
+                    <span class="profile-domain-line">
+                        <span class="persona-address-label">${t('persona.domain-record-value', 'value')}</span>
+                        <code>${held.record_value}</code>
+                        <button class="persona-address-copy" onClick=${() => copy(held.record_value)}>${t('person.copy', 'copy')}</button>
+                    </span>
+                    <button class="profile-save" disabled=${busy} onClick=${check}>
+                        ${busy ? t('persona.checking', 'checking…') : t('persona.check-now', 'check now')}
+                    </button>
+                </div>`
+            }
+            ${note && html`<span class="profile-flash">${note}</span>`}
+        </div>
     `;
 };
 

@@ -45,7 +45,7 @@ import {
     serialiseTags,
     TAG_MAX,
 } from './pure/contacttags.js';
-import { personHref, publicGroupHref, roomHref, writeClipboard } from './links.js';
+import { personHref, publicGroupHref, roomHref, useDomainOf, writeClipboard } from './links.js';
 import { OpenInApp, QrBadge } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 
@@ -79,9 +79,38 @@ function strangerProfile(root, myRoot) {
     return asked;
 }
 
+/// Your own domain, when this node has found that it names you back (domains.rs): asked once per
+/// page, and told again by the settings page when you change it (`ownDomainAnswered`).
+const ownDomains = new Map(); // root -> Promise<string | null>
+const verifiedOf = (answer) => (answer && answer.state === 'verified' ? answer.domain : null);
+export function ownDomainAnswered(root, answer) {
+    ownDomains.set(root, Promise.resolve(verifiedOf(answer)));
+}
+function useOwnDomain(root) {
+    const [domain, setDomain] = useState(null);
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        if (!ownDomains.has(root)) {
+            ownDomains.set(
+                root,
+                api(`/api/identity/${root}/domain`)
+                    .then(verifiedOf)
+                    .catch(() => null),
+            );
+        }
+        ownDomains.get(root).then((d) => live && setDomain(d));
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    return domain;
+}
+
 export function usePerson(root, { current, profile: given } = {}) {
     const myRoot = current && current.root;
     const isYou = !!(myRoot && myRoot === root);
+    const myDomain = useOwnDomain(isYou ? myRoot : null);
 
     // Your ledger's facts about them (nickname, trust, interest, blocked) - live.
     const contactRow = useLive(
@@ -184,6 +213,11 @@ export function usePerson(root, { current, profile: given } = {}) {
     const via = (source && source.via) || null;
     // The node's short name for them (PROJECT_PLAN's The node's public face, ruling 6), when the profile names one.
     const slug = (source && source.slug) || null;
+    // The domain they claim (plans/CUSTOM_DOMAINS.md), only once this node has found that it names
+    // them back: the raw claim among their profile's fields is never shown.
+    const domain = isYou
+        ? myDomain
+        : (source && source.domain) || (contactRow && contactRow.domain) || null;
 
     const names = displayNames({ nickname: facts.nickname, name, words });
     return {
@@ -192,6 +226,7 @@ export function usePerson(root, { current, profile: given } = {}) {
         hosted,
         via,
         slug,
+        domain,
         facts,
         blocked,
         knownToYou: !!contactRow,
@@ -329,8 +364,14 @@ const PersonNames = ({ person }) => html`
             person.others.length > 0 &&
             html`<span class="person-name-others">${person.others.join(' · ')}</span>`
         }
+        ${person.domain && html`<${DomainMark} domain=${person.domain} />`}
     </span>
 `;
+
+/// Their domain, with the ✓ that says this node has found it names them back
+/// (plans/CUSTOM_DOMAINS.md, section 7). Not a link: it sits inside rows that are links already.
+const DomainMark = ({ domain }) =>
+    html`<span class="person-domain" title=${t('person.domain-verified', '{domain} says this is them', { domain })}>${domain} ✓</span>`;
 
 /// The inline header: the heptagon plus their names, filling the width it's given. What a
 /// page wears at the top when the page is *about* this person.
@@ -461,6 +502,9 @@ export const PersonCard = ({
     banner = null,
 }) => {
     const person = usePerson(root, { current, profile });
+    // Their own domain, where it is their canonical address (plans/CUSTOM_DOMAINS.md): what the QR
+    // code says ahead of the @name.
+    const homeDomain = useDomainOf(root);
     if (!root) return null;
     const name = html`<h1 class="person-card-name">
                 ${person.primary}
@@ -474,9 +518,10 @@ export const PersonCard = ({
                     html`<${ChatWithButton} myRoot=${current.root} root=${root} name=${person.primary} />`
                 }
             </h1>`;
-    const others =
+    const others = html`${
         person.others.length > 0 &&
-        html`<p class="person-card-others">${person.others.join(' · ')}</p>`;
+        html`<p class="person-card-others">${person.others.join(' · ')}</p>`
+    }${person.domain && html`<p class="person-card-others"><${DomainMark} domain=${person.domain} /></p>`}`;
     // Their RSS (rss.rs, 2026-09-30), wherever this node keeps their shelf: in the top right
     // corner, after whatever else sits there.
     const rss =
@@ -484,12 +529,13 @@ export const PersonCard = ({
         html`<a class="person-rss" href=${`${personHref(root)}/rss.xml`} target="_blank" rel="noopener" title=${t('person.rss-title', 'follow their posts in a feed reader (RSS)')}
             ><${Icons.rss}
         /></a>`;
-    // Their QR code (plans/QR.md), on the right: their web address where this node serves them, under
-    // the @name it gave them; else the app's address, for another phone with the app to open.
+    // Their QR code (plans/QR.md), on the right: their own domain where it is their address, on any
+    // node; else their web address where this node serves them, under the @name it gave them; else
+    // the app's address, for another phone with the app to open.
     const qr = html`<${QrBadge}
-        webPath=${person.hosted && person.slug ? `/@${person.slug}` : personHref(root)}
+        webPath=${homeDomain ? `https://${homeDomain}/` : person.hosted && person.slug ? `/@${person.slug}` : personHref(root)}
         appPath=${personHref(root)}
-        web=${!!person.hosted}
+        web=${!!homeDomain || !!person.hosted}
         name=${person.primary}
     />`;
     const corner = html`<span class="person-card-corner">${beside}${rss}${qr}</span>`;

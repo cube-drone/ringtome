@@ -147,6 +147,18 @@ describe('QR addresses (plans/QR.md)', () => {
         assert.equal(appAddress('/ringtome/user/AbCd'), 'ringtome://user/AbCd');
     });
 
+    it("a person's own domain is said whole, whichever node draws the code", () => {
+        for (const publicUrl of ['', 'https://hdt.example'])
+            assert.equal(
+                qrAddress({
+                    publicUrl,
+                    webPath: 'https://cube-drone.com/sourdough',
+                    appPath: post,
+                }),
+                'https://cube-drone.com/sourdough',
+            );
+    });
+
     it('the app reads an app address back into a path here, and nothing else', () => {
         assert.equal(
             fromAppAddress(`ringtome://user/AbCd/post/ab?via=K`),

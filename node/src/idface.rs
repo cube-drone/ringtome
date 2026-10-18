@@ -348,7 +348,7 @@ pub(crate) async fn post_page(
     // Its canonical address (plans/WEB_ADDRESSES.md, section 4): its web address in the shortest
     // form this node can vouch for - what an unfurler and a search engine are told; the long form
     // stays an address it answers at.
-    let url = format!("{base}{}", crate::webpath::post_address(state, &root, &doc_hex).await);
+    let url = crate::webpath::post_url(state, &root, &doc_hex, &base).await;
     let mut head = format!(
         "<title>{} - {}</title>\n<meta property=\"og:title\" content=\"{}\">\n<meta property=\"og:type\" content=\"article\">\n<meta property=\"og:url\" content=\"{}\">\n<meta property=\"og:site_name\" content=\"{}\">",
         esc(&title),
@@ -383,10 +383,10 @@ pub(crate) async fn post_page(
     head.push_str(&colorway_meta(&fields));
     // For search engines (plans/CRAWLING.md): `noindex` for a person who isn't indexed, the post as
     // structured data, and its words in the body as a reading copy.
-    if !crate::crawl::indexable(state, &root_hex, &fields).await {
+    if !crate::crawl::indexed(state, &root_hex, &fields).await {
         head.push_str(crate::crawl::NOINDEX);
     }
-    let person = format!("{base}{}", crate::webpath::person_address(state, &root).await);
+    let person = crate::webpath::person_url(state, &root, &base).await;
     let mut post_ld = serde_json::json!({
         "@context": "https://schema.org",
         "@type": "SocialMediaPosting",
@@ -742,13 +742,13 @@ pub(crate) async fn persona_page_with(
     // isn't indexed, or a page that isn't one.
     let mut body = String::new();
     if hosted {
-        let person = format!("{base}{}", crate::webpath::person_address(state, &root).await);
+        let person = crate::webpath::person_url(state, &root, &base).await;
         let canonical = match &ask.folder {
             Some((folder, _)) => format!("{person}/{folder}"),
             None => person.clone(),
         };
         head.push_str(&format!("\n<link rel=\"canonical\" href=\"{}\">", esc(&canonical)));
-        if status != StatusCode::OK || !crate::crawl::indexable(state, &root_hex, &fields).await {
+        if status != StatusCode::OK || !crate::crawl::indexed(state, &root_hex, &fields).await {
             head.push_str(crate::crawl::NOINDEX);
         }
         let mut person_ld = serde_json::json!({ "@type": "Person", "name": name, "url": person });
@@ -4454,6 +4454,9 @@ pub async fn id_profile(
         "hosted": hosted,
         // The short name this node gave them (PROJECT_PLAN's The node's public face, ruling 6), for a persona it hosts.
         "slug": if hosted { crate::slugs::of_root(&state.node_db, &root_hex).await.ok().and_then(|(c, _)| c) } else { None },
+        // The domain they claim, once this node has found that it names them back (domains.rs):
+        // the raw claim rides `fields`, and counts for nothing until then.
+        "domain": crate::domains::verified(&state.node_db, &root_hex).await,
         "via": via,
         // A refresh is running behind this answer: what you are reading may be a moment old,
         // and asking again shortly will say so honestly either way.

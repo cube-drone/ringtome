@@ -23371,3 +23371,102 @@ The rest of [plans/ONE_PUBLISH.md](plans/ONE_PUBLISH.md).
     publication revalidation. They failed the same way on the committed tree,
     and each passes alone. The grep caught single claims of files without their
     setup.
+## 2026-10-16: custom domains, the claim and its proof
+
+The plan (`plans/CUSTOM_DOMAINS.md`) took its rulings first. Curtis: one domain
+per persona, exactly the name claimed, with `www.` meaning nothing of its own;
+no free subdomains of the operator's; custom domains on by default. Then he
+dropped the old site's links: "maintaining links perfectly would require
+intricate functionality I'm not willing to maintain". So former paths left the
+plan. An old Hugo address lands on the person's page under a 404, which
+`/@name/<anything>` already does, and `/index.xml` alone will answer with the
+feed on the domain, for existing subscribers. cube-drone.com already sits on
+Bunny DNS, pointed at the pull zone with a flattened record that the dashboard
+shows as an A record, so the cutover needs nothing new there.
+
+Slice 1 is built. A persona claims a domain in its profile (`domain`, a bare
+hostname); a TXT record at `_ringtome.<domain>` saying `ringtome-root=<root>`
+proves it, and a `/.well-known/ringtome` file proves it for the ✓ alone. Every
+node checks for itself (`domains.rs`): the byline cache's edge notes a claim and
+checks it at once, an hourly loop asks again about each claim a day old, and a
+verified claim rides out three days of lookups that fail outright before it
+lapses. The verdict lives in a node memo, `domain_proofs`, and the profile
+answer and contact rows carry the domain only when it's verified. The app shows
+`cube-drone.com ✓` under a person's names, and the profile settings page takes
+the claim and shows the record to add, with a "check now". The integration rig
+pretends DNS per node (`/test/dns-txt`), and `test/domains.cjs` shows a reader's
+node refusing the ✓ until its own lookup agrees.
+
+## 2026-10-16: custom domains, served, and the canonical address
+
+Building slice 2 turned up a hole in the plan. A verified claim says the domain
+is the persona's, not that anything at it serves their posts; while Hugo still
+answers cube-drone.com, naming `https://cube-drone.com/<path>` canonical would
+hand every reader and search engine a Hugo 404. Curtis agreed to ruling 7: the
+domain is the canonical address only once it's verified **and** served, which
+the serving node says in its own `/.well-known/ringtome` (`"served": true`), and
+serving (slice 3) came first. Every check now fetches that file and notes when
+it last said so (node rung 103). A 404 there counts as "another site answers",
+not as "no answer".
+
+Slice 3 serves the domain (`domainsite.rs`). A service around the whole router
+reads the Host header and, for a domain a persona published here has proved by
+TXT, rewrites `/leek-soup` to their address before anything routes it. It
+answers the well-known file, `robots.txt` and the domain's own sitemap itself,
+gives `/feed.xml` and Hugo's `/index.xml` the persona's feed, and puts an
+address that names nothing on their page under a 404. It's a reading site: GET
+and HEAD only, no cookie, and the node's own pages are sent to its public URL.
+The page carries `<meta name="ringtome-site">`, and the app becomes their
+reading site (`js/domainsite.js`). On the serving node, `/@name/...` redirects
+to the domain once it's served. `GET /api/node/domains` lists what's served, and
+the settings page names the CNAME to point at `RINGTOME_DOMAINS_TARGET`.
+SERVER.md has _People's own domains_.
+
+Slice 2 makes the domain canonical on every node whose own check found it
+verified and served (`webpath::person_url`, `post_url`): the heads, the feeds,
+the reading copies, and "copy link" and the QR codes through
+`/api/node/slug-of`. Such a persona leaves the node's sitemaps for the domain's.
+The rig sends the Host header itself and pretends well-known files
+(`/test/well-known`). `test/domains.cjs` follows the canonical address to the
+domain and back again when Hugo returns. Not yet: nobody has looked at the
+domain in a browser, and the plan's slice 3 lists the rest.
+
+## 2026-10-18: a dev node checks a real domain for real
+
+Curtis put a real record at `_ringtome.gooble.email` and pressed "check now" on
+a dev node, and nothing happened. A node under `RINGTOME_LOCAL_TEST`, which is
+every dev node, never asked DNS or the domain's website. It read only the rig's
+pretend records, so every check said no. The pretend records now answer only for
+a `.test` domain, a name DNS never holds and the only kind the suites claim.
+Every other domain is looked up for real (`domains::pretend`).
+
+A check that finds nothing new now says so ("Checked just now: ... has no record
+naming you yet"); before, a press looked like no press.
+
+Then the ✓ arrived and the page said "Publish this persona for this node to
+serve gooble.email". No such step exists. Slice 3 counted a domain as served
+only for a persona marked served (`identity::served_roots`). That flag is the
+retired publication act: only the bare `/serve` door sets it, and the app never
+calls that door. So no persona could be served. Serving now asks only that the
+persona is hosted here (`domainsite::read_sites`), the same bar its `/@name`
+page already has. The message left for a persona hosted elsewhere says so, and
+the custom-domains suite no longer marks its persona served.
+
+The next message said "Point it here", and only the operator knows where here
+is. The settings page now always names a hostname to point at
+(`domains::target`): the operator's `RINGTOME_DOMAINS_TARGET`, or else the host
+of the node's public URL. It shows the CNAME record, notes that whoever runs the
+node may need to add the domain at their end too, and on a node with no public
+address says there is nothing to point at yet. Curtis: the variety of people's
+setups makes fuller instructions unwise.
+
+## 2026-10-18: custom domains are for administrators, for now
+
+Curtis: "this feature is complicated enough that I think we should gate it to
+node_admin users only". Only a `node_admin` account may claim a domain or press
+"check now"; anyone else is refused with a 403 (`domains::allowed`). The
+settings field is hidden from them, unless they hold a claim already, which they
+can still withdraw. A node serves only its administrators' domains
+(`domainsite::read_sites`), so nobody else's domain can be served or become
+their canonical address. The ✓ itself is not gated: the profile door still takes
+the field, and every node checks a claim it sees for itself.

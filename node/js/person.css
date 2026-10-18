@@ -168,6 +168,16 @@
     white-space: nowrap;
 }
 
+/* Their domain, proved (plans/CUSTOM_DOMAINS.md): a name of their own, so it reads as one. */
+.person-domain {
+    color: var(--teal);
+    font-size: 0.78rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .person-banner-actions {
     margin-left: auto;
     flex-shrink: 0;

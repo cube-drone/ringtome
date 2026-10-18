@@ -80,6 +80,7 @@ import {
     webAddressKnown,
     groupHref,
     groupsHref,
+    siteSeg,
 } from './links.js';
 import { parseSpeakable } from './speakable.js';
 import { api } from './net.js';
@@ -96,6 +97,7 @@ import { setTurbolinkReader } from './doc/turbolinks.js';
 import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
 import { PersonOrPath } from './pathpage.js';
+import { DomainSite } from './domainsite.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
 import { usePerson, faceOf } from './person.js';
 import { useNarrow } from './panes.js';
@@ -1149,6 +1151,19 @@ const ToGroup = ({ group }) => {
 
 const App = () => {
     const session = useSession();
+
+    // A person's own domain (domainsite.js): their reading site, signed in or out - no one signs
+    // in there.
+    const site = siteSeg();
+    if (site) {
+        return html`
+            <${LocationProvider}>
+                <${ErrorBoundary} onError=${(error) => console.error(error)}>
+                    <div class="app-main"><${DomainSite} seg=${site} /></div>
+                </${ErrorBoundary}>
+            </${LocationProvider}>
+        `;
+    }
 
     // An upload link (uploadlink.js) is the same page signed in or out: the address is the permission.
     const uploading = /^\/upload\/([0-9a-f]{64})$/.exec(window.location.pathname);

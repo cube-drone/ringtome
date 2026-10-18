@@ -42,6 +42,8 @@ pub struct Byline {
     pub banner: Option<String>,
     /// Their last heartbeat's UTC date (heartbeat.rs, 2026-09-29): the card's "active today".
     pub last_active: Option<String>,
+    /// The domain they claim, when this node has found that it says them back (domains.rs).
+    pub domain: Option<String>,
 }
 
 /// Re-read one persona's public self-claims and store them - writing only on CHANGE, so
@@ -61,6 +63,13 @@ pub async fn refresh(state: &AppState, root_hex: &str) -> Result<()> {
     };
     let (name, avatar, banner) = (grab("name"), grab("avatar"), grab("banner"));
     let last_active = grab(crate::heartbeat::FIELD);
+    // A domain claim is checked rather than cached: noted here, on the same edge, and proved
+    // against DNS in domains.rs, whose verdict the bylines join.
+    if let Err(e) =
+        crate::domains::claimed(state, root_hex, grab(crate::domains::FIELD).as_deref()).await
+    {
+        tracing::debug!(root = %root_hex, error = ?e, "noting a domain claim failed");
+    }
 
     type Cached = (Option<String>, Option<String>, Option<String>, Option<String>);
     let current: Option<Cached> = state
@@ -109,6 +118,7 @@ pub async fn forget(node_db: &crate::db::Db, root_hex: &str) -> anyhow::Result<(
         .execute("DELETE FROM persona_profiles WHERE root_pubkey = ?1", (root_hex,))
         .await
         .context("forgetting an evicted byline")?;
+    crate::domains::forget(node_db, root_hex).await?;
     changed();
     Ok(())
 }
@@ -169,8 +179,23 @@ pub async fn digest(node_db: &Db, roots: &[String]) -> [u8; 32] {
     *h.finalize().as_bytes()
 }
 
-/// One cached row: root, name, avatar, banner, last heartbeat.
-type BylineRow = (String, Option<String>, Option<String>, Option<String>, Option<String>);
+/// Something a byline shows changed without its cached row changing - a domain claim proved, or
+/// no longer - so every stream holding it looks again.
+pub async fn touch(node_db: &Db, root_hex: &str) -> Result<()> {
+    node_db
+        .execute(
+            "UPDATE persona_profiles SET updated_at_ms = MAX(updated_at_ms + 1, ?2) WHERE root_pubkey = ?1",
+            (root_hex, now_ms()),
+        )
+        .await
+        .context("touching a byline")?;
+    changed();
+    Ok(())
+}
+
+/// One cached row: root, name, avatar, banner, last heartbeat, verified domain.
+type BylineRow =
+    (String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>);
 
 pub async fn bylines(
     node_db: &Db,
@@ -193,16 +218,18 @@ pub async fn bylines(
     let rows: Vec<BylineRow> = node_db
         .fetch_all(
             &format!(
-                "SELECT root_pubkey, name, avatar, banner, last_active FROM persona_profiles
-                 WHERE root_pubkey IN ({})",
+                "SELECT p.root_pubkey, p.name, p.avatar, p.banner, p.last_active, d.domain
+                 FROM persona_profiles p
+                 LEFT JOIN domain_proofs d ON d.root = p.root_pubkey AND d.state = 'verified'
+                 WHERE p.root_pubkey IN ({})",
                 quoted.join(",")
             ),
             (),
         )
         .await
         .context("reading bylines")?;
-    for (root, name, avatar, banner, last_active) in rows {
-        out.insert(root, Byline { name, avatar, banner, last_active });
+    for (root, name, avatar, banner, last_active, domain) in rows {
+        out.insert(root, Byline { name, avatar, banner, last_active, domain });
     }
     Ok(out)
 }

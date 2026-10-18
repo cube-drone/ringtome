@@ -39,6 +39,8 @@ pub mod config;
 pub mod crawl;
 pub mod crowd;
 pub mod db;
+pub mod domains;
+pub mod domainsite;
 pub mod downloads;
 pub mod drawing;
 pub mod drawing_paint;
@@ -902,6 +904,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         state.clone(),
         publinks::warm_pass,
     );
+    // Custom domains (domains.rs): each claim this node shows is asked about again about daily,
+    // hourly while its lookups fail; a new claim is asked about the moment it's noted.
+    loops::periodic(
+        "domain-proofs",
+        std::time::Duration::from_secs(3600),
+        state.clone(),
+        domains::pass,
+    );
     loops::periodic(
         "sync-anti-entropy",
         std::time::Duration::from_secs(state.config.resync_interval_secs),
@@ -1041,6 +1051,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/at/{slug}/{*path}", get(nodeface::at_name_path))
         .route("/api/web-address", get(web_address_handler))
         .route("/api/identity/{root}/slug", get(nodeface::slug_get).put(nodeface::slug_put))
+        .route("/api/identity/{root}/domain", get(domains::domain_get).put(domains::domain_put))
+        .route("/api/identity/{root}/domain/check", axum::routing::post(domains::domain_check))
+        .route("/api/node/domains", get(domainsite::domains_handler))
         .route("/api/identity/{root}/listed", get(nodeface::listed_get).put(nodeface::listed_put))
         .route("/api/unfurl", get(unfurl_handler))
         .merge(auth::router())
@@ -1119,6 +1132,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
                 axum::routing::post(test_endpoints::unplug).get(test_endpoints::unplug_state),
             )
             .route("/test/plug-in", axum::routing::post(test_endpoints::plug_in))
+            .route("/test/dns-txt", axum::routing::post(test_endpoints::dns_txt))
+            .route("/test/well-known", axum::routing::post(test_endpoints::well_known))
             .route("/test/attention", axum::routing::get(test_endpoints::attention))
             .route("/test/group-partners", axum::routing::get(test_endpoints::group_partners))
             .route("/test/group-pass", axum::routing::post(test_endpoints::group_pass))
@@ -1140,7 +1155,15 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .with_state(state.clone());
     // The Model Context Protocol (mcp.rs): mounted on the finished router, which its tools
     // dispatch to, so it sits outside the layers above and inside the trace below.
-    let app = mcp::mount(app, state)
+    let app = mcp::mount(app, state.clone());
+    // A person's own domain (domainsite.rs): its paths become their address before anything routes
+    // them - which a router's own layer can't do, since it runs once the route is chosen - so the
+    // finished router is wrapped, as a service, inside one that routes nothing itself.
+    let app = Router::new()
+        .fallback_service(tower::Layer::layer(
+            &axum::middleware::from_fn_with_state(state, domainsite::route),
+            app,
+        ))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &axum::http::Request<_>| {

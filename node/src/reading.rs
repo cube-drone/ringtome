@@ -104,7 +104,7 @@ pub async fn post_copy(
     author: &str,
 ) -> String {
     let root_hex = hex::encode(root);
-    let person = crate::webpath::person_address(state, root).await;
+    let person = crate::webpath::person_url(state, root, "").await;
     let source = public_text(state, db, &post.doc_id).await;
     let format = Format::from_wire(post.format);
     let mut out = String::from("<article>");
@@ -126,7 +126,7 @@ pub async fn post_copy(
             .unwrap_or_else(|| "a book".to_string());
         out.push_str(&format!(
             "<p>From <a href=\"{}\">{}</a></p>",
-            attr(&crate::webpath::post_address(state, root, &book_hex).await),
+            attr(&crate::webpath::post_url(state, root, &book_hex, "").await),
             esc(&book_title)
         ));
     }
@@ -174,7 +174,7 @@ async fn book_contents(
     let Ok(book_json) = serde_json::from_str::<serde_json::Value>(payload) else {
         return String::new();
     };
-    let person = crate::webpath::person_address(state, root).await;
+    let person = crate::webpath::person_url(state, root, "").await;
     let short = crate::webpath::short_of(root);
     let book_hex = hex::encode(book);
     fn list(node: &serde_json::Value, person: &str, short: &str, book_hex: &str, out: &mut String) {
@@ -250,7 +250,7 @@ pub async fn person_copy(
     folder: Option<(&str, &str)>,
 ) -> String {
     let root_hex = hex::encode(root);
-    let person = crate::webpath::person_address(state, root).await;
+    let person = crate::webpath::person_url(state, root, "").await;
     let mut out = format!("<h1>{}</h1>", esc(name));
     if let Some((_, notebook)) = folder {
         out.push_str(&format!("<p>{}</p>", esc(notebook)));
@@ -300,7 +300,7 @@ pub async fn person_copy(
     out.push_str("<ul>");
     for post in &shown {
         let doc_hex = hex::encode(post.doc_id);
-        let href = crate::webpath::post_address(state, root, &doc_hex).await;
+        let href = crate::webpath::post_url(state, root, &doc_hex, "").await;
         let said = crate::idface::post_words(state, db, &root_hex, post, name).await.ok();
         let title = said.map(|s| s.title).unwrap_or_else(|| post.title.clone());
         out.push_str(&format!(
@@ -354,8 +354,8 @@ pub async fn front_copy(state: &AppState, before: Option<(i64, String)>) -> Stri
         } else {
             row.title.clone()
         };
-        let href = crate::webpath::post_address(state, &root, &row.doc_id).await;
-        let person = crate::webpath::person_address(state, &root).await;
+        let href = crate::webpath::post_url(state, &root, &row.doc_id, "").await;
+        let person = crate::webpath::person_url(state, &root, "").await;
         out.push_str(&format!(
             "<li><a href=\"{}\">{}</a> · <a href=\"{}\">{}</a> · {}</li>",
             attr(&href),
@@ -391,7 +391,7 @@ pub async fn people_copy(state: &AppState) -> String {
         let speak = crate::speakable::speakable(&root);
         let name = crate::idface::profile_value(&fields, "name").unwrap_or(&speak).to_string();
         let bio = crate::idface::profile_value(&fields, "bio").unwrap_or("");
-        let href = crate::webpath::person_address(state, &root).await;
+        let href = crate::webpath::person_url(state, &root, "").await;
         out.push_str(&format!("<li><a href=\"{}\">{}</a>", attr(&href), esc(&name)));
         if !bio.is_empty() {
             out.push_str(&format!(" - {}", esc(bio)));

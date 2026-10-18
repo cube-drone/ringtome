@@ -9409,6 +9409,9 @@ struct ContactRow {
     /// page's "recent activity" order.
     #[serde(skip_serializing_if = "Option::is_none")]
     last_active: Option<String>,
+    /// The domain they claim, once this node has found that it names them back (domains.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    domain: Option<String>,
     /// The ledger's facts for them, as written (trust, interest, interest_rebroadcasts,
     /// edges_public, blocked, nickname - and whatever future dials add).
     facts: std::collections::BTreeMap<String, String>,
@@ -9466,6 +9469,7 @@ async fn contact_rows(state: &AppState, data: &store::Store) -> Result<Vec<Conta
                 avatar: byline.avatar,
                 banner: byline.banner,
                 last_active: byline.last_active,
+                domain: byline.domain,
                 facts,
             }
         })
