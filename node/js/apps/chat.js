@@ -81,7 +81,7 @@ import {
     groupPostHref,
 } from '../links.js';
 import { AudienceSelect } from '../audience.js';
-import { groupOfChoice, sealOfChoice } from '../pure/audience.js';
+import { publishTo } from '../doc/publish.js';
 import { groupFeeds } from '../pure/groups.js';
 import { GroupMark, useGroupFace } from '../groupface.js';
 import { RoomTitle } from '../roomtitle.js';
@@ -378,30 +378,15 @@ const NewRoom = ({ root, onMade }) => {
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(CHAT_STYLE)}`,
                 { method: 'PUT' },
             );
-            // A group's room is posted to the group, its door the roster; anything else is a
-            // room of one's own, sealed or not.
-            const group = groupOfChoice(audience);
-            const posted = group
-                ? {
-                      post_id: (
-                          await api(`/api/identity/${root}/groups/${group}/publish`, {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                  doc: made.doc_id,
-                                  room: true,
-                                  tz_offset_min: new Date().getTimezoneOffset(),
-                              }),
-                          })
-                      ).post,
-                  }
-                : await api(`/api/identity/${root}/docs/${made.doc_id}/publish`, {
-                      method: 'POST',
-                      body: JSON.stringify({
-                          room: true,
-                          tz_offset_min: new Date().getTimezoneOffset(),
-                          ...(sealOfChoice(audience) || {}),
-                      }),
-                  });
+            // One publish (doc/publish.js `publishTo`): a group's room to the group, its door the
+            // roster; anything else a room of one's own, sealed or not.
+            const posted = await publishTo(
+                root,
+                made.doc_id,
+                { words: true },
+                { choice: audience, room: true },
+            );
+            const group = posted.group;
             // The labels go on the POST (they travel with it), and a sealed room's seal
             // under its key - the door does both. Best-effort: a refused label costs a
             // label, never the room.
@@ -522,6 +507,7 @@ const NewRoom = ({ root, onMade }) => {
                         tags=${tags}
                         groups=${groups}
                         mentions=${false}
+                        asGroups=${false}
                     />
                 </label>`
                 }
@@ -1556,10 +1542,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                     method: 'POST',
                 });
             } else {
-                await api(`/api/identity/${root}/docs/${roomDraft.doc_id}/publish`, {
-                    method: 'POST',
-                    body: JSON.stringify({ settled: true }),
-                });
+                await publishTo(root, roomDraft.doc_id, { words: true }, { settled: true });
             }
             setRoom((r) => r && { ...r, closed: true });
             readHistory();

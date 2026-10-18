@@ -24,7 +24,6 @@ import htm from 'htm';
 import { readPref, setPref, viewModeKey, usePrefValue, VIM_KEY } from '../mirror/prefs.js';
 import { Chip, NavChips, PublishChip, useChipMenu } from './chips.js';
 import { t } from '../i18n.js';
-import { publishWithBaking } from './publish.js';
 import { PublishBar } from './publishbar.js';
 import { docStatus, publishedState } from '../pure/feed.js';
 import { api, apiText } from '../net.js';
@@ -169,7 +168,7 @@ export const Editor = ({
         opens('publish')(typeof next === 'function' ? next(publishOpen) : next);
     const social = useUnlocked(root, 'social');
     // The publish bar (doc/publishbar.js, shared with the drawing surface): Writer brings its door
-    // (publishWithBaking, after a save - the door publishes what is SAVED) and its answer to "do
+    // (publishTo, after a save - the door publishes what is SAVED) and its answer to "do
     // these words differ from the public ones?" - the public words, re-read after every publish.
     // `standing` and `postId` are read here too: the trash chip hides while a document is live.
     const standing = docStatus(row);
@@ -198,21 +197,11 @@ export const Editor = ({
         (publicWords.body === null ||
             !sameWords(body, publicWords.body) ||
             (publicWords.title !== null && publicWords.title !== title));
-    const publishThis = async (extra, setBaking) => {
+    // What the publish bar sends (doc/publish.js `publishTo`): the saved words - the door
+    // publishes what is SAVED - to wherever the bar's choice says.
+    const prepare = async () => {
         await save();
-        return publishWithBaking(root, docId, setBaking, extra);
-    };
-    // Or to one of your groups (plans/GROUPS.md, slice 4c): the same save, then the group's door.
-    const publishToGroup = async (group, wishes) => {
-        await save();
-        return api(`/api/identity/${root}/groups/${group}/publish`, {
-            method: 'POST',
-            body: JSON.stringify({
-                doc: docId,
-                ...wishes,
-                tz_offset_min: new Date().getTimezoneOffset(),
-            }),
-        });
+        return { words: true };
     };
     useEffect(() => {
         if (!showMeta) return undefined;
@@ -871,11 +860,10 @@ export const Editor = ({
                 root=${root}
                 docId=${docId}
                 row=${row}
-                publish=${publishThis}
+                prepare=${prepare}
                 differs=${differs}
                 diffHref=${`${docHref(root, docId)}/diff`}
                 onPublished=${() => setHeadPoll((n) => n + 1)}
-                publishToGroup=${publishToGroup}
                 mentions=${true}
             />`
             }

@@ -1370,7 +1370,8 @@ async fn bake_words(
     use crate::record::bake::MediaRef;
     let refs = crate::record::bake::media_refs(words, root_hex);
     if refs.is_empty() {
-        return Ok((words.to_string(), Vec::new()));
+        // Its links made fit all the same (`public_links`): a line names no notebook either.
+        return Ok((crate::record::bake::public_links(words, root_hex), Vec::new()));
     }
     if refs.len() > ringtome_proto::DocHeaderPlain::MAX_REFS {
         return Err(AppError::BadRequest(crate::msg!(
@@ -1390,22 +1391,18 @@ async fn bake_words(
     let seal_of = key.map(|_| (*author, *doc));
     let mut swaps: Vec<(String, String)> = Vec::new();
     let mut baked: Vec<[u8; 16]> = Vec::new();
-    // A picture that names nothing - not the speaker's, not in this build (a built-in whose file
-    // moved, a picture since deleted) - is left out and the rest is said (Curtis, 2026-09-29:
-    // better than refusing the whole line).
-    let named: Vec<[u8; 16]> = refs
-        .iter()
-        .filter_map(|r| match r {
-            MediaRef::PrivateDoc { doc_id, .. } => Some(*doc_id),
-            _ => None,
-        })
-        .collect();
-    let held = docs.held(&named).await?;
-    let mut missing: Vec<String> = Vec::new();
+    // What the words embed, read as every publish reads them (record::bake `embeds`, plans/
+    // ONE_PUBLISH.md slice 4): the links made fit, the rights fence, and a picture that names
+    // nothing - not the speaker's, not in this build - left out and the rest said (Curtis,
+    // 2026-09-29: better than refusing the whole line).
+    let crate::record::bake::Embeds { body: words, refs, missing } =
+        crate::record::bake::embeds(state, data, root_hex, words).await?;
+    let words = words.as_str();
+    // A group room's pictures, priced as a group post's are (their sources' blobs).
+    let mut blobs: Vec<[u8; 32]> = Vec::new();
     for r in &refs {
         let MediaRef::PrivateDoc { target, doc_id: media } = r else { continue };
-        if crate::builtin::get(media).is_none() && !held.contains(media) {
-            missing.push(target.clone());
+        if missing.contains(target) {
             continue;
         }
         // One of the app's own pictures - a built-in sticker, most likely - is filed as the
@@ -1435,6 +1432,11 @@ async fn bake_words(
             )));
         }
         if let Some(group) = group {
+            if let Some(hash) =
+                docs.one(media).await?.and_then(|d| d.display_head().map(|h| h.header.file_hash))
+            {
+                blobs.push(hash);
+            }
             let (minted, fmt, anim) =
                 crate::roster::room_media(state, data, root_hex, group, doc, media).await?;
             swaps.push((
@@ -1455,9 +1457,11 @@ async fn bake_words(
             baked.push(public);
         }
     }
-    // The public budget is for public twins; a group's pictures are the group's.
+    // The budget, as every publish prices it: a group's pictures by their sources' blobs.
     if group.is_none() {
         crate::record::bake::media_budget(state, data, &baked).await?;
+    } else {
+        crate::record::bake::media_budget_of(state, &blobs).await?;
     }
     let words =
         crate::record::bake::drop_embeds(&crate::record::bake::rewrite(words, &swaps), &missing);

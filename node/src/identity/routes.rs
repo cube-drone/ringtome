@@ -3799,25 +3799,6 @@ async fn already_im(
     Ok(held_public_header(state, root, &hex::encode(post)).await?.is_some_and(|h| h.im))
 }
 
-/// The post `draft` already is in public, live, and the date it carries (crate::publication's
-/// `Shape::live`): `Some(dated)` for an edit of a live post, `None` for a new one.
-async fn live_public_date(
-    state: &AppState,
-    data: &store::Store,
-    root: &str,
-    draft: &[u8; 16],
-) -> Result<Option<Option<i64>>, AppError> {
-    let Some(post) = data
-        .annotations()
-        .field(draft, store::PUBLISHED_AS)
-        .await?
-        .filter(|p| !p.trim().is_empty())
-    else {
-        return Ok(None);
-    };
-    Ok(held_public_header(state, root, post.trim()).await?.map(|h| h.dated_ms))
-}
-
 /// The PARENT's own held header, mirror shelf first, fragment shelf second - the shared
 /// lookup for every honest door that must honor the header's own flags.
 pub(crate) async fn held_public_header(
@@ -4210,27 +4191,15 @@ async fn book_rollout_handler(
         )));
     }
     // Where it goes, asked now and kept by the notebook at its first rollout (books.rs): a group
-    // the author is in, for its members, or in public as a public group - never both, never sealed.
+    // the author is in, for its members, or in public as a public group - by the rules every road
+    // reads (crate::publication).
     let group = req.group.as_deref().filter(|g| !g.is_empty());
     let as_group = req.as_group.as_deref().filter(|g| !g.is_empty());
-    if (group.is_some() || as_group.is_some()) && req.trusted_only {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.a-groups-book-isnt-sealed",
-            "a book in a group, or as one, isn't sealed too"
-        )));
-    }
-    if group.is_some() && as_group.is_some() {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.one-place-for-a-book",
-            "a book goes to one place: into a group, or in public as one"
-        )));
-    }
-    if let Some(g) = group {
-        crate::roster::may_post_in(&state, &root, g).await?;
-    }
-    if let Some(g) = as_group {
-        crate::roster::may_post_as(&state, &root, g).await?;
-    }
+    let to = crate::publication::To::of(group, as_group)?;
+    let asked =
+        crate::publication::Asked { sealed: req.trusted_only, book: true, ..Default::default() };
+    crate::publication::refuse(&to, asked)?;
+    crate::publication::admit(&state, &root, &to).await?;
     let plan = serde_json::json!({
         "by": data.leaf_hex(),
         "status": "pending",
@@ -4399,14 +4368,15 @@ pub(crate) async fn drawing_draft(
     let head = doc.display_head().map(|v| hex::encode(v.hash));
     let claimed = crate::publication::claimed(data, doc_id, tz_offset_min).await?;
     let shape = crate::publication::Shape { live, ..Default::default() };
-    let (dated_ms, date_kept) =
-        match crate::publication::when(claimed, shape, crate::clock::now_ms())? {
-            crate::publication::When::Now { dated_ms, kept } => (dated_ms, kept),
-            crate::publication::When::Later(_) => return Err(AppError::BadRequest(crate::msg!(
-                "identity.routes.a-drawing-cant-be-scheduled",
-                "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
-            ))),
-        };
+    // A drawing takes no schedule (Curtis kept the refusal, 2026-10-18).
+    let crate::publication::When::Now { dated_ms, kept: date_kept } =
+        crate::publication::when(claimed, shape, crate::clock::now_ms())?
+    else {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.a-drawing-cant-be-scheduled",
+            "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
+        )));
+    };
     Ok(DrawingDraft { title, head, dated_ms, date_kept })
 }
 
@@ -4461,19 +4431,23 @@ pub(crate) fn drawing_words(title: &str, target: &str) -> String {
 /// posting, the drawing is stamped with the version it published (`published_head`), which is how
 /// the bar knows a drawing has changed since.
 #[derive(serde::Deserialize, Default)]
-struct DrawingPublish {
+pub(crate) struct DrawingPublish {
     #[serde(default)]
-    settled: bool,
+    pub settled: bool,
+    /// Sealed, when asked; unasked, the draft's own seal wish holds, as at the words' door.
     #[serde(default)]
-    trusted_only: bool,
+    pub trusted_only: Option<bool>,
     /// Who it's for, as Writer's body names it: a contact tag, `@onward`, or empty for no list.
     #[serde(default)]
-    audience: Option<String>,
+    pub audience: Option<String>,
     #[serde(default)]
-    tz_offset_min: i32,
+    pub tz_offset_min: i32,
     /// In public, as this public group (plans/PUBLIC_GROUPS.md).
     #[serde(default)]
-    as_group: Option<String>,
+    pub as_group: Option<String>,
+    /// The drawing, at a group's door (whose path names the group, not the draft).
+    #[serde(default)]
+    pub doc: Option<String>,
 }
 
 async fn publish_drawing_handler(
@@ -4483,83 +4457,118 @@ async fn publish_drawing_handler(
     Query(req): Query<DrawingPublish>,
     picture: Bytes,
 ) -> Result<Json<PublishResponse>, AppError> {
-    use crate::record::documents::Format;
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
-    let docs = data.documents();
-    let live = live_public_date(&state, &data, &root, &doc_id).await?;
-    let DrawingDraft { title, head, dated_ms, date_kept } =
-        drawing_draft(&session, &data, &doc_id, req.tz_offset_min, live).await?;
-    // Trusted only seals the post, and the picture under the post's own key - as baked media is -
-    // or the post would ship a public copy of the very picture it seals. Once sealed, always sealed.
-    // An audience is a seal too, as at the words' door.
-    let audience = draft_audience(&data, &doc_id, req.audience.as_deref()).await?;
-    let post_key = docs.post_key_if(&doc_id, req.trusted_only || audience.is_some()).await?;
-    let onward =
-        post_key.is_some() && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
-    // As the group: an open post by a member, judged before anything is minted. A future date
-    // was refused already (drawing_draft), so no schedule can carry it either.
-    let as_group = match req.as_group.as_deref().filter(|g| !g.is_empty()) {
-        Some(g) => {
-            if post_key.is_some() {
-                return Err(AppError::BadRequest(crate::msg!(
-                    "identity.routes.as-the-group-is-open",
-                    "a post as the group is an open post - not sealed, not a room"
-                )));
-            }
-            Some(crate::roster::may_post_as(&state, &root, g).await?)
-        }
-        None => None,
-    };
-    let ingested = launder_drawing(picture).await?;
-    let db = state.user_dbs.held(&root).await.map_err(AppError::Internal)?;
-    let signer =
-        super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, &root)
-            .await?;
-    // Held still while the twin, the post and its labels land - one fold for the lot (fold::hold).
-    let held = crate::fold::hold(&root);
-    let twin = crate::record::documents::save_public_media(
-        &db,
-        &signer,
-        &state.files,
-        &title,
-        ingested,
-        post_key,
-        None,
-        false,
-    )
-    .await?;
-
-    let target = crate::record::bake::public_media_target(&root, &twin, Format::Avif, false);
-    let body = drawing_words(&title, &target);
-    let flags = crate::record::documents::PublishFlags {
-        settled: req.settled,
-        trusted_only: post_key.is_some(),
-        dated_ms,
-        part_of: None,
-        seal_of: None,
-        onward,
-        room: false,
-        im: false,
-    };
-    let post_id = docs.publish(&doc_id, Some(body), vec![twin], None, flags).await?;
-    after_posted(&state, &data, &root, &doc_id, post_id, None, flags).await?;
-    if let Some(group) = as_group {
-        crate::roster::claim_public(&state, &data, &root, group, post_id).await?;
-    }
-    if let Some(head) = head {
-        data.annotations().set_field(&doc_id, store::PUBLISHED_HEAD, &head).await?;
-    }
-    drop(held);
-    crate::fold::fold_now(&state, &root).await;
+    let to = crate::publication::To::of(None, req.as_group.as_deref())?;
+    let posted =
+        publish_drawing(&state, &session, &data, &root, &doc_id, &to, &req, picture).await?;
     Ok(Json(PublishResponse {
-        post_id: Some(hex::encode(post_id)),
+        post_id: Some(hex::encode(posted.post)),
         scheduled_for: None,
-        published_ms: Some(dated_ms.unwrap_or_else(crate::clock::now_ms)),
-        dated_ms,
+        published_ms: Some(posted.dated_ms.unwrap_or_else(crate::clock::now_ms)),
+        dated_ms: posted.dated_ms,
         baking: None,
-        date_kept,
+        date_kept: posted.date_kept,
     }))
+}
+
+/// A drawing, posted (`publish_drawing`).
+pub(crate) struct DrawingPosted {
+    pub post: [u8; 16],
+    pub dated_ms: Option<i64>,
+    pub date_kept: bool,
+}
+
+/// The drawing kind (plans/ONE_PUBLISH.md, slice 5), by either door - its own, or a group's. The
+/// kind makes the body: the drawing's draft read (`drawing_draft`: its title, its version, its
+/// date by the rulings every road shares) and the page's flattened picture laundered as every
+/// picture is. The destination mints it:
+///
+/// - **in public**, or as a public group: the picture as a public twin - sealed under the post's
+///   own key when the post is, or the post would ship a public copy of the very picture it seals -
+///   and the post as words that embed it, then what every public mint owes (`after_public`);
+/// - **into a group**: the picture as the group's media document, the post on the poster's lane
+///   (`roster::post_picture`).
+///
+/// Either way the drawing is stamped with the version it published (`published_head`), which is
+/// how the bar knows it has changed since.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn publish_drawing(
+    state: &AppState,
+    session: &Session,
+    data: &store::Store,
+    root: &str,
+    doc_id: &[u8; 16],
+    to: &crate::publication::To,
+    req: &DrawingPublish,
+    picture: Bytes,
+) -> Result<DrawingPosted, AppError> {
+    use crate::record::documents::Format;
+    let docs = data.documents();
+    let live = crate::publication::live(state, data, root, doc_id, to).await?;
+    let DrawingDraft { title, head, dated_ms, date_kept } =
+        drawing_draft(session, data, doc_id, req.tz_offset_min, live).await?;
+    let post = match to {
+        crate::publication::To::Group(group) => {
+            crate::publication::admit(state, root, to).await?;
+            let ingested = launder_drawing(picture).await?;
+            let wishes =
+                crate::roster::Wishes { dated_ms, settled: req.settled, ..Default::default() };
+            crate::roster::post_picture(state, data, root, group, doc_id, &title, ingested, wishes)
+                .await?
+        }
+        crate::publication::To::Public | crate::publication::To::AsGroup(_) => {
+            let seal = public_seal(data, doc_id, req.trusted_only, req.audience.as_deref()).await?;
+            let post_key = docs.post_key_if(doc_id, seal.trusted_only).await?;
+            let onward = post_key.is_some() && seal.onward;
+            // As the group: an open post by a member, judged before anything is minted.
+            let asked =
+                crate::publication::Asked { sealed: post_key.is_some(), ..Default::default() };
+            crate::publication::refuse(to, asked)?;
+            crate::publication::admit(state, root, to).await?;
+            let ingested = launder_drawing(picture).await?;
+            let db = state.user_dbs.held(root).await.map_err(AppError::Internal)?;
+            let signer =
+                super::load_signing_key(&state.node_db, &state.keystore, &session.account.id, root)
+                    .await?;
+            // Held still while the twin, the post and its labels land - one fold for the lot.
+            let held = crate::fold::hold(root);
+            let twin = crate::record::documents::save_public_media(
+                &db,
+                &signer,
+                &state.files,
+                &title,
+                ingested,
+                post_key,
+                None,
+                false,
+            )
+            .await?;
+            let target = crate::record::bake::public_media_target(root, &twin, Format::Avif, false);
+            let flags = crate::record::documents::PublishFlags {
+                settled: req.settled,
+                trusted_only: post_key.is_some(),
+                dated_ms,
+                part_of: None,
+                seal_of: None,
+                onward,
+                room: false,
+                im: false,
+            };
+            let post = docs
+                .publish(doc_id, Some(drawing_words(&title, &target)), vec![twin], None, flags)
+                .await?;
+            crate::publication::after_public(state, data, root, doc_id, post, None, flags, to)
+                .await?;
+            drop(held);
+            crate::fold::fold_now(state, root).await;
+            post
+        }
+    };
+    if let Some(head) = head {
+        data.annotations().set_field(doc_id, store::PUBLISHED_HEAD, &head).await?;
+    }
+    Ok(DrawingPosted { post, dated_ms, date_kept })
 }
 
 /// A public post's seal, as the draft and the request say (PROJECT_PLAN's Post visibility and
@@ -4713,29 +4722,20 @@ async fn publish_handler(
             "a private chat can't be closed - stop talking, or block them"
         )));
     }
-    // As the group (plans/PUBLIC_GROUPS.md): a public group the poster is in, and an open post -
-    // a sealed one has no public to speak to. A schedule carries it (Curtis, 2026-10-18): the
-    // plan names the group, and the sweep asks again on the day and claims what it mints.
-    let as_group = match req.as_ref().and_then(|b| b.as_group.as_deref()).filter(|g| !g.is_empty())
-    {
-        Some(g) => {
-            if trusted_only || room || im {
-                return Err(AppError::BadRequest(crate::msg!(
-                    "identity.routes.as-the-group-is-open",
-                    "a post as the group is an open post - not sealed, not a room"
-                )));
-            }
-            Some(crate::roster::may_post_as(&state, &root, g).await?)
-        }
-        None => None,
-    };
+    // Where it goes (crate::publication): in public, or in public as a public group the poster
+    // is in - an open post, as the one table says. A schedule carries it (Curtis, 2026-10-18):
+    // the plan names the group, and the sweep asks again on the day and claims what it mints.
+    let to = crate::publication::To::of(None, req.as_ref().and_then(|b| b.as_group.as_deref()))?;
+    let asked = crate::publication::Asked { sealed: trusted_only, room, im, book: false };
+    crate::publication::refuse(&to, asked)?;
+    crate::publication::admit(&state, &root, &to).await?;
     // What the date makes of it, by the rulings every road shares (crate::publication): now, or
     // a schedule - nothing touches the public chain until the day, the plan on the draft's
     // private meta naming this device's leaf as the one that mints - or a refusal.
     let shape = crate::publication::Shape {
         answers: reply.is_some(),
         room: room || im,
-        live: live_public_date(&state, &data, &root, &doc_id).await?,
+        live: crate::publication::live(&state, &data, &root, &doc_id, &to).await?,
     };
     let (dated_ms, date_kept) =
         match crate::publication::when(dated_ms, shape, crate::clock::now_ms())? {
@@ -4747,7 +4747,7 @@ async fn publish_handler(
                     settled,
                     trusted_only,
                     group: None,
-                    as_group: as_group.map(hex::encode),
+                    as_group: to.group().map(hex::encode),
                 };
                 crate::publication::schedule(&data, &doc_id, &plan).await?;
                 return Ok(Json(PublishResponse {
@@ -4801,10 +4801,10 @@ async fn publish_handler(
             crate::record::bake::Outcome::Posted(post_id) => {
                 let t_mint = t.elapsed();
                 let t = std::time::Instant::now();
-                after_posted(&state, &data, &root, &doc_id, post_id, reply, flags).await?;
-                if let Some(group) = as_group {
-                    crate::roster::claim_public(&state, &data, &root, group, post_id).await?;
-                }
+                crate::publication::after_public(
+                    &state, &data, &root, &doc_id, post_id, reply, flags, &to,
+                )
+                .await?;
                 let t_after = t.elapsed();
                 drop(held); // before the drain: under its own hold it would fold the burst half-written
                             // The 200 means the post's labels SHOW (2026-09-07: a republish that dropped a

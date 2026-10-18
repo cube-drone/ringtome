@@ -139,10 +139,8 @@ async fn mint_public(
     doc_id: &[u8; 16],
     plan: &Plan,
 ) -> Result<Option<[u8; 16]>, AppError> {
-    let as_group = match plan.as_group.as_deref() {
-        Some(g) => Some(crate::roster::may_post_as(state, root, g).await?),
-        None => None,
-    };
+    let to = crate::publication::To::of(None, plan.as_group.as_deref())?;
+    crate::publication::admit(state, root, &to).await?;
     let seal =
         crate::identity::routes::public_seal(data, doc_id, Some(plan.trusted_only), None).await?;
     let flags = crate::record::documents::PublishFlags {
@@ -157,16 +155,12 @@ async fn mint_public(
     };
     match crate::record::bake::publish(state, data, root, doc_id, None, flags).await? {
         crate::record::bake::Outcome::Posted(post_id) => {
-            if let Err(e) =
-                crate::identity::after_posted(state, data, root, doc_id, post_id, None, flags).await
+            if let Err(e) = crate::publication::after_public(
+                state, data, root, doc_id, post_id, None, flags, &to,
+            )
+            .await
             {
                 tracing::warn!(root = %root, error = ?e, "scheduled mint's after-duties failed; the post stands");
-            }
-            if let Some(group) = as_group {
-                if let Err(e) = crate::roster::claim_public(state, data, root, group, post_id).await
-                {
-                    tracing::warn!(root = %root, error = ?e, "scheduled post's claim as the group failed; the post stands");
-                }
             }
             Ok(Some(post_id))
         }

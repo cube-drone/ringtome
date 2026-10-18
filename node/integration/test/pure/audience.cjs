@@ -2,10 +2,16 @@
 // publish wishes it means.
 const assert = require('node:assert');
 
-let groupOfChoice, asGroupOfChoice, sealOfChoice, choiceOfDraft, publishWishes;
+let groupOfChoice, asGroupOfChoice, sealOfChoice, choiceOfDraft, publishWishes, publishRequest;
 before(async () => {
-    ({ groupOfChoice, asGroupOfChoice, sealOfChoice, choiceOfDraft, publishWishes } =
-        await import('../../../js/pure/audience.js'));
+    ({
+        groupOfChoice,
+        asGroupOfChoice,
+        sealOfChoice,
+        choiceOfDraft,
+        publishWishes,
+        publishRequest,
+    } = await import('../../../js/pure/audience.js'));
 });
 
 describe('where a post goes', () => {
@@ -55,5 +61,39 @@ describe('where a post goes', () => {
             { as_group: 'ab', trusted_only: false, audience: '' },
             'open, over a sealed draft',
         );
+    });
+
+    it('sends one publish where its choice says, with what it is beside (plans/ONE_PUBLISH.md)', () => {
+        const parent = { author: 'aa', doc_id: 'bb' };
+        assert.deepEqual(publishRequest('group:g1', {}, { settled: true, reply_to: parent }), {
+            group: 'g1',
+            body: { settled: true, reply_to: parent },
+        });
+        assert.deepEqual(
+            publishRequest('group:g1', { audience: 'family' }, { room: true, im: true }),
+            { group: 'g1', body: { room: true } },
+            'a group takes no seal and no IM',
+        );
+        assert.deepEqual(publishRequest('mentioned', {}, { room: true, im: true }), {
+            group: null,
+            body: { room: true, im: true, trusted_only: true, audience: '@mentioned' },
+        });
+        assert.deepEqual(
+            publishRequest('as-group:g2', {}, { room: true }),
+            {
+                group: null,
+                body: { room: true, as_group: 'g2' },
+            },
+            'a room as the group is asked, so the door can refuse it in words',
+        );
+        assert.deepEqual(
+            publishRequest(null, { audience: 'family' }, { settled: true }),
+            { group: null, body: { settled: true } },
+            'as it stands: an update keeps its wishes',
+        );
+        assert.deepEqual(publishRequest('', { seal: 'yes' }), {
+            group: null,
+            body: { trusted_only: false, audience: '' },
+        });
     });
 });

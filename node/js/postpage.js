@@ -21,7 +21,8 @@ import { api } from './net.js';
 import { FEED_STYLE, REPLY_SORTS, replySortParams } from './pure/feed.js';
 import { useRef } from 'preact/hooks';
 import { parseSpeakable } from './speakable.js';
-import { PostEntry, MiniPost, Composer, publishWithBaking, BakeModal } from './postentry.js';
+import { PostEntry, MiniPost, Composer, BakeModal } from './postentry.js';
+import { publishTo } from './doc/publish.js';
 import { PersonRow } from './person.js';
 
 /// The copy chain (Curtis, 2026-09-08): the other authors this post descends from - the
@@ -121,10 +122,16 @@ const PUBLIC_ROAD = {
     href: (author, doc) => postHref(author, doc),
     post: async (root, draft, onBaking, parent, sealed) =>
         (
-            await publishWithBaking(root, draft, onBaking, {
-                reply_to: { author: parent.author, doc_id: parent.doc_id },
-                ...(sealed ? { trusted_only: true } : {}),
-            })
+            await publishTo(
+                root,
+                draft,
+                { words: true },
+                {
+                    choice: sealed ? 'trusted' : null,
+                    reply_to: { author: parent.author, doc_id: parent.doc_id },
+                    onBaking,
+                },
+            )
         ).post_id,
     note: () => t('postpage.replying-is-public-and-shares', 'replies are public'),
     // A reply is publication, and publishing is Social's (plans/UNLOCKS.md).
@@ -141,15 +148,16 @@ const groupRoad = (root, group) => ({
     href: (author, doc) => groupPostHref(group, doc),
     post: async (root, draft, onBaking, parent) =>
         (
-            await api(`/api/identity/${root}/groups/${group}/publish`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    doc: draft,
+            await publishTo(
+                root,
+                draft,
+                { words: true },
+                {
+                    choice: `group:${group}`,
                     reply_to: { author: parent.author, doc_id: parent.doc_id },
-                    tz_offset_min: new Date().getTimezoneOffset(),
-                }),
-            })
-        ).post,
+                },
+            )
+        ).post_id,
     note: () => t('postpage.replies-stay-in-the-group', "replies are for the group's members"),
     unlocked: true,
 });

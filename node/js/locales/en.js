@@ -487,6 +487,7 @@ export default {
     'chips.discard': 'discard',
     'apps.feed.open-this-for-editing': 'open this for editing',
     'chips.edit': 'edit',
+    'doc.editor.not-posted-on-its-day': 'not posted on its day: {why}',
     'apps.feed.the-public-copy': 'the public copy',
     'apps.feed.sort-by': 'order:',
     'apps.feed.save-filter-title-modal': 'save the feed',
@@ -1239,7 +1240,6 @@ export default {
     'doc.editor.re-read-the-date-and': 'publish, or reschedule',
     'doc.editor.cancel-the-schedule---the': 'cancel the schedule - the words stay private',
     'doc.editor.cancel': 'cancel',
-    'doc.editor.not-posted-on-its-day': 'not posted on its day: {why}',
     'doc.editor.take-it-down': 'take it down',
     'doc.editor.this-removes-it-from-other': 'It may take a while to disappear everywhere.',
     'doc.editor.taking-it-down': 'taking it down…',
@@ -2397,8 +2397,6 @@ export default {
     'identity.routes.cut-genesis-only-applies-to': 'cut "genesis" only applies to repudiation',
     'identity.routes.unknown-cut-other-now-genesis': 'unknown cut {other:?} (now | genesis)',
     'identity.routes.this-notebook-is-not-switched': 'this notebook is not switched to publish as a book',
-    'identity.routes.a-groups-book-isnt-sealed': "a book in a group, or as one, isn't sealed too",
-    'identity.routes.one-place-for-a-book': 'a book goes to one place: into a group, or in public as one',
     'identity.routes.this-notebook-has-no-published': 'this notebook has no published book',
     'identity.routes.cant-reply-to-words-you-cant-read': "you can't reply to words the author doesn't share with you",
     'identity.routes.cant-reply-to-a-post': "can't reply to a post this computer doesn't hold - visit it first",
@@ -2409,7 +2407,6 @@ export default {
     'identity.routes.a-drawing-cant-be-scheduled': "a drawing can't be scheduled yet - clear its date, or give it one that has passed",
     'identity.routes.that-picture-didnt-work': "that picture didn't work: {e}",
     'identity.routes.a-drawing-is-a-still-picture': 'a drawing publishes as a still picture',
-    'identity.routes.as-the-group-is-open': 'a post as the group is an open post - not sealed, not a room',
     'identity.routes.mention-someone-first': 'mention someone first - a post for the people mentioned needs a user card in the words',
     'identity.routes.a-room-is-not-a-reply': 'a room is a post of its own, not a reply',
     'identity.routes.an-im-is-a-room-for-two': 'a private chat is a room for two - sealed to one other person, and nobody else',
@@ -2553,15 +2550,18 @@ export default {
     'pubkey.bad-what': 'bad {what}',
 
     // --- node/src/publication.rs ---
+    'publication.one-place': 'a post goes to one place: into a group, or in public as one',
+    'publication.a-groups-book-isnt-sealed': "a book in a group, or as one, isn't sealed too",
+    'publication.as-the-group-is-open': 'a post as the group is an open post - not sealed, not a room',
     'publication.replies-and-rooms-are-now': "a reply or a room can't wait for a date - clear its date, or give it one that has passed",
 
     // --- node/src/rate_limit.rs ---
     'rate_limit.rate-limit-for-action-exceeded': 'hold your horses ({action})',
 
     // --- node/src/record/bake.rs ---
+    'record.bake.post-embeds-too-many-documents': 'this post embeds {count} documents - one post may carry {cap}. A collection this size wants to be several posts.',
     'record.bake.no-such-document': 'no such document',
     'record.bake.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
-    'record.bake.post-embeds-too-many-documents': 'this post embeds {count} documents - one post may carry {cap}. A collection this size wants to be several posts.',
     'record.bake.trusted-cant-bake-external': "a trusted-only post can't bake media from the open web yet - save the image and attach it directly",
     'record.bake.post-media-over-budget': "this post's media adds up to {total} - one post may carry {cap}. Split it across several posts.",
 
@@ -2642,6 +2642,7 @@ export default {
     'roster.the-draft-is-unreadable': "that draft can't be read",
     'roster.words-only': 'a group post is words, with pictures in them',
     'roster.the-drafts-words-havent-arrived': "this draft's words haven't arrived on this computer yet",
+    'roster.a-picture-is-still-being-made': 'a picture this post embeds is still being made - publish again in a moment',
     'roster.own-pictures-only': 'a group post can carry your own pictures for now - this one is from elsewhere',
     'roster.too-many-pictures': "that's more pictures than one post carries",
     'roster.a-reply-isnt-a-room': "a reply can't be a room",

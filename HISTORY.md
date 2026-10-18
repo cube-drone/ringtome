@@ -23285,3 +23285,89 @@ day is spent, and the draft says why.
 In passing: my first write of this module replaced the existing
 `node/src/publish.rs` (the edge-publication mint). It was restored from git
 before anything else touched it. The new module is `publication.rs`.
+
+## 2026-10-18 — One publish, slice 2: one door in the client
+
+[plans/ONE_PUBLISH.md](plans/ONE_PUBLISH.md) slice 2: every surface publishes
+through one function.
+
+- **The rule and the call.**
+  - `pure/audience.js` `publishRequest(choice, fields, also)` says where a
+    publish goes and what it asks there.
+  - `doc/publish.js` `publishTo(root, doc, what, opts)` sends it: words or a
+    drawing's picture, to the public door or a group's. The rights sign goes
+    first on every words door, and the bake poller runs on the public one.
+  - Every door's answer names `post_id` and `group` alike. Only `doc/publish.js`
+    calls a publish door now.
+- **Through it:** the publish bar, the feed's composer, both reply roads, a new
+  room and a room's close, a new IM, and the post card's and the diff page's
+  updates.
+  - The bar's surfaces pass one `prepare()` instead of `publish` and
+    `publishToGroup`.
+  - The drawing's two door functions are gone.
+  - The book column's picker is `AudienceSelect` without seals.
+- **The composer keeps its rule:** its choice is its pick, else the draft's
+  standing choice. Its picker starts at "everyone" for every post, so "everyone"
+  there is nothing picked, and a copy of a sealed post keeps its seal. The audit
+  had flagged this as a bug; it's deliberate.
+- **Bug gone:** a new chat room "in public, as a group" posted as a plain public
+  room. A room's picker no longer offers it, by Curtis's "no rooms as the group"
+  ruling, and a room asked as one is refused in words.
+- **A refused plan** now says why on the feed's draft too.
+- **Tests:**
+  - New pure test for `publishRequest`.
+  - New probe, `harness/publish-to-probe.mjs`, drives the real composer and chat
+    in jsdom: to everyone, into a group, a sealed copy keeping its seal, a room
+    into a group, and no "as a group" in the room picker. 5 of 5.
+  - `ui-check` 1039, `strings-check` current.
+- **Found in passing, not this slice's:** in jsdom, the group page's "new post"
+  hand-off (`?group=`) leaves the composer on "everyone". It's the same on the
+  committed code, and is in NEXT_STEPS for a look in a browser.
+
+## 2026-10-18 — One publish, slices 3 to 5: where it goes, its media, its kind
+
+The rest of [plans/ONE_PUBLISH.md](plans/ONE_PUBLISH.md).
+
+- **Where it goes** (slice 3). `publication.rs` gained the pieces every route
+  had its own copy of:
+  - `To` (public, a group, or as a public group), built by `To::of`.
+  - `refuse`, one table of what can't go where.
+  - `admit`, one membership check.
+  - `claim` and `after_public`, what a public mint owes, the claim as the group
+    included.
+  - `live`, the post a draft already is on that destination, and its date.
+
+  The public publish and its drawing route, a group's publish, drawing route and
+  planned publish, the book rollout and the sweep all use them. The old refusal
+  strings are `publication.*` now, in the same words. The drawing route reads
+  its seal as the words route does, so a copy of a sealed drawing keeps its
+  seal. Book pages read their dates through `publication::claimed`.
+
+- **One media pre-pass** (slice 4). `record::bake::embeds` (links made fit, the
+  count cap, the rights fence, the missing pictures) is read by the public bake,
+  a group post and a room's line.
+  - A group post now has the public road's link scrub, rights fence,
+    missing-picture drop, built-in stickers (a picture still being made is
+    refused in words) and media budget. The budget is said before a picture is
+    minted.
+  - A group room's line is priced the same way, and every room line gets the
+    link scrub and the fence.
+  - Pictures from the web or another's post stay refused in a group: their
+    download makes public twins. That is a residual, in NEXT_STEPS.
+- **Kinds** (slice 5). `identity::routes::publish_drawing` is the one drawing
+  publish behind both its routes, with `roster::post_picture` as the group's
+  sink. A group's drawing now records `published_head`, as a public one does.
+  The plan works a poll through as the next kind: its body, with its votes as
+  replies.
+- **Tests:**
+  - Unit tests for `To` and the refusal table.
+  - A `groupposts.cjs` claim for a group post's media: a missing picture left
+    out, a notebook's name off a link, a built-in sticker adopted and carried.
+  - The group drawing's `published_head`.
+  - Green: every area the routes reach (drawings, groups, public groups, group
+    rooms, rooms, IMs, books, group books, combinations, scheduled and dated
+    posts, MCP), the node's unit tests and clippy.
+  - A combined grep run reddened two claims, the room lane's "newest word" and a
+    publication revalidation. They failed the same way on the committed tree,
+    and each passes alone. The grep caught single claims of files without their
+    setup.

@@ -58,3 +58,27 @@ export const publishWishes = (choice, fields) => {
         return { trusted_only: false, audience: '' };
     return {};
 };
+
+/// Where one publish goes and what it asks there (plans/ONE_PUBLISH.md, slice 2): the one answer
+/// every surface's publish reads, so a choice means the same on every surface. `choice` null is
+/// a publish as the draft stands - an update, wherever it went, its wishes unchanged. `also` is
+/// what this publish is beside where it goes: comments off, the post it answers, a room, an IM.
+/// A group takes no seal and posts nothing as a group; the group's door says the rest.
+export const publishRequest = (choice, fields, also = {}) => {
+    const { settled, reply_to: replyTo, room, im } = also;
+    const shared = {
+        ...(settled ? { settled: true } : {}),
+        ...(replyTo ? { reply_to: replyTo } : {}),
+        ...(room ? { room: true } : {}),
+    };
+    const group = groupOfChoice(choice);
+    if (group) return { group, body: shared };
+    return {
+        group: null,
+        body: {
+            ...shared,
+            ...(im ? { im: true } : {}),
+            ...(choice === null ? {} : publishWishes(choice, fields)),
+        },
+    };
+};

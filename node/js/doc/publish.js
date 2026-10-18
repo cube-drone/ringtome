@@ -4,10 +4,11 @@
 import { h } from 'preact';
 import htm from 'htm';
 
-import { api } from '../net.js';
+import { api, xhrUpload } from '../net.js';
 import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { rightsCheck } from '../rights.js';
+import { publishRequest } from '../pure/audience.js';
 
 const html = htm.bind(h);
 
@@ -60,6 +61,64 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
         }
         await new Promise((r) => setTimeout(r, 900));
     }
+}
+
+/**
+ * The one publish (plans/ONE_PUBLISH.md, slice 2): every surface's way out - Writer's bar, the
+ * drawing's, the feed's composer, a reply box, a new room, a new IM - to whichever door `choice`
+ * means (`pure/audience.js`'s `publishRequest`), so a choice means the same everywhere.
+ *
+ * `what` is the body, as the surface has it: `{ words: true }` for the draft's saved words, or
+ * `{ picture }` for a drawing's flattened picture (a Blob). `choice` null publishes as the draft
+ * stands. Words to the public ride out the media bake (`onBaking`); every door's words are asked
+ * the rights sign first. Resolves to the door's answer with `post_id` named alike for every door
+ * (none when scheduled), and `group`, the group it went to, or null.
+ */
+export async function publishTo(
+    root,
+    docId,
+    what,
+    { choice = null, fields = null, settled, reply_to: replyTo, room, im, onBaking } = {},
+) {
+    const { group, body } = publishRequest(choice, fields, {
+        settled,
+        reply_to: replyTo,
+        room,
+        im,
+    });
+    const tz = new Date().getTimezoneOffset();
+    const named = (made) => ({ ...made, post_id: made.post_id || made.post || null, group });
+    if (what.picture) {
+        // A drawing's door takes its wishes in the query; its body is the picture.
+        const query = new URLSearchParams({ tz_offset_min: String(tz) });
+        for (const [key, value] of Object.entries(body)) query.set(key, String(value));
+        if (group) {
+            query.set('doc', docId);
+            return named(
+                await xhrUpload(
+                    `/api/identity/${root}/groups/${group}/publish/drawing?${query}`,
+                    what.picture,
+                ),
+            );
+        }
+        return named(
+            await xhrUpload(
+                `/api/identity/${root}/docs/${docId}/publish/drawing?${query}`,
+                what.picture,
+            ),
+        );
+    }
+    if (group) {
+        const stopped = await rightsCheck(root, { docs: [docId] });
+        if (stopped) throw new Error(stopped);
+        return named(
+            await api(`/api/identity/${root}/groups/${group}/publish`, {
+                method: 'POST',
+                body: JSON.stringify({ doc: docId, ...body, tz_offset_min: tz }),
+            }),
+        );
+    }
+    return named(await publishWithBaking(root, docId, onBaking || (() => {}), body));
 }
 
 /// The "preparing media for the network" modal: every media item a post embeds, with its bake

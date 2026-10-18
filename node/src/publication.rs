@@ -1,12 +1,166 @@
-//! One publish (plans/ONE_PUBLISH.md): the steps every publish road shares, written once. Slice
-//! 1 is the date and the plan - what a draft's claimed date makes of a publish (now, or a
-//! schedule, or a refusal), the plan a schedule leaves on the draft, and what the sweep says
-//! when it can't carry a plan out. Every door asks here: the public publish and its drawing
-//! door, a group's publish and its drawing door, and the publish-due sweep.
+//! One publish (plans/ONE_PUBLISH.md): the steps every publish road shares, written once.
+//!
+//! - **Where it goes** (`To`): in public, into a group for its members, or in public as a public
+//!   group - one value every door reads, with one table of what can't go where (`refuse`), one
+//!   membership check (`admit`), and what each destination owes once a post is minted (`claim`,
+//!   `after_public`).
+//! - **What the draft already is there** (`live`): the post it became, and the date it carries.
+//! - **The date and the plan**: what a draft's claimed date makes of a publish (now, a schedule,
+//!   or a refusal), the plan a schedule leaves on the draft, and what the sweep says when it can't
+//!   carry a plan out.
+//!
+//! Every door asks here: the public publish and its drawing door, a group's publish and its
+//! drawing door, a book's rollout, and the publish-due sweep.
 
 use crate::error::AppError;
 use crate::record::store;
+use crate::roster::GroupIdOf as GroupId;
+use crate::AppState;
 use serde::{Deserialize, Serialize};
+
+/// Where a publish goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum To {
+    /// The persona's own public chain.
+    Public,
+    /// Into a group, for its members (plans/GROUPS.md).
+    Group(GroupId),
+    /// In public, as a public group the persona is in (plans/PUBLIC_GROUPS.md): their own public
+    /// post, which their lane for the group claims.
+    AsGroup(GroupId),
+}
+
+impl To {
+    /// The destination a request names: a group to post into, one to post in public as, or
+    /// neither - never both.
+    pub fn of(group: Option<&str>, as_group: Option<&str>) -> Result<To, AppError> {
+        fn nonempty(g: Option<&str>) -> Option<&str> {
+            g.map(str::trim).filter(|g| !g.is_empty())
+        }
+        match (nonempty(group), nonempty(as_group)) {
+            (None, None) => Ok(To::Public),
+            (Some(g), None) => Ok(To::Group(crate::roster::group_of(g)?)),
+            (None, Some(g)) => Ok(To::AsGroup(crate::roster::group_of(g)?)),
+            (Some(_), Some(_)) => Err(AppError::BadRequest(crate::msg!(
+                "publication.one-place",
+                "a post goes to one place: into a group, or in public as one"
+            ))),
+        }
+    }
+
+    /// The group it's for, either way.
+    pub fn group(&self) -> Option<GroupId> {
+        match self {
+            To::Public => None,
+            To::Group(g) | To::AsGroup(g) => Some(*g),
+        }
+    }
+}
+
+/// What is being published, as far as where it may go cares.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Asked {
+    pub sealed: bool,
+    pub room: bool,
+    pub im: bool,
+    pub book: bool,
+}
+
+/// What can't go where, the one table every door reads: a book in a group, or as one, isn't
+/// sealed too - the group is who reads it, or everyone; a post as a public group is an open post,
+/// never sealed, never a room (Curtis, 2026-10-18: "not now") or an IM. (A group's own doors take
+/// no seal and no IM to be asked.)
+pub fn refuse(to: &To, asked: Asked) -> Result<(), AppError> {
+    match to {
+        To::Public => Ok(()),
+        To::Group(_) | To::AsGroup(_) if asked.book && asked.sealed => {
+            Err(AppError::BadRequest(crate::msg!(
+                "publication.a-groups-book-isnt-sealed",
+                "a book in a group, or as one, isn't sealed too"
+            )))
+        }
+        To::AsGroup(_) if asked.sealed || asked.room || asked.im => {
+            Err(AppError::BadRequest(crate::msg!(
+                "publication.as-the-group-is-open",
+                "a post as the group is an open post - not sealed, not a room"
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// May `root` post there? Into a group, or as one, while they're a member - and as one only if
+/// it's public.
+pub async fn admit(state: &AppState, root: &str, to: &To) -> Result<(), AppError> {
+    match to {
+        To::Public => Ok(()),
+        To::Group(g) => crate::roster::may_post_in(state, root, &hex::encode(g)).await.map(|_| ()),
+        To::AsGroup(g) => {
+            crate::roster::may_post_as(state, root, &hex::encode(g)).await.map(|_| ())
+        }
+    }
+}
+
+/// What a post as the group owes once it's minted: the poster's public lane claims it as the
+/// group's (once - an edit says nothing more). Nothing for anywhere else.
+pub async fn claim(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    to: &To,
+    post: [u8; 16],
+) -> Result<(), AppError> {
+    match to {
+        To::AsGroup(g) => crate::roster::claim_public(state, data, root, *g, post).await,
+        _ => Ok(()),
+    }
+}
+
+/// Everything a public mint of `draft` owes, by any door - the publish, the drawing door, the
+/// sweep: the post's own after-duties (`identity::after_posted`), then what its destination owes
+/// (`claim`).
+#[allow(clippy::too_many_arguments)]
+pub async fn after_public(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    draft: &[u8; 16],
+    post: [u8; 16],
+    reply: Option<crate::record::documents::ReplyLinks>,
+    flags: crate::record::documents::PublishFlags,
+    to: &To,
+) -> Result<(), AppError> {
+    crate::identity::after_posted(state, data, root, draft, post, reply, flags).await?;
+    claim(state, data, root, to, post).await
+}
+
+/// The post `draft` already is where it's going, live, and the date it carries (`Shape::live`):
+/// `Some(dated)` for an edit, `None` for a new post. In public - as the group too, which is the
+/// poster's own public post - the draft's `published_as`; in a group, what the group's lanes say.
+pub async fn live(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    draft: &[u8; 16],
+    to: &To,
+) -> Result<Option<Option<i64>>, AppError> {
+    match to {
+        To::Public | To::AsGroup(_) => {
+            let Some(post) = data
+                .annotations()
+                .field(draft, store::PUBLISHED_AS)
+                .await?
+                .filter(|p| !p.trim().is_empty())
+            else {
+                return Ok(None);
+            };
+            Ok(crate::identity::routes::held_public_header(state, root, post.trim())
+                .await?
+                .map(|h| h.dated_ms))
+        }
+        To::Group(g) => crate::roster::live_date(state, root, g, draft).await,
+    }
+}
 
 /// The draft's claimed date (PUBLISH.md): its `display_date`, in the author's zone
 /// (`tz_offset_min`, the browser's `getTimezoneOffset()`), re-read at every publish so a changed
@@ -191,6 +345,34 @@ mod tests {
             when(Some(NOW - 9), live, NOW).unwrap(),
             When::Now { dated_ms: Some(NOW - 9), kept: false }
         );
+    }
+
+    #[test]
+    fn the_table_of_what_cant_go_where() {
+        let g = To::Group([1; 16]);
+        let a = To::AsGroup([1; 16]);
+        let sealed = Asked { sealed: true, ..Default::default() };
+        let room = Asked { room: true, ..Default::default() };
+        let im = Asked { im: true, room: true, ..Default::default() };
+        let sealed_book = Asked { sealed: true, book: true, ..Default::default() };
+        for asked in [sealed, room, im, sealed_book, Asked::default()] {
+            assert!(refuse(&To::Public, asked).is_ok(), "anything goes in public: {asked:?}");
+        }
+        assert!(refuse(&g, room).is_ok(), "a group has rooms");
+        assert!(
+            refuse(&a, sealed).is_err() && refuse(&a, room).is_err() && refuse(&a, im).is_err()
+        );
+        assert!(refuse(&g, sealed_book).is_err() && refuse(&a, sealed_book).is_err());
+        assert!(refuse(&a, Asked { book: true, ..Default::default() }).is_ok());
+    }
+
+    #[test]
+    fn a_post_goes_to_one_place() {
+        let g = "00112233445566778899aabbccddeeff";
+        assert_eq!(To::of(None, Some(" ")).unwrap(), To::Public);
+        assert!(matches!(To::of(Some(g), None).unwrap(), To::Group(_)));
+        assert!(matches!(To::of(None, Some(g)).unwrap(), To::AsGroup(_)));
+        assert!(To::of(Some(g), Some(g)).is_err());
     }
 
     #[test]

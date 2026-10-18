@@ -14,6 +14,7 @@ const html = htm.bind(h);
 ///           never everyone (UNLOCKS.md: its words were never meant to go out in the open).
 /// `tags` - the reader's contact tags; `groups` - their groups (pure/groups.js `groupFeeds`);
 /// `mentions` - the words can mention people, so "the people mentioned" means something.
+/// `asGroups` - "in public, as a group" is offered; a room is never one (Curtis, 2026-10-18).
 export const AudienceSelect = ({
     value,
     onChange,
@@ -22,6 +23,7 @@ export const AudienceSelect = ({
     tags = [],
     groups = [],
     mentions = true,
+    asGroups = true,
     className,
     title,
 }) => {
@@ -64,6 +66,7 @@ export const AudienceSelect = ({
             the group's too, reaching your followers and the group's. */ ''
         }
         ${
+            asGroups &&
             groups.some((g) => g.public) &&
             html`<optgroup label=${t('audience.in-public-as-a-group', 'in public, as a group')}>
                 ${groups

@@ -72,7 +72,21 @@ are driving towards.
   id, then read again. Also worth asking: is a peek that never refreshes on a
   revisit intended?
 
+### One publish (plans/ONE_PUBLISH.md)
+
+- **A book page with a future date mints at once under it**: books have no
+  schedule, and no ruling says what a dated page should do. Wants one.
+- **A group post can't carry a picture from the web or another's post**: the
+  public road downloads those into public twins; a group's would want a
+  members-only download landing as its media document.
+
 ### Groups (plans/GROUPS.md)
+
+- **A group's "new post" may not preselect the group** (seen 2026-10-18 in a
+  jsdom drive, on the code before plans/ONE_PUBLISH.md slice 2 as well as
+  after): `/ringtome/feed?group=<id>` runs its hand-off (the query is dropped,
+  the group's filter applied) but the composer's picker reads "everyone", so the
+  post goes public. Check in a browser; `?as_group=` shares the pattern.
 
 - From books in groups (plans/GROUPS.md, section 11b, built 2026-10-18):
   - **The book reader in a group wants a look in a browser**, and so does the

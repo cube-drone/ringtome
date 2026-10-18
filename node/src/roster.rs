@@ -3674,20 +3674,43 @@ pub async fn publish(
     // What the pictures are, for the post's implicit tags.
     let mut carried: Vec<(Option<u64>, bool)> = Vec::new();
     if format == Format::Marquee {
-        let mut swaps: Vec<(String, String)> = Vec::new();
-        for found in crate::record::bake::media_refs(&words, me) {
-            match found {
+        // What the words embed, read as the public road reads them (record::bake `embeds`, plans/
+        // ONE_PUBLISH.md slice 4): the links made fit, the count cap and the rights fence before a
+        // picture is minted, a picture that names nothing left out.
+        let crate::record::bake::Embeds { body, refs: found, missing } =
+            crate::record::bake::embeds(state, data, me, &words).await?;
+        // First what each picture is, with every refusal said before one is minted: a picture
+        // still being made, one from elsewhere, and the bytes over the post's budget.
+        let mut own: Vec<(String, [u8; 16])> = Vec::new();
+        let mut blobs: Vec<[u8; 32]> = Vec::new();
+        for r in &found {
+            match r {
+                MediaRef::PrivateDoc { target, .. } if missing.contains(target) => {}
                 MediaRef::PrivateDoc { target, doc_id } => {
-                    let (media, fmt, animation) =
-                        group_media(state, data, me, group, &doc_id).await?;
-                    carried.push((fmt.to_wire(), animation));
-                    swaps.push((target, media_target(group, &media, fmt, animation)));
-                    if !refs.contains(&media) {
-                        refs.push(media);
+                    // One of the app's own pictures is filed as the author's first, as the public
+                    // road does; a picture still being made is a moment away, said in words.
+                    let copied = match crate::builtin::get(doc_id) {
+                        Some(_) => crate::builtin::adopt(state, data, me, doc_id).await?,
+                        None => true,
+                    };
+                    if !copied || !docs.media_bytes_present(doc_id).await? {
+                        return Err(AppError::BadRequest(crate::msg!(
+                            "roster.a-picture-is-still-being-made",
+                            "a picture this post embeds is still being made - publish again in a moment"
+                        )));
                     }
+                    if let Some(hash) = docs
+                        .one(doc_id)
+                        .await?
+                        .and_then(|d| d.display_head().map(|h| h.header.file_hash))
+                    {
+                        blobs.push(hash);
+                    }
+                    own.push((target.clone(), *doc_id));
                 }
-                // Pictures from elsewhere wait for a later slice: the public pipeline downloads
-                // and copies them into public twins, and a group's need their own road.
+                // Pictures from the web or from someone else's post: the public road downloads
+                // them into public twins, which a members-only post can't carry - a group's would
+                // want a members-only download of their own (plans/ONE_PUBLISH.md, residuals).
                 MediaRef::External { .. } | MediaRef::Foreign { .. } => {
                     return Err(AppError::BadRequest(crate::msg!(
                         "roster.own-pictures-only",
@@ -3696,7 +3719,22 @@ pub async fn publish(
                 }
             }
         }
-        words = crate::record::bake::rewrite(&words, &swaps);
+        // The bytes the post asks every member's node to carry, as the public road prices them.
+        crate::record::bake::media_budget_of(state, &blobs).await?;
+        // Then each, as the group's media document: minted once per picture per group.
+        let mut swaps: Vec<(String, String)> = Vec::new();
+        for (target, doc_id) in own {
+            let (media, fmt, animation) = group_media(state, data, me, group, &doc_id).await?;
+            carried.push((fmt.to_wire(), animation));
+            swaps.push((target, media_target(group, &media, fmt, animation)));
+            if !refs.contains(&media) {
+                refs.push(media);
+            }
+        }
+        words = crate::record::bake::drop_embeds(
+            &crate::record::bake::rewrite(&body, &swaps),
+            &missing,
+        );
     }
     post_version(
         state,
@@ -4075,15 +4113,10 @@ async fn publish_handler(
     Path((root, group)): Path<(String, String)>,
     Json(req): Json<PublishRequest>,
 ) -> Answer {
-    let (data, me) = me_of(&state, &session, &root).await?;
+    let (data, _) = me_of(&state, &session, &root).await?;
     let group = group_of(&group)?;
-    let (roster, _) = current(&state, &group, &me).await?;
-    if !roster.members.contains(&me) {
-        return Err(AppError::Forbidden(crate::msg!(
-            "roster.members-only",
-            "only the group's members can post to it"
-        )));
-    }
+    let to = crate::publication::To::Group(group);
+    crate::publication::admit(&state, &root, &to).await?;
     let draft = doc_of(&req.doc)?;
     // Before the post, as the public door does (made_with.rs): an agent's post says so.
     crate::made_with::mark(&session, &data, &draft).await?;
@@ -4103,7 +4136,7 @@ async fn publish_handler(
     let shape = crate::publication::Shape {
         answers: reply_to.is_some(),
         room: req.room,
-        live: live_date(&state, &root, &group, &draft).await?,
+        live: crate::publication::live(&state, &data, &root, &draft, &to).await?,
     };
     let (dated_ms, date_kept) = match crate::publication::when(claimed, shape, now_ms())? {
         crate::publication::When::Now { dated_ms, kept } => (dated_ms, kept),
@@ -4140,7 +4173,7 @@ async fn publish_handler(
 
 /// The post `draft` already is in the group, standing, and the date it carries
 /// (crate::publication's `Shape::live`): `Some(dated)` for an edit, `None` for a new post.
-async fn live_date(
+pub(crate) async fn live_date(
     state: &AppState,
     me: &str,
     group: &GroupId,
@@ -4157,52 +4190,56 @@ async fn live_date(
     Ok(versions.get(&post).and_then(|list| display(list)).map(|v| v.header.dated_ms))
 }
 
-#[derive(Deserialize, Default)]
-struct DrawingPublish {
-    doc: String,
-    #[serde(default)]
-    settled: bool,
-    #[serde(default)]
-    tz_offset_min: i32,
-}
-
 /// POST `.../groups/{group}/publish/drawing?doc=&settled=&tz_offset_min=` - publish a drawing to
-/// the group as a picture, as the public drawing door does (identity/routes.rs): the body is the
-/// page's flattened picture, laundered, minted as the group's media document, and posted as the
-/// drawing's version with words that are that picture. Publishing again is an edit, with a new
-/// picture. A drawing takes no schedule, here or in public.
+/// the group as a picture: the drawing kind's one publish (identity/routes.rs `publish_drawing`),
+/// to the group. Publishing again is an edit, with a new picture. A drawing takes no schedule,
+/// here or in public.
 async fn publish_drawing_handler(
     session: Session,
     State(state): State<AppState>,
     Path((root, group)): Path<(String, String)>,
-    axum::extract::Query(req): axum::extract::Query<DrawingPublish>,
+    axum::extract::Query(req): axum::extract::Query<crate::identity::routes::DrawingPublish>,
     picture: axum::body::Bytes,
 ) -> Answer {
-    use crate::record::documents::Format;
-    let (data, me) = me_of(&state, &session, &root).await?;
+    let (data, _) = me_of(&state, &session, &root).await?;
     let group = group_of(&group)?;
-    let (roster, _) = current(&state, &group, &me).await?;
-    if !roster.members.contains(&me) {
-        return Err(AppError::Forbidden(crate::msg!(
-            "roster.members-only",
-            "only the group's members can post to it"
-        )));
-    }
-    let draft = doc_of(&req.doc)?;
-    let live = live_date(&state, &root, &group, &draft).await?;
-    let crate::identity::routes::DrawingDraft { title, dated_ms, date_kept, .. } =
-        crate::identity::routes::drawing_draft(&session, &data, &draft, req.tz_offset_min, live)
-            .await?;
-    let ingested = crate::identity::routes::launder_drawing(picture).await?;
+    let draft = doc_of(req.doc.as_deref().unwrap_or_default())?;
+    let to = crate::publication::To::Group(group);
+    let posted = crate::identity::routes::publish_drawing(
+        &state, &session, &data, &root, &draft, &to, &req, picture,
+    )
+    .await?;
+    Ok(Json(serde_json::json!({
+        "group": hex::encode(group),
+        "post": hex::encode(posted.post),
+        "date_kept": posted.date_kept,
+    })))
+}
+
+/// The group's sink for a picture post (a drawing, `identity::routes::publish_drawing`): the
+/// laundered picture as `me`'s media document for the group, and the post as words that embed it,
+/// on `me`'s lane - a new post, or an edit of the one the draft already is.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn post_picture(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    draft: &[u8; 16],
+    title: &str,
+    ingested: crate::media::Ingested,
+    wishes: Wishes,
+) -> Result<[u8; 16], AppError> {
+    use crate::record::documents::Format;
     let media = mint_media(
-        &state,
-        &data,
-        &root,
-        &group,
+        state,
+        data,
+        me,
+        group,
         Minted {
             body: &ingested.body,
             thumb: ingested.thumb_avif.as_deref(),
-            title: &title,
+            title,
             format: Format::Avif.to_wire(),
             width: ingested.width,
             height: ingested.height,
@@ -4213,23 +4250,17 @@ async fn publish_drawing_handler(
     )
     .await?;
     let words = crate::identity::routes::drawing_words(
-        &title,
-        &media_target(&group, &media, Format::Avif, false),
+        title,
+        &media_target(group, &media, Format::Avif, false),
     );
     let body = Body {
-        title,
+        title: title.to_string(),
         format: Format::Marquee,
         words,
         refs: vec![media],
         carried: vec![(Format::Avif.to_wire(), false)],
     };
-    let wishes = Wishes { dated_ms, settled: req.settled, ..Default::default() };
-    let post = post_version(&state, &data, &root, &group, &draft, body, wishes).await?;
-    Ok(Json(serde_json::json!({
-        "group": hex::encode(group),
-        "post": hex::encode(post),
-        "date_kept": date_kept,
-    })))
+    post_version(state, data, me, group, draft, body, wishes).await
 }
 
 /// The publish-due sweep's road to a group (scheduled.rs): post the draft its plan names, if
@@ -4244,18 +4275,11 @@ pub async fn publish_planned(
     wishes: Wishes,
 ) -> Result<[u8; 16], AppError> {
     let group = group_of(group_hex)?;
-    let me_root = root_of(me).ok_or_else(|| {
-        AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
-    })?;
-    let posted = match current(state, &group, &me_root).await {
-        Ok((roster, _)) if roster.members.contains(&me_root) => {
-            publish(state, data, me, &group, draft, wishes).await
-        }
-        _ => Err(AppError::Forbidden(crate::msg!(
-            "roster.members-only",
-            "only the group's members can post to it"
-        ))),
-    };
+    let posted =
+        match crate::publication::admit(state, me, &crate::publication::To::Group(group)).await {
+            Ok(()) => publish(state, data, me, &group, draft, wishes).await,
+            Err(e) => Err(e),
+        };
     crate::publication::settle(data, draft, &posted).await?;
     posted
 }

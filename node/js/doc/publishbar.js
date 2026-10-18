@@ -8,8 +8,9 @@
 // work and look the same in both"), so it knows nothing of what is being published. Each surface
 // brings its own:
 //
-//   `publish(extra, setBaking)` - save, then publish through its door; resolves to the door's answer
-//                                 (`scheduled_for` when the date was a future one)
+//   `prepare()`                 - save, then say what publishes: `{ words: true }`, or a drawing's
+//                                 `{ picture }` - the bar sends it through the one publish
+//                                 (doc/publish.js `publishTo`) to wherever it goes
 //   `differs`                   - whether the private version has changed since the public one,
 //                                 which is what offers "update" (and "diff", given `diffHref`)
 //   `onPublished()`             - told after every publish, to re-read whatever `differs` reads
@@ -24,7 +25,7 @@ import htm from 'htm';
 
 import { t } from '../i18n.js';
 import { holdDoc, openMirror, optimisticDoc, useLive } from '../mirror.js';
-import { BakeModal } from './publish.js';
+import { BakeModal, publishTo } from './publish.js';
 import {
     docStatus,
     isScheduled,
@@ -43,7 +44,7 @@ import { api } from '../net.js';
 import { Icons } from '../icons.js';
 import { groupPostHref, postHref } from '../links.js';
 import { groupFeeds } from '../pure/groups.js';
-import { choiceOfDraft, groupOfChoice, publishWishes } from '../pure/audience.js';
+import { choiceOfDraft, groupOfChoice } from '../pure/audience.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { AudienceSelect } from '../audience.js';
 import { formatWhen } from '../pure/when.js';
@@ -53,19 +54,18 @@ const html = htm.bind(h);
 
 // Where it goes (Curtis, 2026-10-16: "post to", everyone or any of the feed's lists or groups): one
 // select, the feed composer's own (audience.js), in place of the "trusted only" box. A group as a
-// destination (plans/GROUPS.md, slice 4c): a surface that can post its words to a group passes
-// `publishToGroup(group, wishes)` - save, then post - and the bar offers your groups beside the
-// rest, says which group a draft went to, and updates or takes it down there. `mentions`: the
-// surface publishes words, which can mention people - a drawing can't.
+// destination (plans/GROUPS.md, slice 4c): the bar offers your groups beside the rest (unless
+// `groupable` is false), says which group a draft went to, and updates or takes it down there.
+// `mentions`: the surface publishes words, which can mention people - a drawing can't.
 export const PublishBar = ({
     root,
     docId,
     row,
-    publish,
+    prepare,
     differs,
     diffHref,
     onPublished,
-    publishToGroup,
+    groupable = true,
     mentions = false,
 }) => {
     const [wishes, setWishes] = useState({ settled: false });
@@ -93,9 +93,8 @@ export const PublishBar = ({
     const [postedIn, setPostedIn] = useState([]);
     const [groupTurn, setGroupTurn] = useState(0);
     const dest = groupOfChoice(choice);
-    // Whether this surface posts to groups at all - never the function itself, a new one each
-    // render, which as a dependency would ask again on every one.
-    const canGroup = !!publishToGroup;
+    // Whether this surface posts to groups at all.
+    const canGroup = groupable;
     useEffect(() => {
         if (!canGroup || !root || !docId) return undefined;
         let live = true;
@@ -145,40 +144,29 @@ export const PublishBar = ({
         setPublishing(true);
         setPublishError(null);
         setPublishNote(null);
-        if (toGroup && publishToGroup) {
-            try {
-                const made = await publishToGroup(toGroup, { settled: wishes.settled });
-                setPublishNote(noteOf(made));
+        try {
+            // One publish (doc/publish.js `publishTo`): to the group the draft went to or is
+            // planned for, else as the select says on a first publish, else as it stands.
+            const made = await publishTo(root, docId, await prepare(), {
+                choice: toGroup ? `group:${toGroup}` : standing === 'private' ? choice : null,
+                fields,
+                settled: toGroup ? wishes.settled : standing === 'private' && wishes.settled,
+                onBaking: setBaking,
+            });
+            if (made.group) {
                 setChoice('');
                 setGroupTurn((n) => n + 1);
-                if (onPublished) onPublished();
-            } catch (e) {
-                setPublishError(e.message);
-            } finally {
-                setPublishing(false);
             }
-            return;
-        }
-        try {
-            const asked =
-                standing === 'private'
-                    ? {
-                          ...(wishes.settled ? { settled: true } : {}),
-                          ...publishWishes(choice, fields),
-                      }
-                    : {};
-            const extra = Object.keys(asked).length > 0 ? asked : undefined;
-            const made = await publish(extra, setBaking);
             // The bar turns at once (2026-10-01): the answer said what the mirror will, so the row
             // wears it now and the stream settles it (pure/optimistic.js).
-            if (made && made.scheduled_for) {
+            else if (made.scheduled_for) {
                 await holdDoc(
                     root,
                     docId,
                     (r) => withScheduled(r, made.scheduled_for),
                     scheduledSettled,
                 );
-            } else if (made && made.post_id) {
+            } else if (made.post_id) {
                 await holdDoc(
                     root,
                     docId,
@@ -274,7 +262,7 @@ export const PublishBar = ({
                   : t('doc.editor.published', 'published');
 
     // Nothing published and nothing to publish with: no bar at all.
-    if (standing === 'private' && !social && !inGroup && !(publishToGroup && groups.length > 0))
+    if (standing === 'private' && !social && !inGroup && !(groupable && groups.length > 0))
         return null;
     return html`<div
         class=${

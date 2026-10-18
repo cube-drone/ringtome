@@ -560,33 +560,6 @@ export async function copyPictureInto(root, drawing, title, bucket, isNew) {
     return made.doc_id;
 }
 
-/// Publish a drawing as a picture (DRAWING.md): flattened here, laundered and posted by the node's
-/// drawing door - the post is the picture, titled as the drawing is. Publishing again replaces it
-/// within the post's day; after that the node says to take it down and post again. `extra` is the
-/// publish bar's wishes (turn off comments, and who it's for); the timezone offset resolves a claimed
-/// date the way Writer's publish does (PUBLISH.md ruling 7).
-export async function publishDrawing(root, docId, drawing, extra = {}) {
-    const picture = await flattenToBlob(root, drawing);
-    const query = new URLSearchParams({ tz_offset_min: String(new Date().getTimezoneOffset()) });
-    if (extra.settled) query.set('settled', 'true');
-    if (extra.trusted_only !== undefined) query.set('trusted_only', String(!!extra.trusted_only));
-    if (extra.audience !== undefined) query.set('audience', extra.audience);
-    if (extra.as_group) query.set('as_group', extra.as_group);
-    return xhrUpload(`/api/identity/${root}/docs/${docId}/publish/drawing?${query}`, picture);
-}
-
-/// Or to one of your groups (plans/GROUPS.md), by the group's drawing door: the same flattened
-/// picture, posted as the group's.
-export async function publishDrawingToGroup(root, docId, drawing, group, wishes = {}) {
-    const picture = await flattenToBlob(root, drawing);
-    const query = new URLSearchParams({
-        doc: docId,
-        tz_offset_min: String(new Date().getTimezoneOffset()),
-    });
-    if (wishes.settled) query.set('settled', 'true');
-    return xhrUpload(`/api/identity/${root}/groups/${group}/publish/drawing?${query}`, picture);
-}
-
 /// Duplicate a drawing (DRAWING.md): the node's own private copy door, strokes and tags and all, into
 /// the Drawing app's bucket. Returns the new drawing's id.
 export async function duplicateDrawing(root, docId) {
@@ -985,16 +958,12 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const [actionError, setActionError] = useState(null);
     const [busy, setBusy] = useState(false);
 
-    // The publish bar (doc/publishbar.js), shared with Writer: the drawing's door, and "does it
-    // differ?" answered by the node's note of which version it last published (`published_head`) -
-    // any stroke since moves the drawing's head past it.
-    const publishThis = async (extra) => {
+    // The publish bar (doc/publishbar.js), shared with Writer: what publishes is the drawing's
+    // flattened picture, and "does it differ?" is answered by the node's note of which version it
+    // last published (`published_head`) - any stroke since moves the drawing's head past it.
+    const prepare = async () => {
         await session.save(); // the node publishes the drawing's saved state as its draft
-        return publishDrawing(root, docId, drawing, extra || {});
-    };
-    const publishToGroup = async (group, wishes) => {
-        await session.save();
-        return publishDrawingToGroup(root, docId, drawing, group, wishes);
+        return { picture: await flattenToBlob(root, drawing) };
     };
     const row = session.row;
     const differs = !!(
@@ -2550,7 +2519,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         <div class="drawing">
             ${header}
             ${pickingImage && html`<${ImagePickModal} root=${root} drawings=${true} DrawingThumb=${DrawingThumb} onPick=${placePicture} onClose=${() => setPickingImage(false)} />`}
-            ${(!chipMenu.narrow || publishOpen) && html`<${PublishBar} root=${root} docId=${docId} row=${row} publish=${publishThis} differs=${differs} diffHref=${null} publishToGroup=${publishToGroup} />`}
+            ${(!chipMenu.narrow || publishOpen) && html`<${PublishBar} root=${root} docId=${docId} row=${row} prepare=${prepare} differs=${differs} diffHref=${null} />`}
             <div
                 class="drawing-stage"
                 ref=${stageRef}

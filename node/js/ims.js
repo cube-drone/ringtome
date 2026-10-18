@@ -3,6 +3,7 @@
 // already exists before minting a second beside it. The minting lives here rather than in
 // the Chat app because the button that starts a chat sits on a person's page.
 import { api } from './net.js';
+import { publishTo } from './doc/publish.js';
 import { speakable } from './speakable.js';
 
 /// The bucket a room's draft sits in - what makes it a chat rather than a note.
@@ -31,15 +32,12 @@ export async function openIm(root, other, name) {
         `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(CHAT_STYLE)}`,
         { method: 'PUT' },
     );
-    const posted = await api(`/api/identity/${root}/docs/${made.doc_id}/publish`, {
-        method: 'POST',
-        body: JSON.stringify({
-            room: true,
-            im: true,
-            trusted_only: true,
-            audience: '@mentioned',
-            tz_offset_min: new Date().getTimezoneOffset(),
-        }),
-    });
+    // One publish (doc/publish.js): a room sealed to the people its words name - the one other.
+    const posted = await publishTo(
+        root,
+        made.doc_id,
+        { words: true },
+        { choice: 'mentioned', room: true, im: true },
+    );
     return { author: root, doc_id: posted.post_id };
 }

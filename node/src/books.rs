@@ -642,12 +642,11 @@ async fn rollout(
     }
     // In public as a public group (plans/PUBLIC_GROUPS.md): the book post is the group's, and its
     // pages with it.
-    if let Some(g) = facts.as_group.as_deref() {
-        let g = crate::roster::group_of(g).map_err(|e| anyhow!("{e:?}"))?;
-        crate::roster::claim_public(state, data, root, g, minted)
-            .await
-            .map_err(|e| anyhow!("the book couldn't be the group's: {e:?}"))?;
-    }
+    let to = crate::publication::To::of(None, facts.as_group.as_deref())
+        .map_err(|e| anyhow!("{e:?}"))?;
+    crate::publication::claim(state, data, root, &to, minted)
+        .await
+        .map_err(|e| anyhow!("the book couldn't be the group's: {e:?}"))?;
     let front = match cover_doc {
         Some(page) => Some(front_matter(data, &page).await?),
         None => None,
@@ -812,15 +811,14 @@ fn section_payload(s: &Section, page: &dyn Fn(&[u8; 16]) -> Option<PagePayload>)
 /// The union of every page's tags, said in public about the book (capped like a post's
 /// own), plus the notebook as the book's bucket; whatever was said before and is not wanted
 /// now is unsaid.
-/// A page's claimed date (PUBLISH.md's `display_date`), resolved in the asking device's zone.
+/// A page's claimed date (PUBLISH.md's `display_date`), resolved in the asking device's zone, as
+/// every road reads it (crate::publication).
 async fn claimed_date(
     data: &store::Store,
     page: &[u8; 16],
     tz_offset_min: i32,
 ) -> Result<Option<i64>> {
-    Ok(data.annotations().field(page, store::DISPLAY_DATE).await?.and_then(|v| {
-        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min)
-    }))
+    crate::publication::claimed(data, page, tz_offset_min).await.map_err(|e| anyhow!("{e:?}"))
 }
 
 /// What the book takes from its title page, as the Publish column compares it (pure/books.js

@@ -13,7 +13,7 @@ import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { publishedState } from '../pure/feed.js';
 import { lineDiff, sameWords } from '../pure/wordsdiff.js';
-import { publishWithBaking, BakeModal } from './publish.js';
+import { publishTo, BakeModal } from './publish.js';
 import { postHref, docHref } from '../links.js';
 import { useUnlocked } from '../unlocks.js';
 
@@ -62,7 +62,7 @@ export const DiffPage = ({ doc, current }) => {
         setPublishing(true);
         setError(null);
         try {
-            await publishWithBaking(root, doc, setBaking);
+            await publishTo(root, doc, { words: true }, { onBaking: setBaking });
             setNote(t('doc.diffpage.your-changes-are-public', 'your changes are public'));
         } catch (e) {
             setError(e.message);

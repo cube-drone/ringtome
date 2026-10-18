@@ -760,6 +760,64 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         );
     });
 
+    it("a group post's media are read as the public road reads them (plans/ONE_PUBLISH.md, slice 4)", async () => {
+        const words = async (title, body) =>
+            (
+                await (
+                    await j(bea, `api/identity/${beaRoot}/docs`, { title, body, format: 'marquee' })
+                ).json()
+            ).doc_id;
+        const publish = (doc) =>
+            j(bea, `api/identity/${beaRoot}/groups/${group}/publish`, { doc, tz_offset_min: 0 });
+        const shown = async (post) =>
+            ((await page(HOST_B, bea, beaRoot)).find((p) => p.doc === post) || {}).words;
+
+        // A picture that names nothing is left out, and the rest posts.
+        const gone = `/api/identity/${beaRoot}/docs/${'cd'.repeat(16)}/body/moved.apng`;
+        const dropped = await publish(
+            await words('still posting', `the words stay\n\n![a [moved] picture](${gone})`),
+        );
+        const droppedText = await dropped.text();
+        assert.equal(dropped.status, 200, droppedText);
+        assert.equal((await shown(JSON.parse(droppedText).post)).trim(), 'the words stay');
+
+        // A link to a note says no notebook's name.
+        const note = '0f'.repeat(16);
+        const linked = await publish(
+            await words(
+                'a link',
+                `see [my note](/ringtome/user/bea/doc/${note}?bucket=secret-plans)`,
+            ),
+        );
+        const linkedText = await linked.text();
+        assert.equal(linked.status, 200, linkedText);
+        const said = await shown(JSON.parse(linkedText).post);
+        assert.ok(said.includes(`/doc/${note})`), `the link stays: ${said}`);
+        assert.ok(!said.includes('secret-plans'), 'without the notebook it was made in');
+
+        // One of the app's own pictures is filed as bea's first, then carried as the group's.
+        const listed = (await (await bea(`api/identity/${beaRoot}/docs`)).json()).docs;
+        const sticker = listed.find((d) => d.builtin && d.format === 'apng');
+        assert.ok(sticker, 'a built-in picture to post');
+        const stickered = await words(
+            'a sticker',
+            `hello\n\n![s](/api/identity/${beaRoot}/docs/${sticker.doc_id}/body/s.apng)`,
+        );
+        let posted = null;
+        for (let i = 0; i < 40 && !posted; i++) {
+            const r = await publish(stickered);
+            const text = await r.text();
+            if (r.status === 200) posted = JSON.parse(text).post;
+            else {
+                assert.match(text, /still being made/, 'a moment away, said in words');
+                await wait(300);
+            }
+        }
+        assert.ok(posted, 'posted once its copy was made');
+        const there = (await page(HOST_B, bea, beaRoot)).find((p) => p.doc === posted);
+        assert.equal(there.media.length, 1, "the sticker is the group's media document");
+    });
+
     it('a member mentioned in a group post, or whose post is labelled, hears it in the bell', async () => {
         const { speakable } = await import('../../js/speakable.js');
         const bell = async (who, root, kind, doc) =>
@@ -1019,6 +1077,13 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             (g) => g.group === group,
         );
         assert.ok(listed.drafts.includes(drawn.doc_id), 'the drawing knows where it went');
+        // And which of its versions it published, as a public drawing does - so the bar can tell
+        // when it has changed since (plans/ONE_PUBLISH.md, slice 5).
+        const a = await (
+            await bea(`api/identity/${beaRoot}/docs/${drawn.doc_id}/annotations`)
+        ).json();
+        const fields = Array.isArray(a.fields) ? Object.fromEntries(a.fields) : a.fields || {};
+        assert.ok(fields.published_head, `the version it published: ${JSON.stringify(fields)}`);
 
         // Again: the same post, a new picture.
         assert.equal(await posted(), drawing, 'publishing again edits the post');

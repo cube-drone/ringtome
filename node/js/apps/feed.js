@@ -75,15 +75,10 @@ import { useLocation } from 'preact-iso';
 import { groupPostHref, postHref } from '../links.js';
 import { t } from '../i18n.js';
 import { askText, askYes } from '../modal.js';
-import {
-    PostEntry,
-    Composer,
-    useOwnPostEditing,
-    publishWithBaking,
-    BakeModal,
-} from '../postentry.js';
+import { PostEntry, Composer, useOwnPostEditing, BakeModal } from '../postentry.js';
+import { publishTo } from '../doc/publish.js';
 import { tagCounts } from '../pure/contacttags.js';
-import { asGroupOfChoice, groupOfChoice, sealOfChoice } from '../pure/audience.js';
+import { choiceOfDraft, groupOfChoice, sealOfChoice } from '../pure/audience.js';
 import { AudienceSelect } from '../audience.js';
 import { SAVED_FEEDS, feedSettings, readSaved, sameFeed, savedValue } from '../pure/savedfeeds.js';
 import { groupFeeds, groupFeedOn, groupPostItem } from '../pure/groups.js';
@@ -189,6 +184,7 @@ const StackItem = ({ root, row, onPost, posting }) => {
         }
     };
     const when = formatWhen(createdMs(row));
+    const refusedPlan = ((row.fields && row.fields.publish_refused) || '').trim();
     if (blank) return null;
     return html`
         <article class=${state.published ? 'feed-item feed-item-posted' : 'feed-item'}>
@@ -227,6 +223,17 @@ const StackItem = ({ root, row, onPost, posting }) => {
                 setting it in heading type says the author called it that. */ ''
             }
             ${!open && !!row.title && html`<h2 class="feed-item-title">${row.title}</h2>`}
+            ${
+                /* A plan its day refused (plans/ONE_PUBLISH.md, ruling 3): the draft says why,
+                until it's posted or scheduled again. */ ''
+            }
+            ${
+                !state.published &&
+                refusedPlan &&
+                html`<p class="form-error">
+                    ${t('doc.editor.not-posted-on-its-day', 'not posted on its day: {why}', { why: refusedPlan })}
+                </p>`
+            }
             ${
                 open
                     ? html`<${Composer}
@@ -1075,11 +1082,6 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         loc.route(loc.path, true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [askedAsGroup, ofGroups]);
-    const sealNext = sealOfChoice(audienceNext);
-    // In public, as a public group (plans/PUBLIC_GROUPS.md): an open post the group counts too.
-    const asGroupNext = asGroupOfChoice(audienceNext);
-    const trustNext = !!sealNext;
-    const audienceTag = (sealNext && sealNext.audience) || '';
     const audienceTags = tagCounts(contactRows || []).map((c) => c.value);
 
     const post = async (docId) => {
@@ -1088,23 +1090,24 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         // The wishes this post rides out with, caught before the checkboxes reset: the
         // fresh card wears them from the first second (a headless drive on 2026-09-03
         // showed the "trusted only" chip arriving only with the reload).
-        // A draft's own seal wish (a copy of a sealed post, copyinto.js) holds unless the
-        // toggle says otherwise - the toggle is the composer's, not this draft's.
-        let wished = false;
-        let standingAudience = '';
+        // A draft's own seal wish (a copy of a sealed post, copyinto.js) or the list its last
+        // publish named holds unless the select picks otherwise - the select is the composer's,
+        // fresh for every post, so "everyone" there is nothing picked, not a word for this draft.
+        let fields = null;
         try {
             const row = await openMirror(root).docs.get(posted);
-            wished = !!(row && row.fields && row.fields.seal === 'yes');
-            standingAudience = (row && row.fields && row.fields.audience) || '';
+            fields = (row && row.fields) || null;
         } catch {
             /* no mirror row: no wish */
         }
+        const choice = audienceNext || choiceOfDraft(fields);
         // The list too (Curtis, 2026-09-14: a fresh card read "trusted only" until the
         // reload): chosen now, or standing on the draft from its last publish.
+        const seal = sealOfChoice(choice);
         const wishes = {
             settled: settleNext,
-            trusted_only: trustNext || wished || !!standingAudience,
-            audience: audienceTag || standingAudience || undefined,
+            trusted_only: !!seal,
+            audience: (seal && seal.audience) || undefined,
         };
         setPosting(true);
         setError(null);
@@ -1115,23 +1118,18 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
             minting.current = false;
             mintDraft(); // deliberately not awaited - it carries its own error path
         }
+        // One publish (doc/publish.js `publishTo`), wherever the choice says.
+        const sent = { choice, fields, settled: settleNext, onBaking: setBaking };
         if (groupNext) {
             try {
-                const made = await api(`/api/identity/${root}/groups/${groupNext}/publish`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        doc: posted,
-                        settled: settleNext,
-                        tz_offset_min: new Date().getTimezoneOffset(),
-                    }),
-                });
+                const made = await publishTo(root, posted, { words: true }, sent);
                 setSettleNext(false);
                 setAudienceNext('');
                 setPosting(false);
                 settle();
                 // Scheduled, it waits on the draft's plan; posted, to its own page, inside its group -
                 // drawn there at once from what this composer knows, until the node's card answers.
-                if (made.post) {
+                if (made.post_id) {
                     setInGroups((held) => new Set(held).add(posted));
                     const draft = await openMirror(root)
                         .docs.get(posted)
@@ -1143,14 +1141,14 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
                     holdGroupPost(
                         groupPostItem({
                             root,
-                            post: made.post,
+                            post: made.post_id,
                             draft,
                             group: into,
                             settled: settleNext,
                             now: Date.now(),
                         }),
                     );
-                    loc.route(groupPostHref(groupNext, made.post));
+                    loc.route(groupPostHref(groupNext, made.post_id));
                 }
             } catch (e) {
                 setError(e.message);
@@ -1159,19 +1157,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
             return;
         }
         try {
-            const made = await publishWithBaking(
-                root,
-                posted,
-                setBaking,
-                settleNext || trustNext || asGroupNext
-                    ? {
-                          ...(settleNext ? { settled: true } : {}),
-                          ...(trustNext ? { trusted_only: true } : {}),
-                          ...(audienceTag ? { audience: audienceTag } : {}),
-                          ...(asGroupNext ? { as_group: asGroupNext } : {}),
-                      }
-                    : undefined,
-            );
+            const made = await publishTo(root, posted, { words: true }, sent);
             setSettleNext(false);
             setAudienceNext('');
             if (!made.post_id) {

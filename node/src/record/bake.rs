@@ -576,6 +576,70 @@ impl Progress {
     }
 }
 
+/// What a draft's words embed, as every destination's publish reads them (plans/ONE_PUBLISH.md,
+/// slice 4): the public road's bake below, and a group's (roster.rs `publish`).
+pub(crate) struct Embeds {
+    /// The words with their links to documents made fit for readers (`public_links`): no
+    /// notebook's name, no cozy path that opens nothing for anyone else.
+    pub body: String,
+    pub refs: Vec<MediaRef>,
+    /// The embeds that name nothing - not the author's, not in this build (a built-in whose file
+    /// moved, a picture since deleted): left out, and the rest is published, as a chat line does
+    /// (Curtis, 2026-09-29). `drop_embeds` takes them out of the words.
+    pub missing: Vec<String>,
+}
+
+/// Read `body`'s embeds and say every refusal that needs no baking first:
+///
+/// - **the count cap**, before a byte of bake work: the budget prices the bytes, this prices the
+///   obligations - every ref is a fetch every sharer owes, and fifty distinct embedded documents is
+///   already an album (Curtis, 2026-08-14: "the huge refchain starts to be awkward and it's good
+///   to set a limit somewhere"). Counted on the distinct targets, so it can't be dodged by
+///   embedding one thing repeatedly;
+/// - **the rights fence**: a server whose operator refuses tagged audio refuses the post before a
+///   byte is baked (plans/AUDIO.md, section 8; rights.rs).
+pub(crate) async fn embeds(
+    state: &AppState,
+    data: &crate::record::store::Store,
+    root_hex: &str,
+    body: &str,
+) -> Result<Embeds, AppError> {
+    let body = public_links(body, root_hex);
+    let refs = media_refs(&body, root_hex);
+    if refs.len() > ringtome_proto::DocHeaderPlain::MAX_REFS {
+        return Err(AppError::BadRequest(crate::msg!(
+            "record.bake.post-embeds-too-many-documents",
+            "this post embeds {count} documents - one post may carry {cap}. A collection this size wants to be several posts.",
+            count = refs.len(),
+            cap = ringtome_proto::DocHeaderPlain::MAX_REFS
+        )));
+    }
+    if refs.is_empty() {
+        return Ok(Embeds { body, refs, missing: Vec::new() });
+    }
+    crate::rights::refuse_if_fenced(state, data, &refs).await?;
+    let named: Vec<[u8; 16]> = refs
+        .iter()
+        .filter_map(|r| match r {
+            MediaRef::PrivateDoc { doc_id, .. } => Some(*doc_id),
+            _ => None,
+        })
+        .collect();
+    let held = data.documents().held(&named).await?;
+    let missing = refs
+        .iter()
+        .filter_map(|r| match r {
+            MediaRef::PrivateDoc { target, doc_id }
+                if crate::builtin::get(doc_id).is_none() && !held.contains(doc_id) =>
+            {
+                Some(target.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    Ok(Embeds { body, refs, missing })
+}
+
 /// Publication, with the media pre-pass: THE door the publish route calls.
 pub async fn publish(
     state: &AppState,
@@ -618,28 +682,13 @@ pub async fn publish_reporting(
             "this note's words haven't arrived on this computer yet"
         ))
     })?;
-    // Links to documents, made fit for the public before anything else reads the words.
-    let body = public_links(&body, root_hex);
-
-    let refs = media_refs(&body, root_hex);
+    // What the words embed, read as every destination reads them (`embeds`): the links made fit,
+    // the count cap and the rights fence said before a byte is baked, the missing named.
+    let Embeds { body, refs, missing } = embeds(state, data, root_hex, &body).await?;
     if refs.is_empty() {
         return Ok(Outcome::Posted(
             docs.publish(doc_id, Some(body), Vec::new(), reply, flags).await?,
         ));
-    }
-    // The COUNT cap, before a byte of bake work: `media_budget` below prices the bytes, this
-    // prices the obligations - every ref is a fetch every sharer owes, and fifty distinct
-    // embedded documents is already an album (Curtis, 2026-08-14: "the huge refchain starts
-    // to be awkward and it's good to set a limit somewhere"). Checked on the distinct-target
-    // list so it cannot be dodged by embedding one thing repeatedly, and checked here so an
-    // over-count post costs a refusal, never fifty transcodes first.
-    if refs.len() > ringtome_proto::DocHeaderPlain::MAX_REFS {
-        return Err(AppError::BadRequest(crate::msg!(
-            "record.bake.post-embeds-too-many-documents",
-            "this post embeds {count} documents - one post may carry {cap}. A collection this size wants to be several posts.",
-            count = refs.len(),
-            cap = ringtome_proto::DocHeaderPlain::MAX_REFS
-        )));
     }
 
     // The post's sealing key, minted BEFORE the twins so the pictures seal under the same
@@ -648,9 +697,6 @@ pub async fn publish_reporting(
     // image would be the leak this whole design exists to close - refuse with words.
     // Once sealed, always sealed: a draft that already holds a key seals again whether or
     // not this request says trusted-only (the edit flow never does).
-    // A server whose operator refuses tagged audio refuses the post before a byte is baked
-    // (plans/AUDIO.md, section 8 - the fence; rights.rs).
-    crate::rights::refuse_if_fenced(state, data, &refs).await?;
     let post_key = docs.post_key_if(doc_id, trusted_only).await?;
     if post_key.is_some()
         && refs.iter().any(|r| matches!(r, MediaRef::External { .. } | MediaRef::Foreign { .. }))
@@ -666,18 +712,6 @@ pub async fn publish_reporting(
     let mut sound_twins: Vec<(SoundSource, [u8; 16])> = Vec::new();
     let mut items: Vec<BakeItem> = Vec::new();
     let mut blocked = false;
-    // A picture that names nothing - not the author's, not in this build (a built-in whose file
-    // moved, a picture since deleted) - is left out and the rest is published, as a chat line
-    // does (Curtis, 2026-09-29).
-    let named: Vec<[u8; 16]> = refs
-        .iter()
-        .filter_map(|r| match r {
-            MediaRef::PrivateDoc { doc_id, .. } => Some(*doc_id),
-            _ => None,
-        })
-        .collect();
-    let held = docs.held(&named).await?;
-    let mut missing: Vec<String> = Vec::new();
     // Every item as "pending" until the loop reaches it - the modal's whole list from the start.
     let pending: Vec<BakeItem> = refs
         .iter()
@@ -701,11 +735,7 @@ pub async fn publish_reporting(
             progress.show(&items, &pending[at..]);
         }
         match r {
-            MediaRef::PrivateDoc { target, doc_id: media }
-                if crate::builtin::get(media).is_none() && !held.contains(media) =>
-            {
-                missing.push(target.clone());
-            }
+            MediaRef::PrivateDoc { target, .. } if missing.contains(target) => {}
             MediaRef::PrivateDoc { target, doc_id: media } => {
                 // A picture whose bytes are still ingesting is not a failure - it is a
                 // moment away. Say "ingesting" and let the publish's poll come back, rather
@@ -985,16 +1015,25 @@ pub(crate) async fn media_budget(
     data: &crate::record::store::Store,
     baked: &[[u8; 16]],
 ) -> Result<(), AppError> {
+    let mut hashes: Vec<[u8; 32]> = Vec::new();
+    for media in baked {
+        if let Some(head) = crate::record::documents::public_head(data.db(), media).await? {
+            hashes.push(head.file_hash);
+        }
+    }
+    media_budget_of(state, &hashes).await
+}
+
+/// The budget over the blobs a post's media are, by their hashes - a group's media documents as
+/// well as public twins: the same picture twice is one blob on every node that carries it.
+pub(crate) async fn media_budget_of(state: &AppState, hashes: &[[u8; 32]]) -> Result<(), AppError> {
     let mut seen: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
     let mut total: u64 = 0;
-    for media in baked {
-        let Some(head) = crate::record::documents::public_head(data.db(), media).await? else {
+    for hash in hashes {
+        if !seen.insert(*hash) {
             continue;
-        };
-        if !seen.insert(head.file_hash) {
-            continue; // the same picture twice is one blob on every node that carries it
         }
-        total += state.files.size_of(head.file_hash.into()).await.unwrap_or(0);
+        total += state.files.size_of((*hash).into()).await.unwrap_or(0);
     }
     if total > MAX_POST_MEDIA_BYTES {
         return Err(AppError::BadRequest(crate::msg!(

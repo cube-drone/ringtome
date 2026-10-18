@@ -32,6 +32,8 @@ import { Annotations } from './annotations.js';
 import { isTextDoc } from '../pure/feed.js';
 import { postHref, docHref, groupPostHref } from '../links.js';
 import { groupFeeds } from '../pure/groups.js';
+import { asGroupOfChoice, groupOfChoice } from '../pure/audience.js';
+import { AudienceSelect } from '../audience.js';
 
 const ROLLOUT_KV = 'book_rollout';
 
@@ -283,11 +285,11 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                 // The zone the title page's and the pages' claimed dates resolve in.
                 body: JSON.stringify({
                     ...(published ? {} : wishes),
-                    ...(!published && where.startsWith('group:')
-                        ? { group: where.slice(6), trusted_only: false }
+                    ...(!published && groupOfChoice(where)
+                        ? { group: groupOfChoice(where), trusted_only: false }
                         : {}),
-                    ...(!published && where.startsWith('as-group:')
-                        ? { as_group: where.slice(9), trusted_only: false }
+                    ...(!published && asGroupOfChoice(where)
+                        ? { as_group: asGroupOfChoice(where), trusted_only: false }
                         : {}),
                     tz_offset_min: new Date().getTimezoneOffset(),
                 }),
@@ -411,23 +413,13 @@ export const BookColumn = ({ root, bucket, docs, facts, tree, onTuck, onSelect }
                           groups.length > 0 &&
                           html`<label class="book-switch">
                           ${t('doc.bookcol.publish-to', 'publish to')}
-                          <select value=${where} onChange=${(e) => setWhere(e.currentTarget.value)}>
-                              <option value="">${t('audience.everyone', 'everyone')}</option>
-                              <optgroup label=${t('audience.your-groups', 'your groups')}>
-                                  ${groups.map((g) => html`<option value=${`group:${g.group}`} key=${g.group}>${g.name}</option>`)}
-                              </optgroup>
-                              ${
-                                  groups.some((g) => g.public) &&
-                                  html`<optgroup label=${t('audience.in-public-as-a-group', 'in public, as a group')}>
-                                      ${groups
-                                          .filter((g) => g.public)
-                                          .map(
-                                              (g) =>
-                                                  html`<option value=${`as-group:${g.group}`} key=${`as-${g.group}`}>${g.name}</option>`,
-                                          )}
-                                  </optgroup>`
-                              }
-                          </select>
+                          <${AudienceSelect}
+                              value=${where}
+                              onChange=${setWhere}
+                              sealing=${false}
+                              groups=${groups}
+                              mentions=${false}
+                          />
                       </label>`
                       }`
                   }

@@ -135,10 +135,10 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
     `;
 };
 
-// `publishWithBaking` and `BakeModal` live in doc/publish.js now (Writer's chip uses them
-// too, and doc/editor.js cannot import this module without a cycle); re-exported for the
-// surfaces that always found them here.
-import { publishWithBaking, BakeModal } from './doc/publish.js';
+// The one publish and `BakeModal` live in doc/publish.js (Writer's bar uses them too, and
+// doc/editor.js cannot import this module without a cycle); the modal is re-exported for the
+// surfaces that always found it here.
+import { publishTo, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
 import {
     postHref,
@@ -155,7 +155,7 @@ import {
 import { QrChip } from './qr.js';
 import { RoomTitle, BookTitle } from './roomtitle.js';
 import { formatWhen } from './pure/when.js';
-export { publishWithBaking, BakeModal };
+export { BakeModal };
 
 /**
  * The editing wiring for posts that are YOURS, resolved off your own mirror. Returns
@@ -175,7 +175,7 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
     const post = async (privDocId) => {
         setPosting(true);
         try {
-            await publishWithBaking(myRoot, privDocId, setBaking);
+            await publishTo(myRoot, privDocId, { words: true }, { onBaking: setBaking });
         } finally {
             setPosting(false);
         }
