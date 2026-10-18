@@ -1024,6 +1024,8 @@ function useFitted(svg) {
 /// side, a length, a brand, stripes, where the words go (pure/cassette.js).
 /// On a phone the bar has no room for the thumbs (Curtis, 2026-10-13), so the cassette's page
 /// carries them, under the cassette: `rating` and `onRate` as the bar takes them.
+/// The cassette is the play button too (Curtis, 2026-10-18): a press pauses it or plays it on, and
+/// so does Enter while it has the focus (Space already does, anywhere in hrseAmp).
 export const Cassette = ({ rating = '', onRate = null }) => {
     const p = usePlayer();
     const svg = useRef(null);
@@ -1033,6 +1035,12 @@ export const Cassette = ({ rating = '', onRate = null }) => {
     useFitted(svg);
     if (!p) return null;
     const { current, playing, me } = p;
+    const press = playing ? t('player.pause', 'pause') : t('player.play', 'play');
+    const onKey = (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (current) p.toggle();
+    };
     const reels = [100, 220];
     const look = cassetteLook(current && current.key);
     const stacked = look.layout === 'stacked';
@@ -1110,7 +1118,7 @@ export const Cassette = ({ rating = '', onRate = null }) => {
         }
         <div class="cassette-stage">
         <div class="cassette-floor" ref=${floor}></div>
-        <svg ref=${svg} class=${`cassette ${look.style} ${look.font.cls}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" role="img" aria-label=${t('player.a-cassette', 'a cassette')}>
+        <svg ref=${svg} class=${`cassette ${look.style} ${look.font.cls}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" role="button" tabindex="0" aria-label=${press} title=${press} onClick=${() => current && p.toggle()} onKeyDown=${onKey}>
             <defs>
                 <clipPath id="cassette-window-clip">
                     <rect x="70" y="72" width="180" height="40" rx="20" />

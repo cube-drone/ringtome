@@ -1892,7 +1892,6 @@ export default {
     'player.levelling-off': 'levelling: off - every song plays as loud as it was made',
     'player.shrink': 'back to the list',
     'player.expand': 'fill the page',
-    'player.a-cassette': 'a cassette',
     'player.open-hrseamp': 'open hrseAmp',
     'player.open-in-hrseamp': 'open hrseAmp',
 

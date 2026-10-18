@@ -573,6 +573,22 @@
     will-change: transform;
 }
 
+/* A press on it pauses and plays (Curtis, 2026-10-18), without selecting the label's words. */
+.cassette[role='button'] {
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.cassette[role='button']:focus {
+    outline: none;
+}
+
+.cassette[role='button']:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 4px;
+}
+
 .cassette-floor {
     position: absolute;
     left: 4%;

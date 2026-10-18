@@ -23492,3 +23492,9 @@ oldest pin first. The car's lists put them first too. Pins are private registers
 forgetting a list takes its pin. Checked by vectors and by a jsdom probe on a
 scratch node: two pinned, a reload keeping them, one unpinned back into its
 group.
+
+**The cassette is a play button** (Curtis, same day: "clicking on the cassette
+should pause/play the current song"). The big cassette is now a button: a press
+pauses or plays on, Enter does the same while it has the focus, and Space still
+works anywhere in hrseAmp. Its label reads "pause" or "play" rather than "a
+cassette". Covered by the UI gate only; not tried in a browser.
