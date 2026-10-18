@@ -505,10 +505,9 @@ export default {
     'apps.feed.save-into-title': 'keep these settings in "{name}", in place of what it held',
     'apps.feed.save-filter-title': 'keep these settings as a feed of their own, in the Feeds column',
     'apps.feed.sort-title': 'newest first; hot - newer posts, lifted an hour for every like from the people you trust and follow; or the best they liked',
+    'apps.feed.nothing-in-your-feed-says-that': 'nothing in your feed says that.',
     'apps.feed.nothing-in-this-window': 'nothing in your feed was posted in this window.',
     'apps.feed.nothing-here-yet---follow': 'nothing here yet - follow someone, or write something on the left.',
-    'apps.feed.searching': 'searching…',
-    'apps.feed.nothing-in-your-feed-says-that': 'nothing in your feed says that.',
     'apps.feed.nothing-at-this-selectivity': 'nothing at this selectivity - slide toward Explorer to widen the feed.',
     'apps.feed.reading-further-back': 'reading further back…',
     'apps.feed.couldnt-reach-further-back--': "couldn't reach further back - try again",
@@ -608,6 +607,7 @@ export default {
     'apps.people.sort-by-trust': 'by trust',
     'apps.people.sort-by-interest': 'by interest',
     'apps.people.sort-by-recent-activity': 'by recent activity',
+    'apps.people.search-the-group': 'search the group, or paste an address…',
     'apps.people.filter-or-paste-an-address': 'filter, or paste an address…',
     'apps.people.type-to-narrow-the-shelf': 'search or paste an address',
     'apps.people.people-who-are-also-me': 'people who are also me',
@@ -1506,6 +1506,7 @@ export default {
     'apps.groups.found-a-group': 'found a group',
     'apps.groups.public-group': 'public',
     'apps.groups.public-explained': "A public group's members are listed for anyone to see, and its members can post in public as the group - those posts reach their followers. Its other posts stay members-only. It can't be made private later.",
+    'apps.groups.no-group-matches': 'no group of yours is called that.',
     'apps.groups.no-groups-yet': "no groups yet - found one, or wait for someone's invite.",
     'apps.groups.fetching': 'fetching the group…',
     'apps.groups.youre-invited': "you're invited. Joining shows everyone in it who you are, and lets you read and post here.",
@@ -1551,10 +1552,13 @@ export default {
     'apps.groups.new-chat': 'new chat',
     'apps.groups.general': '#general',
     'apps.groups.open-general': 'open its #general',
+    'apps.groups.chats-want-two-letters': 'a chat search wants two letters or more.',
+    'apps.groups.nothing-said-in-its-chats': 'nothing said in its chats says that.',
     'apps.groups.private-posts': 'private posts',
     'apps.groups.new-post': 'new post',
-    'apps.groups.nothing-posted-yet': 'nothing posted here yet.',
     'apps.groups.pinned': 'pinned',
+    'apps.groups.no-private-post-says-that': 'no private post here says that.',
+    'apps.groups.nothing-posted-yet': 'nothing posted here yet.',
     'apps.groups.post-not-here': "this post isn't here - it may have been taken down or hidden, or you may not be in its group.",
     'apps.groups.fetching-the-post': 'fetching the post…',
 
@@ -2002,6 +2006,11 @@ export default {
     'posthistory.first-published': 'first published',
     'posthistory.not-held': 'this computer no longer has these words',
 
+    // --- node/js/postlist.js ---
+    'posts.searching': 'searching…',
+    'posts.reading-further-back': 'reading further back…',
+    'posts.load-more': 'load more',
+
     // --- node/js/postpage.js ---
     'postpage.other-authors-in-the-copy-chain': 'Other Authors in the Copy Chain',
     'postpage.reply-order-old': 'oldest first',
@@ -2041,10 +2050,7 @@ export default {
     'posts.pinned': 'pinned',
     'posts.matching-posts': 'matching posts',
     'posts.recent-posts': 'recent posts',
-    'posts.searching': 'searching…',
     'posts.nothing-they-said-says-that': 'nothing they said says that.',
-    'posts.reading-further-back': 'reading further back…',
-    'posts.load-more': 'load more',
 
     // --- node/js/progress.js ---
     'progress.share': '{percent}% - {done} of {total}',

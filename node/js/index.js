@@ -373,10 +373,13 @@ const Inside = ({ session }) => {
     // A person's page filters too (2026-09-07), from the same slot; the query is the
     // page's, so walking to another person - or another app - starts it blank.
     const idSeg = inId ? (ref ? ref.seg : loc.path.split('/')[1] || '') : null;
+    // So does each of People's places (2026-10-18): the people, the groups, and each group's
+    // page, whose search is that group's.
+    const peopleAt = (loc.path.match(/^\/ringtome\/people(\/groups(\/[^/]+)?)?\/?$/) || [])[0];
     useEffect(() => {
         setQuery('');
         setSearchKind('all');
-    }, [appHereId, idSeg]);
+    }, [appHereId, idSeg, peopleAt]);
 
     // The bucket in view, and the way to change it (buckets.js owns the state machine: the
     // last-open memory, cozy addresses outranking it, and the deep-link correction).
@@ -715,8 +718,8 @@ const Inside = ({ session }) => {
             <${SettingsMoved} path="/ringtome/persona/:page" />
             <${SettingsMoved} path="/ringtome/persona/:page/*" />
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
-            <${PeopleApp} path="/ringtome/people/groups" tab="groups" current=${persona.current} />
-            <${GroupPage} path="/ringtome/people/groups/:group" current=${persona.current} />
+            <${PeopleApp} path="/ringtome/people/groups" tab="groups" current=${persona.current} searchQuery=${query} />
+            <${GroupPage} path="/ringtome/people/groups/:group" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
             <${ToGroup} path="/ringtome/groups/:group" />
             <${GroupPostPage} path="/ringtome/people/groups/:group/posts/:doc" current=${persona.current} />
             <${GroupPostPage} path="/ringtome/people/groups/:group/posts/:doc/page/:page" current=${persona.current} />

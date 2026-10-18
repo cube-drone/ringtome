@@ -23498,3 +23498,60 @@ should pause/play the current song"). The big cassette is now a button: a press
 pauses or plays on, Enter does the same while it has the focus, and Space still
 works anywhere in hrseAmp. Its label reads "pause" or "play" rather than "a
 cassette". Covered by the UI gate only; not tried in a browser.
+
+## 2026-10-18: People's search reaches groups
+
+Curtis: "in the 'people' app, searching at the top filters people but not
+groups. Once a group has been opened, the search bar should search within the
+group's posts: abandoning the 'tab' system and searching public posts, private
+posts, and chats."
+
+- **The groups list** filters by name as the people shelf does.
+- **A group's page**: words in the header replace its three tabs with one view
+  of what they found, in the tabs' order. A public group's public posts (its
+  feed's own search, `GroupFeed`), then a member's private posts (the feed
+  narrowed to the group, under the private tab's picks), then the lines said in
+  the group's rooms. Clearing the box brings the tabs back. A pasted address
+  still navigates, and the placeholder says the box searches the group. Each of
+  People's places starts its search blank.
+- **The chat search** takes `group=`: `chat::search` keeps to the rooms the node
+  holds as that group's (`group_rooms`), in both its plain and sealed passes. A
+  chat hit opens its room at the line, as in the chat app, whose `SearchResults`
+  the page reuses.
+- **Rooms by name** (Curtis, same day: "genera" found nothing in chats, though
+  #general showed among the private posts). The lines' search never read a
+  room's name, and a fresh #general has no lines. Rooms whose names hold the
+  words now come first in the chat results, out of the persona's rooms listing
+  (`roomsNamed`), on the group's page and in the chat app alike. On the group's
+  page a room is listed under its chats and left out of its private posts.
+- **Marked finds**: the private posts mark the words they were found by, as the
+  feed and a person's page do. They also say "searching…" while asked.
+- **One chat search**: `useRoomSearch` is the chat app's and the group page's
+  ask, keyed to the words it answers. Before, a render between new words and
+  their asking showed the old words' lines.
+- Checked by a claim in `grouprooms.cjs` (narrowed to the group, to another
+  group, a bad id refused) and a jsdom probe on a scratch node: the groups
+  filtered, and a public group's post, private post and #general line all found
+  with the tabs gone and the finds marked, #general found by "genera" under
+  chats and not under private posts, no stale lines, the tabs back once cleared.
+
+## 2026-10-18: one list of posts
+
+Curtis, after the group search: "please do that unification pass, it sounds like
+it could save us time down the road."
+
+Every post surface drew the same lines by hand: "searching…" while the header's
+search was asked, its own words for nothing found, the empty listing, the cards
+with the words they were found by marked, the error, and "load more" for the
+listing or for the search. The copies had drifted. A group's private posts
+marked nothing and said nothing while asked, and each surface ordered the lines
+its own way. `js/postlist.js` `PostList` now draws them for the feed, a person's
+page (`posts.js`), a public group's feed (`publicgroup.js`) and a group's
+private posts (`groups.js`). Each gives its items, its card and its own words. A
+search pages by the shelf's cursor in one place (it was copied in two). The
+pinned strips and the feed's own lines (its dial, its window, its null state and
+its "further back") stay the surfaces' own: they differ on purpose.
+
+Checked by the jsdom probe on a scratch node, which now also drives the feed's
+and a person's page's search: finds marked on all four, and each surface's own
+words for a search that finds nothing.

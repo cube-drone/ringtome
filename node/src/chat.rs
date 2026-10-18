@@ -1966,11 +1966,13 @@ const SEARCH_SCAN: i64 = 500;
 /// were said, matched without regard for case, newest first. Sealed rooms open with the key
 /// this node holds for them and stay shut without it; a muted speaker's lines are no more
 /// searchable than they are readable; a deleted line is gone here too, and an edited one
-/// matches its newest words.
+/// matches its newest words. Given a group, only its rooms (Curtis, 2026-10-18: a group's page
+/// searches its chats with its posts).
 pub async fn search(
     state: &AppState,
     viewer_hex: &str,
     needle: &str,
+    group: Option<&ringtome_proto::roster::GroupId>,
     limit: usize,
 ) -> Result<Vec<Hit>, AppError> {
     let needle = needle.trim().to_lowercase();
@@ -1978,6 +1980,8 @@ pub async fn search(
         return Ok(Vec::new());
     }
     let mut hits: Vec<Hit> = Vec::new();
+    // No group is every room; a group, the rooms the node holds as its.
+    let in_group = group.map(|g| g.to_vec()).unwrap_or_default();
     // Rooms whose words are in the clear: the database matches them itself, every room at
     // once, newest first.
     let plain: Vec<PlainHit> = state
@@ -1988,8 +1992,11 @@ pub async fn search(
              WHERE deleted = 0 AND notice_kind IS NULL
                AND (CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END) = 0
                AND instr(lower(CAST(COALESCE(edit_body, body) AS TEXT)), ?1) > 0
+               AND (length(?3) = 0 OR EXISTS (SELECT 1 FROM group_rooms g
+                    WHERE g.room_author = room_messages.room_author
+                      AND g.room_doc = room_messages.room_doc AND g.group_id = ?3))
              ORDER BY said_ms DESC, seq DESC LIMIT ?2",
-            (needle.as_str(), SEARCH_SCAN),
+            (needle.as_str(), SEARCH_SCAN, in_group.clone()),
         )
         .await
         .context("searching the rooms held here")
@@ -2001,8 +2008,11 @@ pub async fn search(
         .fetch_all(
             "SELECT room_author, room_doc FROM room_messages
              WHERE (CASE WHEN edit_body IS NULL THEN sealed ELSE edit_sealed END) = 1
+               AND (length(?1) = 0 OR EXISTS (SELECT 1 FROM group_rooms g
+                    WHERE g.room_author = room_messages.room_author
+                      AND g.room_doc = room_messages.room_doc AND g.group_id = ?1))
              GROUP BY room_author, room_doc ORDER BY MAX(said_ms) DESC",
-            (),
+            (in_group,),
         )
         .await
         .context("listing the sealed rooms to search")

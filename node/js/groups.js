@@ -29,7 +29,9 @@ import { GroupThread, ParentContexts } from './postpage.js';
 import { BookReader } from './doc/bookreader.js';
 import { GroupFeed, PublicGroupPage } from './publicgroup.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
-import { narrowParams } from './postsearch.js';
+import { narrowParams, useSearch } from './postsearch.js';
+import { SearchResults, roomsNamed, useRoomSearch } from './apps/chat.js';
+import { PostList } from './postlist.js';
 import { filterContacts } from './pure/people.js';
 import {
     groupsInOrder,
@@ -96,7 +98,7 @@ const TAB_WORDS = {
     chats: () => t('apps.groups.tab-chats', 'chats'),
 };
 
-export const GroupsTab = ({ current }) => {
+export const GroupsTab = ({ current, searchQuery = '' }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [rows, error, reload] = useAnswer(root ? `/api/identity/${root}/groups` : null);
@@ -126,7 +128,10 @@ export const GroupsTab = ({ current }) => {
         }
     };
     if (!root) return null;
-    const list = groupsInOrder(rows || []);
+    // The header's words filter the groups by name, as they filter the people (2026-10-18).
+    const words = searchQuery.trim().toLowerCase();
+    const all = groupsInOrder(rows || []);
+    const list = words ? all.filter((g) => (g.name || '').toLowerCase().includes(words)) : all;
     return html`<div class="groups">
         <form class="groups-found" onSubmit=${found}>
             <input
@@ -156,7 +161,7 @@ export const GroupsTab = ({ current }) => {
             rows &&
             list.length === 0 &&
             html`<p class="people-empty">
-                ${t('apps.groups.no-groups-yet', "no groups yet - found one, or wait for someone's invite.")}
+                ${words ? t('apps.groups.no-group-matches', 'no group of yours is called that.') : t('apps.groups.no-groups-yet', "no groups yet - found one, or wait for someone's invite.")}
             </p>`
         }
         <div class="groups-list">
@@ -185,7 +190,7 @@ export const GroupsTab = ({ current }) => {
 /// A group's page. It reads the roster; an invite the bell holds but nothing has opened yet
 /// answers "no such group here", and is opened - fetched from the node that delivered it - so
 /// the invitee sees whom they'd be joining. Each visit also syncs, in the background.
-export const GroupPage = ({ group, current }) => {
+export const GroupPage = ({ group, current, searchQuery = '', onSearch }) => {
     const root = current && current.root;
     const loc = useLocation();
     const base = root && group ? `/api/identity/${root}/groups/${group}` : null;
@@ -274,7 +279,8 @@ export const GroupPage = ({ group, current }) => {
 
     if (!root) return null;
     // Not in it: a public group's open page, which says "no such group" of a private one.
-    if (missing) return html`<${PublicGroupPage} group=${group} current=${current} />`;
+    if (missing)
+        return html`<${PublicGroupPage} group=${group} current=${current} searchQuery=${searchQuery} />`;
     if (!roster) {
         return html`<div class="group-page">
             ${error ? html`<p class="groups-error">${error}</p>` : html`<p class="people-empty">${t('apps.groups.fetching', 'fetching the group…')}</p>`}
@@ -286,6 +292,10 @@ export const GroupPage = ({ group, current }) => {
     );
     const asked = loc.query && loc.query.tab;
     const tab = tabs.includes(asked) ? asked : tabs[0];
+    // Words in the header search the whole group at once, and the tabs give way to what they
+    // found (Curtis, 2026-10-18): its public posts, its private posts, its chats.
+    const searching = searchQuery.trim().length > 0;
+    const shown = searching ? null : tab;
     const left = async () => {
         if (await act('leave')) loc.route(groupsHref());
     };
@@ -335,6 +345,20 @@ export const GroupPage = ({ group, current }) => {
             chats only for those who can see them; each tab its own address. */ ''
         }
         ${
+            searching &&
+            html`<${GroupSearch}
+                root=${root}
+                group=${group}
+                roster=${roster}
+                current=${current}
+                searchQuery=${searchQuery}
+                onSearch=${onSearch}
+                picks=${picks}
+                facets=${html`<${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} self=${root} />`}
+            />`
+        }
+        ${
+            !searching &&
             tabs.length > 1 &&
             html`<nav class="group-tabs">
                 ${tabs.map(
@@ -346,10 +370,10 @@ export const GroupPage = ({ group, current }) => {
                 )}
             </nav>`
         }
-        ${tab === 'chats' && html`<${GroupChats} group=${group} roster=${roster} act=${act} />`}
-        ${tab === 'public' && html`<${GroupFeed} group=${group} name=${roster.name} current=${current} member=${!!you.member} owner=${!!you.owner} />`}
+        ${shown === 'chats' && html`<${GroupChats} group=${group} roster=${roster} act=${act} />`}
+        ${shown === 'public' && html`<${GroupFeed} group=${group} name=${roster.name} current=${current} member=${!!you.member} owner=${!!you.owner} />`}
         ${
-            tab === 'private' &&
+            shown === 'private' &&
             html`<${GroupPosts}
                 answer=${pickQuery ? found : posts}
                 error=${pickQuery ? foundError : postsError}
@@ -756,13 +780,106 @@ const GroupChats = ({ group, roster, act }) => {
     </section>`;
 };
 
-const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
-    const items = (answer && answer.items) || [];
-    const { pinned, rest } = pinnedFirst(items);
-    const card = (item) => html`<${PostEntry}
+/// What the header's words find in a group, everywhere it keeps things at once: its public posts
+/// (a public group's), its private posts and its chats' lines (a member's) - each under its own
+/// heading, in the tabs' order, and the private posts under the private tab's picks.
+const GroupSearch = ({ root, group, roster, current, searchQuery, onSearch, picks, facets }) => {
+    const loc = useLocation();
+    const you = roster.you || {};
+    const found = useSearch(
+        you.member ? `/api/identity/${root}/feed?group=${group}` : null,
+        searchQuery,
+        picks,
+    );
+    // A chat line wants two letters, as the chat app's search does.
+    const needle = searchQuery.trim();
+    const hits = useRoomSearch(you.member ? root : null, needle, group);
+    // Its rooms by name, out of the persona's own rooms listing - which holds a room before
+    // anyone has said a word in it, where the lines' search can't see it.
+    const [rooms, setRooms] = useState([]);
+    useEffect(() => {
+        if (!you.member) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/rooms`)
+            .then((page) => live && setRooms((page.items || []).filter((r) => r.group === group)))
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [root, group, you.member]);
+    const named = roomsNamed(rooms, needle);
+    const open = (href) => {
+        if (onSearch) onSearch('');
+        loc.route(href);
+    };
+    // Rooms are the chats' to show here, so the private posts leave theirs out.
+    const posts = found.results && found.results.filter((p) => p.format !== 'room');
+    return html`<div class="group-search">
+        ${
+            roster.public &&
+            html`<${GroupFeed}
+                group=${group}
+                name=${roster.name}
+                current=${current}
+                searchQuery=${searchQuery}
+                member=${!!you.member}
+                owner=${!!you.owner}
+            />`
+        }
+        ${
+            you.member &&
+            html`<${GroupPosts}
+                items=${posts}
+                search=${found}
+                query=${searchQuery}
+                current=${current}
+                group=${group}
+                facets=${facets}
+            />`
+        }
+        ${
+            you.member &&
+            html`<section class="group-posts">
+                <${GroupTabHead} title=${t('apps.groups.chats', 'chats')} />
+                ${
+                    needle.length < 2
+                        ? html`<p class="people-empty">${t('apps.groups.chats-want-two-letters', 'a chat search wants two letters or more.')}</p>`
+                        : html`<${SearchResults}
+                              current=${current}
+                              needle=${needle}
+                              hits=${hits}
+                              rooms=${named}
+                              onRoom=${(r) => open(roomHref(r.author, r.doc_id))}
+                              empty=${t('apps.groups.nothing-said-in-its-chats', 'nothing said in its chats says that.')}
+                              onOpen=${(h) => open(roomHref(h.author, h.doc_id, h.hash))}
+                          />`
+                }
+            </section>`
+        }
+    </div>`;
+};
+
+/// A group's private posts: the private tab's listing (`answer`, narrowed by its picks or not), or
+/// - with `search`, the group's search - what the header's words found (`items`).
+const GroupPosts = ({
+    answer,
+    error,
+    narrowed,
+    current,
+    group,
+    facets,
+    search = null,
+    query = '',
+    items: found = null,
+}) => {
+    const searching = !!(search && search.active);
+    const items = (searching ? found : answer && answer.items) || [];
+    const { pinned, rest } = searching ? { pinned: [], rest: items } : pinnedFirst(items);
+    const card = (item, words = null) => html`<${PostEntry}
         key=${item.doc_id}
         item=${item}
         current=${current}
+        found=${words}
         editing=${null}
     />`;
     return html`<section class="group-posts">
@@ -777,14 +894,6 @@ const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
             </a>`}
         />
         ${facets}
-        ${error && html`<p class="groups-error">${error.message}</p>`}
-        ${
-            answer &&
-            items.length === 0 &&
-            html`<p class="people-empty">
-                ${narrowed ? t('facets.none-match', 'nothing matches') : t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}
-            </p>`
-        }
         ${/* Pinned to the top (slice 4d): owners' pins, then members'. */ ''}
         ${
             pinned.length > 0 &&
@@ -792,10 +901,24 @@ const GroupPosts = ({ answer, error, narrowed, current, group, facets }) => {
                 <div class="people-shelf-head">
                     <span class="people-shelf-title"><${Icons.pin} /> ${t('apps.groups.pinned', 'pinned')}</span>
                 </div>
-                ${pinned.map(card)}
+                ${pinned.map((item) => card(item))}
             </div>`
         }
-        ${rest.map(card)}
+        <${PostList}
+            items=${rest}
+            card=${card}
+            search=${search}
+            query=${query}
+            nothingFound=${t('apps.groups.no-private-post-says-that', 'no private post here says that.')}
+            empty=${
+                answer &&
+                pinned.length === 0 &&
+                html`<p class="people-empty">
+                    ${narrowed ? t('facets.none-match', 'nothing matches') : t('apps.groups.nothing-posted-yet', 'nothing posted here yet.')}
+                </p>`
+            }
+            error=${error && error.message}
+        />
     </section>`;
 };
 

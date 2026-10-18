@@ -17,6 +17,7 @@ import { mergePosts, postCursor } from './pure/feed.js';
 import { shelfItem } from './pure/shelf.js';
 import { useSearch, narrowParams } from './postsearch.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
+import { PostList } from './postlist.js';
 
 const html = htm.bind(h);
 
@@ -92,10 +93,6 @@ export const GroupFeed = ({
         }
         setLoading(false);
     };
-    const loadMoreFound = () => {
-        const cursor = postCursor(search.results);
-        if (cursor) search.loadMore(`after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}`);
-    };
     const asItem = (p) => ({
         ...shelfItem(p, {
             root: p.author,
@@ -114,11 +111,11 @@ export const GroupFeed = ({
     const shown = (search.active ? search.results || [] : list || [])
         .filter((p) => search.active || !pinnedKeys.has(`${p.author}:${p.doc_id}`))
         .map(asItem);
-    const card = (item) => html`<${PostEntry}
+    const card = (item, found = null) => html`<${PostEntry}
         key=${`${item.author}:${item.doc_id}`}
         item=${item}
         current=${current}
-        found=${search.active ? searchQuery : null}
+        found=${found}
         editing=${null}
     />`;
     return html`<section class="group-posts">
@@ -138,39 +135,30 @@ export const GroupFeed = ({
         <${LabelFacets} labels=${labels} picks=${picks} onPicks=${setPicks} free=${!current} />
         ${!list && !error && html`<p class="null-sub">${t('publicgroup.fetching-posts', 'fetching its posts…')}</p>`}
         ${
-            search.active &&
-            search.searching &&
-            html`<p class="null-sub"><span class="waiting-dot"></span> ${t('posts.searching', 'searching…')}</p>`
-        }
-        ${
             pinnedShown.length > 0 &&
             html`<div class="group-pinned">
                 <div class="people-shelf-head">
                     <span class="people-shelf-title"><${Icons.pin} /> ${t('apps.groups.pinned', 'pinned')}</span>
                 </div>
-                ${pinnedShown.map(card)}
+                ${pinnedShown.map((item) => card(item))}
             </div>`
         }
-        ${
-            list &&
-            !search.searching &&
-            shown.length + pinnedShown.length === 0 &&
-            html`<p class="null-sub">
-                ${search.active ? search.error || t('publicgroup.nothing-matches', 'nothing posted as the group says that.') : t('publicgroup.no-public-posts-yet', 'nothing posted in public as the group yet.')}
-            </p>`
-        }
-        ${shown.map(card)}
-        ${error && html`<p class="form-error">${error}</p>`}
-        ${
-            (search.active ? search.more : more) &&
-            html`<button
-                class="public-posts-more"
-                disabled=${search.active ? search.loading : loading}
-                onClick=${search.active ? loadMoreFound : () => page(list, setList, setMore)}
-            >
-                ${(search.active ? search.loading : loading) ? t('posts.reading-further-back', 'reading further back…') : t('posts.load-more', 'load more')}
-            </button>`
-        }
+        <${PostList}
+            items=${shown}
+            card=${card}
+            search=${search}
+            query=${searchQuery}
+            nothingFound=${t('publicgroup.nothing-matches', 'nothing posted as the group says that.')}
+            empty=${
+                list &&
+                pinnedShown.length === 0 &&
+                html`<p class="null-sub">${t('publicgroup.no-public-posts-yet', 'nothing posted in public as the group yet.')}</p>`
+            }
+            more=${more}
+            loading=${loading}
+            onMore=${() => page(list, setList, setMore)}
+            error=${error}
+        />
     </section>`;
 };
 

@@ -1754,7 +1754,7 @@ async fn set_mute(
     Ok(Json(serde_json::json!({ "muted": on })))
 }
 
-/// GET `/api/identity/{root}/rooms/search?q=` - the words this persona may read, wherever
+/// GET `/api/identity/{root}/rooms/search?q=[&group=]` - the words this persona may read, wherever
 /// they were said (Curtis, 2026-09-20): every conversation this computer holds, newest
 /// first, each hit naming its room and its line so the floor can be opened there.
 async fn room_search_handler(
@@ -1764,15 +1764,23 @@ async fn room_search_handler(
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let _data = store::open(&state, &session.account.id, &root).await?;
-    let items =
-        crate::chat::search(&state, &root, q.q.as_deref().unwrap_or(""), q.limit.unwrap_or(30))
-            .await?;
+    let group = q.group.as_deref().map(crate::roster::group_of).transpose()?;
+    let items = crate::chat::search(
+        &state,
+        &root,
+        q.q.as_deref().unwrap_or(""),
+        group.as_ref(),
+        q.limit.unwrap_or(30),
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "items": items })))
 }
 
 #[derive(Deserialize)]
 struct SearchQuery {
     q: Option<String>,
+    /// Only this group's rooms (its page's search).
+    group: Option<String>,
     limit: Option<usize>,
 }
 

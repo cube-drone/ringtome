@@ -22,6 +22,7 @@ import { t } from './i18n.js';
 import { useSearch, narrowParams } from './postsearch.js';
 import { shelfItem } from './pure/shelf.js';
 import { LabelFacets, useLabels, usePicks } from './facets.js';
+import { PostList } from './postlist.js';
 
 const html = htm.bind(h);
 
@@ -164,11 +165,7 @@ export const PublicPosts = ({
         ? (search.results || []).map((p) => shelfItem(p, dress))
         : items;
     const shownPinned = search.active ? [] : pinnedItems;
-    // A narrowed shelf pages too (2026-10-11), by the same cursor as the whole one.
-    const loadMoreFound = () => {
-        const cursor = postCursor(search.results);
-        if (cursor) search.loadMore(`after_ms=${cursor.after_ms}&after_doc=${cursor.after_doc}`);
-    };
+    // A narrowed shelf pages too (2026-10-11), by the same cursor as the whole one (postlist.js).
     if (!search.active && !list.length && !scheduledItems.length && !pinnedItems.length)
         return null; // nothing said in public yet
 
@@ -192,37 +189,23 @@ export const PublicPosts = ({
             <h2 class="public-posts-head">
                 ${search.active ? t('posts.matching-posts', 'matching posts') : t('posts.recent-posts', 'recent posts')}
             </h2>
-            ${
-                search.active &&
-                search.searching &&
-                html`<p class="null-sub"><span class="waiting-dot"></span> ${t('posts.searching', 'searching…')}</p>`
-            }
-            ${
-                search.active &&
-                !search.searching &&
-                shownItems.length === 0 &&
-                html`<p class="null-sub">${search.error || t('posts.nothing-they-said-says-that', 'nothing they said says that.')}</p>`
-            }
-            ${shownItems.map(
-                (item) => html`<${PostEntry}
+            <${PostList}
+                items=${shownItems}
+                search=${search}
+                query=${searchQuery}
+                nothingFound=${t('posts.nothing-they-said-says-that', 'nothing they said says that.')}
+                more=${hasMore}
+                loading=${loading}
+                onMore=${loadMore}
+                error=${error}
+                card=${(item, found) => html`<${PostEntry}
                     key=${`${item.kind || 'post'}:${item.doc_id}`}
                     item=${item}
                     current=${current}
-                    found=${search.active ? searchQuery : null}
+                    found=${found}
                     editing=${mine && item.kind !== 'share' ? editingFor(item.doc_id) : null}
-                />`,
-            )}
-            ${error && html`<p class="form-error">${error}</p>`}
-            ${
-                (search.active ? search.more : hasMore) &&
-                html`<button
-                    class="public-posts-more"
-                    disabled=${search.active ? search.loading : loading}
-                    onClick=${search.active ? loadMoreFound : loadMore}
-                >
-                ${(search.active ? search.loading : loading) ? t('posts.reading-further-back', 'reading further back…') : t('posts.load-more', 'load more')}
-            </button>`
-            }
+                />`}
+            />
         </section>
     `;
 };

@@ -68,6 +68,7 @@ import { Chip } from '../doc/chips.js';
 import { UpdateNotice } from '../update.js';
 import { MarqueeBody, bareSource } from '../doc/marqueebody.js';
 import { useSearch, narrowParams } from '../postsearch.js';
+import { PostList } from '../postlist.js';
 import { LabelFacets, NO_PICKS, PickedFacets, anyPicks, useLabels, usePicks } from '../facets.js';
 import { meParam } from '../pure/facets.js';
 import { useTurbolinks } from '../doc/turbolinks.js';
@@ -795,16 +796,20 @@ export const FeedStream = ({
             />
             </div>`
             }
-            ${shown.map(
-                (item) => html`<${PostEntry}
+            <${PostList}
+                items=${shown}
+                search=${search}
+                query=${searchQuery}
+                nothingFound=${t('apps.feed.nothing-in-your-feed-says-that', 'nothing in your feed says that.')}
+                card=${(item, found) => html`<${PostEntry}
                     key=${`${item.author}:${item.doc_id}`}
                     item=${item}
                     interest=${emphasisBand(item)}
                     current=${current}
                     editing=${item.mine ? edit(item.doc_id) : null}
-                    found=${search.active ? searchQuery : null}
-                />`,
-            )}
+                    found=${found}
+                />`}
+            />
             ${
                 best &&
                 items.length === 0 &&
@@ -819,19 +824,6 @@ export const FeedStream = ({
                     html`<p class="null-sub">
                 ${t('apps.feed.nothing-here-yet---follow', 'nothing here yet - follow someone, or write something on the left.')}
             </p>`)
-            }
-            ${
-                search.active &&
-                search.searching &&
-                html`<p class="null-sub"><span class="waiting-dot"></span> ${t('apps.feed.searching', 'searching…')}</p>`
-            }
-            ${
-                search.active &&
-                !search.searching &&
-                shown.length === 0 &&
-                html`<p class="null-sub">
-                ${search.error || t('apps.feed.nothing-in-your-feed-says-that', 'nothing in your feed says that.')}
-            </p>`
             }
             ${
                 dial &&

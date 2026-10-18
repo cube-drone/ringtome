@@ -79,12 +79,14 @@ export const PeopleLookup = ({ query, onQuery }) => {
         onQuery(value);
     };
 
+    // On a group's page the words search the group (groups.js); a pasted address still goes.
+    const inGroup = /^\/ringtome\/people\/groups\/[^/]+\/?$/.test(loc.path);
     return html`
         <form class="app-header-search-box" onSubmit=${(e) => e.preventDefault()}>
             <input
                 class="app-header-search"
                 type="search"
-                placeholder=${t('apps.people.filter-or-paste-an-address', 'filter, or paste an address…')}
+                placeholder=${inGroup ? t('apps.people.search-the-group', 'search the group, or paste an address…') : t('apps.people.filter-or-paste-an-address', 'filter, or paste an address…')}
                 title=${t('apps.people.type-to-narrow-the-shelf', 'search or paste an address')}
                 value=${query || ''}
                 onInput=${(e) => take(e.currentTarget.value)}
@@ -134,7 +136,7 @@ export const PeopleApp = ({ tab = 'people', ...props }) =>
     tab === 'groups'
         ? html`<div class="people-inner">
               <${PeopleTabs} tab="groups" />
-              <${GroupsTab} current=${props.current} />
+              <${GroupsTab} current=${props.current} searchQuery=${props.searchQuery} />
           </div>`
         : html`<${PeopleShelves} ...${props} />`;
 

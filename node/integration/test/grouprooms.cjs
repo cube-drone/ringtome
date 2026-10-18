@@ -178,6 +178,24 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal((searched.items || []).length, 0, 'nor does a search find the words');
     });
 
+    it("a member's search narrows to the group's rooms, for its page (2026-10-18)", async () => {
+        const search = async (also) =>
+            (await (await ada(`api/identity/${adaRoot}/rooms/search?q=salad${also}`)).json())
+                .items || [];
+        const inGroup = await search(`&group=${group}`);
+        assert.ok(
+            inGroup.some((h) => h.doc_id === potluck && h.words.includes('i have the salad')),
+            JSON.stringify(inGroup),
+        );
+        assert.equal(
+            (await search(`&group=${'0'.repeat(group.length)}`)).length,
+            0,
+            'another group',
+        );
+        const bad = await ada(`api/identity/${adaRoot}/rooms/search?q=salad&group=nope`);
+        assert.equal(bad.status, 400);
+    });
+
     it("a picture said in a group room is the group's, and reaches the other members", async () => {
         const pic = await upload(bea, beaRoot, 'salad');
         const said = await say(

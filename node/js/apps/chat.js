@@ -2273,18 +2273,83 @@ const marked = (words, needle) => {
     if (at < 0 || !needle) return words;
     return html`${words.slice(0, at)}<mark>${words.slice(at, at + needle.length)}</mark>${words.slice(at + needle.length)}`;
 };
-const SearchResults = ({ current, needle, hits, onOpen }) => {
-    if (hits === null)
+/// The lines said in this persona's rooms - or one group's, given it - that say `needle`: null
+/// until the node answers these words, asked a beat after the typing stops, and never asked under
+/// two letters. Kept with the words they answer, so a render between new words and their asking
+/// shows none of the old words' lines.
+export const useRoomSearch = (root, needle, group = null) => {
+    const [answered, setAnswered] = useState({ for: '', hits: null });
+    const asking = !!root && needle.length >= 2;
+    useEffect(() => {
+        if (!asking) return undefined;
+        let live = true;
+        const timer = setTimeout(() => {
+            api(
+                `/api/identity/${root}/rooms/search?q=${encodeURIComponent(needle)}${group ? `&group=${group}` : ''}`,
+            )
+                .then((page) => live && setAnswered({ for: needle, hits: page.items || [] }))
+                .catch(() => live && setAnswered({ for: needle, hits: [] }));
+        }, 250);
+        return () => {
+            live = false;
+            clearTimeout(timer);
+        };
+    }, [root, needle, group, asking]);
+    return answered.for === needle ? answered.hits : null;
+};
+
+/// The rooms whose names the words are in (Curtis, 2026-10-18: "genera" should find #general), out
+/// of a rooms listing: named rooms only, since an IM's name is its other person, not its title.
+export const roomsNamed = (rooms, needle) => {
+    const words = (needle || '').trim().toLowerCase();
+    if (words.length < 2) return [];
+    return (rooms || []).filter((r) => !r.im && (r.title || '').toLowerCase().includes(words));
+};
+/// Rooms named by the words come first, then the lines that say them. A group's page lists its own
+/// rooms' with it (groups.js), with words of its own for none.
+export const SearchResults = ({
+    current,
+    needle,
+    hits,
+    onOpen,
+    rooms = [],
+    onRoom = null,
+    empty = null,
+}) => {
+    if (hits === null && rooms.length === 0)
         return html`<p class="chat-empty">${t('apps.chat.searching', 'searching…')}</p>`;
-    if (hits.length === 0) {
-        return html`<p class="chat-empty">${t('apps.chat.nothing-said-that', 'nothing said in your chats says that')}</p>`;
+    if ((hits || []).length === 0 && rooms.length === 0) {
+        return html`<p class="chat-empty">${empty || t('apps.chat.nothing-said-that', 'nothing said in your chats says that')}</p>`;
     }
     return html`<section class="chat-results">
-        <header class="chat-room-head">
+        ${
+            rooms.length > 0 &&
+            html`<ul class="chat-result-list">
+                ${rooms.map(
+                    (r) => html`<li key=${`${r.author}/${r.doc_id}`} class="chat-result">
+                        <button class="chat-result-hit" type="button" onClick=${() => onRoom && onRoom(r)}>
+                            <span class="chat-result-said">
+                                <${Icons.room} />
+                                <span class="chat-result-words">${marked(r.title, needle)}</span>
+                            </span>
+                        </button>
+                    </li>`,
+                )}
+            </ul>`
+        }
+        ${
+            hits === null &&
+            html`<p class="chat-empty">${t('apps.chat.searching', 'searching…')}</p>`
+        }
+        ${
+            hits !== null &&
+            hits.length > 0 &&
+            html`<header class="chat-room-head">
             <h2 class="chat-room-name">${t('apps.chat.n-lines-say-that', '{n} lines say that', { n: hits.length })}</h2>
-        </header>
+        </header>`
+        }
         <ul class="chat-result-list">
-            ${hits.map(
+            ${(hits || []).map(
                 (h) => html`<li key=${h.hash} class="chat-result">
                     <button class="chat-result-hit" type="button" onClick=${() => onOpen(h)}>
                         <span class="chat-result-where">
@@ -2321,21 +2386,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     const makingNew = mode === 'new';
     const needle = (searchQuery || '').trim();
     const searching = needle.length >= 2;
-    const [hits, setHits] = useState(null);
-    useEffect(() => {
-        if (!root || !searching) return undefined;
-        let live = true;
-        setHits(null);
-        const timer = setTimeout(() => {
-            api(`/api/identity/${root}/rooms/search?q=${encodeURIComponent(needle)}`)
-                .then((page) => live && setHits(page.items || []))
-                .catch(() => live && setHits([]));
-        }, 250);
-        return () => {
-            live = false;
-            clearTimeout(timer);
-        };
-    }, [root, needle, searching]);
+    const hits = useRoomSearch(root, needle);
     const restored = useRef(false);
     // The tags column (Curtis, 2026-09-20), Writer's: a histogram of the tags the rooms in
     // view wear, clicking one into or out of the filter, and minimized to a rail until asked
@@ -2437,6 +2488,11 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                           current=${current}
                           needle=${needle}
                           hits=${hits}
+                          rooms=${roomsNamed(all, needle)}
+                          onRoom=${(r) => {
+                              if (onSearch) onSearch('');
+                              loc.route(roomHref(r.author, r.doc_id));
+                          }}
                           ${
                               /* A line has its own address (Curtis, 2026-09-20), so opening
                               one is a route and the box empties behind you. */ ''
