@@ -77,7 +77,7 @@ export const PublishBar = ({
     useEffect(() => setChoice(standingChoice), [standingChoice]);
     const [publishing, setPublishing] = useState(false);
     const [baking, setBaking] = useState(null);
-    const [publishNote, setPublishNote] = useState(null); // { kind: 'published' | 'scheduled' | 'unpublished' | 'unscheduled', at }
+    const [publishNote, setPublishNote] = useState(null); // { kind: 'published' | 'scheduled' | 'date-kept' | 'unpublished' | 'unscheduled', at }
     const [publishError, setPublishError] = useState(null);
     const [askingTakedown, setAskingTakedown] = useState(false);
     const social = useUnlocked(root, 'social');
@@ -120,6 +120,16 @@ export const PublishBar = ({
     const inGroup = postedIn[0] || null;
     const toGroup = (inGroup && inGroup.group) || plannedGroup || dest || null;
     const postId = publishedState(row).postId;
+    // Why the draft's last plan wasn't posted, when its day refused it.
+    const refusedPlan = (row && row.fields && (row.fields.publish_refused || '').trim()) || null;
+    // What a publish's answer says, for the bar's note: scheduled, published, or published with
+    // the date it already carried (a live post, which a future date can't take back).
+    const noteOf = (made) =>
+        made && made.scheduled_for
+            ? { kind: 'scheduled', at: made.scheduled_for }
+            : made && made.date_kept
+              ? { kind: 'date-kept' }
+              : { kind: 'published' };
     const scheduledAt = (() => {
         if (!isScheduled(row)) return null;
         try {
@@ -138,11 +148,7 @@ export const PublishBar = ({
         if (toGroup && publishToGroup) {
             try {
                 const made = await publishToGroup(toGroup, { settled: wishes.settled });
-                setPublishNote(
-                    made && made.scheduled_for
-                        ? { kind: 'scheduled', at: made.scheduled_for }
-                        : { kind: 'published' },
-                );
+                setPublishNote(noteOf(made));
                 setChoice('');
                 setGroupTurn((n) => n + 1);
                 if (onPublished) onPublished();
@@ -180,11 +186,7 @@ export const PublishBar = ({
                     publishedSettled(made.post_id),
                 );
             }
-            setPublishNote(
-                made && made.scheduled_for
-                    ? { kind: 'scheduled', at: made.scheduled_for }
-                    : { kind: 'published' },
-            );
+            setPublishNote(noteOf(made));
             if (onPublished) onPublished();
         } catch (e) {
             setPublishError(e.message);
@@ -256,13 +258,20 @@ export const PublishBar = ({
                 ? t('doc.editor.posted-in-group', 'posted in {group}', { group: inGroup.name })
                 : t('doc.editor.private', 'private');
     const noteWords = (note) =>
-        note.kind === 'scheduled'
-            ? t('doc.editor.scheduled-for-2', 'scheduled for {when}', { when: formatWhen(note.at) })
-            : note.kind === 'unpublished'
-              ? t('doc.editor.taken-down---it-leaves', 'taken down')
-              : note.kind === 'unscheduled'
-                ? t('doc.editor.schedule-cancelled', 'schedule cancelled')
-                : t('doc.editor.published', 'published');
+        note.kind === 'date-kept'
+            ? t(
+                  'doc.editor.date-kept',
+                  'published - it was already live, so it keeps its date rather than waiting for a future one',
+              )
+            : note.kind === 'scheduled'
+              ? t('doc.editor.scheduled-for-2', 'scheduled for {when}', {
+                    when: formatWhen(note.at),
+                })
+              : note.kind === 'unpublished'
+                ? t('doc.editor.taken-down---it-leaves', 'taken down')
+                : note.kind === 'unscheduled'
+                  ? t('doc.editor.schedule-cancelled', 'schedule cancelled')
+                  : t('doc.editor.published', 'published');
 
     // Nothing published and nothing to publish with: no bar at all.
     if (standing === 'private' && !social && !inGroup && !(publishToGroup && groups.length > 0))
@@ -408,6 +417,17 @@ export const PublishBar = ({
         </span>`
         }
         ${publishError && html`<span class="publish-bar-error">${publishError}</span>`}
+        ${
+            /* A plan its day refused (plans/ONE_PUBLISH.md, ruling 3): spent, and the draft says
+            why until it's published or scheduled again. */ ''
+        }
+        ${
+            refusedPlan &&
+            !publishError &&
+            html`<span class="publish-bar-error">
+                ${t('doc.editor.not-posted-on-its-day', 'not posted on its day: {why}', { why: refusedPlan })}
+            </span>`
+        }
         ${
             askingTakedown &&
             html`<${Modal}

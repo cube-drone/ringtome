@@ -2,27 +2,14 @@
 //! future was not minted; its plan sits on its private meta, naming the device that will
 //! mint it. This pass walks the personas this node agents and mints what is due - through
 //! the same bake door and the same after-mint duties as a hand publish, so a scheduled post
-//! is indistinguishable from one posted at the moment.
+//! is indistinguishable from one posted at the moment. A plan refused on its day is spent, and
+//! the draft says why (plans/ONE_PUBLISH.md, ruling 3; `publication::settle`).
 
+use crate::error::AppError;
+use crate::publication::Plan;
 use crate::record::store;
 use crate::AppState;
 use anyhow::Result;
-
-#[derive(serde::Deserialize)]
-struct Plan {
-    at: i64,
-    by: String,
-    #[serde(default)]
-    settled: bool,
-    #[serde(default)]
-    trusted_only: bool,
-    /// The group it's for (plans/GROUPS.md, slice 4c), hex; none for the public.
-    #[serde(default)]
-    group: Option<String>,
-    /// In public, as this public group (plans/PUBLIC_GROUPS.md), hex.
-    #[serde(default)]
-    as_group: Option<String>,
-}
 
 /// The periodic pass: every agented persona, everything due now.
 pub async fn pass(state: AppState) -> Result<()> {
@@ -113,53 +100,23 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
             if let Ok(Some(existing)) = data.annotations().field(&doc_id, store::PUBLISHED_AS).await
             {
                 if !existing.trim().is_empty() {
-                    let _ = data.annotations().set_field(&doc_id, store::PUBLISH_PLAN, "").await;
+                    let _ = crate::publication::posted(&data, &doc_id).await;
                     continue;
                 }
             }
-            // As the group: still a member on the day, or nothing is minted - the post was asked
-            // for as the group's, and the poster's own plain post is not what was asked. The plan
-            // stays, as a refused group plan does, for its author to clear or redate.
-            let as_group = match plan.as_group.as_deref() {
-                Some(g) => match crate::roster::may_post_as(state, &root, g).await {
-                    Ok(group) => Some(group),
-                    Err(e) => {
-                        tracing::warn!(root = %root, doc = %hex::encode(doc_id), error = ?e, "scheduled post as the group refused");
-                        continue;
-                    }
-                },
-                None => None,
-            };
-            let flags = crate::record::documents::PublishFlags {
-                im: false,
-                settled: plan.settled,
-                trusted_only: plan.trusted_only,
-                seal_of: None, // a scheduled post is its own author's
-                onward: false,
-                dated_ms: Some(plan.at),
-                part_of: None,
-                room: false,
-            };
-            match crate::record::bake::publish(state, &data, &root, &doc_id, None, flags).await {
-                Ok(crate::record::bake::Outcome::Posted(post_id)) => {
-                    if let Err(e) = crate::identity::after_posted(
-                        state, &data, &root, &doc_id, post_id, None, flags,
-                    )
-                    .await
-                    {
-                        tracing::warn!(root = %root, error = ?e, "scheduled mint's after-duties failed; the post stands");
-                    }
-                    if let Some(group) = as_group {
-                        if let Err(e) =
-                            crate::roster::claim_public(state, &data, &root, group, post_id).await
-                        {
-                            tracing::warn!(root = %root, error = ?e, "scheduled post's claim as the group failed; the post stands");
-                        }
-                    }
+            let tried = mint_public(state, &data, &root, &doc_id, &plan).await;
+            // Still baking leaves the plan for the next pass; anything else settles it.
+            if !matches!(tried, Ok(None)) {
+                if let Err(e) = crate::publication::settle(&data, &doc_id, &tried).await {
+                    tracing::warn!(root = %root, doc = %hex::encode(doc_id), error = ?e, "could not settle a publish plan");
+                }
+            }
+            match tried {
+                Ok(Some(post_id)) => {
                     minted += 1;
                     tracing::info!(root = %root, post = %hex::encode(post_id), at = plan.at, "scheduled publish minted");
                 }
-                Ok(crate::record::bake::Outcome::Baking(_)) => {
+                Ok(None) => {
                     tracing::debug!(root = %root, doc = %hex::encode(doc_id), "scheduled publish still baking");
                 }
                 Err(e) => {
@@ -169,4 +126,50 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
         }
     }
     Ok(minted)
+}
+
+/// A public plan, minted as the publish door would have minted it then: its seal read as the door
+/// reads it (`public_seal`, so an audience and its onward hop hold), and as the group only while
+/// the poster is still in it - the poster's own plain post is not what was asked. `None` while
+/// its media is still baking: the plan stays for the next pass.
+async fn mint_public(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    doc_id: &[u8; 16],
+    plan: &Plan,
+) -> Result<Option<[u8; 16]>, AppError> {
+    let as_group = match plan.as_group.as_deref() {
+        Some(g) => Some(crate::roster::may_post_as(state, root, g).await?),
+        None => None,
+    };
+    let seal =
+        crate::identity::routes::public_seal(data, doc_id, Some(plan.trusted_only), None).await?;
+    let flags = crate::record::documents::PublishFlags {
+        im: false,
+        settled: plan.settled,
+        trusted_only: seal.trusted_only,
+        seal_of: None, // a reply is never scheduled (plans/ONE_PUBLISH.md, ruling 1)
+        onward: seal.onward,
+        dated_ms: Some(plan.at),
+        part_of: None,
+        room: false, // nor a room
+    };
+    match crate::record::bake::publish(state, data, root, doc_id, None, flags).await? {
+        crate::record::bake::Outcome::Posted(post_id) => {
+            if let Err(e) =
+                crate::identity::after_posted(state, data, root, doc_id, post_id, None, flags).await
+            {
+                tracing::warn!(root = %root, error = ?e, "scheduled mint's after-duties failed; the post stands");
+            }
+            if let Some(group) = as_group {
+                if let Err(e) = crate::roster::claim_public(state, data, root, group, post_id).await
+                {
+                    tracing::warn!(root = %root, error = ?e, "scheduled post's claim as the group failed; the post stands");
+                }
+            }
+            Ok(Some(post_id))
+        }
+        crate::record::bake::Outcome::Baking(_) => Ok(None),
+    }
 }

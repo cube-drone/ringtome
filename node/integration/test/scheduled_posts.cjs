@@ -82,3 +82,92 @@ describe('scheduled posts: a future date holds the mint until its day', function
         );
     });
 });
+
+/*
+    plans/ONE_PUBLISH.md, rulings 1 and 2, on the public road: a reply or a room is refused a
+    future date (it answers, or opens, now), and an edit of a live post publishes at once,
+    keeping the date it carries - a date never takes a live post back.
+*/
+describe('scheduled posts: a future date holds only a new post back', function () {
+    this.timeout(600000);
+
+    let ada, adaRoot;
+
+    const j = (path, body, method = 'POST') =>
+        ada(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+    const draftDated = async (title, date) => {
+        const made = await (
+            await j(`api/identity/${adaRoot}/docs`, {
+                title,
+                body: `${title}, said`,
+                format: 'marquee',
+            })
+        ).json();
+        if (date) {
+            const put = await j(
+                `api/identity/${adaRoot}/docs/${made.doc_id}/annotations/fields/display_date`,
+                { value: date },
+                'PUT',
+            );
+            assert.equal(put.status, 200);
+        }
+        return made.doc_id;
+    };
+    const publish = async (doc, body = {}) => {
+        const res = await j(`api/identity/${adaRoot}/docs/${doc}/publish`, {
+            tz_offset_min: 0,
+            ...body,
+        });
+        return { status: res.status, body: JSON.parse((await res.text()) || '{}') };
+    };
+
+    before(async () => {
+        ada = await makeUserFetch({ prefix: 'schedrules' });
+        adaRoot = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await ada(`api/identity/${adaRoot}/serve`, { method: 'POST' });
+    });
+
+    it('a reply or a room is refused a future date, and posts with none', async () => {
+        const parent = (await publish(await draftDated('the parent'))).body.post_id;
+        assert.ok(parent, 'a post to answer');
+        const reply = await draftDated('a later answer', '2031-01-01');
+        const refused = await publish(reply, { reply_to: { author: adaRoot, doc_id: parent } });
+        assert.equal(refused.status, 400, 'a reply answers now');
+        assert.match(refused.body.message, /reply or a room/);
+        const room = await publish(await draftDated('a later room', '2031-01-01'), { room: true });
+        assert.equal(room.status, 400, 'a room opens now');
+        const dated = await j(
+            `api/identity/${adaRoot}/docs/${reply}/annotations/fields/display_date`,
+            { value: '2020-01-01' },
+            'PUT',
+        );
+        assert.equal(dated.status, 200);
+        const answered = await publish(reply, { reply_to: { author: adaRoot, doc_id: parent } });
+        assert.equal(answered.status, 200, 'a past date is fine');
+        assert.ok(answered.body.post_id);
+    });
+
+    it('an edit of a live post with a future date publishes now and keeps its date', async () => {
+        const doc = await draftDated('already out', '2020-03-04');
+        const first = await publish(doc);
+        assert.ok(first.body.post_id, 'live');
+        const put = await j(
+            `api/identity/${adaRoot}/docs/${doc}/annotations/fields/display_date`,
+            { value: '2031-01-01' },
+            'PUT',
+        );
+        assert.equal(put.status, 200);
+        const edit = await publish(doc);
+        assert.equal(edit.status, 200, JSON.stringify(edit.body));
+        assert.equal(edit.body.post_id, first.body.post_id, 'the same post, edited now');
+        assert.ok(!edit.body.scheduled_for, 'not a schedule');
+        assert.equal(edit.body.date_kept, true, 'and it says the date stayed');
+        assert.equal(edit.body.dated_ms, first.body.dated_ms, 'the date it carried');
+        const fields = (await (await ada(`api/identity/${adaRoot}/docs/${doc}/annotations`)).json())
+            .fields;
+        const plan = Array.isArray(fields)
+            ? (fields.find(([k]) => k === 'publish_plan') || [])[1]
+            : fields.publish_plan;
+        assert.ok(!plan, 'and no plan is left to lose it');
+    });
+});

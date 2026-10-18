@@ -279,10 +279,8 @@ pub async fn app_js(
     Path(version): Path<String>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
-    let cache = bundle_cache(
-        check_version(&version, &state.config.app_version)?,
-        state.config.is_dev(),
-    );
+    let cache =
+        bundle_cache(check_version(&version, &state.config.app_version)?, state.config.is_dev());
 
     if state.config.is_dev() {
         tracing::info!("dev mode: reloading JS from disk");
@@ -372,10 +370,8 @@ pub async fn app_css(
     Path(version): Path<String>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
-    let cache = bundle_cache(
-        check_version(&version, &state.config.app_version)?,
-        state.config.is_dev(),
-    );
+    let cache =
+        bundle_cache(check_version(&version, &state.config.app_version)?, state.config.is_dev());
 
     if state.config.is_dev() {
         tracing::info!("dev mode: reloading CSS from disk");
@@ -387,12 +383,18 @@ pub async fn app_css(
             ))
         })?;
         Ok((
-            [(axum::http::header::CONTENT_TYPE, "text/css"), (axum::http::header::CACHE_CONTROL, cache)],
+            [
+                (axum::http::header::CONTENT_TYPE, "text/css"),
+                (axum::http::header::CACHE_CONTROL, cache),
+            ],
             contents,
         ))
     } else {
         Ok((
-            [(axum::http::header::CONTENT_TYPE, "text/css"), (axum::http::header::CACHE_CONTROL, cache)],
+            [
+                (axum::http::header::CONTENT_TYPE, "text/css"),
+                (axum::http::header::CACHE_CONTROL, cache),
+            ],
             CSS.to_string(),
         ))
     }
@@ -436,7 +438,13 @@ pub async fn font(
                 error = e
             ))
         })?;
-        Ok(([(axum::http::header::CONTENT_TYPE, "font/woff2"), (axum::http::header::CACHE_CONTROL, FONT_CACHE)], bytes))
+        Ok((
+            [
+                (axum::http::header::CONTENT_TYPE, "font/woff2"),
+                (axum::http::header::CACHE_CONTROL, FONT_CACHE),
+            ],
+            bytes,
+        ))
     } else {
         let bytes = EMBEDDED_FONTS
             .iter()
@@ -450,7 +458,10 @@ pub async fn font(
                 ))
             })?;
         Ok((
-            [(axum::http::header::CONTENT_TYPE, "font/woff2"), (axum::http::header::CACHE_CONTROL, FONT_CACHE)],
+            [
+                (axum::http::header::CONTENT_TYPE, "font/woff2"),
+                (axum::http::header::CACHE_CONTROL, FONT_CACHE),
+            ],
             bytes.to_vec(),
         ))
     }

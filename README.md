@@ -175,6 +175,11 @@ lightly federated, unapologetically Old Internet.
   filtered like any post, and a group's fold cached by a stamp rather than
   rebuilt on every read (built 2026-10-16; replaced GROUPS.md slice 4b's
   separate journal).
+- [`ONE_PUBLISH.md`](plans/ONE_PUBLISH.md) — every kind of post to every
+  destination (public, a group's members, in public as a group) through one
+  pipeline: one `Ask`, resolved once, scheduled whole, its body made by its
+  kind, its media by one pipeline, minted by the destination's sink. Rulings
+  2026-10-18.
 - [`PUBLIC_GROUPS.md`](plans/PUBLIC_GROUPS.md) — a group whose membership is
   public and whose members post in public as it: two lanes per member device (a
   public roster lane, a members-only content lane), a post as the group that is

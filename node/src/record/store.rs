@@ -80,6 +80,10 @@ pub const TRUSTED_KEY: &str = "trusted_key";
 /// draft's private meta - device-durable, and `by` names the minting device's leaf so two
 /// devices cannot race to mint. Excluded from publish replication like the others.
 pub const PUBLISH_PLAN: &str = "publish_plan";
+/// Why a plan wasn't posted on its day (plans/ONE_PUBLISH.md, ruling 3): the refusal's words, on
+/// the draft's private meta until its author publishes it or schedules it again. Bookkeeping,
+/// excluded from publish replication like the plan.
+pub const PUBLISH_REFUSED: &str = "publish_refused";
 /// The author's claimed date (PUBLISH.md): an ISO string on the draft's private meta. It
 /// rides the public header as `dated_ms` - never a public annotation (Curtis, 2026-09-02:
 /// "I see the date as a ... tag? That's a strange thing to occur").

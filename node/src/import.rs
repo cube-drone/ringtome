@@ -773,6 +773,7 @@ const NOT_ANNOTATIONS: &[&str] = &[
     crate::record::store::PUBLISHED_HEAD,
     crate::record::store::TRUSTED_KEY,
     crate::record::store::PUBLISH_PLAN,
+    crate::record::store::PUBLISH_REFUSED,
 ];
 
 /// How long a republished post may wait on its pictures, which are still being made.

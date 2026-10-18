@@ -1213,6 +1213,7 @@ export default {
     'doc.editor.live-on-your-public-feed': 'live on your public feed',
     'doc.editor.posted-in-group': 'posted in {group}',
     'doc.editor.private': 'private',
+    'doc.editor.date-kept': 'published - it was already live, so it keeps its date rather than waiting for a future one',
     'doc.editor.scheduled-for-2': 'scheduled for {when}',
     'doc.editor.taken-down---it-leaves': 'taken down',
     'doc.editor.schedule-cancelled': 'schedule cancelled',
@@ -1238,6 +1239,7 @@ export default {
     'doc.editor.re-read-the-date-and': 'publish, or reschedule',
     'doc.editor.cancel-the-schedule---the': 'cancel the schedule - the words stay private',
     'doc.editor.cancel': 'cancel',
+    'doc.editor.not-posted-on-its-day': 'not posted on its day: {why}',
     'doc.editor.take-it-down': 'take it down',
     'doc.editor.this-removes-it-from-other': 'It may take a while to disappear everywhere.',
     'doc.editor.taking-it-down': 'taking it down…',
@@ -2549,6 +2551,9 @@ export default {
 
     // --- node/src/pubkey.rs ---
     'pubkey.bad-what': 'bad {what}',
+
+    // --- node/src/publication.rs ---
+    'publication.replies-and-rooms-are-now': "a reply or a room can't wait for a date - clear its date, or give it one that has passed",
 
     // --- node/src/rate_limit.rs ---
     'rate_limit.rate-limit-for-action-exceeded': 'hold your horses ({action})',

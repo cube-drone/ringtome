@@ -38,6 +38,7 @@ const BOOKKEEPING: &[&str] = &[
     crate::record::store::TRUSTED_KEY,
     crate::record::store::PUBLISHED_HEAD,
     crate::record::store::PUBLISH_PLAN,
+    crate::record::store::PUBLISH_REFUSED,
 ];
 
 /// How many chat lines a page of history asks for, walking a room back to its start.

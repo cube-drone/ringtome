@@ -227,8 +227,8 @@ reach the node over plain HTTP. Then:
   shelf, the front page, published pages, media, the app's own files) says
   `public` with an `s-maxage`; what was answered for a signed-in reader says
   `private`; an answer that sets a cookie says `no-store`; `/health` says
-  `no-store`, and anything else says `no-cache`. Don't vary on cookies, and don't override
-  the node's lifetimes;
+  `no-store`, and anything else says `no-cache`. Don't vary on cookies, and
+  don't override the node's lifetimes;
 - **put the whole query string in the cache key** (BunnyCDN: Vary Cache → URL
   Query String, with no list of parameters). Filters and "load more" pages are
   query parameters: a CDN that ignores them answers every page with the first;

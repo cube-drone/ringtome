@@ -359,11 +359,42 @@ const DOC_HEADER = 7;
                 (await claims(HOST)).some((c) => c.author === beaRoot && c.doc === said),
                 'ada holds it',
             );
+            // A post as the group she scheduled before (plans/ONE_PUBLISH.md, ruling 3): refused on
+            // its day, its plan spent, and the draft says why.
+            const later = await draft(bea, beaRoot, 'cheese, later');
+            const date = await j(
+                bea,
+                `api/identity/${beaRoot}/docs/${later}/annotations/fields/display_date`,
+                { value: '2031-01-01' },
+                'PUT',
+            );
+            assert.equal(date.status, 200);
+            const planned = JSON.parse(
+                await (await publishAs(bea, beaRoot, later, { tz_offset_min: 0 })).text(),
+            );
+            assert.ok(planned.scheduled_for, 'scheduled as the group');
+
             await act(ada, adaRoot, 'remove', { target: beaRoot });
             assert.ok(
                 !(await claims(HOST)).some((c) => c.author === beaRoot),
                 'gone with her membership',
             );
+
+            await j(bea, `api/identity/${beaRoot}/groups/${group}/sync`, {});
+            const ring = await bea('test/beat', {
+                method: 'POST',
+                body: JSON.stringify({
+                    pass: 'publish-due',
+                    root: beaRoot,
+                    at_ms: planned.scheduled_for + 1,
+                }),
+            });
+            assert.equal(ring.status, 200);
+            const a = await (await bea(`api/identity/${beaRoot}/docs/${later}/annotations`)).json();
+            const fields = Array.isArray(a.fields) ? Object.fromEntries(a.fields) : a.fields || {};
+            assert.ok(!fields.publish_plan, `the plan is spent: ${JSON.stringify(fields)}`);
+            assert.ok(fields.publish_refused, 'and the draft says why it was not posted');
+            assert.ok(!fields.published_as, 'nothing was posted');
         });
 
         it("following a member brings the group's public posts, through them, under the rebroadcast dial", async () => {

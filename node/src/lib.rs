@@ -78,6 +78,7 @@ pub mod outbox;
 pub mod postkeys;
 pub mod profiles;
 pub mod pubkey;
+pub mod publication;
 pub mod publinks;
 pub mod publish;
 pub mod publishing;
@@ -253,7 +254,9 @@ struct Health {
 
 /// Liveness check. Verifies the node database is actually reachable, not just that HTTP responds -
 /// a node whose database is wedged is not healthy.
-async fn health(State(state): State<AppState>) -> Result<impl axum::response::IntoResponse, AppError> {
+async fn health(
+    State(state): State<AppState>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
     // fetch, not execute: turso's execute refuses statements that return rows.
     state.node_db.fetch_one::<(i64,)>("SELECT 1", ()).await.map_err(AppError::Internal)?;
 

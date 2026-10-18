@@ -702,6 +702,64 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         );
     });
 
+    it('a future date holds back only a new post: a reply or a room is refused one, a live post edits now', async () => {
+        const dated = async (title, date) => {
+            const made = await (
+                await j(bea, `api/identity/${beaRoot}/docs`, {
+                    title,
+                    body: title,
+                    format: 'marquee',
+                })
+            ).json();
+            const put = await j(
+                bea,
+                `api/identity/${beaRoot}/docs/${made.doc_id}/annotations/fields/display_date`,
+                { value: date },
+                'PUT',
+            );
+            assert.equal(put.status, 200);
+            return made.doc_id;
+        };
+        const publish = (body) =>
+            j(bea, `api/identity/${beaRoot}/groups/${group}/publish`, {
+                tz_offset_min: 0,
+                ...body,
+            });
+        // Rulings 1 (plans/ONE_PUBLISH.md): a reply answers now, a room opens now.
+        const { post: parent } = await act(bea, beaRoot, 'publish', {
+            doc: await dated('something to answer', '2020-01-01'),
+            tz_offset_min: 0,
+        });
+        const reply = await publish({
+            doc: await dated('a later answer', '2031-01-01'),
+            reply_to: { author: beaRoot, doc_id: parent },
+        });
+        assert.equal(reply.status, 400, 'a reply is refused a future date');
+        assert.match(await reply.text(), /reply or a room/);
+        const room = await publish({ doc: await dated('a later room', '2031-01-01'), room: true });
+        assert.equal(room.status, 400, 'and so is a room');
+
+        // Ruling 2: an edit of a live post publishes now, keeping the date it carries.
+        const doc = await dated('out already', '2020-02-02');
+        const { post: live } = await act(bea, beaRoot, 'publish', { doc, tz_offset_min: 0 });
+        const put = await j(
+            bea,
+            `api/identity/${beaRoot}/docs/${doc}/annotations/fields/display_date`,
+            { value: '2031-01-01' },
+            'PUT',
+        );
+        assert.equal(put.status, 200);
+        const edit = await act(bea, beaRoot, 'publish', { doc, tz_offset_min: 0 });
+        assert.equal(edit.post, live, 'the same post, edited now');
+        assert.ok(!edit.scheduled_for, 'not a schedule');
+        assert.equal(edit.date_kept, true, 'and the date stayed');
+        const there = (await page(HOST_B, bea, beaRoot)).find((p) => p.doc === live);
+        assert.ok(
+            there.posted_ms < Date.parse('2020-02-04'),
+            `under the date it had: ${new Date(there.posted_ms).toISOString()}`,
+        );
+    });
+
     it('a member mentioned in a group post, or whose post is labelled, hears it in the bell', async () => {
         const { speakable } = await import('../../js/speakable.js');
         const bell = async (who, root, kind, doc) =>

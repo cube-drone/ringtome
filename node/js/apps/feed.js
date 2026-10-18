@@ -1197,7 +1197,12 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
             for (const [field, value] of Object.entries((row && row.fields) || {})) {
                 // Bookkeeping never becomes a chip: where the draft went public, the key
                 // it sealed under, and a schedule this very mint just spent.
-                if (field === PUBLISHED_AS || field === 'trusted_key' || field === 'publish_plan')
+                if (
+                    field === PUBLISHED_AS ||
+                    field === 'trusted_key' ||
+                    field === 'publish_plan' ||
+                    field === 'publish_refused'
+                )
                     continue;
                 if (field === 'seal' || field === 'audience') continue; // the wishes wear their own chip
                 if (field === DISPLAY_DATE_FIELD) continue; // rides the header as the post's date

@@ -4096,26 +4096,31 @@ async fn publish_handler(
         )),
         None => None,
     };
-    // The preferred date, as the public publish resolves it (identity/routes.rs): the draft's
-    // `display_date` with the request's timezone, re-read at every publish.
-    let dated_ms = data
-        .annotations()
-        .field(&draft, store::DISPLAY_DATE)
-        .await?
-        .and_then(|v| crate::record::documents::claimed_ms(&v, now_ms(), req.tz_offset_min));
-    // A future date is a schedule, as for any post (PUBLISH.md ruling 3): a plan on the draft,
-    // naming the group and this device, which the publish-due sweep mints (scheduled.rs). A room
-    // opens now, and so does a reply: it answers what's there now.
-    if let Some(at) = dated_ms.filter(|at| *at > now_ms() && !req.room && reply_to.is_none()) {
-        let plan = serde_json::json!({
-            "at": at,
-            "by": data.leaf_hex(),
-            "settled": req.settled,
-            "group": hex::encode(group),
-        });
-        data.annotations().set_field(&draft, store::PUBLISH_PLAN, &plan.to_string()).await?;
-        return Ok(Json(serde_json::json!({ "group": hex::encode(group), "scheduled_for": at })));
-    }
+    // The preferred date and what it makes of the post, by the rulings every road shares
+    // (crate::publication): now, or a plan on the draft naming the group and this device, which
+    // the publish-due sweep mints (scheduled.rs), or a refusal.
+    let claimed = crate::publication::claimed(&data, &draft, req.tz_offset_min).await?;
+    let shape = crate::publication::Shape {
+        answers: reply_to.is_some(),
+        room: req.room,
+        live: live_date(&state, &root, &group, &draft).await?,
+    };
+    let (dated_ms, date_kept) = match crate::publication::when(claimed, shape, now_ms())? {
+        crate::publication::When::Now { dated_ms, kept } => (dated_ms, kept),
+        crate::publication::When::Later(at) => {
+            let plan = crate::publication::Plan {
+                at,
+                by: data.leaf_hex(),
+                settled: req.settled,
+                group: Some(hex::encode(group)),
+                ..Default::default()
+            };
+            crate::publication::schedule(&data, &draft, &plan).await?;
+            return Ok(Json(
+                serde_json::json!({ "group": hex::encode(group), "scheduled_for": at }),
+            ));
+        }
+    };
     let post = publish(
         &state,
         &data,
@@ -4125,8 +4130,31 @@ async fn publish_handler(
         Wishes { dated_ms, settled: req.settled, room: req.room, reply_to, part_of: None },
     )
     .await?;
-    clear_plan(&data, &draft).await?;
-    Ok(Json(serde_json::json!({ "group": hex::encode(group), "post": hex::encode(post) })))
+    crate::publication::posted(&data, &draft).await?;
+    Ok(Json(serde_json::json!({
+        "group": hex::encode(group),
+        "post": hex::encode(post),
+        "date_kept": date_kept,
+    })))
+}
+
+/// The post `draft` already is in the group, standing, and the date it carries
+/// (crate::publication's `Shape::live`): `Some(dated)` for an edit, `None` for a new post.
+async fn live_date(
+    state: &AppState,
+    me: &str,
+    group: &GroupId,
+    draft: &[u8; 16],
+) -> Result<Option<Option<i64>>, AppError> {
+    let Some(post) = published_as(state, me, draft, group).await else { return Ok(None) };
+    let Some((roster, _)) = refold(state, group).await.map_err(AppError::Internal)? else {
+        return Ok(None);
+    };
+    let (versions, gone) = documents_of(state, group, &roster).await?;
+    if gone.contains(&post) {
+        return Ok(None);
+    }
+    Ok(versions.get(&post).and_then(|list| display(list)).map(|v| v.header.dated_ms))
 }
 
 #[derive(Deserialize, Default)]
@@ -4161,8 +4189,10 @@ async fn publish_drawing_handler(
         )));
     }
     let draft = doc_of(&req.doc)?;
-    let crate::identity::routes::DrawingDraft { title, dated_ms, .. } =
-        crate::identity::routes::drawing_draft(&session, &data, &draft, req.tz_offset_min).await?;
+    let live = live_date(&state, &root, &group, &draft).await?;
+    let crate::identity::routes::DrawingDraft { title, dated_ms, date_kept, .. } =
+        crate::identity::routes::drawing_draft(&session, &data, &draft, req.tz_offset_min, live)
+            .await?;
     let ingested = crate::identity::routes::launder_drawing(picture).await?;
     let media = mint_media(
         &state,
@@ -4195,12 +4225,16 @@ async fn publish_drawing_handler(
     };
     let wishes = Wishes { dated_ms, settled: req.settled, ..Default::default() };
     let post = post_version(&state, &data, &root, &group, &draft, body, wishes).await?;
-    Ok(Json(serde_json::json!({ "group": hex::encode(group), "post": hex::encode(post) })))
+    Ok(Json(serde_json::json!({
+        "group": hex::encode(group),
+        "post": hex::encode(post),
+        "date_kept": date_kept,
+    })))
 }
 
 /// The publish-due sweep's road to a group (scheduled.rs): post the draft its plan names, if
-/// its author is still a member - and spend the plan either way, since a refusal now is one
-/// later too.
+/// its author is still a member. A refusal now is one later too, so it spends the plan, saying why
+/// on the draft (plans/ONE_PUBLISH.md, ruling 3).
 pub async fn publish_planned(
     state: &AppState,
     data: &Store,
@@ -4222,16 +4256,8 @@ pub async fn publish_planned(
             "only the group's members can post to it"
         ))),
     };
-    clear_plan(data, draft).await?;
+    crate::publication::settle(data, draft, &posted).await?;
     posted
-}
-
-/// A draft posted is no longer planned: its plan, if it had one, is spent.
-pub async fn clear_plan(data: &Store, draft: &[u8; 16]) -> Result<(), AppError> {
-    if data.annotations().field(draft, store::PUBLISH_PLAN).await?.is_some_and(|p| !p.is_empty()) {
-        data.annotations().set_field(draft, store::PUBLISH_PLAN, "").await?;
-    }
-    Ok(())
 }
 
 /// Take down `me`'s own document in a group: a retraction on the lane, and its draft a draft again.

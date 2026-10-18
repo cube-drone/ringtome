@@ -3737,6 +3737,10 @@ struct PublishResponse {
     /// Media still preparing (or failed): the modal's list. Present only with a 202.
     #[serde(skip_serializing_if = "Option::is_none")]
     baking: Option<Vec<crate::record::bake::BakeItem>>,
+    /// A future date was asked of a post already live, which publishes now and keeps the date it
+    /// carries (plans/ONE_PUBLISH.md, ruling 2): the bar says so.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    date_kept: bool,
 }
 
 /// Publish a note: mint (or extend) its public post. The deliberate act the whole membrane
@@ -3793,6 +3797,25 @@ async fn already_im(
         return Ok(false);
     };
     Ok(held_public_header(state, root, &hex::encode(post)).await?.is_some_and(|h| h.im))
+}
+
+/// The post `draft` already is in public, live, and the date it carries (crate::publication's
+/// `Shape::live`): `Some(dated)` for an edit of a live post, `None` for a new one.
+async fn live_public_date(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    draft: &[u8; 16],
+) -> Result<Option<Option<i64>>, AppError> {
+    let Some(post) = data
+        .annotations()
+        .field(draft, store::PUBLISHED_AS)
+        .await?
+        .filter(|p| !p.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+    Ok(held_public_header(state, root, post.trim()).await?.map(|h| h.dated_ms))
 }
 
 /// The PARENT's own held header, mirror shelf first, fragment shelf second - the shared
@@ -4133,11 +4156,9 @@ pub(crate) async fn after_posted(
             Err(e) => tracing::warn!(error = ?e, "annotation replication failed; the post stands"),
         }
     }
-    // The schedule mark, if this mint fulfilled one, is spent.
-    if let Ok(Some(plan)) = data.annotations().field(&doc_id, store::PUBLISH_PLAN).await {
-        if !plan.trim().is_empty() {
-            let _ = data.annotations().set_field(&doc_id, store::PUBLISH_PLAN, "").await;
-        }
+    // The schedule mark, if this mint fulfilled one, is spent, and so is word of a refused one.
+    if let Err(e) = crate::publication::posted(data, &doc_id).await {
+        tracing::warn!(error = ?e, "could not spend the draft's plan; the post stands");
     }
     Ok(())
 }
@@ -4344,6 +4365,8 @@ pub(crate) struct DrawingDraft {
     pub title: String,
     pub head: Option<String>,
     pub dated_ms: Option<i64>,
+    /// A future date asked of a live drawing, which keeps the date it carries.
+    pub date_kept: bool,
 }
 
 /// Check that `doc_id` is a drawing and read what its publish needs. The date is resolved as
@@ -4355,6 +4378,9 @@ pub(crate) async fn drawing_draft(
     data: &store::Store,
     doc_id: &[u8; 16],
     tz_offset_min: i32,
+    // The post the drawing already is where it's going, and its date (crate::publication's
+    // `Shape::live`): an edit of a live drawing publishes now, keeping it.
+    live: Option<Option<i64>>,
 ) -> Result<DrawingDraft, AppError> {
     use crate::record::documents::Format;
     let docs = data.documents();
@@ -4371,16 +4397,17 @@ pub(crate) async fn drawing_draft(
     }
     let title = docs.resolved(&doc).await?.title;
     let head = doc.display_head().map(|v| hex::encode(v.hash));
-    let dated_ms = data.annotations().field(doc_id, store::DISPLAY_DATE).await?.and_then(|v| {
-        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min)
-    });
-    if dated_ms.is_some_and(|at| at > crate::clock::now_ms()) {
-        return Err(AppError::BadRequest(crate::msg!(
-            "identity.routes.a-drawing-cant-be-scheduled",
-            "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
-        )));
-    }
-    Ok(DrawingDraft { title, head, dated_ms })
+    let claimed = crate::publication::claimed(data, doc_id, tz_offset_min).await?;
+    let shape = crate::publication::Shape { live, ..Default::default() };
+    let (dated_ms, date_kept) =
+        match crate::publication::when(claimed, shape, crate::clock::now_ms())? {
+            crate::publication::When::Now { dated_ms, kept } => (dated_ms, kept),
+            crate::publication::When::Later(_) => return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.a-drawing-cant-be-scheduled",
+                "a drawing can't be scheduled yet - clear its date, or give it one that has passed"
+            ))),
+        };
+    Ok(DrawingDraft { title, head, dated_ms, date_kept })
 }
 
 /// The page's flattened picture of a drawing, given the laundering every picture gets - decode,
@@ -4460,8 +4487,9 @@ async fn publish_drawing_handler(
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
     let docs = data.documents();
-    let DrawingDraft { title, head, dated_ms } =
-        drawing_draft(&session, &data, &doc_id, req.tz_offset_min).await?;
+    let live = live_public_date(&state, &data, &root, &doc_id).await?;
+    let DrawingDraft { title, head, dated_ms, date_kept } =
+        drawing_draft(&session, &data, &doc_id, req.tz_offset_min, live).await?;
     // Trusted only seals the post, and the picture under the post's own key - as baked media is -
     // or the post would ship a public copy of the very picture it seals. Once sealed, always sealed.
     // An audience is a seal too, as at the words' door.
@@ -4530,7 +4558,41 @@ async fn publish_drawing_handler(
         published_ms: Some(dated_ms.unwrap_or_else(crate::clock::now_ms)),
         dated_ms,
         baking: None,
+        date_kept,
     }))
+}
+
+/// A public post's seal, as the draft and the request say (PROJECT_PLAN's Post visibility and
+/// Contact tags) - read alike by the publish door and the publish-due sweep (scheduled.rs).
+pub(crate) struct PublicSeal {
+    pub trusted_only: bool,
+    pub audience: Option<String>,
+    /// "People I trust, and onward" (Contact tags, ruling 7): the audience says so, and the header
+    /// carries it so every node's share door and key lane know.
+    pub onward: bool,
+}
+
+/// The seal for `doc_id`: `wish` is the request's trusted-only word, if it said one, and `asked`
+/// its audience. The draft's seal wish (a copy of a sealed post, PROJECT_PLAN's Copying a post)
+/// holds when the request names no wish of its own; a named wish, either way, is the word. An
+/// audience is a seal.
+pub(crate) async fn public_seal(
+    data: &store::Store,
+    doc_id: &[u8; 16],
+    wish: Option<bool>,
+    asked: Option<&str>,
+) -> Result<PublicSeal, AppError> {
+    let audience = draft_audience(data, doc_id, asked).await?;
+    let trusted_only = match wish {
+        Some(w) => w,
+        None => data
+            .annotations()
+            .field(doc_id, store::SEAL_WISH)
+            .await?
+            .is_some_and(|v| v.trim() == "yes"),
+    } || audience.is_some();
+    let onward = trusted_only && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
+    Ok(PublicSeal { trusted_only, audience, onward })
 }
 
 /// The audience a publish seals its post for (Contact tags, ruling 4): `asked` on this publish,
@@ -4581,18 +4643,13 @@ async fn publish_handler(
         None => None,
     };
     let settled = req.as_ref().and_then(|b| b.settled).unwrap_or(false);
-    let audience =
-        draft_audience(&data, &doc_id, req.as_ref().and_then(|b| b.audience.as_deref())).await?;
-    // The draft's seal wish (a copy of a sealed post, PROJECT_PLAN's Copying a post) holds
-    // when the request names no wish of its own; a named wish, either way, is the word.
-    let trusted_only = match req.as_ref().and_then(|b| b.trusted_only) {
-        Some(w) => w,
-        None => data
-            .annotations()
-            .field(&doc_id, store::SEAL_WISH)
-            .await?
-            .is_some_and(|v| v.trim() == "yes"),
-    } || audience.is_some();
+    let PublicSeal { trusted_only, audience, onward } = public_seal(
+        &data,
+        &doc_id,
+        req.as_ref().and_then(|b| b.trusted_only),
+        req.as_ref().and_then(|b| b.audience.as_deref()),
+    )
+    .await?;
     // A reply to a sealed parent is sealed under the PARENT's key (PROJECT_PLAN's Replies
     // under the author's seal): the key comes from the memo - a replier who never could
     // read the parent has none, and is refused with words - and rides the draft as its
@@ -4613,16 +4670,9 @@ async fn publish_handler(
     // the reply - or a picture inside it, which cannot name the post that embeds it - asks
     // the parent author's trust and looks for the parent's key.
     let seal_of = parent_sealed.and(reply.map(|(parent, _)| parent));
-    // "People I trust, and onward" (Contact tags, ruling 7): the draft's audience says so, and
-    // the header carries it so every node's share door and key lane know.
-    let onward = trusted_only && audience.as_deref() == Some(crate::postkeys::ONWARD_AUDIENCE);
-    // The preferred date (PUBLISH.md): the draft's `display_date` claim, resolved HERE with
-    // the request's timezone offset - re-read at every publish, so a changed date re-sorts the
-    // post everywhere.
+    // The preferred date (PUBLISH.md), as every road reads it (crate::publication).
     let tz_offset_min = req.as_ref().and_then(|b| b.tz_offset_min).unwrap_or(0);
-    let dated_ms = data.annotations().field(&doc_id, store::DISPLAY_DATE).await?.and_then(|v| {
-        crate::record::documents::claimed_ms(&v, crate::clock::now_ms(), tz_offset_min)
-    });
+    let dated_ms = crate::publication::claimed(&data, &doc_id, tz_offset_min).await?;
     // Publication goes through the media pre-pass (record::bake): embedded private media
     // bakes inline; external media bakes in the background, and until it lands the answer
     // is 202 with the modal's item list - re-POST to check again (idempotent).
@@ -4679,6 +4729,38 @@ async fn publish_handler(
         }
         None => None,
     };
+    // What the date makes of it, by the rulings every road shares (crate::publication): now, or
+    // a schedule - nothing touches the public chain until the day, the plan on the draft's
+    // private meta naming this device's leaf as the one that mints - or a refusal.
+    let shape = crate::publication::Shape {
+        answers: reply.is_some(),
+        room: room || im,
+        live: live_public_date(&state, &data, &root, &doc_id).await?,
+    };
+    let (dated_ms, date_kept) =
+        match crate::publication::when(dated_ms, shape, crate::clock::now_ms())? {
+            crate::publication::When::Now { dated_ms, kept } => (dated_ms, kept),
+            crate::publication::When::Later(at) => {
+                let plan = crate::publication::Plan {
+                    at,
+                    by: data.leaf_hex(),
+                    settled,
+                    trusted_only,
+                    group: None,
+                    as_group: as_group.map(hex::encode),
+                };
+                crate::publication::schedule(&data, &doc_id, &plan).await?;
+                return Ok(Json(PublishResponse {
+                    post_id: None,
+                    scheduled_for: Some(at),
+                    published_ms: None,
+                    dated_ms: None,
+                    baking: None,
+                    date_kept: false,
+                })
+                .into_response());
+            }
+        };
     let flags = crate::record::documents::PublishFlags {
         settled,
         trusted_only,
@@ -4689,29 +4771,6 @@ async fn publish_handler(
         room,
         im,
     };
-    // A FUTURE date is a schedule (PUBLISH.md ruling 3): nothing touches the public chain
-    // until the day. The plan lives on the draft's private meta - device-durable - naming
-    // this device's leaf as the one that mints, and the sweep does the rest.
-    if let Some(at) = dated_ms {
-        if at > crate::clock::now_ms() {
-            let plan = serde_json::json!({
-                "at": at,
-                "by": data.leaf_hex(),
-                "settled": settled,
-                "trusted_only": trusted_only,
-                "as_group": as_group.map(hex::encode),
-            });
-            data.annotations().set_field(&doc_id, store::PUBLISH_PLAN, &plan.to_string()).await?;
-            return Ok(Json(PublishResponse {
-                post_id: None,
-                scheduled_for: Some(at),
-                published_ms: None,
-                dated_ms: None,
-                baking: None,
-            })
-            .into_response());
-        }
-    }
     // The publication itself runs as a job (crate::publishing): a post with many pictures can
     // outlast what a proxy will hold a request open for, so past a few seconds this answers
     // 202 with each picture's standing and the job carries on; the client's re-POST polls it.
@@ -4771,6 +4830,7 @@ async fn publish_handler(
                     published_ms: Some(flags.dated_ms.unwrap_or_else(crate::clock::now_ms)),
                     dated_ms: flags.dated_ms,
                     baking: None,
+                    date_kept,
                 })
                 .into_response())
             }
@@ -4782,6 +4842,7 @@ async fn publish_handler(
                     published_ms: None,
                     dated_ms: None,
                     baking: Some(items),
+                    date_kept,
                 }),
             )
                 .into_response()),
@@ -6138,6 +6199,7 @@ pub(crate) async fn draft_labels(
             || field == store::PUBLISHED_HEAD
             || field == store::TRUSTED_KEY
             || field == store::PUBLISH_PLAN
+            || field == store::PUBLISH_REFUSED
             || field == store::DISPLAY_DATE
             || field == store::SEAL_WISH
             || value.trim().is_empty()

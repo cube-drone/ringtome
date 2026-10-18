@@ -23250,3 +23250,38 @@ New `caching.cjs` claims: the shell's five minutes, `/health`, a dev node's
 bundles and fonts, and the net, on a legacy redirect. A Rust test covers the
 version rule. Caching (10) and the node's unit tests are green. Deploying this
 doesn't evict what Bunny already holds: purge the pull zone after the release.
+
+## 2026-10-18 — One publish, slice 1: the date and the plan
+
+The start of [plans/ONE_PUBLISH.md](plans/ONE_PUBLISH.md): every publish road
+through one pipeline. Curtis's rulings: a reply or a room is refused a future
+date; an edit of a live post publishes now and stays live; a plan refused on its
+day is spent, and the draft says why.
+
+- **`node/src/publication.rs`** holds what the roads share about dates.
+  - `claimed` reads the draft's date.
+  - `when` applies the three rulings, and has unit tests.
+  - `Plan` is the one plan type, the JSON every road already wrote.
+  - `schedule`, `posted`, `refused` and `settle` keep the draft's `publish_plan`
+    and the new `publish_refused` up to date.
+- **Both publish routes and both drawing routes ask `when`**, given the post the
+  draft already is on that destination. An edit of a live post answers
+  `date_kept`, and the publish bar says so.
+- **The sweep mints a public plan with the publish route's own seal reading**
+  (`public_seal`). A scheduled "people I trust, and onward" post had been losing
+  its onward hop. A refused plan is spent, and the bar says "not posted on its
+  day: ...". The node's own trouble leaves the plan for the next pass, and so
+  does media still baking.
+- **Bugs gone:**
+  - A scheduled reply or room lost what it was. Neither is scheduled now.
+  - A future-dated edit of a live post was silently dropped. It publishes now,
+    keeping its date.
+  - A refused plan was kept on one road and spent on the other. Both spend it.
+- **New claims** in `scheduled_posts.cjs`, `groupposts.cjs` and
+  `publicgroups.cjs`. Green: those three areas (37 claims), drawings,
+  combinations, dated posts, books, rooms, IMs and group rooms (71), the node's
+  unit tests (658) and `ui-check` (1038).
+
+In passing: my first write of this module replaced the existing
+`node/src/publish.rs` (the edge-publication mint). It was restored from git
+before anything else touched it. The new module is `publication.rs`.
