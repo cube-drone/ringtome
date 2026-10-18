@@ -158,8 +158,8 @@ cards, with the filter strip and the header's search:
 
 ## Slices
 
-All five built 2026-10-17. Acceptance: `integration/test/publicgroups.cjs` (ten
-claims, across four nodes).
+All five built 2026-10-17. Acceptance: `integration/test/publicgroups.cjs`
+(twelve claims, across four nodes).
 
 1. **The lanes.**
    - `Founding.public` is in the signed preimage, and in the founding's and an
@@ -218,9 +218,21 @@ claims, across four nodes).
 
 ## What's still open
 
-- **Schedules.** A post as the group can't be scheduled yet. ~~Drawings~~
-  (2026-10-18): the drawing's door takes `as_group`, with the words' door's
-  refusals, and claims the post once it's minted.
+- ~~Drawings and schedules~~ (2026-10-18). The drawing's door takes `as_group`,
+  with the words' door's refusals, and claims the post once it's minted. A
+  future date schedules a post as the group: the plan names it, and the
+  publish-due sweep asks `may_post_as` again on the day, posts, and claims. A
+  poster no longer in the group on the day gets nothing posted, and the plan
+  stays, as a refused private group plan does.
+- ~~Pins~~ (Curtis, 2026-10-18: "public pins"). A member pins a public post as
+  the group as they pin a members-only one, owners' pins above members'. The pin
+  names the post's claim, as a hide does, on the public lane, so anyone holding
+  the group's public lanes folds it. A pin counts while the group counts the
+  post. The open feed's first page carries `pinned` (narrowed by the same words
+  and picks), every row says its pin, and the group's public feed shows a pinned
+  row with the members' pin chip.
+- **Rooms as the group: not now** (Curtis, 2026-10-18). A public group keeps its
+  members-only #general and rooms; a public room stays its opener's own.
 - ~~The cost of the public pass~~ (settled 2026-10-17). Outside the group it
   runs a group's pass every ten minutes, at once when whom it carries for
   changes, and every beat on the test rig (`public_pass_due`). It re-runs the

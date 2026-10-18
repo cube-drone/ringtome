@@ -40,10 +40,18 @@ const usePublicGroup = (group, turn = 0) => {
 /// The group's public posts as a feed (Curtis, 2026-10-17: "a full-feed view with filters and
 /// such"): the feed's cards, newest first, a page at a time, with the filter strip over them and
 /// the header's search - each post its author's own, wearing the group's public band.
-export const GroupFeed = ({ group, name, current, searchQuery = '', member = false }) => {
+export const GroupFeed = ({
+    group,
+    name,
+    current,
+    searchQuery = '',
+    member = false,
+    owner = false,
+}) => {
     const viewer = current ? `?as=${current.root}` : '';
     const base = `/api/groups/${group}/posts${viewer}`;
     const [list, setList] = useState(null);
+    const [pinned, setPinned] = useState([]);
     const [more, setMore] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -54,6 +62,7 @@ export const GroupFeed = ({ group, name, current, searchQuery = '', member = fal
             .then((page) => {
                 if (!live) return;
                 setList(page.posts || []);
+                setPinned(page.pinned || []);
                 setMore(!!page.more);
             })
             .catch((e) => live && setError(e.message));
@@ -95,8 +104,23 @@ export const GroupFeed = ({ group, name, current, searchQuery = '', member = fal
             mine: !!current && current.root === p.author,
         }),
         as_group: { id: group, name },
+        // A member pins it to the top of the group's public feed (Curtis, 2026-10-18), as on the
+        // private tab: the card's pin chip, on this group.
+        pin_group: member ? { id: group, owner, pinned: p.pinned || null } : null,
     });
-    const shown = (search.active ? search.results || [] : list || []).map(asItem);
+    // Pinned above the feed, on its first page; the rows below leave out what's pinned.
+    const pinnedKeys = new Set(pinned.map((p) => `${p.author}:${p.doc_id}`));
+    const pinnedShown = search.active ? [] : pinned.map(asItem);
+    const shown = (search.active ? search.results || [] : list || [])
+        .filter((p) => search.active || !pinnedKeys.has(`${p.author}:${p.doc_id}`))
+        .map(asItem);
+    const card = (item) => html`<${PostEntry}
+        key=${`${item.author}:${item.doc_id}`}
+        item=${item}
+        current=${current}
+        found=${search.active ? searchQuery : null}
+        editing=${null}
+    />`;
     return html`<section class="group-posts">
         ${
             /* A member's way to say something here, as the private tab's (2026-10-17): the feed's
@@ -119,22 +143,23 @@ export const GroupFeed = ({ group, name, current, searchQuery = '', member = fal
             html`<p class="null-sub"><span class="waiting-dot"></span> ${t('posts.searching', 'searching…')}</p>`
         }
         ${
+            pinnedShown.length > 0 &&
+            html`<div class="group-pinned">
+                <div class="people-shelf-head">
+                    <span class="people-shelf-title"><${Icons.pin} /> ${t('apps.groups.pinned', 'pinned')}</span>
+                </div>
+                ${pinnedShown.map(card)}
+            </div>`
+        }
+        ${
             list &&
             !search.searching &&
-            shown.length === 0 &&
+            shown.length + pinnedShown.length === 0 &&
             html`<p class="null-sub">
                 ${search.active ? search.error || t('publicgroup.nothing-matches', 'nothing posted as the group says that.') : t('publicgroup.no-public-posts-yet', 'nothing posted in public as the group yet.')}
             </p>`
         }
-        ${shown.map(
-            (item) => html`<${PostEntry}
-                key=${`${item.author}:${item.doc_id}`}
-                item=${item}
-                current=${current}
-                found=${search.active ? searchQuery : null}
-                editing=${null}
-            />`,
-        )}
+        ${shown.map(card)}
         ${error && html`<p class="form-error">${error}</p>`}
         ${
             (search.active ? search.more : more) &&

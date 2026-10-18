@@ -347,7 +347,7 @@ export const GroupPage = ({ group, current }) => {
             </nav>`
         }
         ${tab === 'chats' && html`<${GroupChats} group=${group} roster=${roster} act=${act} />`}
-        ${tab === 'public' && html`<${GroupFeed} group=${group} name=${roster.name} current=${current} member=${!!you.member} />`}
+        ${tab === 'public' && html`<${GroupFeed} group=${group} name=${roster.name} current=${current} member=${!!you.member} owner=${!!you.owner} />`}
         ${
             tab === 'private' &&
             html`<${GroupPosts}

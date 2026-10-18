@@ -1399,24 +1399,24 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
             .collect();
         by_members.entry(*post).or_default().push(Write { hash: *h, path: &no_rank, replaces });
     }
-    let pinned_in = |layer: &BTreeMap<Hash, Vec<Write>>| -> BTreeSet<Hash> {
-        layer
-            .iter()
-            .filter(|(post, _)| posts.contains(*post))
-            .filter_map(|(post, writes)| {
-                let h = head(writes)?;
-                matches!(
-                    entry(&h)?.1.body,
-                    GroupEntry::Pin { pinned: true, .. }
-                        | GroupEntry::MemberPin { pinned: true, .. }
-                )
-                .then_some(*post)
-            })
-            .collect()
-    };
-    let owner_pins = pinned_in(&pins);
-    let member_pins: BTreeSet<Hash> =
-        pinned_in(&by_members).into_iter().filter(|p| !owner_pins.contains(p)).collect();
+    // What a pin can hold: a members-only post by its first version, or a public post as the
+    // group by its claim (plans/PUBLIC_GROUPS.md; Curtis, 2026-10-18) - while the group counts it.
+    let pinned_in =
+        |layer: &BTreeMap<Hash, Vec<Write>>, public: &BTreeSet<Hash>| -> BTreeSet<Hash> {
+            layer
+                .iter()
+                .filter(|(post, _)| posts.contains(*post) || public.contains(*post))
+                .filter_map(|(post, writes)| {
+                    let h = head(writes)?;
+                    matches!(
+                        entry(&h)?.1.body,
+                        GroupEntry::Pin { pinned: true, .. }
+                            | GroupEntry::MemberPin { pinned: true, .. }
+                    )
+                    .then_some(*post)
+                })
+                .collect()
+        };
     // A post is the group's while some counted claim says so and none takes it back - so the
     // answer is the same whatever order a persona's devices' lanes are read in - named by its
     // smallest claim's hash.
@@ -1484,6 +1484,12 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
     let public_posts: BTreeMap<(Root, [u8; 16]), Hash> = claimed
         .into_iter()
         .filter(|((author, _), h)| members.contains(author) && !hidden.contains(h))
+        .collect();
+    let counted_public: BTreeSet<Hash> = public_posts.values().copied().collect();
+    let owner_pins = pinned_in(&pins, &counted_public);
+    let member_pins: BTreeSet<Hash> = pinned_in(&by_members, &counted_public)
+        .into_iter()
+        .filter(|p| !owner_pins.contains(p))
         .collect();
     Some(Roster {
         id: group,
@@ -2497,6 +2503,25 @@ mod tests {
             GroupEntry::Remove { by, target: B, ends: vec![], anchors, ban: false },
         );
         assert!(out.fold().public_posts.is_empty(), "a removal ends every claim of theirs");
+
+        // Pinned on the public lane (Curtis, 2026-10-18): an owner's and a member's, each by the
+        // claim, seen by anyone holding the public lanes - and no pin outlives the claim.
+        let mut pin = w.clone();
+        let by = pin.found;
+        pin.add_public(F, 0, GroupEntry::Pin { by, post: claim, pinned: true, replaces: vec![] });
+        let earlier_claim = pin.fold().public_posts[&(B, earlier)];
+        pin.add_public(
+            B,
+            0,
+            GroupEntry::MemberPin { post: earlier_claim, pinned: true, replaces: vec![] },
+        );
+        let r = pin.fold();
+        assert_eq!(r.owner_pins, BTreeSet::from([claim]), "the owner's pin");
+        assert_eq!(r.member_pins, BTreeSet::from([earlier_claim]), "and the member's");
+        let outside = build(pin.group, &pin.public_only()).unwrap();
+        assert_eq!((outside.owner_pins, outside.member_pins), (r.owner_pins, r.member_pins));
+        pin.add_public(B, 0, GroupEntry::Public { doc, retract: true });
+        assert!(pin.fold().owner_pins.is_empty(), "taken back, unpinned");
 
         // A claim on the members-only lane, or by someone who isn't in, is nothing.
         let mut stray = World::new_public();

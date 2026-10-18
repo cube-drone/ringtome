@@ -4662,8 +4662,9 @@ async fn publish_handler(
             "a private chat can't be closed - stop talking, or block them"
         )));
     }
-    // As the group (plans/PUBLIC_GROUPS.md): a public group the poster is in, and an open post
-    // now - a sealed one has no public to speak to, and a schedule would claim nothing.
+    // As the group (plans/PUBLIC_GROUPS.md): a public group the poster is in, and an open post -
+    // a sealed one has no public to speak to. A schedule carries it (Curtis, 2026-10-18): the
+    // plan names the group, and the sweep asks again on the day and claims what it mints.
     let as_group = match req.as_ref().and_then(|b| b.as_group.as_deref()).filter(|g| !g.is_empty())
     {
         Some(g) => {
@@ -4671,12 +4672,6 @@ async fn publish_handler(
                 return Err(AppError::BadRequest(crate::msg!(
                     "identity.routes.as-the-group-is-open",
                     "a post as the group is an open post - not sealed, not a room"
-                )));
-            }
-            if dated_ms.is_some_and(|at| at > crate::clock::now_ms()) {
-                return Err(AppError::BadRequest(crate::msg!(
-                    "identity.routes.as-the-group-isnt-scheduled",
-                    "a post as the group can't be scheduled yet - clear its date, or give it one that has passed"
                 )));
             }
             Some(crate::roster::may_post_as(&state, &root, g).await?)
@@ -4703,6 +4698,7 @@ async fn publish_handler(
                 "by": data.leaf_hex(),
                 "settled": settled,
                 "trusted_only": trusted_only,
+                "as_group": as_group.map(hex::encode),
             });
             data.annotations().set_field(&doc_id, store::PUBLISH_PLAN, &plan.to_string()).await?;
             return Ok(Json(PublishResponse {

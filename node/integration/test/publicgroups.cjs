@@ -10,7 +10,9 @@
     Slice 2, posting as the group: a member's public post as the group is their own public post,
     which their public lane claims. Its card says "(Cheese Group)". An owner's hide ends that, and
     so does taking the post down; removing a member ends every claim of theirs. Nobody outside
-    the group, and no sealed post, posts as it. A drawing posts as it too, by the drawing's door.
+    the group, and no sealed post, posts as it. A drawing posts as it too, by the drawing's door,
+    and a future date schedules a post as it: claimed when the sweep posts it, on its day. A
+    member pins a public post as the group to the top of its open feed, for anyone to see.
 
     Slice 3, the carry: dee follows ada. Her own post as the group is a post of hers, and comes
     with the follow, marked. Bea's comes through ada only once dee wants ada's rebroadcasts - with
@@ -278,6 +280,70 @@ const DOC_HEADER = 7;
             const down = await ada(`api/identity/${adaRoot}/posts/${said}`, { method: 'DELETE' });
             assert.equal(down.status, 200, await down.text());
             assert.ok(!(await claims(HOST)).some((c) => c.doc === said), 'taken down');
+        });
+
+        it('a future date schedules a post as the group, claimed when the sweep posts it', async () => {
+            const doc = await draft(ada, adaRoot, 'cheese next year');
+            const date = await j(
+                ada,
+                `api/identity/${adaRoot}/docs/${doc}/annotations/fields/display_date`,
+                { value: '2031-01-01' },
+                'PUT',
+            );
+            assert.equal(date.status, 200, await date.text());
+            const res = await publishAs(ada, adaRoot, doc, { tz_offset_min: 0 });
+            const text = await res.text();
+            assert.equal(res.status, 200, text);
+            const answer = JSON.parse(text);
+            assert.ok(!answer.post_id, 'nothing posted yet');
+            assert.ok(answer.scheduled_for > Date.now(), 'scheduled');
+            const claimed = await claims(HOST);
+
+            const ring = (at) =>
+                ada('test/beat', {
+                    method: 'POST',
+                    body: JSON.stringify({ pass: 'publish-due', root: adaRoot, at_ms: at }),
+                });
+            assert.equal((await ring(undefined)).status, 200);
+            assert.deepEqual(await claims(HOST), claimed, 'nothing claimed before its day');
+            assert.equal((await ring(answer.scheduled_for + 1)).status, 200);
+            const fresh = (await claims(HOST)).filter((c) => !claimed.some((o) => o.doc === c.doc));
+            assert.equal(fresh.length, 1, 'posted on its day, and claimed as the group');
+            const said = fresh[0].doc;
+            assert.equal(fresh[0].author, adaRoot);
+            assert.deepEqual((await cardOf(ada, adaRoot, said)).as_group, {
+                id: group,
+                name: 'Cheese Group',
+            });
+
+            const down = await ada(`api/identity/${adaRoot}/posts/${said}`, { method: 'DELETE' });
+            assert.equal(down.status, 200, await down.text());
+        });
+
+        it("a pinned public post tops the group's open feed, for anyone", async () => {
+            const res = await publishAs(ada, adaRoot, await draft(ada, adaRoot, 'pinned cheese'));
+            const said = JSON.parse(await res.text()).post_id;
+            assert.ok(said, 'posted as the group');
+            const newer = await publishAs(ada, adaRoot, await draft(ada, adaRoot, 'newer cheese'));
+            assert.equal(newer.status, 200, 'and something newer under it');
+            const pin = (pinned) => act(ada, adaRoot, `docs/${said}/pin`, { pinned });
+            assert.equal((await pin(true)).pinned, 'owner', "an owner's pin");
+            const stranger = makeFetch(HOST);
+            const page = async () => (await stranger(`api/groups/${group}/posts`)).json();
+            const open = await page();
+            assert.deepEqual(
+                (open.pinned || []).map((p) => [p.doc_id, p.pinned]),
+                [[said, 'owner']],
+                'pinned on the open feed',
+            );
+            assert.equal(
+                open.posts.find((p) => p.doc_id === said).pinned,
+                'owner',
+                'and its row says so',
+            );
+            assert.equal((await pin(false)).pinned, null, 'unpinned');
+            assert.ok(!(await page()).pinned, 'gone from the top');
+            await ada(`api/identity/${adaRoot}/posts/${said}`, { method: 'DELETE' });
         });
 
         it('removing a member ends every claim they made', async () => {

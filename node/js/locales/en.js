@@ -2412,7 +2412,6 @@ export default {
     'identity.routes.a-room-is-not-a-reply': 'a room is a post of its own, not a reply',
     'identity.routes.an-im-is-a-room-for-two': 'a private chat is a room for two - sealed to one other person, and nobody else',
     'identity.routes.a-private-chat-doesnt-close': "a private chat can't be closed - stop talking, or block them",
-    'identity.routes.as-the-group-isnt-scheduled': "a post as the group can't be scheduled yet - clear its date, or give it one that has passed",
     'identity.routes.that-isnt-a-document-id': "that isn't a document id",
     'identity.routes.that-post-isnt-on-your-shelf': "that post isn't on your public shelf - it may already be taken down",
     'identity.routes.a-private-chat-doesnt-delete': "a private chat can't be deleted - it belongs to both of you",

@@ -2308,6 +2308,18 @@ async fn write(
     Ok(*write_signed(state, data, me, group, entry).await?.hash())
 }
 
+/// [`write`] on a lane the caller names (see [`write_signed_on`]).
+async fn write_on(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: GroupId,
+    entry: GroupEntry,
+    lane: Option<u32>,
+) -> Result<Hash, AppError> {
+    Ok(*write_signed_on(state, data, me, group, entry, lane).await?.hash())
+}
+
 /// Is this group public (plans/PUBLIC_GROUPS.md)? Its founding says, as this node holds it.
 async fn is_public(state: &AppState, group: &GroupId) -> bool {
     matches!(folded(state, group).await, Ok(Some((roster, _))) if roster.public)
@@ -4667,10 +4679,20 @@ async fn pin_handler(
     }
     let owner = roster.acting_as(&me);
     let (versions, _) = documents_of(&state, &group, &roster).await?;
-    let post =
-        versions.get(&doc).and_then(|l| first_version(l)).map(|v| v.hash).ok_or_else(|| {
-            AppError::NotFound(crate::msg!("roster.no-such-post", "no such post in this group"))
-        })?;
+    // A members-only post by its first version; a public post as the group by its claim, pinned on
+    // the public lane where anyone carrying the group sees it (Curtis, 2026-10-18) - as a hide.
+    let members_only = versions.get(&doc).and_then(|l| first_version(l)).map(|v| v.hash);
+    let claim = roster.public_posts.iter().find(|((_, d), _)| *d == doc).map(|(_, c)| *c);
+    let (post, lane) = match (members_only, claim) {
+        (Some(p), _) => (p, None),
+        (None, Some(c)) => (c, Some(service::GROUP_PUBLIC)),
+        (None, None) => {
+            return Err(AppError::NotFound(crate::msg!(
+                "roster.no-such-post",
+                "no such post in this group"
+            )))
+        }
+    };
     // Every pin of it this node has seen, layer by layer, replaced so the newest word settles it.
     let seen = |owners: bool| -> Vec<Hash> {
         lanes
@@ -4691,7 +4713,7 @@ async fn pin_handler(
             Some(by) => GroupEntry::Pin { by, post, pinned: true, replaces: seen(true) },
             None => member_entry(true),
         };
-        write(&state, &data, &root, group, entry).await?;
+        write_on(&state, &data, &root, group, entry, lane).await?;
     } else {
         if roster.owner_pins.contains(&post) {
             let Some(by) = owner else {
@@ -4700,17 +4722,18 @@ async fn pin_handler(
                     "an owner pinned that - only an owner takes it down"
                 )));
             };
-            write(
+            write_on(
                 &state,
                 &data,
                 &root,
                 group,
                 GroupEntry::Pin { by, post, pinned: false, replaces: seen(true) },
+                lane,
             )
             .await?;
         }
         if !seen(false).is_empty() {
-            write(&state, &data, &root, group, member_entry(false)).await?;
+            write_on(&state, &data, &root, group, member_entry(false), lane).await?;
         }
     }
     let (roster, _) = current(&state, &group, &me).await?;
@@ -5217,6 +5240,28 @@ async fn public_claims(
     Ok(roster.public_posts.keys().map(|(a, d)| (hex::encode(a), *d)).collect())
 }
 
+/// A public group's pinned public posts (Curtis, 2026-10-18), as its fold holds them: each by its
+/// author and doc, an owner's pin above a member's, in claim order within each.
+async fn public_pins(state: &AppState, group: &GroupId) -> Vec<(String, [u8; 16], &'static str)> {
+    let Ok(Some((roster, _))) = folded(state, group).await else { return Vec::new() };
+    let mut pins: Vec<_> = roster
+        .public_posts
+        .iter()
+        .filter_map(|((a, d), claim)| {
+            let pin = if roster.owner_pins.contains(claim) {
+                "owner"
+            } else if roster.member_pins.contains(claim) {
+                "member"
+            } else {
+                return None;
+            };
+            Some((hex::encode(a), *d, pin))
+        })
+        .collect();
+    pins.sort_by_key(|p| p.2 != "owner");
+    pins
+}
+
 fn cursor_of(q: &crate::idface::PostsQuery) -> Result<Option<(i64, [u8; 16])>, AppError> {
     match (q.after_ms, q.after_doc.as_deref()) {
         (Some(ms), Some(doc)) => Ok(Some((ms, doc_of(doc)?))),
@@ -5236,17 +5281,52 @@ async fn public_feed_handler(
     let group = group_of(&group)?;
     let claims = public_claims(&state, &group).await?;
     let after = cursor_of(&q)?;
-    Ok(Json(
-        crate::idface::group_feed_json(
+    let pins = public_pins(&state, &group).await;
+    let mut page = crate::idface::group_feed_json(
+        &state,
+        &claims,
+        after,
+        raw.as_deref(),
+        q.q.as_deref(),
+        q.as_root.as_deref(),
+    )
+    .await?;
+    // Pinned above the feed (Curtis, 2026-10-18), as a members-only post's pin is: on the first
+    // page, whatever their age, narrowed by the same words and picks. Every row says its pin.
+    let pin_of = |author: &str, doc: &str| {
+        pins.iter().find(|(a, d, _)| a == author && hex::encode(d) == doc).map(|p| p.2)
+    };
+    let mark = |rows: &mut serde_json::Value| {
+        for row in rows.as_array_mut().into_iter().flatten() {
+            let pin = pin_of(
+                row["author"].as_str().unwrap_or_default(),
+                row["doc_id"].as_str().unwrap_or_default(),
+            );
+            row["pinned"] = serde_json::json!(pin);
+        }
+    };
+    mark(&mut page["posts"]);
+    if after.is_none() && !pins.is_empty() {
+        let pinned: Vec<(String, [u8; 16])> =
+            pins.iter().map(|(a, d, _)| (a.clone(), *d)).collect();
+        let mut rows = crate::idface::group_feed_json(
             &state,
-            &claims,
-            after,
+            &pinned,
+            None,
             raw.as_deref(),
             q.q.as_deref(),
             q.as_root.as_deref(),
         )
-        .await?,
-    ))
+        .await?["posts"]
+            .take();
+        mark(&mut rows);
+        // Owners' pins first, as the fold's order says; the feed sorted them newest first.
+        if let Some(list) = rows.as_array_mut() {
+            list.sort_by_key(|r| r["pinned"].as_str() != Some("owner"));
+        }
+        page["pinned"] = rows;
+    }
+    Ok(Json(page))
 }
 
 /// GET `/api/groups/{group}/labels` - its feed's facets, as a persona's page counts theirs.

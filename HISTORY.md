@@ -23186,3 +23186,38 @@ Drawings already refuse a future date, so there's no schedule to refuse.
 `publishDrawing` forwards the choice. New claim in `publicgroups.cjs`: the
 drawing is claimed, its card wears the group, a stranger and a seal are refused,
 and the takedown ends the claim. Public groups (10) and drawings (18) are green.
+
+## 2026-10-18 — A post as the group can be scheduled
+
+A members-only group post took a future date as a schedule, and a post in public
+as the group was refused one. Now the publish door stores a public group's id
+(`as_group`) in the draft's publish plan, after the same `may_post_as` check. On
+the day, the publish-due sweep (`scheduled.rs`) asks again, posts, and claims
+the post for the group. Someone no longer in the group on the day gets nothing
+posted. Their own plain post isn't what they asked for, so the plan stays, as a
+refused private group plan does. The "can't be scheduled yet" refusal and its
+string are gone. New claim in `publicgroups.cjs`: scheduled, unclaimed before
+its day, claimed and carrying the group's band after. Public groups (11),
+scheduled posts (3) and the node's unit tests (652) are green.
+
+## 2026-10-18 — Public posts as the group can be pinned
+
+Curtis's rulings: public pins, and no rooms as the group for now. A member pins
+a public post as the group as they pin a members-only one: owners' pins go above
+members', and an owner's pin is an owner's to take down.
+
+- **The fold** (`proto::roster::build`): a pin may name a public post's claim,
+  as a hide does, and counts while the group counts the post. The fold's pins
+  are now computed after its public posts. A new proto test: an owner's pin and
+  a member's pin, the same from public lanes alone, and ended by a retract.
+- **The pin door** resolves a public post by its claim and writes on the public
+  lane (`write_on`), as the hide door does.
+- **The open feed** (`GET /api/groups/{group}/posts`) marks every row's pin. Its
+  first page carries `pinned`, narrowed as the feed is. It reads the fold, so
+  there's no rung.
+- **The app**: the group's public feed shows a pinned row, and members get the
+  pin chip on its cards (`pin_group`).
+
+New claim in `publicgroups.cjs`: an owner's pin tops the open feed for a
+stranger, and an unpin takes it off. Public groups (12), group posts (19) and
+proto (180) are green.

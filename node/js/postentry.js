@@ -271,9 +271,9 @@ const PinButton = ({ item, current, pinned, onPinned }) => {
 /// to the top of the group's page - an owner's pin above a member's - and takes a pin away when
 /// they may: an owner, any pin; a member, a member's. `pin` is the card's word for it: 'owner',
 /// 'member' or null.
-const GroupPinButton = ({ item, current, pin, onPin }) => {
+const GroupPinButton = ({ item, group, current, pin, onPin }) => {
     const [busy, setBusy] = useState(false);
-    const owner = !!(item.group && item.group.owner);
+    const owner = !!group.owner;
     // An owner's pin is an owner's to take down: a member's card says so, and offers nothing.
     if (pin === 'owner' && !owner) {
         return html`<span
@@ -293,7 +293,7 @@ const GroupPinButton = ({ item, current, pin, onPin }) => {
             setBusy(true);
             try {
                 const made = await api(
-                    `/api/identity/${current.root}/groups/${item.group.id}/docs/${item.doc_id}/pin`,
+                    `/api/identity/${current.root}/groups/${group.id}/docs/${item.doc_id}/pin`,
                     { method: 'POST', body: JSON.stringify({ pinned: !pin }) },
                 );
                 onPin(made.pinned || null);
@@ -834,7 +834,9 @@ const PostEntryBody = ({
     const [hidden, setHidden] = useState(serverHidden);
     useEffect(() => setHidden(serverHidden), [serverHidden]);
     // And its pin there (slice 4d), the same way: the row's word, moved by the chip.
-    const serverGroupPin = (item.group && item.group.pinned) || null;
+    // A public post as the group carries its pin in `pin_group`, where its group's feed shows it.
+    const pinGroup = item.group || item.pin_group || null;
+    const serverGroupPin = (pinGroup && pinGroup.pinned) || null;
     const [groupPin, setGroupPin] = useState(serverGroupPin);
     useEffect(() => setGroupPin(serverGroupPin), [serverGroupPin]);
 
@@ -1258,7 +1260,7 @@ const PostEntryBody = ({
     }${
         item.group &&
         !!current &&
-        html`<${GroupPinButton} item=${item} current=${current} pin=${groupPin} onPin=${setGroupPin} />`
+        html`<${GroupPinButton} item=${item} group=${item.group} current=${current} pin=${groupPin} onPin=${setGroupPin} />`
     }${
         /* Hiding is for someone else's post: your own you take down - unless another owner hid
         it, when you may ask to show it, and seniority decides (Curtis, 2026-10-15). */ ''
@@ -1336,6 +1338,12 @@ const PostEntryBody = ({
                         !!current.root &&
                         pinner(item) === current.root &&
                         html`<${PinButton} item=${item} current=${current} pinned=${pinned} onPinned=${setPinned} />`
+                    }
+                    ${/* On a public group's feed, a member's pin to its top (Curtis, 2026-10-18). */ ''}
+                    ${
+                        item.pin_group &&
+                        !!current &&
+                        html`<${GroupPinButton} item=${item} group=${item.pin_group} current=${current} pin=${groupPin} onPin=${setGroupPin} />`
                     }
                     ${/* A node administrator's super-pin (2026-09-30): onto the server's front page. */ ''}
                     ${!open && !item.private_doc && !item.trusted_only && item.kind !== 'share' && !!current && html`<${SuperPinChip} item=${item} />`}

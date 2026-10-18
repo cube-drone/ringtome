@@ -19,6 +19,9 @@ struct Plan {
     /// The group it's for (plans/GROUPS.md, slice 4c), hex; none for the public.
     #[serde(default)]
     group: Option<String>,
+    /// In public, as this public group (plans/PUBLIC_GROUPS.md), hex.
+    #[serde(default)]
+    as_group: Option<String>,
 }
 
 /// The periodic pass: every agented persona, everything due now.
@@ -114,6 +117,19 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
                     continue;
                 }
             }
+            // As the group: still a member on the day, or nothing is minted - the post was asked
+            // for as the group's, and the poster's own plain post is not what was asked. The plan
+            // stays, as a refused group plan does, for its author to clear or redate.
+            let as_group = match plan.as_group.as_deref() {
+                Some(g) => match crate::roster::may_post_as(state, &root, g).await {
+                    Ok(group) => Some(group),
+                    Err(e) => {
+                        tracing::warn!(root = %root, doc = %hex::encode(doc_id), error = ?e, "scheduled post as the group refused");
+                        continue;
+                    }
+                },
+                None => None,
+            };
             let flags = crate::record::documents::PublishFlags {
                 im: false,
                 settled: plan.settled,
@@ -132,6 +148,13 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
                     .await
                     {
                         tracing::warn!(root = %root, error = ?e, "scheduled mint's after-duties failed; the post stands");
+                    }
+                    if let Some(group) = as_group {
+                        if let Err(e) =
+                            crate::roster::claim_public(state, &data, &root, group, post_id).await
+                        {
+                            tracing::warn!(root = %root, error = ?e, "scheduled post's claim as the group failed; the post stands");
+                        }
                     }
                     minted += 1;
                     tracing::info!(root = %root, post = %hex::encode(post_id), at = plan.at, "scheduled publish minted");
