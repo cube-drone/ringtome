@@ -69,6 +69,16 @@ are driving towards.
 
 - Opus took a crack at fixing chat search losing visible context, but wasn't
   smart enough; revisit with Fable
+- **A room on a peeked author 404s** (found by `just test-data` 8 x 120,
+  2026-10-18). A persona on node A knocks on a room by an author A holds only as
+  a peek. A's copy of the author stops before the room. Visiting the author's
+  profile again refreshes nothing
+  (`fetched foreign identity ... received=0 peek=true`, with 20 newer posts on
+  the author's node). The room door (`room_admits`, `chat::room_head`) reads
+  only what's held, so it answers "can't find that room" for good. The reply
+  door has the answer for the same case: on a peek, `fragments::fetch_post` by
+  id, then read again. Also worth asking: is a peek that never refreshes on a
+  revisit intended?
 
 ### Groups (plans/GROUPS.md)
 

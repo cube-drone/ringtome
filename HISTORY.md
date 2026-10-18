@@ -23157,6 +23157,15 @@ green (19).
 Two runs on scratch nodes (5 x 60, 8 x 120). The second made public groups with
 public posts, private groups with books and a book in public as a group, and
 logged no failures of the new actions. Its only failures were the
-`reply-to-something` refusals and the roster-lag ones the generator already
-expects.
+`reply-to-something` refusals and three owner acts refused 403
+(`roster.owners-only`): the generator's memory of who owns a group lagged its
+node's.
 
+**Then those went too** (same day). Before an owner act (invite, appoint,
+remove, ban, hide) the generator reads the group's roster from the acting
+persona's node (`freshRoster`), and acts only if that persona still owns it. A
+removal targets only plain members, unless the remover founded the group. The
+roster doesn't say who's senior among owners, and the node refuses a junior's
+act against a senior. `reply-to-something` skips posts with comments off. The 8
+x 120 rerun logged 5 failures, none in a group: 4 replies to posts with comments
+off (fixed since), and 1 room knock that is a node gap. It's in NEXT_STEPS.

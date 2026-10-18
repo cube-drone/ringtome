@@ -635,10 +635,11 @@ const ACTIONS = [
         weight: 12,
         run: async (ctx, p, rng) => {
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
-            // Never a group post, which this action's public reply can't answer, and never a room,
-            // which is answered by saying something in it ("say it in the room instead").
+            // Never a group post, which this action's public reply can't answer, never a room,
+            // which is answered by saying something in it ("say it in the room instead"), and
+            // never a post with comments off, which the app offers no reply on.
             const theirs = (feed.items || []).filter(
-                (i) => i.author !== p.root && !i.group && i.format !== 'room',
+                (i) => i.author !== p.root && !i.group && i.format !== 'room' && !i.settled,
             );
             const inThread = theirs.filter((i) => i.reply_to);
             const item = ctx.pick(rng, inThread.length && rng() < 0.4 ? inThread : theirs);
@@ -874,11 +875,17 @@ const ACTIONS = [
                 ctx.groups.filter((x) => x.owners.has(p.root)),
             );
             if (!g) return;
+            const r = await freshRoster(p, g);
+            if (!r) return;
+            const invited = new Set(r.invited || []);
             const them = ctx.pick(
                 rng,
                 ctx.personas.filter(
                     (o) =>
-                        !g.members.has(o.root) && !g.banned.has(o.root) && !g.invites.has(o.root),
+                        !g.members.has(o.root) &&
+                        !g.banned.has(o.root) &&
+                        !g.invites.has(o.root) &&
+                        !invited.has(o.root),
                 ),
             );
             if (!them) return;
@@ -938,7 +945,7 @@ const ACTIONS = [
                 rng,
                 ctx.groups.filter((x) => x.owners.has(p.root)),
             );
-            if (!g) return;
+            if (!g || !(await freshRoster(p, g))) return;
             const them = ctx.pick(
                 rng,
                 [...g.members].filter((r) => !g.owners.has(r)),
@@ -949,8 +956,7 @@ const ACTIONS = [
         },
     },
     {
-        // Removal, and one in three a ban: an owner's act against someone junior (the node
-        // refuses one against a senior, which is a logged failure here).
+        // Removal, and one in three a ban: an owner's act against someone junior (`removable`).
         name: 'remove-someone-from-a-group',
         weight: 3,
         run: async (ctx, p, rng) => {
@@ -958,11 +964,8 @@ const ACTIONS = [
                 rng,
                 ctx.groups.filter((x) => x.owners.has(p.root)),
             );
-            if (!g) return;
-            const them = ctx.pick(
-                rng,
-                [...g.members].filter((r) => r !== p.root && r !== g.founder),
-            );
+            if (!g || !(await freshRoster(p, g))) return;
+            const them = ctx.pick(rng, removable(g, p));
             if (!them) return;
             const ban = rng() < 1 / 3;
             noteRoster(g, await groupAct(p, g, 'remove', { target: them, ban }));
@@ -979,11 +982,8 @@ const ACTIONS = [
                 rng,
                 ctx.groups.filter((x) => x.owners.has(p.root)),
             );
-            if (!g) return;
-            const them = ctx.pick(
-                rng,
-                [...g.members].filter((r) => r !== p.root && r !== g.founder),
-            );
+            if (!g || !(await freshRoster(p, g))) return;
+            const them = ctx.pick(rng, removable(g, p));
             if (!them) return;
             noteRoster(g, await groupAct(p, g, 'remove', { target: them, ban: true }));
             g.members.delete(them);
@@ -1068,7 +1068,7 @@ const ACTIONS = [
                 rng,
                 ctx.groups.filter((x) => x.owners.has(p.root) && x.posts.length),
             );
-            if (!g) return;
+            if (!g || !(await freshRoster(p, g))) return;
             const hidden = g.posts.filter((x) => x.hidden);
             if (hidden.length && rng() < 0.25) {
                 const one = ctx.pick(rng, hidden);
@@ -1330,6 +1330,33 @@ function noteRoster(g, r) {
     g.owners = new Set(r.members.filter((m) => m.owner).map((m) => m.root));
     if (Array.isArray(r.banned)) g.banned = new Set(r.banned);
 }
+
+/// The group as `p`'s node holds it now, over what this run remembered, read before an owner's
+/// act: the run's memory lags whatever reached the node by sync (an owner's removal or
+/// demotion elsewhere), and an act chosen from it is one the node refuses. Answers the roster
+/// when `p` still owns the group, else nothing.
+async function freshRoster(p, g) {
+    let r;
+    try {
+        r = await api(p, 'GET', `/api/identity/${p.root}/groups/${g.group}`);
+    } catch (e) {
+        // No longer theirs to read: removed, or banned, on another node.
+        if (!/ -> 404 /.test(e.message)) throw e;
+        g.members.delete(p.root);
+        g.owners.delete(p.root);
+        return null;
+    }
+    noteRoster(g, r);
+    return g.owners.has(p.root) ? r : null;
+}
+
+/// Whom `p`, an owner, may remove: members who own nothing, and every owner too when `p` founded
+/// the group. The roster doesn't say who's senior among owners, and the node refuses a junior's
+/// act against a senior, so an owner `p` didn't found the group over is left alone.
+const removable = (g, p) =>
+    [...g.members].filter(
+        (r) => r !== p.root && r !== g.founder && (p.root === g.founder || !g.owners.has(r)),
+    );
 
 /// Rewrite one of `p`'s documents at its current heads, as an edit in Writer saves.
 async function rewrite(ctx, p, rng, docId) {
