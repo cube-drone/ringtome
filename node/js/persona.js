@@ -1445,27 +1445,27 @@ const DomainServing = ({ held, busy, onCheck, copy }) => {
                     { domain: held.domain },
                 )
               : t(
-                    'persona.domain-needs-publishing',
-                    'Publish this persona for this node to serve {domain}.',
-                    {
-                        domain: held.domain,
-                    },
+                    'persona.domain-not-hosted',
+                    'This persona lives on another node, so this one doesn’t serve {domain}.',
+                    { domain: held.domain },
                 );
         return html`<small class="profile-domain-note">${why}</small>`;
     }
     if (held.served_ms)
         return html`<small class="profile-domain-note">${t('persona.domain-served', 'This node serves {domain}, and your posts are shared at it.', { domain: held.domain })}</small>`;
+    // Always a name to point at, never "here" (Curtis, 2026-10-18): a person doesn't know where
+    // here is. No name at all is a node with no public address, which nothing can point at.
+    if (!held.target)
+        return html`<small class="profile-domain-note">${t('persona.domain-no-target', 'This node has no public address yet, so there is nothing to point {domain} at.', { domain: held.domain })}</small>`;
     return html`<div class="profile-domain-record">
         <small>
             ${t(
-                'persona.domain-point-here',
-                'This node will serve {domain}. Point it here; once it answers, your posts are shared at it.',
+                'persona.domain-point-at',
+                'For this node to serve {domain}, add this record where your domain keeps its DNS. Once it answers, your posts are shared at it.',
                 { domain: held.domain },
             )}
         </small>
-        ${
-            held.target &&
-            html`<span class="profile-domain-line">
+        ${html`<span class="profile-domain-line">
                     <span class="persona-address-label">${t('persona.domain-record-name', 'name')}</span>
                     <code>${held.domain}</code>
                 </span>
@@ -1478,8 +1478,8 @@ const DomainServing = ({ held, busy, onCheck, copy }) => {
                     <code>${held.target}</code>
                     <button class="persona-address-copy" onClick=${() => copy(held.target)}>${t('person.copy', 'copy')}</button>
                 </span>
-                <small>${t('persona.domain-flatten', 'A domain with nothing before it, like example.com, needs a DNS provider that can flatten a CNAME.')}</small>`
-        }
+                <small>${t('persona.domain-flatten', 'A domain with nothing before it, like example.com, needs a DNS provider that can flatten a CNAME.')}</small>
+                <small>${t('persona.domain-operator-too', 'Whoever runs this node may need to add {domain} at their end as well.', { domain: held.domain })}</small>`}
         <button class="profile-save" disabled=${busy} onClick=${onCheck}>
             ${busy ? t('persona.checking', 'checking…') : t('persona.check-now', 'check now')}
         </button>
@@ -1533,7 +1533,9 @@ const DomainClaim = ({ root }) => {
             body: JSON.stringify({ domain: draft }),
         });
     const check = () => ask(`/api/identity/${root}/domain/check`, { method: 'POST' }, true);
-    if (!held) return null;
+    // A node's administrators only, for now (2026-10-18); anyone else sees the field only to
+    // withdraw a claim they already hold.
+    if (!held || (!held.allowed && !held.domain)) return null;
     const same = (draft || '').trim().toLowerCase() === (held.domain || '');
     const copy = (text) => writeClipboard(text).catch(() => {});
     return html`

@@ -14,12 +14,18 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { makeUserFetch } = require('./helpers.cjs');
 const { beat, pullAndFold } = require('./beat.cjs');
-const { HOST, HOST_B, makeFetch } = require('./fetch.cjs');
+const { HOST, HOST_B, makeFetch, sql } = require('./fetch.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const domainFor = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 8)}.test`;
 const pretendDns = (host, name, values) => j(makeFetch(host), 'test/dns-txt', { name, values });
 const shown = async (who, root) => (await (await who(`api/id/${root}/profile`)).json()).domain;
+// Custom domains are for a node's administrators, for now (2026-10-18).
+const makeAdmin = (who) =>
+    sql(
+        `INSERT OR IGNORE INTO account_tags (account_id, tag) VALUES ('${who.account.id}', 'node_admin')`,
+        HOST,
+    );
 
 describe('custom domains: a claim counts once its domain says it back', function () {
     this.timeout(60000);
@@ -28,9 +34,28 @@ describe('custom domains: a claim counts once its domain says it back', function
 
     before(async () => {
         ada = await makeUserFetch({ prefix: 'domada' });
+        await makeAdmin(ada);
         root = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
         await ada(`api/identity/${root}/serve`, { method: 'POST' });
         domain = domainFor('ada');
+    });
+
+    it('is for administrators: anyone else is refused, and not offered the field', async () => {
+        const cy = await makeUserFetch({ prefix: 'domcy' });
+        const cyRoot = (await (await cy('api/identity', { method: 'POST' })).json()).root_pubkey;
+        assert.equal((await (await cy(`api/identity/${cyRoot}/domain`)).json()).allowed, false);
+        const put = await j(
+            cy,
+            `api/identity/${cyRoot}/domain`,
+            { domain: domainFor('cy') },
+            'PUT',
+        );
+        assert.equal(put.status, 403);
+        assert.equal(
+            (await cy(`api/identity/${cyRoot}/domain/check`, { method: 'POST' })).status,
+            403,
+        );
+        assert.equal((await (await ada(`api/identity/${root}/domain`)).json()).allowed, true);
     });
 
     it('a claim is a bare domain, and is refused as anything else', async () => {
@@ -95,6 +120,7 @@ describe('custom domains: a claim counts once its domain says it back', function
 
     it("a reader's node shows the claim only once its own lookup agrees", async function () {
         const ada = await makeUserFetch({ prefix: 'domtwoa' });
+        await makeAdmin(ada);
         const root = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
         await ada(`api/identity/${root}/serve`, { method: 'POST' });
         const domain = domainFor('two');
@@ -146,8 +172,9 @@ describe('custom domains: a proved domain is the persona’s own website', funct
 
     before(async () => {
         ada = await makeUserFetch({ prefix: 'domsite' });
+        await makeAdmin(ada);
         root = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
-        await ada(`api/identity/${root}/serve`, { method: 'POST' });
+        // Never marked served (`/serve`): the app never asks for it, and hosting is enough.
         const draft = await (
             await j(ada, `api/identity/${root}/docs`, {
                 title: 'Leek Soup',

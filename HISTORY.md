@@ -23357,3 +23357,31 @@ Every other domain is looked up for real (`domains::pretend`).
 
 A check that finds nothing new now says so ("Checked just now: ... has no record
 naming you yet"); before, a press looked like no press.
+
+Then the ✓ arrived and the page said "Publish this persona for this node to
+serve gooble.email". No such step exists. Slice 3 counted a domain as served
+only for a persona marked served (`identity::served_roots`). That flag is the
+retired publication act: only the bare `/serve` door sets it, and the app never
+calls that door. So no persona could be served. Serving now asks only that the
+persona is hosted here (`domainsite::read_sites`), the same bar its `/@name`
+page already has. The message left for a persona hosted elsewhere says so, and
+the custom-domains suite no longer marks its persona served.
+
+The next message said "Point it here", and only the operator knows where here
+is. The settings page now always names a hostname to point at
+(`domains::target`): the operator's `RINGTOME_DOMAINS_TARGET`, or else the host
+of the node's public URL. It shows the CNAME record, notes that whoever runs the
+node may need to add the domain at their end too, and on a node with no public
+address says there is nothing to point at yet. Curtis: the variety of people's
+setups makes fuller instructions unwise.
+
+## 2026-10-18: custom domains are for administrators, for now
+
+Curtis: "this feature is complicated enough that I think we should gate it to
+node_admin users only". Only a `node_admin` account may claim a domain or press
+"check now"; anyone else is refused with a 403 (`domains::allowed`). The
+settings field is hidden from them, unless they hold a claim already, which they
+can still withdraw. A node serves only its administrators' domains
+(`domainsite::read_sites`), so nobody else's domain can be served or become
+their canonical address. The ✓ itself is not gated: the profile door still takes
+the field, and every node checks a claim it sees for itself.

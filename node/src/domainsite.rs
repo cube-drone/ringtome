@@ -60,7 +60,8 @@ async fn sites(state: &AppState) -> Arc<HashMap<String, Site>> {
     let key = state.node_db.writes_key().to_string();
     let at = crate::db::writes_to(&key, "domain_proofs")
         + crate::db::writes_to(&key, "identities")
-        + crate::db::writes_to(&key, "accounts");
+        + crate::db::writes_to(&key, "accounts")
+        + crate::db::writes_to(&key, "account_tags");
     if let Some((kept_at, sites)) = KEPT.lock().expect("sites poisoned").get(&key) {
         if *kept_at == at {
             return sites.clone();
@@ -87,12 +88,23 @@ async fn read_sites(state: &AppState) -> anyhow::Result<HashMap<String, Site>> {
         )
         .await
         .context("listing proved domains")?;
-    let served = crate::identity::served_roots(&state.node_db)
+    // Any persona hosted here: its `/@name` page answers already, and the claim is its consent.
+    // (Not `served_roots`: that flag is the retired publication act, which the app never sets -
+    // 2026-10-18, a proved domain no node would serve.)
+    // And for now, only an administrator's (`domains::allowed`).
+    let admins = crate::auth::accounts_tagged(&state.node_db, crate::auth::TAG_NODE_ADMIN)
         .await
-        .map_err(|e| anyhow::anyhow!("listing served personas: {e:?}"))?;
+        .map_err(|e| anyhow::anyhow!("listing administrators: {e:?}"))?;
+    let hosted: Vec<String> = crate::identity::hosted_roots_with_accounts(&state.node_db)
+        .await
+        .map_err(|e| anyhow::anyhow!("listing hosted personas: {e:?}"))?
+        .into_iter()
+        .filter(|(_, account)| admins.contains(account))
+        .map(|(root, _)| root)
+        .collect();
     Ok(rows
         .into_iter()
-        .filter(|(root, _, _)| served.contains(root))
+        .filter(|(root, _, _)| hosted.contains(root))
         .filter_map(|(root_hex, domain, verified_ms)| {
             let root = crate::pubkey::decode(&root_hex)?;
             let seg = crate::webpath::short_of(&root);

@@ -239,11 +239,12 @@ reach the node over plain HTTP. Then:
 
 ### People's own domains
 
-A persona on your node can claim a domain of its own (`cube-drone.com`) in its
-profile settings and prove it with a DNS TXT record; once it's proved, the node
-serves the domain as that persona's website: their page at `/`, their posts at
-their paths, their feed at `/feed.xml`. It's a reading site: no one signs in on
-it, and it sets no cookie. Custom domains are on unless you set
+For now, only a persona belonging to one of your node's administrators
+(`node_admin`) can claim a domain of its own (`cube-drone.com`) in its profile
+settings and prove it with a DNS TXT record; once it's proved, the node serves
+the domain as that persona's website: their page at `/`, their posts at their
+paths, their feed at `/feed.xml`. It's a reading site: no one signs in on it,
+and it sets no cookie. Custom domains are on unless you set
 `RINGTOME_CUSTOM_DOMAINS=off`, and cost nothing until a domain points at you.
 
 The node knows which domains it serves; getting each one to it, with a
@@ -394,7 +395,7 @@ Everything is an environment variable. The ones an operator is likely to want:
 | `RINGTOME_CACHE_MEMORY`         | a quarter of memory              | how much the node's caches may hold: a size (`2GB`, `512MB`), a share (`40%`), or `0` for none - see _How much computer_                                                                                                                                                 |
 | `RINGTOME_SERVE_CROWD`          | `true`                           | `false` stops this node answering other nodes about the personas its people follow (its own devices and those personas' own nodes aside), offering itself as a place to fetch them, and naming those places when it turns a connection away as busy - for a metered link |
 | `RINGTOME_CUSTOM_DOMAINS`       | `on`                             | `off` stops this node serving the domains its personas claim - see _People's own domains_                                                                                                                                                                                |
-| `RINGTOME_DOMAINS_TARGET`       | unset                            | the hostname people point their own domain at (a CDN pull zone's name), shown to them as a CNAME record                                                                                                                                                                  |
+| `RINGTOME_DOMAINS_TARGET`       | the public URL's host            | the hostname people point their own domain at (a CDN pull zone's name), shown to them as a CNAME record                                                                                                                                                                  |
 | `RUST_LOG`                      | node and requests at `debug`     | log filter, `tracing` syntax; `ringtome_node=info` is quieter                                                                                                                                                                                                            |
 
 The rest (sync and admission budgets, proof-of-work prices) have defaults sized

@@ -1,6 +1,8 @@
 # Custom domains - a person at their own web address
 
-A design draft (2026-10-15), with rulings (2026-10-16). Slices 1 to 3 built.
+A design draft (2026-10-15), with rulings (2026-10-16). Slices 1 to 3 built. For
+now (2026-10-18), only a node administrator's personas may claim a domain, and
+only theirs are served.
 
 ## The ask (Curtis, 2026-10-15)
 
@@ -393,7 +395,7 @@ order only has to keep the site up through the switch:
    their feed; an address that names nothing is their page under a 404. Only GET
    and HEAD, no `Set-Cookie`, and the node's own pages - someone else's,
    `/ringtome/...`, `/@name` - go to the node's public URL; their own address in
-   the node's form comes home. Served means TXT-proved, published from here, and
+   the node's form comes home. Served means TXT-proved, hosted here, and
    `RINGTOME_CUSTOM_DOMAINS` not `off`. Every check now fetches the well-known
    file and notes `served_ms` (node rung 103); a 404 or an oversized page there
    is "another site answers", not "no answer". On the serving node `/@name/...`

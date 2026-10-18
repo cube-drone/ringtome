@@ -455,7 +455,11 @@ pub struct DomainPut {
 }
 
 /// The owner's view: what they claim, what this node found, and the record that would prove it.
-async fn owner_answer(state: &AppState, root_hex: &str) -> Result<serde_json::Value, AppError> {
+async fn owner_answer(
+    state: &AppState,
+    root_hex: &str,
+    allowed: bool,
+) -> Result<serde_json::Value, AppError> {
     let root = crate::pubkey::decode(root_hex)
         .ok_or_else(|| AppError::BadRequest(crate::msg!("domains.bad-root", "bad root pubkey")))?;
     let proof = proof_of(&state.node_db, root_hex).await.map_err(AppError::Internal)?;
@@ -471,8 +475,34 @@ async fn owner_answer(state: &AppState, root_hex: &str) -> Result<serde_json::Va
         // Serving (slice 3): whether this node answers the domain now, and where to point it.
         "serving": crate::domainsite::site_of_root(state, root_hex).await.is_some(),
         "custom_domains": state.config.custom_domains,
-        "target": state.config.domains_target,
+        "target": target(state),
+        // Node administrators only, for now (`allowed`).
+        "allowed": allowed,
     }))
+}
+
+/// The hostname a person points their domain at: the operator's (`RINGTOME_DOMAINS_TARGET`, a
+/// CDN's name), else the node's own public one. None for a node with no public address, which
+/// nothing can point at. Always a name, never "here": a person doesn't know where here is.
+fn target(state: &AppState) -> Option<String> {
+    state.config.domains_target.clone().or_else(|| {
+        let url = url::Url::parse(state.config.public_url.as_deref()?).ok()?;
+        url.host_str().map(str::to_string)
+    })
+}
+
+/// Custom domains are for node administrators only, for now (Curtis, 2026-10-18: "complicated
+/// enough that I think we should gate it"): only they may claim one or ask about it, and only
+/// theirs are served (`domainsite::read_sites`). Anyone may withdraw a claim.
+async fn allowed(state: &AppState, session: &Session) -> Result<bool, AppError> {
+    crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await
+}
+
+fn refused() -> AppError {
+    AppError::Forbidden(crate::msg!(
+        "domains.admins-only",
+        "for now, only this node's administrators can give a persona its own domain"
+    ))
 }
 
 /// The memo brought up to the profile as signed now, before the owner is told about it: the
@@ -495,7 +525,8 @@ pub async fn domain_get(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     caught_up(&state, &data, &root).await?;
-    Ok(Json(owner_answer(&state, &root).await?))
+    let allowed = allowed(&state, &session).await?;
+    Ok(Json(owner_answer(&state, &root, allowed).await?))
 }
 
 /// `PUT /api/identity/{root}/domain`: claim a domain (`""` withdraws the claim), and check it.
@@ -516,12 +547,16 @@ pub async fn domain_put(
             ))
         })?
     };
+    let allowed = allowed(&state, &session).await?;
+    if !allowed && !value.is_empty() {
+        return Err(refused());
+    }
     data.profile().set(FIELD, &value).await?;
     caught_up(&state, &data, &root).await?;
     if !value.is_empty() {
         check(&state, &root).await.map_err(AppError::Internal)?;
     }
-    Ok(Json(owner_answer(&state, &root).await?))
+    Ok(Json(owner_answer(&state, &root, allowed).await?))
 }
 
 /// `POST /api/identity/{root}/domain/check`: ask DNS again, now.
@@ -530,10 +565,13 @@ pub async fn domain_check(
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    if !allowed(&state, &session).await? {
+        return Err(refused());
+    }
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     caught_up(&state, &data, &root).await?;
     check(&state, &root).await.map_err(AppError::Internal)?;
-    Ok(Json(owner_answer(&state, &root).await?))
+    Ok(Json(owner_answer(&state, &root, true).await?))
 }
 
 #[cfg(test)]

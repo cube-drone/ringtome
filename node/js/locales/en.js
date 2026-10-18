@@ -1824,13 +1824,15 @@ export default {
     'persona.also-answers-to': 'also @{last}',
     'persona.domain-node-serves-none': 'This node doesn’t serve custom domains.',
     'persona.domain-needs-txt': 'A file on your site proves it’s you, which is enough for the ✓. For this node to serve {domain}, add the TXT record too.',
-    'persona.domain-needs-publishing': 'Publish this persona for this node to serve {domain}.',
+    'persona.domain-not-hosted': 'This persona lives on another node, so this one doesn’t serve {domain}.',
     'persona.domain-served': 'This node serves {domain}, and your posts are shared at it.',
-    'persona.domain-point-here': 'This node will serve {domain}. Point it here; once it answers, your posts are shared at it.',
+    'persona.domain-no-target': 'This node has no public address yet, so there is nothing to point {domain} at.',
+    'persona.domain-point-at': 'For this node to serve {domain}, add this record where your domain keeps its DNS. Once it answers, your posts are shared at it.',
     'persona.domain-record-name': 'name',
     'persona.domain-record-type': 'type',
     'persona.domain-record-value': 'value',
     'persona.domain-flatten': 'A domain with nothing before it, like example.com, needs a DNS provider that can flatten a CNAME.',
+    'persona.domain-operator-too': 'Whoever runs this node may need to add {domain} at their end as well.',
     'persona.checking': 'checking…',
     'persona.check-now': 'check now',
     'persona.domain-not-yet': 'Checked just now: {name} has no record naming you yet. A new record can take a while to spread.',
@@ -2362,6 +2364,7 @@ export default {
 
     // --- node/src/domains.rs ---
     'domains.bad-root': 'bad root pubkey',
+    'domains.admins-only': "for now, only this node's administrators can give a persona its own domain",
     'domains.not-a-domain': "that isn't a domain - give just the name, like example.com",
 
     // --- node/src/domainsite.rs ---
