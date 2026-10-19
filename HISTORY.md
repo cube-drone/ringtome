@@ -23859,3 +23859,23 @@ which the picker and the drawing both use; the drawing places the pasted picture
 as it places a picked one, on a new layer at the top, made current. Its progress
 shows under the drawing's header; without the upload unlock the paste is refused
 in words (DRAWING.md, _Images_).
+
+## 2026-10-19: the Mac release build gets the time it takes
+
+Curtis: macOS signing "keeps failing" in release CI, and every restart turns a
+two-hour release into six. It wasn't signing: 0.5.0's and 0.5.1's Mac jobs were
+both cancelled at the job's 90-minute limit. 0.5.0 was still compiling; 0.5.1
+had built, notarized (Apple took 37 seconds) and stashed its artifacts, and was
+cut off saving its cache. The universal build is two release builds back to back
+(48 and 38 minutes for 0.5.1), and they always start cold: a tag run can't read
+the cache another tag saved.
+
+So the two halves now build at once (release.yml): `mac-binary` compiles each
+architecture on a runner of its own (`tauri build --target <arch> --no-bundle`),
+and `mac` joins them with lipo where
+`tauri build --target universal-apple-darwin` would have put the result, then
+bundles, signs and notarizes the one app with `tauri bundle`. That last step was
+tried locally first, against a prebuilt binary: it compiled nothing and took
+three seconds. A half that fails re-runs alone. The Mac should now take about as
+long as its slower half (about 50 minutes), with Windows (about an hour) the
+longest job; the build jobs' limit is 120 minutes.

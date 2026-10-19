@@ -42,6 +42,11 @@ on:
         type: boolean
         default: false
 
+# The Mac app's executable, as the Tauri CLI names it (`mainBinaryName` in
+# desktop/tauri.macos.conf.json): what `mac-binary` stashes and `mac` joins.
+env:
+  MAC_BINARY: Horse Drawing Tycoon 2
+
 jobs:
   # Ten seconds of checking before ninety minutes of building. Every secret here arrives by
   # copy-and-paste, and a paste can carry what a terminal DREW rather than what the file held -
@@ -161,11 +166,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # One macOS artifact rather than two: a universal binary is ~1.5x the size and half the
-          # explaining when handing a .dmg to somebody.
-          - platform: macos-latest
-            args: --target universal-apple-darwin
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          # The Mac is two jobs of its own, `mac-binary` and `mac` (below).
           # 22.04 rather than the newest: an AppImage built against a newer glibc refuses to run on
           # older distributions, and the point of an AppImage is that it runs anywhere.
           - platform: ubuntu-22.04
@@ -178,7 +179,9 @@ jobs:
             args: --verbose
             rust-targets: ""
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 90
+    # Windows takes an hour, cold - and a tag build is always cold: a tag never finds another
+    # tag's cache. The limit is for a hung job, not a slow one (see `mac-binary`).
+    timeout-minutes: 120
     env:
       # What the stash steps upload (three tries, below): every installer and its updater signature.
       STASH_PATHS: |
@@ -244,56 +247,6 @@ jobs:
       - name: Build the UI assets
         working-directory: node
         run: just ui-install && just ui-build
-
-      # Apple's notarization key is a FILE, so the secret is its base64 and this writes it out.
-      # Skipped, with the rest of the Apple environment, when the secret is not there yet.
-      # Notarization is skipped on a dispatch run unless asked for: Apple's notary queue is
-      # usually minutes and occasionally HOURS, and a stuck one blocks the artifacts entirely
-      # (2026-09-22: over an hour, with Apple's own status page reporting no incident). A tag is
-      # a real release and always notarizes; a dispatch is for finding out what the pipeline
-      # gets wrong, where waiting on Apple teaches nothing.
-      - name: Apple notarization key
-        if: matrix.platform == 'macos-latest' && (github.event_name != 'workflow_dispatch' || inputs.notarize)
-        env:
-          KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
-        run: |
-          # Guarded in bash rather than in `if:`, so the absence of a secret is a skipped step
-          # rather than an expression that has to be right about when secrets are visible.
-          if [ -z "$KEY_BASE64" ]; then
-            echo "no App Store Connect key: this build will be signed but not notarized"
-            exit 0
-          fi
-          mkdir -p ~/.appstoreconnect/private_keys
-          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey.p8"
-          # The secret may hold the `.p8` ITSELF (it is PEM text, perfectly pasteable) or its
-          # base64, and which one got pasted six weeks ago is not something anybody should have
-          # to remember - a wrong guess surfaces as `base64: error decoding input stream`, three
-          # steps from the cause (2026-09-22, the first release run). So: accept either, strip
-          # whatever wrapping the paste picked up, and check the RESULT rather than the input.
-          if printf '%s' "$KEY_BASE64" | grep -q "BEGIN PRIVATE KEY"; then
-            printf '%s\n' "$KEY_BASE64" > "$KEY_PATH"
-          else
-            # Everything outside the base64 alphabet goes: a paste from a terminal can carry
-            # soft-wrap whitespace, and zsh prints a trailing `%` to mean "no newline here" that
-            # is very easy to select along with the value (2026-09-22, the first release run -
-            # the file on disk decoded perfectly, so the difference was in the paste).
-            CLEAN="$(printf '%s' "$KEY_BASE64" | tr -cd 'A-Za-z0-9+/=')"
-            DROPPED=$(( ${#KEY_BASE64} - ${#CLEAN} ))
-            # `[ ... ] && echo` would be the last command's status, and this step runs under
-            # `bash -e`: a CLEAN secret would then exit here, succeeding its way into a failure.
-            if [ "$DROPPED" -gt 0 ]; then
-              echo "note: dropped $DROPPED character(s) that are not base64"
-            fi
-            printf '%s' "$CLEAN" | base64 -d > "$KEY_PATH" 2>/dev/null \
-              || printf '%s' "$CLEAN" | base64 -D > "$KEY_PATH" 2>/dev/null || true
-          fi
-          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_PATH"; then
-            # Diagnosis without disclosure: the shape of the secret, never the secret.
-            echo "::error::APPLE_API_KEY_BASE64 did not yield a private key. It is ${#KEY_BASE64} characters long; a base64'd .p8 is usually ~340 and ends in '='. Re-set it with: openssl base64 -A -in AuthKey_XXXXXXXX.p8 | pbcopy"
-            exit 1
-          fi
-          echo "notarization key ready (${#KEY_BASE64} characters in, $(wc -c < "$KEY_PATH") bytes out)"
-          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       # Windows signing (SIGNING.md section 2). Both steps are skipped entirely when the Azure
       # variables are absent, and the sign script then leaves every file unsigned with a note.
@@ -378,16 +331,6 @@ jobs:
           # by the installed app against the public key baked into it. Nothing to do with Apple.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Apple: identity + certificate sign it, the API key notarizes it. All four have to be
-          # present or the bundler simply skips signing, which is what we want while enrolment is
-          # still in flight rather than a failed release.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Empty on an un-notarized run: the bundler notarizes if and only if it has credentials,
-          # so withholding them IS the switch.
-          APPLE_API_ISSUER: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_ISSUER || '' }}
-          APPLE_API_KEY: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_KEY || '' }}
           # Windows: the `--config` in `args` names desktop/tools/sign-windows.ps1 as the bundler's
           # sign command; the script reads the RINGTOME_SIGN_* paths the tools step exported, and
           # these two are what it logs in with - freshly, per signature, because the OIDC token
@@ -454,6 +397,239 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}
+          path: ${{ env.STASH_PATHS }}
+          if-no-files-found: error
+          overwrite: true
+
+  # The Mac, in two halves (2026-10-19). One macOS artifact rather than two - a universal binary
+  # is ~1.5x the size and half the explaining when handing a .dmg to somebody - but its two
+  # architectures no longer build one after the other: as one job they were two cold release
+  # builds back to back (48 and 38 minutes for 0.5.1), and 0.5.0 and 0.5.1 both ran into the
+  # job's limit - one mid-compile, one notarized and stashed and still saving its cache. Apple's
+  # notary had taken 37 seconds. So each architecture compiles on a runner of its own, at once,
+  # and `mac` joins them, then bundles, signs and notarizes the one app. A half that fails is
+  # re-run alone; the other half's binary is kept.
+  mac-binary:
+    needs: preflight
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    runs-on: macos-latest
+    # A cold optimized build: a tag never finds another tag's cache, only its own re-runs do.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # One cache per half: two jobs writing one key would each find the other's target.
+          key: ${{ matrix.target }}
+          workspaces: |
+            . -> target
+            desktop -> target
+          cache-on-failure: true
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            node/js/package-lock.json
+            desktop/package-lock.json
+
+      # The pinned Tauri CLI, as the build job's (see there).
+      - name: The Tauri CLI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      # Baked into the binary, as the build job's.
+      - name: Build the UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
+
+      # The CLI rather than plain cargo: it builds with the features and environment a Tauri
+      # release wants, exactly as `tauri build` does before bundling - it just stops there.
+      - name: Build
+        working-directory: desktop
+        run: npx tauri build --target ${{ matrix.target }} --no-bundle --ci
+
+      # A tar, because an artifact's zip drops the executable bit.
+      - name: Pack the binary
+        run: tar -C desktop/target/${{ matrix.target }}/release -cf mac-binary.tar "$MAC_BINARY"
+
+      - name: Stash the binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-binary-${{ matrix.target }}
+          path: mac-binary.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  mac:
+    needs: mac-binary
+    environment: deploy
+    permissions:
+      # Read-only, as the build job's.
+      contents: read
+    runs-on: macos-latest
+    # Minutes of bundling and signing, then Apple's notary: usually seconds, once over an hour.
+    timeout-minutes: 120
+    env:
+      STASH_PATHS: |
+        desktop/target/universal-apple-darwin/release/bundle/**/*.dmg
+        desktop/target/universal-apple-darwin/release/bundle/**/*.app.tar.gz
+        desktop/target/universal-apple-darwin/release/bundle/**/*.app.tar.gz.sig
+    steps:
+      - uses: actions/checkout@v4
+
+      # The bundler reads the workspace's metadata, so cargo has to be there; nothing compiles.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: The Tauri CLI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mac-binary-*
+          path: halves
+
+      # Where `tauri build --target universal-apple-darwin` would have put it: each half under its
+      # own target, and the two joined by lipo under the universal one, which the bundler reads.
+      - name: Join the halves
+        run: |
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            mkdir -p "desktop/target/$target/release"
+            tar -C "desktop/target/$target/release" -xf "halves/mac-binary-$target/mac-binary.tar"
+          done
+          mkdir -p desktop/target/universal-apple-darwin/release
+          lipo -create -output "desktop/target/universal-apple-darwin/release/$MAC_BINARY" \
+            "desktop/target/aarch64-apple-darwin/release/$MAC_BINARY" \
+            "desktop/target/x86_64-apple-darwin/release/$MAC_BINARY"
+          lipo -info "desktop/target/universal-apple-darwin/release/$MAC_BINARY"
+
+      # Apple's notarization key is a FILE, so the secret is its base64 and this writes it out.
+      # Skipped, with the rest of the Apple environment, when the secret is not there yet.
+      # Notarization is skipped on a dispatch run unless asked for: Apple's notary queue is
+      # usually minutes and occasionally HOURS, and a stuck one blocks the artifacts entirely
+      # (2026-09-22: over an hour, with Apple's own status page reporting no incident). A tag is
+      # a real release and always notarizes; a dispatch is for finding out what the pipeline
+      # gets wrong, where waiting on Apple teaches nothing.
+      - name: Apple notarization key
+        if: github.event_name != 'workflow_dispatch' || inputs.notarize
+        env:
+          KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          # Guarded in bash rather than in `if:`, so the absence of a secret is a skipped step
+          # rather than an expression that has to be right about when secrets are visible.
+          if [ -z "$KEY_BASE64" ]; then
+            echo "no App Store Connect key: this build will be signed but not notarized"
+            exit 0
+          fi
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey.p8"
+          # The secret may hold the `.p8` ITSELF (it is PEM text, perfectly pasteable) or its
+          # base64, and which one got pasted six weeks ago is not something anybody should have
+          # to remember - a wrong guess surfaces as `base64: error decoding input stream`, three
+          # steps from the cause (2026-09-22, the first release run). So: accept either, strip
+          # whatever wrapping the paste picked up, and check the RESULT rather than the input.
+          if printf '%s' "$KEY_BASE64" | grep -q "BEGIN PRIVATE KEY"; then
+            printf '%s\n' "$KEY_BASE64" > "$KEY_PATH"
+          else
+            # Everything outside the base64 alphabet goes: a paste from a terminal can carry
+            # soft-wrap whitespace, and zsh prints a trailing `%` to mean "no newline here" that
+            # is very easy to select along with the value (2026-09-22, the first release run -
+            # the file on disk decoded perfectly, so the difference was in the paste).
+            CLEAN="$(printf '%s' "$KEY_BASE64" | tr -cd 'A-Za-z0-9+/=')"
+            DROPPED=$(( ${#KEY_BASE64} - ${#CLEAN} ))
+            # `[ ... ] && echo` would be the last command's status, and this step runs under
+            # `bash -e`: a CLEAN secret would then exit here, succeeding its way into a failure.
+            if [ "$DROPPED" -gt 0 ]; then
+              echo "note: dropped $DROPPED character(s) that are not base64"
+            fi
+            printf '%s' "$CLEAN" | base64 -d > "$KEY_PATH" 2>/dev/null \
+              || printf '%s' "$CLEAN" | base64 -D > "$KEY_PATH" 2>/dev/null || true
+          fi
+          if ! grep -q "BEGIN PRIVATE KEY" "$KEY_PATH"; then
+            # Diagnosis without disclosure: the shape of the secret, never the secret.
+            echo "::error::APPLE_API_KEY_BASE64 did not yield a private key. It is ${#KEY_BASE64} characters long; a base64'd .p8 is usually ~340 and ends in '='. Re-set it with: openssl base64 -A -in AuthKey_XXXXXXXX.p8 | pbcopy"
+            exit 1
+          fi
+          echo "notarization key ready (${#KEY_BASE64} characters in, $(wc -c < "$KEY_PATH") bytes out)"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      # The updater's `.sig` comes from the bundler itself (`createUpdaterArtifacts`), as on the
+      # other platforms.
+      - name: Bundle and sign
+        working-directory: desktop
+        env:
+          # The updater's own signature (SIGNING.md §0): minisign over the update artifact, checked
+          # by the installed app against the public key baked into it. Nothing to do with Apple.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple: identity + certificate sign it, the API key notarizes it. All four have to be
+          # present or the bundler simply skips signing, which is what we want while enrolment is
+          # still in flight rather than a failed release.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Empty on an un-notarized run: the bundler notarizes if and only if it has credentials,
+          # so withholding them IS the switch.
+          APPLE_API_ISSUER: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY: ${{ (github.event_name != 'workflow_dispatch' || inputs.notarize) && secrets.APPLE_API_KEY || '' }}
+        run: npx tauri bundle --target universal-apple-darwin --ci
+
+      # Three tries, for the reason the build job's stash gives.
+      - name: Stash the artifacts
+        id: stash
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-latest
+          path: ${{ env.STASH_PATHS }}
+          if-no-files-found: error
+
+      - name: Wait out a network blip
+        if: steps.stash.outcome == 'failure'
+        run: sleep 30
+
+      - name: Stash the artifacts (second try)
+        id: stash2
+        if: steps.stash.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-latest
+          path: ${{ env.STASH_PATHS }}
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Wait out a longer one
+        if: steps.stash.outcome == 'failure' && steps.stash2.outcome == 'failure'
+        run: sleep 120
+
+      - name: Stash the artifacts (last try)
+        if: steps.stash.outcome == 'failure' && steps.stash2.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-latest
           path: ${{ env.STASH_PATHS }}
           if-no-files-found: error
           overwrite: true
@@ -747,12 +923,13 @@ jobs:
     secrets: inherit
 
   publish:
-    needs: [build, server-sign, image, android]
+    needs: [build, mac, server-sign, image, android]
     # Every build succeeded - Android's too when it was asked for. `!cancelled()` because a skipped
     # `android` would otherwise skip this job with it; the result checks put the all-or-nothing back.
     if: >-
       ${{ !cancelled() && startsWith(github.ref, 'refs/tags/')
-      && needs.build.result == 'success' && needs.server-sign.result == 'success'
+      && needs.build.result == 'success' && needs.mac.result == 'success'
+      && needs.server-sign.result == 'success'
       && needs.image.result == 'success'
       && (needs.android.result == 'success'
           || (needs.android.result == 'skipped' && vars.ANDROID_IN_RELEASE != 'true')) }}
