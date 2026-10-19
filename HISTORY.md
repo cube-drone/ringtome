@@ -23801,3 +23801,19 @@ the group, and the group card wears the public card's edit chip: to Writer or
 Drawing for a draft in a notebook, in place for one written in the feed. The
 group page's private tab passes the editing too. A claim in `groupposts.cjs`
 checks that the author's row names the draft and another member's doesn't.
+
+## 2026-10-19: a persona's first sync, on its computers page
+
+Curtis: syncing a large persona onto a new computer lands, after the handshake,
+on the app selector, where none of it has arrived yet. Now both ways a join
+completes (the grant delivered over the wire, or pasted) go to the all computers
+tab, and a box atop it shows the first sync (SYNC_STATUS.md, piece 8). Adoption
+starts a first-sync record in the sync ledger. The first whole exchange's hello
+measures what's missing, and the status route's `first` says what's come, the
+files waiting and the most that ever waited, and when it was all here.
+`firstSyncProgress` (pure) turns it into the bar: the entries are 80% of it and
+the files the rest, and it stays below full until the node says done. A ledger
+test checks it ends only when all is here and stays ended; a pure test checks
+the bar's phases; the sync status acceptance checks that a real adoption's
+record measures something, brings it, and ends, and that the computer it came
+from has none.

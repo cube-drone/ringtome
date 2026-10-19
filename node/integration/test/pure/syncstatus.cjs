@@ -1,9 +1,9 @@
 // The sync page's judgements (pure/syncstatus.js; plans/SYNC_STATUS.md, piece 4).
 const assert = require('node:assert');
 
-let computerState, gapOf;
+let computerState, gapOf, firstSyncProgress;
 before(async () => {
-    ({ computerState, gapOf } = await import('../../../js/pure/syncstatus.js'));
+    ({ computerState, gapOf, firstSyncProgress } = await import('../../../js/pure/syncstatus.js'));
 });
 
 describe("a computer's sync state", () => {
@@ -47,5 +47,38 @@ describe('how far apart two computers are', () => {
         assert.equal(gapOf({}), null);
         assert.equal(gapOf({ theirs_ahead: 0, ours_ahead: 0 }), null);
         assert.deepEqual(gapOf({ theirs_ahead: 8560, ours_ahead: 0 }), { theirs: 8560, ours: 0 });
+    });
+});
+
+describe("a first sync's bar", () => {
+    it('asks first, then fills with the entries, then the files, and is whole only when done', () => {
+        assert.equal(firstSyncProgress(null), null, 'no first sync here');
+        assert.deepEqual(firstSyncProgress({ missing: null }), { share: 0, phase: 'asking' });
+        const half = firstSyncProgress({
+            missing: 100,
+            brought: 50,
+            bodies_most: 0,
+            bodies_waiting: 0,
+        });
+        assert.equal(half.phase, 'entries');
+        assert.ok(Math.abs(half.share - 0.6) < 1e-9, 'half the entries, and no files to wait on');
+        const files = firstSyncProgress({
+            missing: 100,
+            brought: 140,
+            bodies_most: 10,
+            bodies_waiting: 5,
+        });
+        assert.equal(files.phase, 'files', 'more came than was said: the entries are whole');
+        assert.ok(Math.abs(files.share - 0.9) < 1e-9);
+        assert.equal(
+            firstSyncProgress({ missing: 100, brought: 100, bodies_most: 10, bodies_waiting: 0 })
+                .share,
+            0.99,
+            'never whole until the node says so',
+        );
+        assert.deepEqual(firstSyncProgress({ missing: 100, brought: 3, done_ms: 1 }), {
+            share: 1,
+            phase: 'done',
+        });
     });
 });

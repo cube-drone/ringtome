@@ -188,6 +188,24 @@ struct Books {
     /// (persona root, peer endpoint, scope) -> a pull waiting for the one running to end
     /// (`begin_pull`).
     waiting: HashSet<(String, String, String)>,
+    /// persona root -> its first sync, from the moment this node adopted it.
+    first: HashMap<String, FirstSync>,
+}
+
+/// A persona's first sync on this node (2026-10-19): adopted here from another of its computers,
+/// with everything still to come. How much was missing is what the first whole exchange's hello
+/// said - the source is online, it just answered - and what has come since is the persona's
+/// `entries` writes; the files are counted down from the most ever waiting. In memory, as the rest
+/// of the ledger is: a restart forgets it, and the page's box with it.
+struct FirstSync {
+    began_ms: i64,
+    entries_at_start: u64,
+    /// The entries the source held that this node didn't, once a whole exchange has said.
+    missing: Option<u64>,
+    /// The most files ever waiting at once, the files' share of the bar.
+    bodies_most: u64,
+    /// When it was all here.
+    done_ms: Option<i64>,
 }
 
 /// The ledger, shared across the node (cloned into every `AppState`).
@@ -410,6 +428,61 @@ impl Ledger {
         let mut books = self.books();
         let gaps = books.gaps.entry((root.to_string(), peer.to_string())).or_default();
         *gaps = (theirs_ahead, ours_ahead);
+        if let Some(first) = books.first.get_mut(root) {
+            if first.missing.is_none() {
+                first.missing = Some(theirs_ahead);
+            }
+        }
+    }
+
+    /// This node just adopted `root` from another of its computers: its first sync begins.
+    pub fn first_sync_began(&self, root: &str) {
+        self.books().first.insert(
+            root.to_string(),
+            FirstSync {
+                began_ms: now_ms(),
+                entries_at_start: crate::db::writes_to(root, "entries"),
+                missing: None,
+                bodies_most: 0,
+                done_ms: None,
+            },
+        );
+    }
+
+    /// How far `root`'s first sync has come, or `None` when this node didn't adopt it in this
+    /// process's life. Done once a whole exchange has said what was missing, nothing is pulling,
+    /// the loops aren't behind, the computers it last heard from have nothing more for it (or as
+    /// much has come as was missing), and no file is still on its way.
+    pub fn first_sync(
+        &self,
+        root: &str,
+        bodies_waiting: u64,
+        behind: bool,
+    ) -> Option<serde_json::Value> {
+        let mut books = self.books();
+        let pulling =
+            books.running.values().any(|r| r.personal && r.root == root && r.way == Way::Pull);
+        let caught_up =
+            books.gaps.iter().filter(|((r, _), _)| r == root).all(|(_, (theirs, _))| *theirs == 0);
+        let first = books.first.get_mut(root)?;
+        let brought = crate::db::writes_to(root, "entries").saturating_sub(first.entries_at_start);
+        first.bodies_most = first.bodies_most.max(bodies_waiting);
+        if first.done_ms.is_none()
+            && first.missing.is_some_and(|m| brought >= m || caught_up)
+            && !pulling
+            && !behind
+            && bodies_waiting == 0
+        {
+            first.done_ms = Some(now_ms());
+        }
+        Some(serde_json::json!({
+            "began_ms": first.began_ms,
+            "missing": first.missing,
+            "brought": brought,
+            "bodies_waiting": bodies_waiting,
+            "bodies_most": first.bodies_most,
+            "done_ms": first.done_ms,
+        }))
     }
 
     /// The whole of what the ledger knows for `root`: its exchanges running now, each of its other
@@ -767,6 +840,29 @@ pub fn sync_code(frontiers: &[ringtome_proto::sync::Frontier]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A first sync is done only once a whole exchange has said what was missing, the computers
+    /// have nothing more, and the files have landed - and it stays done.
+    #[test]
+    fn a_first_sync_ends_when_it_is_all_here() {
+        let ledger = Ledger::default();
+        let root = "first-sync-root";
+        assert!(ledger.first_sync(root, 0, false).is_none(), "not adopted here");
+        ledger.first_sync_began(root);
+        let at = |w: u64, behind| ledger.first_sync(root, w, behind).unwrap();
+        assert!(at(0, false)["done_ms"].is_null(), "nothing has said what's missing");
+        ledger.gap(root, "peer", 120, 0);
+        assert_eq!(at(0, false)["missing"], 120);
+        assert!(at(0, false)["done_ms"].is_null(), "the source has more");
+        ledger.gap(root, "peer", 0, 0);
+        assert!(at(0, true)["done_ms"].is_null(), "the loops are behind");
+        assert!(at(7, false)["done_ms"].is_null(), "files on their way");
+        assert_eq!(at(3, false)["bodies_most"], 7, "counted down from the most");
+        assert!(at(0, false)["done_ms"].is_i64(), "all here");
+        assert_eq!(at(0, false)["missing"], 120, "what was missing stays the bar's measure");
+        ledger.gap(root, "peer", 5, 0);
+        assert!(at(0, false)["done_ms"].is_i64(), "and it stays done");
+    }
 
     #[test]
     fn a_face_shows_only_once_held_and_lingers_past_the_end() {

@@ -351,6 +351,21 @@ The server sent against the desktop's full claim, so either the desktop's memo
 was behind (layer 3 heals that) or something else is; the desktop's next report,
 with layer 2's counts, will say which.
 
+### 8. The first sync (Curtis, 2026-10-19; built the same day)
+
+Adopting a persona from another computer used to land on the app selector, where
+nothing had arrived yet. It now lands on the _all computers_ tab, and a box atop
+it shows the first sync's bar. At adoption the ledger notes the persona's
+`entries` write count, and the first whole exchange's hello says how many
+entries the source holds that this node doesn't: the source just answered, so
+it's online to say. The bar is mostly those entries, counted as they land, and
+the rest is the files, counted down from the most ever waiting. It stops short
+of full until the node says it's all here: nothing pulling, the loops not
+behind, the computers with nothing more to send (or as much come as was
+missing), and no file still on its way. The count is the source's, so it can
+overshoot (a post ceiling, a lane's floor). Like the rest of the ledger it lives
+in memory, so a restart forgets it and the box with it.
+
 ## Building it
 
 1. Adoption and `…/sync` answer at once and sync in the background. A claim: the

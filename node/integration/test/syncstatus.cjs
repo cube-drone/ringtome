@@ -94,8 +94,22 @@ async function pullOnB(aliceOnB, root) {
         assert.ok(['down', 'up', 'sun', 'idle'].includes(onB.face.face), JSON.stringify(onB.face));
         assert.equal(typeof onB.network.people, 'number', 'the network, in counts');
 
+        // Its first sync (2026-10-19): B adopted it, so B's page has the bar, measured by what A
+        // said B lacked, and it ends once everything's here. A never adopted it.
+        for (let i = 0; i < 60 && !(onB.first && onB.first.done_ms); i++) {
+            await aliceOnB(`api/identity/${root}/sync`, { method: 'POST' });
+            await new Promise((r) => setTimeout(r, 250));
+            onB = await status(aliceOnB);
+        }
+        assert.ok(onB.first, `a first sync on B: ${JSON.stringify(onB)}`);
+        assert.equal(typeof onB.first.missing, 'number', 'measured by what A said B lacked');
+        assert.ok(onB.first.missing > 0, 'and B lacked something');
+        assert.ok(onB.first.brought > 0, 'and it came');
+        assert.equal(typeof onB.first.done_ms, 'number', `all here: ${JSON.stringify(onB.first)}`);
+
         const onA = await status(alice);
         assert.ok(onA.computers.length >= 1, 'A names B among its computers');
+        assert.equal(onA.first, null, 'no first sync where it began');
 
         const stranger = await makeUserFetch({ prefix: 'syncstatx' });
         assert.equal(

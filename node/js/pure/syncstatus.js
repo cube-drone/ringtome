@@ -40,3 +40,20 @@ export function gapOf(computer) {
     if (theirs === 0 && ours === 0) return null;
     return { theirs, ours };
 }
+
+/// A first sync's bar (2026-10-19), from the status route's `first`: the share of it done and what
+/// it's doing. The entries are most of it - as many as the source said this computer lacked - and
+/// the files the rest, counted down from the most ever waiting. Short of the whole until the node
+/// says it's all here, since what was missing is the source's count and can overshoot.
+export function firstSyncProgress(first) {
+    if (!first) return null;
+    if (first.done_ms) return { share: 1, phase: 'done' };
+    if (typeof first.missing !== 'number') return { share: 0, phase: 'asking' };
+    const entries = first.missing > 0 ? Math.min(1, (first.brought || 0) / first.missing) : 1;
+    const most = first.bodies_most || 0;
+    const files = most > 0 ? Math.max(0, most - (first.bodies_waiting || 0)) / most : 1;
+    return {
+        share: Math.min(0.99, 0.8 * entries + 0.2 * files),
+        phase: entries < 1 ? 'entries' : 'files',
+    };
+}

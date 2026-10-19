@@ -545,6 +545,8 @@ pub async fn complete(
     crate::net::sync::mark_synced(&state.node_db, &code.root_pubkey, &boot_endpoint)
         .await
         .map_err(AppError::Internal)?;
+    // Everything else is still to come: the computers page shows its first sync.
+    state.sync_ledger.first_sync_began(&code.root_pubkey);
 
     // Second pass, now that we agent the identity: the first ran proof-less (no identities row
     // yet), so the peer rightly withheld the private chains. This one carries our member proof

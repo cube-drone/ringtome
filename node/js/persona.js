@@ -59,6 +59,9 @@ export { shortcode };
 // The persona layer, as a hook. `current` is null while checking, while the account has no
 // personas, and during the ceremony; the caller branches on `state`.
 export function usePersona(account) {
+    // A persona brought from another computer lands on its computers, where its first sync shows
+    // (2026-10-19) - the app selector would be empty while everything is still arriving.
+    const loc = useLocation();
     // checking | none | ceremony | naming | join | open | farewell
     const [state, setState] = useState('checking');
     const [current, setCurrent] = useState(null); // { root, name, avatar }
@@ -292,6 +295,7 @@ export function usePersona(account) {
                     // (field-found 2026-07-30: the new computer showed only the quickbar).
                     await open(arrived.root_pubkey);
                     setJoin(null);
+                    loc.route(computersHref('all'));
                 }
             } catch {
                 // Transient fetch trouble just means we check again next tick.
@@ -311,6 +315,7 @@ export function usePersona(account) {
         await open(identity.root_pubkey);
         await refreshPersonas();
         setJoin(null);
+        loc.route(computersHref('all'));
     };
 
     // The farewell's acknowledgment: unlink the persona from this node (node-local - the

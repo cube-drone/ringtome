@@ -17,6 +17,7 @@ import { blastRadius } from './pure/removal.js';
 import { t, tNodes } from './i18n.js';
 import { SyncActs, SyncLine, SyncReport, ThisComputer, useSyncStatus } from './syncpage.js';
 import { computersHref } from './links.js';
+import { firstSyncProgress } from './pure/syncstatus.js';
 import { DownloadPanel } from './downloads.js';
 
 const html = htm.bind(h);
@@ -216,6 +217,42 @@ export const Computers = ({ current, tab }) => {
 /// The persona's computers as its key tree - each sitting under whoever invited it - and, under
 /// each, how it is syncing with this one (plans/SYNC_STATUS.md, piece 4). The spare key and this
 /// computer have no sync of their own to show.
+/// A persona's first sync here (2026-10-19): adopted from another of its computers, with its things
+/// still arriving - a bar atop the tab, short of full until the node says everything's here.
+const FirstSync = ({ first }) => {
+    const p = firstSyncProgress(first);
+    if (!p) return null;
+    const words = {
+        asking: t('computers.first-sync-asking', 'asking your other computer how much there is…'),
+        entries: t(
+            'computers.first-sync-entries',
+            'bringing your things here from your other computer - {brought} of about {missing}',
+            {
+                brought: Number(first.brought || 0).toLocaleString(),
+                missing: Number(first.missing || 0).toLocaleString(),
+            },
+        ),
+        files: t('computers.first-sync-files', 'and the files - {waiting} still on their way', {
+            waiting: Number(first.bodies_waiting || 0).toLocaleString(),
+        }),
+        done: t('computers.first-sync-done', "everything's here."),
+    }[p.phase];
+    return html`<section class="first-sync jag-line">
+        <h3 class="first-sync-title">${t('computers.first-sync', 'first sync')}</h3>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${Math.floor(p.share * 100)}>
+            <div class="progress-track"><div class="progress-fill" style=${`width: ${p.share * 100}%`}></div></div>
+            <span class="progress-words">${words}</span>
+        </div>
+        ${
+            p.phase !== 'done' &&
+            html`<p class="null-sub">${t(
+                'computers.first-sync-keep-open',
+                'leave your other computer on and online until this fills - it is where your things are coming from.',
+            )}</p>`
+        }
+    </section>`;
+};
+
 const AllComputers = ({ current }) => {
     const [keys, setKeys] = useState(null);
     const [error, setError] = useState(null);
@@ -260,6 +297,7 @@ const AllComputers = ({ current }) => {
         </div>`;
 
     return html`<div>
+        ${sync.status && html`<${FirstSync} first=${sync.status.first} />`}
         ${!keys && !error && html`<p class="null-sub">${t('computers.looking-around', 'looking around…')}</p>`}
         ${
             keys &&

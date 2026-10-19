@@ -5571,6 +5571,12 @@ async fn sync_status_handler(
     status["face"] = serde_json::json!(state
         .sync_ledger
         .face(&root, status["bodies_waiting"].as_u64().unwrap_or(0)));
+    // A first sync's progress, when this node adopted the persona (the computers page's box).
+    status["first"] = serde_json::json!(state.sync_ledger.first_sync(
+        &root,
+        status["bodies_waiting"].as_u64().unwrap_or(0),
+        state.behind.is_behind(&root),
+    ));
     Ok(Json(status))
 }
 

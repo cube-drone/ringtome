@@ -92,6 +92,25 @@
 }
 
 /* All computers, on a persona's one computer (js/computers.js): the case for a second, under the tabs. */
+/* A persona's first sync here (computers.js FirstSync): its bar, atop the all-computers tab. */
+.first-sync {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0.8rem 1rem;
+    background: var(--surface);
+}
+
+.first-sync-title {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.first-sync .null-sub {
+    margin: 0;
+}
+
 .computers-alone {
     margin-top: 2rem;
 }
