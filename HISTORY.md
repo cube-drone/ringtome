@@ -23817,3 +23817,14 @@ test checks it ends only when all is here and stays ended; a pure test checks
 the bar's phases; the sync status acceptance checks that a real adoption's
 record measures something, brings it, and ends, and that the computer it came
 from has none.
+
+## 2026-10-19: Escape keeps the Mac app in full screen
+
+Curtis: in the Mac app, in vim mode, pressing Escape once too often takes the
+window out of full screen. An Escape the page doesn't claim (vim's, in normal
+mode already) goes from the webview up to the window, and AppKit takes it as
+"cancel", which leaves full screen. In the Mac app only, every Escape is now
+claimed last, on the window, after everything in the page has had it
+(`index.js`, `isMacApp` in `net.js`). Full screen still leaves by the green
+button or its keys. Untried in the app itself; nothing here can press keys in a
+Mac window.

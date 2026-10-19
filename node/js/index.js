@@ -88,7 +88,7 @@ import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement, bucketHref } from './pure
 import { Icons, IconContext, iconFor } from './icons.js';
 import { OAuthConsent } from './oauthconsent.js';
 import { UploadLink } from './uploadlink.js';
-import { isDevice } from './net.js';
+import { isDevice, isMacApp } from './net.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
 import { NodeFeed, RecentPosts, SuperPins } from './nodefeed.js';
@@ -1276,6 +1276,16 @@ function main() {
     installTooltips();
     for (const kind of ['pointerover', 'focusin', 'click'])
         document.addEventListener(kind, rehomeLink, true);
+    // The Mac app's window leaves full screen on an Escape the page didn't claim (Curtis,
+    // 2026-10-19: vim's normal mode, pressed once too often): the webview hands an unclaimed key
+    // up to the window, and AppKit takes Escape as "cancel" - out of full screen. Escape is the
+    // page's here (vim, every modal, every menu), so each one is claimed last, on its way out of
+    // the page, after everything in it has had it; full screen still leaves by the green button
+    // or its keys.
+    if (isMacApp())
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') e.preventDefault();
+        });
     // One provider at the root sets the house icon style: Phosphor, DUOTONE, sized to the font
     // (1em, so the containers' existing font-size rules size the glyphs), in currentColor. The
     // provider value REPLACES Phosphor's defaults rather than merging, so size lives here too; the

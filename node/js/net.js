@@ -34,6 +34,9 @@ export const isDevice = () => !!launchToken();
 /// browser (Curtis, 2026-09-28); its sign-in says so.
 export const isLinuxApp = () => isDevice() && window.__ringtome_platform === 'linux';
 
+/// ...and the desktop app on a Mac.
+export const isMacApp = () => isDevice() && window.__ringtome_platform === 'macos';
+
 /// The window's name for itself, as headers: empty in a browser, where the cookie is all there is.
 function authHeaders() {
     const token = launchToken();
