@@ -156,8 +156,12 @@ export const PlayerProvider = ({ me, children }) => {
     // the first of them (the list's index, the shuffle's or the station's position), and `offset` the
     // player's index of the first - so the player's index says where the model is.
     const nq = useRef({ rows: [], base: 0, offset: 0 });
-    // Where the phone's player last said it was, and when, for `now` to count on from.
-    const said = useRef({ at: 0, when: 0, playing: false });
+    // Where the phone's player last said it was, and when, for `now` to count on from - and how
+    // many songs it holds, for play to know an empty player from a paused one.
+    const said = useRef({ at: 0, when: 0, playing: false, count: 0 });
+    // The saved song's hand-over to the phone's player, waiting for the player to say what it
+    // holds (the restore, below): null once done, or when there was nothing to hand over.
+    const joinPhone = useRef(null);
 
     const persist = () => {
         if (!me) return;
@@ -455,6 +459,9 @@ export const PlayerProvider = ({ me, children }) => {
         toggle() {
             if (native) {
                 if (!currentRef.current) return step(true);
+                // A song in hand but none in the phone's player - the service ended while the page
+                // slept, say: play hands it over again rather than toggling an empty player.
+                if (!said.current.count) return load(currentRef.current);
                 return native.toggle();
             }
             if (!audio) return;
@@ -591,6 +598,7 @@ export const PlayerProvider = ({ me, children }) => {
                 at: (state.position || 0) / 1000,
                 when: performance.now(),
                 playing: !!state.playing,
+                count: state.count || 0,
             };
             setDuration((state.duration || 0) / 1000);
             const q = nq.current;
@@ -614,6 +622,12 @@ export const PlayerProvider = ({ me, children }) => {
             } else if (!state.key && state.title) {
                 // A song the car picked from its own lists: shown as what it is.
                 setCurrent({ key: `car:${state.title}`, title: state.title, artist: state.artist });
+            }
+            // The player has connected and said what it holds: the restore can decide now.
+            if (joinPhone.current && 'count' in state) {
+                const join = joinPhone.current;
+                joinPhone.current = null;
+                join(state);
             }
         };
         window.__ringtomePlayerEvent = hear;
@@ -716,42 +730,51 @@ export const PlayerProvider = ({ me, children }) => {
             // The phone's player may have played on while the page was away - several songs on,
             // with the screen off. Whatever it holds, the page joins it there and never interrupts
             // it; only a player holding nothing is handed the saved song, paused where it was.
+            // Decided once the player has said what it holds (Curtis, 2026-10-19): it connects a
+            // moment after the page opens, and until then it says nothing - which read as holding
+            // nothing, and the hand-over was lost on the way.
+            const join = (phone) => {
+                if (phone.count > 0) {
+                    currentRef.current = row;
+                    const rows = fromModel();
+                    const j = phone.key ? rows.findIndex((r) => r.key === phone.key) : -1;
+                    if (j >= 0) {
+                        setModelPos(modelPos() + j);
+                        currentRef.current = rows[j];
+                        setCurrent(rows[j]);
+                        nq.current = {
+                            rows: rows.slice(j),
+                            base: modelPos(),
+                            offset: phone.index ?? 0,
+                        };
+                        if (rows.length > j + 1) native.upcoming(handed(rows.slice(j + 1)));
+                    } else {
+                        setCurrent(
+                            phone.title
+                                ? {
+                                      key: `car:${phone.title}`,
+                                      title: phone.title,
+                                      artist: phone.artist,
+                                  }
+                                : row,
+                        );
+                    }
+                    return;
+                }
+                load(row, { play: false });
+                if (at > 0) native.seek(Math.round(at * 1000));
+            };
             let phone = null;
             try {
                 phone = JSON.parse(native.state());
             } catch {
                 /* nothing said yet */
             }
-            if (phone && phone.count > 0) {
-                currentRef.current = row;
-                const rows = fromModel();
-                const j = phone.key ? rows.findIndex((r) => r.key === phone.key) : -1;
-                if (j >= 0) {
-                    setModelPos(modelPos() + j);
-                    currentRef.current = rows[j];
-                    setCurrent(rows[j]);
-                    nq.current = {
-                        rows: rows.slice(j),
-                        base: modelPos(),
-                        offset: phone.index ?? 0,
-                    };
-                    if (rows.length > j + 1) native.upcoming(handed(rows.slice(j + 1)));
-                } else {
-                    setCurrent(
-                        phone.title
-                            ? {
-                                  key: `car:${phone.title}`,
-                                  title: phone.title,
-                                  artist: phone.artist,
-                              }
-                            : row,
-                    );
-                }
-                return undefined;
-            }
-            load(row, { play: false });
-            if (at > 0) native.seek(Math.round(at * 1000));
-            return undefined;
+            if (phone && 'count' in phone) join(phone);
+            else joinPhone.current = join;
+            return () => {
+                joinPhone.current = null;
+            };
         }
         load(row, { play: false });
         if (at > 0) {

@@ -23898,3 +23898,17 @@ every post in the signed-out site's header. Now a post's page says it is showing
 (`postshowing.js`, from `PostPage` and `GroupPostPage`), and all three headers
 drop the box while one is - whatever address it came by, including the ones that
 only turn out to be a post once the node has looked the path up.
+
+## 2026-10-19: play on a freshly opened phone app
+
+Curtis: opening the Android app after listening and pressing play sometimes did
+nothing, until a new list was started. The page reaches the phone's player
+through a controller that connects a moment after the page opens, and every call
+made before then was dropped (`PlayerBridge.kt`) - the restore's hand-over of
+the saved song among them. The page then held a song the player didn't, and play
+toggled an empty player. Now the bridge keeps early calls until it connects; the
+restore waits for the player's first word before deciding whether it holds music
+(so music playing on with the screen off is still joined, never interrupted);
+and play on a player holding nothing hands the song over again (AUDIO.md section
+10). The page side passes the UI check; the Kotlin compiles only in the Android
+CI build, which nothing has run yet.

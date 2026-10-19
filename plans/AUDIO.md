@@ -577,6 +577,15 @@ phone):
   keeps the car's place in each list but mixtapes (the song, its index, how far
   in), and a list picked again goes on from there - from its top once played
   out, or once the page has dealt it anew.
+- **The page waits for the player to connect** (Curtis, 2026-10-19: play on a
+  freshly opened app sometimes did nothing until a new list was started). The
+  bridge reaches the player through a controller that connects a moment after
+  the page opens, and calls made before then were dropped - among them the
+  restore's hand-over of the saved song, so the page held a song the player
+  didn't. Now the bridge keeps early calls until it connects, the restore
+  decides what the player holds only once the player has said (its state has a
+  `count` from then on), and play on an empty player hands the song over again
+  instead of toggling nothing.
 
 ### Stretch goals
 

@@ -29,7 +29,16 @@ class PlayerBridge(private val activity: Activity, private val webView: WebView)
   private val main = Handler(Looper.getMainLooper())
   private var controller: MediaController? = null
 
-  /** The last state said, for a page that has just loaded to read at once. */
+  // Calls the page made before the controller connected, in order (Curtis, 2026-10-19: play on a
+  // freshly opened app sometimes did nothing). Connecting takes a moment and the page doesn't wait:
+  // it hands over its saved song at once, and that hand-over used to be dropped - leaving the page
+  // sure a song was loaded and the player holding none, so play toggled nothing.
+  private val waiting = mutableListOf<(MediaController) -> Unit>()
+
+  /**
+   * The last state said, for a page that has just loaded to read at once. `{}` - no `count` - until
+   * the controller has connected: player.js waits for a count before deciding what the player holds.
+   */
   @Volatile private var lastState = "{}"
 
   private val listener = object : Player.Listener {
@@ -49,7 +58,11 @@ class PlayerBridge(private val activity: Activity, private val webView: WebView)
     future.addListener(
       {
         controller = runCatching { future.get() }.getOrNull()
-        controller?.addListener(listener)
+        controller?.let { c ->
+          c.addListener(listener)
+          waiting.forEach { it(c) }
+        }
+        waiting.clear()
         say()
       },
       ContextCompat.getMainExecutor(activity),
@@ -57,7 +70,10 @@ class PlayerBridge(private val activity: Activity, private val webView: WebView)
   }
 
   private fun on(block: (MediaController) -> Unit) {
-    main.post { controller?.let(block) }
+    main.post {
+      val c = controller
+      if (c != null) block(c) else waiting.add(block)
+    }
   }
 
   // The page's queue: `[{key, url, title, artist, album, art, durationMs}]`, each item's id its key.
