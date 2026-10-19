@@ -23788,3 +23788,16 @@ Old nodes skip a lane entry they can't read and drop the rest of that lane;
 Curtis ruled it moot, since no group predates today's. New acceptance file
 `groupshares.cjs` (three claims); proto test
 `a_share_counts_while_its_sharer_is_in_the_group`.
+
+## 2026-10-18: a group post edits from its card
+
+Curtis, reading the NEXT_STEPS item: can't people edit what they post to a
+group? They could, by publishing the draft again from Writer, but the card
+offered only the takedown. A public post's card finds its draft through the
+mirror's `published_as`; a group post's draft doesn't carry one, since its link
+is the node's `group_drafts`. Your own group post's feed row now names its draft
+(`group_draft`), `useOwnPostEditing` finds the draft by it and posts the edit to
+the group, and the group card wears the public card's edit chip: to Writer or
+Drawing for a draft in a notebook, in place for one written in the feed. The
+group page's private tab passes the editing too. A claim in `groupposts.cjs`
+checks that the author's row names the draft and another member's doesn't.

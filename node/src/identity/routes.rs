@@ -689,6 +689,10 @@ struct FeedItem {
     /// "(Cheese Group)" beside its author. The post is still theirs, in public.
     #[serde(skip_serializing_if = "Option::is_none")]
     as_group: Option<AsGroupCard>,
+    /// Your own group post's draft (hex), so its card can edit it as a public post's card does -
+    /// whose draft the mirror's `published_as` finds, and a group post's doesn't carry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_draft: Option<String>,
     /// Hot's lift (PROJECT_PLAN's Scores and sort orders, slice 2): this reader's score for the
     /// post reached two whole likes, and the card takes its top emphasis. A flag, never the score.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -2681,6 +2685,11 @@ async fn dress_feed(
         rows.iter().filter_map(|r| r.group.as_ref().map(|g| g.id.clone())).collect();
     let group_names =
         crate::roster::group_names(state, &group_ids).await.map_err(AppError::Internal)?;
+    let group_drafts = if group_ids.is_empty() {
+        Default::default()
+    } else {
+        crate::roster::drafts_of_posts(state, root).await.map_err(AppError::Internal)?
+    };
     // The public groups counting these public posts as theirs.
     let as_groups = crate::roster::public_groups_of(
         state,
@@ -2804,6 +2813,11 @@ async fn dress_feed(
             let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
             let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
+                group_draft: r
+                    .group
+                    .as_ref()
+                    .filter(|_| mine)
+                    .and_then(|g| group_drafts.get(&(g.id.clone(), r.doc_id.clone())).cloned()),
                 as_group: as_groups
                     .get(&(r.author_root.clone(), r.doc_id.clone()))
                     .map(|(id, name)| AsGroupCard { id: id.clone(), name: name.clone() }),

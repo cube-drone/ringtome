@@ -128,10 +128,8 @@ are driving towards.
     without the unlock gets no bar to post there from Writer; the feed's
     composer works.
 - From 4b (the feed):
-  - **Editing a group post from its card**: the card finds a post's draft
-    through the mirror's `published_as`, which a group post's draft doesn't
-    carry (its link is the node's `group_drafts`). Publishing the draft again
-    from Writer edits it.
+  - **Editing a group post from its card wants a look in a browser**: the chip
+    and the in-place editor are the public card's, untried on a group's.
 - From the app's first part:
   - **Two invites from one person collapse in the bell.** The inbox keeps one
     row per (sender, kind), as it does for mentions, so a second group's invite

@@ -24,7 +24,7 @@ import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb } from './doc/drawing.js';
 import { avatarBytes } from './pickbytes.js';
 import { GroupHeroMark, GroupMark, GroupTabHead, forgetGroupFace } from './groupface.js';
-import { PostEntry } from './postentry.js';
+import { PostEntry, useOwnPostEditing } from './postentry.js';
 import { GroupThread, ParentContexts } from './postpage.js';
 import { BookReader } from './doc/bookreader.js';
 import { GroupFeed, PublicGroupPage } from './publicgroup.js';
@@ -891,12 +891,14 @@ const GroupPosts = ({
     const searching = !!(search && search.active);
     const items = (searching ? found : answer && answer.items) || [];
     const { pinned, rest } = searching ? { pinned: [], rest: items } : pinnedFirst(items);
+    // Your own posts here edit from their cards, as in the feed.
+    const editingFor = useOwnPostEditing(current);
     const card = (item, words = null) => html`<${PostEntry}
         key=${item.doc_id}
         item=${item}
         current=${current}
         found=${words}
-        editing=${null}
+        editing=${item.mine ? editingFor(item.doc_id, item) : null}
     />`;
     return html`<section class="group-posts">
         ${

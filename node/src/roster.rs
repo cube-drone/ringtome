@@ -655,6 +655,23 @@ pub async fn shares_by(state: &AppState, sharer: &str) -> Result<Vec<(String, St
     Ok(rows.into_iter().map(|(g, a, d)| (hex::encode(g), a, d)).collect())
 }
 
+/// What each of `root`'s group posts was published from: `(group, post)` to its draft, all hex -
+/// the card's way to the draft it edits.
+pub async fn drafts_of_posts(
+    state: &AppState,
+    root: &str,
+) -> Result<std::collections::HashMap<(String, String), String>> {
+    let rows: Vec<(Vec<u8>, Vec<u8>, Vec<u8>)> = state
+        .node_db
+        .fetch_all("SELECT group_id, post, source FROM group_drafts WHERE root = ?1", (root,))
+        .await
+        .context("reading what a persona's group posts were published from")?;
+    Ok(rows
+        .into_iter()
+        .map(|(g, post, source)| ((hex::encode(g), hex::encode(post)), hex::encode(source)))
+        .collect())
+}
+
 /// Who on this node follows a group itself (ruling 7).
 async fn followers_of_group(state: &AppState, group: &GroupId) -> Vec<String> {
     state

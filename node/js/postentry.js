@@ -160,8 +160,10 @@ export { BakeModal };
 
 /**
  * The editing wiring for posts that are YOURS, resolved off your own mirror. Returns
- * `editingFor(publicDocId)` - the props PostEntry's edit affordance needs, or null when the
- * post isn't yours (or you aren't signed in, or the mirror hasn't answered yet).
+ * `editingFor(publicDocId, item)` - the props PostEntry's edit affordance needs, or null when the
+ * post isn't yours (or you aren't signed in, or the mirror hasn't answered yet). A group post's
+ * draft is the one its feed row names (`group_draft`), since its draft carries no `published_as`,
+ * and it posts again to its group.
  *
  * `decorate` lets a caller overlay local knowledge on the mirror rows before the
  * published_as lookup - the feed uses it for publications the stream hasn't echoed yet.
@@ -173,10 +175,15 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
     // The bake modal's items while an edit's media prepares; null when quiet.
     const [baking, setBaking] = useState(null);
 
-    const post = async (privDocId) => {
+    const post = async (privDocId, group = null) => {
         setPosting(true);
         try {
-            await publishTo(myRoot, privDocId, { words: true }, { onBaking: setBaking });
+            await publishTo(
+                myRoot,
+                privDocId,
+                { words: true },
+                { onBaking: setBaking, ...(group ? { choice: `group:${group}` } : {}) },
+            );
         } finally {
             setPosting(false);
         }
@@ -185,18 +192,23 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
     // Indexed once a render, not searched once per post (2026-10-08, the frontend audit: every one
     // of your posts on the page mapped every document you have, each render).
     const byPost = new Map();
+    const byId = new Map();
     for (const r of (rows || []).map(decorate)) {
+        byId.set(r.doc_id, r);
         const postId = publishedState(r).postId;
         if (postId && !byPost.has(postId)) byPost.set(postId, r);
     }
-    const editingFor = (publicDocId) => {
+    const editingFor = (publicDocId, item = null) => {
         if (!myRoot || !rows) return null;
-        const row = byPost.get(publicDocId);
+        const group = item && item.group ? item.group.id : null;
+        const row = group
+            ? item.group_draft && byId.get(item.group_draft)
+            : byPost.get(publicDocId);
         if (!row) return null;
         return {
             root: myRoot,
             row,
-            post: () => post(row.doc_id),
+            post: () => post(row.doc_id, group),
             posting,
             baking,
         };
@@ -1317,6 +1329,30 @@ const PostEntryBody = ({
             // refused - a senior owner's hide stands: the card stays as it was
         }
     };
+    // Edit, on any post of yours whose draft is found (a group post's too, 2026-10-18): in Writer or
+    // Drawing where the draft lives in a notebook, in place where it was written in the feed.
+    const editChip =
+        ownsEditing && editing && !open && (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
+            ? editing.row.format === 'drawing'
+                ? html`<a
+                                  class="chip chip-button chip-worded"
+                                  href=${docHref(current.root, editing.row.doc_id)}
+                                  title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
+                              ><${Icons.drawing} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
+                : html`<a
+                                  class="chip chip-button chip-worded"
+                                  href=${docHref(current.root, editing.row.doc_id)}
+                                  title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
+                              ><${Icons.notes} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
+            : ownsEditing &&
+              editing &&
+              !open &&
+              html`<button
+                              class="chip chip-button chip-worded"
+                              title=${t('postentry.open-this-for-editing', 'open this for editing')}
+                              aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
+                              onClick=${() => setOpen(true)}
+                          ><${Icons.rename} /><span class="chip-word">${t('chips.edit', 'edit')}</span></button>`;
     const groupDeck = html`${
         item.mine &&
         !!current &&
@@ -1326,7 +1362,7 @@ const PostEntryBody = ({
             aria-label=${t('postentry.take-it-down-from-the-group', 'take it down from the group')}
             onClick=${takeDownFromGroup}
         ><${Icons.trash} /></button>`
-    }${
+    }${editChip}${
         item.group &&
         !!current &&
         html`<${GroupPinButton} item=${item} group=${item.group} current=${current} pin=${groupPin} onPin=${setGroupPin} />`
@@ -1369,32 +1405,7 @@ const PostEntryBody = ({
                         wait, and no day after which it can't (Curtis, 2026-10-02 - the lock was
                         confusing, and posts edit forever). */ ''
                     }
-                    ${
-                        ownsEditing &&
-                        editing &&
-                        !open &&
-                        (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
-                            ? editing.row.format === 'drawing'
-                                ? html`<a
-                                  class="chip chip-button chip-worded"
-                                  href=${docHref(current.root, editing.row.doc_id)}
-                                  title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
-                              ><${Icons.drawing} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
-                                : html`<a
-                                  class="chip chip-button chip-worded"
-                                  href=${docHref(current.root, editing.row.doc_id)}
-                                  title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
-                              ><${Icons.notes} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
-                            : ownsEditing &&
-                              editing &&
-                              !open &&
-                              html`<button
-                              class="chip chip-button chip-worded"
-                              title=${t('postentry.open-this-for-editing', 'open this for editing')}
-                              aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
-                              onClick=${() => setOpen(true)}
-                          ><${Icons.rename} /><span class="chip-word">${t('chips.edit', 'edit')}</span></button>`
-                    }
+                    ${editChip}
                     ${
                         /* Any post of yours - a book and a room too, which have no in-place editor
                         - and any post you pass along (2026-09-29). */ ''

@@ -290,10 +290,11 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             'and the tag left out drops it there',
         );
 
-        assert.ok(
-            (await feed(bea, beaRoot)).some((i) => i.doc_id === post),
-            "and it's in bea's feed",
-        );
+        const hers = (await feed(bea, beaRoot)).find((i) => i.doc_id === post);
+        assert.ok(hers, "and it's in bea's feed");
+        // Naming its draft to its author (2026-10-18), so her card can edit it, and to no one else.
+        assert.equal(hers.group_draft, draft.doc_id, 'her card finds the draft it edits');
+        assert.equal(there.group_draft, undefined, "ada's names none");
         assert.ok(!(await feed(dee, deeRoot)).some((i) => i.doc_id === post), "never a stranger's");
     });
 
