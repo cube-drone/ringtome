@@ -179,6 +179,105 @@
     letter-spacing: 0.08em;
 }
 
+/* Rails side by side stack (Curtis, 2026-10-18: Writer's tucked columns "take up" too much of the
+   row): the row's 1rem gap closes and each rail tucks a little under the next, the next's shadow
+   falling on it, scalloped. Hovering any rail of the stack fans the whole of it out to the row's
+   own spacing. Rails are siblings in the row whichever component drew them - a drawing's tools
+   stack with Writer's - so this is all selectors: a rail's stack is the rails beside it, reached
+   through `+` up to six deep (Writer's five and a drawing's two). The shadow is painted on the
+   rail beneath, inside its own jagged clip, since a clip-path cuts any box-shadow away.
+   Collapsing waits a moment, so a pointer crossing the gap between two fanned rails doesn't fold
+   the stack under itself. Wide windows only: a narrow one has its own tab strip. And only where
+   the pointer hovers (Curtis, 2026-10-18): on an iPad the stack never fans, a tap lands on
+   whichever sliver is under the finger, and a rail stays its whole width to be tapped. */
+@media (min-width: 901px) and (hover: hover) and (pointer: fine) {
+    .panes {
+        --rail-overlap: 0.8rem;
+    }
+
+    /* `--fanned` is 1 on every rail of a stack under the pointer (the list below), else unset. Its
+       delay is the state's it is going to: none to fan out, a moment to fold back. */
+    .panes > .pane-rail + .pane-rail {
+        margin-left: calc((-1rem - var(--rail-overlap)) * (1 - var(--fanned, 0)));
+        transition: margin-left 0.16s ease calc(0.3s * (1 - var(--fanned, 0)));
+    }
+
+    .panes > .pane-rail:has(+ .pane-rail)::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        right: var(--rail-overlap);
+        width: 0.45rem;
+        background: linear-gradient(to left, var(--shadow-drop), transparent);
+        pointer-events: none;
+        opacity: calc(1 - var(--fanned, 0));
+        transition: opacity 0.16s ease calc(0.3s * (1 - var(--fanned, 0)));
+    }
+
+    :is(
+            .panes > .pane-rail:is(:hover, :focus-visible),
+            .panes > .pane-rail:is(:hover, :focus-visible) + .pane-rail,
+            .panes > .pane-rail:is(:hover, :focus-visible) + .pane-rail + .pane-rail,
+            .panes > .pane-rail:is(:hover, :focus-visible) + .pane-rail + .pane-rail + .pane-rail,
+            .panes
+                > .pane-rail:is(:hover, :focus-visible)
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail,
+            .panes
+                > .pane-rail:is(:hover, :focus-visible)
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail,
+            .panes
+                > .pane-rail:is(:hover, :focus-visible)
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail
+                + .pane-rail,
+            .panes > .pane-rail:has(+ .pane-rail:is(:hover, :focus-visible)),
+            .panes > .pane-rail:has(+ .pane-rail + .pane-rail:is(:hover, :focus-visible)),
+            .panes
+                > .pane-rail:has(+ .pane-rail + .pane-rail + .pane-rail:is(:hover, :focus-visible)),
+            .panes
+                > .pane-rail:has(
+                    + .pane-rail + .pane-rail + .pane-rail + .pane-rail:is(:hover, :focus-visible)
+                ),
+            .panes
+                > .pane-rail:has(
+                    + .pane-rail
+                        + .pane-rail
+                        + .pane-rail
+                        + .pane-rail
+                        + .pane-rail:is(:hover, :focus-visible)
+                ),
+            .panes
+                > .pane-rail:has(
+                    + .pane-rail
+                        + .pane-rail
+                        + .pane-rail
+                        + .pane-rail
+                        + .pane-rail
+                        + .pane-rail:is(:hover, :focus-visible)
+                )
+        ) {
+        --fanned: 1;
+    }
+}
+
+@media (min-width: 901px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: reduce) {
+    .panes > .pane-rail,
+    .panes > .pane-rail::before {
+        transition-duration: 0s;
+    }
+}
+
 /* A narrow window (panes.js, Curtis 2026-09-30): the columns become vertical tabs. Every row of
    columns wears `.panes`; a column is whatever holds a PaneHead, and in a narrow window only the one
    open tab renders as one - the rest are rails. The rails line up on the left as the tab strip,

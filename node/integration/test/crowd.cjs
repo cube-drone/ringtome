@@ -495,8 +495,12 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
                     )
                 ).rows[0]?.last_asked_ms ?? 0,
             );
+        // A minute, not ten seconds (CI 2026-10-18): the wake pass rotates eight mirrors a beat
+        // through every persona this node follows, stalest first, and by this file in a full run
+        // the rig's node follows some fifty - a cycle is ~14s, and the author just fetched in
+        // `before` waits at the back of it. Each wait still returns the moment it holds.
         const until = async (ok) => {
-            for (let i = 0; i < 40; i++) {
+            for (let i = 0; i < 240; i++) {
                 await new Promise((r) => setTimeout(r, 250));
                 if (await ok()) return true;
             }

@@ -2382,6 +2382,14 @@ async fn serve_on(
             bail!("no first frame within {}ms", first_frame.as_millis());
         }
     };
+    // The test gate again, at the first frame (crowd.cjs, CI 2026-10-18): a connection accepted
+    // a moment before `/test/unplug` armed passed the accept-time check, and the exchange it
+    // opened after carried a post published past the partition. Refusing here closes that
+    // window; a default gate refuses nothing, so a real node never takes this branch.
+    if state.unplugged.refuses_inbound(conn.alpn()) {
+        conn.close(0u32.into(), b"unplugged");
+        bail!("unplugged: refusing an exchange opened before the gate armed");
+    }
     let our_id: [u8; 32] = *state.endpoint.id().as_bytes();
     let peer_id: [u8; 32] = *conn.remote_id().as_bytes();
 

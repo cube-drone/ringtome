@@ -112,7 +112,8 @@ impl Unplugged {
         self.0.lock().expect("unplug gate poisoned").clone()
     }
 
-    /// Refuse an inbound connection on this ALPN? Called once per accepted connection.
+    /// Refuse an inbound connection on this ALPN? Called once per accepted connection, and again
+    /// at a sync exchange's first frame, for a connection accepted just before the gate armed.
     pub fn refuses_inbound(&self, alpn: &[u8]) -> bool {
         match alpn_name(alpn) {
             Some(name) => self.0.lock().expect("unplug gate poisoned").inbound.contains(name),

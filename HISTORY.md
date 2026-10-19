@@ -23671,3 +23671,66 @@ draws nothing; for trusted speakers, "we trust them".
 
 Found on the way: posts hotlink the same way, through link cards (NEXT_STEPS,
 Safety).
+
+## 2026-10-18: tucked columns stack
+
+Curtis, on Writer's row of tucked columns: "if we have two or more consecutive
+closed columns, we can push them together - so close that they overlap a little,
+with shadows so they look scalloped over one another. when we hover over the
+stack, they expand to the whole set at the current level of padding".
+
+- **Two or more rails side by side stack** in a wide window (`apps/notes.css`,
+  beside `.pane-rail`). The row's gap closes and each rail tucks 0.8rem
+  (`--rail-overlap`) under the next. A rail on its own is unchanged.
+- **The shadow is painted on the rail beneath**, as a gradient on a `::before`
+  at the edge where the next rail starts. The rails wear the jagged clip, which
+  cuts any `box-shadow` away.
+- **Hovering or focusing any rail fans the whole stack** out to the row's own
+  spacing. It's all selectors, with no wrapper element: a rail's stack is the
+  rails beside it, reached through `+` up to six deep. So a drawing's tools and
+  layers rails, which another component draws into Writer's row, stack with
+  Writer's own. The fanned rails carry `--fanned: 1`, which their margin, shadow
+  and delay read.
+- **Folding back waits 0.3s**, so a pointer crossing the gap between two fanned
+  rails doesn't fold the stack under itself. With reduced motion, nothing
+  slides.
+- Every app with a row of columns has it: Writer, chat, feed, the bank, the amp.
+  Narrow windows keep their tab strip.
+- **Only where the pointer hovers** (`(hover: hover) and (pointer: fine)`).
+  Curtis: "Specifically on an iPad it's going to be hard to click these, right?"
+  Yes: a stack never fans out under a finger, and a tap lands on whichever
+  sliver of a rail is under it. A landscape iPad keeps its rails at full width.
+  Checked in headless Chrome with touch emulated: the rails sit at full spacing.
+- **Checked in headless Chrome:** rails 18px apart at rest, 46px fanned, still
+  fanned 150ms after the pointer leaves, and folded back by 850ms.
+
+## 2026-10-18: two races in CI, and a count that ran ahead of its write
+
+CI went red on "make sure image links work in chat", in `crowd.cjs`'s "a holder
+that is behind keeps the follower behind only until the author is owed". It
+failed 3 of 5 on rerun and passed 5 of 5 locally. The rig logs showed two
+separate races, and the full local run that checked the fixes turned up a third,
+which was a real bug.
+
+- **The test gate let in a connection opened just before it.** It refused
+  connections when accepting them. A connection the author's node opened a
+  moment before `/test/unplug` armed sent its first frame 11ms after, and the
+  exchange carried a post published past the partition. The sync server now
+  checks the gate again at an exchange's first frame (`net::sync::serve_on`). A
+  real node's gate refuses nothing.
+- **The wake pass's turn grows with the rig.** It refreshes eight mirrors a
+  beat, stalest first, through every persona the node follows, and by this file
+  in a full run that's some fifty: a cycle is about 14s. The author, fetched
+  last in the claim's setup, waits at the back, and the claim gave each of its
+  two waits 10s. Each wait now runs up to a minute, and still returns the moment
+  it holds.
+- **A write was counted before it landed** (`db.rs`, `TABLE_WRITES`). The count
+  moved before the statement waited for the lock, so a reader could stamp the
+  new count, take the lock first, read the old row, and keep it under the new
+  count until the next write. In CI a post page's head named its author by the
+  generated name, a moment after they'd set a real one (`idface.cjs`, which
+  passed its five reruns). Every door now counts after its statement runs, still
+  under the lock. A new test holds a write at the lock and checks that it isn't
+  counted until it lands; it fails with the old order. The private views' folds
+  count first on purpose, with their in-memory copy patched under the same lock,
+  and keep doing so.

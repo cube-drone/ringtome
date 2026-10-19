@@ -307,9 +307,9 @@ impl Held<'_> {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Option<T>> {
-        self.db.note_write(sql);
         let started = std::time::Instant::now();
         let first = self.db.fetch_optional_locked(sql, params).await;
+        self.db.note_write(sql);
         self.db.timed(sql, self.wait.take().unwrap_or_default(), started);
         first
     }
@@ -319,9 +319,9 @@ impl Held<'_> {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Vec<T>> {
-        self.db.note_write(sql);
         let started = std::time::Instant::now();
         let all = self.db.fetch_all_locked(sql, params).await;
+        self.db.note_write(sql);
         self.db.timed(sql, self.wait.take().unwrap_or_default(), started);
         all
     }
@@ -374,10 +374,15 @@ pub async fn await_write_nudge(
 /// this persona since I computed this?". Counted HERE, in the one door every statement passes,
 /// rather than at the call sites, so no write path - local, sync's ingest, a fold, a migration -
 /// can forget to say it moved. A statement that writes something this can't name (a script, a
-/// `WITH`, DDL) moves the database's `*`, which every table's count includes. Bumped before the
-/// statement runs: a reader stamps the count it saw BEFORE computing, so a write racing the
-/// computation always leaves the stamp behind. Only ever rises, and only within this process -
-/// a cache is in memory, so it never outlives the counts it was stamped with.
+/// `WITH`, DDL) moves the database's `*`, which every table's count includes. Bumped AFTER the
+/// statement runs, still under the statement lock: a reader stamps the count before computing, so
+/// a stamp that has seen a write's count was taken after that write landed, and the read it
+/// stamps sees it. Bumped before, as it was until 2026-10-18, a write counted while it waited for
+/// the lock, a reader stamped the new count, took the lock first and read the old row - kept under
+/// the new count until the next write (a post page's head named its author by the name they'd
+/// just changed, idface.cjs in CI). A write racing a computation still leaves its stamp behind:
+/// the next read misses, never keeps. Only ever rises, and only within this process - a cache is
+/// in memory, so it never outlives the counts it was stamped with.
 static TABLE_WRITES: LazyLock<Mutex<HashMap<String, u64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -561,10 +566,10 @@ impl Db {
 
     /// Execute one statement to completion; returns rows affected.
     pub async fn execute(&self, sql: &str, params: impl IntoParams) -> Result<u64> {
-        self.note_write(sql);
         let n = {
             let (_guard, wait, locked) = self.statement_lock().await;
             let n = self.conn.execute(sql, params).await;
+            self.note_write(sql);
             self.timed(sql, wait, locked);
             n?
         };
@@ -615,10 +620,10 @@ impl Db {
         params: impl IntoParams,
     ) -> Result<u64> {
         debug_assert_eq!(written_table(sql).as_deref(), Some("entries"));
-        self.note_entry_insert(service);
         let n = {
             let (_guard, wait, locked) = self.statement_lock().await;
             let n = self.conn.execute(sql, params).await;
+            self.note_entry_insert(service);
             self.timed(sql, wait, locked);
             n?
         };
@@ -651,13 +656,13 @@ impl Db {
 
     /// Run a script of semicolon-separated statements.
     pub async fn execute_batch(&self, sql: &str) -> Result<()> {
+        let (_guard, wait, locked) = self.statement_lock().await;
+        let done = self.conn.execute_batch(sql).await;
         // A script may write anything: the whole database moved.
         {
             let mut counts = TABLE_WRITES.lock().expect("table write counts poisoned");
             *counts.entry(format!("{}/*", self.writes_key())).or_default() += 1;
         }
-        let (_guard, wait, locked) = self.statement_lock().await;
-        let done = self.conn.execute_batch(sql).await;
         self.timed(sql, wait, locked);
         Ok(done?)
     }
@@ -674,7 +679,6 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<(Vec<String>, Vec<Vec<Value>>)> {
-        self.note_write(sql);
         let (_guard, wait, locked) = self.statement_lock().await;
         let drained = async {
             let mut rows = self.conn.query(sql, params).await?;
@@ -690,6 +694,7 @@ impl Db {
             Ok((names, out))
         }
         .await;
+        self.note_write(sql);
         self.timed(sql, wait, locked);
         drained
     }
@@ -700,9 +705,9 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Vec<T>> {
-        self.note_write(sql); // a `… RETURNING` write reads its rows back through here
         let (_guard, wait, locked) = self.statement_lock().await;
         let all = self.fetch_all_locked(sql, params).await;
+        self.note_write(sql); // a `… RETURNING` write reads its rows back through here
         self.timed(sql, wait, locked);
         all
     }
@@ -742,9 +747,9 @@ impl Db {
         sql: &str,
         params: impl IntoParams,
     ) -> Result<Option<T>> {
-        self.note_write(sql);
         let (_guard, wait, locked) = self.statement_lock().await;
         let first = self.fetch_optional_locked(sql, params).await;
+        self.note_write(sql);
         self.timed(sql, wait, locked);
         first
     }
@@ -2016,6 +2021,33 @@ mod tests {
         assert_eq!(writes_to(&key, "counted_t"), at + 2, "a read moves nothing");
         db.execute_batch("UPDATE counted_t SET a = 3;").await.unwrap();
         assert_eq!(writes_to(&key, "counted_t"), at + 3, "a script moves every table");
+    }
+
+    /// A write is counted once it has landed, not while it waits for the lock (2026-10-18): a count
+    /// that moved ahead of its write let a reader stamp it, read the old row first, and keep that
+    /// row under the new count.
+    #[tokio::test]
+    async fn a_write_counts_once_it_lands_not_while_it_waits() {
+        let db = test_memory_db().await.with_root("counting-order".to_string());
+        db.execute("CREATE TABLE ordered_t (a INTEGER)", ()).await.unwrap();
+        let key = db.writes_key().to_string();
+        let at = writes_to(&key, "ordered_t");
+        let held = db.hold().await;
+        let writer = {
+            let db = db.clone();
+            tokio::spawn(async move {
+                db.execute("INSERT INTO ordered_t (a) VALUES (1)", ()).await.unwrap();
+            })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            writes_to(&key, "ordered_t"),
+            at,
+            "waiting for the lock, the write isn't counted"
+        );
+        drop(held);
+        writer.await.unwrap();
+        assert_eq!(writes_to(&key, "ordered_t"), at + 1, "landed, it is");
     }
 
     /// A kept read stands while its tables' counts do, and goes the moment any of them moves - a
