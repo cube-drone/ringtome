@@ -36,6 +36,7 @@ import { ExportPage } from './exportpage.js';
 import { DocsApp } from './apps/notes.js';
 import { Console } from './console.js';
 import { IdPage } from './idpage.js';
+import { usePostShowing } from './postshowing.js';
 import { KeptLayer, KeptRoute, PERSON_PATH, useKeptUrl } from './keptpage.js';
 import { PostPage } from './postpage.js';
 import { PersonDemo } from './persondemo.js';
@@ -363,7 +364,11 @@ const Inside = ({ session }) => {
     // header owns the input and the app reads it; it clears when you switch apps. Only document
     // apps (those with a `style`) offer search - and one of those opts out, because a box that
     // reaches a component which never reads the query is a control that lies.
+    // Nor on a single post (Curtis, 2026-10-19) - a group's, or one opened under an @name by its
+    // path: the post's page says it is showing (postshowing.js), and the box goes.
+    const onAPost = usePostShowing();
     const showSearch = !!(
+        !onAPost &&
         appHere &&
         (appHere.style || appHere.everything || appHere.searchable === true) &&
         appHere.searchable !== false
@@ -555,10 +560,12 @@ const Inside = ({ session }) => {
             ${
                 /* The person's page filters their posts from the header's search slot, the
                 place a search bar sits everywhere else (2026-09-07). A post's page has
-                nothing to narrow, so the slot stays empty there. */ ''
+                nothing to narrow, so the slot stays empty there - by its /post/ address at
+                once, and by any other once the page says it is a post. */ ''
             }
             ${
                 !loc.path.includes('/post/') &&
+                !onAPost &&
                 html`<span class="app-header-search-box">
                 <input
                     class="app-header-search"
@@ -593,7 +600,7 @@ const Inside = ({ session }) => {
             <span class="app-header-lead">
                 <span class="app-header-title">${appLabel(appHere, personaName, isDevice())}</span>
             </span>
-            ${appHere.lookup && html`<${PeopleLookup} query=${query} onQuery=${setQuery} />`}
+            ${appHere.lookup && !onAPost && html`<${PeopleLookup} query=${query} onQuery=${setQuery} />`}
             ${
                 showSearch &&
                 html`<span class="app-header-search-box">
@@ -1043,6 +1050,8 @@ const Outside = ({ session }) => {
     useWornCrt(null);
     const [query, setQuery] = useState('');
     const [idTitle, setIdTitle] = useState(null);
+    // A single post has nothing to search (postshowing.js; Curtis, 2026-10-19).
+    const onAPost = usePostShowing();
     // The front page is the sign-in (Curtis, 2026-09-28); the node's public feed is at /feed. The
     // addresses that were the sign-in page are the front page too (2026-09-30: "the sign in page
     // doesn't need to exist any more at all"), and not redirected: a deep link opened signed-out
@@ -1079,6 +1088,7 @@ const Outside = ({ session }) => {
         </span>
         ${
             !signingIn &&
+            !onAPost &&
             html`<span class="app-header-search-box">
             <input
                 class="app-header-search"

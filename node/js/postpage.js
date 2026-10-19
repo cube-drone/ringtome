@@ -46,6 +46,7 @@ import { BookReader } from './doc/bookreader.js';
 import { groupPostHref, postHref, postLink, useSlugOf } from './links.js';
 import { OpenInApp } from './qr.js';
 import { useUnlocked } from './unlocks.js';
+import { useShowsAPost } from './postshowing.js';
 
 const html = htm.bind(h);
 
@@ -203,6 +204,7 @@ export const GroupThread = ({ group, item, current }) => {
 
 export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     const loc = useLocation();
+    useShowsAPost(); // the header's search has nothing to narrow here (postshowing.js)
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
     const root = parsed && parsed.ok ? parsed.root : null;
     // The address's reachability hints ride through, the person page's idiom: a permalink

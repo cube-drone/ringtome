@@ -44,6 +44,7 @@ import {
 import { speakable } from './speakable.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { useShowsAPost } from './postshowing.js';
 
 const html = htm.bind(h);
 
@@ -977,6 +978,7 @@ const GroupPosts = ({
 /// only, and not to one it's hidden from - the node answers no such post to anyone else.
 export const GroupPostPage = ({ group, doc, page, current }) => {
     const root = current && current.root;
+    useShowsAPost(); // the header's search has nothing to narrow here (postshowing.js)
     const [answer, error, reload] = useAnswer(
         root && group && doc ? `/api/identity/${root}/groups/${group}/posts/${doc}` : null,
     );

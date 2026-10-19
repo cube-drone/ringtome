@@ -23888,3 +23888,13 @@ opened the next one just as far down. Now any page turn - the buttons at the top
 or foot, the contents tree, the arrow keys - brings the top of the reading pane
 back into view when it had scrolled out of it. It's the pane's top, not the
 page's: on a phone the contents tree sits above it.
+
+## 2026-10-19: no search box on a single post
+
+Curtis: on a single post the search bar does nothing, so hide it. It already hid
+on a post's `/post/` address under a person's header, but showed on a post
+opened by its path under an @name, on a group's post (People's lookup), and on
+every post in the signed-out site's header. Now a post's page says it is showing
+(`postshowing.js`, from `PostPage` and `GroupPostPage`), and all three headers
+drop the box while one is - whatever address it came by, including the ones that
+only turn out to be a post once the node has looked the path up.
