@@ -81,7 +81,7 @@ import { useUnlocked } from '../unlocks.js';
 import { FONTS } from '@cube-drone/marquee-react-renderer';
 import { wallsOf, pourField, pourRuns, runsOf, STEP } from '../pure/pour.js';
 import { Navigator, viewOf } from './navigator.js';
-import { ImagePickModal } from './imagepick.js';
+import { ImagePickModal, usePictureUpload, usePastedPicture } from './imagepick.js';
 import { stickersOf, stickerCursorSize, STICKER_TAG, STICKER_MAX_PX } from '../pure/imagepick.js';
 import { togglePick } from '../pure/facets.js';
 import {
@@ -1097,6 +1097,22 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         changeLayers(addImage(latest.current, placed, layerId, strokeId(), Date.now()));
         setCurrentId(layerId);
     };
+    // A picture pasted onto the drawing (Curtis, 2026-10-19) goes up as the picker's upload does,
+    // and lands on a layer of its own just as a picked one would. Not while the picker is open:
+    // it takes its own pastes. Without the upload unlock, the paste is refused in words.
+    const pasted = usePictureUpload(root, placePicture);
+    usePastedPicture(!pickingImage && !pasted.busy, (file) => {
+        if (pasted.canUpload) {
+            setActionError(null);
+            pasted.sendFile(file);
+        } else
+            setActionError(
+                t(
+                    'doc.upload.uploading-is-in-the-market',
+                    'uploading files is unlocked in the hrseBank™ market',
+                ),
+            );
+    });
     const current = layers.find((l) => l.id === currentId) || layers[layers.length - 1];
     // A text layer (DRAWING.md, "Text"): its one text, and the tools it takes.
     const currentText = current ? textOf(drawing, current.id) : null;
@@ -2512,6 +2528,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         ${showMeta && html`<div class="editor-meta jag-line" ref=${metaPanelRef}><${Annotations} root=${root} docId=${docId} /></div>`}
         ${session.error && html`<p class="form-error">${session.error}</p>`}
         ${actionError && html`<p class="form-error">${actionError}</p>`}
+        ${pasted.note && html`<p class=${pasted.upload.phase === 'failed' ? 'form-error' : 'null-sub'}>${pasted.note}</p>`}
     </header>`;
 
     return html`${toolsColumn}

@@ -400,6 +400,12 @@ its top-left and its size in canvas units: one pixel to a unit, centred, shrunk
   line, finds that copy rather than cutting another (`pure/flatcopy.js`). A
   drawing changed since is a new version and gets a new copy; the old one stays
   wherever it was used.
+- **Pasted** (Curtis, 2026-10-19): a picture pasted onto the drawing - from the
+  clipboard, anywhere on the page but the open picker, which takes its own - is
+  uploaded as the picker's "upload from this computer" uploads one, filed in
+  "files", and placed like a picked one once the node has taken it in. It is an
+  upload, so it needs the upload unlock; without it the paste is refused in
+  words.
 - **A reference, not the pixels.** The body names the picture's document;
   whoever paints the drawing fetches the picture's body, as the person's own
   media is fetched anywhere. A picture not here yet - still syncing, or

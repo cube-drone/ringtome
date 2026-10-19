@@ -25,6 +25,114 @@ const html = htm.bind(h);
 /// for every thumbnail at once.
 const PAGE = 120;
 
+/// Upload from this computer (Curtis, 2026-09-29: setting a profile picture on a new site meant
+/// uploading somewhere else first). The picture goes up as any upload does, is filed in "files",
+/// and - once the node has taken it in - is handed to `onPick` exactly as if it had been clicked
+/// in the picker's grid. The picker's button and paste use it, and so does a paste onto a drawing
+/// (doc/drawing.js). `upload`: null, or { phase: 'sending' | 'preparing' | 'failed', pct, doc,
+/// job, error }; `note` says it in words. A new upload is bought (plans/UNLOCKS.md): `canUpload`.
+export function usePictureUpload(root, onPick) {
+    const canUpload = useUnlocked(root, 'file-upload');
+    const [upload, setUpload] = useState(null);
+    const sendFile = async (file) => {
+        if (!file) return;
+        setUpload({ phase: 'sending', pct: 0 });
+        try {
+            const res = await uploadBinary(root, file, file.name, (pct) =>
+                setUpload((u) => (u ? { ...u, pct } : u)),
+            );
+            await api(
+                `/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(FILES_BUCKET)}`,
+                { method: 'PUT' },
+            ).catch(() => {});
+            setUpload({ phase: 'preparing', doc: res.doc_id, job: res.job_id, title: file.name });
+        } catch (e) {
+            setUpload({ phase: 'failed', error: e.message });
+        }
+    };
+    // Taken in: the finished picture arrives in the mirror, and it is the pick.
+    const waiting = upload && upload.phase === 'preparing' ? upload.doc : null;
+    const row = useLive(
+        () => (waiting ? openMirror(root).docs.get(waiting) : null),
+        [root, waiting],
+    );
+    useEffect(() => {
+        if (!waiting || !row || !row.media) return;
+        if (!isPicture(row)) {
+            setUpload({
+                phase: 'failed',
+                error: t(
+                    'doc.imagepick.not-a-still',
+                    "that isn't a still picture - an animation becomes a video, and this wants a picture",
+                ),
+            });
+            return;
+        }
+        const title = upload.title;
+        setUpload(null);
+        onPick({
+            doc: row.doc_id,
+            format: row.format,
+            width: row.media.width,
+            height: row.media.height,
+            animation: !!row.media.animation,
+            title: row.title || title || '',
+            description: (row.fields || {}).description || '',
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [row, waiting]);
+    // ...or refused: the ingest queue says why.
+    useEffect(() => {
+        if (!upload || upload.phase !== 'preparing' || !upload.job) return undefined;
+        const id = setInterval(async () => {
+            const jobs = await api(`/api/identity/${root}/ingest`).catch(() => []);
+            const job = (jobs || []).find((j) => j.job_id === upload.job);
+            if (job && job.status === 'failed')
+                setUpload({
+                    phase: 'failed',
+                    error:
+                        job.error ||
+                        t(
+                            'doc.imagepick.could-not-take-it-in',
+                            "that picture couldn't be taken in",
+                        ),
+                });
+        }, 1500);
+        return () => clearInterval(id);
+    }, [upload, root]);
+
+    const note = !upload
+        ? null
+        : upload.phase === 'sending'
+          ? t('doc.imagepick.uploading', 'uploading… {pct}%', { pct: upload.pct || 0 })
+          : upload.phase === 'preparing'
+            ? t('doc.imagepick.preparing', 'preparing the picture…')
+            : upload.error;
+    const busy = !!upload && upload.phase !== 'failed';
+    return { upload, sendFile, busy, note, canUpload, clear: () => setUpload(null) };
+}
+
+/// A picture pasted anywhere on the page, while `on`, handed to `take(file)`. Caught on the way
+/// down, so the editor or chat beneath never pastes it too; a paste holding no picture - text
+/// into a search - passes by untouched.
+export function usePastedPicture(on, take) {
+    const latest = useRef(take);
+    latest.current = take;
+    useEffect(() => {
+        if (!on) return undefined;
+        const onPaste = (e) => {
+            const files = (e.clipboardData && e.clipboardData.files) || [];
+            const file = Array.from(files).find((f) => f.type.startsWith('image/'));
+            if (!file) return;
+            e.preventDefault();
+            e.stopPropagation();
+            latest.current(file);
+        };
+        window.addEventListener('paste', onPaste, true);
+        return () => window.removeEventListener('paste', onPaste, true);
+    }, [on]);
+}
+
 export const ImagePickModal = ({
     root,
     onPick,
@@ -51,89 +159,16 @@ export const ImagePickModal = ({
         setShown(PAGE);
     };
 
-    // Upload from this computer (Curtis, 2026-09-29: setting a profile picture on a new site meant
-    // uploading somewhere else first). The picture goes up as any upload does, is filed in "files",
-    // and - once the node has taken it in - is picked exactly as if it had been clicked in the grid.
-    // `upload`: null, or { phase: 'sending' | 'preparing' | 'failed', pct, doc, job, error }.
-    const [upload, setUpload] = useState(null);
     const fileRef = useRef(null);
-    const sendFile = async (file) => {
-        if (!file) return;
-        setUpload({ phase: 'sending', pct: 0 });
-        try {
-            const res = await uploadBinary(root, file, file.name, (pct) =>
-                setUpload((u) => (u ? { ...u, pct } : u)),
-            );
-            await api(
-                `/api/identity/${root}/docs/${res.doc_id}/buckets/${encodeURIComponent(FILES_BUCKET)}`,
-                { method: 'PUT' },
-            ).catch(() => {});
-            setUpload({ phase: 'preparing', doc: res.doc_id, job: res.job_id, title: file.name });
-        } catch (e) {
-            setUpload({ phase: 'failed', error: e.message });
-        }
-    };
+    const { upload, sendFile, busy, note: uploadNote, canUpload } = usePictureUpload(root, onPick);
     const fileChosen = (e) => {
         const input = e.currentTarget;
         sendFile(input.files && input.files[0]);
         input.value = null; // the same file chosen again is a fresh choice
     };
-    // Taken in: the finished picture arrives in the mirror, and it is the pick.
-    useEffect(() => {
-        if (!upload || upload.phase !== 'preparing') return;
-        const row = (docs || []).find((d) => d.doc_id === upload.doc);
-        if (!row || !row.media) return;
-        if (!isPicture(row)) {
-            setUpload({
-                phase: 'failed',
-                error: t(
-                    'doc.imagepick.not-a-still',
-                    "that isn't a still picture - an animation becomes a video, and this wants a picture",
-                ),
-            });
-            return;
-        }
-        setUpload(null);
-        onPick({
-            doc: row.doc_id,
-            format: row.format,
-            width: row.media.width,
-            height: row.media.height,
-            animation: !!row.media.animation,
-            title: row.title || upload.title || '',
-            description: (row.fields || {}).description || '',
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [docs, upload]);
-    // ...or refused: the ingest queue says why.
-    useEffect(() => {
-        if (!upload || upload.phase !== 'preparing' || !upload.job) return undefined;
-        const id = setInterval(async () => {
-            const jobs = await api(`/api/identity/${root}/ingest`).catch(() => []);
-            const job = (jobs || []).find((j) => j.job_id === upload.job);
-            if (job && job.status === 'failed')
-                setUpload({
-                    phase: 'failed',
-                    error:
-                        job.error ||
-                        t(
-                            'doc.imagepick.could-not-take-it-in',
-                            "that picture couldn't be taken in",
-                        ),
-                });
-        }, 1500);
-        return () => clearInterval(id);
-    }, [upload, root]);
-
-    // A new upload is bought (plans/UNLOCKS.md); your own drawings and pictures are always here.
-    const canUpload = useUnlocked(root, 'file-upload');
-    const uploadNote = !upload
-        ? null
-        : upload.phase === 'sending'
-          ? t('doc.imagepick.uploading', 'uploading… {pct}%', { pct: upload.pct || 0 })
-          : upload.phase === 'preparing'
-            ? t('doc.imagepick.preparing', 'preparing the picture…')
-            : upload.error;
+    // Pasted (Curtis, 2026-10-19): a picture on the clipboard, pasted anywhere while the picker is
+    // open, goes up as if it had been chosen.
+    usePastedPicture(canUpload && !busy, sendFile);
     return html`<${Modal} wide=${true} title=${heading || t('doc.imagepick.add-an-image', 'add an image')} onClose=${onClose}>
         <div class="imagepick">
             <div class="imagepick-filters">
@@ -142,7 +177,7 @@ export const ImagePickModal = ({
                     html`<button
                     class="imagepick-upload"
                     type="button"
-                    disabled=${upload && upload.phase !== 'failed'}
+                    disabled=${busy}
                     onClick=${() => fileRef.current && fileRef.current.click()}
                 ><${Icons.upload} /> ${t('doc.imagepick.upload-from-this-computer', 'upload from this computer')}</button>`
                 }

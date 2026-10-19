@@ -23841,3 +23841,21 @@ group is told nothing. An invite that comes after the no thanks stands, and a
 member is told to leave instead (GROUPS.md §5). A unit test pins which invites a
 no thanks clears, and a `groupinvites.cjs` claim turns down one unopened and one
 opened, and checks a member can't.
+
+## 2026-10-19: paste a picture into the image picker
+
+Curtis: with "add an image" open, ctrl-v should upload what's on the clipboard.
+The picker now listens for a paste while it's open: an image file on the
+clipboard goes up exactly as "upload from this computer" sends one - filed in
+"files", picked once the node has taken it in. It's caught on the way down, so
+the editor or chat that opened the picker doesn't paste it too, and a text paste
+into the search passes by. It needs the upload unlock, as the button does, and
+waits while an upload is already going.
+
+Then: a picture pasted onto a drawing drops in as a new image layer. The
+picker's upload - send, file in "files", wait for the node to take it in - is
+now a hook of its own (`usePictureUpload`, with `usePastedPicture` beside it),
+which the picker and the drawing both use; the drawing places the pasted picture
+as it places a picked one, on a new layer at the top, made current. Its progress
+shows under the drawing's header; without the upload unlock the paste is refused
+in words (DRAWING.md, _Images_).
