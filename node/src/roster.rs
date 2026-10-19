@@ -34,6 +34,7 @@ use serde::Deserialize;
 use crate::auth::Session;
 use crate::clock::now_ms;
 use crate::error::AppError;
+use crate::record::bake::Outcome;
 use crate::record::store::{self, Store};
 use crate::AppState;
 
@@ -3628,7 +3629,9 @@ async fn mint_media(
 
 /// Publish one of `me`'s drafts to a group: its pictures as group media documents, its words as a
 /// body blob, the version on `me`'s lane. Publishing the same draft again is an edit: a new
-/// version parented on the post's current one, its first stamp carried.
+/// version parented on the post's current one, its first stamp carried. A picture from the web
+/// still being saved answers `Baking`, as the public road does, and nothing is made until it's
+/// ready: asking again is how it goes.
 pub async fn publish(
     state: &AppState,
     data: &Store,
@@ -3636,8 +3639,8 @@ pub async fn publish(
     group: &GroupId,
     draft: &[u8; 16],
     wishes: Wishes,
-) -> Result<[u8; 16], AppError> {
-    use crate::record::bake::MediaRef;
+) -> Result<Outcome, AppError> {
+    use crate::record::bake::{BakeItem, MediaRef};
     use crate::record::documents::Format;
     let docs = data.documents();
     let doc = docs
@@ -3680,9 +3683,20 @@ pub async fn publish(
         let crate::record::bake::Embeds { body, refs: found, missing } =
             crate::record::bake::embeds(state, data, me, &words).await?;
         // First what each picture is, with every refusal said before one is minted: a picture
-        // still being made, one from elsewhere, and the bytes over the post's budget.
+        // still being made, one from the web still being saved, and the bytes over the post's
+        // budget. Each is listed for the publish's modal as the public road lists them.
         let mut own: Vec<(String, [u8; 16])> = Vec::new();
+        let mut copies: Vec<(String, [u8; 32], [u8; 16])> = Vec::new();
         let mut blobs: Vec<[u8; 32]> = Vec::new();
+        let mut items: Vec<BakeItem> = Vec::new();
+        let mut blocked = false;
+        let item = |source: &str, kind: &'static str, status: &str| BakeItem {
+            source: source.to_string(),
+            kind,
+            status: status.to_string(),
+            progress: None,
+            error: None,
+        };
         for r in &found {
             match r {
                 MediaRef::PrivateDoc { target, .. } if missing.contains(target) => {}
@@ -3699,25 +3713,73 @@ pub async fn publish(
                             "a picture this post embeds is still being made - publish again in a moment"
                         )));
                     }
-                    if let Some(hash) = docs
-                        .one(doc_id)
-                        .await?
-                        .and_then(|d| d.display_head().map(|h| h.header.file_hash))
-                    {
-                        blobs.push(hash);
-                    }
                     own.push((target.clone(), *doc_id));
+                    items.push(item(target, "private", "ready"));
                 }
-                // Pictures from the web or from someone else's post: the public road downloads
-                // them into public twins, which a members-only post can't carry - a group's would
-                // want a members-only download of their own (plans/ONE_PUBLISH.md, residuals).
-                MediaRef::External { .. } | MediaRef::Foreign { .. } => {
-                    return Err(AppError::BadRequest(crate::msg!(
-                        "roster.own-pictures-only",
-                        "a group post can carry your own pictures for now - this one is from elsewhere"
-                    )));
+                // A picture from the web (2026-10-18): the public road downloads it into a public
+                // twin, which a members-only post can't carry - so it's saved as one of the
+                // author's own pictures instead, in the background (record::bake
+                // `private_bake_pass`), and the post carries it as theirs. Until then the post
+                // isn't made, and asking again is how it goes.
+                MediaRef::External { target } => {
+                    let bake = crate::record::bake::ensure_private_bake(&state.node_db, me, target)
+                        .await?;
+                    match (bake.status.as_str(), bake.doc_id) {
+                        ("ready", Some(doc)) if docs.media_bytes_present(&doc).await? => {
+                            own.push((target.clone(), doc));
+                            items.push(item(target, "external", "ready"));
+                        }
+                        ("failed", _) => {
+                            blocked = true;
+                            items.push(BakeItem {
+                                error: bake.error,
+                                ..item(target, "external", "failed")
+                            });
+                        }
+                        (status, _) => {
+                            blocked = true;
+                            items.push(BakeItem {
+                                progress: crate::record::bake::web_progress(state, me, target),
+                                ..item(target, "external", status)
+                            });
+                        }
+                    }
+                }
+                // Somebody else's public picture: already in the house formats, so its bytes are
+                // copied as they are into the group's media document, past the rights fence the
+                // pre-pass held them to - never a public twin.
+                MediaRef::Foreign { target, author } => {
+                    let Some((_, twin)) = crate::record::bake::twin_address(target) else {
+                        continue;
+                    };
+                    copies.push((target.clone(), *author, twin));
+                    items.push(item(target, "copied", "ready"));
                 }
             }
+        }
+        if blocked {
+            return Ok(Outcome::Baking(items));
+        }
+        for (_, doc_id) in &own {
+            if let Some(hash) =
+                docs.one(doc_id).await?.and_then(|d| d.display_head().map(|h| h.header.file_hash))
+            {
+                blobs.push(hash);
+            }
+        }
+        // The copies' bytes, read once (they're local), for the budget and then the minting.
+        let mut fetched: Vec<(String, [u8; 16], crate::media::Ingested)> = Vec::new();
+        for (target, author, twin) in copies {
+            let copy =
+                crate::record::bake::foreign_twin(state, &author, &twin).await.map_err(|why| {
+                    AppError::BadRequest(crate::msg!(
+                        "roster.a-copied-picture-cant-be-read",
+                        "a picture this post copies can't be read here: {why}",
+                        why = why
+                    ))
+                })?;
+            blobs.push(*iroh_blobs::Hash::new(&copy.body).as_bytes());
+            fetched.push((target, copy_key(&author, &twin), copy));
         }
         // The bytes the post asks every member's node to carry, as the public road prices them.
         crate::record::bake::media_budget_of(state, &blobs).await?;
@@ -3725,6 +3787,15 @@ pub async fn publish(
         let mut swaps: Vec<(String, String)> = Vec::new();
         for (target, doc_id) in own {
             let (media, fmt, animation) = group_media(state, data, me, group, &doc_id).await?;
+            carried.push((fmt.to_wire(), animation));
+            swaps.push((target, media_target(group, &media, fmt, animation)));
+            if !refs.contains(&media) {
+                refs.push(media);
+            }
+        }
+        for (target, remembered, copy) in fetched {
+            let (media, fmt, animation) =
+                copy_media(state, data, me, group, &target, &remembered, copy).await?;
             carried.push((fmt.to_wire(), animation));
             swaps.push((target, media_target(group, &media, fmt, animation)));
             if !refs.contains(&media) {
@@ -3746,6 +3817,53 @@ pub async fn publish(
         wishes,
     )
     .await
+    .map(Outcome::Posted)
+}
+
+/// What somebody else's picture, copied into a group, is remembered by: the picture itself, apart
+/// from any document of the persona's own.
+fn copy_key(author: &[u8; 32], twin: &[u8; 16]) -> [u8; 16] {
+    let mut h = blake3::Hasher::new();
+    h.update(b"ringtome-group-copy/");
+    h.update(author);
+    h.update(twin);
+    h.finalize().as_bytes()[..16].try_into().expect("sixteen bytes")
+}
+
+/// Somebody else's public picture as a media document on `me`'s lane for the group, its bytes as
+/// they are: minted once per picture per group, as one of the persona's own is (`group_media`).
+async fn copy_media(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    target: &str,
+    remembered: &[u8; 16],
+    copy: crate::media::Ingested,
+) -> Result<([u8; 16], crate::record::documents::Format, bool), AppError> {
+    if let Some(minted) = published_as(state, me, remembered, group).await {
+        return Ok((minted, copy.format, copy.animation));
+    }
+    let doc_id = mint_media(
+        state,
+        data,
+        me,
+        group,
+        Minted {
+            body: &copy.body,
+            thumb: copy.thumb_avif.as_deref(),
+            title: target,
+            format: copy.format.to_wire(),
+            width: copy.width,
+            height: copy.height,
+            duration_ms: copy.duration_ms,
+            animation: copy.animation,
+            part_of: None,
+        },
+    )
+    .await?;
+    remember_published(state, me, remembered, group, &doc_id).await?;
+    Ok((doc_id, copy.format, copy.animation))
 }
 
 /// What a group post's version says: its words, already embedding the group's media documents,
@@ -4112,7 +4230,8 @@ async fn publish_handler(
     State(state): State<AppState>,
     Path((root, group)): Path<(String, String)>,
     Json(req): Json<PublishRequest>,
-) -> Answer {
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
     let (data, _) = me_of(&state, &session, &root).await?;
     let group = group_of(&group)?;
     let to = crate::publication::To::Group(group);
@@ -4151,10 +4270,11 @@ async fn publish_handler(
             crate::publication::schedule(&data, &draft, &plan).await?;
             return Ok(Json(
                 serde_json::json!({ "group": hex::encode(group), "scheduled_for": at }),
-            ));
+            )
+            .into_response());
         }
     };
-    let post = publish(
+    let post = match publish(
         &state,
         &data,
         &root,
@@ -4162,13 +4282,26 @@ async fn publish_handler(
         &draft,
         Wishes { dated_ms, settled: req.settled, room: req.room, reply_to, part_of: None },
     )
-    .await?;
+    .await?
+    {
+        Outcome::Posted(post) => post,
+        // A picture from the web still being saved: a 202 with the modal's items, as the public
+        // door answers - the client asks again until the post is made.
+        Outcome::Baking(items) => {
+            return Ok((
+                axum::http::StatusCode::ACCEPTED,
+                Json(serde_json::json!({ "group": hex::encode(group), "baking": items })),
+            )
+                .into_response());
+        }
+    };
     crate::publication::posted(&data, &draft).await?;
     Ok(Json(serde_json::json!({
         "group": hex::encode(group),
         "post": hex::encode(post),
         "date_kept": date_kept,
-    })))
+    }))
+    .into_response())
 }
 
 /// The post `draft` already is in the group, standing, and the date it carries
@@ -4273,15 +4406,29 @@ pub async fn publish_planned(
     group_hex: &str,
     draft: &[u8; 16],
     wishes: Wishes,
-) -> Result<[u8; 16], AppError> {
+) -> Result<Option<[u8; 16]>, AppError> {
     let group = group_of(group_hex)?;
     let posted =
         match crate::publication::admit(state, me, &crate::publication::To::Group(group)).await {
             Ok(()) => publish(state, data, me, &group, draft, wishes).await,
             Err(e) => Err(e),
         };
+    // A picture from the web still being saved leaves the plan for the next pass, as the public
+    // road's bake does; a failed one refuses it, in its words.
+    let posted = match posted {
+        Ok(Outcome::Posted(post)) => Ok(post),
+        Ok(Outcome::Baking(items)) => match items.iter().find(|i| i.status == "failed") {
+            None => return Ok(None),
+            Some(failed) => Err(AppError::BadRequest(crate::msg!(
+                "roster.a-picture-couldnt-be-prepared",
+                "a picture this post embeds couldn't be prepared: {why}",
+                why = failed.error.clone().unwrap_or_else(|| failed.source.clone())
+            ))),
+        },
+        Err(e) => Err(e),
+    };
     crate::publication::settle(data, draft, &posted).await?;
-    posted
+    posted.map(Some)
 }
 
 /// Take down `me`'s own document in a group: a retraction on the lane, and its draft a draft again.

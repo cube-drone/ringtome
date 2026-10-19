@@ -623,6 +623,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         state.clone(),
         crate::record::bake::bake_pass,
     );
+    // Its twin for a post that can't carry a public copy (a group's): a web picture saved as its
+    // author's own private picture instead (record::bake `private_bake_pass`).
+    loops::periodic(
+        "private-bake",
+        std::time::Duration::from_secs(2),
+        state.clone(),
+        crate::record::bake::private_bake_pass,
+    );
     // The network's daily actives: sketches swapped with the nodes this one talks to (census.rs).
     loops::periodic(
         "census",

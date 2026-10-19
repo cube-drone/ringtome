@@ -141,9 +141,9 @@ are driving towards.
   - **The UI wants a look in a browser.** It passed the gates and the routes
     under it are covered, but nobody has seen it drawn yet.
 - From slice 2:
-  - **Pictures from elsewhere** (an external link, someone else's public
-    picture) are refused in a group post. The public pipeline's download and
-    copy roads need a group twin.
+  - **A copied picture's credit in a group.** Someone else's picture copied into
+    a group post is carried, but the post doesn't name whose it was, as the
+    public road's provenance does.
   - **Rebroadcasts** (GROUPS.md §7): sharing a public post into a group, with
     the share button's destination picker; an explicit refusal, with a claim,
     for sharing a group post out, rather than trusting the rebroadcast route to

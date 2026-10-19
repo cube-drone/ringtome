@@ -208,8 +208,11 @@ What a poll would take now, road by road:
 
 ## Residuals
 
-- A group post can't carry a picture from the web or from someone else's post: a
-  members-only download, landing as the group's media document, would.
+- ~~A group post can't carry a picture from the web or from someone else's
+  post~~
+  - _built 2026-10-18_ (HISTORY): someone else's picture is copied into the
+    group's media document, and a web picture is saved as the author's own
+    first.
 - A book page with a future date mints at once under that date: books have no
   schedule, and none of the rulings says what a dated page should do - it wants
   one.

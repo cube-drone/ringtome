@@ -20,9 +20,18 @@ const html = htm.bind(h);
  * next attempt re-arms it, so the author sees the tombstone before the retry).
  *
  * `onBaking(items | null)` drives the modal: items while preparing, null when done or failed
- * out. Resolves to the response with `post_id`, or throws after a failed bake round.
+ * out. Resolves to the response with `post_id` (a group's door says `post`), or throws after a
+ * failed bake round. `door`: where it posts - the public publish, or a group's (2026-10-18: a
+ * group post's pictures from the web are saved as the author's own first, and the group's door
+ * answers 202 while they are).
  */
-export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
+export async function publishWithBaking(
+    root,
+    privDocId,
+    onBaking,
+    extraBody,
+    door = `/api/identity/${root}/docs/${privDocId}/publish`,
+) {
     // The sign (plans/AUDIO.md, section 8): a song that names its artist or album is asked about
     // first, every time - once, before the first round.
     const stopped = await rightsCheck(root, { docs: [privDocId] });
@@ -33,7 +42,7 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
         // round finally lands the post.
         // The browser's timezone offset rides every publish (PUBLISH.md): the preferred date
         // is the author's LOCAL claim, and a bare day takes the publication's own hour.
-        const resp = await api(`/api/identity/${root}/docs/${privDocId}/publish`, {
+        const resp = await api(door, {
             method: 'POST',
             body: JSON.stringify({
                 tz_offset_min: new Date().getTimezoneOffset(),
@@ -43,7 +52,7 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
         // A schedule is a terminal answer too (PUBLISH.md): nothing public yet, and nothing
         // to poll - the mirror row's plan is what the feed shows until the day.
         if (resp.scheduled_for) return resp;
-        if (resp.post_id) {
+        if (resp.post_id || resp.post) {
             onBaking(null);
             return resp;
         }
@@ -70,7 +79,7 @@ export async function publishWithBaking(root, privDocId, onBaking, extraBody) {
  *
  * `what` is the body, as the surface has it: `{ words: true }` for the draft's saved words, or
  * `{ picture }` for a drawing's flattened picture (a Blob). `choice` null publishes as the draft
- * stands. Words to the public ride out the media bake (`onBaking`); every door's words are asked
+ * stands. Words to the public or a group ride out the media bake (`onBaking`); every door's words are asked
  * the rights sign first. Resolves to the door's answer with `post_id` named alike for every door
  * (none when scheduled), and `group`, the group it went to, or null.
  */
@@ -109,13 +118,14 @@ export async function publishTo(
         );
     }
     if (group) {
-        const stopped = await rightsCheck(root, { docs: [docId] });
-        if (stopped) throw new Error(stopped);
         return named(
-            await api(`/api/identity/${root}/groups/${group}/publish`, {
-                method: 'POST',
-                body: JSON.stringify({ doc: docId, ...body, tz_offset_min: tz }),
-            }),
+            await publishWithBaking(
+                root,
+                docId,
+                onBaking || (() => {}),
+                { doc: docId, ...body },
+                `/api/identity/${root}/groups/${group}/publish`,
+            ),
         );
     }
     return named(await publishWithBaking(root, docId, onBaking || (() => {}), body));

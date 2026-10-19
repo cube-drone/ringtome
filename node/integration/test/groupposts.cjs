@@ -818,6 +818,113 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(there.media.length, 1, "the sticker is the group's media document");
     });
 
+    it("a group post carries a picture from the web and somebody else's, as the group's own (2026-10-18)", async () => {
+        // "The open web": one PNG on loopback, allowed only under LOCAL_TEST.
+        const http = require('node:http');
+        const png = require('node:fs').readFileSync(
+            require('node:path').join(__dirname, '../../../sample_media/bowie_comic.png'),
+        );
+        const web = http.createServer((req, res) => {
+            res.writeHead(200, { 'Content-Type': 'image/png' });
+            res.end(png);
+        });
+        await new Promise((r) => web.listen(8126, '127.0.0.1', r));
+        try {
+            // Somebody else's public picture, on bea's node: cal's, in a post of cal's.
+            const [cal, calRoot] = await persona('gpcal', HOST_B);
+            const pic = await upload(cal, calRoot, 'turnip');
+            const note = await (
+                await j(cal, `api/identity/${calRoot}/docs`, {
+                    title: 'my turnip',
+                    body: `![turnip](/api/identity/${calRoot}/docs/${pic}/body/turnip.avif)`,
+                    format: 'marquee',
+                })
+            ).json();
+            const pub = await j(cal, `api/identity/${calRoot}/docs/${note.doc_id}/publish`, {});
+            assert.equal(pub.status, 200, await pub.clone().text());
+            const anonB = makeFetch(HOST_B);
+            const calWords = await (
+                await anonB(`id/${calRoot}/docs/${(await pub.json()).post_id}/body`)
+            ).text();
+            const theirs = calWords.match(/\]\((\/ringtome\/user\/[^)]+)\)/)[1];
+
+            const created = await (
+                await j(bea, `api/identity/${beaRoot}/docs`, {
+                    title: 'found pictures',
+                    body: `from the web\n\n![web](http://127.0.0.1:8126/x.png)\n\nand cal's\n\n![cal's](${theirs})`,
+                    format: 'marquee',
+                })
+            ).json();
+            const publish = () =>
+                j(bea, `api/identity/${beaRoot}/groups/${group}/publish`, {
+                    doc: created.doc_id,
+                    tz_offset_min: 0,
+                });
+            const first = await publish();
+            const firstBody = JSON.parse(await first.text());
+            assert.equal(first.status, 202, 'the post waits for the web picture');
+            assert.deepEqual(
+                firstBody.baking.map((i) => i.kind),
+                ['external', 'copied'],
+                'listed as the public road lists them',
+            );
+            let posted = null;
+            for (let i = 0; i < 100 && !posted; i++) {
+                const r = await publish();
+                const b = JSON.parse(await r.text());
+                assert.ok(
+                    !(b.baking || []).some((x) => x.status === 'failed'),
+                    `a picture failed: ${JSON.stringify(b.baking)}`,
+                );
+                if (r.status === 200) posted = b.post;
+                else await wait(500);
+            }
+            assert.ok(posted, 'the web picture was saved and the post made');
+
+            const there = (await page(HOST_B, bea, beaRoot)).find((p) => p.doc === posted);
+            assert.equal(there.media.length, 2, "both are the group's media documents");
+            assert.equal(
+                there.words.split(`/api/groups/${group}/docs/`).length - 1,
+                2,
+                'both embeds point at the group',
+            );
+            assert.ok(!there.words.includes('127.0.0.1:8126'), 'nothing leans on the web');
+            assert.ok(!there.words.includes(theirs), "nor on cal's public picture");
+            for (const m of there.media) {
+                const bytes = await bea(`api/groups/${group}/docs/${m}/body`);
+                assert.equal(bytes.status, 200);
+            }
+
+            // Nothing public was made of either: no public bake for bea, and the web picture is
+            // one of bea's own private pictures.
+            const baked = await sql(
+                `SELECT count(*) AS n FROM media_bakes WHERE root_pubkey = '${beaRoot}'`,
+                HOST_B,
+            );
+            assert.equal(baked.rows[0].n, 0, 'no public twin was baked');
+            const saved = await sql(
+                `SELECT status, private_doc_id FROM private_bakes WHERE root_pubkey = '${beaRoot}'`,
+                HOST_B,
+            );
+            assert.equal(saved.rows.length, 1);
+            assert.equal(saved.rows[0].status, 'ready');
+            const own = await bea(
+                `api/identity/${beaRoot}/docs/${saved.rows[0].private_doc_id}/body`,
+            );
+            assert.equal(own.status, 200, "it's bea's own picture");
+            assert.equal(own.headers.get('content-type'), 'image/avif', 'crushed like any upload');
+
+            // Published again, it's an edit carrying the same pictures, at once.
+            const again = await publish();
+            const againText = await again.text();
+            assert.equal(again.status, 200, againText);
+            const edited = (await page(HOST_B, bea, beaRoot)).find((p) => p.doc === posted);
+            assert.deepEqual([...edited.media].sort(), [...there.media].sort(), 'minted once');
+        } finally {
+            web.close();
+        }
+    });
+
     it('a member mentioned in a group post, or whose post is labelled, hears it in the bell', async () => {
         const { speakable } = await import('../../js/speakable.js');
         const bell = async (who, root, kind, doc) =>

@@ -1168,7 +1168,7 @@ pub async fn bake_pass(state: AppState) -> anyhow::Result<()> {
 /// a video's hover preview beside them, and the rest - format, size, length, whether it is a
 /// silent loop - off its signed header, from the author's chain when this node holds it and from
 /// the fragment ledger when a share brought it. Nothing is decoded or re-encoded.
-async fn foreign_twin(
+pub(crate) async fn foreign_twin(
     state: &AppState,
     author: &[u8; 32],
     twin: &[u8; 16],
@@ -1243,41 +1243,188 @@ async fn foreign_twin(
     })
 }
 
+/// A picture or a sound at a web address, downloaded and crushed to the house formats - with the
+/// print of the bytes as they arrived (plans/DEDUP.md), for a save that keeps one. Its progress is
+/// on the bake meter for (root, url). A video stays refused: the node can't decode the codecs a
+/// video URL arrives in.
+async fn web_media(
+    state: &AppState,
+    root: &str,
+    url: &str,
+) -> Result<(Vec<u8>, crate::media::Ingested), String> {
+    let bytes = crate::net::unfurl::fetch_media_bytes(
+        url,
+        state.config.max_upload_bytes,
+        state.config.local_test,
+    )
+    .await?;
+    let meter = state.ingest.clone();
+    let key = bake_meter_key(root, url);
+    meter.set_progress(&key, 0);
+    let raw = bytes.clone();
+    let crushed = crate::media::lane::background({
+        let meter = meter.clone();
+        let key = key.clone();
+        move || {
+            let report = |pct: u8| meter.set_progress(&key, pct);
+            crate::media::crush_with_sidecar(&bytes, None, &report)
+        }
+    })
+    .await
+    .map_err(|e| format!("bake worker died: {e}"))?
+    .map_err(|te| format!("couldn't process these bytes: {te}"))?;
+    // The node cannot decode the codec zoo a video URL arrives in (that laundering is the
+    // browser's job at upload - video-ingest/README.md), so an external video stays
+    // refused with the road named. A video you UPLOADED bakes fine (2026-09-03).
+    if crushed.format == crate::record::documents::Format::WebmAv1 {
+        return Err("a video at a web address can't be fetched and prepared by this computer yet - upload the video instead and embed that".into());
+    }
+    Ok((raw, crushed))
+}
+
+/// What a web picture saved as its persona's own has come to (`private_bakes`): pending, fetching,
+/// ready with the document it became, or failed with the tombstone.
+pub(crate) struct PrivateBake {
+    pub status: String,
+    pub doc_id: Option<[u8; 16]>,
+    pub error: Option<String>,
+}
+
+/// The progress of a web picture's download and crush, for a post's modal.
+pub(crate) fn web_progress(state: &AppState, root_hex: &str, url: &str) -> Option<u8> {
+    state.ingest.progress_of(&bake_meter_key(root_hex, url))
+}
+
+/// The row for (root, url) in `private_bakes`, created pending if absent - `ensure_bake`'s twin
+/// for a post that can't carry a public copy (a group's, roster.rs). A failed row is re-armed by
+/// the next attempt, which is the retry, and reported failed this once.
+pub(crate) async fn ensure_private_bake(
+    node_db: &Db,
+    root_hex: &str,
+    url: &str,
+) -> Result<PrivateBake, AppError> {
+    let row: Option<(String, Option<String>, Option<String>)> = node_db
+        .fetch_optional(
+            "SELECT status, private_doc_id, error FROM private_bakes
+             WHERE root_pubkey = ?1 AND source_url = ?2",
+            (root_hex, url),
+        )
+        .await
+        .context("reading the private bakes")
+        .map_err(AppError::Internal)?;
+    let doc_of = |h: Option<String>| {
+        h.and_then(|h| hex::decode(h).ok()).and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
+    };
+    match row {
+        Some((status, doc, error)) => {
+            if status == "failed" {
+                node_db
+                    .execute(
+                        "UPDATE private_bakes SET status = 'pending', error = NULL
+                         WHERE root_pubkey = ?1 AND source_url = ?2",
+                        (root_hex, url),
+                    )
+                    .await
+                    .context("re-arming a private bake")
+                    .map_err(AppError::Internal)?;
+            }
+            Ok(PrivateBake { status, doc_id: doc_of(doc), error })
+        }
+        None => {
+            node_db
+                .execute(
+                    "INSERT INTO private_bakes (root_pubkey, source_url, status, created_ms)
+                     VALUES (?1, ?2, 'pending', ?3)",
+                    (root_hex, url, now_ms()),
+                )
+                .await
+                .context("registering a private bake")
+                .map_err(AppError::Internal)?;
+            Ok(PrivateBake { status: "pending".into(), doc_id: None, error: None })
+        }
+    }
+}
+
+/// One worker pass over `private_bakes`: each pending web picture downloaded, crushed, and saved as
+/// its persona's own private document - what they'd have made saving the picture and attaching it
+/// by hand - which the post that asked then carries as theirs. Beside `bake_pass`, on its beat.
+pub async fn private_bake_pass(state: AppState) -> anyhow::Result<()> {
+    loop {
+        let row: Option<(String, String)> = state
+            .node_db
+            .fetch_optional(
+                "UPDATE private_bakes SET status = 'fetching'
+                 WHERE rowid = (SELECT rowid FROM private_bakes WHERE status = 'pending'
+                                ORDER BY created_ms LIMIT 1)
+                 RETURNING root_pubkey, source_url",
+                (),
+            )
+            .await
+            .context("claiming a private bake")?;
+        let Some((root, url)) = row else {
+            return Ok(());
+        };
+        let verdict = match web_media(&state, &root, &url).await {
+            Ok((raw, crushed)) => save_own(&state, &root, &url, &raw, crushed).await,
+            Err(tombstone) => Err(tombstone),
+        };
+        match verdict {
+            Ok(doc) => {
+                state
+                    .node_db
+                    .execute(
+                        "UPDATE private_bakes SET status = 'ready', private_doc_id = ?3,
+                             fetched_ms = ?4
+                         WHERE root_pubkey = ?1 AND source_url = ?2",
+                        (root.as_str(), url.as_str(), hex::encode(doc), now_ms()),
+                    )
+                    .await
+                    .context("finishing a private bake")?;
+                tracing::info!(root = %root, url = %url, "saved a web picture as the persona's own");
+            }
+            Err(tombstone) => {
+                state
+                    .node_db
+                    .execute(
+                        "UPDATE private_bakes SET status = 'failed', error = ?3
+                         WHERE root_pubkey = ?1 AND source_url = ?2",
+                        (root.as_str(), url.as_str(), tombstone.as_str()),
+                    )
+                    .await
+                    .context("failing a private bake")?;
+                tracing::warn!(root = %root, url = %url, "private bake failed: {tombstone}");
+            }
+        }
+        state.ingest.clear_progress(&bake_meter_key(&root, &url));
+    }
+}
+
+/// A crushed web picture saved as a new private document of `root`'s, titled by where it came from,
+/// as a public bake's twin is.
+async fn save_own(
+    state: &AppState,
+    root: &str,
+    url: &str,
+    raw: &[u8],
+    crushed: crate::media::Ingested,
+) -> Result<[u8; 16], String> {
+    let writer = crate::ingest::Writer::of(state, root).await.map_err(|e| format!("keys: {e}"))?;
+    let print = writer.print_of(raw);
+    let doc = crate::record::documents::new_doc_id();
+    writer
+        .save(state, doc, Vec::new(), url.to_string(), crushed, print)
+        .await
+        .map_err(|e| format!("saving: {e}"))?;
+    Ok(doc)
+}
+
 async fn bake_one(state: &AppState, root: &str, url: &str) -> Result<[u8; 16], String> {
     let crushed = match twin_address(url) {
         // Somebody's public media on the network (2026-09-28): already in the house formats, so it
         // is re-minted exactly as it is - never crushed again (a second lossy pass, and the crush
         // refuses video), never downloaded from the origin it was copied at.
         Some((author, twin)) => foreign_twin(state, &author, &twin).await?,
-        None => {
-            let bytes = crate::net::unfurl::fetch_media_bytes(
-                url,
-                state.config.max_upload_bytes,
-                state.config.local_test,
-            )
-            .await?;
-            let meter = state.ingest.clone();
-            let key = bake_meter_key(root, url);
-            meter.set_progress(&key, 0);
-            let crushed = crate::media::lane::background({
-                let meter = meter.clone();
-                let key = key.clone();
-                move || {
-                    let report = |pct: u8| meter.set_progress(&key, pct);
-                    crate::media::crush_with_sidecar(&bytes, None, &report)
-                }
-            })
-            .await
-            .map_err(|e| format!("bake worker died: {e}"))?
-            .map_err(|te| format!("couldn't process these bytes: {te}"))?;
-            // The node cannot decode the codec zoo a video URL arrives in (that laundering is the
-            // browser's job at upload - video-ingest/README.md), so an external video stays
-            // refused with the road named. A video you UPLOADED bakes fine (2026-09-03).
-            if crushed.format == crate::record::documents::Format::WebmAv1 {
-                return Err("a video at a web address can't be fetched and prepared by this computer yet - upload the video instead and embed that".into());
-            }
-            crushed
-        }
+        None => web_media(state, root, url).await?.1,
     };
 
     // Mint under the node's own leaf for this root - the session-free path the ingest worker

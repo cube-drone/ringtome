@@ -203,20 +203,11 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
     let audio = tokio::fs::read(sidecar_path(&job.quarantine_path)).await.ok();
 
     // This identity's write keys, via the session-free node path (same as the post-sync body
-    // fetch) - before the crush, which takes the upload's bytes: the node's own leaf for the root, its enc keypair, its unsealed epoch keys.
-    let leaf = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, &job.root)
-        .await?
-        .ok_or_else(|| anyhow!("node does not agent identity {}", job.root))?;
-    let leaf_pub = leaf.verifying_key().to_bytes();
-    let enc = crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
-    let db = state.user_dbs.held(&job.root).await?;
-    let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
-    let (epoch, epoch_key) =
-        keys.current().ok_or_else(|| anyhow!("no epoch key to write media under"))?;
+    // fetch) - before the crush, which takes the upload's bytes.
+    let writer = Writer::of(state, &job.root).await?;
     // The upload's print (header key 26, plans/DEDUP.md): of the bytes as they arrived, before the
     // lossy crush, so a second upload of the same file can be known for what it is.
-    let print_key = keys.print_key();
-    let source_print = print_key.map(|k| ringtome_proto::registry::content_print(&k, &bytes));
+    let source_print = writer.print_of(&bytes);
 
     // The crush (AV1/AVIF/Opus encode) is CPU-bound: off the async runtime, on the media pool,
     // one background crush at a time (media::lane). The sidecar-aware door sniffs the upload and routes it to the image, video, or audio lane.
@@ -242,77 +233,131 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
             return Ok(());
         }
     };
-
-    // The thumbnail (when the lane produced one - image thumb, audio waveform; video has none yet)
-    // is its own sibling blob, never inline in the header. The body - the crushed AVIF/WebM/APNG/
-    // Opus - rides save_version's normal store-and-append path (with blob reuse).
-    // Both puts are HELD (`files::Put`) until `save_version` below has appended the header
-    // that names them; dropped earlier, the reaper could take them in between.
-    // A thumbnail this persona already stores - the one cover on every track of an album - is
-    // named, not stored again (plans/DEDUP.md): found by its print, which the crush's
-    // determinism makes the same for the same picture.
-    let thumb_print = match (&ingested.thumb_avif, print_key) {
-        (Some(thumb), Some(k)) => Some(ringtome_proto::registry::content_print(&k, thumb)),
-        _ => None,
-    };
-    let stored_thumb = match &thumb_print {
-        Some(print) => {
-            crate::record::documents::held_print(&db, &state.files, Printed::Thumb, print).await?
-        }
-        None => None,
-    };
-    let held_thumb = match (&ingested.thumb_avif, stored_thumb) {
-        (Some(_), Some(_)) | (None, _) => None,
-        (Some(thumb), None) => Some(state.files.put_encrypted(epoch, &epoch_key, thumb).await?),
-    };
-    let thumb_hash = stored_thumb.or_else(|| held_thumb.as_ref().map(|p| *p.hash.as_bytes()));
-
-    // The hover-preview clip (video WebM output only) is likewise its own sibling blob.
-    let held_preview = match &ingested.preview_webm {
-        Some(preview) => Some(state.files.put_encrypted(epoch, &epoch_key, preview).await?),
-        None => None,
-    };
-    let preview_hash = held_preview.as_ref().map(|p| *p.hash.as_bytes());
-
-    save_version(
-        &db,
-        &leaf,
-        &keys,
-        &state.files,
-        Save {
-            doc_id: job.doc_id,
-            parents: job.parents.clone(),
-            title: job.title.clone(),
-            body: ingested.body,
-            format: ingested.format,
-            refs: Vec::new(), // a media document is a leaf - it embeds nothing
-            media: Some(MediaMeta {
-                width: ingested.width,
-                height: ingested.height,
-                duration_ms: ingested.duration_ms,
-                thumb_hash,
-                preview_hash,
-                animation: ingested.animation,
-                thumb_print,
-                source_print,
-            }),
-        },
-    )
-    .await?;
-
-    // A sound's own tags - artist, album, year... (media/audio.rs `TAG_FIELDS`) - as its fields,
-    // only where it has none of its own: a new version of a sound a person has annotated keeps
-    // what they wrote. A failure here costs the fields, never the upload.
-    if !ingested.tags.is_empty() {
-        if let Err(e) = tag_fields(state, &job.root, &job.doc_id, &ingested.tags).await {
-            tracing::warn!(doc = %hex::encode(job.doc_id), error = %e, "couldn't keep a sound's tags");
-        }
-    }
+    writer
+        .save(state, job.doc_id, job.parents.clone(), job.title.clone(), ingested, source_print)
+        .await?;
 
     finish_job(&state.node_db, &job.job_id).await?;
     let _ = tokio::fs::remove_file(&job.quarantine_path).await;
     let _ = tokio::fs::remove_file(sidecar_path(&job.quarantine_path)).await;
     Ok(())
+}
+
+/// One persona's write keys, as the node holds them for it - its own leaf, the epoch keys it can
+/// unseal - for saving media without a session: an upload's crush, a web picture saved for a post
+/// that can't carry a public copy (record::bake, `private_bake_pass`).
+pub(crate) struct Writer {
+    root: String,
+    leaf: ed25519_dalek::SigningKey,
+    db: Db,
+    keys: crate::record::private::EpochKeys,
+}
+
+impl Writer {
+    pub(crate) async fn of(state: &crate::AppState, root: &str) -> anyhow::Result<Writer> {
+        let leaf = crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, root)
+            .await?
+            .ok_or_else(|| anyhow!("node does not agent identity {root}"))?;
+        let leaf_pub = leaf.verifying_key().to_bytes();
+        let enc =
+            crate::record::private::load_enc_keypair(&state.keystore, &hex::encode(leaf_pub))?;
+        let db = state.user_dbs.held(root).await?;
+        let keys = crate::record::private::unseal_epoch_keys(&db, &leaf_pub, &enc).await?;
+        if keys.current().is_none() {
+            return Err(anyhow!("no epoch key to write media under"));
+        }
+        Ok(Writer { root: root.to_string(), leaf, db, keys })
+    }
+
+    /// The print of bytes as they arrived (plans/DEDUP.md), before any crush.
+    pub(crate) fn print_of(&self, bytes: &[u8]) -> Option<[u8; 32]> {
+        self.keys.print_key().map(|k| ringtome_proto::registry::content_print(&k, bytes))
+    }
+
+    /// Save crushed media as a version of `doc_id`, one of the persona's own documents: its body,
+    /// its thumbnail and a film's preview each a sibling blob, a sound's tags as its fields.
+    pub(crate) async fn save(
+        &self,
+        state: &crate::AppState,
+        doc_id: [u8; 16],
+        parents: Vec<[u8; 32]>,
+        title: String,
+        ingested: crate::media::Ingested,
+        source_print: Option<[u8; 32]>,
+    ) -> anyhow::Result<()> {
+        let Writer { root, leaf, db, keys } = self;
+        let (epoch, epoch_key) =
+            keys.current().ok_or_else(|| anyhow!("no epoch key to write media under"))?;
+        let print_key = keys.print_key();
+        let tags = ingested.tags.clone();
+        // The thumbnail (when the lane produced one - image thumb, audio waveform; video has none yet)
+        // is its own sibling blob, never inline in the header. The body - the crushed AVIF/WebM/APNG/
+        // Opus - rides save_version's normal store-and-append path (with blob reuse).
+        // Both puts are HELD (`files::Put`) until `save_version` below has appended the header
+        // that names them; dropped earlier, the reaper could take them in between.
+        // A thumbnail this persona already stores - the one cover on every track of an album - is
+        // named, not stored again (plans/DEDUP.md): found by its print, which the crush's
+        // determinism makes the same for the same picture.
+        let thumb_print = match (&ingested.thumb_avif, print_key) {
+            (Some(thumb), Some(k)) => Some(ringtome_proto::registry::content_print(&k, thumb)),
+            _ => None,
+        };
+        let stored_thumb = match &thumb_print {
+            Some(print) => {
+                crate::record::documents::held_print(db, &state.files, Printed::Thumb, print)
+                    .await?
+            }
+            None => None,
+        };
+        let held_thumb = match (&ingested.thumb_avif, stored_thumb) {
+            (Some(_), Some(_)) | (None, _) => None,
+            (Some(thumb), None) => Some(state.files.put_encrypted(epoch, &epoch_key, thumb).await?),
+        };
+        let thumb_hash = stored_thumb.or_else(|| held_thumb.as_ref().map(|p| *p.hash.as_bytes()));
+
+        // The hover-preview clip (video WebM output only) is likewise its own sibling blob.
+        let held_preview = match &ingested.preview_webm {
+            Some(preview) => Some(state.files.put_encrypted(epoch, &epoch_key, preview).await?),
+            None => None,
+        };
+        let preview_hash = held_preview.as_ref().map(|p| *p.hash.as_bytes());
+
+        save_version(
+            db,
+            leaf,
+            keys,
+            &state.files,
+            Save {
+                doc_id,
+                parents,
+                title,
+                body: ingested.body,
+                format: ingested.format,
+                refs: Vec::new(), // a media document is a leaf - it embeds nothing
+                media: Some(MediaMeta {
+                    width: ingested.width,
+                    height: ingested.height,
+                    duration_ms: ingested.duration_ms,
+                    thumb_hash,
+                    preview_hash,
+                    animation: ingested.animation,
+                    thumb_print,
+                    source_print,
+                }),
+            },
+        )
+        .await?;
+
+        // A sound's own tags - artist, album, year... (media/audio.rs `TAG_FIELDS`) - as its fields,
+        // only where it has none of its own: a new version of a sound a person has annotated keeps
+        // what they wrote. A failure here costs the fields, never the upload.
+        if !tags.is_empty() {
+            if let Err(e) = tag_fields(state, root, &doc_id, &tags).await {
+                tracing::warn!(doc = %hex::encode(doc_id), error = %e, "couldn't keep a sound's tags");
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Write a sound's tags as its document's fields, each one the document doesn't already have.

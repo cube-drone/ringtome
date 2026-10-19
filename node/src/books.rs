@@ -391,9 +391,24 @@ async fn rollout(
                 reply_to: None,
                 part_of: Some(book_id),
             };
-            let post = crate::roster::publish(state, data, root, g, doc_id, wishes)
+            let post = match crate::roster::publish(state, data, root, g, doc_id, wishes)
                 .await
-                .map_err(|e| anyhow!("a page couldn't go into the group: {e:?}"))?;
+                .map_err(|e| anyhow!("a page couldn't go into the group: {e:?}"))?
+            {
+                crate::record::bake::Outcome::Posted(post) => post,
+                // A picture from the web still being saved as the author's own (roster.rs), as
+                // the public road's bake pauses it below.
+                crate::record::bake::Outcome::Baking(items) => {
+                    if let Some(failed) = items.iter().find(|i| i.status == "failed") {
+                        return Err(anyhow!(
+                            "a page's media could not be prepared: {}",
+                            failed.error.clone().unwrap_or_else(|| failed.source.clone())
+                        ));
+                    }
+                    baking = true;
+                    break;
+                }
+            };
             data.annotations().set_field(doc_id, PUBLISHED_VERSION, &head_hex).await?;
             let post_hex = hex::encode(post);
             published.insert(*doc_id, post_hex.clone());

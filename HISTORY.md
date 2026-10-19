@@ -23609,3 +23609,36 @@ person page swaps to `/@name`, the card links `/@name/leek-soup`, a click opens
 it in place with the person page kept under it and back finds the same page,
 both id forms swap to the path, `/@name/post/<id>` serves the post's head, and
 `/@name/doc/<id>` goes to the real address.
+
+## 2026-10-18: a group post carries pictures from elsewhere
+
+Curtis, on the residual "an external link or someone else's public picture is
+refused in a group post": "Let's do it?" The one-publish work had left it
+refused, since the public road's download and copy make public twins, which a
+members-only post can't carry. Nothing ever leaked: group posts, trusted-only
+posts and room lines all refused such pictures rather than make a public copy.
+
+- **Somebody else's picture** is copied into the group's media document as its
+  bytes are (`bake::foreign_twin`, local, no crush), past the rights fence the
+  pre-pass already holds it to, and remembered per picture per group
+  (`roster::copy_media`), so an edit carries the same one.
+- **A picture from the web** is saved as one of the author's own private
+  pictures, in the background: the automatic version of "save the picture and
+  attach it". A node rung, `0104_private_bakes`, is `media_bakes`'s twin, and
+  `bake::private_bake_pass` downloads and crushes as the public baker does
+  (`web_media`, now shared) and saves the result as the persona's own
+  (`ingest::Writer`, the upload worker's save, pulled out to be shared). The
+  group post then carries it as any picture of theirs.
+- **The group door answers 202 while it's saved**, with the modal's items, as
+  the public door does: `roster::publish` returns `bake::Outcome`, the client's
+  group publish rides `publishWithBaking` with the progress modal, a scheduled
+  group post waits for the next pass, and a group book's rollout pauses as the
+  public one does for its bakes.
+- **Tests:** a `groupposts.cjs` claim posts a web picture and another persona's
+  public picture into a group. It checks the 202 and its items, that both embeds
+  point at the group, that nothing leans on the web or the other's picture, that
+  no public bake was made, that the web picture is the author's own crushed
+  picture, and that publishing again reuses the same media.
+
+Left: the copied picture's author isn't named on the group post, as the public
+road's provenance does (NEXT_STEPS).

@@ -85,10 +85,12 @@ pub async fn publish_due(state: &AppState, only_root: Option<&str>, now_ms: i64)
                 match crate::roster::publish_planned(state, &data, &root, group, &doc_id, wishes)
                     .await
                 {
-                    Ok(post) => {
+                    Ok(Some(post)) => {
                         minted += 1;
                         tracing::info!(root = %root, post = %hex::encode(post), at = plan.at, "scheduled group post minted");
                     }
+                    // A picture from the web still being saved: the next pass.
+                    Ok(None) => {}
                     Err(e) => {
                         tracing::warn!(root = %root, doc = %hex::encode(doc_id), error = ?e, "scheduled group post refused");
                     }
