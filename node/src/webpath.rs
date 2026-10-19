@@ -253,18 +253,10 @@ pub async fn person_address(state: &crate::AppState, root: &[u8; 32]) -> String 
 }
 
 /// A post's canonical address, as a path: its web address in the shortest form this node can vouch
-/// for (section 4), or `post/<id>` for a post with no path.
+/// for (section 4), or `post/<id>` for a post with no path - under the persona's @name too, where
+/// it may wear one (2026-10-18), so a person's links never mix the two forms.
 pub async fn post_address(state: &crate::AppState, root: &[u8; 32], doc_hex: &str) -> String {
-    let root_hex = hex::encode(root);
-    let path = crate::annotations::path_of(&state.node_db, &root_hex, doc_hex)
-        .await
-        .ok()
-        .flatten()
-        .filter(|p| well_formed(p));
-    match path {
-        Some(path) => format!("{}/{path}", person_address(state, root).await),
-        None => format!("/ringtome/user/{}/post/{doc_hex}", short_of(root)),
-    }
+    format!("{}{}", person_address(state, root).await, under_person(state, root, doc_hex).await)
 }
 
 /// A persona's canonical address, whole (plans/CUSTOM_DOMAINS.md, section 4): their own domain once

@@ -45,7 +45,15 @@ import {
     serialiseTags,
     TAG_MAX,
 } from './pure/contacttags.js';
-import { personHref, publicGroupHref, roomHref, useDomainOf, writeClipboard } from './links.js';
+import {
+    personHref,
+    personLink,
+    publicGroupHref,
+    roomHref,
+    useDomainOf,
+    useSlugOf,
+    writeClipboard,
+} from './links.js';
 import { OpenInApp, QrBadge } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 
@@ -219,6 +227,9 @@ export function usePerson(root, { current, profile: given } = {}) {
         ? myDomain
         : (source && source.domain) || (contactRow && contactRow.domain) || null;
 
+    // The @name their links wear, asked only of one this node hosts: nobody else has one here.
+    const linkSlug = useSlugOf(root, !!root && hosted);
+
     const names = displayNames({ nickname: facts.nickname, name, words });
     return {
         root,
@@ -247,8 +258,8 @@ export function usePerson(root, { current, profile: given } = {}) {
         names,
         primary: names[0] || '',
         others: names.slice(1),
-        // Where clicking any widget goes: their page, in the speakable spelling.
-        href: root ? personHref(root) : '',
+        // Where clicking any widget goes: their page, under their @name where this node gave them one.
+        href: root ? personLink(root, linkSlug) : '',
     };
 }
 

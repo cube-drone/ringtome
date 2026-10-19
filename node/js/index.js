@@ -193,7 +193,10 @@ const AtRoute = ({ at, fallback: Fallback, ...props }) => {
     if (!at || !at.startsWith('@')) return html`<${Fallback} ...${props} />`;
     // A post's web address or a folder under the name (plans/WEB_ADDRESSES.md): `/@name/<path>`.
     const rest = loc.path.slice(at.length + 1).replace(/^\/+|\/+$/g, '');
-    return html`<${SlugPage} slug=${at.slice(1)} rest=${rest} ...${props} />`;
+    // The person's own page is drawn beside the router, kept under a post opened from it.
+    if (!rest) return null;
+    // `props` first: the router's own `rest` (with its leading slash) must not win over ours.
+    return html`<${SlugPage} ...${props} slug=${at.slice(1)} rest=${rest} />`;
 };
 
 // The signed-in shell: which persona is loaded decides everything past the session bar. Once a
@@ -690,7 +693,11 @@ const Inside = ({ session }) => {
               </${KeptLayer}>`
             : keptPerson &&
               html`<${KeptLayer} key=${kept.url} visible=${kept.visible}>
-                  <${IdPage} seg=${decodeURIComponent(keptPerson[1])} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />
+                  ${
+                      keptPerson[2]
+                          ? html`<${SlugPage} slug=${decodeURIComponent(keptPerson[2])} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />`
+                          : html`<${IdPage} seg=${decodeURIComponent(keptPerson[1])} current=${persona.current} persona=${persona} session=${session} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />`
+                  }
               </${KeptLayer}>`;
     const routed = html`${keptPage}
         <${Router}>
@@ -1114,7 +1121,11 @@ const Outside = ({ session }) => {
               </${KeptLayer}>`
             : keptPerson &&
               html`<${KeptLayer} key=${kept.url} visible=${kept.visible}>
-                  <${IdPage} seg=${decodeURIComponent(keptPerson[1])} current=${null} persona=${null} session=${null} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />
+                  ${
+                      keptPerson[2]
+                          ? html`<${SlugPage} slug=${decodeURIComponent(keptPerson[2])} current=${null} persona=${null} session=${null} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />`
+                          : html`<${IdPage} seg=${decodeURIComponent(keptPerson[1])} current=${null} persona=${null} session=${null} onTitle=${setIdTitle} hidden=${!kept.visible} searchQuery=${query} />`
+                  }
               </${KeptLayer}>`;
     return html`<div class="app-frame">
         ${header}
@@ -1195,7 +1206,7 @@ const App = () => {
     }
 
     return html`
-        <${LocationProvider} scope=${/^\/(home|in|ringtome)(\/|$)/}>
+        <${LocationProvider} scope=${/^\/(home|in|ringtome)(\/|$)|^\/@[^/]/}>
             <${ErrorBoundary} onError=${(error) => console.error(error)}>
                 <${PushRoutes} />
                 <div class="app-main">

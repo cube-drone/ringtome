@@ -43,7 +43,7 @@ const CopyChain = ({ author, annotations }) => {
 import { speakable } from './speakable.js';
 import { t } from './i18n.js';
 import { BookReader } from './doc/bookreader.js';
-import { groupPostHref, postHref, useSlugOf } from './links.js';
+import { groupPostHref, postHref, postLink, useSlugOf } from './links.js';
 import { OpenInApp } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 
@@ -246,22 +246,23 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
 
     const slug = useSlugOf(root);
     // Its web address in the address bar (plans/WEB_ADDRESSES.md): reached by its id, or by its path
-    // under the author's real address, a post that has a path says the shortest form instead -
-    // under the author's @name when this node gave them one - so the address a reader copies is
-    // the readable one. Only the address changes; a page of a book keeps the book's.
+    // under the author's real address, a post says the shortest form instead - its path under the
+    // author's @name when this node gave them one, else under their real address; and a post with
+    // no path, its id under the @name (2026-10-18) - so the address a reader copies is the readable
+    // one. Only the address changes; a page of a book is the reader's to say (bookreader.js).
     useEffect(() => {
         if (!post || page) return;
+        // The @name only where the node has a public URL (`slugOf` says none otherwise).
+        if (slug === undefined) return;
         const named = (post.annotations || []).find(
             (a) => a.annotator === root && a.key === 'path',
         );
-        if (!named) return;
-        // The @name only where the node has a public URL (`slugOf` says none otherwise).
-        if (slug === undefined) return;
-        const shortest = slug ? `/@${slug}/${named.value}` : `/ringtome/user/${seg}/${named.value}`;
+        const shortest = postLink(root, doc, { path: named ? named.value : null, slug });
         const longer = [
             `/ringtome/user/${seg}/post/${doc}`,
-            `/ringtome/user/${seg}/${named.value}`,
-        ];
+            named && `/ringtome/user/${seg}/${named.value}`,
+            named && slug && `/@${slug}/post/${doc}`,
+        ].filter(Boolean);
         const here = decodeURIComponent(window.location.pathname);
         if (here === shortest || !longer.includes(here)) return;
         try {

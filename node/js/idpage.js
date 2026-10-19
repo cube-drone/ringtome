@@ -11,6 +11,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
+import { siteSeg, useSlugOf } from './links.js';
 import { openMirror, useLive } from './mirror.js';
 import { parseSpeakable, speakable } from './speakable.js';
 import { personaHue } from './pure/person.js';
@@ -218,6 +219,22 @@ export const IdPage = ({
         return () => onTitle(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root, profile, nickname, hidden]);
+
+    // Its shortest address in the address bar (plans/WEB_ADDRESSES.md, section 4; Curtis,
+    // 2026-10-18), as a post's page says its own: reached by their real address, a person this
+    // node gave a short name is at `/@cube-drone`, and a folder of theirs under it. Through the
+    // router, so going back to the page kept under a post (keptpage.js) lands where it was.
+    const slug = useSlugOf(root, !!root && !hidden);
+    useEffect(() => {
+        if (hidden || !slug || siteSeg()) return;
+        const under = /^\/ringtome\/user\/[^/]+/.exec(loc.path);
+        if (!under) return;
+        const rest = loc.path.slice(under[0].length).replace(/^\/+|\/+$/g, '');
+        if (rest && !folder) return;
+        const query = loc.url.includes('?') ? loc.url.slice(loc.url.indexOf('?')) : '';
+        loc.route(`/@${slug}${rest ? `/${rest}` : ''}${query}`, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [slug, hidden, loc.path]);
 
     if (!parsed) {
         return html`<${Card}>

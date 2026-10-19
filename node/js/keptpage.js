@@ -14,11 +14,13 @@ import htm from 'htm';
 const html = htm.bind(h);
 
 /// A post's page - the one place a kept page stays alive under: by its id, or by its web address
-/// (plans/WEB_ADDRESSES.md), which is anything under a person that isn't one of their other routes.
+/// (plans/WEB_ADDRESSES.md), which is anything under a person that isn't one of their other routes;
+/// and anything under a short name, `/@cube-drone/...`, which is only ever a post or a folder.
 export const POST_PATH =
-    /^\/ringtome\/user\/[^/]+\/(post\/|(?!(doc|docs|room|ui-demo)(\/|$))[^/]+)/;
-/// A person's own page, `/ringtome/user/<seg>`, and nothing under it.
-export const PERSON_PATH = /^\/ringtome\/user\/([^/]+)\/?$/;
+    /^\/ringtome\/user\/[^/]+\/(post\/|(?!(doc|docs|room|ui-demo)(\/|$))[^/]+)|^\/@[^/]+\/[^/]/;
+/// A person's own page, and nothing under it: `/ringtome/user/<seg>` (the first group), or
+/// `/@<slug>` (the second).
+export const PERSON_PATH = /^\/ringtome\/user\/([^/]+)\/?$|^\/@([^/]+)\/?$/;
 
 /// The address of the page to draw beside the router, or null: the page itself while you're on
 /// it, the one you came from while you're on a post opened from it. `keeps(path)` says which pages

@@ -37,16 +37,50 @@ export const pathHref = (rootHex, path, slug = null) =>
 /// name it gave them, and their own domain where that is their canonical address
 /// (plans/CUSTOM_DOMAINS.md, ruling 7) - asked once per persona per page load.
 const namesAsked = new Map();
+/// The short names answered so far, by root, for a link drawn without waiting.
+const slugsKnown = new Map();
 function namesOf(rootHex) {
     if (!namesAsked.has(rootHex))
         namesAsked.set(
             rootHex,
             api(`/api/node/slug-of/${rootHex}`)
                 .then((r) => ({ slug: (r && r.slug) || null, domain: (r && r.domain) || null }))
-                .catch(() => ({ slug: null, domain: null })),
+                .catch(() => ({ slug: null, domain: null }))
+                .then((names) => {
+                    slugsKnown.set(rootHex, names.slug);
+                    return names;
+                }),
         );
     return namesAsked.get(rootHex);
 }
+
+/// The @name a link to this persona wears (plans/WEB_ADDRESSES.md, section 4: the shortest form
+/// this node can vouch for): `slug` when the caller asked (`useSlugOf`), else one already answered
+/// - null for none, or not known yet. Never on a person's own domain, where `/@` is the node's.
+const nameFor = (rootHex, slug) => {
+    if (siteSeg()) return null;
+    if (slug) return slug;
+    return slugsKnown.get(rootHex) || null;
+};
+
+/// A person's page as a link shows it (2026-10-18, Curtis: the site "feels pretty inconsistent"
+/// about which address it shows): `/@cube-drone` where this node gave them a short name, else
+/// their real address. `personHref` stays the real address, for what must work anywhere - an app
+/// address, a feed's.
+export const personLink = (rootHex, slug = null) => {
+    const name = nameFor(rootHex, slug);
+    return name ? `/@${name}` : personHref(rootHex);
+};
+
+/// A public post as a link shows it: its web address when its author gave it one, under their
+/// @name where this node gave them one - `/@cube-drone/post/<id>` for a post with no path - else
+/// under their real address. `path` is the author's own `path` label; `page`, a book's page.
+export const postLink = (rootHex, doc, { path = null, slug = null, page = null } = {}) => {
+    const name = nameFor(rootHex, slug);
+    if (path) return pathHref(rootHex, path, name);
+    if (!name) return postHref(rootHex, doc, page);
+    return page ? `/@${name}/post/${doc}/page/${page}` : `/@${name}/post/${doc}`;
+};
 
 /// The short name this node gave a persona, or null.
 export const slugOf = (rootHex) => namesOf(rootHex).then((n) => n.slug);
@@ -82,7 +116,7 @@ export function useDomainOf(rootHex, wanted = true) {
 /// else its identity address. `path` is the author's own `path` label, or null.
 export function shareHrefOf(rootHex, doc, { path = null, slug = null, domain = null } = {}) {
     if (domain) return `https://${domain}/${path || `post/${doc}`}`;
-    return path ? pathHref(rootHex, path, slug) : postHref(rootHex, doc);
+    return postLink(rootHex, doc, { path, slug });
 }
 
 /// Another node's `@name` address, opened here (plans/WEB_ADDRESSES.md, slice 3): this node asks that

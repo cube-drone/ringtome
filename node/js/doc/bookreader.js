@@ -13,7 +13,7 @@ import { t } from '../i18n.js';
 import { parseBook, neighbours, bookTags, filterBook } from '../pure/books.js';
 import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
-import { groupPostHref, pathHref, postHref, siteSeg, useSlugOf } from '../links.js';
+import { groupPostHref, postHref, postLink, siteSeg, useSlugOf } from '../links.js';
 import { useArrowNav } from './docapp.js';
 import { EpubButton } from './epubbutton.js';
 
@@ -29,7 +29,9 @@ const bookHref = (root, book, page, group) =>
             : groupPostHref(group, book)
         : postHref(root, book, page);
 const pageLink = (root, book, p, slug, group) =>
-    !group && p.path ? pathHref(root, p.path, slug) : bookHref(root, book, p.post, group);
+    group
+        ? bookHref(root, book, p.post, group)
+        : postLink(root, book, { path: p.path, slug, page: p.post });
 const turnTo = (loc, root, book, p, group) => (e) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
         return;
@@ -147,9 +149,14 @@ export const BookReader = ({ root, book, page: asked, title, group = null }) => 
         if (group || !walk || walk.index === undefined || walk.index < 0 || slug === undefined)
             return;
         const entry = walk.order[walk.index];
-        if (!entry || !entry.path) return;
-        // On the author's own domain (domainsite.js) the shortest is the path itself.
-        const shortest = siteSeg() ? `/${entry.path}` : pathHref(root, entry.path, slug);
+        if (!entry) return;
+        // On the author's own domain (domainsite.js) the shortest is the path itself - and a page
+        // with no path there keeps the address it has. Elsewhere, a page with no path is said by
+        // its id under the author's @name (2026-10-18), where this node gave them one.
+        if (siteSeg() && !entry.path) return;
+        const shortest = siteSeg()
+            ? `/${entry.path}`
+            : postLink(root, book, { path: entry.path, slug, page: entry.post });
         const here = decodeURIComponent(window.location.pathname);
         const ours =
             here.includes(`/post/${book}`) ||

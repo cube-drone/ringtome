@@ -175,9 +175,9 @@ async fn book_contents(
         return String::new();
     };
     let person = crate::webpath::person_url(state, root, "").await;
-    let short = crate::webpath::short_of(root);
     let book_hex = hex::encode(book);
-    fn list(node: &serde_json::Value, person: &str, short: &str, book_hex: &str, out: &mut String) {
+    // A page with no path is the book's page by id, under the person's address too (2026-10-18).
+    fn list(node: &serde_json::Value, person: &str, book_hex: &str, out: &mut String) {
         let pages = node.get("pages").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         let sections = node.get("sections").and_then(|v| v.as_array()).cloned().unwrap_or_default();
         if pages.is_empty() && sections.is_empty() {
@@ -193,7 +193,7 @@ async fn book_contents(
                 .filter(|p| crate::webpath::well_formed(p))
             {
                 Some(path) => format!("{person}/{path}"),
-                None => format!("/ringtome/user/{short}/post/{book_hex}/page/{post}"),
+                None => format!("{person}/post/{book_hex}/page/{post}"),
             };
             out.push_str(&format!(
                 "<li><a href=\"{}\">{}</a></li>",
@@ -204,13 +204,13 @@ async fn book_contents(
         for section in sections {
             let title = section.get("title").and_then(|v| v.as_str()).unwrap_or("");
             out.push_str(&format!("<li>{}", esc(title)));
-            list(&section, person, short, book_hex, out);
+            list(&section, person, book_hex, out);
             out.push_str("</li>");
         }
         out.push_str("</ul>");
     }
     let mut out = String::from("<nav><h2>Contents</h2>");
-    list(&book_json, &person, &short, &book_hex, &mut out);
+    list(&book_json, &person, &book_hex, &mut out);
     out.push_str("</nav>");
     out
 }

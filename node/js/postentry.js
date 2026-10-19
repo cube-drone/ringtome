@@ -141,7 +141,7 @@ export const Composer = ({ root, docId, published, onPost, posting, onDeleted })
 import { publishTo, BakeModal } from './doc/publish.js';
 import { beatLabel } from './pure/swatch.js';
 import {
-    postHref,
+    postLink,
     groupHref,
     groupPostHref,
     publicGroupHref,
@@ -546,7 +546,7 @@ export const MiniPost = ({ author, doc_id, title, published_ms, href }) => {
         };
     }, [author, doc_id, title, href]);
     const when = published_ms && formatWhen(published_ms, undefined, { time: false });
-    return html`<a class="minipost" href=${href || postHref(author, doc_id)}>
+    return html`<a class="minipost" href=${href || postLink(author, doc_id)}>
         <span class="minipost-who" title=${person.primary}><${PersonHex} person=${person} size="mini" /></span>
         <span class=${title ? 'minipost-title' : 'minipost-words'}>${title || words || t('postentry.link', 'link')}</span>
         ${when && html`<span class="minipost-when">${when}</span>`}
@@ -561,7 +561,7 @@ const BookSection = ({ section, author, depth }) => html`<li class="book-card-se
     <ul class="book-card-list">
         ${section.pages.map(
             (p) => html`<li class="book-card-page" key=${p.post}>
-                <a href=${postHref(author, p.post)}>${p.title || t('postentry.untitled-page', 'untitled page')}</a>
+                <a href=${postLink(author, p.post, { path: p.path })}>${p.title || t('postentry.untitled-page', 'untitled page')}</a>
             </li>`,
         )}
         ${section.sections.map((s, i) => html`<${BookSection} key=${`${depth}-${i}`} section=${s} author=${author} depth=${depth + 1} />`)}
@@ -931,16 +931,17 @@ const PostEntryBody = ({
     // permalink's profile-visit-first load keeps the fresh-sync the author-page link used
     // to buy.
     // A group post's page is inside its group, there to its members alone.
-    const href = item.group
-        ? groupPostHref(item.group.id, item.doc_id)
-        : postHref(item.author, item.doc_id);
-    // What "link" hands out (plans/WEB_ADDRESSES.md): the post's web address when its author gave it
-    // one, in the shortest form - under their @name where this node gave them one. The @name is asked
-    // ahead of the press, since a copy that waits on the network may lose the clipboard.
+    // What it links to, and what "link" hands out (plans/WEB_ADDRESSES.md): the post's web address
+    // when its author gave it one, in the shortest form - under their @name where this node gave
+    // them one. The @name is asked ahead of the press, since a copy that waits on the network may
+    // lose the clipboard.
     const pathLabel = (item.annotations || []).find(
         (a) => a.annotator === item.author && a.key === 'path',
     );
-    const slug = useSlugOf(item.author, !!pathLabel);
+    const slug = useSlugOf(item.author, !item.group && !item.private_doc);
+    const href = item.group
+        ? groupPostHref(item.group.id, item.doc_id)
+        : postLink(item.author, item.doc_id, { path: pathLabel ? pathLabel.value : null, slug });
     // ...and at their own domain ahead of either, where it is their canonical address
     // (plans/CUSTOM_DOMAINS.md).
     const domain = useDomainOf(item.author, !item.private_doc);

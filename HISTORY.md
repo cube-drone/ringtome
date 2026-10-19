@@ -23569,3 +23569,43 @@ tooltip is its kind's words from the group page's badge ("a public group:
 anybody can see who's in it" / "...only its members can see who's in it").
 Checked by a jsdom probe on a scratch node: the box folded, both buttons titled,
 and one group of each kind founded and routed to.
+
+## 2026-10-18: one address for a person and a post
+
+Curtis: "While browsing the public site, it feels pretty inconsistent whether
+the site prefers to show me /@cube-drone, /@cube-drone/easy-to-read-path or
+/user/<user_id>, /user/<user_id/post/<post_id> ..." The links were minted in the
+long form everywhere, and only the post page and the book reader swapped the
+address bar to the short form after they loaded. The person page never did,
+though its head already named `/@cube-drone` as canonical.
+
+- **Links are minted short.** `links.js` `personLink` and `postLink` give the
+  shortest form this node can vouch for (plans/WEB_ADDRESSES.md, section 4): a
+  person's `/@name`, a post's `/@name/<path>`, else under the real address. Feed
+  cards, the person widgets (`usePerson`'s `href`, so user cards, chat speakers
+  and the front page's people), the book's contents, and found pages use them.
+  `personHref` and `postHref` stay the real address, for what must work
+  anywhere: an app address, a feed's, an ePub's.
+- **The person page says `/@name`** in the address bar, a folder of theirs under
+  it too, through the router so the page kept under a post is kept by the
+  address going back lands on. `keptpage.js` keeps a person's page at `/@name`
+  and a post's page under it, and `SlugPage` no longer re-asks the name on every
+  move, which drew the kept page again from nothing.
+- **A post with no path is `/@name/post/<id>`**, a book's page
+  `/@name/post/<book>/page/<page>`: the server already answered both
+  (`idface::deep_page`). `webpath::post_address` now puts the `post/<id>` form
+  under the @name too, and so do the reading copies' contents. A person's other
+  routes (`doc`, `room`...) under a short name go on to the real address.
+- **Two old bugs found on the way.** The signed-in router's link scope left out
+  `/@`, so clicking an `/@name/...` link was a whole page load. And `AtRoute`'s
+  props spread over its own `rest` with the router's, a leading slash and all,
+  so `/@name/<path>` asked `at//<path>` (the server forgave it) and
+  `/@name/post/<id>` never reached its branch.
+
+On a person's own domain nothing changes: links stay in the form `atHome` maps.
+Without a public URL nothing changes either, since the node hands out no @name.
+Checked by a jsdom probe on a scratch node with `RINGTOME_PUBLIC_URL`: the
+person page swaps to `/@name`, the card links `/@name/leek-soup`, a click opens
+it in place with the person page kept under it and back finds the same page,
+both id forms swap to the path, `/@name/post/<id>` serves the post's head, and
+`/@name/doc/<id>` goes to the real address.

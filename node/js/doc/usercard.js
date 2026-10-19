@@ -18,7 +18,7 @@ import { parseIdReference, parseSpeakable, speakable } from '../speakable.js';
 import { identiconUri } from '../pure/identicon.js';
 import { personaHue, displayNames } from '../pure/person.js';
 import { CARD_DIRECTIVE } from '../pure/mentions.js';
-import { personHref } from '../links.js';
+import { personLink, slugOf } from '../links.js';
 import { parseRingtome } from '../pure/ringtome.js';
 
 /// A room's link as a whole card (2026-09-28): the room's title and its last few lines, as a room
@@ -162,6 +162,13 @@ const faceOf = (root) => {
     return { names, known: !!face.name, hex };
 };
 
+/// A card's link: under the person's @name once this node has said it, asked the first time a card
+/// names them - a string can't redraw, so the first card drawn may keep the real address.
+const linkTo = (root) => {
+    slugOf(root);
+    return personLink(root);
+};
+
 /// The live preview's string hook (a Marquee profile's `directive`): the same card, drawn
 /// from the cache - words alone until the face lands.
 export function userCardHtml(name, attrs) {
@@ -174,7 +181,7 @@ export function userCardHtml(name, attrs) {
             ? `<small>${escapeHtml(face.names.slice(1).join(' · '))}</small>`
             : '';
     return (
-        `<a class="user-card jag-line" href="${escapeHtml(personHref(root))}">${face.hex('small')}` +
+        `<a class="user-card jag-line" href="${escapeHtml(linkTo(root))}">${face.hex('small')}` +
         `<span class="user-card-names"><strong>${escapeHtml(face.names[0] || '')}</strong>${others}</span></a>`
     );
 }
@@ -187,5 +194,5 @@ export function userSpanHtml(name, attrs, renderedChildren) {
     if (!root) return `<span class="user-span user-card-bad">${renderedChildren}</span>`;
     const face = faceOf(root);
     const label = face.known ? escapeHtml(face.names[0]) : renderedChildren;
-    return `<a class="user-span" href="${escapeHtml(personHref(root))}">${face.hex('mini')}<span>${label}</span></a>`;
+    return `<a class="user-span" href="${escapeHtml(linkTo(root))}">${face.hex('mini')}<span>${label}</span></a>`;
 }

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
-import { postHref } from './links.js';
+import { postLink } from './links.js';
 import { t } from './i18n.js';
 import { excerptsOf, marked, plainOf } from './pure/found.js';
 
@@ -46,7 +46,7 @@ export const FoundExcerpts = ({ item, body, words, query }) => {
     return html`<div class="found">
         ${pages.pages.map(
             (p) => html`<div class="found-page" key=${p.post}>
-                <a class="found-page-title" href=${postHref(item.author, item.doc_id, p.post)}
+                <a class="found-page-title" href=${postLink(item.author, item.doc_id, { page: p.post })}
                     ><${Marked} text=${p.title} words=${words}
                 /></a>
                 ${excerptsOf(plainOf(p.body), words, { max: 2 }).map(

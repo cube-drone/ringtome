@@ -527,7 +527,7 @@ const NewRoom = ({ root, onMade }) => {
 /// this reader calls them (their nickname when one is set, else the display name), inline.
 const Speaker = ({ root, current }) => {
     const person = usePerson(root, { current });
-    return html`<a class="chat-speaker" href=${personHref(root)}>
+    return html`<a class="chat-speaker" href=${person.href || personHref(root)}>
         <${PersonHex} person=${person} size="small" />
         <span class="chat-speaker-name">${person.primary || speakable(root)}</span>
     </a>`;
