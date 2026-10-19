@@ -1351,8 +1351,9 @@ pub async fn say(
 /// sealed room, sealed under the room's key with the room post as the seal's holder, so
 /// admission to the room is admission to the picture and nothing new is granted - the
 /// references are rewritten to them, and the message's refs are what was baked, as
-/// `bake::publish` does for a post. Media from the open web is refused: the background bake
-/// has no post to come back to, and a room says now.
+/// `bake::publish` does for a post. Media from the open web rides as its own address (Curtis,
+/// 2026-10-18: a room moves at a good clip, and link rot matters less there): no bake, no
+/// refs, and the reader's veil (js/pure/chatveil.js) keeps a stranger's from loading unasked.
 #[allow(clippy::too_many_arguments)]
 async fn bake_words(
     state: &AppState,
@@ -1379,12 +1380,6 @@ async fn bake_words(
             "this message embeds {count} documents - one message may carry {cap}",
             count = refs.len(),
             cap = ringtome_proto::DocHeaderPlain::MAX_REFS
-        )));
-    }
-    if refs.iter().any(|r| matches!(r, MediaRef::External { .. })) {
-        return Err(AppError::BadRequest(crate::msg!(
-            "chat.a-room-cant-bake-web-media",
-            "save the picture and attach it here instead"
         )));
     }
     let docs = data.documents();

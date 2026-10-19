@@ -14,7 +14,7 @@
 // Journal's fifteen-second lock, same CSS, same promise) guards the door exactly as it did
 // when the affordance lived on the old stack card.
 import { h } from 'preact';
-import { useState, useEffect, useRef, useContext } from 'preact/hooks';
+import { useState, useEffect, useRef, useContext, useMemo } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { liveQuery } from 'dexie';
 import { createContext } from 'preact';
@@ -76,7 +76,7 @@ import { t } from './i18n.js';
 import { useWarnings } from './warnings.js';
 import { CopyButton } from './copyinto.js';
 import { warningFor } from './pure/warnings.js';
-import { veilsMedia } from './pure/chatveil.js';
+import { veilsMedia, withoutMedia } from './pure/chatveil.js';
 
 /// Feed cards' public words, by address and the post's last edit (see the card's body effect).
 const cardBodies = new Map();
@@ -618,6 +618,7 @@ const sinceWords = (ms) => {
 };
 const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
     const profile = useTurbolinks(words || '', 'marquee');
+    const bare = useMemo(() => withoutMedia(profile), [profile]);
     // A stranger's media wears the veil here too (Curtis, 2026-09-19): the card sits in the
     // feed, where a dropped image would otherwise land unasked. The rule is the chat's own,
     // shared (pure/chatveil.js) - including its one subtlety: the room's creator is never a
@@ -648,7 +649,7 @@ const RoomLine = ({ speaker, words, said_ms, current, author, im }) => {
                     : veiled
                       ? html`<div class="feed-entry-veil">
                         <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
-                            <${MarqueeBody} source=${words} profile=${profile} onUnparsable=${bareSource} />
+                            <${MarqueeBody} source=${words} profile=${bare} onUnparsable=${bareSource} />
                         </div>
                         <button class="feed-entry-unveil" type="button" onClick=${() => setRevealed(true)}>
                             ${t('postentry.media-from-someone-you-dont-trust', "media from someone you don't trust - click to see")}

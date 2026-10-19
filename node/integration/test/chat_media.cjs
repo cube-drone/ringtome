@@ -7,7 +7,8 @@
     the room's door: cover rows keyed by the message, the header over the fragment lane, the
     bytes behind it. Pruning the line releases its picture; the archive keeps it. A sealed
     room seals its twins under the room's key, so admission to the room is admission to the
-    picture. Media from the open web is refused: a room says now.
+    picture. Media from the open web rides as its own address (2026-10-18): no bake, no refs -
+    a room moves at a good clip - and the reader's veil keeps a stranger's from loading unasked.
 
     The rig runs every node with RINGTOME_TEST_ROOM_BUDGET=8 (justfile).
 */
@@ -208,15 +209,16 @@ const esc = (s) => s.replace(/'/g, "''");
             );
         });
 
-        it('media from the open web is refused - a room says now', async () => {
-            const said = await say(
-                ada,
-                adaRoot,
-                adaRoot,
-                gallery,
-                '![elsewhere](https://example.com/pic.png)',
+        it('media from the open web rides as its own address, unbaked (2026-10-18)', async () => {
+            const words = '![elsewhere](https://example.com/pic.png)';
+            const said = await say(ada, adaRoot, adaRoot, gallery, words);
+            assert.equal(said.status, 200, await said.text());
+            const after = await history(ada, adaRoot, adaRoot, gallery);
+            const line = after.items.find(
+                (m) => m.words && m.words.includes('example.com/pic.png'),
             );
-            assert.equal(said.status, 400, await said.text());
+            assert.ok(line, 'the line stands');
+            assert.equal(line.words, words, 'its words as said: nothing baked, nothing rewritten');
         });
 
         it("pruning the line releases its picture on the budgeted node; the creator's node keeps it", async () => {

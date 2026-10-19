@@ -23642,3 +23642,32 @@ posts and room lines all refused such pictures rather than make a public copy.
 
 Left: the copied picture's author isn't named on the group post, as the public
 road's provenance does (NEXT_STEPS).
+
+## 2026-10-18: a room line carries a picture from the web
+
+Curtis, on the say door refusing web pictures: "I'm not sure if the restrictions
+make as much sense for chat, where things are expected to move at a good clip
+and link rot (and tracking pixels) are much less concerning." And, on the
+read-receipt worry: the veil over a stranger's media is enough, provided it
+draws nothing; for trusted speakers, "we trust them".
+
+- **The say door lets a web picture through** as its own address
+  (`chat::bake_words`): no bake, no refs, and the line sends at once.
+  `chat.a-room-cant-bake-web-media` is retired.
+- **The veil draws nothing until it's clicked.** It used to draw the media
+  blurred, and a blurred picture is fetched all the same. A veiled line now
+  renders with `withoutMedia` (`pure/chatveil.js`), a profile with no media and
+  no turbolinks, in the chat and on the room card.
+- **The veil counts more as media.** A web address alone on a line (a turbolink,
+  which draws a picture's address as the picture and a page's as a card with the
+  page's picture) and a tiled background now count, as well as `![` and
+  `:::media`. A `/ringtome/` or `/@` address doesn't count, since this node
+  draws those cards.
+- The room's creator stays exempt in a room (Curtis: "you're in their room, you
+  must have clicked in"), and not in a chat for two.
+- **Tests:** `chat_media.cjs`'s refusal claim now says the opposite: a web
+  picture is said, and comes back unrewritten. `pure/chatveil.cjs` gains the new
+  media spellings and `withoutMedia`.
+
+Found on the way: posts hotlink the same way, through link cards (NEXT_STEPS,
+Safety).

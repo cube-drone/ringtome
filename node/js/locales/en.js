@@ -2354,7 +2354,6 @@ export default {
     'chat.bad-room-author': 'bad room author',
     'chat.the-rooms-key-hasnt-arrived': "this room isn't ready on this computer yet",
     'chat.a-message-embeds-too-many-documents': 'this message embeds {count} documents - one message may carry {cap}',
-    'chat.a-room-cant-bake-web-media': 'save the picture and attach it here instead',
     'chat.that-media-is-still-being-prepared': 'that media is still being prepared - say it again in a moment',
     'chat.that-picture-isnt-here-any-more': "that picture isn't here any more",
 

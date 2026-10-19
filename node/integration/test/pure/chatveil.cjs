@@ -4,12 +4,14 @@
     has one case that a future edit could quietly get wrong - the room's creator is exempt in
     a room, because you chose to enter their room, and NOT exempt in a chat for two, because
     there the creator is the other person and opening a chat with you is not a relationship.
+    And behind the veil nothing is drawn at all (2026-10-18): a line may carry a picture from the
+    open web, and a picture drawn blurred has been fetched from wherever its sender chose.
 */
 const assert = require('node:assert');
 
-let veilsMedia, embedsMedia;
+let veilsMedia, embedsMedia, withoutMedia;
 before(async () => {
-    ({ veilsMedia, embedsMedia } = await import('../../../js/pure/chatveil.js'));
+    ({ veilsMedia, embedsMedia, withoutMedia } = await import('../../../js/pure/chatveil.js'));
 });
 
 const ME = 'me';
@@ -22,6 +24,48 @@ describe("the veil over a chat line's media", () => {
         assert.equal(embedsMedia('just words'), false);
         assert.equal(embedsMedia(''), false);
         assert.equal(embedsMedia(null), false);
+    });
+
+    it('knows everything a line can draw from elsewhere', () => {
+        assert.equal(embedsMedia('![](https://example.com/horse.png)'), true, 'a web picture');
+        assert.equal(
+            embedsMedia('https://example.com/horse.png'),
+            true,
+            'its address alone, a turbolink',
+        );
+        assert.equal(
+            embedsMedia('look:\n  https://example.com/page  '),
+            true,
+            "a card with its page's picture",
+        );
+        assert.equal(
+            embedsMedia(':::panel background=tile:https://example.com/t.png\nhi\n:::'),
+            true,
+            'a tile',
+        );
+        assert.equal(
+            embedsMedia('see https://example.com/page for more'),
+            false,
+            'a link inside words is only a link',
+        );
+        assert.equal(
+            embedsMedia('https://example.com/ringtome/user/x/post/y'),
+            false,
+            "a /ringtome/ card is this node's",
+        );
+        assert.equal(embedsMedia('https://example.com/@ada'), false, 'and so is an /@ one');
+    });
+
+    it('draws a veiled line with nothing fetched', () => {
+        const profile = {
+            media: () => ({ kind: 'image', url: 'https://example.com/horse.png' }),
+            turbolink: () => '<img>',
+            emoji: () => 'x',
+        };
+        const bare = withoutMedia(profile);
+        assert.equal(bare.media('https://example.com/horse.png'), null);
+        assert.equal(bare.turbolink('https://example.com/horse.png', 'full'), null);
+        assert.equal(bare.emoji('smile'), 'x', 'the rest of the profile stands');
     });
 
     it("veils a stranger's picture and nobody else's", () => {

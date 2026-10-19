@@ -25,7 +25,7 @@ import { unlandedLines } from '../pure/optimistic.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { contactCollection } from '../pure/contact.js';
 import { isEmojiTag, MAX_TAG_CHARS } from '../pure/annotations.js';
-import { veilsMedia } from '../pure/chatveil.js';
+import { veilsMedia, withoutMedia } from '../pure/chatveil.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
 import { useUnlocked } from '../unlocks.js';
@@ -734,6 +734,8 @@ const LineBody = ({
     onDiscard,
 }) => {
     const profile = useTurbolinks(m.words || '', 'marquee');
+    // Behind the veil the words are drawn with nothing fetched (pure/chatveil.js).
+    const bare = useMemo(() => withoutMedia(profile), [profile]);
     // The line's own claim (ChatMessage `made_with`), its icon the post tag's (pure/tagicons.js).
     const madeWith = m.made_with ? Icons[tagIconRole(m.made_with)] : null;
     const [picking, setPicking] = useState(false);
@@ -879,7 +881,7 @@ const LineBody = ({
                     : veiled
                       ? html`<div class="feed-entry-veil chat-line-veil">
                         <div class="feed-entry-body feed-entry-body-veiled" aria-hidden="true">
-                            <${MarqueeBody} source=${m.words} profile=${profile} onUnparsable=${bareSource} />
+                            <${MarqueeBody} source=${m.words} profile=${bare} onUnparsable=${bareSource} />
                         </div>
                         <button class="feed-entry-unveil" type="button" onClick=${() => setRevealed(true)}>
                             ${t('apps.chat.media-from-someone-you-dont-trust', "media from someone you don't trust - click to see")}

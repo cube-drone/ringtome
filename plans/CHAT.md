@@ -224,6 +224,18 @@ is where "all of it" lives.
       ride the same road - the crush trilogy already makes every upload a
       bounded twin, and a room line embeds whatever a post can.
 
+    - **The open web rides as itself (Curtis, 2026-10-18).** "I'm not sure if
+      the restrictions make as much sense for chat, where things are expected to
+      move at a good clip and link rot (and tracking pixels) are much less
+      concerning." A picture from the web is said as its own address: no bake,
+      no refs, and the reader's app loads it from where it lives. What keeps a
+      planted picture from reading a private room's readers back to its sender
+      is the veil: a speaker the reader hasn't placed has their media drawn not
+      at all until clicked - not blurred, which fetches all the same - and the
+      veil counts a lone web address (a turbolink, which draws a picture or a
+      card with its page's picture) as media. The room's creator stays exempt in
+      a room: you clicked into their room.
+
 12. **An IM is a room sealed to one person (settled 2026-09-20).** Curtis: a
     button on anybody's page opens "a Chat window that's sealed to Just Them". A
     two-person chat is not a second chat system - it is a room (ruling 1)
@@ -434,8 +446,8 @@ is where "all of it" lives.
    for a persona whose held chain lacks the document, which a room-depth
    persona's always does; the room composer is the post composer's live surface
    (`LiveMarquee` with `keys` and a `placeholder`), pickers and uploads into the
-   chat bucket. Media from the open web is refused in a room. Suite:
-   `chat_media.cjs`.
+   chat bucket. Media from the open web rides as its own address, unbaked
+   (2026-10-18; ruling 11's last bullet). Suite: `chat_media.cjs`.
 6. **Mentions and the bell.** A message naming a persona rings their bell under
    the room's door, and the user-card picker knows the room's participants.
    **Built 2026-09-19.** `ChatMessage.mentions` (key 4, additive, capped): the

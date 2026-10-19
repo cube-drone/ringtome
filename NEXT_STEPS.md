@@ -252,6 +252,13 @@ are driving towards.
 ### Safety
 
 - sync-request floods: malicious nodes can DDoS with sync-requests, probably?
+- **Posts hotlink through their link cards** (found 2026-10-18). The publish
+  bake copies a post's embedded pictures, but a web address alone on a line is a
+  turbolink, and the card draws it straight from the web: a picture's address as
+  the picture (marquee-turbolink's `imagePlugin`), a page's as a card with its
+  `og:image` (`net::unfurl` hands the URL to the client). PROJECT_PLAN says the
+  renderer must never quietly hotlink the origin. Either bake the card's picture
+  the way an embed is baked, or draw cards' pictures through the node.
 
 ### Sync
 
