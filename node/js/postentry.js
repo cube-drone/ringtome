@@ -71,7 +71,7 @@ import { agoUnit, agoWords } from './pure/ago.js';
 import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
 import { GroupMark, useGroupFace } from './groupface.js';
 import { parseBook } from './pure/books.js';
-import { useShared, markShared } from './shares.js';
+import { useShared, markShared, useSharedIn, markSharedIn } from './shares.js';
 import { t } from './i18n.js';
 import { useWarnings } from './warnings.js';
 import { CopyButton } from './copyinto.js';
@@ -435,27 +435,44 @@ const ViaOthers = ({ item, current }) => {
 
 const ShareButton = ({ item, current }) => {
     const [sending, setSending] = useState(false);
+    const [asking, setAsking] = useState(false);
     // `null` while we do not yet know - the list is one fetch per page, and a button that
     // guessed "share" and then flipped to "shared" is how a reader learns not to trust it.
     const known = useShared(current.root, item.author, item.doc_id);
+    // Where else it could go (plans/GROUPS.md, section 7: into a group, yes): your groups, never
+    // the public group whose post it already is.
+    const elsewhere = useSharedIn(
+        current.root,
+        item.author,
+        item.doc_id,
+        item.as_group ? item.as_group.id : null,
+    );
     const shared = known === true;
+    const anywhere = shared || (!!elsewhere && elsewhere.into.size > 0);
+    const unknown = known === null || elsewhere === null;
 
-    const pass = async () => {
-        if (sending || known === null) return;
+    // One destination's share, or its withdrawal: everyone (`group` null) or one of your groups.
+    // Only marked after the write lands. The chain either took it or it did not, and saying
+    // "shared" on a failure is the one lie a share button must never tell.
+    const pass = async (group, next) => {
+        if (sending || unknown) return;
         setSending(true);
-        const next = !shared;
+        const body = JSON.stringify({
+            author: item.author,
+            doc_id: item.doc_id,
+            ...(next ? {} : { retract: true }),
+        });
         try {
-            await api(`/api/identity/${current.root}/rebroadcasts`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    author: item.author,
-                    doc_id: item.doc_id,
-                    ...(next ? {} : { retract: true }),
-                }),
-            });
-            // Only after the write lands. The chain either took it or it did not, and saying
-            // "shared" on a failure is the one lie a share button must never tell.
-            markShared(current.root, item.author, item.doc_id, next);
+            if (group) {
+                await api(`/api/identity/${current.root}/groups/${group}/shares`, {
+                    method: 'POST',
+                    body,
+                });
+                markSharedIn(current.root, item.author, item.doc_id, group, next);
+            } else {
+                await api(`/api/identity/${current.root}/rebroadcasts`, { method: 'POST', body });
+                markShared(current.root, item.author, item.doc_id, next);
+            }
         } catch {
             // Left as it was. The next page load reads the chain and settles it.
         } finally {
@@ -463,21 +480,63 @@ const ShareButton = ({ item, current }) => {
         }
     };
 
+    // With no group to offer, one click shares with everyone, as it always has; with groups, the
+    // click asks where.
+    const groups = (elsewhere && elsewhere.groups) || [];
+    const click = () => (groups.length ? setAsking(true) : pass(null, !shared));
+
     // Icon-only, a Writer chip (doc/chips.js) like every file chip (Curtis, 2026-09-27): a glyph,
     // a hover title with the words, no label. Shared, it wears the chip's lit look.
     return html`<button
-        class=${shared ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
-        disabled=${sending || known === null}
-        title=${
-            shared
-                ? t('postentry.stop-sharing-this-with-your', 'stop sharing this with your network')
-                : t('postentry.pass-this-along-to-your', 'pass this along to your network')
-        }
-        onClick=${pass}
-    >
-        <${Icons.colRebroadcast} />
-        <span class="chip-word">${shared ? t('chips.unshare', 'unshare') : t('chips.share', 'share')}</span>
-    </button>`;
+            class=${anywhere ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
+            disabled=${sending || unknown}
+            title=${
+                groups.length
+                    ? t('postentry.share-where', 'pass this along - to everyone, or into a group')
+                    : shared
+                      ? t(
+                            'postentry.stop-sharing-this-with-your',
+                            'stop sharing this with your network',
+                        )
+                      : t('postentry.pass-this-along-to-your', 'pass this along to your network')
+            }
+            onClick=${click}
+        >
+            <${Icons.colRebroadcast} />
+            <span class="chip-word">${anywhere && !groups.length ? t('chips.unshare', 'unshare') : t('chips.share', 'share')}</span>
+        </button>
+        ${
+            asking &&
+            html`<${Modal} title=${t('postentry.rebroadcast-to', 'rebroadcast to:')} onClose=${() => setAsking(false)}>
+                <div class="share-to">
+                    ${[
+                        {
+                            group: null,
+                            name: t('postentry.share-to-everyone', 'everyone'),
+                            on: shared,
+                        },
+                        ...groups.map((g) => ({
+                            group: g.group,
+                            name: g.name,
+                            on: elsewhere.into.has(g.group),
+                        })),
+                    ].map(
+                        (d) => html`<button
+                            key=${d.group || 'everyone'}
+                            class=${d.on ? 'copy-bucket modal-ask-ok' : 'copy-bucket'}
+                            aria-pressed=${d.on}
+                            disabled=${sending}
+                            onClick=${() => pass(d.group, !d.on)}
+                        >
+                            <span class="share-to-name">${d.name}</span>
+                            <span class="share-to-state"
+                                >${d.on ? t('postentry.share-to-shared', 'shared - take it back') : t('chips.share', 'share')}</span
+                            >
+                        </button>`,
+                    )}
+                </div>
+            </${Modal}>`
+        }`;
 };
 
 /// A post, REFERRED to - the mini-card (2026-08-26): title and date in a small clickable

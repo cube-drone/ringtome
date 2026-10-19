@@ -172,3 +172,23 @@
     cursor: default;
 }
 
+
+/* Where a share goes (postentry.js ShareButton): everyone, or one of your groups - each a toggle,
+   lit where it's shared now. */
+.share-to {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.share-to .copy-bucket {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    text-align: left;
+}
+
+.share-to-state {
+    font-size: 0.8rem;
+    opacity: 0.8;
+}

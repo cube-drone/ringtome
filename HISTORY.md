@@ -23758,3 +23758,33 @@ pattern: a page cut first, and the book's pages dropped after.
   with no next page. `fragments::shelf_of` now counts a book's page as not
   listed (`on_shelf`) and reads on past them until it has its posts. A new test
   stores three posts, a book and six newer pages; it fails without the fix.
+
+## 2026-10-18: rebroadcast to a group
+
+Curtis: clicking share should ask "rebroadcast to:", but only for someone in a
+group it could go to. GROUPS.md §7's rulings, built:
+
+- **Into a group, yes.** The share is a `REBROADCAST` entry, the public share's
+  own pointer, on the sharer's members-only lane for the group (proto
+  `GroupEntry::Share`), counted while they're a member, as a label is. Each
+  node's derivation of the group keeps the shares standing in `group_shares`
+  (rung 105), the last word per sharer and post. It delivers them to the members
+  it hosts by the public share road, with the sharer as the via and the words
+  fetched from the author, so the author's edits and takedown reach them. A
+  group's pick in the feed takes in the public posts shared into it beside its
+  own. Taken back, or its sharer gone, a share withdraws the rows it made,
+  unless the sharer has it in another group too. The feed table's key stays as
+  it was: a shared post is a public row, as any share's is.
+- **Out of a group, no**, with an explicit refusal now: the share door and the
+  group share door both turn down a group's post ("a group's post stays in its
+  group"), and the group door also turns down a public group's own post, sealed
+  posts, and the sharer's own.
+- **The window**: with no group to offer, share is one click to everyone, as
+  before. With groups, it opens "rebroadcast to:", everyone and each of your
+  groups, each lit where it's shared now, and a click shares or takes back.
+  `/api/identity/{root}/rebroadcasts` now lists the group shares too.
+
+Old nodes skip a lane entry they can't read and drop the rest of that lane;
+Curtis ruled it moot, since no group predates today's. New acceptance file
+`groupshares.cjs` (three claims); proto test
+`a_share_counts_while_its_sharer_is_in_the_group`.

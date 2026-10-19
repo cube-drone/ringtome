@@ -210,6 +210,9 @@ fn lane_body(entry_type: i64, body: &[u8]) -> Option<GroupEntry> {
         entry_type::PUBLIC_ANNOTATION => ringtome_proto::PublicAnnotation::decode(body)
             .ok()
             .map(|a| GroupEntry::Label { doc: a.target_doc }),
+        entry_type::REBROADCAST => ringtome_proto::Rebroadcast::decode(body).ok().map(|r| {
+            GroupEntry::Share { author: r.author, doc: r.doc_id, retract: r.is_retraction() }
+        }),
         _ => None,
     }
 }
@@ -330,6 +333,7 @@ async fn refold(state: &AppState, group: &GroupId) -> Result<Option<Folded>> {
     keep_public_posts(state, group, &roster, noted).await?;
     recarry(state, group, &roster, &carry, noted).await?;
     rejournal(state, group, &roster, &readers, noted).await?;
+    reshare(state, group, &roster, &readers, noted).await?;
     let newly: Vec<String> =
         roster.members.iter().map(hex::encode).filter(|m| !before.contains(m)).collect();
     if !newly.is_empty() && has_rooms(state, group).await {
@@ -519,6 +523,136 @@ async fn recarry(
     .await
     .context("forgetting the carries that ended")?;
     Ok(())
+}
+
+/// One public post shared into a group, as it stands: who shared it, whose it is, which, the
+/// version they saw and when they said so.
+struct GroupShare {
+    sharer: String,
+    author: String,
+    doc: [u8; 16],
+    version: [u8; 32],
+    shared_ms: i64,
+}
+
+/// One share entry of a group's lanes: `(sharer, hash, body, claimed_ms)`.
+type ShareRow = (String, Vec<u8>, Vec<u8>, Option<i64>);
+/// A sharer's last word about a post: `(sharer, author, doc)` to `(version, said_ms)`.
+type ShareWords = BTreeMap<(String, String, [u8; 16]), (Option<[u8; 32]>, i64)>;
+
+/// The public posts the group's members share into it (plans/GROUPS.md, section 7): each
+/// member's last word about a post, in the order this node took them, as a label's is - a word
+/// counted only while its sharer is a member at that point of their lane.
+async fn shares_of(state: &AppState, group: &GroupId, roster: &Roster) -> Result<Vec<GroupShare>> {
+    let rows: Vec<ShareRow> = state
+        .node_db
+        .fetch_all(
+            "SELECT persona, hash, body, claimed_ms FROM group_lanes
+             WHERE group_id = ?1 AND entry_type = ?2 ORDER BY rowid",
+            (group.to_vec(), i64::from(entry_type::REBROADCAST)),
+        )
+        .await
+        .context("reading a group's shares")?;
+    let mut said = ShareWords::new();
+    for (sharer, hash, body, claimed_ms) in rows {
+        let Ok(hash) = <[u8; 32]>::try_from(hash) else { continue };
+        if !roster.counted.contains(&hash) {
+            continue;
+        }
+        let Ok(r) = ringtome_proto::Rebroadcast::decode(&body) else { continue };
+        said.insert(
+            (sharer, hex::encode(r.author), r.doc_id),
+            (r.version, claimed_ms.unwrap_or_else(now_ms)),
+        );
+    }
+    Ok(said
+        .into_iter()
+        .filter_map(|((sharer, author, doc), (version, shared_ms))| {
+            Some(GroupShare { sharer, author, doc, version: version?, shared_ms })
+        })
+        .collect())
+}
+
+/// Keep the group's shares, and pass each to the members hosted here by the public share road:
+/// journaled with its sharer as the via and fetched from its author, so its words, edits and
+/// takedown are the author's as any rebroadcast's are. A share taken back - or its sharer gone
+/// from the group - withdraws the rows it made, unless the sharer shares it into another group
+/// too.
+async fn reshare(
+    state: &AppState,
+    group: &GroupId,
+    roster: &Roster,
+    readers: &[Root],
+    noted: i64,
+) -> Result<()> {
+    let db = &state.node_db;
+    let shares = shares_of(state, group, roster).await?;
+    let readers: Vec<String> = readers.iter().map(hex::encode).collect();
+    let mut by_sharer: BTreeMap<&str, Vec<crate::record::imaol::RebroadcastRow>> = BTreeMap::new();
+    for s in &shares {
+        db.execute(
+            "INSERT INTO group_shares (group_id, sharer, author, doc, shared_ms, noted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT (group_id, sharer, author, doc) DO UPDATE SET noted = excluded.noted",
+            (
+                group.to_vec(),
+                s.sharer.as_str(),
+                s.author.as_str(),
+                hex::encode(s.doc),
+                s.shared_ms,
+                noted,
+            ),
+        )
+        .await
+        .context("remembering a share into a group")?;
+        by_sharer.entry(&s.sharer).or_default().push(crate::record::imaol::RebroadcastRow {
+            author_root: s.author.clone(),
+            doc_id: s.doc,
+            version_seen: Some(s.version),
+            timestamp_ms: s.shared_ms,
+            received_at_ms: s.shared_ms,
+        });
+    }
+    for (sharer, pointers) in by_sharer {
+        crate::fanout::journal_shares_to(state, sharer, &readers, &pointers, true).await;
+    }
+    let ended: Vec<(String, String, String)> = db
+        .fetch_all(
+            "SELECT sharer, author, doc FROM group_shares WHERE group_id = ?1 AND noted < ?2",
+            (group.to_vec(), noted),
+        )
+        .await
+        .context("reading the shares that ended")?;
+    db.execute(
+        "DELETE FROM group_shares WHERE group_id = ?1 AND noted < ?2",
+        (group.to_vec(), noted),
+    )
+    .await
+    .context("forgetting the shares that ended")?;
+    for (sharer, author, doc) in ended {
+        let elsewhere: Option<(i64,)> = db
+            .fetch_optional(
+                "SELECT 1 FROM group_shares WHERE sharer = ?1 AND author = ?2 AND doc = ?3 LIMIT 1",
+                (sharer.as_str(), author.as_str(), doc.as_str()),
+            )
+            .await
+            .context("asking whether a share stands in another group")?;
+        if elsewhere.is_none() {
+            crate::fanout::withdraw_shared_to(db, &readers, &sharer, &author, &doc).await?;
+        }
+    }
+    Ok(())
+}
+
+/// The groups `sharer` shares each post into, as `(group, author, doc)` hex: the share button's
+/// answer to "where is this already?"
+pub async fn shares_by(state: &AppState, sharer: &str) -> Result<Vec<(String, String, String)>> {
+    let rows: Vec<(Vec<u8>, String, String)> = state
+        .node_db
+        .fetch_all("SELECT group_id, author, doc FROM group_shares WHERE sharer = ?1", (sharer,))
+        .await
+        .context("reading a persona's shares into groups")?;
+    Ok(rows.into_iter().map(|(g, a, d)| (hex::encode(g), a, d)).collect())
 }
 
 /// Who on this node follows a group itself (ruling 7).
@@ -2327,8 +2461,8 @@ async fn is_public(state: &AppState, group: &GroupId) -> bool {
 }
 
 /// Which of a member device's two lanes an entry goes on, in a public group: the roster's acts and
-/// the settings on the public lane, where anyone may read them; content - posts, labels, pins and
-/// hides - on the members-only lane. A private group has only the one.
+/// the settings on the public lane, where anyone may read them; content - posts, labels, shares,
+/// pins and hides - on the members-only lane. A private group has only the one.
 fn lane_service(entry: &GroupEntry, public: bool) -> u32 {
     if !public {
         return service::GROUP;
@@ -2336,6 +2470,7 @@ fn lane_service(entry: &GroupEntry, public: bool) -> u32 {
     match entry {
         GroupEntry::Document { .. }
         | GroupEntry::Label { .. }
+        | GroupEntry::Share { .. }
         | GroupEntry::MemberPin { .. }
         | GroupEntry::Hide { .. }
         | GroupEntry::Pin { .. } => service::GROUP,
@@ -2602,6 +2737,7 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/hide", post(hide_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/pin", post(pin_handler))
         .route("/api/identity/{root}/groups/{group}/docs/{doc}/labels", post(label_handler))
+        .route("/api/identity/{root}/groups/{group}/shares", post(share_handler))
         // A group's pictures and bodies, at one address for every member - the embed in a
         // post's words can't name the reader - so the door is the session: any persona on it
         // the group counts.
@@ -4786,6 +4922,108 @@ async fn label_handler(
     crate::fold::fold_now(&state, &root).await;
     push_soon(&state, &root, group);
     Ok(Json(serde_json::json!({ "group": hex::encode(group), "doc": hex::encode(doc) })))
+}
+
+#[derive(Deserialize)]
+struct ShareRequest {
+    /// Whose post, hex. Never the sharer's own: a post of yours goes to a group by publishing.
+    author: String,
+    /// Which of their posts, hex.
+    doc_id: String,
+    /// Take the share back instead.
+    #[serde(default)]
+    retract: bool,
+}
+
+/// POST `.../groups/{group}/shares` - a member shares a public post into the group, or takes the
+/// share back (plans/GROUPS.md, section 7: into a group, yes). The pointer goes on the sharer's
+/// members-only lane, the one their public rebroadcasts chain would carry; the replica is the
+/// public one, so the author's edits and takedown reach it. Not a post of this group's or any
+/// other's (out of a group, no), not a sealed one, and not one this computer hasn't read.
+async fn share_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+    Json(req): Json<ShareRequest>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    let author = root_of(&req.author).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"))
+    })?;
+    let doc = doc_of(&req.doc_id)?;
+    let (roster, _) = current(&state, &group, &me).await?;
+    if !roster.members.contains(&me) {
+        return Err(AppError::Forbidden(crate::msg!(
+            "roster.members-only-share",
+            "only the group's members can share into it"
+        )));
+    }
+    if author == me {
+        return Err(AppError::BadRequest(crate::msg!(
+            "roster.share-your-own",
+            "a post of your own goes to a group by publishing it there"
+        )));
+    }
+    let (author_hex, doc_hex) = (hex::encode(author), hex::encode(doc));
+    let version = if req.retract {
+        None
+    } else {
+        if crate::fanout::in_a_group(&state.node_db, &root, &author_hex, &doc_hex)
+            .await
+            .map_err(AppError::Internal)?
+        {
+            return Err(AppError::BadRequest(crate::msg!(
+                "roster.group-posts-stay",
+                "a group's post stays in its group"
+            )));
+        }
+        let claimed: Option<(i64,)> = state
+            .node_db
+            .fetch_optional(
+                "SELECT 1 FROM group_public_posts WHERE group_id = ?1 AND author = ?2 AND doc = ?3",
+                (group.to_vec(), author_hex.as_str(), doc_hex.as_str()),
+            )
+            .await
+            .context("asking whether a post is already the group's")
+            .map_err(AppError::Internal)?;
+        if claimed.is_some() {
+            return Err(AppError::BadRequest(crate::msg!(
+                "roster.already-the-groups",
+                "that post is already the group's"
+            )));
+        }
+        if crate::identity::routes::held_public_header(&state, &author_hex, &doc_hex)
+            .await?
+            .is_some_and(|h| h.trusted_only)
+        {
+            return Err(AppError::BadRequest(crate::msg!(
+                "roster.sealed-stays",
+                "a post shared only with people the author trusts is not passed along"
+            )));
+        }
+        Some(crate::fragments::current_version(&state, &author, &doc).await.ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "roster.share-unread",
+                "this computer doesn't have that post yet - it can't share what it hasn't read"
+            ))
+        })?)
+    };
+    let payload = ringtome_proto::Rebroadcast { author, doc_id: doc, version }.encode();
+    join_content_lane(&state, &data, &root, &group).await?;
+    crate::record::imaol::append_on(
+        data.db(),
+        data.signer(),
+        service::GROUP,
+        Some(group),
+        entry_type::REBROADCAST,
+        Payload::Inline(payload),
+    )
+    .await?;
+    crate::fold::fold_now(&state, &root).await;
+    refold(&state, &group).await.map_err(AppError::Internal)?;
+    push_soon(&state, &root, group);
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "shared": !req.retract })))
 }
 
 #[derive(Deserialize)]

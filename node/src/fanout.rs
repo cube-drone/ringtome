@@ -739,6 +739,60 @@ pub async fn withdraw_carried(
     Ok(())
 }
 
+/// A share into a group ended (plans/GROUPS.md, section 7): `via_root` no longer passes this post
+/// to these members, and one it reached through them alone loses the row - as a carry's end does,
+/// for the readers the group's share reached.
+pub async fn withdraw_shared_to(
+    node_db: &crate::db::Db,
+    readers: &[String],
+    via_root: &str,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<()> {
+    for reader in readers {
+        node_db
+            .execute(
+                "DELETE FROM feed_shares
+                 WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3 AND via_root = ?4",
+                (reader.as_str(), author_root, doc_id, via_root),
+            )
+            .await
+            .context("forgetting a share into a group")?;
+        node_db
+            .execute(
+                "DELETE FROM feed_journal
+                 WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3 AND via_root = ?4
+                   AND group_id = x''
+                   AND NOT EXISTS (SELECT 1 FROM feed_shares s
+                                   WHERE s.reader_root = ?1 AND s.author_root = ?2 AND s.doc_id = ?3)",
+                (reader.as_str(), author_root, doc_id, via_root),
+            )
+            .await
+            .context("withdrawing a share into a group from a feed")?;
+    }
+    crate::search::journal_or_labels_moved();
+    Ok(())
+}
+
+/// Is this a group post in `reader`'s feed? What the share button refuses to pass out of its
+/// group (plans/GROUPS.md, section 7).
+pub async fn in_a_group(
+    node_db: &crate::db::Db,
+    reader: &str,
+    author_root: &str,
+    doc_id: &str,
+) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT 1 FROM feed_journal
+             WHERE reader_root = ?1 AND author_root = ?2 AND doc_id = ?3 AND group_id <> x''",
+            (reader, author_root, doc_id),
+        )
+        .await
+        .context("asking whether a post is a group's")?;
+    Ok(row.is_some())
+}
+
 /// A group's follower no longer gets this public post as the group's (plans/PUBLIC_GROUPS.md):
 /// the direct row it journaled leaves the feeds of these readers - unless they follow its author
 /// themselves, when it was theirs anyway.
@@ -1864,7 +1918,8 @@ pub struct JournalFilter<'a> {
     /// group is somewhere you chose to be).
     pub stop: Option<crate::selectivity::StopRule>,
     /// Only posts in these groups (hex ids), or none of these: the groups row's picks. A public
-    /// post is in no group, so picking a group leaves only its posts.
+    /// post is in no group, so picking a group leaves only its posts - and the public posts its
+    /// members shared into it (`group_shares`, plans/GROUPS.md section 7).
     pub groups: &'a [String],
     pub not_groups: &'a [String],
 }
@@ -1923,7 +1978,12 @@ impl<'a> JournalFilter<'a> {
             parts.push(if picked.is_empty() {
                 "0".to_string()
             } else {
-                format!("{t}group_id IN ({})", picked.join(","))
+                let picked = picked.join(",");
+                format!(
+                    "({t}group_id IN ({picked}) OR ({t}group_id = x'' AND EXISTS (
+                       SELECT 1 FROM group_shares s WHERE s.group_id IN ({picked})
+                         AND s.author = {t}author_root AND s.doc = {t}doc_id)))"
+                )
             });
         }
         let left_out = blobs(self.not_groups);

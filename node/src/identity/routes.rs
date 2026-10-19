@@ -5114,6 +5114,19 @@ async fn rebroadcast_handler(
         )));
     }
     let data = store::open(&state, &session.account.id, &root).await?;
+    // Out of a group, no (plans/GROUPS.md, section 7): the author chose the group for its
+    // audience, and a pointer would aim the world at what only the group's door serves. The
+    // button isn't on a group post's card; the door refuses what no button reaches.
+    if !req.retract
+        && crate::fanout::in_a_group(&state.node_db, &root, &req.author, &req.doc_id)
+            .await
+            .map_err(AppError::Internal)?
+    {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.group-posts-stay",
+            "a group's post stays in its group"
+        )));
+    }
     let version = if req.retract {
         None
     } else {
@@ -5247,7 +5260,17 @@ async fn rebroadcasts_handler(
             shared_at_ms: r.received_at_ms,
         })
         .collect();
-    Ok(Json(serde_json::json!({ "items": items })))
+    // And what it shares into its groups (plans/GROUPS.md, section 7), for the share button's
+    // "rebroadcast to" list.
+    let groups: Vec<serde_json::Value> = crate::roster::shares_by(&state, &root)
+        .await
+        .map_err(AppError::Internal)?
+        .into_iter()
+        .map(|(group, author, doc_id)| {
+            serde_json::json!({ "group": group, "author": author, "doc_id": doc_id })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "items": items, "groups": groups })))
 }
 
 /// GET `/api/identity/{root}/public-annotations/{author}/{doc}` - this persona's PRESENT

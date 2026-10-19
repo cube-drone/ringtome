@@ -429,7 +429,8 @@ How each post feature carries over:
   and the sealed audiences, but a group is a place, not a seal:
   - **One group per post.** A document lives on one chain, so posting to two
     groups makes two documents.
-  - **Rebroadcasts** (Curtis, 2026-10-15):
+  - **Rebroadcasts** (Curtis, 2026-10-15; built 2026-10-18, `roster.rs`
+    `share_handler` and `reshare`, `groupshares.cjs`):
     - **Into a group: yes.** A public post shared into a group is a rebroadcast
       whose pointer goes on the sharer's group lane instead of their public
       rebroadcast chain. The replica is the public one it always was, so the

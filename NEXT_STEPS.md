@@ -144,10 +144,14 @@ are driving towards.
   - **A copied picture's credit in a group.** Someone else's picture copied into
     a group post is carried, but the post doesn't name whose it was, as the
     public road's provenance does.
-  - **Rebroadcasts** (GROUPS.md §7): sharing a public post into a group, with
-    the share button's destination picker; an explicit refusal, with a claim,
-    for sharing a group post out, rather than trusting the rebroadcast route to
-    fail on a document it can't find.
+  - **Shares into a group want a look in a browser.** The "rebroadcast to:"
+    window passed the gates, but nobody has seen it drawn yet.
+  - **An owner can't hide a share.** A hide names a group post's first version,
+    and a share isn't one; a share stays until its sharer takes it back or
+    leaves.
+  - **A public group's shares are its members' alone.** They ride the
+    members-only lane, so the group's public page and its followers never see
+    them. Whether they should is Curtis's call.
 - From 1b:
   - **A send-side door.** A node dialing for a group sends its lanes to whatever
     node it dialed, unchecked.

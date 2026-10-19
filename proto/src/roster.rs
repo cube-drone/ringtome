@@ -215,6 +215,15 @@ pub enum GroupEntry {
     Label {
         doc: [u8; 16],
     },
+    /// A public post shared into the group (plans/GROUPS.md, section 7: rebroadcasts into a
+    /// group), as a `REBROADCAST` entry on the lane - the pointer the sharer's public rebroadcast
+    /// chain would carry, never a group entry's kind. `retract` takes it back. Counted like any
+    /// entry: while its sharer is a member at that point of the lane.
+    Share {
+        author: Root,
+        doc: [u8; 16],
+        retract: bool,
+    },
     /// An invite carries the group's founding statement, so it says on its own which group it
     /// is for, who founded it and what it was called: an invitee's node that has never heard
     /// of the group finds it from the invite alone (plans/GROUPS.md, section 5). An invite
@@ -327,6 +336,7 @@ impl GroupEntry {
             | GroupEntry::Leave { .. }
             | GroupEntry::Document { .. }
             | GroupEntry::Label { .. }
+            | GroupEntry::Share { .. }
             | GroupEntry::MemberPin { .. }
             | GroupEntry::Public { .. } => None,
         }
@@ -413,6 +423,11 @@ impl GroupEntry {
             GroupEntry::Label { .. } => {
                 return Err(ProtoError::BadEntry(
                     "a group post's label travels as an annotation entry, not a group entry",
+                ));
+            }
+            GroupEntry::Share { .. } => {
+                return Err(ProtoError::BadEntry(
+                    "a share into a group travels as a rebroadcast entry, not a group entry",
                 ));
             }
             GroupEntry::Invite { by, invitee, readmits, founding } => {
@@ -1345,7 +1360,7 @@ pub fn build(group: GroupId, lanes: &[Lane]) -> Option<Roster> {
                     }
                     counted.insert(e.hash);
                 }
-                GroupEntry::Label { .. } if member => {
+                GroupEntry::Label { .. } | GroupEntry::Share { .. } if member => {
                     counted.insert(e.hash);
                 }
                 GroupEntry::MemberPin { .. } if member => {
@@ -2337,6 +2352,23 @@ mod tests {
         assert!(r.counted.contains(&before), "said while a member");
         assert!(!r.counted.contains(&after), "said past the removal's anchor");
         assert!(GroupEntry::Label { doc: [1; 16] }.encode().is_err(), "never a group entry's kind");
+    }
+
+    /// A share into the group is the sharer's act, counted while they're in it, as a label is.
+    #[test]
+    fn a_share_counts_while_its_sharer_is_in_the_group() {
+        let mut w = World::new();
+        w.invite(B);
+        let share = GroupEntry::Share { author: [7; 32], doc: [1; 16], retract: false };
+        let before = w.add(B, 0, share.clone());
+        let found = w.found;
+        let anchors = w.anchors(&[B]);
+        w.add(F, 0, GroupEntry::Remove { by: found, target: B, ends: vec![], anchors, ban: false });
+        let after = w.add(B, 0, share.clone());
+        let r = w.fold();
+        assert!(r.counted.contains(&before), "shared while a member");
+        assert!(!r.counted.contains(&after), "shared past the removal's anchor");
+        assert!(share.encode().is_err(), "never a group entry's kind");
     }
 
     #[test]

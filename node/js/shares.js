@@ -19,9 +19,16 @@
 import { useState, useEffect } from 'preact/hooks';
 
 import { api } from './net.js';
+import { groupFeeds } from './pure/groups.js';
 
 /// root -> Set of "author:doc_id"
 const held = new Map();
+/// root -> Map of "author:doc_id" -> Set of the groups it is shared into (plans/GROUPS.md,
+/// section 7), from the same answer.
+const heldIn = new Map();
+/// root -> the groups a share could go to: every group you're a member of, as `groupFeeds` lists
+/// them - asked once per page, beside the shares.
+const places = new Map();
 /// root -> the in-flight load, so twenty cards mounting at once make one request.
 const loading = new Map();
 const listeners = new Set();
@@ -35,15 +42,28 @@ function announce() {
 async function load(root) {
     if (held.has(root)) return;
     if (loading.has(root)) return loading.get(root);
-    const pending = api(`/api/identity/${root}/rebroadcasts`)
-        .then((res) => {
+    const pending = Promise.all([
+        api(`/api/identity/${root}/rebroadcasts`),
+        api(`/api/identity/${root}/groups`).catch(() => []),
+    ])
+        .then(([res, groups]) => {
             held.set(root, new Set((res.items || []).map((i) => keyOf(i.author, i.doc_id))));
+            const into = new Map();
+            for (const g of res.groups || []) {
+                const key = keyOf(g.author, g.doc_id);
+                if (!into.has(key)) into.set(key, new Set());
+                into.get(key).add(g.group);
+            }
+            heldIn.set(root, into);
+            places.set(root, groupFeeds(groups));
         })
         .catch(() => {
             // An empty set, not a retry loop: the button then reads "share", which is the
             // honest default when we cannot tell - and pressing it is idempotent anyway,
             // because the chain write is LWW per (author, doc).
             held.set(root, new Set());
+            heldIn.set(root, new Map());
+            places.set(root, []);
         })
         .finally(() => {
             loading.delete(root);
@@ -77,5 +97,34 @@ export function markShared(root, author, docId, shared) {
     if (!set) return;
     if (shared) set.add(keyOf(author, docId));
     else set.delete(keyOf(author, docId));
+    announce();
+}
+
+/// Where `root` shares this document beyond everyone - the groups it is in - and where else it
+/// could: `{ into: Set of group ids, groups: [{group, name}] }`, or `null` while unknown. A post
+/// of a group's own is never offered back to it (`except`).
+export function useSharedIn(root, author, docId, except = null) {
+    const [, bump] = useState(0);
+    useEffect(() => {
+        const fn = () => bump((n) => n + 1);
+        listeners.add(fn);
+        if (root) load(root);
+        return () => listeners.delete(fn);
+    }, [root]);
+    if (!root || !heldIn.has(root)) return null;
+    return {
+        into: heldIn.get(root).get(keyOf(author, docId)) || new Set(),
+        groups: (places.get(root) || []).filter((g) => g.group !== except),
+    };
+}
+
+/// Record a share into a group (or its withdrawal) locally, as `markShared` does for everyone.
+export function markSharedIn(root, author, docId, group, shared) {
+    const into = heldIn.get(root);
+    if (!into) return;
+    const key = keyOf(author, docId);
+    if (!into.has(key)) into.set(key, new Set());
+    if (shared) into.get(key).add(group);
+    else into.get(key).delete(group);
     announce();
 }
