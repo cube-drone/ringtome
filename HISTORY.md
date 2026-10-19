@@ -23912,3 +23912,15 @@ restore waits for the player's first word before deciding whether it holds music
 and play on a player holding nothing hands the song over again (AUDIO.md section
 10). The page side passes the UI check; the Kotlin compiles only in the Android
 CI build, which nothing has run yet.
+
+## 2026-10-19: "check now" asks DNS, not a day-old memory of it
+
+On the live node, cube-drone.com's TXT record was in public DNS within seconds,
+yet "check now" kept finding none. Claiming a domain checks it at once, before
+its owner has had a chance to add the record. The resolver (hickory) kept that
+"no such record" answer for the zone's negative TTL, which Bunny DNS's SOA sets
+at 86400 seconds. So every later press was answered from the cache. The resolver
+now keeps nothing (`cache_size = 0`, and a negative answer is held for zero
+seconds); these lookups are a few a day. A server whose own system resolver
+caches the same "no" can still lag. SERVER.md's custom-domain section says how
+to clear it.

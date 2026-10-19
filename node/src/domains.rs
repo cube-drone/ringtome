@@ -146,7 +146,15 @@ async fn txt_says(state: &AppState, domain: &str, root: &[u8; 32]) -> Said {
         std::sync::OnceLock::new();
     let Some(resolver) = RESOLVER.get_or_init(|| {
         hickory_resolver::TokioResolver::builder_tokio()
-            .and_then(|b| b.build())
+            .and_then(|mut b| {
+                // No cache (2026-10-19): a claim is checked the moment it's made, before its
+                // record exists, and that "no such record" was kept for the zone's negative TTL -
+                // a day, on Bunny DNS - so "check now" kept answering from it. These lookups are
+                // a few a day; every one asks.
+                b.options_mut().cache_size = 0;
+                b.options_mut().negative_max_ttl = Some(std::time::Duration::ZERO);
+                b.build()
+            })
             .map_err(|e| tracing::warn!(error = %e, "no DNS resolver for custom domains"))
             .ok()
     }) else {

@@ -267,6 +267,13 @@ at - behind BunnyCDN, the pull zone's `*.b-cdn.net` name - and the settings page
 shows them the CNAME record to make. A bare domain (`cube-drone.com`, not
 `www.cube-drone.com`) needs a DNS provider that flattens CNAMEs; Bunny DNS does.
 
+The node asks DNS afresh on every check, but your server's own resolver may
+remember a "no such record" from before the TXT record was added, for as long as
+the zone's negative TTL (a day, on Bunny DNS). If "check now" keeps finding no
+record that `dig TXT _ringtome.<domain> @1.1.1.1` shows, run the same `dig`
+without `@1.1.1.1` on the server; if that comes back empty, clear the resolver's
+cache (`resolvectl flush-caches` under systemd-resolved).
+
 A domain becomes the persona's address everywhere - the address search engines
 are given and "copy link" hands out, on every node - once the node's
 `/.well-known/ringtome` answers there, which each node checks about daily.
