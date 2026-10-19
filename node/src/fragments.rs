@@ -1191,20 +1191,32 @@ pub async fn shelf_of(
     author_root: &str,
     limit: i64,
 ) -> Result<Vec<crate::record::documents::PublicDoc>> {
-    let rows: Vec<(Vec<u8>,)> = node_db
-        .fetch_all(
-            "SELECT entry FROM fragments WHERE author_root = ?1
-             ORDER BY COALESCE(genesis_ms, fetched_ms) DESC LIMIT ?2",
-            (author_root, limit),
-        )
-        .await
-        .context("reading an author's fragments as a shelf")?;
-    let mut out = Vec::with_capacity(rows.len());
-    for (entry,) in rows {
-        if let Some((doc, _refs)) = doc_from_entry(&entry) {
-            if on_shelf(&doc) {
-                out.push(doc);
+    // Read on past what isn't listed until `limit` posts are (2026-10-18): a book's pages, which
+    // a reader who opened the book brought here as fragments, are the newest rows when the book
+    // has just rolled out, and a single `LIMIT` read let them fill the window - the peek's one
+    // page of posts came back short or empty, with no next page to find the rest.
+    let mut out = Vec::new();
+    let mut offset = 0i64;
+    loop {
+        let rows: Vec<(Vec<u8>,)> = node_db
+            .fetch_all(
+                "SELECT entry FROM fragments WHERE author_root = ?1
+                 ORDER BY COALESCE(genesis_ms, fetched_ms) DESC LIMIT ?2 OFFSET ?3",
+                (author_root, limit, offset),
+            )
+            .await
+            .context("reading an author's fragments as a shelf")?;
+        let read = rows.len() as i64;
+        for (entry,) in rows {
+            if let Some((doc, _refs)) = doc_from_entry(&entry) {
+                if on_shelf(&doc) && (out.len() as i64) < limit {
+                    out.push(doc);
+                }
             }
+        }
+        offset += read;
+        if read < limit || out.len() as i64 >= limit {
+            break;
         }
     }
     out.sort_by(|a, b| b.display_ms().cmp(&a.display_ms()).then(a.doc_id.cmp(&b.doc_id)));
@@ -1215,12 +1227,14 @@ pub async fn shelf_of(
 /// `text_only`) - words, a book, a room. A picture, a sound or a video is not a post (Curtis,
 /// 2026-09-29: a peek showed "avatar" and "banner" as posts of binary noise): it stays in the
 /// ledger and serves its bytes - the face and the banner still show - it is only never LISTED.
+/// Nor is a book's page (PROJECT_PLAN's Books, ruling 4): the book lists it.
 fn on_shelf(doc: &crate::record::documents::PublicDoc) -> bool {
     use ringtome_proto::registry::doc_format;
-    matches!(
-        doc.format,
-        None | Some(doc_format::MARQUEE) | Some(doc_format::BOOK) | Some(doc_format::ROOM)
-    )
+    doc.part_of.is_none()
+        && matches!(
+            doc.format,
+            None | Some(doc_format::MARQUEE) | Some(doc_format::BOOK) | Some(doc_format::ROOM)
+        )
 }
 
 /// One fragment in the public shelf's shape, with the header's refs (its media twins)
@@ -2267,6 +2281,57 @@ mod tests {
             "years later",
             "a genesis that moves between fetches is nonsense, not a case to honor"
         );
+    }
+
+    /// A book's pages never fill a peek's shelf (2026-10-18): a reader who opened a just-rolled-out
+    /// book brought its pages here, the newest fragments of all, and the shelf's one `LIMIT` read
+    /// came back nothing but pages - so, filtered, nothing - with no next page to find the posts.
+    #[tokio::test]
+    async fn a_books_pages_never_crowd_the_shelf() {
+        let db = crate::db::test_node_db().await;
+        let key = ringtome_proto::SigningKey::from_bytes(&[43u8; 32]);
+        let alice = hex::encode(key.verifying_key().to_bytes());
+        let bob = "b".repeat(64);
+        let book = [90u8; 16];
+        let mut seq = 0u64;
+        let mut store = |doc: [u8; 16], ts: i64, part_of: Option<[u8; 16]>| {
+            seq += 1;
+            let mut v = verified_at(doc, ts, Some(ts));
+            v.header.part_of = part_of;
+            v.version = [doc[0]; 32];
+            let entry = ringtome_proto::Entry {
+                v: ringtome_proto::ENTRY_VERSION,
+                entry_type: ringtome_proto::registry::entry_type::DOC_HEADER,
+                chain: ringtome_proto::ChainId {
+                    author: key.verifying_key().to_bytes(),
+                    service: ringtome_proto::registry::service::POSTS,
+                    instance: None,
+                },
+                seq,
+                prev_hash: ringtome_proto::ZERO_HASH,
+                timestamp_ms: ts,
+                payload: ringtome_proto::Payload::Inline(v.header.encode().unwrap()),
+            };
+            let bytes = ringtome_proto::SignedEntry::create(&entry, &key).unwrap().bytes().to_vec();
+            (v, bytes)
+        };
+        let mut all = Vec::new();
+        // Three posts, then a book of six pages, all newer.
+        for i in 0..3u8 {
+            all.push(store([i + 1; 16], 1_000 + i64::from(i), None));
+        }
+        all.push(store(book, 2_000, None));
+        for i in 0..6u8 {
+            all.push(store([i + 40; 16], 3_000 + i64::from(i), Some(book)));
+        }
+        for (v, bytes) in &all {
+            remember(&db, &bob, &alice, v, bytes, &[]).await.unwrap();
+        }
+        let shelf = shelf_of(&db, &alice, 3).await.unwrap();
+        let ids: Vec<u8> = shelf.iter().map(|p| p.doc_id[0]).collect();
+        assert_eq!(ids, vec![90, 3, 2], "the book and the newest posts, never a page");
+        let whole = shelf_of(&db, &alice, 50).await.unwrap();
+        assert_eq!(whole.len(), 4, "every post and the book, past all six pages");
     }
 
     /// The ordering rule: arrival order is not authorship order. Same-chain versions compare

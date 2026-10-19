@@ -23734,3 +23734,27 @@ which was a real bug.
   counted until it lands; it fails with the old order. The private views' folds
   count first on purpose, with their in-memory copy patched under the same lock,
   and keep doing so.
+
+## 2026-10-18: a book's pages can't crowd a peek's shelf
+
+Curtis, after the public person page's fix (a book's hidden pages filled the
+page and left "nothing"): might the same bug be on the owner's view, another
+signed-in person's, or the groups? Every list that pages was read for the
+pattern: a page cut first, and the book's pages dropped after.
+
+- **Safe:** the person page for anyone whose chain this node holds. That's the
+  owner, a public visitor, and a signed-in visitor on the same node or on one
+  that follows them, and they all read `/api/id/{root}/posts` through
+  `readable_posts`, whose `public_posts` drops pages in its SQL and reads on
+  until a page is full. Also safe: a group's members' feed (its posts listed
+  whole, with pages, in `roster::listed`, then journaled), a public group's feed
+  (the whole claimed shelf, then cut), and the node's shelf (pages never written
+  into it).
+- **The one place it could happen: a peek**, someone a signed-in visitor's node
+  holds only a sample of. The fragment ledger was read newest first with a
+  `LIMIT`, and the pages were dropped after. A book the visitor had opened
+  brought its pages into the ledger, the newest rows when the book has just
+  rolled out, so the peek's one page of posts could come back short or empty,
+  with no next page. `fragments::shelf_of` now counts a book's page as not
+  listed (`on_shelf`) and reads on past them until it has its posts. A new test
+  stores three posts, a book and six newer pages; it fails without the fix.
