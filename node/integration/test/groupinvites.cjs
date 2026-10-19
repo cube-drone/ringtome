@@ -153,6 +153,56 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
         assert.equal(await deeSees(post, true), true, 'shown again, dee sees it');
     });
 
+    it('no thanks clears an invite, opened or not, from the list and the bell (2026-10-19)', async () => {
+        const invited = async (name) => {
+            const g = (await ok(await j(ada, `api/identity/${adaRoot}/groups`, { name }), 'found'))
+                .group;
+            await ok(
+                await j(ada, `api/identity/${adaRoot}/groups/${g}/invites`, { invitee: deeRoot }),
+                'invite',
+            );
+            await beat(HOST, 'outbox');
+            for (let i = 0; i < 30; i++) {
+                const mine = await ok(await dee(`api/identity/${deeRoot}/groups`), 'list');
+                if (mine.some((r) => r.group === g)) return g;
+                await wait(400);
+            }
+            assert.fail(`the invite to ${name} reached dee`);
+        };
+        const there = async (g) => ({
+            listed: (await ok(await dee(`api/identity/${deeRoot}/groups`), 'list')).some(
+                (r) => r.group === g,
+            ),
+            rung: (
+                (await (await dee(`api/identity/${deeRoot}/notifications`)).json()).items || []
+            ).some((n) => n.kind === 'group-invite' && n.doc_id === g),
+        });
+
+        const emporium = await invited("Dr. Buttstuff's Butt Emporium");
+        assert.deepEqual(await there(emporium), { listed: true, rung: true });
+        await ok(await j(dee, `api/identity/${deeRoot}/groups/${emporium}/decline`, {}), 'decline');
+        assert.deepEqual(
+            await there(emporium),
+            { listed: false, rung: false },
+            'cleared, unopened',
+        );
+
+        const annex = await invited('The Butt Annex');
+        await ok(await j(dee, `api/identity/${deeRoot}/groups/${annex}/open`, {}), 'open');
+        assert.equal(
+            (await ok(await dee(`api/identity/${deeRoot}/groups`), 'list')).find(
+                (r) => r.group === annex,
+            ).standing,
+            'invited',
+            'opened, it is the group itself that lists it',
+        );
+        await ok(await j(dee, `api/identity/${deeRoot}/groups/${annex}/decline`, {}), 'decline');
+        assert.deepEqual(await there(annex), { listed: false, rung: false }, 'cleared, opened');
+
+        const member = await j(dee, `api/identity/${deeRoot}/groups/${group}/decline`, {});
+        assert.equal(member.status, 400, "a group you're in is left, not declined");
+    });
+
     it('a group nobody invited you to opens nothing', async () => {
         const res = await j(dee, `api/identity/${deeRoot}/groups/${'00'.repeat(16)}/open`, {});
         assert.equal(res.status, 404);

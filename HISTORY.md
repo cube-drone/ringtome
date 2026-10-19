@@ -23828,3 +23828,16 @@ claimed last, on the window, after everything in the page has had it
 (`index.js`, `isMacApp` in `net.js`). Full screen still leaves by the green
 button or its keys. Untried in the app itself; nothing here can press keys in a
 Mac window.
+
+## 2026-10-19: no thanks to a group invite
+
+Curtis: an invite to "DR. BUTTSTUFF'S BUTT EMPORIUM OF BUTTS" shouldn't sit in
+the list forever. An invite now has "no thanks", beside its row in the groups
+list and beside join on the group's page. It writes the group and the moment to
+a private collection of the invitee's (`group_declines`), so every computer of
+theirs clears it. The groups list leaves it out, opened or not; the bell leaves
+out its notice; and the group-sync beat stops keeping it in step for them. The
+group is told nothing. An invite that comes after the no thanks stands, and a
+member is told to leave instead (GROUPS.md §5). A unit test pins which invites a
+no thanks clears, and a `groupinvites.cjs` claim turns down one unopened and one
+opened, and checks a member can't.

@@ -2300,14 +2300,18 @@ fn push_soon(state: &AppState, me: &str, group: GroupId) {
 /// invited to, brought up to date by gossip (plans/NETWORK.md) - the floor under the push
 /// after a write and the sync a person asks for, as the room beat is chat's.
 pub async fn sync_pass(state: AppState) -> Result<()> {
-    let rows: Vec<(Vec<u8>, String)> = state
+    let rows: Vec<(Vec<u8>, String, String)> = state
         .node_db
-        .fetch_all("SELECT group_id, root FROM group_people ORDER BY group_id, root", ())
+        .fetch_all("SELECT group_id, root, standing FROM group_people ORDER BY group_id, root", ())
         .await
         .context("listing the groups to keep in step")?;
-    for (group, root) in rows {
+    for (group, root, standing) in rows {
         let Ok(group) = <[u8; 16]>::try_from(group.as_slice()) else { continue };
         if crate::identity::is_agented(&state.node_db, &root).await.unwrap_or(false) {
+            // An invite said no thanks to isn't kept in step for them (`decline_handler`).
+            if standing == "invited" && invite_declined(&state, &root, &group).await {
+                continue;
+            }
             gossip_group(&state, &root, &group).await;
             // Refolded whether or not anything arrived: it writes nothing unless the lanes, or
             // who is hosted here, moved since - and a node that gained the tables in an upgrade
@@ -2317,6 +2321,21 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
     }
     public_pass(&state).await?;
     Ok(())
+}
+
+/// Did `root` say no thanks to this group's invite, with none since? Asked only of an invitee.
+async fn invite_declined(state: &AppState, root: &str, group: &GroupId) -> bool {
+    let Ok(Some(account)) = crate::identity::account_of(&state.node_db, root).await else {
+        return false;
+    };
+    let Ok(account) = account.parse::<uuid::Uuid>() else { return false };
+    let Ok(data) = store::open(state, &account, root).await else { return false };
+    let (Ok(declined), Ok(notices)) = (declines(&data).await, invite_notices(&data).await) else {
+        return false;
+    };
+    let g = hex::encode(group);
+    let latest = notices.iter().filter(|n| n.0 == g).map(|n| n.3).max();
+    turned_down(&declined, &g, latest)
 }
 
 /// The public groups this node holds but isn't in, kept in step for whoever here they reach
@@ -2727,6 +2746,7 @@ pub fn router(upload_limit: usize) -> Router<AppState> {
         .route("/api/identity/{root}/groups/{group}/join", post(join_handler))
         .route("/api/identity/{root}/groups/{group}/open", post(open_handler))
         .route("/api/identity/{root}/groups/{group}/leave", post(leave_handler))
+        .route("/api/identity/{root}/groups/{group}/decline", post(decline_handler))
         .route("/api/identity/{root}/groups/{group}/remove", post(remove_handler))
         .route("/api/identity/{root}/groups/{group}/unban", post(unban_handler))
         .route("/api/identity/{root}/groups/{group}/demote", post(demote_handler))
@@ -2781,16 +2801,52 @@ pub fn group_route(group_hex: &str) -> String {
 }
 
 /// The group invites this persona's bell holds, as `(group, inviter, name)`: the notice road's
-/// half of an invite (plans/GROUPS.md, section 5), before it's opened.
+/// half of an invite (plans/GROUPS.md, section 5), before it's opened. Never one it said no thanks
+/// to, unless the invite came after.
 async fn invites_received(data: &Store) -> Result<Vec<(String, String, String)>, AppError> {
+    let declined = declines(data).await?;
+    Ok(invite_notices(data)
+        .await?
+        .into_iter()
+        .filter(|(g, _, _, at)| !turned_down(&declined, g, Some(*at)))
+        .map(|(g, inviter, name, _)| (g, inviter, name))
+        .collect())
+}
+
+/// Every group invite notice held, as `(group, inviter, name, when it came)`.
+async fn invite_notices(data: &Store) -> Result<Vec<(String, String, String, i64)>, AppError> {
     Ok(data
         .inbox()
         .page(u32::MAX)
         .await?
         .into_iter()
         .filter(|n| n.kind == crate::notifications::KIND_GROUP_INVITE)
-        .filter_map(|n| Some((n.doc_id?, n.sender_root, n.detail.unwrap_or_default())))
+        .filter_map(|n| {
+            Some((n.doc_id?, n.sender_root, n.detail.unwrap_or_default(), n.timestamp_ms))
+        })
         .collect())
+}
+
+/// The private collection of the group invites a persona said no thanks to (2026-10-19): the group
+/// (hex) to when. Private, so every computer of theirs clears it.
+const DECLINES: &str = "group_declines";
+
+/// The groups `data`'s persona said no thanks to, and when.
+pub(crate) async fn declines(
+    data: &Store,
+) -> Result<std::collections::HashMap<String, i64>, AppError> {
+    let (registers, _) = data.private_registers(DECLINES).all().await?;
+    Ok(registers.into_iter().filter_map(|r| Some((r.key, r.value.parse::<i64>().ok()?))).collect())
+}
+
+/// Did the persona say no thanks to this group's invite? An invite that came after the no thanks
+/// (`invited_ms`) is a new one, and stands.
+pub(crate) fn turned_down(
+    declined: &std::collections::HashMap<String, i64>,
+    group: &str,
+    invited_ms: Option<i64>,
+) -> bool {
+    declined.get(group).is_some_and(|at| invited_ms.is_none_or(|t| t <= *at))
 }
 
 async fn me_of(state: &AppState, session: &Session, root: &str) -> Result<(Store, Root), AppError> {
@@ -2925,7 +2981,7 @@ async fn list_handler(
     Path(root): Path<String>,
 ) -> Answer {
     let (data, _) = me_of(&state, &session, &root).await?;
-    let rows: Vec<(Vec<u8>, String, String, i64)> = state
+    let mut rows: Vec<(Vec<u8>, String, String, i64)> = state
         .node_db
         .fetch_all(
             "SELECT p.group_id, r.name, p.standing, r.public FROM group_people p
@@ -2936,6 +2992,16 @@ async fn list_handler(
         .await
         .context("listing a persona's groups")
         .map_err(AppError::Internal)?;
+    // An invite said no thanks to is gone from the list, opened or not - unless one came after.
+    let declined = declines(&data).await?;
+    if !declined.is_empty() {
+        let notices = invite_notices(&data).await?;
+        rows.retain(|(g, _, standing, _)| {
+            let g = hex::encode(g);
+            let latest = notices.iter().filter(|n| n.0 == g).map(|n| n.3).max();
+            standing != "invited" || !turned_down(&declined, &g, latest)
+        });
+    }
     let mut out: Vec<serde_json::Value> = rows
         .iter()
         .map(|(g, name, standing, public)| {
@@ -3212,6 +3278,29 @@ async fn held_invite(state: &AppState, group: &GroupId, me: &Root) -> Result<Has
         })
         .map(|e| e.hash)
         .ok_or_else(none)
+}
+
+/// POST `.../groups/{group}/decline` - no thanks to an invite (Curtis, 2026-10-19): it leaves the
+/// bell and the groups list, on every computer of the persona's, and this node stops keeping the
+/// group in step for them. Nothing is said to the group: the invite simply stays unanswered, as an
+/// ignored one would. A later invite to it comes through as a new one.
+async fn decline_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, group)): Path<(String, String)>,
+) -> Answer {
+    let (data, me) = me_of(&state, &session, &root).await?;
+    let group = group_of(&group)?;
+    if let Ok((roster, _)) = current(&state, &group, &me).await {
+        if roster.members.contains(&me) {
+            return Err(AppError::BadRequest(crate::msg!(
+                "roster.decline-a-member",
+                "you're in this group - leave it instead"
+            )));
+        }
+    }
+    data.private_registers(DECLINES).set(&hex::encode(group), &now_ms().to_string()).await?;
+    Ok(Json(serde_json::json!({ "group": hex::encode(group), "declined": true })))
 }
 
 /// POST `.../groups/{group}/leave` - leave: retire from every appointment first (a leave ends
@@ -5950,6 +6039,17 @@ mod tests {
 
     /// Two by reliability, then the one least lately tried - a never-tried machine first - and a
     /// dark one only when nothing else is left (plans/NETWORK.md, ruling 4).
+    /// A no thanks clears the invites before it, and a later invite stands (2026-10-19).
+    #[test]
+    fn no_thanks_clears_the_invites_before_it() {
+        let declined: std::collections::HashMap<String, i64> = [("g".to_string(), 100)].into();
+        assert!(turned_down(&declined, "g", Some(90)), "an invite before it");
+        assert!(turned_down(&declined, "g", Some(100)), "and the one it answered");
+        assert!(turned_down(&declined, "g", None), "and the group, with no invite in hand");
+        assert!(!turned_down(&declined, "g", Some(101)), "an invite after it stands");
+        assert!(!turned_down(&declined, "other", Some(1)), "another group's is untouched");
+    }
+
     #[test]
     fn gossip_prefers_the_reliable_and_keeps_a_slot_for_the_rest() {
         let picked = pick_partners(

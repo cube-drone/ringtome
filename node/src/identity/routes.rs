@@ -3531,7 +3531,16 @@ pub(crate) async fn notification_items(
     // Same sentence as the gate's own ("a second surface for a fact the pull path owns"),
     // applied to the copies that got in before the follow began.
     let mut delivered_unowned = Vec::new();
+    // A group invite said no thanks to (roster.rs `decline_handler`) is gone from the bell too.
+    let declined = crate::roster::declines(data).await?;
     for n in delivered {
+        if n.kind == crate::notifications::KIND_GROUP_INVITE
+            && n.doc_id
+                .as_deref()
+                .is_some_and(|g| crate::roster::turned_down(&declined, g, Some(n.timestamp_ms)))
+        {
+            continue;
+        }
         // A followed sender's delivered row yields to the fold's - except a room mention
         // (CHAT.md, slice 6) and a group invite (plans/GROUPS.md), which no fold derives: the
         // envelope is their only road.

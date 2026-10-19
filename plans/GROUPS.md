@@ -307,6 +307,11 @@ Anchors decide what _counts_, not what was _seen_.
     the Potato Bunch"; opening it fetches the group from that node (the door
     already lets an invitee in), so the invitee sees whom they'd be joining.
     Joining then needs nothing more.
+  - **No thanks clears it** (Curtis, 2026-10-19). Turned down, from the list or
+    the group's page, an invite leaves the bell and the groups list on every
+    computer of the invitee's (a private record of theirs, the group and when),
+    and their node stops keeping the group in step. The group is told nothing;
+    the invite just stays unanswered. A later invite comes through.
 - **Joining is the joiner's act** (ruling 1). What makes an "I'm in" valid
   depends on the group's setting:
   - **Invite only**: it cites an invite from an owner. That's either addressed

@@ -93,6 +93,40 @@
     font-weight: 600;
 }
 
+/* An invite in the list, with its "no thanks" beside it (groups.js GroupsTab). */
+.group-row-wrap {
+    display: flex;
+    gap: 0.4rem;
+    align-items: stretch;
+}
+
+.group-row-wrap .group-row {
+    flex: 1;
+    min-width: 0;
+}
+
+.group-invite-acts {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.group-decline {
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid transparent;
+    --line: var(--border);
+    --j: 3px;
+    padding: 0.3rem 0.8rem;
+    cursor: pointer;
+}
+
+.group-decline:hover {
+    color: var(--ink);
+    --line: var(--border-strong);
+}
+
 .group-row-standing {
     color: var(--muted);
     font-size: 0.8rem;

@@ -125,6 +125,15 @@ export const GroupsTab = ({ current, searchQuery = '' }) => {
             setFounding(false);
         }
     };
+    // No thanks to an invite: it leaves the list and the bell, on every computer of yours.
+    const decline = async (group) => {
+        try {
+            await post(`/api/identity/${root}/groups/${group}/decline`);
+        } catch {
+            // The list stays as it was; the next try says the same.
+        }
+        reload();
+    };
     if (!root) return null;
     // The header's words filter the groups by name, as they filter the people (2026-10-18).
     const words = searchQuery.trim().toLowerCase();
@@ -181,8 +190,8 @@ export const GroupsTab = ({ current, searchQuery = '' }) => {
             </p>`
         }
         <div class="groups-list">
-            ${list.map(
-                (g) => html`<a
+            ${list.map((g) => {
+                const row = html`<a
                     key=${g.group}
                     class=${isInvite(g) ? 'group-row group-row-invite jag-line-2' : 'group-row jag-line-2'}
                     href=${groupHref(g.group)}
@@ -194,8 +203,21 @@ export const GroupsTab = ({ current, searchQuery = '' }) => {
                     <span class="group-row-standing">
                         ${(STANDING_WORDS[g.standing] || (() => g.standing))()}
                     </span>
-                </a>`,
-            )}
+                </a>`;
+                // An invite can be turned down from the list, unopened (Curtis, 2026-10-19).
+                return isInvite(g)
+                    ? html`<div class="group-row-wrap" key=${g.group}>
+                          ${row}
+                          <button
+                              class="group-decline jag-line"
+                              title=${t('apps.groups.no-thanks-title', 'no thanks - clear this invite')}
+                              onClick=${() => decline(g.group)}
+                          >
+                              ${t('apps.groups.no-thanks', 'no thanks')}
+                          </button>
+                      </div>`
+                    : row;
+            })}
         </div>
     </div>`;
 };
@@ -338,9 +360,20 @@ export const GroupPage = ({ group, current, searchQuery = '', onSearch }) => {
                     roster.public &&
                     html`<p>${t('apps.groups.joining-a-public-group', "It's a public group: your membership will be public, and its members' public posts as the group will reach the people who follow you, through you.")}</p>`
                 }
-                <button class="group-join jag-line" onClick=${() => act('join')}>
-                    <${Icons.plus} /> ${t('apps.groups.join', 'join')}
-                </button>
+                <div class="group-invite-acts">
+                    <button class="group-join jag-line" onClick=${() => act('join')}>
+                        <${Icons.plus} /> ${t('apps.groups.join', 'join')}
+                    </button>
+                    <button
+                        class="group-decline jag-line"
+                        title=${t('apps.groups.no-thanks-title', 'no thanks - clear this invite')}
+                        onClick=${async () => {
+                            if (await act('decline')) loc.route(groupsHref());
+                        }}
+                    >
+                        ${t('apps.groups.no-thanks', 'no thanks')}
+                    </button>
+                </div>
             </div>`
         }
         <${Members}
