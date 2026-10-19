@@ -23879,3 +23879,12 @@ tried locally first, against a prebuilt binary: it compiled nothing and took
 three seconds. A half that fails re-runs alone. The Mac should now take about as
 long as its slower half (about 50 minutes), with Windows (about an hour) the
 longest job; the build jobs' limit is 120 minutes.
+
+## 2026-10-19: a turned page opens at its top
+
+Curtis: "next" in a book should land at the top of the next page. The reader
+turned pages in place and kept the scroll, so "next" at the foot of a long page
+opened the next one just as far down. Now any page turn - the buttons at the top
+or foot, the contents tree, the arrow keys - brings the top of the reading pane
+back into view when it had scrolled out of it. It's the pane's top, not the
+page's: on a phone the contents tree sits above it.

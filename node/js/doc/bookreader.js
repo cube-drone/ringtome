@@ -126,6 +126,18 @@ export const BookReader = ({ root, book, page: asked, title, group = null }) => 
         ro.observe(el);
         return () => ro.disconnect();
     }, [page, words]);
+    // A turned page opens at its top (Curtis, 2026-10-19): "next" at the foot of a long page left
+    // the next one open at the same depth. However it was turned - the buttons, the tree, the
+    // arrow keys - the top of the reading pane comes into view, if it had scrolled out of it;
+    // not the top of the whole page, which on a phone is the tree above.
+    const pane = useRef(null);
+    const turned = useRef(page);
+    useEffect(() => {
+        if (turned.current === page) return;
+        turned.current = page;
+        const el = pane.current;
+        if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' });
+    }, [page]);
     // The arrow keys turn the pages too (Curtis, 2026-10-02), as the buttons do - and as Writer's
     // do (doc/docapp.js): only while the keyboard is free, and from the cover, right opens the
     // first page. Here, before the early returns: a hook runs on every render.
@@ -231,7 +243,7 @@ export const BookReader = ({ root, book, page: asked, title, group = null }) => 
             </div>`
             }
         </aside>
-        <div class="book-reader-pane">
+        <div class="book-reader-pane" ref=${pane}>
             ${steps}
             ${
                 !page &&
