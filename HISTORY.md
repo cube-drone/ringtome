@@ -23660,9 +23660,9 @@ draws nothing; for trusted speakers, "we trust them".
   no turbolinks, in the chat and on the room card.
 - **The veil counts more as media.** A web address alone on a line (a turbolink,
   which draws a picture's address as the picture and a page's as a card with the
-  page's picture) and a tiled background now count, as well as `![` and
-  `:::media`. A `/ringtome/` or `/@` address doesn't count, since this node
-  draws those cards.
+  page's picture), the `:::turbolink` directive spelled out, and a tiled
+  background now count, as well as `![` and `:::media`. A `/ringtome/` or `/@`
+  address doesn't count, since this node draws those cards.
 - The room's creator stays exempt in a room (Curtis: "you're in their room, you
   must have clicked in"), and not in a chat for two.
 - **Tests:** `chat_media.cjs`'s refusal claim now says the opposite: a web

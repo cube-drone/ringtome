@@ -44,6 +44,11 @@ describe("the veil over a chat line's media", () => {
             'a tile',
         );
         assert.equal(
+            embedsMedia(':::turbolink target=https://example.com/horse.png level=full:::'),
+            true,
+            'the turbolink spelled out',
+        );
+        assert.equal(
             embedsMedia('see https://example.com/page for more'),
             false,
             'a link inside words is only a link',

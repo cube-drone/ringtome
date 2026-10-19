@@ -14,13 +14,13 @@
 // with them. So the exemption holds in a room and lifts in an IM.
 
 /// Does this body draw anything from elsewhere? The spellings a chat line can carry: Marquee's
-/// image shorthand, the media directive, a tiled background, and a web address on a line of its
-/// own - a turbolink, which draws a picture's address as the picture and a page's as a card
-/// with the page's own picture on it. Not a `/ringtome/` or `/@` address, whose card this node
+/// image shorthand, the media directive, a tiled background, the turbolink directive, and a web
+/// address on a line of its own - the turbolink's sugar, which draws a picture's address as the
+/// picture and a page's as a card with the page's own picture on it. Not a `/ringtome/` or `/@` address, whose card this node
 /// draws. Deliberately a cheap text test - a line that merely says `![` in prose wears the
 /// veil, which costs a click and never a picture.
 export const embedsMedia = (words) =>
-    /!\[|:::media\b|\btile:/.test(words || '') ||
+    /!\[|:::(media|turbolink)\b|\btile:/.test(words || '') ||
     (words || '')
         .split('\n')
         .some(
