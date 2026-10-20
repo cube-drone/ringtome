@@ -254,6 +254,11 @@ certificate, is the front's job:
   request on under the origin's name (BunnyCDN: Forward Host Header, off by
   default) leaves the node unable to tell `cube-drone.com` from your own
   address;
+- **send the domain to the node at your origin too**. A web server in front of
+  the node picks a site by that same `Host` header, so add the domain to the
+  node's `server_name` (nginx) or site address (Caddy). Retire whatever that
+  server answered for it before, such as an old blog's site block or an
+  HTTP-to-HTTPS redirect, which loops behind a CDN that pulls over plain HTTP;
 - **keep the cache apart by hostname** (BunnyCDN: Vary Cache → Requested
   Hostname), or `cube-drone.com/` can be answered from your own front page's
   cached copy;

@@ -23924,3 +23924,21 @@ now keeps nothing (`cache_size = 0`, and a negative answer is held for zero
 seconds); these lookups are a few a day. A server whose own system resolver
 caches the same "no" can still lag. SERVER.md's custom-domain section says how
 to clear it.
+
+## 2026-10-20: "check now" says when the domain isn't answering yet
+
+With cube-drone.com proved, Curtis pointed it at Bunny and pressed "check now",
+and nothing visible happened. Bunny answered the domain from another pull zone,
+whose origin sent a 301 back to the same address: an endless redirect. The
+well-known fetch found no answer, and the verified state had no message for
+that. Now a check that leaves a served domain not yet answering says so, and
+names the likely cause: the record is still spreading, or the front doesn't know
+the domain yet.
+
+Behind it, the first cutover's lesson. With cube-drone.com moved to the HDT pull
+zone, Bunny forwarded the Host header to the origin, as it should. The origin's
+nginx serves both sites, and picked the old Hugo blog's server block by that
+header. The earlier redirect loop was most likely that same block's HTTPS
+redirect, which loops behind a CDN that pulls over plain HTTP. SERVER.md's list
+for people's own domains now says to send the domain to the node at the origin
+too.

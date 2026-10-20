@@ -1527,6 +1527,14 @@ const DomainClaim = ({ root }) => {
                         { name: r.record_name },
                     ),
                 );
+            else if (checked && r.serving && !r.served_ms)
+                setNote(
+                    t(
+                        'persona.domain-not-answering',
+                        'Checked just now: {domain} doesn’t answer as this node yet. Its record may still be spreading, or whatever is in front of this node may not know {domain} yet.',
+                        { domain: r.domain },
+                    ),
+                );
         } catch (e) {
             setNote(e.message || t('persona.that-domain-did-not-take', 'that domain did not take'));
         }
