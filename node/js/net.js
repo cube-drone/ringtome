@@ -17,6 +17,7 @@
 // `options` passes through to fetch untouched, which is how `doc/session.js` sets `keepalive` on
 // the unload path (see pure/keepalive.js for why that flag is conditional).
 import { t } from './i18n.js';
+import { cacheKeyed } from './pure/cachekey.js';
 
 /// The shell's key for this launch, or nothing at all in a browser. Read per call rather than
 /// cached: it is set before the first script runs, and a value read once at module load would
@@ -126,7 +127,8 @@ async function apiOnce(path, options = {}) {
     // The caller's own headers are merged rather than replaced, and they win: ours are
     // defaults, and one of them - the launch token - must survive a caller that sets any.
     const { headers: given, ...rest } = options;
-    const res = await fetch(path, {
+    // A GET whose query repeats a key is told apart from its neighbours at the CDN (pure/cachekey.js).
+    const res = await fetch(options.method && options.method !== 'GET' ? path : cacheKeyed(path), {
         credentials: 'same-origin',
         ...rest,
         // A FormData body picks its own multipart Content-Type (boundary included) - naming

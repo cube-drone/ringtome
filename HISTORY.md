@@ -23942,3 +23942,19 @@ header. The earlier redirect loop was most likely that same block's HTTPS
 redirect, which loops behind a CDN that pulls over plain HTTP. SERVER.md's list
 for people's own domains now says to send the domain to the node at the origin
 too.
+
+## 2026-10-20: a CDN can't hand one filter's answer to another
+
+`https://cube-drone.com/?not_bucket=blog&not_bucket=toots&tag=comics` showed a
+toot at the top. The node's search was right. BunnyCDN keys its cache on only
+the first value of a repeated parameter: `?tag=comics&not_bucket=blog` was
+cached first, then answered `...&not_bucket=blog&not_bucket=toots` from that
+copy. Shown by curl with a fresh marker parameter: the one-value request was a
+`MISS`, the two-value one straight after it a `HIT` with the same answer, and
+the two values swapped a `MISS` again. The node can't refuse that from its end:
+the CDN answers from its cache without asking. Now the app's GETs whose query
+repeats a key carry one more parameter, `qk`, a fingerprint of the whole query
+(`js/pure/cachekey.js`, used by `net.js`), which the node ignores. Every other
+address is left as it was. Residual: an address that someone else writes with
+repeated keys, such as a hand-made API call, still shares Bunny's copy with its
+first values.
