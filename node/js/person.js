@@ -575,7 +575,15 @@ export const PersonCard = ({
             ${head}
             ${person.isYou && you}
             ${children}
-            <${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} slug=${person.slug} />
+            ${
+                /* A verified domain is their address (Curtis, 2026-10-20): any node's People finds
+                them by it (webpath.rs `domain_address`), so the long address and the node's short
+                name step aside for the domain their names already wear. */ ''
+            }
+            ${
+                !person.domain &&
+                html`<${AddressRow} root=${root} via=${person.via} hosted=${person.hosted} slug=${person.slug} />`
+            }
             ${
                 /* Your relationship sits above their bio: how you stand with someone is the
                 first thing you want when you arrive on their page, and the bio is what you

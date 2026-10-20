@@ -24061,3 +24061,13 @@ Residuals:
 - a post's address on the domain opens the person, not yet the post;
 - the plan's pinning, and surfacing a change of domain, are still to do;
 - the live cube-drone.com's well-known gains its `endpoint` at the next deploy.
+
+## 2026-10-20: a verified domain is the profile's address
+
+Curtis: with a domain finding its person from any node's People, a profile with
+a verified domain needn't show "address" (the long Ringtome address) or "on this
+node" (the node's `@name`) any more. The person card leaves out `AddressRow`
+when the persona's names wear a verified domain (`person.domain`). The domain
+under their name is the address now. Untouched: the QR code (already the domain
+where it is their canonical address) and the address rows of everyone without
+one. Not looked at in a browser.
