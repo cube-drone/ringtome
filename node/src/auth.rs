@@ -229,16 +229,36 @@ pub fn secret_eq(a: &str, b: &str) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+/// The account a typed sign-in name means: the account's own name first, as ever, else the one
+/// account whose personas answer to it (`identity::accounts_answering_to`: a display name, the
+/// speakable words, the key). A name more than one account's personas answer to is refused with
+/// its own words, since the uniform failure would read as a wrong password. None: nobody.
+pub async fn account_for_sign_in(db: &Db, typed: &str) -> Result<Option<String>, AppError> {
+    if let Some(id) = account_id_by_username(db, typed).await? {
+        return Ok(Some(id));
+    }
+    let mut accounts = crate::identity::accounts_answering_to(db, typed).await?;
+    if accounts.len() > 1 {
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.more-than-one-goes-by-that",
+            "more than one person here goes by that name - try your sign-in name, or your address"
+        )));
+    }
+    Ok(accounts.pop())
+}
+
 /// Verify credentials and, on success, create a session; returns the session token.
 pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, AppError> {
-    // Match the stored slug regardless of the case/whitespace typed. A username that isn't even a
-    // valid slug simply won't match any row - fall through to the uniform "invalid credentials".
-    let lookup = username.trim().to_ascii_lowercase();
-    let row: Option<(String, String)> = db
-        .fetch_optional("SELECT id, password_hash FROM accounts WHERE username = ?1", (lookup,))
-        .await
-        .context("looking up account")
-        .map_err(AppError::Internal)?;
+    // The account the name means (`account_for_sign_in`), case and spaces aside. A name that
+    // means nobody falls through to the uniform "invalid credentials".
+    let row: Option<(String, String)> = match account_for_sign_in(db, username).await? {
+        Some(id) => db
+            .fetch_optional("SELECT id, password_hash FROM accounts WHERE id = ?1", (id,))
+            .await
+            .context("looking up account")
+            .map_err(AppError::Internal)?,
+        None => None,
+    };
 
     // Uniform failure whether the account is missing or the password is wrong (no user enumeration).
     let (account_id, phc) = row.ok_or_else(|| {

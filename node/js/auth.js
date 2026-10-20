@@ -316,6 +316,7 @@ export const Welcome = ({ session }) => {
                         <input
                             class="jag-field"
                             type="text"
+                            placeholder=${t('auth.any-name-of-yours', 'your sign-in name, or a name your persona goes by')}
                             value=${username}
                             onInput=${(e) => setUsername(e.currentTarget.value)}
                             autocomplete="username"
@@ -394,6 +395,11 @@ export const Welcome = ({ session }) => {
         `;
     }
 
+    // Signing in takes a persona's names too (auth.rs `account_for_sign_in`, 2026-10-20); a new
+    // account's name is only its own.
+    const namePlaceholder = registering
+        ? ''
+        : t('auth.any-name-of-yours', 'your sign-in name, or a name your persona goes by');
     const tab = (which, icon, label) =>
         html`<button
             key=${which}
@@ -436,6 +442,7 @@ export const Welcome = ({ session }) => {
                     <input
                         class="jag-field"
                         type="text"
+                        placeholder=${namePlaceholder}
                         value=${username}
                         onInput=${(e) => setUsername(e.currentTarget.value)}
                         autocomplete="username"

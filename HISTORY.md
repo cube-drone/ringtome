@@ -24108,3 +24108,27 @@ The recovery form ("lost your password?") takes a picture as well as a paste:
 `jsqr@1.4.0`, Apache-2.0, pinned) at three sizes up to 1600px on the longest
 side. A code holding 64 hex digits fills the spare-key field as if pasted, for
 the person to see before going on; anything else says it couldn't find one.
+
+## 2026-10-20: sign in by any name your persona goes by
+
+An account's sign-in name is the easiest thing to forget, so sign-in and
+spare-key recovery now take the names its personas go by.
+`auth::account_for_sign_in` tries the account's own name first, as before.
+Failing that, it asks `identity::accounts_answering_to`, which looks over every
+persona hosted here for:
+
+- a display name, case aside, read from the byline cache;
+- the two speakable words, `agony-dwell` or `agony dwell` (new
+  `speakable::words`);
+- the key, in any spelling `/id/` takes.
+
+A name that more than one account's personas answer to is refused with its own
+400, "more than one person here goes by that name - try your sign-in name, or
+your address", instead of the uniform 401, which would read as a wrong password.
+A wrong password is still the uniform 401. The name field on sign in and
+recovery says so in its placeholder.
+
+Acceptance: a claim in `auth.cjs` covers every spelling and the ambiguity, and
+one in `recovery.cjs` covers recovery by display name and words. A rename
+reaches the byline cache a beat after the save (fanout.rs), so both claims wait
+for it.

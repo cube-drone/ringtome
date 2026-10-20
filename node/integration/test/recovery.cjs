@@ -19,6 +19,17 @@ const { makeUserFetch } = require('./helpers.cjs');
 const PW = 'hunter2hunter2';
 const NEW_PW = 'correct-horse-battery';
 
+// A rename reaches the byline cache a beat after the save (fanout.rs refreshes it on the public
+// move), and sign-in by display name reads that cache: ask again until it answers.
+async function until200(ask, ms = 15000) {
+    const end = Date.now() + ms;
+    for (;;) {
+        const resp = await ask();
+        if (resp.status === 200 || Date.now() > end) return resp;
+        await new Promise((r) => setTimeout(r, 200));
+    }
+}
+
 async function recover(fetch, username, secret, newPassword) {
     return fetch('api/auth/recover', {
         method: 'POST',
@@ -71,6 +82,30 @@ describe('spare-key password reset (Flow A, scratch)', function () {
         // Every session from before the reset is gone - including the identity-creating one.
         const stale = await user('api/auth/whoami');
         assert.equal(stale.status, 401, 'pre-reset sessions are purged');
+    });
+
+    it("takes the persona's display name or words in place of the sign-in name (2026-10-20)", async function () {
+        const { speakable } = await import('../../js/speakable.js');
+        const user = await makeUserFetch({ prefix: 'rescuename', password: PW });
+        const created = await (await user('api/identity', { method: 'POST' })).json();
+        const name = `Forgetful Fern ${Math.random().toString(36).slice(2, 8)}`;
+        await user(`api/identity/${created.root_pubkey}/profile`, {
+            method: 'POST',
+            body: JSON.stringify({ field: 'name', value: name }),
+        });
+
+        const byName = await until200(() =>
+            recover(makeFetch(), name, created.recovery_secret, NEW_PW),
+        );
+        assert.equal(byName.status, 200, `by display name: ${await byName.text()}`);
+        const words = speakable(created.root_pubkey).split('-').slice(0, 2).join('-');
+        const byWords = await recover(makeFetch(), words, created.recovery_secret, PW);
+        assert.equal(byWords.status, 200, `by the speakable words: ${await byWords.text()}`);
+        const back = await makeFetch()('api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ username: name, password: PW }),
+        });
+        assert.equal(back.status, 200, 'and signs in by the display name with the new password');
     });
 
     it('every unprovable failure is the same uniform refusal', async function () {

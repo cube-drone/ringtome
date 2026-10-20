@@ -653,6 +653,7 @@ export default {
     'auth.wrong-name-or-pin': 'wrong name or PIN',
     'auth.locked-out-your-spare-key': 'locked out? your spare key gets you back in.',
     'auth.name': 'name',
+    'auth.any-name-of-yours': 'your sign-in name, or a name your persona goes by',
     'auth.spare-key': 'spare key',
     'auth.paste-your-spare-key-here': 'paste your spare key here - the whole file is fine',
     'auth.or-a-picture-of-its-qr': 'or pick a picture of its QR code',
@@ -2313,6 +2314,7 @@ export default {
     'auth.username-cant-start-or-end': "username can't start or end with - or _",
     'auth.username-cant-contain-consecutive-separators': 'no double - or _',
     'auth.username-username-is-taken': 'username "{username}" is taken',
+    'auth.more-than-one-goes-by-that': 'more than one person here goes by that name - try your sign-in name, or your address',
     'auth.invalid-credentials': 'wrong name or password',
     'auth.invalid-credentials-2': 'wrong name or password',
 

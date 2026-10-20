@@ -16,6 +16,17 @@ async function register(fetch, username, password) {
     });
 }
 
+// A rename reaches the byline cache a beat after the save (fanout.rs refreshes it on the public
+// move), and sign-in by display name reads that cache: ask again until it answers.
+async function until200(ask, ms = 15000) {
+    const end = Date.now() + ms;
+    for (;;) {
+        const resp = await ask();
+        if (resp.status === 200 || Date.now() > end) return resp;
+        await new Promise((r) => setTimeout(r, 200));
+    }
+}
+
 async function login(fetch, username, password) {
     return fetch('api/auth/login', {
         method: 'POST',
@@ -136,6 +147,63 @@ describe('auth', function () {
         // Nonexistent user (same 401 - no user enumeration).
         const missing = await login(fetch, uniqueUsername(), 'whatever');
         assert.equal(missing.status, 401, 'nonexistent user should be 401');
+    });
+
+    it("signs in by a persona's display name, its words or its key, and refuses a name two accounts share (2026-10-20)", async function () {
+        // The account's own name is the easiest thing to forget, so sign-in and spare-key recovery
+        // take the names its personas go by (auth.rs `account_for_sign_in`).
+        const { speakable } = await import('../../js/speakable.js');
+        const password = 'a-good-password';
+        const make = async (name) => {
+            const fetch = makeFetch();
+            const username = uniqueUsername();
+            assert.equal((await register(fetch, username, password)).status, 200);
+            assert.equal((await login(fetch, username, password)).status, 200);
+            const { root_pubkey: root } = await (
+                await fetch('api/identity', { method: 'POST' })
+            ).json();
+            const set = await fetch(`api/identity/${root}/profile`, {
+                method: 'POST',
+                body: JSON.stringify({ field: 'name', value: name }),
+            });
+            assert.equal(set.status, 200, 'naming the persona');
+            return { username, root };
+        };
+        const tag = Math.random().toString(36).slice(2, 8);
+        const solo = await make(`Solo Sal ${tag}`);
+        const signsInAs = async (typed, why) => {
+            const fetch = makeFetch();
+            const resp = await until200(() => login(fetch, typed, password));
+            assert.equal(resp.status, 200, `${why}: ${await resp.text()}`);
+            assert.equal(
+                (await (await fetch('api/auth/whoami')).json()).username,
+                solo.username,
+                why,
+            );
+        };
+        const words = speakable(solo.root).split('-').slice(0, 2);
+        await signsInAs(`solo sal ${tag}`, 'the display name, case aside');
+        await signsInAs(words.join('-'), 'the two speakable words');
+        await signsInAs(words.join(' '), 'the words with a space');
+        await signsInAs(speakable(solo.root), 'the whole address');
+        await signsInAs(speakable(solo.root).split('-')[2], 'the bare key');
+        await signsInAs(solo.root, 'the key in hex');
+
+        // A wrong password is still the uniform 401, whichever name found the account.
+        assert.equal((await login(makeFetch(), `Solo Sal ${tag}`, 'nope-nope')).status, 401);
+
+        // Two accounts whose personas share a name: refused, saying why.
+        await make(`Common Mike ${tag}`);
+        await make(`Common Mike ${tag}`);
+        // Until both names reach the byline cache, the name means one account or none.
+        const end = Date.now() + 15000;
+        let twice = await login(makeFetch(), `Common Mike ${tag}`, password);
+        while (twice.status !== 400 && Date.now() < end) {
+            await new Promise((r) => setTimeout(r, 200));
+            twice = await login(makeFetch(), `Common Mike ${tag}`, password);
+        }
+        assert.equal(twice.status, 400, 'a name two accounts answer to is ambiguous');
+        assert.match(await twice.text(), /more than one person here goes by that name/);
     });
 
     it('allows short PINs on a loopback node, rejects only empty', async function () {

@@ -60,6 +60,13 @@ pub fn speakable(root: &[u8; 32]) -> String {
     format!("{a}-{b}-{}", to_base58(root))
 }
 
+/// The two checksum words alone, `word-word`: the persona as said aloud, and one of the names its
+/// account signs in by (`identity::accounts_answering_to`).
+pub fn words(root: &[u8; 32]) -> String {
+    let (a, b) = words_for(root);
+    format!("{a}-{b}")
+}
+
 /// What a candidate `/id/` segment turned out to be.
 #[derive(Debug, PartialEq)]
 pub enum Parsed {

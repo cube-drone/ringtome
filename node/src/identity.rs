@@ -340,7 +340,7 @@ pub async fn recover_password(
     let proven_pubkey = recovery_key.verifying_key().to_bytes();
 
     let account_id =
-        crate::auth::account_id_by_username(&state.node_db, username).await?.ok_or_else(uniform)?;
+        crate::auth::account_for_sign_in(&state.node_db, username).await?.ok_or_else(uniform)?;
     let account_uuid = Uuid::parse_str(&account_id)
         .map_err(|e| AppError::Internal(anyhow!("malformed account id: {e}")))?;
     let identities = list_for_account(&state.node_db, &account_uuid).await?;
@@ -493,6 +493,42 @@ pub async fn detach(node_db: &Db, account_id: &Uuid, root_hex: &str) -> Result<(
 /// per the data-access convention, `identities` SQL lives only in this module.
 pub async fn is_agented(node_db: &Db, root_pubkey: &str) -> Result<bool, AppError> {
     Ok(hosted(node_db).await?.iter().any(|h| h.root == root_pubkey))
+}
+
+/// The accounts whose personas answer to `typed` as a person would say it (Curtis, 2026-10-20: the
+/// sign-in name is the easiest thing to forget, so sign-in and spare-key recovery take a persona's
+/// names too, `auth::account_for_sign_in`): its key in any spelling `/id/` takes, its two speakable
+/// words (`agony-dwell`, or with a space), or its display name, case aside. Distinct accounts,
+/// so one account's two personas going by one name are one answer; more than one account is the
+/// caller's ambiguity to refuse.
+pub async fn accounts_answering_to(node_db: &Db, typed: &str) -> Result<Vec<String>, AppError> {
+    let typed = typed.trim();
+    if typed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let hosted = hosted(node_db).await?;
+    let mut accounts = std::collections::BTreeSet::new();
+    if let Some(crate::speakable::Parsed::Ok(root)) = crate::speakable::parse(typed) {
+        let root = hex::encode(root);
+        accounts.extend(hosted.iter().filter(|h| h.root == root).map(|h| h.account.clone()));
+        return Ok(accounts.into_iter().collect());
+    }
+    let said = typed.to_lowercase();
+    let as_words = said.split_whitespace().collect::<Vec<_>>().join("-");
+    let roots: Vec<String> = hosted.iter().map(|h| h.root.clone()).collect();
+    let bylines = crate::profiles::bylines(node_db, &roots).await.map_err(AppError::Internal)?;
+    for h in hosted.iter() {
+        let named = bylines
+            .get(&h.root)
+            .and_then(|b| b.name.as_deref())
+            .is_some_and(|name| name.trim().to_lowercase() == said);
+        let worded = crate::pubkey::decode(&h.root)
+            .is_some_and(|raw| crate::speakable::words(&raw) == as_words);
+        if named || worded {
+            accounts.insert(h.account.clone());
+        }
+    }
+    Ok(accounts.into_iter().collect())
 }
 
 /// One hosted identity, as the lookups below want it.
