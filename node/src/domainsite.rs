@@ -232,7 +232,10 @@ async fn answer(state: &AppState, site: &Site, mut req: Request, next: Next) -> 
     let query = req.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
     match path.as_str() {
         "/.well-known/ringtome" => {
-            return crate::crawl::for_anyone(Json(crate::domains::well_known_body(&site.root)))
+            return crate::crawl::for_anyone(Json(crate::domains::well_known_body(
+                &site.root,
+                &state.endpoint.id().to_string(),
+            )))
         }
         "/robots.txt" => return crate::crawl::domain_robots(state, &site.root, &site.domain).await,
         "/sitemap.xml" => {

@@ -308,11 +308,13 @@ record is missing.
 
 - **Bylines** show `cube-drone.com ✓` for a verified claim, beside or instead of
   the node-local @name.
-- **The People paste box** accepts a bare domain. The node looks up the TXT
-  record, which gives the root. It then asks `https://<domain>/api/node/at/`
-  (WEB_ADDRESSES slice 3's door) for the serving node's key, which becomes the
-  `?via=` hint for the first sync. A domain served elsewhere still gives the
-  root, and the persona is found the ordinary way.
+- **The People paste box** accepts a domain, bare or as a URL, anywhere on the
+  site (_built 2026-10-20_, `webpath::domain_address`). The node looks up the
+  TXT record, which gives the root: only the record, so a site can only find
+  whoever its domain vouches for. Where a node serves the domain, its
+  `/.well-known/ringtome` names that node's key (`endpoint`), which becomes the
+  `?via=` hint for the first sync. A domain served by nobody still gives the
+  root, and the persona is found the ordinary way. The answer is kept an hour.
 - **First resolution is pinned.** A client that has known cube-drone under
   `cube-drone.com` surfaces a change of domain, or a domain that now names a
   different root, as an event to show the user, never a silent switch (_Naming_:
@@ -416,7 +418,9 @@ order only has to keep the site up through the switch:
 4. **Certificates without an operator** - the Bunny adapter first, since it's
    the front horsedrawingtycoon.com runs; Caddy's `domain-ok` door and a certbot
    loop when an operator asks for one. Needed once other people add domains.
-5. **Finding by domain** - the paste box, pinning, surfacing a change.
+5. **Finding by domain** - the paste box _built 2026-10-20_; a post's address on
+   the domain opens the person, not yet the post. Pinning, and surfacing a
+   change, still to do.
 6. **The words in the HTML** - WEB_ADDRESSES slice 5, moved up: a blog on its
    own domain is exactly what search engines are asked to index, and today they
    see only the head.

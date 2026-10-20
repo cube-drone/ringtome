@@ -167,6 +167,28 @@ function withPath(parts) {
     return parts;
 }
 
+/// A website's address, pasted (2026-10-20): `https://cube-drone.com/`, anywhere on it, or the bare
+/// `cube-drone.com` (plans/CUSTOM_DOMAINS.md, section 7), as `{ origin, host, url }` - `url` the
+/// whole address to ask the node about as a person's own domain (webpath.rs `domain_address`).
+/// Only a host that is a name with a dot and a real-looking top level - not an address in an IP,
+/// not the half-typed `https://cube-drone.c`. Null for anything else, and for a Ringtome or
+/// `@name` address, which have ways of their own.
+const SITE = /^(https?:\/\/(([a-z0-9-]+\.)+[a-z][a-z0-9-]*[a-z0-9]))(:\d+)?(\/[^\s]*)?$/i;
+const BARE = /^(([a-z0-9-]+\.)+[a-z]{2,}[a-z0-9-]*)\/?$/i;
+export function parseDomainAddress(text) {
+    const t = (text || '').trim();
+    if (parseRingtome(t) || parseAtAddress(t)) return null;
+    const bare = BARE.exec(t);
+    if (bare) {
+        const host = bare[1].toLowerCase();
+        return { origin: `https://${host}`, host, url: `https://${host}/` };
+    }
+    const m = SITE.exec(t);
+    // A node's own paths, even ill-formed ones, are a node's address and never a person's site.
+    if (!m || /^\/(ringtome|id)(\/|$)/.test(m[5] || '')) return null;
+    return { origin: m[1].toLowerCase(), host: m[2].toLowerCase(), url: t };
+}
+
 /// The address as THIS node shows it: the origin dropped, whatever it was, the hints kept. Null
 /// for anything that is not a Ringtome address - which stays exactly as written.
 export function rehome(text) {

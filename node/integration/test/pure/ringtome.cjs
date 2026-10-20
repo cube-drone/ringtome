@@ -251,6 +251,40 @@ describe("another node's @name address (plans/WEB_ADDRESSES.md, slice 3)", () =>
         assert.equal(r.parseAtAddress('https://h.example/people'), null);
     });
 
+    it("a website's address is asked about as a person's own domain (2026-10-20)", () => {
+        assert.deepEqual(r.parseDomainAddress(' https://Cube-Drone.com/ '), {
+            origin: 'https://cube-drone.com',
+            host: 'cube-drone.com',
+            url: 'https://Cube-Drone.com/',
+        });
+        assert.deepEqual(
+            r.parseDomainAddress('Cube-Drone.com'),
+            {
+                origin: 'https://cube-drone.com',
+                host: 'cube-drone.com',
+                url: 'https://cube-drone.com/',
+            },
+            'bare, as section 7 has it',
+        );
+        assert.equal(r.parseDomainAddress('https://cube-drone.com').host, 'cube-drone.com');
+        assert.equal(
+            r.parseDomainAddress('http://art.lassam.net/leek-soup?x=1').host,
+            'art.lassam.net',
+        );
+        for (const not of [
+            'cube-drone',
+            'cube-drone.c',
+            'https://cube-drone',
+            'https://cube-drone.c',
+            'https://10.0.0.1/',
+            'https://horsedrawingtycoon.com/@cube-drone',
+            'https://horsedrawingtycoon.com/ringtome/user/AbCd',
+            'ftp://cube-drone.com/',
+            'squad-drama',
+        ])
+            assert.equal(r.parseDomainAddress(not), null, not);
+    });
+
     it("opens the answer here: the post by id, a folder by its path, or the person, with the node's key", () => {
         assert.equal(
             r.localOfAnswer({ post: DOC, via: 'K' }, SEG),

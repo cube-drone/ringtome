@@ -307,13 +307,16 @@ const WEB_ADDRESS_MAX_BYTES: usize = 16 * 1024;
 /// copied off one node's website opens in a reader's own app, where they can comment. This node's
 /// own addresses are answered here; another node's are asked of its `/api/node/at/...`, through
 /// the unfurler's guarded fetch (public addresses only, pinned, no redirects inward), and kept an
-/// hour. None for anything that isn't such an address, or that names nothing.
+/// hour. Any other address is asked about as a person's own domain (`domain_address`). None for
+/// anything that names nothing.
 pub async fn web_address(state: &crate::AppState, raw: &str) -> Option<serde_json::Value> {
     let url = url::Url::parse(raw.trim()).ok()?;
     if !matches!(url.scheme(), "http" | "https") {
         return None;
     }
-    let rest = url.path().strip_prefix("/@")?;
+    let Some(rest) = url.path().strip_prefix("/@") else {
+        return domain_address(state, &url).await;
+    };
     let (slug, after) = rest.split_once('/').unwrap_or((rest, ""));
     let slug = crate::slugs::normalise(slug)?;
     let after = percent_decoded(after.trim_matches('/'))?;
@@ -379,6 +382,41 @@ pub async fn web_address(state: &crate::AppState, raw: &str) -> Option<serde_jso
         return None; // a path that names nothing there
     }
     asked.insert(lookup, answer.clone()).await;
+    Some(answer)
+}
+
+/// A person's own domain, pasted (2026-10-20, Curtis: "users who've tied a domain to their persona
+/// are extremely easy to find"): `https://cube-drone.com/`, anywhere on it, as the persona its
+/// TXT record names - the proof the ✓ rests on, so a domain can only ever find whoever it vouches
+/// for, whatever its website says. Where a node serves the domain, its well-known file adds that
+/// node's key, the way to reach them; otherwise they're found by their key. Kept an hour, as
+/// another node's `@name` answers are. None for this node's own address, or a domain that names
+/// nobody.
+async fn domain_address(state: &crate::AppState, url: &url::Url) -> Option<serde_json::Value> {
+    let domain = crate::domains::normalise(url.host_str()?)?;
+    let own = state
+        .config
+        .public_url
+        .as_deref()
+        .and_then(|u| url::Url::parse(u).ok())
+        .and_then(|mine| mine.host_str().map(str::to_ascii_lowercase));
+    if own.as_deref() == Some(domain.as_str()) {
+        return None;
+    }
+    static ASKED: std::sync::OnceLock<moka::future::Cache<String, serde_json::Value>> =
+        std::sync::OnceLock::new();
+    let asked = ASKED.get_or_init(|| {
+        moka::future::Cache::builder().max_capacity(4096).time_to_live(WEB_ADDRESS_TTL).build()
+    });
+    if let Some(hit) = asked.get(&domain).await {
+        return Some(hit);
+    }
+    let root = crate::domains::txt_root(state, &domain).await?;
+    let mut answer = serde_json::json!({ "root": hex::encode(root), "domain": domain });
+    if let Some(endpoint) = crate::domains::serving_endpoint(state, &domain, &root).await {
+        answer["endpoint"] = serde_json::json!(endpoint);
+    }
+    asked.insert(domain, answer.clone()).await;
     Some(answer)
 }
 

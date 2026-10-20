@@ -24014,3 +24014,50 @@ re-checks every claim it holds, its own personas' and other nodes', about daily
 (`domains::pass`), and hourly while lookups fail. A verified claim rides out
 three days of failed lookups, then lapses. A domain that answers but no longer
 names the persona lapses at once.
+
+## 2026-10-20: "enter the room" only where the room lets you in
+
+A signed-out reader saw "enter the room" on a room's card and followed it to
+"this document is private". Rooms have no anonymous chatters, and Curtis: nor
+should they. Curtis also asked to drop the door for a signed-in reader who can't
+get in. The door now needs a persona (`roomDoor` in `postentry.js`). Signed in,
+whoever can open the room's post can enter it (CHAT.md, ruling 2), so the door
+already matched for every room but a group's, which admits only the group's
+members (`room_admits`). For a group's room the card asks for this persona's
+groups (owner or member, not invited). That happens once per persona per page,
+and only when such a card is shown. The door waits on the answer, and stays if
+the asking fails. No suite covered the door, and it hasn't been looked at in a
+browser.
+
+## 2026-10-20: a domain pasted into People finds its person
+
+Curtis's QR code now says `https://cube-drone.com/`, and he asked whether
+pasting that into People on any node would find him. It wouldn't: the box knew
+Ringtome addresses and `@name` addresses, and a bare domain fell through to the
+filter. Now (CUSTOM_DOMAINS slice 5, the paste box) a website's address, bare
+(`cube-drone.com`) or as a URL anywhere on the site, goes to the node's
+`/api/web-address` like an `@name` address. The node
+(`webpath::domain_address`):
+
+- looks up `_ringtome.<domain>` (`domains::txt_root`; the TXT read is now
+  `txt_records`, shared with the check). The record alone names the person, so a
+  site can only ever find whoever its domain vouches for, whatever its website
+  says. A record naming two people names nobody;
+- where a node serves the domain, reads its `/.well-known/ringtome`, which now
+  carries the serving node's key (`endpoint`), for the reader's `?via=` hint. It
+  counts only when the file names the same person and says served. A domain
+  served by nobody gives the person by their key alone;
+- keeps the answer an hour, as another node's `@name` answers are.
+
+The People box has a pure `parseDomainAddress` (`pure/ringtome.js`): a name with
+a dot and a real top level, never an IP, a half-typed `https://cube-drone.c`, or
+a node's own `/ringtome` and `/id` paths. Suite: the domains file's "every node
+checks for itself" gains a reader on node B pasting three domains: proved by
+record alone, served (the key rides along), and a site whose record names nobody
+(404, whatever its well-known says).
+
+Residuals:
+
+- a post's address on the domain opens the person, not yet the post;
+- the plan's pinning, and surfacing a change of domain, are still to do;
+- the live cube-drone.com's well-known gains its `endpoint` at the next deploy.

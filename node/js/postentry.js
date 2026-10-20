@@ -834,6 +834,27 @@ const RoomLinkCard = ({ target }) => {
 };
 registerRoomCard(RoomLinkCard);
 
+/// The groups a persona is in - an owner or a member, not an invitee - asked once per persona per
+/// page, for a group room's door. Null when the asking fails: the door then stays, as it was.
+const groupsAsked = new Map();
+const groupsIn = (root) => {
+    if (!groupsAsked.has(root))
+        groupsAsked.set(
+            root,
+            api(`/api/identity/${root}/groups`)
+                .then(
+                    (rows) =>
+                        new Set(
+                            (rows || [])
+                                .filter((r) => r.standing === 'owner' || r.standing === 'member')
+                                .map((r) => r.group),
+                        ),
+                )
+                .catch(() => null),
+        );
+    return groupsAsked.get(root);
+};
+
 const PostEntryBody = ({
     item,
     current,
@@ -1104,7 +1125,23 @@ const PostEntryBody = ({
         ]
             .filter(Boolean)
             .join(', ');
-    const roomDoor = bodyShown && item.format === 'room';
+    // "enter the room" only where the room would let this reader in (Curtis, 2026-10-20: a
+    // signed-out reader followed it to "this document is private"). A room has no anonymous
+    // chatters, so signed out is no door. Signed in, whoever can open the post can enter it
+    // (CHAT.md, ruling 2), except a group's room, which admits only the group's members
+    // (`room_admits`): those wait on this persona's groups.
+    const roomGroup = item.format === 'room' && item.group ? item.group.id : null;
+    const [inRoomGroup, setInRoomGroup] = useState(null);
+    useEffect(() => {
+        if (!roomGroup || !me) return undefined;
+        let live = true;
+        groupsIn(me).then((ids) => live && setInRoomGroup(!ids || ids.has(roomGroup)));
+        return () => {
+            live = false;
+        };
+    }, [roomGroup, me]);
+    const roomDoor =
+        bodyShown && item.format === 'room' && !!me && (!roomGroup || inRoomGroup === true);
     // Whether this reader could answer (Curtis, 2026-09-29): not with replies turned off (the settled
     // wish), and not signed out - the front page's visitors. Where they cannot, the foot is just the
     // post's own link rather than an offer that goes nowhere.
@@ -1970,8 +2007,8 @@ const PostEntryBody = ({
             ${
                 /* The card's foot (Curtis, 2026-09-27): centred under the post, large and bold, stacking
                 whichever apply - "see more…" when something was held back; "enter the room" on a
-                room (CHAT.md, ruling 1 - a stranger's shell has no rooms, so the door is the
-                sign-in); and the replies: "N replies" whenever this node knows of any ("how many
+                room the reader may enter (`roomDoor`: never signed out, and a group's only for its
+                members); and the replies: "N replies" whenever this node knows of any ("how many
                 replies we THINK exist", honest-partial like the thread it summarizes), titled post
                 or not, else "reply" - to the post's own page, where the thread assembles - unless
                 "see more…" already stands there. A room takes no replies, so offers none. */ ''

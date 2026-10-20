@@ -146,6 +146,45 @@ describe('custom domains: a claim counts once its domain says it back', function
         await pretendDns(HOST, claim.record_name, []);
         await pretendDns(HOST_B, claim.record_name, []);
     });
+
+    it('a domain pasted into any node finds whoever its record names (2026-10-20)', async () => {
+        const ada = await makeUserFetch({ prefix: 'dompaa' });
+        const root = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const { record_value: value } = await (await ada(`api/identity/${root}/domain`)).json();
+        const bea = await makeUserFetch({ prefix: 'dompab', host: HOST_B });
+        await bea('api/identity', { method: 'POST' });
+        const ask = (url) => bea(`api/web-address?url=${encodeURIComponent(url)}`);
+
+        // Proved by its record alone: the person, anywhere on the site, by their key.
+        const own = domainFor('paste');
+        await pretendDns(HOST_B, `_ringtome.${own}`, [value]);
+        const found = await (await ask(`https://${own}/some/page`)).json();
+        assert.equal(found.root, root, 'the record names them');
+        assert.equal(found.endpoint, undefined, 'no node serves it: found by their key');
+
+        // Served: its well-known file says by which node, the way to reach them.
+        const served = domainFor('pasted');
+        await pretendDns(HOST_B, `_ringtome.${served}`, [value]);
+        await j(makeFetch(HOST_B), 'test/well-known', {
+            domain: served,
+            body: { root: value.split('=')[1], served: true, endpoint: 'abc123' },
+        });
+        const reached = await (await ask(`https://${served}/`)).json();
+        assert.equal(reached.root, root);
+        assert.equal(reached.endpoint, 'abc123', "the serving node's key rides along");
+
+        // A site whose record names nobody finds nobody, whatever its website says.
+        const nobody = domainFor('nobody');
+        await j(makeFetch(HOST_B), 'test/well-known', {
+            domain: nobody,
+            body: { root: value.split('=')[1], served: true, endpoint: 'abc123' },
+        });
+        assert.equal((await ask(`https://${nobody}/`)).status, 404);
+
+        for (const d of [own, served]) await pretendDns(HOST_B, `_ringtome.${d}`, []);
+        for (const d of [served, nobody])
+            await j(makeFetch(HOST_B), 'test/well-known', { domain: d });
+    });
 });
 
 describe('custom domains: a proved domain is the persona’s own website', function () {

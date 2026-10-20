@@ -10,7 +10,7 @@ import { useLocation } from 'preact-iso';
 
 import { openMirror, useLive } from '../mirror.js';
 import { parseIdReference, parseSpeakable, speakable } from '../speakable.js';
-import { parseAtAddress, parseRingtome } from '../pure/ringtome.js';
+import { parseAtAddress, parseDomainAddress, parseRingtome } from '../pure/ringtome.js';
 import { webAddress } from '../links.js';
 import { PersonRow } from '../person.js';
 import { api } from '../net.js';
@@ -58,10 +58,12 @@ export const PeopleLookup = ({ query, onQuery }) => {
             loc.route(thing.path);
             return;
         }
-        const at = parseAtAddress(value || '');
+        // Under a node's short name, or a person's own domain (2026-10-20: the domain their QR code
+        // says, pasted into any node's People, finds them): either way the node asks who it is.
+        const at = parseAtAddress(value || '') || parseDomainAddress(value || '');
         if (at && at.origin !== window.location.origin.toLowerCase()) {
             onQuery(value);
-            webAddress(value.trim()).then((local) => {
+            webAddress(at.url || value.trim()).then((local) => {
                 if (!local) return; // nothing there: the words stay a filter
                 onQuery('');
                 loc.route(local);

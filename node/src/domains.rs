@@ -138,17 +138,16 @@ fn pretend(state: &AppState, domain: &str) -> bool {
     state.config.local_test && domain.ends_with(".test")
 }
 
-/// Ask DNS for `_ringtome.<domain>`.
-async fn txt_says(state: &AppState, domain: &str, root: &[u8; 32]) -> Said {
+/// The TXT records at `_ringtome.<domain>`, each read whole - None for no answer at all (DNS down,
+/// too slow), an empty list for "no such record".
+async fn txt_records(state: &AppState, domain: &str) -> Option<Vec<String>> {
     let name = record_name(domain);
     if pretend(state, domain) {
-        let held = TEST_TXT.lock().unwrap();
-        let said = held.get(&name).is_some_and(|vs| vs.iter().any(|v| names(v, root)));
-        return if said { Said::Yes } else { Said::No };
+        return Some(TEST_TXT.lock().unwrap().get(&name).cloned().unwrap_or_default());
     }
     static RESOLVER: std::sync::OnceLock<Option<hickory_resolver::TokioResolver>> =
         std::sync::OnceLock::new();
-    let Some(resolver) = RESOLVER.get_or_init(|| {
+    let resolver = RESOLVER.get_or_init(|| {
         hickory_resolver::TokioResolver::builder_tokio()
             .and_then(|mut b| {
                 // No cache (2026-10-19): a claim is checked the moment it's made, before its
@@ -161,28 +160,48 @@ async fn txt_says(state: &AppState, domain: &str, root: &[u8; 32]) -> Said {
             })
             .map_err(|e| tracing::warn!(error = %e, "no DNS resolver for custom domains"))
             .ok()
-    }) else {
-        return Said::Unknown;
-    };
+    });
+    let resolver = resolver.as_ref()?;
     match tokio::time::timeout(LOOKUP_TIMEOUT, resolver.txt_lookup(format!("{name}."))).await {
-        Ok(Ok(found)) => {
-            let said = found.answers().iter().any(|record| match &record.data {
-                // A long record arrives as several strings, read as one.
-                hickory_resolver::proto::rr::RData::TXT(txt) => names(
-                    &txt.txt_data.iter().map(|s| String::from_utf8_lossy(s)).collect::<String>(),
-                    root,
-                ),
-                _ => false,
-            });
-            if said {
-                Said::Yes
-            } else {
-                Said::No
-            }
-        }
-        Ok(Err(e)) if e.is_no_records_found() => Said::No,
-        _ => Said::Unknown,
+        Ok(Ok(found)) => Some(
+            found
+                .answers()
+                .iter()
+                .filter_map(|record| match &record.data {
+                    // A long record arrives as several strings, read as one.
+                    hickory_resolver::proto::rr::RData::TXT(txt) => Some(
+                        txt.txt_data.iter().map(|s| String::from_utf8_lossy(s)).collect::<String>(),
+                    ),
+                    _ => None,
+                })
+                .collect(),
+        ),
+        Ok(Err(e)) if e.is_no_records_found() => Some(Vec::new()),
+        _ => None,
     }
+}
+
+/// Ask DNS for `_ringtome.<domain>`.
+async fn txt_says(state: &AppState, domain: &str, root: &[u8; 32]) -> Said {
+    match txt_records(state, domain).await {
+        Some(records) if records.iter().any(|v| names(v, root)) => Said::Yes,
+        Some(_) => Said::No,
+        None => Said::Unknown,
+    }
+}
+
+/// The persona a domain's TXT record names (2026-10-20: a domain pasted into People finds who it
+/// vouches for) - None when it names nobody, or more than one.
+pub async fn txt_root(state: &AppState, domain: &str) -> Option<[u8; 32]> {
+    let mut roots = txt_records(state, domain).await?.into_iter().filter_map(|v| {
+        let key = v.trim().strip_prefix(RECORD_PREFIX)?.trim().to_string();
+        match crate::speakable::parse(&key) {
+            Some(crate::speakable::Parsed::Ok(root)) => Some(root),
+            _ => None,
+        }
+    });
+    let root = roots.next()?;
+    roots.all(|r| r == root).then_some(root)
 }
 
 /// What the domain's `/.well-known/ringtome` said: whether it names the root, and whether a node
@@ -220,16 +239,22 @@ fn well_known_of(body: &[u8], root: &[u8; 32]) -> WellKnown {
 }
 
 /// Ask the domain's website for `/.well-known/ringtome`, through the unfurler's guarded fetch.
-async fn well_known_says(state: &AppState, domain: &str, root: &[u8; 32]) -> WellKnown {
+/// The domain's `/.well-known/ringtome`, fetched (or, for the rig's pretend domains, as pretended).
+async fn well_known_fetch(state: &AppState, domain: &str) -> Result<Vec<u8>, String> {
     if pretend(state, domain) {
-        let held = TEST_WELL_KNOWN.lock().unwrap();
-        return match held.get(domain) {
-            Some(body) => well_known_of(body, root),
-            None => WellKnown { said: Said::No, served: Some(false) },
-        };
+        return TEST_WELL_KNOWN
+            .lock()
+            .unwrap()
+            .get(domain)
+            .cloned()
+            .ok_or_else(|| "the server answered 404".to_string());
     }
     let url = format!("https://{domain}/.well-known/ringtome");
-    match crate::net::unfurl::fetch_media_bytes(&url, WELL_KNOWN_MAX_BYTES, false).await {
+    crate::net::unfurl::fetch_media_bytes(&url, WELL_KNOWN_MAX_BYTES, false).await
+}
+
+async fn well_known_says(state: &AppState, domain: &str, root: &[u8; 32]) -> WellKnown {
+    match well_known_fetch(state, domain).await {
         Ok(body) => well_known_of(&body, root),
         // The site answered, with something that isn't the file: a 404, or a page too big to be
         // it - another site is answering the domain, which is "no", not "no answer".
@@ -240,9 +265,26 @@ async fn well_known_says(state: &AppState, domain: &str, root: &[u8; 32]) -> Wel
     }
 }
 
-/// What a node serving `root`'s domain answers at its `/.well-known/ringtome`.
-pub fn well_known_body(root: &[u8; 32]) -> serde_json::Value {
-    serde_json::json!({ "root": crate::webpath::short_of(root), "served": true })
+/// What a node serving `root`'s domain answers at its `/.well-known/ringtome`: whose it is, that a
+/// node serves it, and that node's key (`endpoint`), so a node a reader pastes the domain into
+/// can reach them straight away (`webpath::web_address`).
+pub fn well_known_body(root: &[u8; 32], endpoint: &str) -> serde_json::Value {
+    serde_json::json!({ "root": crate::webpath::short_of(root), "served": true, "endpoint": endpoint })
+}
+
+/// The key of the node serving `domain` as `root`'s, as its well-known file says - None when no
+/// node serves it, or the file names someone else.
+pub async fn serving_endpoint(state: &AppState, domain: &str, root: &[u8; 32]) -> Option<String> {
+    let body = well_known_fetch(state, domain).await.ok()?;
+    let said: serde_json::Value = serde_json::from_slice(&body).ok()?;
+    let ours = well_known_of(&body, root);
+    if ours.said != Said::Yes || ours.served != Some(true) {
+        return None;
+    }
+    said.get("endpoint")
+        .and_then(|e| e.as_str())
+        .filter(|e| !e.is_empty() && e.len() <= 128)
+        .map(str::to_string)
 }
 
 /// What this node last found about one persona's claim.
@@ -628,12 +670,12 @@ mod tests {
     #[test]
     fn only_a_serving_node_s_file_says_the_domain_is_served() {
         let root = [7u8; 32];
-        let ours = well_known_body(&root).to_string();
+        let ours = well_known_body(&root, "k").to_string();
         assert_eq!(well_known_of(ours.as_bytes(), &root).served, Some(true));
         let hugo = format!(r#"{{"root":"{}"}}"#, crate::webpath::short_of(&root));
         let said = well_known_of(hugo.as_bytes(), &root);
         assert_eq!((said.said, said.served), (Said::Yes, Some(false)), "the ✓, not the address");
-        let someone = well_known_body(&[8u8; 32]).to_string();
+        let someone = well_known_body(&[8u8; 32], "k").to_string();
         assert_eq!(well_known_of(someone.as_bytes(), &root).served, Some(false), "not for them");
     }
 
