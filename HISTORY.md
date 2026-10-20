@@ -24071,3 +24071,14 @@ when the persona's names wear a verified domain (`person.domain`). The domain
 under their name is the address now. Untouched: the QR code (already the domain
 where it is their canonical address) and the address rows of everyone without
 one. Not looked at in a browser.
+
+## 2026-10-20: "follow someone new" atop People
+
+People's tab opens with a large accent-outlined button (filled was too loud),
+**follow someone new**, that unfolds into one paste field. An address pasted
+there - a shared link, an `/id/` path, a bare address, an `@node` address or a
+person's own domain - goes where the search bar would send it: both now ask one
+resolver, `addressDestination` in `apps/people.js`, factored out of
+`PeopleLookup`. Unlike the search bar, the field doesn't filter the shelf; under
+it a line says what to paste, that a partial paste isn't an address yet, that
+another node is being asked, or that nobody answered.

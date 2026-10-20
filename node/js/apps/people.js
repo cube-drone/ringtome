@@ -4,7 +4,7 @@
 // everyone your ledger holds a relationship with, straight off the mirror's `contacts` kind
 // (The Browser Is a View: a dial turned on any of your computers re-sorts this list live).
 import { h } from 'preact';
-import { useState, useEffect, useMemo } from 'preact/hooks';
+import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -25,6 +25,7 @@ import { t } from '../i18n.js';
 import { LabelFacets, usePicks } from '../facets.js';
 import { tagCounts, rowsTagged } from '../pure/contacttags.js';
 import { GroupsTab, PeopleTabs } from '../groups.js';
+import { Icons } from '../icons.js';
 
 const html = htm.bind(h);
 
@@ -33,6 +34,25 @@ const SORT_WORDS = {
     trust: () => t('apps.people.sort-by-trust', 'by trust'),
     interest: () => t('apps.people.sort-by-interest', 'by interest'),
     recent: () => t('apps.people.sort-by-recent-activity', 'by recent activity'),
+};
+
+/// Where a pasted address goes, for the search bar and the "follow someone new" box alike: a path
+/// to route to now, a promise of one (null when nobody answers), or null when it isn't an address.
+const addressDestination = (value) => {
+    // A post's address goes to the post (plans/WEB_ADDRESSES.md, slice 3): by its id or its path
+    // anywhere, or under another node's `@name` - copied off someone's site, opened here to
+    // comment on. A person's address goes to the person, as ever.
+    const thing = parseRingtome(value || '');
+    if (thing && thing.kind && thing.kind !== 'doc') return thing.path;
+    // Under a node's short name, or a person's own domain (2026-10-20: the domain their QR code
+    // says, pasted into any node's People, finds them): either way the node asks who it is.
+    const at = parseAtAddress(value || '') || parseDomainAddress(value || '');
+    if (at && at.origin !== window.location.origin.toLowerCase())
+        return webAddress(at.url || value.trim());
+    const ref = parseIdReference(value || '');
+    if (ref && parseSpeakable(ref.seg))
+        return `/ringtome/user/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`;
+    return null;
 };
 
 /// People's answer to the search bar, riding the same header slot as every other app's -
@@ -49,36 +69,19 @@ export const PeopleLookup = ({ query, onQuery }) => {
     const loc = useLocation();
 
     const take = (value) => {
-        // A post's address goes to the post (plans/WEB_ADDRESSES.md, slice 3): by its id or its path
-        // anywhere, or under another node's `@name` - copied off someone's site, opened here to
-        // comment on. A person's address goes to the person, as ever.
-        const thing = parseRingtome(value || '');
-        if (thing && thing.kind && thing.kind !== 'doc') {
-            onQuery('');
-            loc.route(thing.path);
+        const dest = addressDestination(value);
+        if (typeof dest === 'string') {
+            onQuery(''); // the address was a destination, never a filter to come back to
+            loc.route(dest);
             return;
         }
-        // Under a node's short name, or a person's own domain (2026-10-20: the domain their QR code
-        // says, pasted into any node's People, finds them): either way the node asks who it is.
-        const at = parseAtAddress(value || '') || parseDomainAddress(value || '');
-        if (at && at.origin !== window.location.origin.toLowerCase()) {
-            onQuery(value);
-            webAddress(at.url || value.trim()).then((local) => {
+        onQuery(value);
+        if (dest)
+            dest.then((local) => {
                 if (!local) return; // nothing there: the words stay a filter
                 onQuery('');
                 loc.route(local);
             });
-            return;
-        }
-        const ref = parseIdReference(value || '');
-        if (ref && parseSpeakable(ref.seg)) {
-            onQuery(''); // the address was a destination, never a filter to come back to
-            loc.route(
-                `/ringtome/user/${ref.seg}${ref.via ? `?via=${encodeURIComponent(ref.via)}` : ''}`,
-            );
-            return;
-        }
-        onQuery(value);
     };
 
     // On a group's page the words search the group (groups.js); a pasted address still goes.
@@ -95,6 +98,80 @@ export const PeopleLookup = ({ query, onQuery }) => {
             />
         </form>
     `;
+};
+
+/// "Follow someone new" (Curtis, 2026-10-20): the search bar's paste, as a big button atop the
+/// shelf for whoever doesn't think to paste into a search bar. It opens one field; an address
+/// pasted there goes where the search bar would send it, and anything else says why it waits.
+const FollowSomeoneNew = () => {
+    const loc = useLocation();
+    const [open, setOpen] = useState(false);
+    const [value, setValue] = useState('');
+    // '' | 'partial' (not an address yet) | 'asking' (another node is asked) | 'nobody'
+    const [status, setStatus] = useState('');
+    const latest = useRef('');
+    const field = useRef(null);
+    useEffect(() => {
+        if (open && field.current) field.current.focus();
+    }, [open]);
+
+    const take = (v) => {
+        setValue(v);
+        latest.current = v;
+        const dest = addressDestination(v);
+        if (typeof dest === 'string') {
+            loc.route(dest);
+            return;
+        }
+        if (!dest) {
+            setStatus(v.trim() ? 'partial' : '');
+            return;
+        }
+        setStatus('asking');
+        dest.then((local) => {
+            if (latest.current !== v) return; // they've pasted something else since
+            if (local) loc.route(local);
+            else setStatus('nobody');
+        });
+    };
+
+    if (!open)
+        return html`<button type="button" class="people-follow-new jag-line-2" onClick=${() => setOpen(true)}>
+            <${Icons.plus} /> ${t('apps.people.follow-someone-new', 'follow someone new')}
+        </button>`;
+    const notes = {
+        '': t(
+            'apps.people.follow-paste-what',
+            'a link to their page, their address, or their own domain',
+        ),
+        partial: t('apps.people.follow-not-an-address', "that isn't a whole address yet"),
+        asking: t('apps.people.follow-asking', 'asking who that is…'),
+        nobody: t('apps.people.follow-nobody', 'nobody answers at that address'),
+    };
+    return html`<form class="people-follow-new-box" onSubmit=${(e) => e.preventDefault()}>
+        <span class="people-follow-new-row">
+            <input
+                ref=${field}
+                class="people-follow-new-field jag-field"
+                type="text"
+                placeholder=${t('apps.people.paste-an-address-here', 'paste an address here')}
+                value=${value}
+                onInput=${(e) => take(e.currentTarget.value)}
+            />
+            <button
+                type="button"
+                class="people-follow-new-close"
+                title=${t('apps.people.never-mind', 'never mind')}
+                onClick=${() => {
+                    setOpen(false);
+                    take('');
+                }}
+            >
+                <${Icons.close} />
+            </button>
+        </span>
+        <span class="people-follow-new-note">${notes[status]}</span>
+    </form>`;
 };
 
 // The suggested shelf: friends-of-friends whose chains the speculative pass has actually
@@ -260,6 +337,7 @@ const PeopleShelves = ({ current, admin = false, searchQuery }) => {
     return html`
         <div class="people-inner">
             <${PeopleTabs} tab="people" />
+            <${FollowSomeoneNew} />
             ${
                 alsoMe.length > 0 &&
                 html`<div class="people-known people-also-me">

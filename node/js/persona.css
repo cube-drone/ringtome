@@ -1150,6 +1150,70 @@
     gap: 0.4rem;
 }
 
+/* "Follow someone new" (apps/people.js): a large accent-lined button atop the shelf, the whole
+   measure wide - outlined, not filled (Curtis, 2026-10-20: filled was too loud) - and the paste
+   field it opens into. */
+.people-follow-new {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 0.6rem;
+    padding: 0.9rem 1rem;
+    background: none;
+    color: var(--teal);
+    --line: var(--teal);
+    --j: 5px;
+    font: inherit;
+    font-size: 1.15rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.people-follow-new-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+}
+
+.people-follow-new-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.people-follow-new-field {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 1.1rem;
+    color: var(--ink);
+    background-color: var(--field);
+    --line: var(--teal);
+    --j: 3px;
+    padding: 0.75rem 0.9rem;
+}
+
+.people-follow-new-field:focus {
+    outline: none;
+}
+
+.people-follow-new-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.2rem;
+    padding: 0.3rem;
+    cursor: pointer;
+}
+
+.people-follow-new-note {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
 
 /* Contact tags on the ledger (2026-09-10): the post card's own chips and "+ tag". */
 .ledger-tags {
