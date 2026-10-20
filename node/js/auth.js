@@ -11,6 +11,7 @@ import htm from 'htm';
 import { api, isDevice, isLinuxApp } from './net.js';
 import { t } from './i18n.js';
 import { Icons } from './icons.js';
+import { readQr } from './qrread.js';
 import { DownloadPanel } from './downloads.js';
 import { Marquee } from './frontdoor.js';
 
@@ -190,6 +191,8 @@ export const Welcome = ({ session }) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [spareKey, setSpareKey] = useState('');
+    // Reading the spare key's QR code from a picture: '' | 'reading' | 'read' | 'none'.
+    const [qrRead, setQrRead] = useState('');
     // Re-homing: revealed only when the server answers 409 ("this key is real, but the
     // account holds siblings") - the proven persona then moves to a fresh account.
     const [needsNewName, setNeedsNewName] = useState(false);
@@ -204,7 +207,29 @@ export const Welcome = ({ session }) => {
     const importing = mode === 'import';
     const registering = mode === 'register' || importing;
     const availability = useAvailability(username, registering);
+    // On a local device the account's secret is a PIN (Curtis, 2026-10-20): it only guards this
+    // computer's own server, and "password" made it sound like the network's.
+    const pin = isDevice();
     const newNameAvailability = useAvailability(newUsername, needsNewName);
+
+    // A picture of the spare key's QR code (persona.js shows one, 2026-10-20) in place of pasting
+    // it: what the code says lands in the field as if pasted, for the person to see before going on.
+    const readPicture = async (file) => {
+        if (!file) return;
+        setQrRead('reading');
+        let said = null;
+        try {
+            said = await readQr(file);
+        } catch {
+            said = null; // not a picture this browser can open
+        }
+        if (said && /[0-9a-f]{64}/i.test(said)) {
+            setSpareKey(extractSecret(said));
+            setQrRead('read');
+        } else {
+            setQrRead('none');
+        }
+    };
 
     const submit = async (e) => {
         e.preventDefault();
@@ -241,6 +266,9 @@ export const Welcome = ({ session }) => {
             if (mode === 'recover' && err.status === 409) {
                 setNeedsNewName(true);
                 setError(err.message);
+            } else if (pin && err.status === 401 && mode === 'login') {
+                // The server's "wrong name or password", in the PIN's word.
+                setError(t('auth.wrong-name-or-pin', 'wrong name or PIN'));
             } else {
                 setError(err.message);
             }
@@ -306,8 +334,22 @@ export const Welcome = ({ session }) => {
                             required
                         ></textarea>
                     </label>
+                    <label class="spare-picture jag-line">
+                        <${Icons.qrCode} /> ${t('auth.or-a-picture-of-its-qr', 'or pick a picture of its QR code')}
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange=${(e) => {
+                                readPicture(e.currentTarget.files[0]);
+                                e.currentTarget.value = ''; // the same picture, picked again, still reads
+                            }}
+                        />
+                    </label>
+                    ${qrRead === 'reading' && html`<p class="field-note">${t('auth.reading-the-picture', 'reading the picture…')}</p>`}
+                    ${qrRead === 'read' && html`<p class="field-note ok">${t('auth.read-the-spare-key', 'found your spare key in the picture')}</p>`}
+                    ${qrRead === 'none' && html`<p class="field-note bad">${t('auth.no-spare-key-in-the-picture', "couldn't find a spare key's QR code in that picture - try a closer, sharper one")}</p>`}
                     <label>
-                        ${t('auth.new-password', 'new password')}
+                        ${pin ? t('auth.new-pin', 'new PIN') : t('auth.new-password', 'new password')}
                         <input
                             class="jag-field"
                             type="password"
@@ -409,7 +451,7 @@ export const Welcome = ({ session }) => {
                 </p>`
                 }
                 <label>
-                    ${t('auth.password', 'password')}
+                    ${pin ? t('auth.pin', 'PIN') : t('auth.password', 'password')}
                     <input
                         class="jag-field"
                         type="password"
@@ -448,7 +490,7 @@ export const Welcome = ({ session }) => {
                     type="button"
                     class="skip-link"
                     onClick=${() => switchMode('recover')}
-                >${t('auth.lost-your-password', 'lost your password?')}</button>`
+                >${pin ? t('auth.lost-your-pin', 'lost your PIN?') : t('auth.lost-your-password', 'lost your password?')}</button>`
                 }
             </form>`
             }

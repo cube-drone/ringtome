@@ -24082,3 +24082,29 @@ resolver, `addressDestination` in `apps/people.js`, factored out of
 `PeopleLookup`. Unlike the search bar, the field doesn't filter the shelf; under
 it a line says what to paste, that a partial paste isn't an address yet, that
 another node is being asked, or that nobody answered.
+
+## 2026-10-20: the spare key as a QR code
+
+The spare-key ceremony (`SpareKeyCeremony` in `persona.js`) shows the key as a
+QR code under its words, beside "download it": qr.js's `QrCode`, saying the key
+alone, exactly as written. The words above it now end "Take a picture of it on
+your phone."
+
+## 2026-10-20: a PIN on a local device
+
+In the desktop app (`isDevice()`), the sign-in screens call the account's secret
+a PIN: "PIN" on sign in, new here and import user, "new PIN" when the spare key
+lets you back in, "lost your PIN?", and "wrong name or PIN" for the server's 401
+at sign-in. It guards only the computer's own server, and "password" sounded
+like the network's. Anything is still accepted, not only digits. A node's
+sign-up password keeps its name.
+
+## 2026-10-20: the spare key from a picture of its QR code
+
+The recovery form ("lost your password?") takes a picture as well as a paste:
+"or pick a picture of its QR code" opens a file picker, and `readQr` (new,
+`qrread.js`) finds the code in the image. It uses the browser's
+`BarcodeDetector` where there is one, and otherwise jsQR (new dependency,
+`jsqr@1.4.0`, Apache-2.0, pinned) at three sizes up to 1600px on the longest
+side. A code holding 64 hex digits fills the spare-key field as if pasted, for
+the person to see before going on; anything else says it couldn't find one.

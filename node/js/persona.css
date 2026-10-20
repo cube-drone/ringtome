@@ -156,6 +156,12 @@
     user-select: all;
 }
 
+/* The spare key as a QR code, under its words: big enough for a phone to read across a desk. */
+.spare-key-qr {
+    width: min(14rem, 100%);
+    align-self: center;
+}
+
 .ceremony-download {
     background: none;
     border: 1px solid transparent;
@@ -236,6 +242,35 @@
 .spare-paste:focus {
     outline: none;
     --line: var(--teal);
+}
+
+/* The recovery form's "or pick a picture of its QR code" (auth.js): a file input dressed as a
+   quiet outlined button; the input itself is hidden inside the label it opens from. */
+.welcome-form .spare-picture {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    align-self: center;
+    --line: var(--border-strong);
+    --j: 3px;
+    padding: 0.4rem 1rem;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.welcome-form .spare-picture:hover,
+.welcome-form .spare-picture:focus-within {
+    --line: var(--teal);
+    color: var(--teal);
+}
+
+.spare-picture input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
 }
 
 /* --- your computers --- */

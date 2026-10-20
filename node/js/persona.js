@@ -24,6 +24,7 @@ import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.j
 import { personaHue, shortcode } from './pure/person.js';
 import { bannerStyle, ownDomainAnswered } from './person.js';
 import { Icons } from './icons.js';
+import { QrCode } from './qr.js';
 import { t, tNodes } from './i18n.js';
 import { askYes } from './modal.js';
 import { Version } from './version.js';
@@ -543,8 +544,14 @@ export const SpareKeyCeremony = ({ persona }) => {
                         >`,
                     },
                 )}
+                ${' '}${t('persona.take-a-picture-of-it', 'Take a picture of it on your phone.')}
             </p>
             <code class="spare-key">${secret}</code>
+            ${
+                /* The same key as a QR code (Curtis, 2026-10-20): a photo of it, or another phone's camera,
+                keeps it off this computer. It says the key alone, exactly as written above. */ ''
+            }
+            <${QrCode} text=${secret} className="qr-code spare-key-qr" />
             <button class="ceremony-download" onClick=${download}>${t('persona.download-it', 'download it')}</button>
             ${error && html`<p class="form-error">${error}</p>`}
             <label class="ceremony-confirm">
