@@ -38,6 +38,10 @@ const RECHECK_MS: i64 = 24 * 60 * 60 * 1000;
 const RETRY_MS: i64 = 60 * 60 * 1000;
 /// How long a verified claim stays verified while its lookups fail outright.
 const GRACE_MS: i64 = 3 * 24 * 60 * 60 * 1000;
+/// The least time between two checks a person asks for (2026-10-20): anyone may claim a domain
+/// now, and every check asks DNS and fetches from the domain uncached, so a held-down "check now"
+/// is one lookup, not hundreds. The rig's pretend domains aren't held to it.
+const CHECK_GAP_MS: i64 = 10_000;
 const LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const WELL_KNOWN_MAX_BYTES: usize = 4096;
 
@@ -466,7 +470,7 @@ pub struct DomainPut {
 async fn owner_answer(
     state: &AppState,
     root_hex: &str,
-    allowed: bool,
+    may_serve: bool,
 ) -> Result<serde_json::Value, AppError> {
     let root = crate::pubkey::decode(root_hex)
         .ok_or_else(|| AppError::BadRequest(crate::msg!("domains.bad-root", "bad root pubkey")))?;
@@ -484,8 +488,8 @@ async fn owner_answer(
         "serving": crate::domainsite::site_of_root(state, root_hex).await.is_some(),
         "custom_domains": state.config.custom_domains,
         "target": target(state),
-        // Node administrators only, for now (`allowed`).
-        "allowed": allowed,
+        // Whether this node would serve the domain for them: its administrators' only, for now.
+        "may_serve": may_serve,
     }))
 }
 
@@ -499,18 +503,12 @@ fn target(state: &AppState) -> Option<String> {
     })
 }
 
-/// Custom domains are for node administrators only, for now (Curtis, 2026-10-18: "complicated
-/// enough that I think we should gate it"): only they may claim one or ask about it, and only
-/// theirs are served (`domainsite::read_sites`). Anyone may withdraw a claim.
-async fn allowed(state: &AppState, session: &Session) -> Result<bool, AppError> {
+/// Serving a domain is for node administrators only, for now (Curtis, 2026-10-18: "complicated
+/// enough that I think we should gate it"): only theirs are served (`domainsite::read_sites`).
+/// Claiming one, and its ✓, is anyone's (2026-10-20: "simply attaching a verified domain to their
+/// profile is a useful tool").
+async fn may_serve(state: &AppState, session: &Session) -> Result<bool, AppError> {
     crate::auth::has_tag(&state.node_db, &session.account.id, crate::auth::TAG_NODE_ADMIN).await
-}
-
-fn refused() -> AppError {
-    AppError::Forbidden(crate::msg!(
-        "domains.admins-only",
-        "for now, only this node's administrators can give a persona its own domain"
-    ))
 }
 
 /// The memo brought up to the profile as signed now, before the owner is told about it: the
@@ -533,8 +531,8 @@ pub async fn domain_get(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     caught_up(&state, &data, &root).await?;
-    let allowed = allowed(&state, &session).await?;
-    Ok(Json(owner_answer(&state, &root, allowed).await?))
+    let may_serve = may_serve(&state, &session).await?;
+    Ok(Json(owner_answer(&state, &root, may_serve).await?))
 }
 
 /// `PUT /api/identity/{root}/domain`: claim a domain (`""` withdraws the claim), and check it.
@@ -555,31 +553,33 @@ pub async fn domain_put(
             ))
         })?
     };
-    let allowed = allowed(&state, &session).await?;
-    if !allowed && !value.is_empty() {
-        return Err(refused());
-    }
     data.profile().set(FIELD, &value).await?;
     caught_up(&state, &data, &root).await?;
     if !value.is_empty() {
         check(&state, &root).await.map_err(AppError::Internal)?;
     }
-    Ok(Json(owner_answer(&state, &root, allowed).await?))
+    let may_serve = may_serve(&state, &session).await?;
+    Ok(Json(owner_answer(&state, &root, may_serve).await?))
 }
 
-/// `POST /api/identity/{root}/domain/check`: ask DNS again, now.
+/// `POST /api/identity/{root}/domain/check`: ask DNS again, now - unless it was asked moments ago
+/// (`CHECK_GAP_MS`), when the answer is what was found then.
 pub async fn domain_check(
     session: Session,
     State(state): State<AppState>,
     Path(root): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !allowed(&state, &session).await? {
-        return Err(refused());
-    }
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     caught_up(&state, &data, &root).await?;
-    check(&state, &root).await.map_err(AppError::Internal)?;
-    Ok(Json(owner_answer(&state, &root, true).await?))
+    let held = proof_of(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    let lately = held
+        .as_ref()
+        .is_some_and(|p| !pretend(&state, &p.domain) && now_ms() - p.checked_ms < CHECK_GAP_MS);
+    if !lately {
+        check(&state, &root).await.map_err(AppError::Internal)?;
+    }
+    let may_serve = may_serve(&state, &session).await?;
+    Ok(Json(owner_answer(&state, &root, may_serve).await?))
 }
 
 #[cfg(test)]

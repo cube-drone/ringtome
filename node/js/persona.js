@@ -1546,9 +1546,7 @@ const DomainClaim = ({ root }) => {
             body: JSON.stringify({ domain: draft }),
         });
     const check = () => ask(`/api/identity/${root}/domain/check`, { method: 'POST' }, true);
-    // A node's administrators only, for now (2026-10-18); anyone else sees the field only to
-    // withdraw a claim they already hold.
-    if (!held || (!held.allowed && !held.domain)) return null;
+    if (!held) return null;
     const same = (draft || '').trim().toLowerCase() === (held.domain || '');
     const copy = (text) => writeClipboard(text).catch(() => {});
     return html`
@@ -1579,7 +1577,11 @@ const DomainClaim = ({ root }) => {
                 held.state === 'verified' &&
                 html`<small class="profile-domain-note">${t('persona.domain-proved', '{domain} says this is you ✓', { domain: held.domain })}</small>`
             }
-            ${held.state === 'verified' && html`<${DomainServing} held=${held} busy=${busy} onCheck=${check} copy=${copy} />`}
+            ${
+                /* A verified domain is anyone's; serving it is the node's administrators' add-on,
+                for now (2026-10-20). */ ''
+            }
+            ${held.state === 'verified' && held.may_serve && html`<${DomainServing} held=${held} busy=${busy} onCheck=${check} copy=${copy} />`}
             ${
                 held.domain &&
                 held.state !== 'verified' &&

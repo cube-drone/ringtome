@@ -39,6 +39,18 @@ describe('a person, rendered', () => {
         assert.deepEqual(displayNames({ words: 'point-cheer' }), ['point-cheer']);
     });
 
+    it('a verified domain stands in for the words, but never leaves anyone nameless (2026-10-20)', () => {
+        const domain = 'cube-drone.com';
+        assert.deepEqual(displayNames({ name: 'Cube Drone', words: 'squad-drama', domain }), [
+            'Cube Drone',
+        ]);
+        assert.deepEqual(
+            displayNames({ nickname: 'Curt', name: 'Cube Drone', words: 'squad-drama', domain }),
+            ['Curt', 'Cube Drone'],
+        );
+        assert.deepEqual(displayNames({ words: 'squad-drama', domain }), ['squad-drama']);
+    });
+
     it('names the chip sizes, smallest first', () => {
         assert.deepEqual(PERSON_SIZES, ['mini', 'small']);
     });

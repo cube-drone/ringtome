@@ -18,8 +18,14 @@ export function personaHue(rootHex) {
 /// (the word you chose - fully private, nobody else ever sees it), their self-configured
 /// name second (their claim), the speakable words always last (the anchor that cannot lie).
 /// Absent ones drop out; the first survivor is the primary.
-export function displayNames({ nickname, name, words }) {
-    return [nickname, name, words].filter(Boolean);
+///
+/// A domain this node has found naming them back (plans/CUSTOM_DOMAINS.md) is an anchor too, and
+/// one a person reads (Curtis, 2026-10-20: "once the UI can show a verified domain for my
+/// identity, showing 'squad-drama' may no longer be necessary"): beside it the words step aside -
+/// but only when there's a name to lead with, so nobody is left nameless.
+export function displayNames({ nickname, name, words, domain }) {
+    const names = [nickname, name].filter(Boolean);
+    return domain && names.length ? names : [...names, words].filter(Boolean);
 }
 
 /// The widget sizes, smallest first - the chip's two, then the shapes that are their own

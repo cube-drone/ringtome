@@ -23979,3 +23979,38 @@ nothing of directives, spans or emoji.
 
 One old test assumed Markdown: `_soft_` is literal text in Marquee, which only
 uses `*`. It now says `*soft*`.
+
+## 2026-10-20: a verified domain stands in for the speakable words
+
+Curtis, with cube-drone.com verified: his names read "Cube Drone · squad-drama ·
+cube-drone.com ✓", and "once the UI can show a verified domain for my identity,
+showing 'squad-drama' may no longer be necessary". The words are the anchor that
+can't lie, and a domain this node has found naming them back is one too, and one
+a person can read. `displayNames` (`pure/person.js`) now drops the words beside
+a verified domain, but only when a name or a nickname leads, so nobody is left
+nameless. Every person widget that stacks names (the banner, the card) reads
+"Cube Drone · cube-drone.com ✓". The words are still the person's `words`, for
+whatever addresses by them.
+
+## 2026-10-20: a verified domain is anyone's; serving it stays the administrators'
+
+Curtis: "for many users, though, simply attaching a verified domain to their
+profile is a useful tool, outside of 'fully serve this domain'". The gate from
+2026-10-18 now covers only serving. Any persona may claim a domain, press "check
+now" and wear the ✓. Only an administrator's persona is served at its domain
+(`domainsite::read_sites`, unchanged), and only an administrator sees the
+serving section of the settings field. The owner's answer says `may_serve` in
+place of `allowed`. A ✓ alone never moves anyone's canonical address. That waits
+for the domain to answer as a serving node (ruling 7), which only an
+administrator's domain can.
+
+With the doors open to everyone, and each check asking DNS and fetching from the
+domain uncached (2026-10-19), "check now" won't check the same claim twice
+within ten seconds (`CHECK_GAP_MS`); a press inside the gap answers with what
+was found. The rig's `.test` domains aren't held to it.
+
+Re-verification, asked about at the same time, was already there. Every node
+re-checks every claim it holds, its own personas' and other nodes', about daily
+(`domains::pass`), and hourly while lookups fail. A verified claim rides out
+three days of failed lookups, then lapses. A domain that answers but no longer
+names the persona lapses at once.

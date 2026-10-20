@@ -40,22 +40,24 @@ describe('custom domains: a claim counts once its domain says it back', function
         domain = domainFor('ada');
     });
 
-    it('is for administrators: anyone else is refused, and not offered the field', async () => {
+    it('is anyone’s to prove; serving it is the administrators’ (2026-10-20)', async () => {
         const cy = await makeUserFetch({ prefix: 'domcy' });
         const cyRoot = (await (await cy('api/identity', { method: 'POST' })).json()).root_pubkey;
-        assert.equal((await (await cy(`api/identity/${cyRoot}/domain`)).json()).allowed, false);
-        const put = await j(
-            cy,
-            `api/identity/${cyRoot}/domain`,
-            { domain: domainFor('cy') },
-            'PUT',
-        );
-        assert.equal(put.status, 403);
-        assert.equal(
-            (await cy(`api/identity/${cyRoot}/domain/check`, { method: 'POST' })).status,
-            403,
-        );
-        assert.equal((await (await ada(`api/identity/${root}/domain`)).json()).allowed, true);
+        const cyDomain = domainFor('cy');
+        const claim = await (
+            await j(cy, `api/identity/${cyRoot}/domain`, { domain: cyDomain }, 'PUT')
+        ).json();
+        assert.equal(claim.may_serve, false, 'not an administrator');
+        await pretendDns(HOST, claim.record_name, [claim.record_value]);
+        const proved = await (
+            await cy(`api/identity/${cyRoot}/domain/check`, { method: 'POST' })
+        ).json();
+        assert.equal(proved.state, 'verified', 'the ✓ is theirs');
+        assert.equal(await shown(cy, cyRoot), cyDomain, 'and shown');
+        assert.equal(proved.serving, false, 'but this node serves it for nobody else');
+        const listed = await (await makeFetch(HOST)('api/node/domains')).json();
+        assert.ok(!listed.domains.some((d) => d.domain === cyDomain), 'nor lists it to the front');
+        assert.equal((await (await ada(`api/identity/${root}/domain`)).json()).may_serve, true);
     });
 
     it('a claim is a bare domain, and is refused as anything else', async () => {

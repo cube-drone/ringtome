@@ -230,7 +230,7 @@ export function usePerson(root, { current, profile: given } = {}) {
     // The @name their links wear, asked only of one this node hosts: nobody else has one here.
     const linkSlug = useSlugOf(root, !!root && hosted);
 
-    const names = displayNames({ nickname: facts.nickname, name, words });
+    const names = displayNames({ nickname: facts.nickname, name, words, domain });
     return {
         root,
         isYou,

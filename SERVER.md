@@ -239,13 +239,15 @@ reach the node over plain HTTP. Then:
 
 ### People's own domains
 
-For now, only a persona belonging to one of your node's administrators
-(`node_admin`) can claim a domain of its own (`cube-drone.com`) in its profile
-settings and prove it with a DNS TXT record; once it's proved, the node serves
-the domain as that persona's website: their page at `/`, their posts at their
-paths, their feed at `/feed.xml`. It's a reading site: no one signs in on it,
-and it sets no cookie. Custom domains are on unless you set
-`RINGTOME_CUSTOM_DOMAINS=off`, and cost nothing until a domain points at you.
+Any persona on your node can claim a domain of its own (`cube-drone.com`) in its
+profile settings and prove it with a DNS TXT record, which puts the domain on
+its profile with a ✓. Every node showing the claim checks it itself, about
+daily. For a persona belonging to one of your node's administrators
+(`node_admin`), and for now only theirs, the node also serves the domain as that
+persona's website: their page at `/`, their posts at their paths, their feed at
+`/feed.xml`. It's a reading site: no one signs in on it, and it sets no cookie.
+Custom domains are on unless you set `RINGTOME_CUSTOM_DOMAINS=off`, and cost
+nothing until a domain points at you.
 
 The node knows which domains it serves; getting each one to it, with a
 certificate, is the front's job:

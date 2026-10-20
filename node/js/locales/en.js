@@ -2385,7 +2385,6 @@ export default {
 
     // --- node/src/domains.rs ---
     'domains.bad-root': 'bad root pubkey',
-    'domains.admins-only': "for now, only this node's administrators can give a persona its own domain",
     'domains.not-a-domain': "that isn't a domain - give just the name, like example.com",
 
     // --- node/src/domainsite.rs ---

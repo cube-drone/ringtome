@@ -1,8 +1,8 @@
 # Custom domains - a person at their own web address
 
-A design draft (2026-10-15), with rulings (2026-10-16). Slices 1 to 3 built. For
-now (2026-10-18), only a node administrator's personas may claim a domain, and
-only theirs are served.
+A design draft (2026-10-15), with rulings (2026-10-16). Slices 1 to 3 built. Any
+persona may claim and prove a domain, for the ✓ on its profile (2026-10-20); for
+now, only a node administrator's personas are served at theirs (2026-10-18).
 
 ## The ask (Curtis, 2026-10-15)
 
