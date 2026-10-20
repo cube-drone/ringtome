@@ -25,7 +25,7 @@ import { api, apiText, apiTextTitled } from '../net.js';
 import { parseBook } from '../pure/books.js';
 import { mediaPath } from '../pure/ringtome.js';
 import { ownMediaKind, OWN_MEDIA_KINDS } from '../pure/mediakind.js';
-import { excerpt } from '../pure/excerpt.js';
+import { excerpt, plainText } from '../pure/excerpt.js';
 import { parseAtAddress, parseRingtome, ringtomePath } from '../pure/ringtome.js';
 import { webAddress } from '../links.js';
 import { parseSpeakable, wordsFor } from '../speakable.js';
@@ -119,7 +119,7 @@ async function previewOf(seg, root, doc, post) {
         const text = await apiText(`/id/${root}/docs/${doc}/body`);
         if (post.format !== 'book')
             return {
-                preview: excerpt(text, post.format || 'marquee', PREVIEW_WORDS) || '',
+                preview: excerpt(text, post.format || 'marquee', PREVIEW_WORDS, parse) || '',
                 cover: firstPicture(text),
             };
         const book = parseBook(text);
@@ -130,7 +130,7 @@ async function previewOf(seg, root, doc, post) {
             api(`/api/id/${seg}/posts/${page}`).catch(() => null),
         ]);
         return {
-            preview: excerpt(words, (head && head.format) || 'marquee', PREVIEW_WORDS) || '',
+            preview: excerpt(words, (head && head.format) || 'marquee', PREVIEW_WORDS, parse) || '',
             cover: firstPicture(words),
         };
     } catch {
@@ -152,7 +152,9 @@ async function resolveRingtome(target) {
     const field = (k) =>
         (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value || '';
     const who = { root, name: field('name'), avatar: field('avatar') };
-    if (!ref.kind) return { ...who, kind: 'person', href: ref.path, title: field('bio') };
+    // A bio is Marquee: the card says its words, never its markup.
+    if (!ref.kind)
+        return { ...who, kind: 'person', href: ref.path, title: plainText(field('bio'), parse) };
     if (ref.kind === 'room') return resolveRoom(ref, who);
     // A post - or a document that is one: the public read answers for both. A web address names
     // its post through the author's `path` label (plans/WEB_ADDRESSES.md).
@@ -249,7 +251,7 @@ async function resolveRoom(ref, who) {
             );
             const line = (page.items || []).find((m) => m.hash === ref.line);
             if (line && typeof line.words === 'string') {
-                card.words = excerpt(line.words, 'marquee') || line.words;
+                card.words = excerpt(line.words, 'marquee', undefined, parse) || line.words;
                 const profile = await api(`/api/id/${line.speaker}/profile`).catch(() => null);
                 const field = (k) =>
                     (((profile && profile.fields) || []).find((f) => f.field === k) || {}).value ||

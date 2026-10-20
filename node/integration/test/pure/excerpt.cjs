@@ -1,8 +1,11 @@
 const assert = require('node:assert');
 
-let excerpt, plainWords, descriptionOf;
+let excerpt, plainWords, plainText, descriptionOf, parse;
 before(async () => {
-    ({ excerpt, plainWords, descriptionOf } = await import('../../../js/pure/excerpt.js'));
+    ({ excerpt, plainWords, plainText, descriptionOf } =
+        await import('../../../js/pure/excerpt.js'));
+    // The parser the app hands in (a pure module imports no package).
+    ({ parse } = await import('../../../js/node_modules/@cube-drone/marquee-parser/dist/index.js'));
 });
 
 describe("an untitled post's first words (the mini-card, 2026-09-05)", () => {
@@ -21,8 +24,8 @@ describe("an untitled post's first words (the mini-card, 2026-09-05)", () => {
 
     it('sheds the markup and keeps the words', () => {
         const body =
-            '# A heading\n\n> quoted **bold** and _soft_ words\n\n- a `list` item\n1. another';
-        assert.deepEqual(plainWords(body), [
+            '# A heading\n\n> quoted **bold** and *soft* words\n\n- a `list` item\n1. another';
+        assert.deepEqual(plainWords(body, 'marquee', parse), [
             'A',
             'heading',
             'quoted',
@@ -42,6 +45,19 @@ describe("an untitled post's first words (the mini-card, 2026-09-05)", () => {
             '![cat](/id/r/docs/t/body/media.avif) look at [this thing](https://example.com/x) https://example.com/y www.example.com';
         assert.equal(excerpt(body, 'marquee'), 'look at this thing');
         assert.equal(excerpt('![only](a.avif)', 'marquee'), '', 'a picture alone offers no words');
+    });
+
+    it('sheds Marquee of its own: directives, spans and emoji (2026-10-20)', () => {
+        const bio =
+            ':::center\n[color=#dd3062]Cyber[/color]GAMER Canada\n:::\n\nhi **there**ly :smile:';
+        assert.equal(plainText(bio, parse), 'CyberGAMER Canada hi therely');
+        assert.equal(excerpt(bio, 'marquee', undefined, parse), 'CyberGAMER Canada hi therely');
+        assert.equal(plainText('', parse), '');
+        assert.equal(
+            excerpt('[color=red]not markup here[/color]', 'plaintext'),
+            '[color=red]not markup here[/color]',
+            'plain text is taken as it stands',
+        );
     });
 
     it("a book's body is a table, not words; punctuation alone is not a word", () => {

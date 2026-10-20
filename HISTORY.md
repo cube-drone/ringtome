@@ -23958,3 +23958,24 @@ repeats a key carry one more parameter, `qk`, a fingerprint of the whole query
 address is left as it was. Residual: an address that someone else writes with
 repeated keys, such as a hand-made API call, still shares Bunny's copy with its
 first values.
+
+## 2026-10-20: a bio says its words, not its markup
+
+A turbolink card for a person showed their bio as it was written:
+`:::center [color=#dd3062]Cyber[/color]GAMER Canada`. The same raw bio went into
+the persona page's `og:description`, `description` and JSON-LD, the RSS channel
+description, and the no-JavaScript reading copies. Post excerpts in page heads
+were already plain (`bake::plain_words`), but the client's excerpts of posts
+weren't. `pure/excerpt.js` stripped markup by pattern, and its patterns knew
+nothing of directives, spans or emoji.
+
+- The server makes the bio one plain line wherever it is a description
+  (`bake::plain_line`), and the author's own description annotation too.
+- The client walks the Marquee parser's own tree (`plainText`, `plainWords` in
+  `pure/excerpt.js`), so whatever markup Marquee grows sheds itself. A pure
+  module imports no package, so the caller hands the parser in; with none, or
+  for a body that doesn't parse, it falls back to the old patterns. A plaintext
+  body is taken as it stands.
+
+One old test assumed Markdown: `_soft_` is literal text in Marquee, which only
+uses `*`. It now says `*soft*`.

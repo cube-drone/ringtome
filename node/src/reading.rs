@@ -390,11 +390,13 @@ pub async fn people_copy(state: &AppState) -> String {
         let fields = crate::idface::public_profile(state, &root_hex).await.unwrap_or_default();
         let speak = crate::speakable::speakable(&root);
         let name = crate::idface::profile_value(&fields, "name").unwrap_or(&speak).to_string();
-        let bio = crate::idface::profile_value(&fields, "bio").unwrap_or("");
+        let bio = crate::record::bake::plain_line(
+            crate::idface::profile_value(&fields, "bio").unwrap_or(""),
+        );
         let href = crate::webpath::person_url(state, &root, "").await;
         out.push_str(&format!("<li><a href=\"{}\">{}</a>", attr(&href), esc(&name)));
         if !bio.is_empty() {
-            out.push_str(&format!(" - {}", esc(bio)));
+            out.push_str(&format!(" - {}", esc(&bio)));
         }
         out.push_str("</li>");
     }

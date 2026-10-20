@@ -83,7 +83,8 @@ pub async fn rss_handler(
     let words_of_name = speak.rsplit_once('-').map(|x| x.0).unwrap_or("").to_string();
     let fields = crate::idface::public_profile(&state, &root_hex).await.unwrap_or_default();
     let name = crate::idface::profile_value(&fields, "name").unwrap_or(&words_of_name).to_string();
-    let bio = crate::idface::profile_value(&fields, "bio").unwrap_or("").to_string();
+    let bio =
+        crate::record::bake::plain_line(crate::idface::profile_value(&fields, "bio").unwrap_or(""));
     let base = crate::nodeface::public_base(&state, &headers);
     let page = format!("{base}/ringtome/user/{short}");
 

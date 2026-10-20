@@ -341,7 +341,10 @@ pub(crate) async fn post_page(
     let author = profile_value(&fields, "name").unwrap_or(&words_of_name).to_string();
     let said = post_words(state, &db, &root_hex, &post, &author).await?;
     let first_picture = said.picture;
-    let excerpt = said.described.unwrap_or_else(|| clip(&said.words, HEAD_EXCERPT_CHARS));
+    let excerpt = said
+        .described
+        .map(|d| crate::record::bake::plain_line(&d))
+        .unwrap_or_else(|| clip(&said.words, HEAD_EXCERPT_CHARS));
     let title = said.title;
 
     let base = state.config.public_url.clone().unwrap_or_default();
@@ -660,7 +663,8 @@ pub(crate) async fn persona_page_with(
         Vec::new()
     };
     let name = profile_value(&fields, "name").unwrap_or(&words).to_string();
-    let bio = profile_value(&fields, "bio").unwrap_or("").to_string();
+    // Plain: every place below is a description, never a rendering of the bio.
+    let bio = crate::record::bake::plain_line(profile_value(&fields, "bio").unwrap_or(""));
     let mut via = Vec::new();
     if hosted {
         if let Ok(Some(own_leaf)) = crate::identity::leaf_hex_of(&state.node_db, &root_hex).await {

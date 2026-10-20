@@ -336,6 +336,14 @@ pub fn plain_words(body: &str, embed_word: &dyn Fn(&str) -> String) -> Option<St
     Some(lines.filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n"))
 }
 
+/// A short piece of Marquee - a bio - as one plain line, for wherever markup can't go: a page's
+/// description, a feed's, a reading copy's line (2026-10-20: `:::center [color=#dd3062]Cyber...`
+/// in a turbolink card). Pictures say nothing; the text as it came when it doesn't parse.
+pub fn plain_line(body: &str) -> String {
+    let said = plain_words(body, &|_| String::new()).unwrap_or_else(|| body.to_string());
+    said.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn plain_into(node: &marquee_parser::Node, embed_word: &dyn Fn(&str) -> String, out: &mut String) {
     use marquee_parser::Node;
     match node {
@@ -1675,6 +1683,17 @@ mod tests {
 
     const ROOT: &str = "aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22aa11bb22";
     const DOC: &str = "0123456789abcdef0123456789abcdef";
+
+    /// A bio as a description (2026-10-20): its words on one line, its markup gone.
+    #[test]
+    fn a_bio_is_one_plain_line() {
+        assert_eq!(
+            super::plain_line(":::center\n[color=#dd3062]Cyber[/color]GAMER Canada\n:::\n\nhi ![x](a.png) **there**"),
+            "CyberGAMER Canada hi there"
+        );
+        assert_eq!(super::plain_line("just words"), "just words");
+        assert_eq!(super::plain_line(""), "");
+    }
 
     #[test]
     fn plain_words_show_the_words_and_name_the_pictures() {

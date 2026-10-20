@@ -29,6 +29,7 @@ import { useChipMenu } from './doc/chips.js';
 import { EpubChip } from './doc/epubbutton.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
+import { parse } from '@cube-drone/marquee-react-renderer';
 import { descriptionOf, excerpt } from './pure/excerpt.js';
 // The reaction palette under the open tag input (Curtis, 2026-08-31): the nine in pole
 // position, then the whole gemoji table - shared with the room's reaction picker
@@ -607,7 +608,7 @@ export const MiniPost = ({ author, doc_id, title, published_ms, href }) => {
                 }
                 if (head.format === 'book') return; // a table: no peeking
                 const body = await apiText(`/id/${author}/docs/${doc_id}/body`);
-                if (live) setWords(excerpt(body, head.format));
+                if (live) setWords(excerpt(body, head.format, undefined, parse));
             } catch {
                 /* the post has left the shelf, or its words refuse this reader: "link" */
             }

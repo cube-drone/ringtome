@@ -18,10 +18,62 @@ export function descriptionOf(annotations, author) {
 const usable = (w) =>
     /[\p{L}\p{N}]/u.test(w) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(w) && !/^www\./i.test(w);
 
-/// Strip the markup down to its words: pictures and embeds go (their caption is a label,
-/// not the post's words), a link keeps its text, code fences and inline code keep their
-/// content, headings/emphasis/list markers/quotes shed their punctuation.
-export function plainWords(body) {
+/// The text a Marquee tree says (2026-10-20: a turbolink card showed a bio as
+/// `:::center [color=#dd3062]Cyber[/color]GAMER Canada`): every text and code node, blocks a space
+/// apart. Pictures and embeds go (their caption is a label, not the words), a turbolink's address
+/// too; a link keeps its text, an emoji isn't a word. The parser's own tree, so a directive, a
+/// span or any markup still to come sheds itself without a pattern here knowing it.
+const BLOCKS = new Set([
+    'document',
+    'paragraph',
+    'heading',
+    'blockquote',
+    'list',
+    'list_item',
+    'directive',
+    'invalid_directive',
+]);
+function textOf(node, out) {
+    if (!node) return out;
+    if (node.type === 'text') out.push(node.value);
+    else if (node.type === 'code_span' || node.type === 'code_block') out.push(node.text);
+    else if (node.type === 'hard_break' || node.type === 'thematic_break') out.push(' ');
+    for (const child of node.children || []) textOf(child, out);
+    if (BLOCKS.has(node.type)) out.push(' ');
+    return out;
+}
+
+/// Marquee as plain text: what a card, a preview or a page's description says of it. Its
+/// whitespace folded; the body as it came when it doesn't parse. `parse` is the Marquee parser's
+/// (@cube-drone/marquee-parser), handed in by the caller: a pure module imports no package.
+export function plainText(body, parse) {
+    let said;
+    try {
+        said = textOf(parse(body || ''), []).join('');
+    } catch {
+        said = body || '';
+    }
+    return said.split(/\s+/).filter(Boolean).join(' ');
+}
+
+/// The words of a body: Marquee through its parser when `parse` is handed in (`plainText`), by
+/// pattern when it isn't; anything else split as it stands. Only the usable ones - letters or
+/// digits in them, and not an address.
+export function plainWords(body, format = 'marquee', parse = null) {
+    if (format !== 'marquee') return (body || '').split(/\s+/).filter((w) => w && usable(w));
+    if (!parse) return markupWords(body);
+    try {
+        return textOf(parse(body || ''), [])
+            .join('')
+            .split(/\s+/)
+            .filter((w) => w && usable(w));
+    } catch {
+        return markupWords(body);
+    }
+}
+
+/// The old way, with no parser or for a body it refuses: strip the markup's punctuation by pattern.
+function markupWords(body) {
     let s = body || '';
     s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, ' '); // ![caption](target)
     s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'); // [text](target) -> text
@@ -33,10 +85,10 @@ export function plainWords(body) {
 
 /// The first N usable words, with an ellipsis when there were more. Empty when the post
 /// has no words to offer (a picture alone, a book, nothing).
-export function excerpt(body, format, n = EXCERPT_WORDS) {
+export function excerpt(body, format, n = EXCERPT_WORDS, parse = null) {
     if (format === 'book') return '';
     // A room's words are its description: the excerpt is fine for those.
-    const words = plainWords(body);
+    const words = plainWords(body, format, parse);
     if (!words.length) return '';
     const head = words.slice(0, n).join(' ');
     return words.length > n ? `${head}\u2026` : head;
