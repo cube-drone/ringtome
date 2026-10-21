@@ -270,6 +270,11 @@ pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, Ap
             "wrong name or password"
         )));
     }
+    // Switched off by an administrator (accounts.rs): said only to someone holding the password,
+    // so it tells a stranger nothing the uniform failure doesn't.
+    if sign_in_off(db, &account_id).await? {
+        return Err(sign_in_off_error());
+    }
 
     let token = generate_token();
     let now = now_ms();
@@ -373,7 +378,7 @@ async fn read_session(db: &Db, token: &str) -> Result<Option<(Account, i64)>, Ap
         .fetch_optional(
             "SELECT a.id, a.username, s.expires_at_ms
          FROM sessions s JOIN accounts a ON a.id = s.account_id
-         WHERE s.token = ?1",
+         WHERE s.token = ?1 AND a.sign_in_off_ms IS NULL",
             (token,),
         )
         .await
@@ -440,6 +445,80 @@ pub async fn purge_sessions(db: &Db, account_id: &str) -> Result<(), AppError> {
         .await
         .context("purging sessions")
         .map_err(AppError::Internal)?;
+    Ok(())
+}
+
+/// What an administrator sees of an account (accounts.rs): its name, when it was made, and since
+/// when its sign-in has been switched off, if it has.
+#[derive(Debug, Clone)]
+pub struct AccountRecord {
+    pub id: Uuid,
+    pub username: String,
+    pub created_at_ms: i64,
+    pub sign_in_off_ms: Option<i64>,
+}
+
+pub async fn account_record(db: &Db, id: &str) -> Result<Option<AccountRecord>, AppError> {
+    let row: Option<(String, String, i64, Option<i64>)> = db
+        .fetch_optional(
+            "SELECT id, username, created_at_ms, sign_in_off_ms FROM accounts WHERE id = ?1",
+            (id,),
+        )
+        .await
+        .context("reading an account")
+        .map_err(AppError::Internal)?;
+    let Some((id, username, created_at_ms, sign_in_off_ms)) = row else { return Ok(None) };
+    let id =
+        Uuid::parse_str(&id).map_err(|e| AppError::Internal(anyhow!("corrupt account id: {e}")))?;
+    Ok(Some(AccountRecord { id, username, created_at_ms, sign_in_off_ms }))
+}
+
+/// Whether an administrator has switched this account's sign-in off. Every door in asks: login,
+/// a session (`read_session`, in its query), an API key (keys.rs), a spare-key reset (identity.rs).
+pub async fn sign_in_off(db: &Db, account_id: &str) -> Result<bool, AppError> {
+    let row: Option<(Option<i64>,)> = db
+        .fetch_optional("SELECT sign_in_off_ms FROM accounts WHERE id = ?1", (account_id,))
+        .await
+        .context("reading whether an account signs in")
+        .map_err(AppError::Internal)?;
+    Ok(row.is_some_and(|(off,)| off.is_some()))
+}
+
+pub(crate) fn sign_in_off_error() -> AppError {
+    AppError::Forbidden(crate::msg!(
+        "auth.sign-in-is-switched-off",
+        "this server's administrator has switched off signing in to this account"
+    ))
+}
+
+/// Switch an account's sign-in off or back on. Off ends every session it holds at once; its API
+/// keys stay, refused while it is off, so switching it back on gives its programs back too.
+pub async fn set_sign_in_off(db: &Db, account_id: &str, off: bool) -> Result<(), AppError> {
+    let at = off.then(now_ms);
+    db.execute("UPDATE accounts SET sign_in_off_ms = ?1 WHERE id = ?2", (at, account_id))
+        .await
+        .context("switching an account's sign-in")
+        .map_err(AppError::Internal)?;
+    if off {
+        purge_sessions(db, account_id).await?;
+    }
+    Ok(())
+}
+
+/// Remove an account outright: its sessions, its tags and itself (accounts.rs's eviction, once
+/// its personas have left and the other modules have dropped their rows). Foreign keys are off in
+/// node.db (db.rs), so nothing cascades: each table is emptied here by name.
+pub async fn remove_account(db: &Db, account_id: &str) -> Result<(), AppError> {
+    for sql in [
+        "DELETE FROM sessions WHERE account_id = ?1",
+        "DELETE FROM account_tags WHERE account_id = ?1",
+        "DELETE FROM accounts WHERE id = ?1",
+    ] {
+        db.execute(sql, (account_id,))
+            .await
+            .context("removing an account")
+            .map_err(AppError::Internal)?;
+    }
     Ok(())
 }
 

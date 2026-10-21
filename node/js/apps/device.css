@@ -246,3 +246,10 @@
     padding: 0.1rem 0.45rem;
     text-decoration: none;
 }
+
+/* An account's personas (account.js): the People list's rows, stacked. */
+.account-personas {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}

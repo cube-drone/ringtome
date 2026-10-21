@@ -149,6 +149,10 @@ async fn read_key(db: &Db, key: &str) -> Result<Option<Opened>, AppError> {
     }
     // The account is auth.rs's to read (tests/conventions.rs).
     let Some(account) = super::account_by_id(db, &account_id).await? else { return Ok(None) };
+    // Switched off by an administrator (accounts.rs): refused while it is, kept for when it isn't.
+    if super::sign_in_off(db, &account_id).await? {
+        return Ok(None);
+    }
     if last_used.is_none_or(|t| now - t > LAST_USED_EVERY_MS) {
         db.execute("UPDATE api_keys SET last_used_ms = ?1 WHERE id = ?2", (now, key_id.as_str()))
             .await
@@ -232,6 +236,15 @@ pub struct Minted {
     pub name: String,
     pub created_ms: i64,
     pub key: String,
+}
+
+/// Every key an account holds, gone with the account (accounts.rs's eviction).
+pub async fn forget_account(db: &Db, account: &str) -> Result<(), AppError> {
+    db.execute("DELETE FROM api_keys WHERE account_id = ?1", (account,))
+        .await
+        .context("forgetting an account's api keys")
+        .map_err(AppError::Internal)?;
+    Ok(())
 }
 
 /// Make a key for an account, named `name`. The settings page's door makes them, and so does an

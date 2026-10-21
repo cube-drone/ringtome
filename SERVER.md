@@ -314,13 +314,16 @@ An account holding `node_admin` - the first account made on a server - sees a
     (of the disk under the data directory) past which it takes no more sign-ups.
     Each is empty for no limit; the page shows where the node stands against
     both.
-  - **Group** - a name, for a group server: while sign-ups take a password,
-    whoever signs up with it joins the group. Their first persona, every other
-    member, and every node administrator begin knowing each other - low trust
-    and low interest, both ways, published like any dial - tagged with the
-    group's name in each other's People list. Accounts that were here before are
-    not added, and nothing is written to anyone except when somebody joins:
-    renaming or clearing the group changes no one's settings.
+  - **Sign-up group** - a group every persona made here joins, whatever the
+    sign-up mode. Found the group first (People, Groups tab), public or private,
+    with one of your own personas on this server; then choose it here. That
+    persona sends each newcomer's invite and the newcomer's persona takes it up,
+    so they're members like anyone invited, and can leave like anyone. The
+    sign-up form says "Everyone who joins this server automatically joins
+    <group>" before anyone signs up. Personas that were here before, or that
+    came from another computer, aren't added. If the persona you chose stops
+    owning the group, nobody new joins until you choose another owner; the page
+    says so.
   - **Starter Friends** - people every persona made here starts out knowing,
     with the dials you choose (low trust, medium interest, low shares unless you
     say otherwise), beside the app's own starters. Paste a page's link or an
@@ -328,6 +331,24 @@ An account holding `node_admin` - the first account made on a server - sees a
     them.
 - **Backups**: make a backup and watch it go, and download the ones already made
   (below). Restoring is not in the app yet.
+
+An administrator also sees **their account here** on the page of any persona
+this server hosts. It leads to that account's page in the Server app, which
+lists every persona the account manages, with what each would cost to move and
+would free to evict. From there:
+
+- **Switch off signing in** signs the account out everywhere and shuts every way
+  back in: its password, its API keys and its spare keys. Its personas stay
+  hosted and go on as they were. Switching it back on gives everything back, API
+  keys included.
+- **Evict this account** removes the account and takes every persona it manages
+  off this server. Nothing is signed or sent: a persona that other computers
+  hold goes on there, and what this server held of it becomes an ordinary copy,
+  cleared once nobody here follows it. A persona that lived only here is gone,
+  except for the copies its followers keep and its spare key.
+
+Neither is offered on your own account or another administrator's: take away
+their `node_admin` first.
 
 ## Backups
 

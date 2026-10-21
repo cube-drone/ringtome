@@ -60,10 +60,11 @@ a complete group design."
   These stay as they are: fine-grained lists only their owner sees. A group is
   the shared counterpart, not a replacement.
 
-- **The sign-up group** (`groups.rs`). A node whose sign-up password names a
-  group makes every joiner and the node's administrators know each other: low
-  trust and low interest both ways, with the group's name as a tag. It's
-  pairwise, written once at the door, and not a roster. It becomes slice 7.
+- **The sign-up group** (`groups.rs`). Until 2026-10-20, a node whose sign-up
+  password named a group made every joiner and the node's administrators know
+  each other: low trust and low interest both ways, with the group's name as a
+  tag. It was pairwise, written once at the door, and not a roster. Slice 7
+  replaced it.
 - **CROWN's seniority** (`proto/src/crown.rs`, PROJECT_PLAN _Rules Of
   Succession_):
   - a total order on a tree, computed from local data with no clock (the rank
@@ -883,8 +884,14 @@ Dropped:
      answers nothing; the face door serves only the face as it stands. A node
      that doesn't hold the group knows nothing of its face: reaching another
      node's is for public groups (slice 12).
-7. **The sign-up group becomes a real group.** `groups.rs` admits the joiner to
-   the node's group instead of pairing them with every member.
+7. **The sign-up group becomes a real group** (built 2026-10-20). An
+   administrator chooses a group one of their personas here owns, and every
+   persona made on the node joins it: that owner's key invites the newcomer and
+   the newcomer's own takes it up (`roster::enter_newcomer`), the ordinary two
+   entries. The sign-up form names the group first, and agreeing to that is
+   agreeing to the invite (Curtis: "acceptance there is acceptance of an
+   invite"). It applies whatever the sign-up mode, to every persona made here,
+   not only an account's first. The old pairing is gone; what it made stays.
 8. **For phones**: membership without keeping the media.
 9. **One feed** ([ONE_FEED.md](ONE_FEED.md), built 2026-10-16): group posts in
    `feed_journal`, their labels in `doc_annotations`, the fold cached by a

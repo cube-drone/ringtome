@@ -160,6 +160,18 @@ mod code_tests {
     }
 }
 
+/// An account's adoptions still between steps, dropped with the account (accounts.rs's
+/// eviction): a code completed after it would host a persona under nobody.
+pub async fn forget_account(state: &AppState, account_id: &str) -> Result<(), AppError> {
+    state
+        .node_db
+        .execute("DELETE FROM pending_adoptions WHERE account_id = ?1", (account_id,))
+        .await
+        .context("forgetting an account's pending adoptions")
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
 /// Step 1, on the joining node: mint a leaf keypair for a prospective identity and emit the
 /// request code. The leaf is sealed immediately; nothing about the identity is known yet.
 pub async fn begin(state: &AppState, account_id: &Uuid) -> Result<RequestCode, AppError> {

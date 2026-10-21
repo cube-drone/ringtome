@@ -35,6 +35,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/auth/keys/{id}", axum::routing::delete(super::keys::revoke_handler))
         .route("/api/auth/check-username", get(check_username_handler))
         .route("/api/auth/recover", post(recover_handler))
+        // Developer Options' "make me a node_admin" (developer.js): development builds only.
+        .route("/api/auth/dev/node-admin", post(dev_node_admin_handler))
         // Tag administration.
         .route("/api/admin/grant", post(grant_handler))
         .route("/api/admin/revoke", post(revoke_handler))
@@ -269,6 +271,29 @@ async fn grant_handler(
         id: target.id.to_string(),
         username: target.username,
         tags: crate::auth::tags_for(&state.node_db, &target.id).await?,
+    }))
+}
+
+/// Make the caller a node administrator - Developer Options on a development build (Curtis,
+/// 2026-10-20), where everyone may try the Server app. Refused on any other build, whoever asks,
+/// and from an API key, which never administers (extractor.rs).
+async fn dev_node_admin_handler(
+    session: Session,
+    State(state): State<AppState>,
+) -> Result<Json<AccountInfo>, AppError> {
+    if !state.config.is_dev() {
+        return Err(AppError::Forbidden(crate::msg!(
+            "auth.routes.only-on-a-development-build",
+            "only a development build makes anyone a node administrator for asking"
+        )));
+    }
+    super::extractor::refuse_key(&session)?;
+    add_tag(&state.node_db, &session.account.id, TAG_NODE_ADMIN).await?;
+    tracing::info!(account = %session.account.id, "a development build made an account node_admin, as asked");
+    Ok(Json(AccountInfo {
+        id: session.account.id.to_string(),
+        username: session.account.username.clone(),
+        tags: tags_for(&state.node_db, &session.account.id).await?,
     }))
 }
 

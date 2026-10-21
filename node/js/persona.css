@@ -863,6 +863,17 @@
     max-width: var(--post-measure);
 }
 
+/* For this place's administrator: the way to the account managing this persona (account.js). */
+.id-page .id-account-link {
+    font-size: 0.85rem;
+    color: var(--teal);
+    margin: 0.4rem 0 0;
+}
+
+.id-page .id-account-link a {
+    color: inherit;
+}
+
 .id-page .id-words {
     color: var(--muted);
     font-size: 0.85rem;

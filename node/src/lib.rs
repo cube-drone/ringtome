@@ -22,6 +22,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 // was written as a binary's innards, where `pub` meant nothing. What an embedder actually
 // calls is four names - `run`, `Config`, `init_tracing`, `inspect` - and a reader asking
 // "what may I call from outside" should read those rather than the tree.
+pub mod accounts;
 pub mod amp;
 pub mod annotations;
 pub mod attention;
@@ -1068,6 +1069,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // OAuth for AI assistants (oauth.rs): how a client connects to /mcp without a pasted key.
         .merge(oauth::routes::router())
         .merge(registration::routes::router())
+        // An account as a node administrator sees it (accounts.rs): its personas, its sign-in, eviction.
+        .merge(accounts::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))
         .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))

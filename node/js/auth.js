@@ -92,7 +92,9 @@ export function useSession() {
         setAccount(null);
     };
 
-    return { account, checking, login, register, logout };
+    // `setAccount`: an answer that changed the account's tags (developer.js's "make me a
+    // node_admin") takes effect at once, the Server app included.
+    return { account, checking, login, register, logout, setAccount };
 }
 
 // Who may sign up here (node/src/registration.rs): 'open', 'password' (a shared sign-up

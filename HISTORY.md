@@ -24132,3 +24132,71 @@ Acceptance: a claim in `auth.cjs` covers every spelling and the ambiguity, and
 one in `recovery.cjs` covers recovery by display name and words. A rename
 reaches the byline cache a beat after the save (fanout.rs), so both claims wait
 for it.
+
+## 2026-10-20: the sign-up group is a real group
+
+Groups slice 7 (plans/GROUPS.md). The old "group server" is gone: a group name
+on the sign-up limits that, behind a sign-up password, paired every joiner's
+first persona with every member and administrator by low dials and a tag. In its
+place, an administrator chooses a real group, public or private, among those one
+of their own personas here owns (Server app, Registration, "Sign-up group").
+
+From then on, every persona made on the node joins it, whatever the sign-up mode
+and not only an account's first. `roster::enter_newcomer` writes the ordinary
+two entries: the owner's invite, then the newcomer's join citing it. No bell
+rings for the invite, since it is answered at once. It runs detached from
+persona creation (`groups::enroll`).
+
+The sign-up form says "Everyone who joins this server automatically joins
+<group>" first (the public `/api/registration` now carries `group`), and Curtis
+ruled that accepting that is accepting the invite. Ruling 1 holds through that
+notice, not around it. When the chosen owner stops owning the group, nobody new
+joins, the form drops the notice, and the Server page says why. Choosing an
+open-sign-up node's private group warns that anyone who signs up will see its
+roster.
+
+Node rung 106 (`0106_signup_group.sql`) adds `signup_group` and drops
+`registration_limits.group_name`. `group_members` stays, so
+`groups::paired_with` still answers for the pairings the old mode made
+(bank.rs). The acceptance claim in `operator.cjs` replaces the group server's,
+and SERVER.md and the plan follow.
+
+## 2026-10-20: an administrator's account page, with sign-in off and eviction
+
+Curtis asked for a way, from a persona's page, to the account behind it, seen by
+node administrators only: a list of every persona the account manages, and from
+there switching its sign-in off or evicting it entirely.
+
+On any persona this node hosts, an administrator now sees "their account here"
+(`AccountLink`, asking `GET /api/admin/accounts/of/{root}`). It leads to
+`/ringtome/device/account/{id}` in the Server app (`js/account.js`). That page
+lists the personas as People rows, with storage.rs's move and evict figures, and
+has the two acts. `src/accounts.rs` holds the doors, all behind
+`NodeAdminSession`. Neither act is done to the administrator's own account or to
+another administrator's.
+
+- **Sign-in off** is node rung 107 (`0107_sign_in_off.sql`,
+  `accounts.sign_in_off_ms`). Switching it off ends the account's sessions.
+  Every door in refuses it: `read_session`'s query, login after the password
+  checks (a 403 that says why, so a stranger learns nothing), `keys::read_key`,
+  and spare-key reset or re-homing after the proof. API keys are kept, refused
+  rather than revoked, so switching it back on returns them.
+- **Eviction** runs `identity::detach` on each persona, the farewell flow's
+  unlink with nothing signed, then drops the account's API keys, its pending
+  adoptions, its sessions and tags, and the account. node.db runs with foreign
+  keys off, so nothing cascades: each table goes by name through its owner. Key
+  files stay on disk, as detach leaves them, and the chains become ordinary
+  mirrors for eviction.rs's sweep.
+
+`accounts.cjs` proves both acts and the refusals. SERVER.md's Server-app section
+describes the page.
+
+## 2026-10-20: "make me a node_admin" in Developer Options
+
+On a development build, Developer Options now offers anyone who isn't a node
+administrator yet a "make me a node_admin" button, so the Server app is anyone's
+to try there. `POST /api/auth/dev/node-admin` (auth/routes.rs) adds the tag to
+the caller's own account. It refuses on any other build, and refuses an API key
+(`refuse_key`, now `pub(crate)`). The answer carries the account's new tags, and
+`useSession` now hands out `setAccount`, so the Server app appears without a
+reload. `auth.cjs` proves both the grant and the key refusal.

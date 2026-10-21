@@ -10,6 +10,31 @@
 // attached to it. To start another language, copy this file, translate the values, and
 // register it in i18n.js - the keys are already right.
 export default {
+    // --- node/js/account.js ---
+    'account.evicted': 'Evicted',
+    'account.evicted-sub': '{name} no longer has an account here, and its personas have left this place.',
+    'account.back-to-the-server': 'back to the server',
+    'account.looking': 'looking…',
+    'account.this-is-your-own-account': 'This is your own account.',
+    'account.an-administrators-account': 'This account runs this place too. To switch it off or evict it, take its administrator status away first.',
+    'account.signed-up': 'An account here since {when}.',
+    'account.sign-in-is-off-since': 'Signing in has been switched off since {when}.',
+    'account.switch-off-title': 'switch off signing in',
+    'account.switch-off-body': '{name} is signed out everywhere, and cannot sign in again until you switch it back on. Its personas stay here as they are.',
+    'account.switch-off-yes': 'switch it off',
+    'account.evict-title': 'evict this account',
+    'account.evict-body': '{name} and every persona it manages leave this place for good. A persona that lives on other computers too goes on there; one that lived only here is gone, except for the copies other people keep and its spare key.',
+    'account.evict-yes': 'evict it',
+    'account.its-personas': 'its personas',
+    'account.no-personas': 'none yet',
+    'account.switch-sign-in-back-on': 'switch signing in back on',
+    'account.switch-sign-in-off': 'switch off signing in',
+    'account.switch-on-sub': 'they sign in as before, and their API keys work again',
+    'account.switch-off-sub': 'signs them out everywhere; their personas stay',
+    'account.evict': 'evict this account',
+    'account.evicting-frees': 'Evicting it frees about {size} here, once the mirror sweep has been round.',
+    'account.their-account-here': 'their account here: {name}',
+
     // --- node/js/apps/amp.js ---
     'amp.col-title': 'title',
     'amp.col-artist': 'artist',
@@ -883,6 +908,9 @@ export default {
     'developer.gift-given': '{amount} is yours: your balance is {balance}',
     'developer.open-the-bank': 'open the bank',
     'developer.no-gift': 'no gift: {message}',
+    'developer.youre-a-node-admin': 'you are a node administrator now',
+    'developer.open-the-server-app': 'open the Server app',
+    'developer.not-made-admin': 'not made an administrator: {message}',
     'developer.title': 'developer options',
     'developer.who-sees-this': "for a node's administrators, and for everyone on a development build",
     'developer.toasts': 'toasts',
@@ -893,6 +921,8 @@ export default {
     'developer.notifications': 'notifications',
     'developer.horsebucks': 'HorseBucks',
     'developer.give-me-a-million': 'give me H$ 1,000,000',
+    'developer.administering': 'administering',
+    'developer.make-me-a-node-admin': 'make me a node_admin',
 
     // --- node/js/doc/annotations.js ---
     'doc.annotations.untitled': 'untitled',
@@ -2273,6 +2303,12 @@ export default {
     'warnings.hidden-tags': 'hidden',
     'warnings.hidden-hint': 'posts tagged with these will not be displayed on your feed at all',
 
+    // --- node/src/accounts.rs ---
+    'accounts.no-such-account': "there's no such account here",
+    'accounts.thats-your-own-account': "that's your own account",
+    'accounts.take-their-administrator-status-first': 'that account runs this server too - take its administrator status away first',
+    'accounts.nobody-here-manages-that-persona': 'no account here manages that persona',
+
     // --- node/src/attention.rs ---
     'attention.a-new-message': 'a new message',
     'attention.speaker-in-room': '{who} in {room}',
@@ -2324,6 +2360,7 @@ export default {
     'auth.more-than-one-goes-by-that': 'more than one person here goes by that name - try your sign-in name, or your address',
     'auth.invalid-credentials': 'wrong name or password',
     'auth.invalid-credentials-2': 'wrong name or password',
+    'auth.sign-in-is-switched-off': "this server's administrator has switched off signing in to this account",
 
     // --- node/src/auth/extractor.rs ---
     'auth.extractor.that-came-from-another-site': 'that request came from another site',
@@ -2346,6 +2383,7 @@ export default {
 
     // --- node/src/auth/routes.rs ---
     'auth.routes.no-account': 'no account "{username}"',
+    'auth.routes.only-on-a-development-build': 'only a development build makes anyone a node administrator for asking',
     'auth.routes.no-account-2': 'no account "{username}"',
     'auth.routes.only-a-nodeadmin-may-grant': 'only a node_admin may grant or revoke node_admin',
     'auth.routes.no-account-3': 'no account "{username}"',

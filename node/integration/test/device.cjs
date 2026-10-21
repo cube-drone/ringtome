@@ -89,7 +89,7 @@ describe('the Server app: registration and backups, for administrators', functio
             assert.equal((await setMode('password', 'bring a friend')).status, 200);
             assert.deepEqual(
                 await (await makeFetch()('api/registration')).json(),
-                { mode: 'password' },
+                { mode: 'password', group: null },
                 'the signup screen can ask',
             );
             assert.equal(

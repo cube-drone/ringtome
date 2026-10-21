@@ -206,6 +206,37 @@ describe('auth', function () {
         assert.match(await twice.text(), /more than one person here goes by that name/);
     });
 
+    it('on a development build, makes the asker a node_admin - never from an API key (2026-10-20)', async function () {
+        // The rig runs a development build, as Developer Options' "make me a node_admin" needs.
+        const fetch = makeFetch();
+        const username = uniqueUsername();
+        await register(fetch, username, 'correct horse battery staple');
+        await login(fetch, username, 'correct horse battery staple');
+        assert.equal((await fetch('api/admin/node/ping')).status, 403, 'not an administrator yet');
+
+        const made = await fetch('api/auth/dev/node-admin', { method: 'POST' });
+        assert.equal(made.status, 200, await made.clone().text());
+        assert.ok((await made.json()).tags.includes('node_admin'), 'the answer carries the tag');
+        assert.equal((await fetch('api/admin/node/ping')).status, 200, 'and it holds');
+
+        const other = makeFetch();
+        const otherName = uniqueUsername();
+        await register(other, otherName, 'correct horse battery staple');
+        await login(other, otherName, 'correct horse battery staple');
+        const { key } = await (
+            await other('api/auth/keys', {
+                method: 'POST',
+                body: JSON.stringify({ name: 'a script' }),
+            })
+        ).json();
+        const byKey = await makeFetch()('api/auth/dev/node-admin', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${key}` },
+        });
+        assert.equal(byKey.status, 403, 'a program never makes its account an administrator');
+        assert.equal((await other('api/admin/node/ping')).status, 403);
+    });
+
     it('allows short PINs on a loopback node, rejects only empty', async function () {
         // The integration node binds 127.0.0.1, so the password floor relaxes to a PIN:
         // reaching this login prompt already required being at the machine

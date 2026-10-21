@@ -21,6 +21,7 @@ import { PersonCard, PersonChip } from './person.js';
 import { usePageColorway } from './colorway.js';
 import { PersonaMenu, bannerStyle } from './persona.js';
 import { PublicPosts } from './posts.js';
+import { AccountLink } from './account.js';
 import { t, tNodes } from './i18n.js';
 
 const html = htm.bind(h);
@@ -302,6 +303,12 @@ export const IdPage = ({
     // their address, bio and heartbeat stood between the box and the posts being searched, so it
     // wasn't clear anything was happening): the person steps aside until the box is empty.
     const searching = !!searchQuery && searchQuery.trim().length > 0;
+    // This place's administrator is shown the way to the account managing a persona hosted here
+    // (account.js, Curtis 2026-10-20) - a persona found elsewhere has none here to show.
+    const admin = ((session && session.account && session.account.tags) || []).includes(
+        'node_admin',
+    );
+    const accountLink = admin && !profile.foreign && html`<${AccountLink} root=${root} />`;
     return html`<${Card}>
         ${
             !searching &&
@@ -338,6 +345,7 @@ export const IdPage = ({
             /* A rule between the person - their card, settings and address - and what they
             said (Curtis, 2026-09-08). */ ''
         }
+        ${!searching && accountLink}
         ${!searching && html`<hr class="id-rule" />`}
         <${PublicPosts}
             root=${root}

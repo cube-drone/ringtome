@@ -238,7 +238,7 @@ impl axum::extract::OptionalFromRequestParts<AppState> for Session {
 
 /// The server is administered from a signed-in browser only: an API key never carries an account's
 /// administering, whatever its tags (keys.rs).
-fn refuse_key(session: &Session) -> Result<(), AppError> {
+pub(crate) fn refuse_key(session: &Session) -> Result<(), AppError> {
     if session.key.is_some() {
         return Err(AppError::Forbidden(crate::msg!(
             "auth.extractor.no-administering-by-key",

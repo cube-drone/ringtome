@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api, isDevice } from '../net.js';
+import { AccountPage } from '../account.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
@@ -73,7 +74,7 @@ const PAGE_WORDS = () => ({
     ],
 });
 
-export const DeviceApp = ({ page, admin, current }) => {
+export const DeviceApp = ({ page, account, admin, current }) => {
     // Someone who isn't an administrator has one page, so they land on it.
     if (page === 'network' || (!admin && !page)) {
         return html`<${Network} current=${current} admin=${admin} />`;
@@ -85,6 +86,8 @@ export const DeviceApp = ({ page, admin, current }) => {
     }
     if (page === 'registration') return html`<${Registration} />`;
     if (page === 'backups') return html`<${Backups} />`;
+    if (page === 'account' && account)
+        return html`<${AccountPage} id=${account} current=${current} />`;
     if (page === 'customization' && !isDevice()) return html`<${Customization} />`;
     return html`<${Landing} admin=${admin} />`;
 };

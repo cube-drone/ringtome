@@ -166,6 +166,8 @@ export const LAUNCHER = PREFIX;
 export const appHref = (appId) => (appId ? `${PREFIX}/${appId}` : PREFIX);
 
 /// People's Groups tab, and one group's page under it (plans/GROUPS.md, section 7).
+/// An account, as this place's administrator sees it (account.js).
+export const accountHref = (id) => `${appHref('device')}/account/${id}`;
 export const groupsHref = () => `${appHref('people')}/groups`;
 export const groupHref = (group) => `${groupsHref()}/${group}`;
 /// A public group's open page (plans/PUBLIC_GROUPS.md): its address in People, the same as its

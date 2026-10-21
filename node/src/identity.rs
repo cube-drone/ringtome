@@ -358,6 +358,12 @@ pub async fn recover_password(
         }
     }
     let proven = proven.ok_or_else(uniform)?;
+    // An account an administrator switched off (accounts.rs) is not reopened by a reset, nor
+    // left by re-homing a persona out of it into a fresh one. Said after the proof, like the
+    // needs-a-new-name answer below.
+    if crate::auth::sign_in_off(&state.node_db, &account_id).await? {
+        return Err(crate::auth::sign_in_off_error());
+    }
 
     // Per-identity scoping: proof of one persona must not unlock its account-siblings.
     //
