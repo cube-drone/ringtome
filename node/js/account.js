@@ -13,6 +13,7 @@ import { askYes } from './modal.js';
 import { formatWhen } from './pure/when.js';
 import { sizeLabel } from './pure/backups.js';
 import { PersonRow } from './person.js';
+import { Icons } from './icons.js';
 
 const html = htm.bind(h);
 
@@ -157,7 +158,7 @@ export const AccountPage = ({ id, current }) => {
     `;
 };
 
-/// On a persona's page, for this place's administrator: the way to the account that manages the
+/// On a persona's page, for this place's administrator: a button to the account that manages the
 /// persona - when one here does. Asks once per persona; says nothing for anyone not hosted here.
 export const AccountLink = ({ root }) => {
     const [account, setAccount] = useState(null);
@@ -172,7 +173,11 @@ export const AccountLink = ({ root }) => {
         };
     }, [root]);
     if (!account) return null;
-    return html`<p class="id-account-link">
-        <a href=${accountHref(account.id)}>${t('account.their-account-here', 'their account here: {name}', { name: account.username })}</a>
-    </p>`;
+    // A button in their card's top right corner, beside the RSS one (Curtis, 2026-10-20).
+    const label = t('account.their-account-here', 'their account here: {name}', {
+        name: account.username,
+    });
+    return html`<a class="person-account" href=${accountHref(account.id)} title=${label} aria-label=${label}
+        ><${Icons.adminAccount}
+    /></a>`;
 };

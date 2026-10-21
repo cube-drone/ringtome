@@ -24167,8 +24167,9 @@ Curtis asked for a way, from a persona's page, to the account behind it, seen by
 node administrators only: a list of every persona the account manages, and from
 there switching its sign-in off or evicting it entirely.
 
-On any persona this node hosts, an administrator now sees "their account here"
-(`AccountLink`, asking `GET /api/admin/accounts/of/{root}`). It leads to
+On any persona this node hosts, an administrator now sees a police-car button in
+the card's top right corner, beside the RSS one, titled "their account here:
+<name>" (`AccountLink`, asking `GET /api/admin/accounts/of/{root}`). It leads to
 `/ringtome/device/account/{id}` in the Server app (`js/account.js`). That page
 lists the personas as People rows, with storage.rs's move and evict figures, and
 has the two acts. `src/accounts.rs` holds the doors, all behind

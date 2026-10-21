@@ -242,8 +242,10 @@
     gap: 0.5rem;
 }
 
-/* Their RSS (2026-09-30): the glyph on a quiet jagged pill, like the reach beside it. */
-.person-rss {
+/* Their RSS (2026-09-30), and for a node administrator the account behind them (account.js,
+   2026-10-20): each glyph on a quiet jagged pill, like the reach beside them. */
+.person-rss,
+.person-account {
     display: inline-flex;
     align-items: center;
     padding: 0.25rem 0.5rem;
@@ -256,7 +258,9 @@
 }
 
 .person-rss:hover,
-.person-rss:focus-visible {
+.person-rss:focus-visible,
+.person-account:hover,
+.person-account:focus-visible {
     color: var(--ink);
 }
 

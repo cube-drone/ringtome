@@ -332,10 +332,10 @@ An account holding `node_admin` - the first account made on a server - sees a
 - **Backups**: make a backup and watch it go, and download the ones already made
   (below). Restoring is not in the app yet.
 
-An administrator also sees **their account here** on the page of any persona
-this server hosts. It leads to that account's page in the Server app, which
-lists every persona the account manages, with what each would cost to move and
-would free to evict. From there:
+An administrator also sees a police-car button ("their account here") in the top
+right corner of the page of any persona this server hosts. It leads to that
+account's page in the Server app, which lists every persona the account manages,
+with what each would cost to move and would free to evict. From there:
 
 - **Switch off signing in** signs the account out everywhere and shuts every way
   back in: its password, its API keys and its spare keys. Its personas stay

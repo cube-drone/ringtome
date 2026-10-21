@@ -309,6 +309,10 @@ export const IdPage = ({
         'node_admin',
     );
     const accountLink = admin && !profile.foreign && html`<${AccountLink} root=${root} />`;
+    // The card's top right corner, ahead of the RSS and QR: your reach on your own page, and the
+    // administrator's account button.
+    const reach = viewer && viewer === root && html`<${ReachPill} root=${root} />`;
+    const beside = html`${reach}${accountLink}`;
     return html`<${Card}>
         ${
             !searching &&
@@ -318,7 +322,7 @@ export const IdPage = ({
             current=${current}
             profile=${profile}
             you=${persona && session && html`<${PersonaMenu} persona=${persona} session=${session} />`}
-            beside=${viewer && viewer === root ? html`<${ReachPill} root=${root} />` : null}
+            beside=${beside}
             after=${viewer && viewer !== root ? html`<${KnownBy} viewer=${viewer} subject=${root} current=${current} />` : null}
         >
             ${
@@ -345,7 +349,6 @@ export const IdPage = ({
             /* A rule between the person - their card, settings and address - and what they
             said (Curtis, 2026-09-08). */ ''
         }
-        ${!searching && accountLink}
         ${!searching && html`<hr class="id-rule" />`}
         <${PublicPosts}
             root=${root}
