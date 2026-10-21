@@ -328,6 +328,7 @@ pub async fn recover_password(
     recovery_secret_hex: &str,
     new_password: &str,
     new_username: Option<&str>,
+    password_min_len: usize,
 ) -> Result<Recovery, AppError> {
     let uniform =
         || AppError::Unauthorized(crate::msg!("identity.recovery-failed", "recovery failed"));
@@ -385,7 +386,7 @@ pub async fn recover_password(
             &state.node_db,
             new_username,
             new_password,
-            state.config.password_min_len(),
+            password_min_len,
             state.config.local_test,
             state.config.admin_persona.is_none(),
         )
@@ -407,7 +408,7 @@ pub async fn recover_password(
         &state.node_db,
         &account_id,
         new_password,
-        state.config.password_min_len(),
+        password_min_len,
         state.config.local_test,
     )
     .await?;

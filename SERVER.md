@@ -155,8 +155,12 @@ Whatever you put in front, it owes the node four things:
 
 - **The visitor's address in `X-Forwarded-For`.** Behind a proxy on the same
   machine, every request reaches the node from loopback, and the node treats a
-  loopback request with no `X-Forwarded-For` as its operator, with no rate
-  limits. A proxy that drops the header lifts the limits for everyone.
+  loopback request with no forwarding header (`X-Forwarded-For`, `X-Real-IP` or
+  `Forwarded`) as its operator, with no rate limits. A proxy that drops them
+  lifts the limits for everyone. The node rate-limits by the address the _last_
+  proxy appended, never by what the visitor wrote at the start of the header; if
+  more than one proxy stands in front of the node, say how many with
+  `RINGTOME_PROXY_HOPS` (below).
 - **WebSockets.** Live rooms and the app's live updates are WebSocket
   connections, and they stay open for as long as the page does.
 - **No upload limit of its own**, or one above `RINGTOME_MAX_UPLOAD_BYTES`. The
@@ -233,6 +237,12 @@ reach the node over plain HTTP. Then:
   Query String, with no list of parameters). Filters and "load more" pages are
   query parameters: a CDN that ignores them answers every page with the first;
 - set `RINGTOME_PUBLIC_URL` to the CDN's address, not the origin's;
+- count the CDN as a proxy: with the CDN in front of your own nginx, set
+  `RINGTOME_PROXY_HOPS=2` (and one more for every gateway between them). Left at
+  1, every visitor arriving through one CDN edge shares that edge's address and
+  one set of rate limits. Caddy replaces the header it was sent unless the CDN's
+  addresses are in its `trusted_proxies`, so behind Caddy either list them there
+  and count 2, or leave it at 1 and accept the shared limits;
 - keep the origin from being reached except through the CDN where you can (a
   firewall allowing only the CDN's addresses), since anyone reaching it directly
   does so over plain HTTP.
@@ -419,6 +429,7 @@ Everything is an environment variable. The ones an operator is likely to want:
 | `RINGTOME_DATA_DIRECTORY`       | `./data` (image: `/data`)        | databases and keys - see above                                                                                                                                                                                                                                           |
 | `RINGTOME_BACKUP_DIRECTORY`     | `<data directory>/backups`       | where backups are written (left out of the backups themselves) - ideally another disk                                                                                                                                                                                    |
 | `RINGTOME_PUBLIC_URL`           | unset                            | the HTTPS address people reach this node at                                                                                                                                                                                                                              |
+| `RINGTOME_PROXY_HOPS`           | `1`                              | how many proxies stand in front of the node, each adding to `X-Forwarded-For` (a CDN in front of your nginx is 2); `0` for none. The visitor's address, for rate limits, is that many in from the right                                                                  |
 | `RINGTOME_DISCOVERY`            | `mainline`                       | `mainline` (the public DHT and relays), `off` (no discovery), or `local:<path>` (a private test network sharing a folder)                                                                                                                                                |
 | `RINGTOME_ENVIRONMENT`          | `prod`                           | `prod`, or `dev` (serves the UI from the source tree - development only)                                                                                                                                                                                                 |
 | `RINGTOME_TENANCY`              | `multi`                          | `multi` for a node that hosts other people; `single` for one person's own                                                                                                                                                                                                |

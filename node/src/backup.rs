@@ -78,23 +78,31 @@ pub struct Ticket {
 pub struct Backups(Arc<Mutex<Vec<Ticket>>>);
 
 impl Backups {
-    fn running(&self) -> Option<Ticket> {
-        self.0.lock().expect("backups poisoned").iter().find(|t| t.status == "running").cloned()
-    }
-
     fn get(&self, id: &str) -> Option<Ticket> {
         self.0.lock().expect("backups poisoned").iter().find(|t| t.id == id).cloned()
     }
 
-    fn open(&self, id: &str) -> Ticket {
-        let ticket = Ticket {
-            id: id.to_string(),
-            status: "running",
-            log: Vec::new(),
-            path: None,
-            bytes: None,
-        };
+    /// The running backup's ticket, or a new one opened at `at_ms` - `true` when it is new and
+    /// its backup still has to be started. One lock for both, so two starts can't both open.
+    ///
+    /// The id is the UTC second, and it names the archive, so it must be one no ticket here and
+    /// no archive on disk (`archive_exists`) already has: two backups in one second (the
+    /// nightly run and a click, or two acceptance files back to back) once shared an id, and
+    /// `finish` marked the first one done while the second stayed "running" for good - every
+    /// later start handed back that stuck ticket, and its archive overwrote the first's
+    /// (field-found 2026-10-21). A taken second moves the stamp on by one.
+    fn begin(&self, at_ms: i64, archive_exists: impl Fn(&str) -> bool) -> (Ticket, bool) {
         let mut all = self.0.lock().expect("backups poisoned");
+        if let Some(running) = all.iter().find(|t| t.status == "running") {
+            return (running.clone(), false);
+        }
+        let mut at = at_ms;
+        let mut id = utc_stamp(at);
+        while all.iter().any(|t| t.id == id) || archive_exists(&id) {
+            at += 1000;
+            id = utc_stamp(at);
+        }
+        let ticket = Ticket { id, status: "running", log: Vec::new(), path: None, bytes: None };
         all.push(ticket.clone());
         while all.len() > KEPT_TICKETS {
             if let Some(at) = all.iter().position(|t| t.status != "running") {
@@ -103,7 +111,7 @@ impl Backups {
                 break;
             }
         }
-        ticket
+        (ticket, true)
     }
 
     fn say(&self, id: &str, line: impl Into<String>) {
@@ -135,11 +143,14 @@ impl Backups {
 
 /// Start a backup, or hand back the one already running.
 pub fn start(state: &AppState) -> Ticket {
-    if let Some(running) = state.backups.running() {
-        return running;
+    let out_dir = state.config.backup_directory.clone();
+    let (ticket, fresh) = state
+        .backups
+        .begin(crate::clock::now_ms(), |id| out_dir.join(format!("backup_{id}.tar.gz")).exists());
+    if !fresh {
+        return ticket;
     }
-    let id = utc_stamp(crate::clock::now_ms());
-    let ticket = state.backups.open(&id);
+    let id = ticket.id.clone();
     let task_state = state.clone();
     tokio::spawn(async move {
         let outcome = run(&task_state, &id).await;
@@ -483,6 +494,30 @@ mod tests {
         ] {
             assert!(!is_archive_name(not), "{not:?}");
         }
+    }
+
+    #[test]
+    fn two_backups_in_one_second_get_two_tickets() {
+        // The 2026-10-21 wedge: same second, same id, and the second ticket ran forever.
+        let backups = Backups::default();
+        let at = 1_792_574_149_100;
+        let (first, fresh) = backups.begin(at, |_| false);
+        assert!(fresh);
+        let (again, fresh) = backups.begin(at, |_| false);
+        assert!(!fresh, "one at a time: the running one comes back");
+        assert_eq!(again.id, first.id);
+
+        backups.finish(&first.id, Ok((PathBuf::from("x.tar.gz"), 1)));
+        let (second, fresh) = backups.begin(at + 300, |_| false);
+        assert!(fresh);
+        assert_ne!(second.id, first.id, "a taken second moves on");
+        backups.finish(&second.id, Ok((PathBuf::from("y.tar.gz"), 1)));
+        assert_eq!(backups.get(&second.id).unwrap().status, "done", "and finishes as itself");
+
+        // An archive already on disk from before a restart takes its second too.
+        let fresh_registry = Backups::default();
+        let (third, _) = fresh_registry.begin(at, |id| id == first.id);
+        assert_ne!(third.id, first.id);
     }
 
     #[test]

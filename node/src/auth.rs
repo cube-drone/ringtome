@@ -716,15 +716,28 @@ mod tests {
 
         // The config derivation itself: loopback relaxes, anything else doesn't - including
         // an unparseable bind, which fails closed to the strict floor.
+        let request = |forwarded: bool| crate::request_context::RequestContext {
+            remote_ip: "127.0.0.1".parse().unwrap(),
+            forwarded_for: if forwarded { "203.0.113.9".into() } else { "-".into() },
+            forwarded,
+            user_agent: "test".into(),
+            correlation_id: uuid::Uuid::nil(),
+        };
+        let direct = request(false);
         let mut config = crate::config::Config::from_env();
         config.bind_address = "127.0.0.1".into();
-        assert_eq!(config.password_min_len(), 1);
+        assert_eq!(config.password_min_len(&direct), 1);
         config.bind_address = "::1".into();
-        assert_eq!(config.password_min_len(), 1);
+        assert_eq!(config.password_min_len(&direct), 1);
         config.bind_address = "0.0.0.0".into();
-        assert_eq!(config.password_min_len(), 8);
+        assert_eq!(config.password_min_len(&direct), 8);
         config.bind_address = "localhost".into();
-        assert_eq!(config.password_min_len(), 8, "unparseable fails closed");
+        assert_eq!(config.password_min_len(&direct), 8, "unparseable fails closed");
+
+        // A loopback bind behind a reverse proxy is the internet arriving on loopback: a
+        // proxied request keeps the strict floor (security pass, 2026-10-21).
+        config.bind_address = "127.0.0.1".into();
+        assert_eq!(config.password_min_len(&request(true)), 8);
     }
 
     #[tokio::test]

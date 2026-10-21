@@ -1306,7 +1306,10 @@ payloads remain Tier 5 as planned.
   security. Any non-loopback bind keeps the 8-character floor regardless of
   tenancy (a single-tenant node on `0.0.0.0` is still remotely brute-forceable),
   and an unparseable bind address fails closed to strict. Reachability, not
-  tenancy, is the load-bearing signal.
+  tenancy, is the load-bearing signal - and reachability is asked per request
+  (2026-10-21): a loopback bind behind a reverse proxy is the whole internet
+  arriving on loopback, so only a request with no forwarding header gets the
+  relaxed floor.
 
 ### Registration Modes
 

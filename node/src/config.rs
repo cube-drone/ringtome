@@ -227,6 +227,16 @@ pub struct Config {
     /// deliberately NOT the fallback: the origin a browser happens to use (localhost, a LAN
     /// name, a tailnet alias) proves nothing about what the world can dial.
     pub public_url: Option<String>,
+    /// `RINGTOME_PROXY_HOPS`: how many reverse proxies stand between the internet and this
+    /// node, each adding one address to `X-Forwarded-For` (`RequestContext::client_ip`).
+    /// Default 1 - the one Caddy or nginx on the same machine that SERVER.md describes. A CDN
+    /// in front of that proxy is one more; a gateway that forwards to it is one more again.
+    /// `0` ignores the header entirely (no proxy at all). Too low and every visitor shares the
+    /// innermost proxy's address - one rate-limit bucket for everyone; too high and the
+    /// visitor's own header picks their address - no rate limit at all. The header is only
+    /// read from a loopback or private-network peer, so a node reached directly is never
+    /// fooled by it, whatever this says.
+    pub proxy_hops: usize,
 }
 
 /// The subset of configuration safe to expose to a browser client.
@@ -411,6 +421,10 @@ impl Config {
             .ok()
             .map(|s| s.trim().trim_end_matches('/').to_string())
             .filter(|s| !s.is_empty());
+        let proxy_hops = env::var("RINGTOME_PROXY_HOPS")
+            .ok()
+            .and_then(|s| s.trim().parse::<usize>().ok())
+            .unwrap_or(1);
         let admin_persona = match env::var("RINGTOME_ADMIN_PERSONA_ID")
             .ok()
             .filter(|s| !s.trim().is_empty())
@@ -475,6 +489,7 @@ impl Config {
             unfurl_rate_per_min,
             node_name,
             public_url,
+            proxy_hops,
             admin_persona,
             starter_contacts,
         }
@@ -490,13 +505,18 @@ impl Config {
     /// any non-loopback bind faces the network and keeps the 8-character floor, regardless of
     /// how many accounts it holds. An unparseable bind address (e.g. `localhost`) fails
     /// closed to the strict floor; use `127.0.0.1` to get the relaxed one.
-    pub fn password_min_len(&self) -> usize {
+    ///
+    /// Asked per request (security pass, 2026-10-21): a loopback bind behind a reverse proxy -
+    /// what SERVER.md recommends - is the whole internet arriving on loopback, and it gave
+    /// strangers 1-character passwords. Only a request that is itself from the machine
+    /// (`RequestContext::is_direct_loopback`) gets the relaxed floor.
+    pub fn password_min_len(&self, ctx: &crate::request_context::RequestContext) -> usize {
         let loopback = self
             .bind_address
             .parse::<std::net::IpAddr>()
             .map(|ip| ip.is_loopback())
             .unwrap_or(false);
-        if loopback {
+        if loopback && ctx.is_direct_loopback() {
             1
         } else {
             8

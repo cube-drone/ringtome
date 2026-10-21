@@ -17,13 +17,17 @@ use crate::error::AppError;
 #[derive(Clone)]
 pub struct RateLimiter {
     enabled: bool,
+    /// `Config::proxy_hops`: how far in from the right of X-Forwarded-For the visitor's address
+    /// sits (`RequestContext::client_ip`).
+    proxy_hops: usize,
     counters: moka::future::Cache<String, Arc<AtomicU32>>,
 }
 
 impl RateLimiter {
-    pub fn new(enabled: bool) -> Self {
+    pub fn new(enabled: bool, proxy_hops: usize) -> Self {
         Self {
             enabled,
+            proxy_hops,
             // Generous ceiling; entries are tiny and expire implicitly via bucket rollover.
             counters: moka::future::Cache::new(100_000),
         }
@@ -45,7 +49,7 @@ impl RateLimiter {
         if ctx.is_direct_loopback() {
             return Ok(());
         }
-        self.check(action, &ctx.rate_limit_identifier(), limit, window_ms).await
+        self.check(action, &ctx.rate_limit_identifier(self.proxy_hops), limit, window_ms).await
     }
 
     /// Allow at most `limit` `action`s per `identifier` per `window_ms`. Returns

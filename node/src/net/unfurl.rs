@@ -336,7 +336,7 @@ pub async fn fetch_media_bytes(
 }
 
 /// Public-internet address check: everything a node must refuse to dial on a user's say-so.
-fn is_public(ip: IpAddr) -> bool {
+pub(crate) fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             !(v4.is_private()

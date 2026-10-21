@@ -594,7 +594,7 @@ mod tests {
             config: crate::config::Config::from_env(),
             node_db: crate::db::open_node_db(&dir, &keystore).await.unwrap(),
             user_dbs: crate::db::UserDbManager::new(&dir, keystore.clone(), 8),
-            rate_limiter: crate::rate_limit::RateLimiter::new(false),
+            rate_limiter: crate::rate_limit::RateLimiter::new(false, 1),
             keystore,
             endpoint: ep_a.clone(),
             directory: crate::net::discovery::Directory::build(

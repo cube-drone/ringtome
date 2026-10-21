@@ -24201,3 +24201,48 @@ the caller's own account. It refuses on any other build, and refuses an API key
 (`refuse_key`, now `pub(crate)`). The answer carries the account's new tags, and
 `useSession` now hands out `setAccount`, so the Server app appears without a
 reload. `auth.cjs` proves both the grant and the key refusal.
+
+## 2026-10-21: the visitor's address, counted in from the right
+
+The rate limiter keyed on the socket address plus the whole `X-Forwarded-For`
+header, and the visitor writes that header's left end: a made-up value on every
+request was a fresh bucket every time, so the sign-up and spare-key limits held
+nobody back. Behind the same-machine proxy SERVER.md recommends, two more things
+followed from "loopback means the operator":
+
+- a forwarding header that wasn't ASCII failed to parse, read as absent, and
+  made the visitor the operator: no rate limits, and `POST /api/admin/backup`
+  open;
+- the password floor followed the bind address alone, so a node bound to
+  127.0.0.1 behind nginx (horsedrawingtycoon.com) took 1-character passwords
+  from the internet.
+
+Now (`request_context.rs`):
+
+- `client_ip` counts `RINGTOME_PROXY_HOPS` addresses in from the right of
+  `X-Forwarded-For` (default 1, the one local proxy; a CDN in front is one more,
+  each gateway one more again; 0 ignores the header). The header is only read
+  when the socket peer is loopback or a private network (`unfurl::is_public`),
+  so a node reached directly is never fooled by it. The limiter keys on that
+  address.
+- `is_direct_loopback` asks whether any forwarding header (`X-Forwarded-For`,
+  `X-Real-IP`, `Forwarded`) is present, not whether it parses.
+- `Config::password_min_len` takes the request: the 1-character floor needs a
+  loopback bind AND a direct loopback request. Accounts already made with short
+  passwords keep them.
+
+SERVER.md documents the setting (with the Caddy-behind-a-CDN wrinkle: Caddy
+replaces the header unless the CDN is in its `trusted_proxies`); PROJECT_PLAN's
+password-floor paragraph says the question is asked per request.
+
+**Backups wedged by two in one second**, found on the way: ticket ids are the
+UTC second, and `backup.cjs` and `device.cjs` started theirs in the same one.
+`finish` marked the first ticket done; the second stayed "running" for good, so
+every later start handed it back, pointing at an archive the first file had
+deleted (4 of 5 reruns). Two real backups in one second would also have
+overwritten each other's archive. `Backups::begin` now picks the running ticket
+or a fresh one under one lock, moving the stamp on past any second a ticket or
+an archive on disk already holds.
+
+Gates: `cargo test -p ringtome-node` (661), and the auth, spare-key reset, admin
+authorization, Server app and backups acceptance areas (21 passing).

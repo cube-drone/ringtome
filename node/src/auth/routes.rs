@@ -104,7 +104,7 @@ async fn register_handler(
         &state.node_db,
         &creds.username,
         &creds.password,
-        state.config.password_min_len(),
+        state.config.password_min_len(&ctx),
         state.config.local_test,
         state.config.admin_persona.is_none(),
     )
@@ -167,6 +167,7 @@ async fn recover_handler(
         &req.recovery_secret,
         &req.new_password,
         req.new_username.as_deref(),
+        state.config.password_min_len(&ctx),
     )
     .await?;
 
