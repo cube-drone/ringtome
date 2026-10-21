@@ -342,7 +342,10 @@ impl Config {
         let admit_max_connections = dial("RINGTOME_ADMIT_MAX_CONNECTIONS", 512) as usize;
         let admit_max_unproven = dial("RINGTOME_ADMIT_MAX_UNPROVEN", 256) as usize;
         let admit_max_per_peer = dial("RINGTOME_ADMIT_MAX_PER_PEER", 128) as usize;
-        let admit_max_per_stranger = dial("RINGTOME_ADMIT_MAX_PER_STRANGER", 16) as usize;
+        // The same as a known peer's by default (2026-10-21): a peek alone opens a fragment
+        // connection per post, 41 at once, and a node of many readers can be several peeks
+        // from one key. 16 refused honest reading; the dial is for an operator who'd trade it.
+        let admit_max_per_stranger = dial("RINGTOME_ADMIT_MAX_PER_STRANGER", 128) as usize;
         let admit_reserved = dial("RINGTOME_ADMIT_RESERVED", 64) as usize;
         let sync_budget_entries = dial("RINGTOME_SYNC_BUDGET_ENTRIES", 5_000);
         let sync_budget_bytes = dial("RINGTOME_SYNC_BUDGET_BYTES", 64 * 1024 * 1024);

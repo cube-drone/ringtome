@@ -16,7 +16,8 @@
 //!     household's own sync was refused with everyone else's. A peer this node has dialed and
 //!     been answered by (`machines::answered_us` - nothing a stranger earns by dialing in) is
 //!     KNOWN: it never counts as unproven, and a reserve of seats strangers can't take is
-//!     kept for it. A flood now costs first contact with new people, never the machines this
+//!     kept for it. (A smaller per-key cap for strangers came and went the same day: a peek
+//!     opens 41 fragment connections at once, and 16 refused honest reading.) A flood now costs first contact with new people, never the machines this
 //!     one already syncs with.
 //!   * **`Budget`** - entries and bytes one direction of one exchange may carry. Both sides
 //!     hold one per direction; the requester stops reading at its budget and the responder
@@ -40,7 +41,10 @@ pub struct Limits {
     pub max_unproven: usize,
     /// One known peer's ceiling.
     pub max_per_peer: usize,
-    /// One stranger's: an honest one has a handful of exchanges open at once, not a hundred.
+    /// One stranger's. The same as a known peer's by default: an honest stranger is a reader's
+    /// node, and a peek opens a fragment connection per post, 41 at once (`idface`). Free keys
+    /// make any per-key cap a multiplier on the flood, not a bound; the bounds are the deadlines,
+    /// the pools and the reserve (2026-10-21: a cap of 16 refused a page being read).
     pub max_per_stranger: usize,
     /// Seats of `max_connections` only known peers may take.
     pub reserved: usize,
@@ -57,7 +61,7 @@ impl Default for Limits {
             max_connections: 512,
             max_unproven: 256,
             max_per_peer: 128,
-            max_per_stranger: 16,
+            max_per_stranger: 128,
             reserved: 64,
             budget_entries: 5_000,
             budget_bytes: 64 * 1024 * 1024,

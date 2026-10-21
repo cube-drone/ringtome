@@ -44,14 +44,23 @@ const RECORD_SIZE: u32 = 4096;
 const MAX_BODY_CHARS: usize = 600;
 /// The keystore's name for the VAPID key.
 const KEY_NAME: &str = "webpush-vapid";
+/// Subscriptions kept per persona, the newest: a person has a browser or three, and a browser
+/// that rotates its endpoint leaves the old one behind until a push is answered 410. Unbounded,
+/// every alert was a POST to every endpoint a persona had ever named (security pass, 2026-10-21).
+const MAX_SUBSCRIPTIONS: i64 = 10;
+/// The most of a refusal's body read. The operator's log keeps 300 characters of it; the
+/// person asking `push/test` is told the status alone.
+const REFUSAL_READ: usize = 4096;
+/// One push's whole conversation with the service.
+const PUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// The node's push identity and its HTTP client, shared through [`AppState`].
+/// The node's push identity, shared through [`AppState`].
 #[derive(Clone)]
 pub struct WebPush {
     key: p256::ecdsa::SigningKey,
-    http: reqwest::Client,
-    /// Local-test mode only: a subscription may name plain `http://` (the rig's fake push
-    /// service). Everywhere else a push goes over HTTPS or not at all.
+    /// Local-test mode only: a subscription may name plain `http://`, on loopback (the rig's
+    /// fake push service). Everywhere else a push goes over HTTPS to the public internet, or
+    /// not at all (`client_for`).
     allow_http: bool,
 }
 
@@ -74,11 +83,7 @@ impl WebPush {
             tracing::info!("minted this node's Web Push (VAPID) key");
             key
         };
-        let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .context("building the push client")?;
-        Ok(Self { key, http, allow_http })
+        Ok(Self { key, allow_http })
     }
 
     /// The public key a browser subscribes against (`applicationServerKey`): uncompressed P-256,
@@ -200,6 +205,9 @@ pub async fn subscribe(state: &AppState, root: &str, sub: &Subscription) -> Resu
     if !(https || http_ok) || url.host_str().is_none() || sub.endpoint.len() > 1024 {
         bail!("the endpoint must be an https URL");
     }
+    // Asked again at every push (`client_for`), since a name can be re-pointed in between;
+    // asked here too, so the person subscribing hears it now.
+    public_address(state.webpush.allow_http, &url).await?;
     let p256dh =
         B64.decode(sub.keys.p256dh.trim_end_matches('=')).context("p256dh is not base64url")?;
     let auth = B64.decode(sub.keys.auth.trim_end_matches('=')).context("auth is not base64url")?;
@@ -214,11 +222,24 @@ pub async fn subscribe(state: &AppState, root: &str, sub: &Subscription) -> Resu
         .execute(
             "INSERT INTO push_subscriptions (root_pubkey, endpoint, p256dh, auth, created_ms)
              VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT (root_pubkey, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth",
+             ON CONFLICT (root_pubkey, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth,
+                 created_ms = excluded.created_ms",
             (root, sub.endpoint.as_str(), p256dh, auth, crate::clock::now_ms()),
         )
         .await
         .context("recording a push subscription")?;
+    // The newest `MAX_SUBSCRIPTIONS` stand; the oldest let go, as a browser that moved on would
+    // have been told by a 410. Subscribing again counts as new.
+    state
+        .node_db
+        .execute(
+            "DELETE FROM push_subscriptions WHERE root_pubkey = ?1 AND endpoint NOT IN (
+                 SELECT endpoint FROM push_subscriptions WHERE root_pubkey = ?1
+                 ORDER BY created_ms DESC, endpoint LIMIT ?2)",
+            (root, MAX_SUBSCRIPTIONS),
+        )
+        .await
+        .context("keeping the newest push subscriptions")?;
     state.attention.watch_for_push(root);
     Ok(())
 }
@@ -299,6 +320,7 @@ pub struct Delivery {
     /// The push service, by host (`fcm.googleapis.com`, `updates.push.services.mozilla.com`...).
     pub service: String,
     /// "delivered", "gone" (the browser let go; forgotten), "refused <status>", or the error.
+    /// Never the service's own words: those are the operator's, in the log.
     pub outcome: String,
 }
 
@@ -342,7 +364,8 @@ async fn push_to_all(
             outcome: match &outcome {
                 Ok(Outcome::Delivered) => "delivered".to_string(),
                 Ok(Outcome::Gone) => "gone".to_string(),
-                Ok(Outcome::Refused(status, why)) => format!("refused {status}: {why}"),
+                // The status alone: the body is the far side's words, and the log has them.
+                Ok(Outcome::Refused(status, _)) => format!("refused {status}"),
                 Err(e) => format!("failed: {e:#}"),
             },
         });
@@ -390,10 +413,10 @@ async fn push_one(
 ) -> Result<Outcome> {
     let body = encrypt(payload, p256dh, auth)?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
-    let response = state
-        .webpush
-        .http
-        .post(endpoint)
+    let url = reqwest::Url::parse(endpoint).context("the endpoint is not a URL")?;
+    let mut response = client_for(state, &url)
+        .await?
+        .post(url)
         .header("Authorization", vapid_header(&state.webpush.key, endpoint, now)?)
         .header("Content-Encoding", "aes128gcm")
         .header("Content-Type", "application/octet-stream")
@@ -408,10 +431,49 @@ async fn push_one(
         200..=299 => Outcome::Delivered,
         404 | 410 => Outcome::Gone,
         other => {
-            let why: String = response.text().await.unwrap_or_default().chars().take(300).collect();
+            let mut read = Vec::new();
+            while read.len() < REFUSAL_READ {
+                match response.chunk().await {
+                    Ok(Some(chunk)) => read.extend_from_slice(&chunk),
+                    _ => break,
+                }
+            }
+            let why: String = String::from_utf8_lossy(&read).chars().take(300).collect();
             Outcome::Refused(other, why)
         }
     })
+}
+
+/// The address `url` may be pushed to (security pass, 2026-10-21): every address its name
+/// resolves to on the public internet - the turbolinks' own test (`unfurl::vetted_addr`). A
+/// push endpoint is whatever a signed-in person sends, and the node POSTs to it from where it
+/// stands: `https://192.168.1.1/` was the home network's router, asked by the node on a
+/// stranger's behalf, and `push/test` read back its answer. The rig's fake service on loopback
+/// passes in local-test mode alone (`allow_http`); there it is `None` - nothing to pin.
+async fn public_address(allow_http: bool, url: &reqwest::Url) -> Result<Option<std::net::IpAddr>> {
+    if allow_http {
+        return Ok(None);
+    }
+    crate::net::unfurl::vetted_addr(url)
+        .await
+        .map(Some)
+        .map_err(|_| anyhow!("the endpoint must be a push service on the public internet"))
+}
+
+/// A client for one push: pinned to the address `public_address` vetted, so a name re-pointed
+/// between the check and the dial changes nothing; no redirects, which no push service sends and
+/// which led a POST to `https://` out to any `http://` the far side named; no proxy, which
+/// would resolve the name again.
+async fn client_for(state: &AppState, url: &reqwest::Url) -> Result<reqwest::Client> {
+    let mut client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .timeout(PUSH_TIMEOUT);
+    if let (Some(addr), Some(host)) = (public_address(state.webpush.allow_http, url).await?, url.host_str()) {
+        let port = url.port_or_known_default().unwrap_or(443);
+        client = client.resolve(host, std::net::SocketAddr::new(addr, port));
+    }
+    client.build().context("building the push client")
 }
 
 #[cfg(test)]
@@ -420,6 +482,28 @@ mod tests {
 
     fn b64(s: &str) -> Vec<u8> {
         B64.decode(s).unwrap()
+    }
+
+    /// The 2026-10-21 hole: any https URL was a push endpoint, and the node POSTed to it from
+    /// inside its own network. Every inward address is refused, by literal and by name; a push
+    /// service on the internet is not; the rig's loopback passes in local-test mode alone.
+    #[tokio::test]
+    async fn a_push_goes_to_the_public_internet_or_nowhere() {
+        for inward in [
+            "https://192.168.1.1/",
+            "https://10.0.0.7:8443/admin",
+            "https://127.0.0.1/",
+            "https://[::1]/",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://localhost/",
+        ] {
+            let url = reqwest::Url::parse(inward).unwrap();
+            assert!(public_address(false, &url).await.is_err(), "{inward} was let through");
+        }
+        let fcm = reqwest::Url::parse("https://8.8.8.8/fcm/send/abc").unwrap();
+        assert!(public_address(false, &fcm).await.unwrap().is_some(), "a public address is pinned");
+        let rig = reqwest::Url::parse("http://127.0.0.1:9/push/ada").unwrap();
+        assert_eq!(public_address(true, &rig).await.unwrap(), None, "the rig, unpinned");
     }
 
     /// RFC 8291, Section 5: the worked example, byte for byte - the sender's keypair and salt

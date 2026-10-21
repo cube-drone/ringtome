@@ -24501,3 +24501,53 @@ the published file signature for signature (`proto/tests/vectors.rs`), and RFC
 8291's worked example still encrypts byte for byte (p256 + hkdf + aes-gcm).
 
 Gates: `just ci`; `cargo check` of the desktop crate.
+
+## 2026-10-21: a push goes to the public internet or nowhere
+
+Item 8 of the security pass (`webpush.rs`). A push subscription's endpoint is
+whatever a signed-in person sends, and the node POSTs to it from where it
+stands. Any `https://` URL was accepted, `192.168.1.1` and `127.0.0.1`
+included; `push/test` pushed to every one at once and reported each answer, the
+status and the first 300 characters of the body. On a home node, that was a port
+scanner and page reader for the home network, run from outside it by anyone with
+an account or one of its API keys. reqwest's default redirects took a POST to
+`https://` on to any `http://` the far side named, the refusal body was read
+whole before it was cut, and a persona's subscriptions were unbounded, every
+alert a POST to each.
+
+- **Public addresses only**, by the turbolinks' own test (`unfurl::vetted_addr`,
+  now `pub(crate)`): asked at subscribe, so the person hears it then, and again
+  at every push, since a name can be re-pointed in between. Each push gets a
+  client pinned to the address just vetted (`client_for`), with no redirects and
+  no proxy. The rig's loopback push service passes in local-test mode alone, on
+  the same switch as its plain `http://`.
+- **Refusals report their status, never the far side's words.** `push/test`
+  says `refused 500`; the operator's log keeps 300 characters of the body, of at
+  most 4 KiB read (`REFUSAL_READ`).
+- **Ten subscriptions per persona, the newest** (`MAX_SUBSCRIPTIONS`): the
+  oldest let go, as a browser that rotated its endpoint would have been told by
+  a 410; subscribing again counts as new.
+
+`webpush::a_push_goes_to_the_public_internet_or_nowhere` (literals, names,
+cloud metadata, loopback; the rig's exemption), and an acceptance claim in
+`attention.cjs`: twelve browsers subscribed keep ten, a router's 500 page never
+reaches the person, and a 302 is reported, not followed.
+
+## 2026-10-21: a stranger's cap, put back
+
+CI went red on "lil crypto upgrade" (`peek_footprint.cjs`, 5 of 5 reruns), and
+the crypto upgrade was innocent: the commit before it failed the same way, run
+alone. The cause was the slot-exhaustion fix's smaller per-key cap for strangers
+(16, `RINGTOME_ADMIT_MAX_PER_STRANGER`). A peek fetches each post's body over a
+fragment connection of its own, 41 at once (`PEEK_POSTS * 2 + 1`), from a node
+that has often never dialed the reader's, so the 17th onward was refused at
+admission and the page came up short. The full run had passed by luck: earlier
+files had made the rig's nodes known to each other. Raising the cap made the area
+pass, which settled it.
+
+The default is 128 again, the same as a known peer's; the dial stays for an
+operator who wants it tighter. A node of many readers can be several peeks from
+one key, so no small number is safe, and with keys free a per-key cap only
+multiplies a flood rather than bounding it. The bounds that matter are the
+deadlines, the idle close, the stranger/known pools and the reserve. Gate: the
+`a peek's footprint and expiry` area, alone.

@@ -542,5 +542,63 @@ const roomRoute = async (author, doc) =>
                 server.close();
             }
         });
+
+        it("Web Push: a persona keeps its ten newest browsers, and a refusal is its status, never the far side's words (2026-10-21)", async () => {
+            // The far side answers 500 with a page of its own - a router's, in the attack - and the
+            // newest browser's endpoint redirects, as the way past the https-only check did.
+            const asked = [];
+            const server = http.createServer((req, res) => {
+                asked.push(req.url);
+                req.resume();
+                req.on('end', () => {
+                    if (req.url === '/push/browser-11') {
+                        res.writeHead(302, { location: '/followed' });
+                        return res.end();
+                    }
+                    res.writeHead(500, { 'content-type': 'text/html' });
+                    res.end('<title>RT-AC68U admin</title> firmware 3.0.0.4');
+                });
+            });
+            await new Promise((r) => server.listen(0, '127.0.0.1', r));
+            const origin = `http://127.0.0.1:${server.address().port}`;
+            const subscribe = (n) => {
+                const ua = crypto.createECDH('prime256v1');
+                ua.generateKeys();
+                return j(ada, `api/identity/${adaRoot}/push`, {
+                    endpoint: `${origin}/push/browser-${n}`,
+                    keys: {
+                        p256dh: ua.getPublicKey().toString('base64url'),
+                        auth: crypto.randomBytes(16).toString('base64url'),
+                    },
+                });
+            };
+            try {
+                for (let n = 0; n < 12; n++) {
+                    assert.equal((await subscribe(n)).status, 200);
+                    await wait(5); // a millisecond apart at least: newest is by time
+                }
+                const kept = (
+                    await sql(
+                        `SELECT endpoint FROM push_subscriptions WHERE root_pubkey = '${adaRoot}' ORDER BY endpoint`,
+                        HOST,
+                    )
+                ).rows.map((r) => r.endpoint.replace(`${origin}/push/`, ''));
+                assert.equal(kept.length, 10, JSON.stringify(kept));
+                assert.ok(
+                    !kept.includes('browser-0') && !kept.includes('browser-1'),
+                    `the two oldest let go: ${kept}`,
+                );
+
+                const test = await (await j(ada, `api/identity/${adaRoot}/push/test`, {})).json();
+                assert.equal(test.deliveries.length, 10, 'one push per browser kept');
+                const outcomes = test.deliveries.map((d) => d.outcome).sort();
+                assert.deepEqual(outcomes, ['refused 302', ...Array(9).fill('refused 500')]);
+                assert.doesNotMatch(JSON.stringify(test), /RT-AC68U|firmware/);
+                assert.ok(!asked.includes('/followed'), `a redirect is not followed: ${asked}`);
+            } finally {
+                server.close();
+                await sql(`DELETE FROM push_subscriptions WHERE root_pubkey = '${adaRoot}'`, HOST);
+            }
+        });
     },
 );

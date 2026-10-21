@@ -278,7 +278,7 @@ enum FetchEnd {
 /// Resolve the URL's host and return one vetted PUBLIC address - or refuse. Every address
 /// the name resolves to must be public: a name that answers with one public and one private
 /// address is exactly the SSRF shape this exists to stop.
-async fn vetted_addr(url: &url::Url) -> Result<IpAddr, Refusal> {
+pub(crate) async fn vetted_addr(url: &url::Url) -> Result<IpAddr, Refusal> {
     let host = url
         .host_str()
         .ok_or_else(|| Refusal::BadTarget(crate::msg!("net.unfurl.no-host", "no host")))?;
