@@ -239,6 +239,13 @@ pub fn announced(endpoint: &str, name: &str, version: &str, about: &ringtome_pro
     with_book(|b| b.announced(endpoint, name, version, about, now_ms()));
 }
 
+/// Has this node dialed `endpoint` and been answered - within the book's memory (90 days)? What
+/// admission calls KNOWN (`net::admission`): a stranger can make itself a row by dialing in, but
+/// only this node's own choice to dial it, and its answering, writes `last_ok_ms`.
+pub fn answered_us(endpoint: &str) -> bool {
+    with_book(|b| b.get(endpoint).is_some_and(|m| m.last_ok_ms.is_some())).unwrap_or(false)
+}
+
 /// One machine, as the book holds it.
 pub fn machine(endpoint: &str) -> Option<Machine> {
     with_book(|b| b.get(endpoint).cloned()).flatten()

@@ -79,8 +79,15 @@ pub(crate) const DEATHS_PAGE: i64 = 8;
 /// death log (the retraction-cursor slice, 2026-08-13 - one ask covers every death this node
 /// can prove, instead of one dial per document the asker holds).
 pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
-    let (mut send, mut recv) = conn.accept_bi().await.context("accepting fragment stream")?;
-    let answer = match read_frame(&mut recv).await? {
+    // The receiving half is held to the end, as before: dropped early, it tells the asker to
+    // stop sending before it has finished its side.
+    let (mut send, _recv, ask) = crate::net::p2p::first_ask(&state, async {
+        let (send, mut recv) = conn.accept_bi().await.context("accepting fragment stream")?;
+        let ask = read_frame(&mut recv).await?;
+        Ok((send, recv, ask))
+    })
+    .await?;
+    let answer = match ask {
         Some(FragmentMessage::Want { author, doc_id }) => {
             answer_for(&state, Some(&asker_name(&conn)), &author, &doc_id).await
         }
@@ -114,7 +121,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             )
             .await?;
             send.finish().ok();
-            conn.closed().await;
+            crate::net::p2p::linger(&conn).await;
             return Ok(());
         }
         Some(FragmentMessage::WantRoomReach { author, doc_id, for_root, key_proof }) => {
@@ -145,7 +152,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
             write_frame(&mut send, &FragmentMessage::RoomHistory { items: Vec::new(), total })
                 .await?;
             send.finish().ok();
-            conn.closed().await;
+            crate::net::p2p::linger(&conn).await;
             return Ok(());
         }
         Some(FragmentMessage::WantReplies { author, doc_id, since }) => {
@@ -168,7 +175,7 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     };
     write_frame(&mut send, &answer).await?;
     send.finish().ok();
-    conn.closed().await;
+    crate::net::p2p::linger(&conn).await;
     Ok(())
 }
 

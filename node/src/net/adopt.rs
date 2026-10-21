@@ -81,8 +81,13 @@ pub async fn deliver_grant(
 /// it went. Errors inside completion become an honest `ok: false` ack rather than a dropped
 /// connection - the granter shows the fallback code either way, and words beat resets.
 pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
-    let (mut send, mut recv) = conn.accept_bi().await.context("accepting adopt stream")?;
-    let grant: GrantCode = read_json(&mut recv).await?;
+    // The receiving half is held to the end, as before (`deliver::serve` says why).
+    let (mut send, _recv, grant) = crate::net::p2p::first_ask(&state, async {
+        let (send, mut recv) = conn.accept_bi().await.context("accepting adopt stream")?;
+        let grant: GrantCode = read_json(&mut recv).await?;
+        Ok((send, recv, grant))
+    })
+    .await?;
 
     let ack = match complete_delivered(&state, grant).await {
         Ok(()) => DeliveryAck { ok: true, message: "moved in".into() },
@@ -91,6 +96,6 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
     write_json(&mut send, &ack).await?;
     send.finish().context("finishing adopt ack")?;
     // Let the peer read the ack before the connection drops.
-    conn.closed().await;
+    crate::net::p2p::linger(&conn).await;
     Ok(())
 }

@@ -101,12 +101,17 @@ pub struct Config {
     /// this only caps a novel-stuffer. Override with `RINGTOME_MAX_DOCUMENT_BYTES`.
     pub max_document_bytes: usize,
     /// Admission (PROJECT_PLAN's Peeks, ruling 14, `net::admission`): incoming connections held at once,
-    /// how many of those may still be unproven, and how many one peer may hold. Over any of
-    /// them a connection is closed at accept. `RINGTOME_ADMIT_MAX_CONNECTIONS`,
-    /// `RINGTOME_ADMIT_MAX_UNPROVEN`, `RINGTOME_ADMIT_MAX_PER_PEER`.
+    /// how many of those may still be unproven, and how many one peer may hold - a known one
+    /// (this node has dialed it and been answered) or a stranger. `admit_reserved` of the
+    /// connections are for known peers alone, so a flood of strangers can't shut them out. Over
+    /// any of them a connection is closed at accept. `RINGTOME_ADMIT_MAX_CONNECTIONS`,
+    /// `RINGTOME_ADMIT_MAX_UNPROVEN`, `RINGTOME_ADMIT_MAX_PER_PEER`,
+    /// `RINGTOME_ADMIT_MAX_PER_STRANGER`, `RINGTOME_ADMIT_RESERVED`.
     pub admit_max_connections: usize,
     pub admit_max_unproven: usize,
     pub admit_max_per_peer: usize,
+    pub admit_max_per_stranger: usize,
+    pub admit_reserved: usize,
     /// The exchange budgets (PROJECT_PLAN's Peeks, ruling 2): entries and bytes one direction of one
     /// exchange may carry before it ends short and the requester is marked behind.
     /// `RINGTOME_SYNC_BUDGET_ENTRIES`, `RINGTOME_SYNC_BUDGET_BYTES`.
@@ -337,6 +342,8 @@ impl Config {
         let admit_max_connections = dial("RINGTOME_ADMIT_MAX_CONNECTIONS", 512) as usize;
         let admit_max_unproven = dial("RINGTOME_ADMIT_MAX_UNPROVEN", 256) as usize;
         let admit_max_per_peer = dial("RINGTOME_ADMIT_MAX_PER_PEER", 128) as usize;
+        let admit_max_per_stranger = dial("RINGTOME_ADMIT_MAX_PER_STRANGER", 16) as usize;
+        let admit_reserved = dial("RINGTOME_ADMIT_RESERVED", 64) as usize;
         let sync_budget_entries = dial("RINGTOME_SYNC_BUDGET_ENTRIES", 5_000);
         let sync_budget_bytes = dial("RINGTOME_SYNC_BUDGET_BYTES", 64 * 1024 * 1024);
         let sync_first_frame_ms = dial("RINGTOME_SYNC_FIRST_FRAME_MS", 10_000);
@@ -469,6 +476,8 @@ impl Config {
             admit_max_connections,
             admit_max_unproven,
             admit_max_per_peer,
+            admit_max_per_stranger,
+            admit_reserved,
             sync_budget_entries,
             sync_budget_bytes,
             sync_first_frame_ms,

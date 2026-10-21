@@ -10,7 +10,14 @@
 //!   * **`Admission`** - how many incoming connections at once, how many of those may still
 //!     be UNPROVEN (no membership shown, no served persona named), and how many one peer
 //!     may hold. Over any ceiling the connection is closed at accept, never parked on a
-//!     permit: a queue of waiting tasks is the resource the flood was after.
+//!     permit: a queue of waiting tasks is the resource the flood was after. **Strangers and
+//!     the known** (security pass, 2026-10-21): keys are free, so a per-key cap only sets how
+//!     many keys a flood needs - two filled the unproven pool, four the whole house, and the
+//!     household's own sync was refused with everyone else's. A peer this node has dialed and
+//!     been answered by (`machines::answered_us` - nothing a stranger earns by dialing in) is
+//!     KNOWN: it never counts as unproven, and a reserve of seats strangers can't take is
+//!     kept for it. A flood now costs first contact with new people, never the machines this
+//!     one already syncs with.
 //!   * **`Budget`** - entries and bytes one direction of one exchange may carry. Both sides
 //!     hold one per direction; the requester stops reading at its budget and the responder
 //!     stops sending at its, and either cut leaves the requester provably behind - which is
@@ -31,7 +38,12 @@ use std::sync::{Arc, Mutex};
 pub struct Limits {
     pub max_connections: usize,
     pub max_unproven: usize,
+    /// One known peer's ceiling.
     pub max_per_peer: usize,
+    /// One stranger's: an honest one has a handful of exchanges open at once, not a hundred.
+    pub max_per_stranger: usize,
+    /// Seats of `max_connections` only known peers may take.
+    pub reserved: usize,
     pub budget_entries: u64,
     pub budget_bytes: u64,
     pub first_frame: std::time::Duration,
@@ -45,6 +57,8 @@ impl Default for Limits {
             max_connections: 512,
             max_unproven: 256,
             max_per_peer: 128,
+            max_per_stranger: 16,
+            reserved: 64,
             budget_entries: 5_000,
             budget_bytes: 64 * 1024 * 1024,
             first_frame: std::time::Duration::from_secs(10),
@@ -57,12 +71,14 @@ impl Default for Limits {
 struct Counts {
     total: usize,
     unproven: usize,
+    strangers: usize,
     per_peer: HashMap<[u8; 32], usize>,
 }
 
-/// LOCAL_TEST's stand-in for a flood (`/test/admission-full`): while set, every unproven
-/// connection is refused as if the pool were full. Proven-at-birth ones (blobs) still pass, as
-/// they do past a real unproven ceiling. Never set outside a test node.
+/// LOCAL_TEST's stand-in for a flood (`/test/admission-full`): while set, every connection but
+/// the proven-at-birth (blobs) is refused as if the house were full - known peers too, since
+/// the rig's nodes have all dialed each other and a test of the refusal must still see one.
+/// Never set outside a test node.
 pub static FULL_FOR_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The gate at accept. Cheap to clone; one per node.
@@ -82,6 +98,8 @@ impl Admission {
             max_connections: config.admit_max_connections,
             max_unproven: config.admit_max_unproven,
             max_per_peer: config.admit_max_per_peer,
+            max_per_stranger: config.admit_max_per_stranger,
+            reserved: config.admit_reserved,
             budget_entries: config.sync_budget_entries,
             budget_bytes: config.sync_budget_bytes,
             first_frame: std::time::Duration::from_millis(config.sync_first_frame_ms),
@@ -102,28 +120,38 @@ impl Admission {
     /// mere use proves nothing and risks nothing (the blob ALPN: hash-capability, public
     /// bytes) - they count against the total and the per-peer cap but never the unproven
     /// pool. Everything else starts unproven and is promoted by its handler (`Permit::prove`)
-    /// once membership is shown or a served persona is named.
-    pub fn try_admit(&self, peer: [u8; 32], proven_at_birth: bool) -> Option<Permit> {
+    /// once membership is shown or a served persona is named. A `known` peer starts proven,
+    /// may take the reserved seats, and has the larger per-peer cap; a stranger has neither.
+    pub fn try_admit(&self, peer: [u8; 32], proven_at_birth: bool, known: bool) -> Option<Permit> {
         if !proven_at_birth && FULL_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
             return None;
         }
+        let unproven = !proven_at_birth && !known;
         let mut c = self.counts.lock().expect("admission counts poisoned");
         if c.total >= self.limits.max_connections {
             return None;
         }
-        if !proven_at_birth && c.unproven >= self.limits.max_unproven {
+        if !known && c.strangers >= self.limits.max_connections.saturating_sub(self.limits.reserved)
+        {
+            return None;
+        }
+        if unproven && c.unproven >= self.limits.max_unproven {
             return None;
         }
         let mine = c.per_peer.get(&peer).copied().unwrap_or(0);
-        if mine >= self.limits.max_per_peer {
+        let cap = if known { self.limits.max_per_peer } else { self.limits.max_per_stranger };
+        if mine >= cap {
             return None;
         }
         c.total += 1;
-        if !proven_at_birth {
+        if unproven {
             c.unproven += 1;
         }
+        if !known {
+            c.strangers += 1;
+        }
         c.per_peer.insert(peer, mine + 1);
-        Some(Permit { admission: self.clone(), peer, unproven: !proven_at_birth })
+        Some(Permit { admission: self.clone(), peer, unproven, stranger: !known })
     }
 
     /// What is held right now: `(total, unproven)`.
@@ -132,11 +160,14 @@ impl Admission {
         (c.total, c.unproven)
     }
 
-    fn release(&self, peer: [u8; 32], unproven: bool) {
+    fn release(&self, peer: [u8; 32], unproven: bool, stranger: bool) {
         let mut c = self.counts.lock().expect("admission counts poisoned");
         c.total = c.total.saturating_sub(1);
         if unproven {
             c.unproven = c.unproven.saturating_sub(1);
+        }
+        if stranger {
+            c.strangers = c.strangers.saturating_sub(1);
         }
         match c.per_peer.get_mut(&peer) {
             Some(n) if *n > 1 => *n -= 1,
@@ -157,6 +188,8 @@ pub struct Permit {
     admission: Admission,
     peer: [u8; 32],
     unproven: bool,
+    /// Held in the strangers' share; proving a stranger doesn't move it out of that.
+    stranger: bool,
 }
 
 impl Permit {
@@ -172,7 +205,7 @@ impl Permit {
 
 impl Drop for Permit {
     fn drop(&mut self) {
-        self.admission.release(self.peer, self.unproven);
+        self.admission.release(self.peer, self.unproven, self.stranger);
     }
 }
 
@@ -238,6 +271,8 @@ mod tests {
             max_connections,
             max_unproven,
             max_per_peer,
+            max_per_stranger: max_per_peer,
+            reserved: 0,
             budget_entries: 10,
             budget_bytes: 1000,
             first_frame: std::time::Duration::from_secs(1),
@@ -248,25 +283,25 @@ mod tests {
     #[test]
     fn the_ceiling_refuses_and_a_dropped_permit_reopens_it() {
         let a = Admission::new(limits(2, 2, 2));
-        let p1 = a.try_admit([1; 32], false).expect("first");
-        let _p2 = a.try_admit([2; 32], false).expect("second");
-        assert!(a.try_admit([3; 32], false).is_none(), "over the ceiling: refused, not queued");
+        let p1 = a.try_admit([1; 32], false, false).expect("first");
+        let _p2 = a.try_admit([2; 32], false, false).expect("second");
+        assert!(a.try_admit([3; 32], false, false).is_none(), "over the ceiling: refused, not queued");
         assert_eq!(a.held(), (2, 2));
         drop(p1);
         assert_eq!(a.held(), (1, 1));
-        assert!(a.try_admit([3; 32], false).is_some(), "the seat came back");
+        assert!(a.try_admit([3; 32], false, false).is_some(), "the seat came back");
     }
 
     #[test]
     fn the_unproven_pool_is_smaller_and_proving_leaves_it() {
         let a = Admission::new(limits(10, 1, 10));
-        let mut p1 = a.try_admit([1; 32], false).expect("first unproven");
-        assert!(a.try_admit([2; 32], false).is_none(), "the unproven pool is full");
-        assert!(a.try_admit([2; 32], true).is_some(), "proven at birth never needed the pool");
+        let mut p1 = a.try_admit([1; 32], false, false).expect("first unproven");
+        assert!(a.try_admit([2; 32], false, false).is_none(), "the unproven pool is full");
+        assert!(a.try_admit([2; 32], true, false).is_some(), "proven at birth never needed the pool");
         p1.prove();
         p1.prove(); // idempotent
         assert_eq!(a.held().1, 0, "proving released the unproven seat");
-        let _p3 = a.try_admit([3; 32], false).expect("and a stranger may use it now");
+        let _p3 = a.try_admit([3; 32], false, false).expect("and a stranger may use it now");
         drop(p1);
         assert_eq!(a.held().1, 1, "a proven permit's drop does not double-release the pool");
     }
@@ -274,10 +309,36 @@ mod tests {
     #[test]
     fn one_peer_is_capped_however_many_connections_it_opens() {
         let a = Admission::new(limits(100, 100, 2));
-        let _x = a.try_admit([7; 32], false).expect("one");
-        let _y = a.try_admit([7; 32], false).expect("two");
-        assert!(a.try_admit([7; 32], false).is_none(), "the third from the same peer is refused");
-        assert!(a.try_admit([8; 32], false).is_some(), "another peer is not");
+        let _x = a.try_admit([7; 32], false, false).expect("one");
+        let _y = a.try_admit([7; 32], false, false).expect("two");
+        assert!(a.try_admit([7; 32], false, false).is_none(), "the third from the same peer is refused");
+        assert!(a.try_admit([8; 32], false, false).is_some(), "another peer is not");
+    }
+
+    #[test]
+    fn a_flood_of_strangers_leaves_the_known_their_seats() {
+        // 2026-10-21: free keys filled every seat and the household's own sync was refused.
+        let a = Admission::new(Limits { reserved: 2, max_per_stranger: 1, ..limits(4, 4, 3) });
+        let flood: Vec<Permit> =
+            (0..10u8).filter_map(|k| a.try_admit([k; 32], true, false)).collect();
+        assert_eq!(flood.len(), 2, "strangers get the seats outside the reserve, one per key");
+        let mut household: Vec<Permit> = Vec::new();
+        household.extend(a.try_admit([200; 32], false, true));
+        household.extend(a.try_admit([200; 32], false, true));
+        assert_eq!(household.len(), 2, "the known take the reserve, several each");
+        assert_eq!(a.held(), (4, 0), "and never count as unproven");
+        assert!(a.try_admit([201; 32], false, true).is_none(), "the house is full now, for all");
+        drop(flood);
+        assert!(a.try_admit([201; 32], false, true).is_some(), "the known may use any seat");
+    }
+
+    #[test]
+    fn a_stranger_has_a_smaller_cap_than_a_known_peer() {
+        let a = Admission::new(Limits { max_per_stranger: 2, ..limits(100, 100, 50) });
+        let strange: Vec<Permit> = (0..5).filter_map(|_| a.try_admit([9; 32], false, false)).collect();
+        assert_eq!(strange.len(), 2);
+        let known: Vec<Permit> = (0..5).filter_map(|_| a.try_admit([8; 32], false, true)).collect();
+        assert_eq!(known.len(), 5);
     }
 
     #[test]

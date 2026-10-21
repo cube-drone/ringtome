@@ -93,15 +93,22 @@ async fn read_frame(recv: &mut RecvStream) -> Result<Option<DeliverMessage>> {
 
 /// Serve one delivery connection: read the offer, judge it, answer out loud.
 pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
-    let (mut send, mut recv) = conn.accept_bi().await.context("accepting delivery stream")?;
-    let Some(DeliverMessage::Offer(bytes)) = read_frame(&mut recv).await? else {
+    // The receiving half is held to the end, as before: dropped early, it tells the asker to
+    // stop sending before it has finished its side.
+    let (mut send, _recv, offer) = crate::net::p2p::first_ask(&state, async {
+        let (send, mut recv) = conn.accept_bi().await.context("accepting delivery stream")?;
+        let offer = read_frame(&mut recv).await?;
+        Ok((send, recv, offer))
+    })
+    .await?;
+    let Some(DeliverMessage::Offer(bytes)) = offer else {
         return Err(anyhow!("expected an Offer"));
     };
 
     let answer = judge(&state, &bytes, &conn.remote_id().to_string()).await;
     write_frame(&mut send, &answer).await?;
     send.finish().ok();
-    conn.closed().await;
+    crate::net::p2p::linger(&conn).await;
     Ok(())
 }
 

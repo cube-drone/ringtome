@@ -471,22 +471,19 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                 match incoming.await {
                     Ok(conn) => {
                         let remote = conn.remote_id();
-                        // Where it came from: this computer can then reach it back, even when
-                        // discovery can't (`remember`).
-                        remember(&conn);
-                        crate::machines::dialed_in(
-                            &remote.to_string(),
-                            alpn_name(conn.alpn()).unwrap_or("unknown"),
-                        );
                         // Admission (PROJECT_PLAN's Peeks, ruling 14), before any dispatch so it covers every
                         // ALPN: over a ceiling the connection is closed now, never parked. The
                         // blob ALPN is proven at birth - hash-capability over public bytes; the
                         // rest start unproven and the sync serve promotes its own once the
-                        // consent gate passes. The permit lives as long as the task.
-                        let Some(mut permit) = state
-                            .admission
-                            .try_admit(*remote.as_bytes(), conn.alpn() == crate::files::BLOB_ALPN)
-                        else {
+                        // consent gate passes. A peer this node has dialed and been answered by
+                        // is known: proven, and seated from a reserve strangers can't fill
+                        // (`net::admission`). The permit lives as long as the task.
+                        let known = crate::machines::answered_us(&remote.to_string());
+                        let Some(mut permit) = state.admission.try_admit(
+                            *remote.as_bytes(),
+                            conn.alpn() == crate::files::BLOB_ALPN,
+                            known,
+                        ) else {
                             tracing::info!(
                                 %remote,
                                 alpn = alpn_name(conn.alpn()).unwrap_or("unknown"),
@@ -509,23 +506,45 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                             conn.close(0u32.into(), b"unplugged");
                             return;
                         }
+                        // Where it came from: this computer can then reach it back, even when
+                        // discovery can't (`remember`). Only once it has a seat: a flood of
+                        // fresh keys, refused at the gate, used to grow both books anyway.
+                        remember(&conn);
+                        crate::machines::dialed_in(
+                            &remote.to_string(),
+                            alpn_name(conn.alpn()).unwrap_or("unknown"),
+                        );
+                        // The doors below each hold a seat for as long as they run, so each
+                        // has a bound on that (security pass, 2026-10-21): a peer that said
+                        // nothing, or never read the answer, held one forever - our own
+                        // keep-alive kept QUIC's idle timeout from ever firing.
                         if conn.alpn() == crate::files::BLOB_ALPN {
-                            if let Err(e) =
-                                iroh::protocol::ProtocolHandler::accept(&blobs, conn).await
-                            {
-                                tracing::warn!(%remote, "blob connection ended with error: {e}");
+                            tokio::select! {
+                                served = iroh::protocol::ProtocolHandler::accept(&blobs, conn.clone()) => {
+                                    if let Err(e) = served {
+                                        tracing::warn!(%remote, "blob connection ended with error: {e}");
+                                    }
+                                }
+                                () = close_when_idle(&conn, BLOB_IDLE) => {}
                             }
                         } else if conn.alpn() == crate::net::adopt::ADOPT_ALPN {
-                            if let Err(e) = crate::net::adopt::serve(conn, state).await {
-                                tracing::warn!(%remote, "adopt connection ended with error: {e:#}");
+                            let wall = state.admission.limits().exchange_wall_clock;
+                            match tokio::time::timeout(wall, crate::net::adopt::serve(conn, state)).await {
+                                Ok(Err(e)) => tracing::warn!(%remote, "adopt connection ended with error: {e:#}"),
+                                Err(_) => tracing::info!(%remote, "adopt connection outran its wall clock"),
+                                Ok(Ok(())) => {}
                             }
                         } else if conn.alpn() == ringtome_proto::deliver::DELIVER_ALPN {
-                            if let Err(e) = crate::net::deliver::serve(conn, state).await {
-                                tracing::warn!(%remote, "delivery connection ended with error: {e:#}");
+                            match tokio::time::timeout(ONE_SHOT_WALL, crate::net::deliver::serve(conn, state)).await {
+                                Ok(Err(e)) => tracing::warn!(%remote, "delivery connection ended with error: {e:#}"),
+                                Err(_) => tracing::info!(%remote, "delivery connection outran its wall clock"),
+                                Ok(Ok(())) => {}
                             }
                         } else if conn.alpn() == ringtome_proto::fragment::FRAGMENT_ALPN {
-                            if let Err(e) = crate::net::fragment::serve(conn, state).await {
-                                tracing::warn!(%remote, "fragment connection ended with error: {e:#}");
+                            match tokio::time::timeout(ONE_SHOT_WALL, crate::net::fragment::serve(conn, state)).await {
+                                Ok(Err(e)) => tracing::warn!(%remote, "fragment connection ended with error: {e:#}"),
+                                Err(_) => tracing::info!(%remote, "fragment connection outran its wall clock"),
+                                Ok(Ok(())) => {}
                             }
                         } else if conn.alpn() == iroh_gossip::ALPN {
                             if let Err(e) = state.gossip.handle_connection(conn).await {
@@ -544,6 +563,55 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
         }
         tracing::info!("iroh accept loop stopped (endpoint closed)");
     });
+}
+
+// ---------------------------------------------------------------------------------------------
+// How long a door may hold its seat (security pass, 2026-10-21)
+
+/// The whole of a one-question door's conversation - delivery, fragments: an ask, an answer, a
+/// goodbye. Generous for a slow relay; what it bounds is a peer that stops reading.
+pub const ONE_SHOT_WALL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How long a door, its answer sent, waits for the asker to hang up - sync's own (`serve_on`).
+pub const LINGER: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A file connection that carries no stream data this long is closed. Pings don't count: our
+/// keep-alive sends them, and they kept a parked connection's seat forever.
+const BLOB_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The serve side's first stream and first frame, within the first-frame deadline sync uses.
+pub async fn first_ask<T>(
+    state: &crate::AppState,
+    ask: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    let deadline = state.admission.limits().first_frame;
+    tokio::time::timeout(deadline, ask)
+        .await
+        .map_err(|_| anyhow!("no first frame within {}ms", deadline.as_millis()))?
+}
+
+/// The answer is sent: give the asker `LINGER` to read it and hang up, then go - dropping the
+/// connection closes it.
+pub async fn linger(conn: &Connection) {
+    let _ = tokio::time::timeout(LINGER, conn.closed()).await;
+}
+
+/// Return once `conn` has moved no stream data for `idle`, closing it.
+async fn close_when_idle(conn: &Connection, idle: std::time::Duration) {
+    let moved = |c: &Connection| {
+        let s = c.stats();
+        s.frame_rx.stream + s.frame_tx.stream
+    };
+    let mut last = moved(conn);
+    loop {
+        tokio::time::sleep(idle).await;
+        let now = moved(conn);
+        if now == last {
+            conn.close(0u8.into(), b"idle");
+            return;
+        }
+        last = now;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -624,6 +692,70 @@ mod port_tests {
         ep.close().await;
         free.close().await;
         for d in [dir, dir_b, dir_c] {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
+
+    /// Two endpoints on loopback; `b` connected to `a` on the blob protocol.
+    async fn a_pair(tag: &str) -> (Endpoint, Endpoint, Connection, Connection, Vec<std::path::PathBuf>) {
+        std::env::remove_var("RINGTOME_ENVELOPE_KEY");
+        let dirs = vec![scratch(&format!("{tag}-a")), scratch(&format!("{tag}-b"))];
+        let off = crate::net::discovery::DiscoveryMode::Off;
+        let a = build_endpoint(&Keystore::load(&dirs[0]).unwrap(), &off, None).await.unwrap();
+        let b = build_endpoint(&Keystore::load(&dirs[1]).unwrap(), &off, None).await.unwrap();
+        let addr = crate::net::sync::endpoint_addr(&a.id().to_string(), &addr_strings(&a)).unwrap();
+        let accepting = {
+            let a = a.clone();
+            tokio::spawn(async move { a.accept().await.unwrap().await.unwrap() })
+        };
+        let at_b = dial(&Unplugged::default(), &b, addr, crate::files::BLOB_ALPN).await.unwrap();
+        let at_a = accepting.await.unwrap();
+        (a, b, at_a, at_b, dirs)
+    }
+
+    /// The 2026-10-21 seat-holder: a file connection that says nothing was served until it
+    /// closed, and our keep-alive kept it from ever going idle. Now it is closed - and one that
+    /// keeps moving data is not.
+    #[tokio::test]
+    async fn a_parked_file_connection_loses_its_seat_and_a_busy_one_keeps_it() {
+        let idle = std::time::Duration::from_millis(600);
+        let (a, b, at_a, at_b, dirs) = a_pair("idle").await;
+        let started = std::time::Instant::now();
+        tokio::time::timeout(std::time::Duration::from_secs(10), close_when_idle(&at_a, idle))
+            .await
+            .expect("a parked connection is closed within a few idle windows");
+        assert!(started.elapsed() >= idle, "not before one window has passed");
+        tokio::time::timeout(std::time::Duration::from_secs(5), at_b.closed())
+            .await
+            .expect("the parked side hears the close");
+        a.close().await;
+        b.close().await;
+
+        let (a, b, at_a, at_b, more) = a_pair("busy").await;
+        let talking = tokio::spawn(async move {
+            loop {
+                let mut s = at_b.open_uni().await.unwrap();
+                s.write_all(b"still here").await.unwrap();
+                s.finish().unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+        });
+        let reading = {
+            let at_a = at_a.clone();
+            tokio::spawn(async move {
+                while let Ok(mut s) = at_a.accept_uni().await {
+                    let _ = s.read_to_end(64).await;
+                }
+            })
+        };
+        let watched =
+            tokio::time::timeout(idle * 5, close_when_idle(&at_a, idle)).await;
+        assert!(watched.is_err(), "a connection moving data outlasts five idle windows");
+        talking.abort();
+        reading.abort();
+        a.close().await;
+        b.close().await;
+        for d in dirs.into_iter().chain(more) {
             let _ = std::fs::remove_dir_all(d);
         }
     }

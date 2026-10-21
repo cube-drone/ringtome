@@ -24382,3 +24382,41 @@ No HSTS: whether a node is HTTPS-only is its proxy's business (Curtis).
 Gates: `cargo test -p ringtome-node` (668); the `auth`, caching, custom domains,
 public face, single-post, avatar, banner, post head and MCP acceptance areas
 (72 + 54).
+
+## 2026-10-21: free keys can't fill the house
+
+Item 7 of the security pass (`net/admission.rs`, `net/p2p.rs`). Every incoming
+P2P connection takes a seat (512 in all, 256 unproven, 128 per key), and the
+gate refused rather than queued, as designed. But a seat, once taken, lasted as
+long as the peer liked: delivery, adoption and fragment answers waited for the
+first frame with no deadline and for the close with no timeout, and file
+connections were served until they closed. QUIC's 30-second idle timeout never
+fired, because our own keep-alive pinged every ten. Keys are free, so two keys
+parking 128 silent connections each filled the unproven pool, and four filled
+the house, refusing the household's own sync with everyone else's.
+
+- **Every door has a bound.** Delivery, adoption and fragments take their first
+  stream and frame within the first-frame deadline sync uses
+  (`p2p::first_ask`), wait at most five seconds for the asker to hang up
+  (`p2p::linger`, sync's own figure), and run inside a wall clock: a minute for
+  delivery and fragments (`ONE_SHOT_WALL`), the exchange's for adoption. A peer
+  that never reads the answer no longer holds a seat either.
+- **A file connection that moves no stream data for 30 seconds is closed**
+  (`close_when_idle`); pings don't count. A long transfer that is moving is
+  never cut.
+- **Known peers have seats strangers can't take.** A peer this node has dialed
+  and been answered by (`machines::answered_us`, from the machine table's
+  `last_ok_ms`, which dialing in never writes) is known: it never counts as
+  unproven, it may take any seat, and 64 seats are kept for it alone
+  (`RINGTOME_ADMIT_RESERVED`). A stranger holds at most 16 at once
+  (`RINGTOME_ADMIT_MAX_PER_STRANGER`); a known peer keeps 128. A flood now costs
+  first contact with new people, not the machines this one already syncs with.
+- **Only a seated connection is remembered**: `remember` and
+  `machines::dialed_in` moved below the gate, so fresh keys refused there no
+  longer grow either book.
+- `test/admission-full` now refuses known peers too, since the rig's nodes have
+  all dialed each other and the busy-referral claim must still be refused.
+
+`a_flood_of_strangers_leaves_the_known_their_seats` and
+`a_parked_file_connection_loses_its_seat_and_a_busy_one_keeps_it` (two real
+endpoints on loopback).
