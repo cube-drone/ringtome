@@ -797,10 +797,9 @@ async fn make(
                 let (bytes, ext) = match &c.words {
                     Words::Drawing(body) => {
                         let Some(data) = data else { continue };
-                        let width = (crate::drawing::size_of(&crate::drawing::read(body)).0.max(1)
-                            as u32
-                            * 2)
-                        .min(PICTURE_BOUND);
+                        let width =
+                            crate::drawing_paint::twice_its_width(&crate::drawing::read(body))
+                                .min(PICTURE_BOUND);
                         match crate::drawing_paint::png(data, body, Some(width)).await {
                             Some(png) => (png, "png"),
                             None => continue,
@@ -892,8 +891,8 @@ async fn picture(
     }
     if format == Format::Drawing {
         let Some(data) = data else { return Ok(None) };
-        let width = (crate::drawing::size_of(&crate::drawing::read(&bytes)).0.max(1) as u32 * 2)
-            .min(PICTURE_BOUND);
+        let width =
+            crate::drawing_paint::twice_its_width(&crate::drawing::read(&bytes)).min(PICTURE_BOUND);
         return Ok(crate::drawing_paint::png(data, &bytes, Some(width)).await.map(|p| (p, "png")));
     }
     Ok(tokio::task::spawn_blocking(move || {

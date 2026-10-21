@@ -225,8 +225,11 @@ async fn remember_names(node_db: &Db, root: &str, named: &HashSet<[u8; 32]>) -> 
     Ok(())
 }
 
-/// What evicting `root` would free: the blobs no other persona here names, and its own files.
-pub async fn evict_bytes(state: &AppState, root: &str) -> Result<i64> {
+/// What evicting `root` would free: the blobs no other persona here names, and its own database -
+/// `db_bytes` as the tally measured it, the figure moving is reckoned from. Measured afresh, a
+/// database written to since the tally made evicting free more than moving carries (a CI flake,
+/// 2026-10-21); the admin's list (`all`) already used the one stored figure for both.
+pub async fn evict_bytes(state: &AppState, root: &str, db_bytes: i64) -> Result<i64> {
     let row: Option<(Option<i64>,)> = state
         .node_db
         .fetch_optional(
@@ -238,7 +241,7 @@ pub async fn evict_bytes(state: &AppState, root: &str) -> Result<i64> {
         .await
         .context("summing what only this persona names")?;
     let files = row.and_then(|(n,)| n).unwrap_or(0);
-    Ok(files + state.user_dbs.disk_bytes(root))
+    Ok(files + db_bytes)
 }
 
 /// One persona's standing as the node admin's People list shows it.
@@ -330,7 +333,7 @@ pub async fn persona_handler(
     let _owned = crate::record::store::open(&state, &session.account.id, &root).await?;
     let tally =
         tally(&state, &root).await.map_err(crate::error::AppError::Internal)?.unwrap_or_default();
-    let evict = evict_bytes(&state, &root).await.map_err(crate::error::AppError::Internal)?;
+    let evict = evict_bytes(&state, &root, tally.db_bytes).await.map_err(crate::error::AppError::Internal)?;
     Ok(axum::Json(serde_json::json!({
         "files_bytes": tally.files_bytes,
         "db_bytes": tally.db_bytes,

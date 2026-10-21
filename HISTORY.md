@@ -24313,3 +24313,37 @@ Item 3 of the security pass (`auth.rs`, `auth/routes.rs`):
 Gates: `cargo test -p ringtome-node` (664) and the `auth`, accounts, recovery
 and operator acceptance areas (21). The limiter is off under
 `RINGTOME_LOCAL_TEST`, so the rig can't see the limits themselves.
+
+## 2026-10-21: a drawing too big to paint
+
+Item 5 of the security pass (`drawing_paint.rs`). A drawing's width and height
+are any positive safe integer, in the browser and in `drawing::read` alike, and a
+crop's corners are whatever its entry says. The node's painter sized the pour's
+grid, each layer's pixmap and the picture from them, so one synced drawing with
+one pour, asked for as an ePub or an export, made the node ask for 5.4 exabytes
+and abort: the whole process, not the request.
+
+- `paintable`: every canvas a drawing passes through (its own, then each
+  crop's, since a crop out and back hides a huge one in the middle) is at most
+  8192 units a side and 16 Mpx (`MAX_SIDE`, `MAX_AREA`); `flatten` refuses
+  anything past that, and any picture of it past the same bounds. Past them the
+  drawing has no picture on the node. The app's own canvases are 800 by 600 at
+  most.
+- `twice_its_width`: export and ePub painted at `width as u32 * 2`, which wraps
+  (or panics, in debug) for a wide enough canvas; now bounded.
+- The reader is unchanged: capping in `read` would make the node's canonical
+  form disagree with the browser's, and merges with it.
+
+`an_outsized_canvas_has_no_picture_and_costs_nothing` aborts the test binary
+with the check removed. Gates: `cargo test -p ringtome-node` (665) and the
+exports, ePubs and drawings acceptance areas (34).
+
+## 2026-10-21: evicting never frees more than moving carries
+
+CI flake on "turbolink securiby" (storage.cjs, 0 of 5 reruns): a persona's own
+storage figures read its database's size twice. Moving used the tally's
+`db_bytes`, measured when the persona's files last moved; evicting measured the
+database afresh, so any write since (a WAL or journal grown by background work)
+made evicting free more than moving carried. `storage::evict_bytes` now takes the
+tally's figure, as the admin's list (`storage::all`) always did. Gate: the
+storage accounting acceptance area.

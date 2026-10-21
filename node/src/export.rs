@@ -525,7 +525,7 @@ async fn build(
         // A drawing's picture beside its strokes (2026-10-09, drawing_paint.rs): painted once, at
         // twice its size - the browser's own download's backing - so it opens anywhere.
         let picture = if format == Format::Drawing {
-            let width = crate::drawing::size_of(&crate::drawing::read(&body)).0.max(1) as u32 * 2;
+            let width = crate::drawing_paint::twice_its_width(&crate::drawing::read(&body));
             crate::drawing_paint::png(&data, &body, Some(width)).await
         } else {
             None

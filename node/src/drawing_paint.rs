@@ -265,14 +265,52 @@ pub fn pour_runs(ops: &[Op], index: usize, width: i64, height: i64) -> Vec<i64> 
 /// paints as nothing, as it does in a browser before it arrives.
 pub type Pictures = HashMap<String, Pixmap>;
 
+/// The largest canvas the node paints, a side and an area, and the largest picture it paints one
+/// into (security pass, 2026-10-21). A body's width and height are any positive safe integer, as
+/// in the browser (`drawing::read` keeps that, byte for byte), and a crop's corners are whatever
+/// its entry says - so a drawing anyone can sync could ask for a canvas of 2^53 units, and the
+/// pour's grid, a layer's pixmap and the picture are all that size. A drawing made in the app is
+/// 800 by 600 at most (crops only shrink it); past these it has no picture on the node.
+pub const MAX_SIDE: i64 = 8192;
+pub const MAX_AREA: i64 = 1 << 24;
+
+fn within_bounds(w: i64, h: i64) -> bool {
+    (1..=MAX_SIDE).contains(&w) && (1..=MAX_SIDE).contains(&h) && w * h <= MAX_AREA
+}
+
+/// Can the node paint this drawing: every canvas it passes through - its own, then each crop's,
+/// in whatever order its layers take them - within bounds.
+pub fn paintable(body: &Body) -> bool {
+    within_bounds(body.width, body.height)
+        && body.strokes.iter().filter(|s| s.tool == "crop").all(|s| {
+            match s.points.as_deref() {
+                Some(p) if p.len() == 4 => {
+                    within_bounds(p[2].saturating_sub(p[0]), p[3].saturating_sub(p[1]))
+                }
+                _ => true,
+            }
+        })
+}
+
+/// Twice the drawing's own width, the browser download's backing - what a picture beside a
+/// drawing's strokes is painted at (export, ePub). Bounded, so an outsized canvas can't wrap it.
+pub fn twice_its_width(body: &Body) -> u32 {
+    (size_of(body).0.clamp(1, MAX_SIDE) * 2) as u32
+}
+
 /// A picture of the drawing, `width` pixels wide: the visible layers, stacked at their opacities
-/// over nothing - transparent wherever they leave nothing (`flatten`).
+/// over nothing - transparent wherever they leave nothing (`flatten`). None for a drawing past
+/// the node's bounds (`paintable`), or a picture of it that would be.
 pub fn flatten(body: &Body, width: u32, pictures: &Pictures) -> Option<Pixmap> {
     let (w, h) = size_of(body);
-    if w <= 0 || h <= 0 || width == 0 {
+    if !paintable(body) || w <= 0 || h <= 0 || width == 0 {
         return None;
     }
-    let height = ((width as f64 * h as f64) / w as f64).round().max(1.0) as u32;
+    let height = ((width as f64 * h as f64) / w as f64).round().max(1.0);
+    if !within_bounds(width as i64, height.min(MAX_SIDE as f64 + 1.0) as i64) {
+        return None;
+    }
+    let height = height as u32;
     let scale = width as f32 / w as f32;
     let mut out = Pixmap::new(width, height)?;
     for layer in layers_of(body) {
@@ -617,7 +655,7 @@ pub async fn png(
 ) -> Option<Vec<u8>> {
     let body = crate::drawing::read(body_bytes);
     let pictures = Arc::new(pictures_for(data, &body).await);
-    let width = width.unwrap_or_else(|| size_of(&body).0.max(1) as u32);
+    let width = width.unwrap_or_else(|| size_of(&body).0.clamp(1, MAX_SIDE) as u32);
     tokio::task::spawn_blocking(move || flatten(&body, width, &pictures)?.encode_png().ok())
         .await
         .ok()
@@ -735,6 +773,36 @@ mod tests {
         // Not where it was drawn - and nothing there at all: a grab on the base layer moves its
         // white with everything else before it, as it does in the browser.
         assert_eq!(pixel(&p, 10, 10)[3], 0, "not where it was drawn, and the white moved too");
+    }
+
+    #[test]
+    fn an_outsized_canvas_has_no_picture_and_costs_nothing() {
+        // The 2026-10-21 probe: a synced body may say any positive safe integer, and the pour's
+        // grid and every pixmap were that size. Each of these returns at once, allocating nothing.
+        let huge = |w: i64, h: i64, strokes: &str| {
+            read(format!(r##"{{"v":1,"width":{w},"height":{h},"background":"#ffffff","strokes":[{strokes}],"undone":[]}}"##).as_bytes())
+        };
+        let pour = r##"{"id":"0000000000000001","t":1,"tool":"bucket","color":"#ff0000","points":[5,5],"reach":10}"##;
+        let wide = huge(9_007_199_254_740_991, 600, pour);
+        assert_eq!(wide.width, 9_007_199_254_740_991, "read keeps it, as the browser does");
+        assert!(flatten(&wide, 800, &Pictures::new()).is_none(), "too wide to paint");
+        assert!(flatten(&huge(1, 9_007_199_254_740_991, ""), 800, &Pictures::new()).is_none(),
+            "a sliver whose picture would be impossibly tall");
+        assert!(flatten(&huge(8192, 8192, ""), 8, &Pictures::new()).is_none(), "each side fits, the area doesn't");
+        // A crop out to the enormous, then back: the canvas in between is what a pour paints on.
+        let through = huge(100, 80, r##"{"id":"0000000000000001","t":1,"tool":"crop","points":[0,0,9000000000,9000000000]},
+               {"id":"0000000000000002","t":2,"tool":"bucket","color":"#ff0000","points":[5,5],"reach":10},
+               {"id":"0000000000000003","t":3,"tool":"crop","points":[0,0,100,80]}"##);
+        assert_eq!(size_of(&through), (100, 80));
+        assert!(flatten(&through, 100, &Pictures::new()).is_none(), "the canvas it passed through");
+        // A picture past the bounds, of a canvas within them.
+        assert!(flatten(&huge(100, 80, ""), 9000, &Pictures::new()).is_none());
+        assert_eq!(twice_its_width(&wide), 2 * MAX_SIDE as u32, "bounded, never wrapped");
+        // ...while the app's own canvas, at twice its size, paints.
+        let mine = huge(800, 600, pour);
+        assert_eq!(twice_its_width(&mine), 1600);
+        let p = flatten(&mine, 1600, &Pictures::new()).unwrap();
+        assert_eq!((p.width(), p.height()), (1600, 1200));
     }
 
     #[test]
