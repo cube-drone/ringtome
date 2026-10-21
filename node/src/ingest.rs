@@ -97,9 +97,9 @@ impl Ingest {
     /// job. Returns the `job_id` to poll by.
     pub async fn enqueue(&self, node_db: &Db, up: Upload<'_>) -> Result<String, AppError> {
         let job_id = {
-            use rand::RngCore;
+            use rand::Rng;
             let mut b = [0u8; 16];
-            rand::rngs::OsRng.fill_bytes(&mut b);
+            crate::random::OsRng.fill_bytes(&mut b);
             hex::encode(b)
         };
         self.ensure_dir()

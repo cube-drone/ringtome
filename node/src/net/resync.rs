@@ -362,8 +362,8 @@ pub async fn anti_entropy_pass(state: AppState) -> anyhow::Result<()> {
 
         let peers = unheld(&state, &root, sync::peers_for(&state.node_db, &root).await?);
         let sample: Vec<String> = {
-            use rand::seq::SliceRandom;
-            peers.choose_multiple(&mut rand::thread_rng(), ANTI_ENTROPY_PEERS).cloned().collect()
+            use rand::seq::IndexedRandom;
+            peers.sample(&mut rand::rng(), ANTI_ENTROPY_PEERS).cloned().collect()
         };
         let results = sync::sync_peers(&state, &root, &sample).await?;
         for r in &results {

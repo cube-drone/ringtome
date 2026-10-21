@@ -968,9 +968,9 @@ fn load_or_create_db_key(keystore: &Keystore, logical_name: &str) -> Result<Stri
             .load_key(&key_name, logical_name.as_bytes())
             .with_context(|| format!("opening database key for {logical_name}"))?
     } else {
-        use rand::RngCore;
+        use rand::Rng;
         let mut key = [0u8; DB_KEY_LEN];
-        rand::rngs::OsRng.fill_bytes(&mut key);
+        crate::random::OsRng.fill_bytes(&mut key);
         keystore
             .store(&key_name, &key, logical_name.as_bytes())
             .with_context(|| format!("sealing database key for {logical_name}"))?;
@@ -1619,7 +1619,7 @@ mod tests {
     /// read used to.
     async fn empty_db_under_a_nonempty_journal_replays_on_open() {
         let dir = temp_dir().await;
-        let key = ringtome_proto::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key = ringtome_proto::SigningKey::generate(&mut crate::random::OsRng);
         let root_hex = hex::encode(key.verifying_key().to_bytes());
 
         {
@@ -1658,7 +1658,7 @@ mod tests {
         let dir = temp_dir().await;
         let ks = temp_keystore(&dir);
         let mgr = UserDbManager::new(&dir, ks, 4);
-        let key = ringtome_proto::SigningKey::generate(&mut rand::rngs::OsRng);
+        let key = ringtome_proto::SigningKey::generate(&mut crate::random::OsRng);
         let root_hex = hex::encode(key.verifying_key().to_bytes());
 
         let mut racers = tokio::task::JoinSet::new();

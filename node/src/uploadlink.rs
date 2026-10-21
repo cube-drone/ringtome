@@ -138,9 +138,9 @@ pub async fn mint_handler(
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| "picture".to_string());
     let token = {
-        use rand::RngCore;
+        use rand::Rng;
         let mut b = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut b);
+        crate::random::OsRng.fill_bytes(&mut b);
         hex::encode(b)
     };
     let doc_id = crate::record::documents::new_doc_id();

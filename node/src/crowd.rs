@@ -184,16 +184,16 @@ const AUTHOR_PASS_MS: i64 = 6 * 3600 * 1000;
 /// newcomers who joined in the same minute would otherwise come back to the author together,
 /// every six hours, for good.
 pub fn next_author_due(now: i64) -> i64 {
-    use rand::Rng;
+    use rand::RngExt;
     let spread = AUTHOR_PASS_MS / 4;
-    now + AUTHOR_PASS_MS + rand::thread_rng().gen_range(-spread..=spread)
+    now + AUTHOR_PASS_MS + rand::rng().random_range(-spread..=spread)
 }
 
 /// Up to `n` of `holders`, chosen at random, so the pulls a crowd serves spread across it
 /// rather than piling on whoever was referred last.
 pub fn pick(holders: &[String], n: usize) -> Vec<String> {
-    use rand::seq::SliceRandom;
-    holders.choose_multiple(&mut rand::thread_rng(), n).cloned().collect()
+    use rand::seq::IndexedRandom;
+    holders.sample(&mut rand::rng(), n).cloned().collect()
 }
 
 /// How long a built busy referral is reused. A flood refuses thousands of connections a second;

@@ -86,6 +86,7 @@ pub mod publinks;
 pub mod publish;
 pub mod publishing;
 pub mod ranged;
+pub mod random;
 pub mod rate_limit;
 pub mod reading;
 pub mod reaper;

@@ -25,7 +25,7 @@ pub mod routes;
 
 use anyhow::Context;
 use base64::Engine;
-use rand::RngCore;
+use rand::Rng;
 use serde::Deserialize;
 use sha2::Digest;
 
@@ -136,7 +136,7 @@ pub fn redirect_registrable(uri: &str) -> bool {
 
 fn random_hex() -> String {
     let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 

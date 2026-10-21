@@ -18,11 +18,9 @@ pub use extractor::{
 pub use routes::router;
 
 use anyhow::{anyhow, Context, Result};
-use argon2::password_hash::{
-    rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
-};
+use argon2::password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::{Algorithm, Argon2, Params, Version};
-use rand::RngCore;
+use rand::Rng;
 use uuid::Uuid;
 
 use crate::clock::now_ms;
@@ -83,9 +81,10 @@ async fn in_argon2_seat<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'st
 pub(crate) async fn hash_password(password: &str, fast: bool) -> Result<String> {
     let password = password.to_owned();
     in_argon2_seat(move || {
-        let salt = SaltString::generate(&mut OsRng);
+        // A 16-byte salt from the operating system's generator, as `SaltString::generate`
+        // made before argon2 0.6 took the salt into its own hands.
         hasher(fast)
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .map(|h| h.to_string())
             .map_err(|e| anyhow!("hashing password: {e}"))
     })
@@ -121,7 +120,7 @@ pub(crate) async fn verify_password(password: &str, phc: &str) -> bool {
 
 fn generate_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     // URL/cookie-safe hex.
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -719,6 +718,20 @@ mod tests {
         let strong = hash_password("hunter22hunter22", false).await.unwrap();
         assert!(!strong.contains("m=8,"), "default params should not be minimal: {strong}");
         assert!(verify_password("hunter22hunter22", &strong).await);
+    }
+
+    /// Hashes made by argon2 0.5 (2026-10-21, before the RustCrypto upgrade), at the real
+    /// parameters and the local-test ones: every account's password is stored this way, and a
+    /// new crate that read them differently would lock everyone out.
+    #[tokio::test]
+    async fn a_password_hashed_before_the_upgrade_still_verifies() {
+        for phc in [
+            "$argon2id$v=19$m=19456,t=2,p=1$lGNZW5rOYVG/crblg3s7mg$eF88Ymw4CC2SzU+ILSiGj4T4VkFUxV/CEqFLWMn/ZWE",
+            "$argon2id$v=19$m=8,t=1,p=1$vUoV4XATFYaBH5IMN+79tw$zxgrCEwvOPaSH4vnKQSrXfIJLGJRgV4CjRr1DhJ/F74",
+        ] {
+            assert!(verify_password("hunter22hunter22", phc).await, "{phc}");
+            assert!(!verify_password("hunter22hunter23", phc).await, "{phc}");
+        }
     }
 
     #[tokio::test]

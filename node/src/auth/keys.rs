@@ -23,7 +23,7 @@
 use anyhow::Context;
 use axum::extract::{Path, State};
 use axum::Json;
-use rand::RngCore;
+use rand::Rng;
 use serde::Deserialize;
 
 use super::extractor::Session;
@@ -53,7 +53,7 @@ fn hash(key: &str) -> String {
 
 fn new_key() -> String {
     let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     format!("{KEY_PREFIX}{}", hex::encode(bytes))
 }
 

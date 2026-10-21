@@ -1932,9 +1932,9 @@ pub async fn public_head(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicHead
 
 /// Mint a fresh document id. 16 random bytes; identity is the id, collision is negligible.
 pub fn new_doc_id() -> [u8; 16] {
-    use rand::RngCore;
+    use rand::Rng;
     let mut id = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut id);
+    crate::random::OsRng.fill_bytes(&mut id);
     id
 }
 

@@ -16,8 +16,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
-use chacha20poly1305::aead::{Aead, KeyInit, OsRng};
-use chacha20poly1305::{AeadCore, XChaCha20Poly1305, XNonce};
+use chacha20poly1305::aead::{Aead, Generate, KeyInit};
+use chacha20poly1305::{XChaCha20Poly1305, XNonce};
+use rand::Rng;
+
+use crate::random::OsRng;
 
 /// Sealed-blob format version + algorithm marker (first byte of every sealed blob).
 const SEAL_V1_XCHACHA: u8 = 0x01;
@@ -48,7 +51,8 @@ impl Keystore {
                         ENVELOPE_KEY_LEN * 2
                     );
                 }
-                *chacha20poly1305::Key::from_slice(&bytes)
+                chacha20poly1305::Key::try_from(bytes.as_slice())
+                    .map_err(|_| anyhow!("RINGTOME_ENVELOPE_KEY is the wrong length"))?
             }
             Err(_) => load_or_create_envelope_key_file(data_directory)?,
         };
@@ -68,7 +72,8 @@ impl Keystore {
     /// authentication tag (not encrypted) - pass the identity's pubkey so a key file can't be
     /// silently swapped for a different identity's.
     pub fn store(&self, name: &str, plaintext: &[u8], aad: &[u8]) -> Result<()> {
-        let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+        let mut nonce = XNonce::default();
+        OsRng.fill_bytes(&mut nonce);
         let ciphertext = self
             .cipher()
             .encrypt(&nonce, chacha20poly1305::aead::Payload { msg: plaintext, aad })
@@ -118,10 +123,11 @@ impl Keystore {
             bail!("truncated key file {name}");
         }
         let (nonce_bytes, ciphertext) = rest.split_at(24);
-        let nonce = XNonce::from_slice(nonce_bytes);
+        let nonce =
+            XNonce::try_from(nonce_bytes).map_err(|_| anyhow!("truncated key file {name}"))?;
 
         self.cipher()
-            .decrypt(nonce, chacha20poly1305::aead::Payload { msg: ciphertext, aad })
+            .decrypt(&nonce, chacha20poly1305::aead::Payload { msg: ciphertext, aad })
             .map_err(|_| anyhow!("opening key file {name}: authentication failed (corrupt, tampered, or wrong envelope key)"))
     }
 }
@@ -135,10 +141,11 @@ fn load_or_create_envelope_key_file(data_directory: &Path) -> Result<chacha20pol
         if bytes.len() != ENVELOPE_KEY_LEN {
             bail!("envelope.key is corrupt (wrong length)");
         }
-        return Ok(*chacha20poly1305::Key::from_slice(&bytes));
+        return chacha20poly1305::Key::try_from(bytes.as_slice())
+            .map_err(|_| anyhow!("envelope.key is corrupt (wrong length)"));
     }
 
-    let key = XChaCha20Poly1305::generate_key(&mut OsRng);
+    let key = chacha20poly1305::Key::generate_from_rng(&mut OsRng);
     write_private_file(&path, key.as_slice()).context("writing envelope.key")?;
     tracing::info!(path = %path.display(), "generated new node envelope key");
     Ok(key)
@@ -168,6 +175,24 @@ mod tests {
         // Ensure we don't pick up an ambient RINGTOME_ENVELOPE_KEY from the environment.
         std::env::remove_var("RINGTOME_ENVELOPE_KEY");
         (Keystore::load(&dir).unwrap(), dir)
+    }
+
+    /// A key file sealed by chacha20poly1305 0.10 (2026-10-21, before the RustCrypto upgrade):
+    /// every node's private keys sit on disk in this shape, so whatever crate opens them must
+    /// open these exact bytes. A round trip can't show that - both halves would be the new code.
+    #[test]
+    fn a_key_file_sealed_before_the_upgrade_still_opens() {
+        let (_, dir) = temp_keystore();
+        std::fs::write(dir.join("envelope.key"), [7u8; 32]).unwrap();
+        let ks = Keystore::load(&dir).unwrap();
+        std::fs::write(
+            dir.join("keys/pinned.key"),
+            hex::decode("01b4374d66b5bfec913c98605bc72df89bd5300a1ce0087735866e6f4337de9908544dc274438b955d12c111cb20c6b27c9044f39ac1221f7095d62b737202c3aab664906be7").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(ks.load_key("pinned", b"pinned-aad").unwrap(), b"a private key, sealed in 2026");
+        assert!(ks.load_key("pinned", b"other-aad").is_err(), "and the AAD still binds");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -210,3 +235,4 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 }
+

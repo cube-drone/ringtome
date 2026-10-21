@@ -29,9 +29,9 @@ pub struct EncKeyPair {
 impl EncKeyPair {
     /// A fresh random encryption keypair (for a leaf or root).
     pub fn generate() -> Self {
-        use rand::RngCore;
+        use rand::Rng;
         let mut secret = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut secret);
+        rand::rng().fill_bytes(&mut secret);
         Self::from_secret(secret)
     }
 

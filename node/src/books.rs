@@ -327,8 +327,8 @@ async fn rollout(
             None => {
                 let mut k = [0u8; 32];
                 {
-                    use rand::RngCore;
-                    rand::rngs::OsRng.fill_bytes(&mut k);
+                    use rand::Rng;
+                    crate::random::OsRng.fill_bytes(&mut k);
                 }
                 facts.key = Some(hex::encode(k));
                 data.private_registers(BOOKS_KV)

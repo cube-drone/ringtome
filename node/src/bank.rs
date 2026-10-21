@@ -1771,9 +1771,9 @@ pub async fn buy_handler(
         )));
     }
     let id = {
-        use rand::RngCore;
+        use rand::Rng;
         let mut b = [0u8; 16];
-        rand::rngs::OsRng.fill_bytes(&mut b);
+        crate::random::OsRng.fill_bytes(&mut b);
         hex::encode(b)
     };
     let value = json!({ "kind": "horsebond", "pennies": pennies.to_string(), "bought_ms": crate::clock::now_ms() }).to_string();

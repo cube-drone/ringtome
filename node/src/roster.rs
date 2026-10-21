@@ -2910,8 +2910,8 @@ async fn found_handler(
     }
     let mut seed = [0u8; 32];
     {
-        use rand::RngCore;
-        rand::rngs::OsRng.fill_bytes(&mut seed);
+        use rand::Rng;
+        crate::random::OsRng.fill_bytes(&mut seed);
     }
     let founding =
         Founding::sign(&ed25519_dalek::SigningKey::from_bytes(&seed), me, name, req.public);

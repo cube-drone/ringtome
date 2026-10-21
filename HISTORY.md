@@ -24467,3 +24467,37 @@ change of their own, not taken here.
 
 Gates: `just ci`; `cargo check` of the desktop crate, which `just ci` doesn't
 build.
+
+## 2026-10-21: RustCrypto's next generation
+
+The first of the major upgrades: sha2 and blake2 0.11, hkdf 0.13, aes-gcm and
+chacha20poly1305 0.11, p256 0.14, argon2 0.6, ed25519-dalek 3 (node, proto and
+supervisor), and with them rand 0.8 → 0.10, since the new crates all take
+rand_core 0.10's traits. iroh already used ed25519-dalek 3; the tree no longer
+builds both.
+
+- **Randomness from one place.** rand 0.10 made the OS generator fallible
+  (`SysRng`); `random::OsRng` is the infallible bridge under the old name, so
+  every key, nonce and token call site kept reading `OsRng`. Thread-local draws
+  stay thread-local (`rand::thread_rng()` → `rand::rng()`). argon2 0.6 makes
+  its own 16-byte salt from the OS generator, as `SaltString::generate` did; the
+  keystore fills its nonce from `OsRng` now that the AEAD crates dropped
+  `generate_nonce`. web push's private `rand_core_compat` shim is gone.
+- **The renames**: `to_encoded_point` → `to_sec1_point`, `from_slice` →
+  `From`/`TryFrom` (arrays infallibly; the keystore's and `decrypt_file`'s
+  slices checked), `choose_multiple` → `sample`, `gen_range` → `random_range`,
+  `random`/`generate_key` → `Generate::generate_from_rng`.
+
+**Proving the bytes didn't move.** A round trip can't, since both halves would
+be the new code, so three tests were pinned on the OLD crates first, from bytes
+they produced: a keystore key file
+(`keystore::a_key_file_sealed_before_the_upgrade_still_opens`), a sealed post
+body (`record::private::a_body_sealed_before_the_upgrade_still_opens`) and
+argon2 0.5 hashes at both parameter sets
+(`auth::a_password_hashed_before_the_upgrade_still_verifies`). Every private
+key on disk, every private record and every stored password is one of those
+shapes. Beside them: the entry vectors re-sign from their fixed seeds and match
+the published file signature for signature (`proto/tests/vectors.rs`), and RFC
+8291's worked example still encrypts byte for byte (p256 + hkdf + aes-gcm).
+
+Gates: `just ci`; `cargo check` of the desktop crate.

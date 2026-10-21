@@ -1584,8 +1584,8 @@ impl Documents<'_> {
             None => {
                 let mut k = [0u8; 32];
                 {
-                    use rand::RngCore;
-                    rand::rngs::OsRng.fill_bytes(&mut k);
+                    use rand::Rng;
+                    crate::random::OsRng.fill_bytes(&mut k);
                 }
                 self.store.annotations().set_field(doc_id, TRUSTED_KEY, &hex::encode(k)).await?;
                 k

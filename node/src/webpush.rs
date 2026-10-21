@@ -24,7 +24,11 @@ use anyhow::{anyhow, bail, Context, Result};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use base64::Engine;
 use p256::ecdsa::signature::Signer;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::ToSec1Point;
+use p256::elliptic_curve::Generate;
+use rand::Rng;
+
+use crate::random::OsRng;
 
 use crate::db::Db;
 use crate::AppState;
@@ -63,7 +67,7 @@ impl WebPush {
             p256::ecdsa::SigningKey::from_slice(&bytes)
                 .map_err(|e| anyhow!("the VAPID key is not a P-256 key: {e}"))?
         } else {
-            let key = p256::ecdsa::SigningKey::random(&mut rand_core_compat::OsRng);
+            let key = p256::ecdsa::SigningKey::generate_from_rng(&mut OsRng);
             keystore
                 .store(KEY_NAME, &key.to_bytes(), KEY_NAME.as_bytes())
                 .context("sealing the VAPID key")?;
@@ -80,13 +84,8 @@ impl WebPush {
     /// The public key a browser subscribes against (`applicationServerKey`): uncompressed P-256,
     /// base64url.
     pub fn public_key(&self) -> String {
-        B64.encode(self.key.verifying_key().to_encoded_point(false).as_bytes())
+        B64.encode(self.key.verifying_key().to_sec1_point(false).as_bytes())
     }
-}
-
-/// `rand_core`'s OsRng under the name p256's `random` wants, so one import reads plainly.
-mod rand_core_compat {
-    pub use p256::elliptic_curve::rand_core::OsRng;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -94,10 +93,9 @@ mod rand_core_compat {
 
 /// Encrypt `plaintext` to a browser's key and secret, with a fresh sender keypair and salt.
 pub fn encrypt(plaintext: &[u8], ua_public: &[u8], auth_secret: &[u8]) -> Result<Vec<u8>> {
-    let as_secret = p256::SecretKey::random(&mut rand_core_compat::OsRng);
+    let as_secret = p256::SecretKey::generate_from_rng(&mut OsRng);
     let mut salt = [0u8; 16];
-    use p256::elliptic_curve::rand_core::RngCore;
-    rand_core_compat::OsRng.fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut salt);
     encrypt_with(plaintext, ua_public, auth_secret, &as_secret, &salt)
 }
 
@@ -114,7 +112,7 @@ fn encrypt_with(
 
     let ua_key = p256::PublicKey::from_sec1_bytes(ua_public)
         .map_err(|_| anyhow!("the browser's key is not a P-256 point"))?;
-    let as_public = as_secret.public_key().to_encoded_point(false);
+    let as_public = as_secret.public_key().to_sec1_point(false);
     let shared = p256::ecdh::diffie_hellman(as_secret.to_nonzero_scalar(), ua_key.as_affine());
 
     // IKM = HKDF(auth_secret, ecdh_secret, "WebPush: info" || 0x00 || ua_public || as_public, 32)
@@ -141,7 +139,7 @@ fn encrypt_with(
     let cipher =
         aes_gcm::Aes128Gcm::new_from_slice(&cek).map_err(|_| anyhow!("AES-128-GCM key"))?;
     let sealed = cipher
-        .encrypt(aes_gcm::Nonce::from_slice(&nonce), record.as_slice())
+        .encrypt(&aes_gcm::Nonce::from(nonce), record.as_slice())
         .map_err(|_| anyhow!("AES-128-GCM seal"))?;
     if sealed.len() + 86 > RECORD_SIZE as usize {
         bail!("push payload too large ({} bytes)", sealed.len());
@@ -172,7 +170,7 @@ fn vapid_header(key: &p256::ecdsa::SigningKey, endpoint: &str, now_secs: u64) ->
     let signing_input = format!("{header}.{claims}");
     let signature: p256::ecdsa::Signature = key.sign(signing_input.as_bytes());
     let token = format!("{signing_input}.{}", B64.encode(signature.to_bytes()));
-    let k = B64.encode(key.verifying_key().to_encoded_point(false).as_bytes());
+    let k = B64.encode(key.verifying_key().to_sec1_point(false).as_bytes());
     Ok(format!("vapid t={token}, k={k}"))
 }
 
@@ -433,7 +431,7 @@ mod tests {
             p256::SecretKey::from_slice(&b64("yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw"))
                 .unwrap();
         assert_eq!(
-            B64.encode(as_secret.public_key().to_encoded_point(false).as_bytes()),
+            B64.encode(as_secret.public_key().to_sec1_point(false).as_bytes()),
             "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8"
         );
         let ua_public = b64("BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4");
@@ -453,7 +451,7 @@ mod tests {
     #[test]
     fn a_vapid_token_verifies_with_its_own_key() {
         use p256::ecdsa::signature::Verifier;
-        let key = p256::ecdsa::SigningKey::random(&mut rand_core_compat::OsRng);
+        let key = p256::ecdsa::SigningKey::generate_from_rng(&mut OsRng);
         let header = vapid_header(&key, "https://fcm.googleapis.com/fcm/send/abc", 1_000).unwrap();
         let token = header.strip_prefix("vapid t=").unwrap().split(", k=").next().unwrap();
         let k = header.split(", k=").nth(1).unwrap();

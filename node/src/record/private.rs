@@ -237,9 +237,9 @@ pub async fn enc_roster(db: &Db) -> Result<BTreeMap<[u8; 32], [u8; 32]>, AppErro
 
 /// A fresh random epoch key.
 pub fn fresh_epoch_key() -> [u8; 32] {
-    use rand::RngCore;
+    use rand::Rng;
     let mut key = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut key);
+    crate::random::OsRng.fill_bytes(&mut key);
     key
 }
 
@@ -358,12 +358,12 @@ pub fn encrypt_record(
     })?;
     let mut nonce = [0u8; 24];
     {
-        use rand::RngCore;
-        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        use rand::Rng;
+        crate::random::OsRng.fill_bytes(&mut nonce);
     }
     let ciphertext = cipher(epoch_key)
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             chacha20poly1305::aead::Payload { msg: &plaintext, aad },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting private record: {e}")))?;
@@ -390,7 +390,7 @@ fn open_with<T>(
 ) -> Opened<T> {
     for key in keys.for_epoch(record.epoch) {
         if let Ok(plaintext) = cipher(key).decrypt(
-            XNonce::from_slice(&record.nonce),
+            &XNonce::from(record.nonce),
             chacha20poly1305::aead::Payload { msg: &record.ciphertext, aad },
         ) {
             return match decode(&plaintext) {
@@ -427,12 +427,12 @@ pub fn encrypt_notice(
 ) -> Result<PrivateRecord, AppError> {
     let mut nonce = [0u8; 24];
     {
-        use rand::RngCore;
-        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        use rand::Rng;
+        crate::random::OsRng.fill_bytes(&mut nonce);
     }
     let ciphertext = cipher(epoch_key)
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             chacha20poly1305::aead::Payload { msg: envelope_bytes, aad: NOTICE_AAD },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting inbox notice: {e}")))?;
@@ -484,12 +484,12 @@ pub fn encrypt_doc_header(
     })?;
     let mut nonce = [0u8; 24];
     {
-        use rand::RngCore;
-        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        use rand::Rng;
+        crate::random::OsRng.fill_bytes(&mut nonce);
     }
     let ciphertext = cipher(epoch_key)
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             chacha20poly1305::aead::Payload { msg: &plaintext, aad: DOC_AAD },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting doc header: {e}")))?;
@@ -514,12 +514,12 @@ pub fn encrypt_file(
 ) -> Result<Vec<u8>, AppError> {
     let mut nonce = [0u8; 24];
     {
-        use rand::RngCore;
-        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        use rand::Rng;
+        crate::random::OsRng.fill_bytes(&mut nonce);
     }
     let ciphertext = cipher(epoch_key)
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             chacha20poly1305::aead::Payload { msg: plaintext, aad: FILE_AAD },
         )
         .map_err(|e| AppError::Internal(anyhow!("encrypting file: {e}")))?;
@@ -542,7 +542,7 @@ pub fn decrypt_file(blob: &[u8], keys: &EpochKeys) -> Option<Vec<u8>> {
     let ciphertext = &blob[32..];
     for key in keys.for_epoch(epoch) {
         if let Ok(plaintext) = cipher(key).decrypt(
-            XNonce::from_slice(nonce),
+            &XNonce::try_from(nonce).ok()?,
             chacha20poly1305::aead::Payload { msg: ciphertext, aad: FILE_AAD },
         ) {
             return Some(plaintext);
@@ -1394,6 +1394,16 @@ pub async fn prefixed_registers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A post body sealed by chacha20poly1305 0.10 (2026-10-21, before the RustCrypto
+    /// upgrade): every private record and trusted-only body already synced is this shape, on
+    /// every node that holds one.
+    #[test]
+    fn a_body_sealed_before_the_upgrade_still_opens() {
+        let blob = hex::decode("ffffffffffffffff3922c5b464fb4cae26977cd1b7aa394620b9a5d2aee04cbb86591f59f239c14222a157849634793386e96ea78fb4963476433b99961ea2ce8cf999").unwrap();
+        assert_eq!(open_post_body(&blob, &[9u8; 32]).unwrap(), b"a trusted-only post");
+        assert!(open_post_body(&blob, &[8u8; 32]).is_none(), "the wrong key still fails");
+    }
 
     async fn test_db() -> Db {
         crate::db::test_user_db().await

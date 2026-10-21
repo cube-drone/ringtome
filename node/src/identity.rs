@@ -26,7 +26,7 @@ pub use routes::{router, BodyLimits};
 
 use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use crate::random::OsRng;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Anchor, Authorize, Disposition, Payload, Revoke};
 use uuid::Uuid;
@@ -82,7 +82,7 @@ pub async fn create(
     //    seed is returned to the caller and NEVER written to the keystore, the database, or a
     //    log - the whole point is a key this node cannot leak.
     let recovery_seed: [u8; 32] = {
-        use rand::RngCore;
+        use rand::Rng;
         let mut seed = [0u8; 32];
         OsRng.fill_bytes(&mut seed);
         seed

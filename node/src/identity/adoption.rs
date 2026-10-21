@@ -10,7 +10,7 @@
 
 use anyhow::{anyhow, Context};
 use ed25519_dalek::SigningKey;
-use rand::rngs::OsRng;
+use crate::random::OsRng;
 use ringtome_proto::crown::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Authorize, Payload};
