@@ -252,9 +252,7 @@ fn refuse_key(session: &Session) -> Result<(), AppError> {
 /// administrator(s); everyone else gets 403.
 #[derive(Debug, Clone)]
 pub struct NodeAdminSession {
-    /// Unread so far - the only node-admin handler is a ping - but every future admin action
-    /// will want to know who acted.
-    #[allow(dead_code)]
+    /// Who acted: the sign-up group is chosen among this administrator's own groups (groups.rs).
     pub account: Account,
 }
 

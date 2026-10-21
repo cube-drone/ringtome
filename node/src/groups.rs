@@ -1,96 +1,179 @@
-//! A group server (Curtis, 2026-10-02): "I set up a group server for my friends."
+//! The sign-up group (Curtis, 2026-10-20): "the server admin must create the public or private
+//! group and then can set 'automatically enter new users' personas into this group'".
 //!
-//! While sign-ups take a password and the operator has named a group (registration.rs), whoever
-//! signs up with that password was invited - they have met the operator, and they are in the group.
-//! So the first persona their account makes joins it: it and every other member, and every node
-//! administrator's first persona (who set the whole thing up), begin knowing each other - low trust
-//! and low interest, both ways, each tagged with the group's name in the other's People list.
-//! Published like any dial (Curtis): it is a relationship like the others, only made at the door.
+//! An administrator chooses one group through one of their own personas that owns it and is hosted
+//! here. From then on every persona made on this node - whatever the sign-up mode, and every one an
+//! account makes, not only its first - joins it: that owner's key invites the newcomer and the
+//! newcomer's takes the invite up (`roster::enter_newcomer`), the same two entries as any invite and
+//! join, so every member's node counts them in. The sign-up form says so before anyone signs up
+//! ("everyone who joins this server joins <group>"), and agreeing to that is agreeing to the
+//! invite. A member who would rather not be in it leaves, as from any group.
 //!
 //! What it never does:
 //!
-//!   * touch accounts that were here before - only joiners and administrators are in a group;
-//!   * write anything except when somebody joins - turning the group on or renaming it changes
-//!     no one's ledger;
-//!   * lower a dial somebody already set, or add their tag twice. A person who later changes or
-//!     drops the relationship keeps it changed: the group is where they began, not a leash.
+//!   * touch personas that were here before the group was chosen, or that came here from another
+//!     computer (joined or recovered) - only a persona made here is a newcomer;
+//!   * keep going when its owner no longer owns the group: the invite would not count, so nobody
+//!     is entered, and the Server page says why.
 //!
-//! The writes are the persona's own private chain entries, signed by the node's leaf key for each
-//! persona it hosts (the starters' road, starters.rs). A join pairs with every member, so the work
-//! runs detached after the persona is made - a sign-up never waits on a big group.
+//! It replaces the "group server" of 2026-10-02 (a group name on the sign-up limits, pairing every
+//! joiner with every member and administrator by contact dials). Those pairings stay as they were
+//! made; `paired_with` still answers for them, for the bank.
 
 use uuid::Uuid;
 
-use crate::db::Db;
 use crate::error::AppError;
 use crate::AppState;
+use ringtome_proto::roster::GroupId;
 
-/// The dials a group's members begin on, about each other.
-const GROUP_TRUST: &str = "low";
-const GROUP_INTEREST: &str = "low";
-
-/// An account signed up into `group`: remembered until its first persona is made.
-pub async fn note_joiner(db: &Db, account: &Uuid, group: &str) -> Result<(), AppError> {
-    db.execute(
-        "INSERT OR IGNORE INTO group_members (account_id, group_name, root_pubkey, joined_ms) VALUES (?1, ?2, NULL, ?3)",
-        (account.to_string(), group, crate::clock::now_ms()),
-    )
-    .await
-    .map_err(AppError::Internal)?;
-    Ok(())
+/// The chosen group and the owner whose key invites, when there is one.
+pub async fn chosen(state: &AppState) -> Result<Option<(GroupId, String)>, AppError> {
+    let row: Option<(Vec<u8>, String)> = state
+        .node_db
+        .fetch_optional("SELECT group_id, owner FROM signup_group WHERE id = 1", ())
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(row.and_then(|(group, owner)| Some((group.try_into().ok()?, owner))))
 }
 
-/// A persona was made: if it is the first of an account that signed up into a group, it joins -
-/// paired with every member and every administrator, detached. Best-effort: a failure is logged,
-/// never a failed persona.
-pub async fn enroll(state: &AppState, account: &Uuid, root: &str) {
-    if let Err(e) = enroll_inner(state, account, root).await {
-        tracing::warn!(error = ?e, root = %root, "could not enroll a new persona in its group");
+/// One group an administrator may choose, or the one chosen, as the Server page shows it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Choice {
+    pub group: String,
+    pub name: String,
+    pub public: bool,
+    /// The persona whose key invites: an owner of the group, hosted here.
+    pub owner: String,
+    pub owner_name: Option<String>,
+    /// False when the owner no longer owns the group (or it is no longer held here): then nobody
+    /// is entered until another owner is chosen.
+    pub owner_owns: bool,
+}
+
+async fn choice(state: &AppState, group: GroupId, owner: String, name: String) -> Choice {
+    let owner_name = crate::profiles::bylines(&state.node_db, std::slice::from_ref(&owner))
+        .await
+        .ok()
+        .and_then(|b| b.get(&owner).and_then(|b| b.name.clone()));
+    Choice {
+        group: hex::encode(group),
+        name,
+        public: crate::roster::is_public(state, &group).await,
+        owner_owns: crate::roster::is_owner(state, &group, &owner).await,
+        owner,
+        owner_name,
     }
 }
 
-async fn enroll_inner(state: &AppState, account: &Uuid, root: &str) -> Result<(), AppError> {
-    let row: Option<(String, Option<String>)> = state
-        .node_db
-        .fetch_optional(
-            "SELECT group_name, root_pubkey FROM group_members WHERE account_id = ?1",
-            (account.to_string(),),
-        )
+/// The sign-up group as the Server page shows it.
+pub async fn current(state: &AppState) -> Result<Option<Choice>, AppError> {
+    let Some((group, owner)) = chosen(state).await? else { return Ok(None) };
+    let ids = std::iter::once(hex::encode(group)).collect();
+    let name = crate::roster::group_names(state, &ids)
         .await
-        .map_err(AppError::Internal)?;
-    let Some((group, None)) = row else { return Ok(()) }; // no group, or its first persona is made
+        .map_err(AppError::Internal)?
+        .remove(&hex::encode(group))
+        .unwrap_or_default();
+    Ok(Some(choice(state, group, owner, name).await))
+}
+
+/// The groups this administrator may choose: every group one of their personas here owns.
+pub async fn choices(state: &AppState, account: &Uuid) -> Result<Vec<Choice>, AppError> {
+    let mine: Vec<String> = crate::identity::list_for_account(&state.node_db, account)
+        .await?
+        .into_iter()
+        .map(|i| i.root_pubkey)
+        .collect();
+    let owned = crate::roster::owned_by(state, &mine).await.map_err(AppError::Internal)?;
+    let mut out = Vec::new();
+    for (group, owner, name) in owned {
+        out.push(choice(state, group, owner, name).await);
+    }
+    Ok(out)
+}
+
+/// Choose the sign-up group (`Some((group, owner))`) or none. The owner must be one of this
+/// administrator's own personas and own the group now: it is their key that will invite.
+pub async fn choose(
+    state: &AppState,
+    account: &Uuid,
+    pick: Option<(&str, &str)>,
+) -> Result<(), AppError> {
+    let Some((group_hex, owner)) = pick else {
+        state
+            .node_db
+            .execute("DELETE FROM signup_group WHERE id = 1", ())
+            .await
+            .map_err(AppError::Internal)?;
+        tracing::info!("sign-up group cleared");
+        return Ok(());
+    };
+    let group = crate::roster::group_of(group_hex)?;
     let mine = crate::identity::list_for_account(&state.node_db, account).await?;
-    if mine.first().map(|i| i.root_pubkey.as_str()) != Some(root) {
-        return Ok(()); // only the account's first persona is the member
+    if !mine.iter().any(|i| i.root_pubkey == owner)
+        || !crate::roster::is_owner(state, &group, owner).await
+    {
+        return Err(AppError::BadRequest(crate::msg!(
+            "groups.choose-a-group-you-own",
+            "choose a group one of your personas here owns"
+        )));
     }
     state
         .node_db
         .execute(
-            "UPDATE group_members SET root_pubkey = ?1 WHERE account_id = ?2",
-            (root, account.to_string()),
+            "INSERT INTO signup_group (id, group_id, owner, set_ms) VALUES (1, ?1, ?2, ?3)
+             ON CONFLICT (id) DO UPDATE SET group_id = excluded.group_id, owner = excluded.owner,
+                 set_ms = excluded.set_ms",
+            (group.to_vec(), owner, crate::clock::now_ms()),
         )
         .await
         .map_err(AppError::Internal)?;
-    let peers = peers_of(state, &group, root).await?;
-    tracing::info!(root = %root, group = %group, peers = peers.len(), "a new persona joins its group");
-    let state = state.clone();
-    let root = root.to_string();
-    tokio::spawn(async move {
-        for peer in &peers {
-            for (me, them) in [(root.as_str(), peer.as_str()), (peer.as_str(), root.as_str())] {
-                if let Err(e) = befriend(&state, me, them, &group).await {
-                    tracing::warn!(error = ?e, me = %me, them = %them, "a group relationship did not take");
-                }
-            }
-            crate::fold::nudge_ledger(&state, peer);
-        }
-        crate::fold::nudge_ledger(&state, &root);
-    });
+    tracing::info!(group = %group_hex, owner = %owner, "sign-up group chosen");
     Ok(())
 }
 
-/// Whom this persona was paired with by joining a group - nobody, if it joined none. The bank's
-/// "Follow a stranger" contract never counts them (for pairings made before the `auto` mark).
+/// The sign-up group's name, for the sign-up form's notice - None when there is none, or when
+/// its owner can no longer enter anybody into it.
+pub async fn notice(state: &AppState) -> Option<String> {
+    let current = current(state).await.ok()??;
+    current.owner_owns.then_some(current.name)
+}
+
+/// A persona was made here: into the sign-up group with it, if there is one - detached, so making
+/// a persona never waits on the group, and best-effort: a failure is logged, never a failed persona.
+pub fn enroll(state: &AppState, root: &str) {
+    let state = state.clone();
+    let root = root.to_string();
+    tokio::spawn(async move {
+        let chosen = match chosen(&state).await {
+            Ok(Some(chosen)) => chosen,
+            Ok(None) => return,
+            Err(e) => {
+                tracing::warn!(error = ?e, "could not read the sign-up group");
+                return;
+            }
+        };
+        let (group, owner) = chosen;
+        if owner == root {
+            return;
+        }
+        match crate::roster::enter_newcomer(&state, &owner, &group, &root).await {
+            Ok(()) => {
+                tracing::info!(root = %root, group = %hex::encode(group), "a new persona joins the sign-up group")
+            }
+            Err(e) => {
+                tracing::warn!(error = ?e, root = %root, "could not enter a new persona into the sign-up group")
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------------------------
+// The old group server's pairings (2026-10-02 to 2026-10-20), kept for what they already made.
+
+/// Whom this persona was paired with by the old group server - nobody, if it joined none. The
+/// bank's "Follow a stranger" contract never counts them (for pairings made before the `auto`
+/// mark).
 pub async fn paired_with(state: &AppState, root: &str) -> Result<Vec<String>, AppError> {
     let row: Option<(String,)> = state
         .node_db
@@ -103,8 +186,8 @@ pub async fn paired_with(state: &AppState, root: &str) -> Result<Vec<String>, Ap
     }
 }
 
-/// Whom a joiner of `group` is paired with: its other members' first personas, and every node
-/// administrator's first persona - each once, never the joiner itself.
+/// Whom a joiner of the old `group` was paired with: its other members' first personas, and every
+/// node administrator's first persona - each once, never the joiner itself.
 async fn peers_of(state: &AppState, group: &str, joiner: &str) -> Result<Vec<String>, AppError> {
     let members: Vec<(String,)> = state
         .node_db
@@ -126,57 +209,4 @@ async fn peers_of(state: &AppState, group: &str, joiner: &str) -> Result<Vec<Str
     peers.sort();
     peers.dedup();
     Ok(peers)
-}
-
-/// `me` begins knowing `them` as a group member: the dials only where unset, the group's tag added.
-async fn befriend(state: &AppState, me: &str, them: &str, group: &str) -> Result<(), AppError> {
-    let data = crate::record::store::open_agented(state, me).await?;
-    let collection = format!("contact:{them}");
-    let register = data.private_registers(&collection);
-    let (held, _) = register.all().await?;
-    let has = |key: &str| held.iter().any(|r| r.key == key && !r.value.trim().is_empty());
-    if !has("trust") {
-        register.set("trust", GROUP_TRUST).await?;
-    }
-    if !has("interest") {
-        register.set("interest", GROUP_INTEREST).await?;
-        // The group's follow, not the person's (2026-10-04): the "Follow a stranger" contract
-        // never counts it. Only where the group set the interest - a follow already theirs stays.
-        register.set(crate::starters::AUTO_KEY, "group").await?;
-    }
-    let tag = normalise_tag(group);
-    let mut tags: Vec<String> = held
-        .iter()
-        .find(|r| r.key == "tags")
-        .and_then(|r| serde_json::from_str(&r.value).ok())
-        .unwrap_or_default();
-    if !tag.is_empty() && !tags.contains(&tag) && tags.len() < TAGS_CAP {
-        tags.push(tag);
-        register
-            .set("tags", &serde_json::to_string(&tags).map_err(|e| AppError::Internal(e.into()))?)
-            .await?;
-    }
-    Ok(())
-}
-
-/// The People list's tag rules (js/pure/contacttags.js): lowercased, whitespace collapsed, at most
-/// `TAG_MAX` letters - so the group's tag is the one a person would have typed.
-pub const TAG_MAX: usize = 32;
-const TAGS_CAP: usize = 24;
-
-pub fn normalise_tag(raw: &str) -> String {
-    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
-    collapsed.chars().take(TAG_MAX).collect::<String>().trim().to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_group_name_becomes_the_tag_a_person_would_type() {
-        assert_eq!(normalise_tag("  Beans   Group "), "beans group");
-        assert_eq!(normalise_tag(&"x".repeat(40)).len(), TAG_MAX);
-        assert_eq!(normalise_tag("   "), "");
-    }
 }

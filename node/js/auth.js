@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api, isDevice, isLinuxApp } from './net.js';
-import { t } from './i18n.js';
+import { t, tNodes } from './i18n.js';
 import { Icons } from './icons.js';
 import { readQr } from './qrread.js';
 import { DownloadPanel } from './downloads.js';
@@ -99,14 +99,16 @@ export function useSession() {
 // password), or 'closed'. Asked once per visit to the front door; null until it answers, and
 // 'open' if it cannot be asked - the node refuses at the door either way, so a wrong guess costs
 // one error message, never an account.
+// ...and the group everyone who signs up here joins (groups.rs, 2026-10-20), null for none: the
+// sign-up form says so before anyone signs up, and agreeing to that is agreeing to its invite.
 function useRegistrationMode() {
-    const [mode, setMode] = useState(null);
+    const [answer, setAnswer] = useState({ mode: null, group: null });
     useEffect(() => {
         api('/api/registration')
-            .then((r) => setMode(r.mode || 'open'))
-            .catch(() => setMode('open'));
+            .then((r) => setAnswer({ mode: r.mode || 'open', group: r.group || null }))
+            .catch(() => setAnswer({ mode: 'open', group: null }));
     }, []);
-    return mode;
+    return [answer.mode, answer.group];
 }
 
 // Live username availability for the signup form, debounced so we're not
@@ -198,7 +200,7 @@ export const Welcome = ({ session }) => {
     const [needsNewName, setNeedsNewName] = useState(false);
     const [newUsername, setNewUsername] = useState('');
     const [signupPassword, setSignupPassword] = useState('');
-    const registration = useRegistrationMode();
+    const [registration, signupGroup] = useRegistrationMode();
     const signupsClosed = registration === 'closed';
     const askSignupPassword = registration === 'password';
     const [busy, setBusy] = useState(false);
@@ -424,6 +426,19 @@ export const Welcome = ({ session }) => {
                 ${tabs.map((which) => tabFor[which]())}
             </div>
             ${mode === 'download' && html`<${DownloadPanel} />`}
+            ${
+                registering &&
+                signupGroup &&
+                html`<p class="welcome-note">
+                ${tNodes(
+                    'auth.everyone-here-joins',
+                    'Everyone who joins this server automatically joins {group}.',
+                    {
+                        group: html`<strong>${signupGroup}</strong>`,
+                    },
+                )}
+            </p>`
+            }
             ${
                 importing &&
                 html`<p class="welcome-note">

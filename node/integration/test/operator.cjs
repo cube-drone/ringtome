@@ -4,9 +4,9 @@
 
     - a limit on how many accounts this node holds, and a disk-use percentage past which it takes
       no more - both refuse at the one door that makes accounts;
-    - a group: while sign-ups take a password, a newcomer's first persona joins it - low trust and
-      low interest, both ways, with every other member and every administrator, each tagged with
-      the group's name. Accounts that were here before are not in it;
+    - a sign-up group (2026-10-20): a real group the administrator owns, which every persona made
+      here joins, whatever the sign-up mode, through its owner's invite. Personas that were here
+      before are not in it;
     - an auto-follow list: whom every persona made here begins knowing, with the dials chosen.
 
     These change the node for everyone, so every claim puts things back as it found them.
@@ -44,7 +44,7 @@ async function joiner(tag, offered) {
     return { status: 200, who, root };
 }
 
-/// `me`'s facts about `them`, as `{ trust, interest, tags }` - waiting out the detached group writes.
+/// `me`'s facts about `them`, as `{ trust, interest, tags }` - waiting out the detached starter writes.
 async function facts(who, me, them, until = () => true) {
     let out = {};
     for (let i = 0; i < 40; i++) {
@@ -112,58 +112,77 @@ describe("the operator's sign-up tools", function () {
         }
     });
 
-    it('a group server: a password sign-up joins the group, both ways, with every member and the administrator', async () => {
+    it("a sign-up group: every persona made here joins the administrator's group, by its owner's invite (2026-10-20)", async () => {
         const before = await joiner('before'); // here before the group: never in it
-        try {
-            await mode('password', PASSWORD);
-            assert.equal((await limits({ group_name: 'Beans Group' })).status, 200);
-            const ada = await joiner('ada', PASSWORD);
-            const bea = await joiner('bea', PASSWORD);
-            assert.equal(ada.status, 200);
-            assert.equal(bea.status, 200);
-            const inGroup = (f) =>
-                f.trust === 'low' && f.interest === 'low' && f.tags.includes('beans group');
-            for (const [who, me, them, label] of [
-                [bea.who, bea.root, ada.root, 'the later joiner knows the earlier'],
-                [ada.who, ada.root, bea.root, 'and the earlier, the later - both ways'],
-                [bea.who, bea.root, adminRoot, 'a joiner knows the administrator'],
-                [admin, adminRoot, bea.root, 'and the administrator, the joiner'],
-            ]) {
-                const f = await facts(who, me, them, inGroup);
-                assert.ok(inGroup(f), `${label}: ${JSON.stringify(f)}`);
+        const founded = await j(admin, `api/identity/${adminRoot}/groups`, { name: 'Beans Group' });
+        assert.equal(founded.status, 200, 'the administrator founds a group');
+        const group = (await founded.json()).group;
+        const choose = (body) => j(admin, 'api/admin/registration/group', body, 'PUT');
+        const status = await (await admin('api/admin/registration')).json();
+        assert.ok(
+            status.signup_group_choices.some((c) => c.group === group && c.owner === adminRoot),
+            `the group is among the administrator's choices: ${JSON.stringify(status.signup_group_choices)}`,
+        );
+        assert.equal(
+            (await choose({ group, owner: before.root })).status,
+            400,
+            "only an owner who is one of the administrator's own personas can invite",
+        );
+        const plain = await makeUserFetch({ prefix: 'opplaingroup' });
+        assert.equal(
+            (await j(plain, 'api/admin/registration/group', { group, owner: adminRoot }, 'PUT'))
+                .status,
+            403,
+            'and only an administrator chooses',
+        );
+        const chosen = await choose({ group, owner: adminRoot });
+        assert.equal(chosen.status, 200);
+        assert.equal((await chosen.json()).owner_owns, true);
+        const memberOf = async (who, me, them, want = true) => {
+            let roster = {};
+            for (let i = 0; i < 40; i++) {
+                const r = await who(`api/identity/${me}/groups/${group}`);
+                roster = r.status === 200 ? await r.json() : {};
+                const has = (roster.members || []).some((m) => m.root === them);
+                if (has === want) return true;
+                await wait(250);
             }
-            const outsider = await facts(bea.who, bea.root, before.root);
-            assert.equal(
-                outsider.trust,
-                undefined,
-                'an account from before the group is not in it',
-            );
-            // A second persona is not a member - only an account's first is.
-            const second = (await (await bea.who('api/identity', { method: 'POST' })).json())
-                .root_pubkey;
-            const cee = await joiner('cee', PASSWORD);
-            await facts(cee.who, cee.root, bea.root, inGroup);
-            assert.equal(
-                (await facts(cee.who, cee.root, second)).trust,
-                undefined,
-                'a second persona is not paired',
-            );
-        } finally {
-            await limits({});
-            await mode('open');
-        }
-        // No group without a password: an open sign-up joins nothing even with a name set.
-        await limits({ group_name: 'Beans Group' });
+            return false;
+        };
         try {
-            const open = await joiner('open');
-            assert.equal(
-                (await facts(open.who, open.root, adminRoot)).trust,
-                undefined,
-                'open sign-ups join no group',
+            const front = await (await makeFetch()('api/registration')).json();
+            assert.equal(front.group, 'Beans Group', 'the sign-up form names the group first');
+            const ada = await joiner('ada'); // open sign-ups: any mode joins
+            assert.equal(ada.status, 200);
+            assert.ok(await memberOf(ada.who, ada.root, ada.root), "ada's own node counts her in");
+            assert.ok(await memberOf(admin, adminRoot, ada.root), "and so does the owner's");
+            const second = (await (await ada.who('api/identity', { method: 'POST' })).json())
+                .root_pubkey;
+            assert.ok(
+                await memberOf(admin, adminRoot, second),
+                'every new persona joins, not only the first',
             );
+            assert.ok(
+                await memberOf(admin, adminRoot, before.root, false),
+                'a persona from before the group is not in it',
+            );
+            await mode('password', PASSWORD);
+            const bea = await joiner('bea', PASSWORD);
+            assert.ok(await memberOf(admin, adminRoot, bea.root), 'a password sign-up joins too');
         } finally {
-            await limits({});
+            await mode('open');
+            assert.equal((await choose({})).status, 200, 'no group');
         }
+        assert.equal(
+            (await (await makeFetch()('api/registration')).json()).group,
+            null,
+            'and the form says none',
+        );
+        const cee = await joiner('cee');
+        assert.ok(
+            await memberOf(admin, adminRoot, cee.root, false),
+            'with none chosen, nobody joins',
+        );
     });
 
     it('an auto-follow list: every persona made here begins knowing whom the operator chose', async () => {

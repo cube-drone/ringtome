@@ -327,12 +327,11 @@ async fn create_handler(
     // publishes its serving record now, not at some later "act of publication".
     super::serving::publish_best_effort(&state, &created.root_pubkey).await;
     // The people a new persona begins knowing (starters.rs: the built-in starters and the operator's
-    // own list) and, for an account that signed up into a group, the group (groups.rs) - only here,
-    // at creation.
+    // own list) and the sign-up group, when one is chosen (groups.rs) - only here, at creation.
     match store::open(&state, &session.account.id, &created.root_pubkey).await {
         Ok(data) => {
             crate::starters::seed(&state, &data, &created.root_pubkey).await;
-            crate::groups::enroll(&state, &session.account.id, &created.root_pubkey).await;
+            crate::groups::enroll(&state, &created.root_pubkey);
         }
         Err(e) => tracing::warn!(error = ?e, "could not open a new persona to seed its starters"),
     }

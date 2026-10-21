@@ -1419,6 +1419,32 @@ pub async fn is_owner(state: &AppState, group: &GroupId, root: &str) -> bool {
         .is_some()
 }
 
+/// The groups each of `roots` owns, as this node last folded them: `(group, owner, name)`, root
+/// by root - what an administrator chooses the sign-up group among (groups.rs).
+pub async fn owned_by(
+    state: &AppState,
+    roots: &[String],
+) -> Result<Vec<(GroupId, String, String)>> {
+    let mut out = Vec::new();
+    for root in roots {
+        let rows: Vec<(Vec<u8>, String)> = state
+            .node_db
+            .fetch_all(
+                "SELECT p.group_id, r.name FROM group_people p JOIN group_rosters r ON r.group_id = p.group_id
+                 WHERE p.root = ?1 AND p.standing = 'owner' ORDER BY r.name",
+                (root.as_str(),),
+            )
+            .await
+            .context("listing the groups a persona owns")?;
+        for (group, name) in rows {
+            if let Ok(group) = group.try_into() {
+                out.push((group, root.clone(), name));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// When `root` stopped being in the group, if they once were and aren't now: the stamp of the
 /// newest counted entry that ended it - an owner's removal of them, or their own leave. A group
 /// room keeps what they said before it (plans/GROUP_ROOMS.md; Curtis, 2026-10-16: "Removed
@@ -2492,7 +2518,7 @@ async fn write_on(
 }
 
 /// Is this group public (plans/PUBLIC_GROUPS.md)? Its founding says, as this node holds it.
-async fn is_public(state: &AppState, group: &GroupId) -> bool {
+pub(crate) async fn is_public(state: &AppState, group: &GroupId) -> bool {
     matches!(folded(state, group).await, Ok(Some((roster, _))) if roster.public)
 }
 
@@ -3122,6 +3148,42 @@ struct InviteRequest {
 
 /// POST `.../groups/{group}/invites` - an owner invites a persona. The answer is what the
 /// invitee's node needs to join: the group, the invite, who to pull first and where.
+/// The sign-up group's door (groups.rs; Curtis, 2026-10-20): `owner`, an owner hosted here,
+/// invites `newcomer`, a persona just made here, and the newcomer takes the invite up - the same
+/// two entries any invite and join are, both written by this node, which holds both keys. Signing
+/// up was the agreement: the sign-up form says everyone who joins this server joins the group.
+/// No bell rings for the invite; it is answered before anyone could read it.
+pub async fn enter_newcomer(
+    state: &AppState,
+    owner: &str,
+    group: &GroupId,
+    newcomer: &str,
+) -> Result<(), AppError> {
+    let not_a_persona =
+        || AppError::BadRequest(crate::msg!("roster.not-a-persona", "that isn't a persona"));
+    let owner_root = root_of(owner).ok_or_else(not_a_persona)?;
+    let invitee = root_of(newcomer).ok_or_else(not_a_persona)?;
+    let (roster, lanes) = current(state, group, &owner_root).await?;
+    let by = acting(&roster, &owner_root)?;
+    let founding = founding_of(&lanes).ok_or_else(|| {
+        AppError::NotFound(crate::msg!("roster.no-such-group-here", "no such group here"))
+    })?;
+    let owner_data = store::open_agented(state, owner).await?;
+    let invite = *write_signed(
+        state,
+        &owner_data,
+        owner,
+        *group,
+        GroupEntry::Invite { by, invitee, readmits: Vec::new(), founding },
+    )
+    .await?
+    .hash();
+    let data = store::open_agented(state, newcomer).await?;
+    write_signed(state, &data, newcomer, *group, GroupEntry::Join { grant: Grant::Invite(invite) })
+        .await?;
+    Ok(())
+}
+
 async fn invite_handler(
     session: Session,
     State(state): State<AppState>,

@@ -155,8 +155,7 @@ const ModePicker = ({ modes, mode, setMode, password, setPassword, hasPassword }
 const Registration = () => {
     const [status, setStatus] = useState(null);
     const [error, setError] = useState('');
-    // The mode as picked, saved or not: the group's section shows only while it is `password`
-    // (Curtis, 2026-10-02) - a group exists only behind a password.
+    // The mode as picked, saved or not: the limits and the sign-up group wait while it is `closed`.
     const [mode, setMode] = useState(null);
     const load = useCallback(() => {
         api('/api/admin/registration')
@@ -176,6 +175,7 @@ const Registration = () => {
             <h2 class="computers-title">${t('device.registration', 'Registration')}</h2>
             <${Policy} status=${status} mode=${mode || status.mode} setMode=${setMode} onSaved=${load} />
             <${Limits} status=${status} mode=${mode || status.mode} onSaved=${load} />
+            <${SignupGroup} status=${status} mode=${mode || status.mode} onSaved=${load} />
             <${AutoFollowList} status=${status} onSaved=${load} />
         </div>
     `;
@@ -225,15 +225,14 @@ const Policy = ({ status, mode, setMode, onSaved }) => {
     `;
 };
 
-/// The limits on sign-ups, and the group (registration.rs, groups.rs; Curtis, 2026-10-02): each
-/// empty for none. Saved together - the node keeps them as one.
+/// The limits on sign-ups (registration.rs; Curtis, 2026-10-02): each empty for none. Saved
+/// together - the node keeps them as one.
 const Limits = ({ status, mode, onSaved }) => {
     const l = status.limits || {};
     const [maxAccounts, setMaxAccounts] = useState(
         l.max_accounts == null ? '' : String(l.max_accounts),
     );
     const [diskPct, setDiskPct] = useState(l.disk_max_pct == null ? '' : String(l.disk_max_pct));
-    const [group, setGroup] = useState(l.group_name || '');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [saved, setSaved] = useState(false);
@@ -248,7 +247,6 @@ const Limits = ({ status, mode, onSaved }) => {
                 body: JSON.stringify({
                     max_accounts: number(maxAccounts),
                     disk_max_pct: number(diskPct),
-                    group_name: group.trim() || null,
                 }),
             });
             setSaved(true);
@@ -260,7 +258,7 @@ const Limits = ({ status, mode, onSaved }) => {
         }
     };
     // Closed, there are no sign-ups to limit (Curtis, 2026-10-02): the limits wait, kept, for a mode
-    // that has some. (The group shows only under `password`, below.)
+    // that has some.
     return html`
         ${
             mode !== 'closed' &&
@@ -287,28 +285,96 @@ const Limits = ({ status, mode, onSaved }) => {
             </span>
             <input type="number" min="1" max="100" value=${diskPct} onInput=${(e) => setDiskPct(e.currentTarget.value)} />
         </label>
-        ${/* Each section its own save, though both send the three together (the node keeps them as one). */ ''}
-        <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`
-        }
-        ${
-            mode === 'password' &&
-            html`<hr class="device-rule" />
-        <h3 class="computers-title">${t('device.group', 'Group')}</h3>
-        <p class="null-sub">
-            ${t(
-                'device.group-explained',
-                "A group server: whoever signs up with the password joins the group. Their first persona and every other member - and you, and every administrator - begin knowing each other, low trust and low interest, tagged with the group's name. Nobody who was already here is added, and nobody's settings change later.",
-            )}
-        </p>
-        <label class="device-field">
-            <span>${t('device.group-name', "the group's name - empty for none")}</span>
-            <input maxlength="32" value=${group} onInput=${(e) => setGroup(e.currentTarget.value)} />
-        </label>
         <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`
         }
         ${error && html`<p class="form-error">${error}</p>`}
         ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
     `;
+};
+
+/// The sign-up group (groups.rs; Curtis, 2026-10-20): a real group every persona made here joins,
+/// chosen among the groups this administrator's own personas own - that owner's key invites each
+/// newcomer, and the sign-up form names the group first. Replaces the old "group server" name.
+const SignupGroup = ({ status, mode, onSaved }) => {
+    const current = status.signup_group;
+    const choices = [...(status.signup_group_choices || [])];
+    const key = (c) => `${c.group}:${c.owner}`;
+    // Chosen by another administrator, it isn't among this one's own: listed anyway, to keep.
+    if (current && !choices.some((c) => key(c) === key(current))) choices.unshift(current);
+    const [pick, setPick] = useState(current ? key(current) : '');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [saved, setSaved] = useState(false);
+    if (mode === 'closed') return null;
+    const save = async () => {
+        setBusy(true);
+        setError('');
+        setSaved(false);
+        const [group, owner] = pick ? pick.split(':') : [null, null];
+        try {
+            await api('/api/admin/registration/group', {
+                method: 'PUT',
+                body: JSON.stringify({ group, owner }),
+            });
+            setSaved(true);
+            onSaved();
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    const ownerName = (c) => c.owner_name || speakable(c.owner).split('-').slice(0, 2).join('-');
+    const label = (c) =>
+        c.public
+            ? t('device.signup-group-public', '{name} (public), invited by {owner}', {
+                  name: c.name,
+                  owner: ownerName(c),
+              })
+            : t('device.signup-group-private', '{name} (private), invited by {owner}', {
+                  name: c.name,
+                  owner: ownerName(c),
+              });
+    const picked = choices.find((c) => key(c) === pick);
+    // A private group behind open sign-ups: anyone who signs up joins and reads its roster.
+    const strangersSeeIt = picked && !picked.public && mode === 'open';
+    return html`<hr class="device-rule" />
+        <h3 class="computers-title">${t('device.signup-group', 'Sign-up group')}</h3>
+        <p class="null-sub">
+            ${t(
+                'device.signup-group-explained',
+                "Every persona made on this server joins this group - the sign-up page tells people so before they sign up. Choose one of the groups your personas own: that persona sends each newcomer's invite, and they're in. Anyone can leave it later, like any group. Nobody already here is added.",
+            )}
+        </p>
+        ${
+            choices.length === 0
+                ? html`<p class="null-sub">
+                      ${t('device.signup-group-none-owned', "None of your personas owns a group yet. Found one in hrseNeighbors™'s Groups tab, then come back to choose it.")}
+                  </p>`
+                : html`<label class="device-field">
+                      <span>${t('device.signup-group-which', 'the group new personas join')}</span>
+                      <select value=${pick} onChange=${(e) => setPick(e.currentTarget.value)}>
+                          <option value="">${t('device.signup-group-no-group', 'no group')}</option>
+                          ${choices.map((c) => html`<option key=${key(c)} value=${key(c)}>${label(c)}</option>`)}
+                      </select>
+                  </label>`
+        }
+        ${
+            current &&
+            !current.owner_owns &&
+            html`<p class="form-error">
+                ${t('device.signup-group-owner-gone', '{owner} no longer owns {name}, so nobody new is joining it. Choose another of its owners, or another group.', { owner: ownerName(current), name: current.name })}
+            </p>`
+        }
+        ${
+            strangersSeeIt &&
+            html`<p class="null-sub">
+                ${t('device.signup-group-open-private', "Sign-ups here are open, so anyone who signs up joins this private group and can see who's in it.")}
+            </p>`
+        }
+        ${error && html`<p class="form-error">${error}</p>`}
+        ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
+        ${choices.length > 0 && html`<button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : t('device.save', 'save')}</button>`}`;
 };
 
 /// Whom every persona made here begins knowing (starters.rs, 2026-10-02): an address, and the
