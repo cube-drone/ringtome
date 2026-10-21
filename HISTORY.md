@@ -24420,3 +24420,26 @@ the house, refusing the household's own sync with everyone else's.
 `a_flood_of_strangers_leaves_the_known_their_seats` and
 `a_parked_file_connection_loses_its_seat_and_a_busy_one_keeps_it` (two real
 endpoints on loopback).
+
+## 2026-10-21: Marquee 0.10, and links a browser reads as javascript:
+
+Item 1 of the security pass, fixed upstream in Marquee 0.10.0 (the Marquee repo's
+own agent) and taken here: the Rust crates `=0.9.3` → `=0.10.0`, the npm
+packages `^0.9.2` → `^0.10.0` (a caret range on 0.x never reaches 0.10 by
+itself). A link target with a leading control character, `\x01javascript:...`,
+slipped past the renderer's scheme check as a relative link and was rendered as
+an `href`; browsers strip the control and run the script, and it arrived by sync,
+so no input stripping of ours could have helped. 0.10 refuses any target holding
+a control character and reads the scheme past leading spaces, in both renderers.
+It also brings the parser's complexity caps.
+
+Every path we render through takes the fix: the app's profile is completed from
+`bareWebProfile` by the React renderer (one deduped copy of the html renderer in
+`node_modules`), and the reading copy's `ReadingProfile` keeps the default
+`link_allowed`. The ePub's `BookProfile` has its own check, which only ever let
+`http(s):`, `mailto:` and chapters through.
+
+Two claims hold it: `test/pure/mediakind.cjs` renders six attack spellings
+through the app's profile shape (the 0.9.2 renderer's check allowed them), and
+`reading::a_target_a_browser_reads_as_javascript_is_never_a_link`. The CSP of
+the same day was the backstop.

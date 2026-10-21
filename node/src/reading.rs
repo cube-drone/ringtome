@@ -420,6 +420,17 @@ mod tests {
     }
 
     #[test]
+    fn a_target_a_browser_reads_as_javascript_is_never_a_link() {
+        // The stored XSS of the security pass (Marquee 0.10, 2026-10-21): a leading control
+        // character hid the scheme from the renderer, and a browser strips it and runs the
+        // script. The reading copy is served to strangers and crawlers, without the app.
+        for target in ["\u{1}javascript:alert(1)", "java\tscript:alert(1)", "\u{7f}javascript:x"] {
+            let html = words_html(&format!("[x]({target})"), Format::Marquee);
+            assert!(!html.contains("href="), "{target:?} became a link: {html}");
+        }
+    }
+
+    #[test]
     fn a_cursor_reads_back() {
         let doc = [7u8; 16];
         let raw = format!("1791676800000.{}", hex::encode(doc));
