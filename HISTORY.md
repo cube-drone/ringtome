@@ -24269,3 +24269,25 @@ dial to it and re-vetted every redirect. What it missed (`net/unfurl.rs`):
   environment would have dialled the proxy, which resolves the name again.
 
 Gates: `cargo test -p ringtome-node` (661) and the `unfurl` acceptance area (8).
+
+## 2026-10-21: a card's picture, and a share of the unfurl budget each
+
+Two more from the same turbolink question (`net/unfurl.rs`):
+
+- **The picture.** A card's `og:image` was handed to the reader's browser as the
+  page wrote it, and the browser loaded it from wherever that was: the reader's
+  router (`http://192.168.1.1/...`), or, as a relative path, this node's own API
+  with the reader's cookie. `vetted_image` now resolves it against the page it
+  came from, allows http(s) only, and holds its host to the fetch's own
+  public-address check (`vetted_addr`), or the card goes without a picture. The
+  check happens at fetch time, so a name re-pointed inward afterwards still
+  reaches the reader's browser; only fetching pictures through the node would
+  close that.
+- **The budget.** One bucket for the node (30 fetches a minute by default) meant
+  one person pasting new links, or a script asking about the links in a post
+  full of them, paused every card for everyone. Each asker now spends from a
+  share of their own as well, a third of the node's rate: an account by its id,
+  someone signed out by their address (`client_ip`, so behind the proxies that
+  `RINGTOME_PROXY_HOPS` counts). Cache hits still spend nothing.
+
+Gates: `cargo test -p ringtome-node` (663) and the `unfurl` acceptance area (8).

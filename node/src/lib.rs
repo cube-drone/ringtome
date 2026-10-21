@@ -314,6 +314,7 @@ struct UnfurlQuery {
 /// day-long cache, so a front page's cards are fetched about once a day however many look.
 async fn unfurl_handler(
     session: Option<auth::Session>,
+    ctx: request_context::RequestContext,
     State(state): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<UnfurlQuery>,
 ) -> Result<Json<Option<net::unfurl::Summary>>, AppError> {
@@ -331,7 +332,12 @@ async fn unfurl_handler(
             )));
         }
     }
-    match state.unfurl.unfurl(&q.url).await {
+    // Whose share a fetch spends (net::unfurl): the account, or a signed-out visitor's address.
+    let asker = match &session {
+        Some(s) => format!("account:{}", s.account.id),
+        None => format!("visitor:{}", ctx.client_ip(state.config.proxy_hops)),
+    };
+    match state.unfurl.unfurl(&q.url, &asker).await {
         Ok(summary) => Ok(Json(summary)),
         Err(net::unfurl::Refusal::BadTarget(m)) => Err(AppError::BadRequest(m)),
         Err(net::unfurl::Refusal::RateLimited) => Err(AppError::TooManyRequests(crate::msg!(

@@ -11,6 +11,15 @@
 //!   - **No reaching outward too hard**: one global token bucket, generous but real, so a
 //!     link-stuffed document (or a hostile script hammering the endpoint) can't turn a
 //!     Ringtome node into a load test against a foreign server. Cache hits don't spend.
+//!     Each asker - an account, or a signed-out visitor's address - spends from a share of
+//!     its own as well (a third of the node's), so one person can't pause everyone's
+//!     previews by spending the whole budget (security pass, 2026-10-21).
+//!   - **No reaching inward by proxy**: a card's picture is loaded by the READER's browser,
+//!     from wherever the page's `og:image` says - their router, this node's own API with
+//!     their cookie. It is resolved against the page and held to the same public-address
+//!     check as the fetch, or the card goes without it (`vetted_image`). The check is at
+//!     fetch time; a name re-pointed inward afterwards reaches the reader's browser anyway,
+//!     which only fetching the picture through the node would close.
 //!
 //! The privacy call is deliberate and Curtis's (2026-07-25): unfurling links in private
 //! notes does tell target sites the node is interested in them, and that's accepted -
@@ -59,6 +68,12 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(8);
 /// Cached per URL for a day; a page's card does not change often enough to matter.
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const CACHE_CAP: u64 = 2048;
+/// What part of the node's unfurl rate one asker may spend (security pass, 2026-10-21): at the
+/// default 30 a minute, 10 each - a paste of ten new links still unfurls at once, and it takes
+/// three people at full tilt, not one, to pause previews for everybody.
+const ASKER_SHARE: f64 = 1.0 / 3.0;
+const ASKERS_CAP: u64 = 10_000;
+const ASKER_IDLE: Duration = Duration::from_secs(10 * 60);
 /// Some sites serve bots an empty shell; a desktop UA gets the page humans get (same call
 /// marquee-turbolink makes).
 const UA: &str =
@@ -97,6 +112,10 @@ impl Bucket {
 pub struct Unfurler {
     cache: moka::future::Cache<String, Option<Summary>>,
     bucket: std::sync::Arc<Mutex<Bucket>>,
+    /// Each asker's share (`ASKER_SHARE` of the node's rate), by `asker` key. Forgotten after
+    /// a quiet `ASKER_IDLE`, by which time a bucket has refilled anyway.
+    askers: moka::future::Cache<String, std::sync::Arc<Mutex<Bucket>>>,
+    asker_rate_per_min: f64,
 }
 
 impl Unfurler {
@@ -109,6 +128,12 @@ impl Unfurler {
                 .time_to_live(CACHE_TTL)
                 .build(),
             bucket: std::sync::Arc::new(Mutex::new(Bucket::new(rate_per_min))),
+            askers: moka::future::Cache::builder()
+                .max_capacity(ASKERS_CAP)
+                .time_to_idle(ASKER_IDLE)
+                .build(),
+            // `Bucket::new` floors nonsense at the default, so take the share of what it kept.
+            asker_rate_per_min: (Bucket::new(rate_per_min).per_min * ASKER_SHARE).max(1.0),
         }
     }
 }
@@ -117,7 +142,10 @@ impl Unfurler {
     /// Fetch and parse one URL's OpenGraph card. `Ok(Some)` is a card, `Ok(None)` is an
     /// honest "the page has none" (cached) or a transient fetch failure (not cached, so a
     /// hiccup doesn't wear a day-long scar). `Err` is a refusal - nothing was fetched.
-    pub async fn unfurl(&self, raw: &str) -> Result<Option<Summary>, Refusal> {
+    ///
+    /// `asker` names who is asking (`account:<id>`, or `visitor:<address>` for someone signed
+    /// out): a cache miss spends from their share as well as the node's.
+    pub async fn unfurl(&self, raw: &str, asker: &str) -> Result<Option<Summary>, Refusal> {
         let parsed = url::Url::parse(raw.trim()).map_err(|e| {
             Refusal::BadTarget(crate::msg!(
                 "net.unfurl.not-a-url",
@@ -135,9 +163,7 @@ impl Unfurler {
         if let Some(hit) = self.cache.get(&key).await {
             return Ok(hit);
         }
-        if !self.bucket.lock().expect("unfurl bucket poisoned").take(crate::clock::now_ms()) {
-            return Err(Refusal::RateLimited);
-        }
+        self.spend(asker, crate::clock::now_ms()).await?;
         match self.fetch(parsed).await {
             Ok(summary) => {
                 self.cache.insert(key, summary.clone()).await;
@@ -200,13 +226,48 @@ impl Unfurler {
                 return Err(FetchEnd::Failed(anyhow::anyhow!("status {}", res.status())));
             }
             let body = read_capped(res, MAX_BODY_BYTES).await.map_err(FetchEnd::Failed)?;
-            return Ok(parse_open_graph(&body));
+            let Some(mut summary) = parse_open_graph(&body) else { return Ok(None) };
+            summary.image = vetted_image(&url, summary.image.take()).await;
+            return Ok(Some(summary));
         }
         Err(FetchEnd::Refused(Refusal::BadTarget(crate::msg!(
             "net.unfurl.too-many-redirects",
             "too many redirects"
         ))))
     }
+}
+
+impl Unfurler {
+    /// Spend one fetch: from the asker's share first, so someone over theirs takes nothing
+    /// from the node's; then from the node's.
+    async fn spend(&self, asker: &str, now_ms: i64) -> Result<(), Refusal> {
+        let rate = self.asker_rate_per_min;
+        let share = self
+            .askers
+            .get_with(asker.to_string(), async move {
+                std::sync::Arc::new(Mutex::new(Bucket::new(rate)))
+            })
+            .await;
+        if !share.lock().expect("unfurl share poisoned").take(now_ms) {
+            return Err(Refusal::RateLimited);
+        }
+        if !self.bucket.lock().expect("unfurl bucket poisoned").take(now_ms) {
+            return Err(Refusal::RateLimited);
+        }
+        Ok(())
+    }
+}
+
+/// A card's picture, made safe for a reader's browser to load: resolved against the page it
+/// came from, http(s) only, and its host held to `vetted_addr`'s public-address demand - or
+/// nothing, and the card goes without a picture.
+async fn vetted_image(page: &url::Url, image: Option<String>) -> Option<String> {
+    let image = page.join(image?.trim()).ok()?;
+    if !matches!(image.scheme(), "http" | "https") {
+        return None;
+    }
+    vetted_addr(&image).await.ok()?;
+    Some(image.to_string())
 }
 
 enum FetchEnd {
@@ -522,6 +583,58 @@ mod tests {
         html.push('é');
         html.push_str(r#"<meta property="og:title" content="Too Deep">"#);
         assert_eq!(parse_open_graph(&html), None);
+    }
+
+    #[tokio::test]
+    async fn a_cards_picture_must_be_somewhere_public() {
+        // Literal addresses only: no DNS in a unit test.
+        let page = url::Url::parse("https://93.184.216.34/article/1").unwrap();
+        let vet = |raw: &str| vetted_image(&page, Some(raw.to_string()));
+        assert_eq!(
+            vet("/cover.png").await.as_deref(),
+            Some("https://93.184.216.34/cover.png"),
+            "relative to the PAGE, never to the node the reader is on"
+        );
+        assert_eq!(vet("https://1.1.1.1/a.png").await.as_deref(), Some("https://1.1.1.1/a.png"));
+        for inward in [
+            "http://192.168.1.1/apply.cgi?reboot=1",
+            "http://127.0.0.1:5281/api/admin/backups",
+            "http://[::1]/x.png",
+            "http://[64:ff9b::c0a8:101]/x.png",
+            "javascript:alert(1)",
+            "data:image/png;base64,AAAA",
+            "file:///etc/passwd",
+        ] {
+            assert_eq!(vet(inward).await, None, "{inward}");
+        }
+        assert_eq!(vetted_image(&page, None).await, None);
+    }
+
+    #[tokio::test]
+    async fn one_asker_cannot_spend_the_whole_budget() {
+        // 30 a minute for the node, 10 for each asker.
+        let unfurler = Unfurler::new(30.0);
+        let now = 1_000_000;
+        for _ in 0..10 {
+            unfurler.spend("account:greedy", now).await.unwrap();
+        }
+        assert_eq!(
+            unfurler.spend("account:greedy", now).await,
+            Err(Refusal::RateLimited),
+            "over their share"
+        );
+        // ...and what they were refused took nothing from anyone else.
+        for _ in 0..10 {
+            unfurler.spend("visitor:198.51.100.7", now).await.unwrap();
+        }
+        for _ in 0..10 {
+            unfurler.spend("account:patient", now).await.unwrap();
+        }
+        assert_eq!(
+            unfurler.spend("account:fourth", now).await,
+            Err(Refusal::RateLimited),
+            "the node's own budget still holds"
+        );
     }
 
     #[test]
