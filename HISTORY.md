@@ -24246,3 +24246,26 @@ an archive on disk already holds.
 
 Gates: `cargo test -p ringtome-node` (661), and the auth, spare-key reset, admin
 authorization, Server app and backups acceptance areas (21 passing).
+
+## 2026-10-21: turbolinks can't reach inside the network
+
+Passed on from the Marquee side: a turbolink must never make anything hit a
+local endpoint. Two paths make requests for one. A link to this node's own
+content is resolved by the reader's browser against the node's API, and every
+piece of the address that reaches a request path is pattern-checked
+(`pure/ringtome.js`: the person, the document, the line, and a web address's
+path, which admits no `.`); the decoded `?via=` hints only ever land in a query
+string. A web link is fetched by the node (`/api/unfurl`, and the publication
+bake's `fetch_media_bytes`), which already vetted every DNS answer, pinned the
+dial to it and re-vetted every redirect. What it missed (`net/unfurl.rs`):
+
+- an IPv6 address wrapping an IPv4 one was judged as IPv6: on a NAT64 network
+  `64:ff9b::c0a8:101` is 192.168.1.1. `is_public` now judges the IPv4 address
+  inside NAT64 (both prefixes), 6to4 and the IPv4-compatible form, so a wrapped
+  public address still unfurls;
+- 0/8, 192.0.0/24, 198.18/15, 240/4 and site-local fec0::/10 now count as
+  inside;
+- both pinned clients now set `.no_proxy()`: an `HTTP(S)_PROXY` in the
+  environment would have dialled the proxy, which resolves the name again.
+
+Gates: `cargo test -p ringtome-node` (661) and the `unfurl` acceptance area (8).

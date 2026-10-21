@@ -162,6 +162,9 @@ impl Unfurler {
             // the check and the dial. Cheap at this endpoint's bounded rate.
             let client = reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
+                // An HTTP(S)_PROXY in the environment would dial the proxy, not the pinned
+                // address, and the proxy would resolve the name again: rebinding, reopened.
+                .no_proxy()
                 .timeout(FETCH_TIMEOUT)
                 .resolve(&host, std::net::SocketAddr::new(addr, port))
                 .build()
@@ -289,6 +292,7 @@ pub async fn fetch_media_bytes(
         let port = url.port_or_known_default().unwrap_or(80);
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            .no_proxy() // the pin above holds only for a direct dial
             .resolve(&host, std::net::SocketAddr::new(addr, port))
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -336,9 +340,17 @@ pub async fn fetch_media_bytes(
 }
 
 /// Public-internet address check: everything a node must refuse to dial on a user's say-so.
+///
+/// An IPv6 address that carries an IPv4 one is judged by the IPv4 address inside it (security
+/// pass, 2026-10-21): on a NAT64 network - an IPv6-only phone's, or a home router's -
+/// `64:ff9b::c0a8:0101` IS 192.168.1.1, and 6to4 (`2002:c0a8:0101::`) and the old
+/// IPv4-compatible form (`::c0a8:0101`) are the same trick. The reserved IPv4 blocks no
+/// internet host lives in (0/8, 192.0.0/24, the 198.18/15 benchmarking range, 240/4) and IPv6's
+/// retired site-local fec0::/10 are refused with the private ranges.
 pub(crate) fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
             !(v4.is_private()
                 || v4.is_loopback()
                 || v4.is_link_local()
@@ -347,20 +359,56 @@ pub(crate) fn is_public(ip: IpAddr) -> bool {
                 || v4.is_multicast()
                 || v4.is_documentation()
                 // Carrier-grade NAT (100.64/10): inside somebody's network, not the internet.
-                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xC0) == 64))
+                || (a == 100 && (b & 0xC0) == 64)
+                // "This network" (0/8): 0.x.y.z dials the local host on Linux.
+                || a == 0
+                // IETF protocol assignments (192.0.0/24) and benchmarking (198.18/15).
+                || (a == 192 && b == 0 && c == 0)
+                || (a == 198 && (b & 0xFE) == 18)
+                // Reserved (240/4), never assigned.
+                || a >= 240)
         }
         IpAddr::V6(v6) => {
             if let Some(mapped) = v6.to_ipv4_mapped() {
                 return is_public(IpAddr::V4(mapped));
             }
+            if let Some(carried) = carried_ipv4(&v6) {
+                return is_public(IpAddr::V4(carried));
+            }
             !(v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
-                // Unique-local fc00::/7 and link-local fe80::/10.
+                // Unique-local fc00::/7, link-local fe80::/10, and retired site-local fec0::/10.
                 || (v6.segments()[0] & 0xfe00) == 0xfc00
-                || (v6.segments()[0] & 0xffc0) == 0xfe80)
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+                || (v6.segments()[0] & 0xffc0) == 0xfec0)
         }
     }
+}
+
+/// The IPv4 address an IPv6 one is a wrapper for, by NAT64 (64:ff9b::/96 and the local-use
+/// 64:ff9b:1::/48, the address in the last 32 bits), 6to4 (2002::/16, in bits 16-48) or the
+/// deprecated IPv4-compatible form (::/96). `is_public` judges the IPv4 address instead.
+fn carried_ipv4(v6: &std::net::Ipv6Addr) -> Option<std::net::Ipv4Addr> {
+    let s = v6.segments();
+    let tail =
+        || std::net::Ipv4Addr::new((s[6] >> 8) as u8, s[6] as u8, (s[7] >> 8) as u8, s[7] as u8);
+    if s[0] == 0x64 && s[1] == 0xff9b && (s[2..6] == [0, 0, 0, 0] || s[2] == 1) {
+        return Some(tail());
+    }
+    if s[0] == 0x2002 {
+        return Some(std::net::Ipv4Addr::new(
+            (s[1] >> 8) as u8,
+            s[1] as u8,
+            (s[2] >> 8) as u8,
+            s[2] as u8,
+        ));
+    }
+    // ::/96 holds :: and ::1 too, which the checks after this already refuse by name.
+    if s[0..6] == [0, 0, 0, 0, 0, 0] && !(s[6] == 0 && s[7] <= 1) {
+        return Some(tail());
+    }
+    None
 }
 
 /// Read at most `cap` bytes of the body, then hang up - a huge or hostile page can't balloon
@@ -490,10 +538,33 @@ mod tests {
             "fc00::1",
             "fe80::1",
             "::ffff:192.168.1.1",
+            // IPv4 inside IPv6: NAT64 (both prefixes), 6to4, IPv4-compatible.
+            "64:ff9b::c0a8:101",
+            "64:ff9b::7f00:1",
+            "64:ff9b:1::a00:1",
+            "2002:c0a8:101::1",
+            "2002:7f00:1::",
+            "::c0a8:101",
+            // Reserved IPv4 and retired site-local IPv6.
+            "0.1.2.3",
+            "192.0.0.8",
+            "198.18.0.1",
+            "198.19.255.255",
+            "240.0.0.1",
+            "255.255.255.255",
+            "fec0::1",
         ] {
             assert!(!is_public(bad.parse().unwrap()), "{bad} must be refused");
         }
-        for good in ["93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946", "1.1.1.1"] {
+        for good in [
+            "93.184.216.34",
+            "2606:2800:220:1:248:1893:25c8:1946",
+            "1.1.1.1",
+            // A wrapped PUBLIC address is still public: NAT64 networks must keep their previews.
+            "64:ff9b::101:101",
+            "2002:101:101::1",
+            "198.20.0.1",
+        ] {
             assert!(is_public(good.parse().unwrap()), "{good} must pass");
         }
     }
