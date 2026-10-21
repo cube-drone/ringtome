@@ -24291,3 +24291,25 @@ Two more from the same turbolink question (`net/unfurl.rs`):
   `RINGTOME_PROXY_HOPS` counts). Cache hits still spend nothing.
 
 Gates: `cargo test -p ringtome-node` (663) and the `unfurl` acceptance area (8).
+
+## 2026-10-21: the sign-in door, limited and off the runtime
+
+Item 3 of the security pass (`auth.rs`, `auth/routes.rs`):
+
+- **Argon2 left the async workers.** Hashing and checking a password (sign-in,
+  sign-up, reset, the node's sign-up password) took tens of milliseconds of CPU
+  on a tokio worker, so a few dozen concurrent wrong guesses at one public name
+  stalled every request and every sync. They now run on the blocking pool, at
+  most four at once (`ARGON2_SEATS`); a crowd at the door queues for a seat and
+  slows only the door. `a_crowd_of_wrong_passwords_leaves_the_runtime_free`
+  fails against the old inline call.
+- **Sign-in is rate-limited**, as sign-up and recovery already were: 20 attempts
+  an hour per address (`client_ip`). Not per account as well: that limit would
+  let any stranger shut any account's sign-in by spending its attempts, so a
+  guesser with many addresses is held only by the 8-character floor and
+  Argon2's cost. The operator's own machine, talking directly, is exempt as
+  before.
+
+Gates: `cargo test -p ringtome-node` (664) and the `auth`, accounts, recovery
+and operator acceptance areas (21). The limiter is off under
+`RINGTOME_LOCAL_TEST`, so the rig can't see the limits themselves.

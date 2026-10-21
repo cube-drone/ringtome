@@ -94,6 +94,7 @@ pub async fn set(state: &AppState, mode: Mode, password: Option<&str>) -> Result
             crate::auth::check_password_len(password, SIGNUP_PASSWORD_MIN)?;
             Some(
                 crate::auth::hash_password(password, state.config.local_test)
+                    .await
                     .map_err(AppError::Internal)?,
             )
         }
@@ -245,7 +246,7 @@ async fn admit_mode(state: &AppState, offered: Option<&str>) -> Result<(), AppEr
         ))),
         Mode::Password => {
             let right = match (offered, policy.password_hash.as_deref()) {
-                (Some(offered), Some(hash)) => crate::auth::verify_password(offered, hash),
+                (Some(offered), Some(hash)) => crate::auth::verify_password(offered, hash).await,
                 _ => false,
             };
             if right {

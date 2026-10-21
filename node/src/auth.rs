@@ -65,12 +65,31 @@ fn hasher(fast: bool) -> Argon2<'static> {
     }
 }
 
-pub(crate) fn hash_password(password: &str, fast: bool) -> Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
-    hasher(fast)
-        .hash_password(password.as_bytes(), &salt)
-        .map(|h| h.to_string())
-        .map_err(|e| anyhow!("hashing password: {e}"))
+/// How many Argon2 runs go at once. Each takes tens of milliseconds of CPU and 19 MiB, and
+/// used to take them on an async worker: a few dozen concurrent logins against one public name
+/// stalled every worker, sync included (security pass, 2026-10-21). Now they queue for one of
+/// these seats and run on the blocking pool, so a crowd at the door slows the door only.
+const ARGON2_AT_ONCE: usize = 4;
+static ARGON2_SEATS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(ARGON2_AT_ONCE);
+
+/// Run Argon2 work in one of `ARGON2_SEATS`, off the async runtime.
+async fn in_argon2_seat<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    let _seat = ARGON2_SEATS.acquire().await.expect("the Argon2 seats are never closed");
+    tokio::task::spawn_blocking(work)
+        .await
+        .unwrap_or_else(|failed| std::panic::resume_unwind(failed.into_panic()))
+}
+
+pub(crate) async fn hash_password(password: &str, fast: bool) -> Result<String> {
+    let password = password.to_owned();
+    in_argon2_seat(move || {
+        let salt = SaltString::generate(&mut OsRng);
+        hasher(fast)
+            .hash_password(password.as_bytes(), &salt)
+            .map(|h| h.to_string())
+            .map_err(|e| anyhow!("hashing password: {e}"))
+    })
+    .await
 }
 
 /// Enforce the node's password floor (`Config::password_min_len` - 8 facing the network, 1 on
@@ -91,11 +110,13 @@ pub(crate) fn check_password_len(password: &str, min: usize) -> Result<(), AppEr
     }))
 }
 
-pub(crate) fn verify_password(password: &str, phc: &str) -> bool {
-    match PasswordHash::new(phc) {
+pub(crate) async fn verify_password(password: &str, phc: &str) -> bool {
+    let (password, phc) = (password.to_owned(), phc.to_owned());
+    in_argon2_seat(move || match PasswordHash::new(&phc) {
         Ok(parsed) => Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok(),
         Err(_) => false,
-    }
+    })
+    .await
 }
 
 fn generate_token() -> String {
@@ -172,7 +193,7 @@ pub async fn register(
     check_password_len(password, min_password_len)?;
 
     let id = Uuid::new_v4();
-    let phc = hash_password(password, local_test).map_err(AppError::Internal)?;
+    let phc = hash_password(password, local_test).await.map_err(AppError::Internal)?;
 
     let result = db
         .execute(
@@ -247,11 +268,12 @@ pub async fn account_for_sign_in(db: &Db, typed: &str) -> Result<Option<String>,
     Ok(accounts.pop())
 }
 
-/// Verify credentials and, on success, create a session; returns the session token.
-pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, AppError> {
-    // The account the name means (`account_for_sign_in`), case and spaces aside. A name that
-    // means nobody falls through to the uniform "invalid credentials".
-    let row: Option<(String, String)> = match account_for_sign_in(db, username).await? {
+/// Verify credentials and, on success, create a session; returns the session token. `account`
+/// is what the typed name means (`account_for_sign_in`) - resolved by the caller, which rate
+/// limits by it before the password is tried. A name that means nobody (None) falls through to
+/// the uniform "invalid credentials".
+pub async fn login(db: &Db, account: Option<String>, password: &str) -> Result<String, AppError> {
+    let row: Option<(String, String)> = match account {
         Some(id) => db
             .fetch_optional("SELECT id, password_hash FROM accounts WHERE id = ?1", (id,))
             .await
@@ -264,7 +286,7 @@ pub async fn login(db: &Db, username: &str, password: &str) -> Result<String, Ap
     let (account_id, phc) = row.ok_or_else(|| {
         AppError::Unauthorized(crate::msg!("auth.invalid-credentials", "wrong name or password"))
     })?;
-    if !verify_password(password, &phc) {
+    if !verify_password(password, &phc).await {
         return Err(AppError::Unauthorized(crate::msg!(
             "auth.invalid-credentials-2",
             "wrong name or password"
@@ -430,7 +452,7 @@ pub async fn set_password(
     local_test: bool,
 ) -> Result<(), AppError> {
     check_password_len(new_password, min_password_len)?;
-    let phc = hash_password(new_password, local_test).map_err(AppError::Internal)?;
+    let phc = hash_password(new_password, local_test).await.map_err(AppError::Internal)?;
     db.execute("UPDATE accounts SET password_hash = ?1 WHERE id = ?2", (phc.as_str(), account_id))
         .await
         .context("updating password")
@@ -683,20 +705,50 @@ mod tests {
         }
     }
 
-    #[test]
-    fn fast_hash_verifies_with_the_standard_verifier() {
+    #[tokio::test]
+    async fn fast_hash_verifies_with_the_standard_verifier() {
         // The local-test fast path must differ only in work factor. The parameters travel in the
         // PHC string, so the unchanged verifier has to accept a minimal-params hash - this is the
         // property that lets weak (test) and strong (real) hashes coexist in one table.
-        let phc = hash_password("hunter22hunter22", true).unwrap();
+        let phc = hash_password("hunter22hunter22", true).await.unwrap();
         assert!(phc.contains("m=8,t=1,p=1"), "expected minimal params in {phc}");
-        assert!(verify_password("hunter22hunter22", &phc));
-        assert!(!verify_password("wrong-password", &phc));
+        assert!(verify_password("hunter22hunter22", &phc).await);
+        assert!(!verify_password("wrong-password", &phc).await);
 
         // And the real path still produces full-strength hashes.
-        let strong = hash_password("hunter22hunter22", false).unwrap();
+        let strong = hash_password("hunter22hunter22", false).await.unwrap();
         assert!(!strong.contains("m=8,"), "default params should not be minimal: {strong}");
-        assert!(verify_password("hunter22hunter22", &strong));
+        assert!(verify_password("hunter22hunter22", &strong).await);
+    }
+
+    #[tokio::test]
+    async fn a_crowd_of_wrong_passwords_leaves_the_runtime_free() {
+        // The 2026-10-21 stall: Argon2 ran on the async worker, so a burst of logins froze
+        // everything else. On this test's single-threaded runtime, a ticker must keep ticking
+        // while a dozen full-strength verifications queue for their seats.
+        let strong = hash_password("hunter22hunter22", false).await.unwrap();
+        let ticks = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let ticker = tokio::spawn({
+            let ticks = ticks.clone();
+            async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    ticks.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        });
+        let guesses = (0..12).map(|n| {
+            let strong = strong.clone();
+            tokio::spawn(async move { verify_password(&format!("guess-{n}"), &strong).await })
+        });
+        for guess in guesses.collect::<Vec<_>>() {
+            assert!(!guess.await.unwrap());
+        }
+        ticker.abort();
+        assert!(
+            ticks.load(std::sync::atomic::Ordering::Relaxed) >= 5,
+            "the runtime stalled while passwords were checked"
+        );
     }
 
     #[tokio::test]

@@ -22,6 +22,9 @@ const REGISTER_LIMIT: u32 = 2;
 /// Spare-key recovery attempts per IP per hour. Stricter than register: every attempt is a
 /// guess at a 256-bit secret, so honest users need one or two and everyone else is probing.
 const RECOVER_LIMIT: u32 = 5;
+/// Sign-in attempts per IP per hour. Deliberately not per account as well: that limit would let
+/// any stranger keep any account's sign-in shut by spending its attempts (2026-10-21).
+const LOGIN_LIMIT: u32 = 20;
 const HOUR_MS: i64 = 60 * 60 * 1000;
 
 pub fn router() -> Router<AppState> {
@@ -191,10 +194,13 @@ async fn recover_handler(
 
 async fn login_handler(
     State(state): State<AppState>,
+    ctx: RequestContext,
     jar: CookieJar,
     Json(creds): Json<Credentials>,
 ) -> Result<(CookieJar, Json<AccountInfo>), AppError> {
-    let token = login(&state.node_db, &creds.username, &creds.password).await?;
+    state.rate_limiter.check_ctx("login", &ctx, LOGIN_LIMIT, HOUR_MS).await?;
+    let account = super::account_for_sign_in(&state.node_db, &creds.username).await?;
+    let token = login(&state.node_db, account, &creds.password).await?;
 
     // Re-resolve so we return the canonical account info alongside the cookie.
     let account = super::account_for_token(&state.node_db, &token)
