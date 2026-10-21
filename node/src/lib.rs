@@ -1181,13 +1181,16 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             &axum::middleware::from_fn_with_state(state, domainsite::route),
             app,
         ))
+        // The serving headers (ui.rs): outermost but the trace, so a person's domain and the MCP
+        // door carry them too.
+        .layer(axum::middleware::from_fn(ui::security_headers))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &axum::http::Request<_>| {
                     info_span!(
                         "req",
                         method = %req.method(),
-                        uri = %req.uri(),
+                        uri = %request_context::loggable_uri(req.uri()),
                         c_id = tracing::field::Empty,
                         remote_ip = tracing::field::Empty,
                         forwarded_for = tracing::field::Empty,

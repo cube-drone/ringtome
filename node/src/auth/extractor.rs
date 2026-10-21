@@ -182,6 +182,7 @@ pub async fn renew_cookie(
 ) -> axum::response::Response {
     let slot = RenewedSession::default();
     req.extensions_mut().insert(slot.clone());
+    let secure = crate::request_context::arrived_over_https(req.headers());
     let mut res = next.run(req).await;
     let Some(token) = slot.0.lock().expect("renewal slot poisoned").take() else {
         return res;
@@ -194,7 +195,7 @@ pub async fn renew_cookie(
         .any(|v| v.to_str().is_ok_and(|v| v.starts_with(&format!("{name}="))));
     if !said {
         if let Ok(value) = axum::http::HeaderValue::from_str(
-            &super::routes::session_cookie(token, state.config.port).to_string(),
+            &super::routes::session_cookie(token, state.config.port, secure).to_string(),
         ) {
             res.headers_mut().append(axum::http::header::SET_COOKIE, value);
         }

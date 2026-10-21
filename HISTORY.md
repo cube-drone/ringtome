@@ -24347,3 +24347,38 @@ database afresh, so any write since (a WAL or journal grown by background work)
 made evicting free more than moving carried. `storage::evict_bytes` now takes the
 tally's figure, as the admin's list (`storage::all`) always did. Gate: the
 storage accounting acceptance area.
+
+## 2026-10-21: the serving headers
+
+Item 6 of the security pass. Every answer that doesn't set its own now carries
+(`ui::security_headers`, outermost but the trace, so custom domains and the MCP
+door too):
+
+- **A Content-Security-Policy** that lets the page run only this origin's files
+  and the shell's two inline scripts, by hash: `script-src 'self'` plus hashes
+  taken from `html/index.html` at startup, with `object-src 'none'`,
+  `base-uri 'none'` and `frame-ancestors 'self'`. Markup that slips past the
+  renderer can't run a line. Styles, pictures, media, frames and fetches are
+  left open; the app shows things from anywhere. A test holds the hashes to the
+  template's scripts and keeps every `$NAME$` substitution outside them. Checked
+  in headless Chrome: the app mounts, both inline scripts run, and no violation
+  is logged, while a page with an unhashed inline script logs one.
+- **`Referrer-Policy: strict-origin-when-cross-origin`**: other sites see the
+  origin, never a path (an upload link's path is its secret). Today's browser
+  default, stated for older web views; not stricter, because YouTube frames
+  won't play without a referrer.
+
+And:
+
+- **The sign-in cookie is `Secure`** when a proxy's `X-Forwarded-Proto` says the
+  visitor came over HTTPS (`request_context::arrived_over_https`), at sign-in
+  and on every sliding renewal; a node on plain HTTP keeps its sign-ins. SERVER.md
+  lists the header among what a proxy owes the node.
+- **Upload-link tokens stay out of the log**: the request span records
+  `/upload/…` and `/api/upload/…` (`request_context::loggable_uri`).
+
+No HSTS: whether a node is HTTPS-only is its proxy's business (Curtis).
+
+Gates: `cargo test -p ringtome-node` (668); the `auth`, caching, custom domains,
+public face, single-post, avatar, banner, post head and MCP acceptance areas
+(72 + 54).

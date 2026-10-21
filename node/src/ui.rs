@@ -241,6 +241,63 @@ pub fn app_page_with(state: &AppState, head: &str, body: &str) -> String {
         .replace("$BODY$", &body)
 }
 
+// ---- the serving headers every answer carries (security pass, 2026-10-21) ----
+
+/// The shell's own inline scripts (`html/index.html`'s bare `<script>` blocks - the `js` class and
+/// the colourway before first paint). None of `app_page`'s substitutions fall inside one (a test
+/// holds that), so their text, and so their hashes, are the template's own.
+fn inline_scripts(page: &str) -> Vec<&str> {
+    page.split("<script>").skip(1).filter_map(|rest| rest.split_once("</script>")).map(|(s, _)| s).collect()
+}
+
+/// The page may run its own scripts - files from this origin, and the shell's inline ones by
+/// hash - and nothing else: a link or a body that slipped markup past the renderer can't run a
+/// line (the control-character `javascript:` link of 2026-10-21 was that). `'self'` covers
+/// `/sw.js` too. No plugins, no `<base>` re-pointing relative URLs, and framed only by itself.
+/// Styles, pictures, media, frames (a turbolink's video) and fetches are left as they were: the
+/// app shows things from anywhere, and the risk this closes is script.
+static CONTENT_SECURITY_POLICY: std::sync::LazyLock<axum::http::HeaderValue> =
+    std::sync::LazyLock::new(|| {
+        use base64::Engine;
+        use sha2::Digest;
+        let hashes: String = inline_scripts(HOME_PAGE)
+            .iter()
+            .map(|script| {
+                let digest = sha2::Sha256::digest(script.as_bytes());
+                format!(" 'sha256-{}'", base64::engine::general_purpose::STANDARD.encode(digest))
+            })
+            .collect();
+        axum::http::HeaderValue::from_str(&format!(
+            "script-src 'self'{hashes}; object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+        ))
+        .expect("a policy of ASCII is a header value")
+    });
+
+/// The serving headers, on every answer that doesn't set its own (the `/id/` face sets stricter
+/// ones). The policy above; and the referrer a page's links and pictures send elsewhere as this
+/// origin alone, never a path - an upload link's path is its secret. That is today's browser
+/// default, said aloud for the web views that predate it; no stricter, since a YouTube frame
+/// won't play for a page that sends no referrer at all. No HSTS: whether a node is HTTPS-only is
+/// its proxy's business (Curtis, 2026-10-21).
+pub async fn security_headers(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::header;
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    if !headers.contains_key(header::CONTENT_SECURITY_POLICY) {
+        headers.insert(header::CONTENT_SECURITY_POLICY, CONTENT_SECURITY_POLICY.clone());
+    }
+    if !headers.contains_key(header::REFERRER_POLICY) {
+        headers.insert(
+            header::REFERRER_POLICY,
+            header::HeaderValue::from_static("strict-origin-when-cross-origin"),
+        );
+    }
+    response
+}
+
 /// The checkout this dev node was built from - the repository above the node crate.
 const REPO_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
@@ -507,6 +564,26 @@ fn check_version(requested: &str, current: &str) -> Result<bool, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shells_scripts_are_the_ones_the_policy_allows() {
+        // Two today; a third added to the template is hashed with no one remembering to.
+        let scripts = inline_scripts(HOME_PAGE);
+        assert_eq!(scripts.len(), 2, "the js class and the colourway");
+        let policy = CONTENT_SECURITY_POLICY.to_str().unwrap();
+        assert_eq!(policy.matches("'sha256-").count(), scripts.len(), "{policy}");
+        // A substitution inside one would change its text per page, and the hash would refuse
+        // it: every `$NAME$` stays outside the scripts.
+        for script in scripts {
+            assert!(!script.contains("$HEAD$") && !script.contains("$VERSION$"), "{script}");
+            assert!(!script.contains("$BRANCH$") && !script.contains("$ENVIRONMENT$"));
+            assert!(!script.contains("$MAX_UPLOAD$") && !script.contains("$BODY$"));
+        }
+        assert!(
+            HOME_PAGE.split("<script ").skip(1).all(|tag| tag.starts_with("src=")),
+            "a script with attributes is a file, from this origin - not an inline one to hash"
+        );
+    }
 
     #[test]
     fn head_names_the_branch_or_the_commit() {

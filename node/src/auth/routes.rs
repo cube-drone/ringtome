@@ -77,17 +77,19 @@ struct UsernameAvailability {
     available: bool,
 }
 
-/// Build the session cookie. HttpOnly and SameSite=Lax; Secure is omitted so it works over plain
-/// HTTP on localhost (a node behind TLS terminates upstream). Path=/ so it covers the whole API.
+/// Build the session cookie. HttpOnly and SameSite=Lax; Secure when the visitor came over HTTPS
+/// (`request_context::arrived_over_https`, a proxy's say-so), and only then, so a node on plain
+/// HTTP - localhost, a LAN name - still keeps its sign-ins. Path=/ so it covers the whole API.
 ///
 /// It lives as long as the session it carries (Curtis, 2026-10-01: "every time the desktop
 /// application reboots ... it logs me out"). With no Max-Age it was a session cookie, dropped when
 /// the browser process ends - which a browser restoring its tabs may forgive, but the desktop app's
 /// webview never does, and every update relaunches it. The server's 30 days were never the limit.
 /// A session in use renews and is sent again with a fresh Max-Age (extractor.rs `renew_cookie`).
-pub(crate) fn session_cookie(token: String, port: u16) -> Cookie<'static> {
+pub(crate) fn session_cookie(token: String, port: u16, secure: bool) -> Cookie<'static> {
     Cookie::build((session_cookie_name(port), token))
         .http_only(true)
+        .secure(secure)
         .same_site(SameSite::Lax)
         .path("/")
         .max_age(time::Duration::milliseconds(crate::auth::SESSION_TTL_MS))
@@ -207,7 +209,7 @@ async fn login_handler(
         .await?
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("session vanished after creation")))?;
 
-    let jar = jar.add(session_cookie(token, state.config.port));
+    let jar = jar.add(session_cookie(token, state.config.port, ctx.https));
     Ok((
         jar,
         Json(AccountInfo {

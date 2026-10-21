@@ -774,6 +774,7 @@ mod tests {
             forwarded,
             user_agent: "test".into(),
             correlation_id: uuid::Uuid::nil(),
+            https: false,
         };
         let direct = request(false);
         let mut config = crate::config::Config::from_env();

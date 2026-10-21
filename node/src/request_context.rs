@@ -40,6 +40,8 @@ pub struct RequestContext {
     pub forwarded: bool,
     pub user_agent: String,
     pub correlation_id: Uuid,
+    /// `arrived_over_https`: the session cookie is `Secure` when this says so.
+    pub https: bool,
 }
 
 /// The sentinel `forwarded_for` carries when no X-Forwarded-For header arrived - for the log.
@@ -49,6 +51,31 @@ pub const NOT_FORWARDED: &str = "--not-forwarded--";
 /// The headers a proxy announces itself with. Any one of them present means "not the operator
 /// at the machine": nginx sets `X-Real-IP` as often as `X-Forwarded-For`.
 const FORWARDING_HEADERS: [&str; 3] = ["x-forwarded-for", "x-real-ip", "forwarded"];
+
+/// A request's address as the log keeps it: an upload link's token - its whole capability, in the
+/// path (`uploadlink.rs`) - shown as `…`. The log is journald's, readable by anyone with the
+/// machine's adm group, and kept far longer than the link lives.
+pub fn loggable_uri(uri: &axum::http::Uri) -> String {
+    let path = uri.path();
+    let masked = match path.split_once("/upload/") {
+        Some((before, _)) if before.is_empty() || before == "/api" => format!("{before}/upload/…"),
+        _ => return uri.to_string(),
+    };
+    match uri.query() {
+        Some(q) => format!("{masked}?{q}"),
+        None => masked,
+    }
+}
+
+/// Did the visitor reach us over HTTPS - a proxy's `X-Forwarded-Proto` says so. Believed from
+/// anyone: it decides only whether the session cookie is `Secure`, and a visitor who lies about
+/// it gets a cookie their own browser won't send back.
+pub fn arrived_over_https(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|p| p.trim().eq_ignore_ascii_case("https")))
+}
 
 impl RequestContext {
     /// The visitor's address, as far as the proxies we trust can vouch for it.
@@ -116,6 +143,7 @@ where
         let forwarded_for = header("x-forwarded-for", NOT_FORWARDED);
         let forwarded = FORWARDING_HEADERS.iter().any(|name| parts.headers.contains_key(*name));
         let user_agent = header("user-agent", "--no-user-agent--");
+        let https = arrived_over_https(&parts.headers);
         let correlation_id = Uuid::new_v4();
 
         let span = Span::current();
@@ -123,7 +151,7 @@ where
         span.record("remote_ip", tracing::field::display(&remote_ip));
         span.record("forwarded_for", tracing::field::display(&forwarded_for));
 
-        Ok(RequestContext { remote_ip, forwarded_for, forwarded, user_agent, correlation_id })
+        Ok(RequestContext { remote_ip, forwarded_for, forwarded, user_agent, correlation_id, https })
     }
 }
 
@@ -139,7 +167,29 @@ mod tests {
             forwarded: forwarded_for != NOT_FORWARDED,
             user_agent: "test".into(),
             correlation_id: Uuid::nil(),
+            https: false,
         }
+    }
+
+    #[test]
+    fn an_upload_links_token_stays_out_of_the_log() {
+        let uri = |s: &str| loggable_uri(&s.parse().unwrap());
+        assert_eq!(uri("/upload/0123abcd"), "/upload/…");
+        assert_eq!(uri("/api/upload/0123abcd?x=1"), "/api/upload/…?x=1");
+        assert_eq!(uri("/api/identity/abc/docs?q=upload"), "/api/identity/abc/docs?q=upload");
+        assert_eq!(uri("/api/identity/abc/upload/x"), "/api/identity/abc/upload/x", "only the link's own paths");
+    }
+
+    #[test]
+    fn https_is_whatever_a_proxy_said() {
+        let mut headers = axum::http::HeaderMap::new();
+        assert!(!arrived_over_https(&headers), "no proxy, no TLS: a node on plain http");
+        headers.insert("x-forwarded-proto", "https".parse().unwrap());
+        assert!(arrived_over_https(&headers));
+        headers.insert("x-forwarded-proto", "http".parse().unwrap());
+        assert!(!arrived_over_https(&headers));
+        headers.insert("x-forwarded-proto", "https, http".parse().unwrap());
+        assert!(arrived_over_https(&headers), "a CDN's https, then a gateway's http hop");
     }
 
     #[test]

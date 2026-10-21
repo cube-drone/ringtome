@@ -151,7 +151,7 @@ use, so the links the node mints point there - and so AI assistants can connect:
 claude.ai, ChatGPT and the rest sign in through the node's OAuth, which names
 this address as itself, and they refuse a plain-HTTP one.
 
-Whatever you put in front, it owes the node four things:
+Whatever you put in front, it owes the node five things:
 
 - **The visitor's address in `X-Forwarded-For`.** Behind a proxy on the same
   machine, every request reaches the node from loopback, and the node treats a
@@ -166,6 +166,10 @@ Whatever you put in front, it owes the node four things:
 - **No upload limit of its own**, or one above `RINGTOME_MAX_UPLOAD_BYTES`. The
   node enforces its own.
 - **The `Host` header the visitor asked for.**
+- **`X-Forwarded-Proto: https`** when the visitor came over HTTPS. The node
+  marks the sign-in cookie `Secure` only when it hears this, so that a node on
+  plain HTTP (localhost, a LAN name) still keeps its sign-ins. Caddy sends it
+  unasked; nginx needs the line in the example below.
 
 If the proxy runs on the same machine, publish the node's HTTP port to loopback
 only (`-p 127.0.0.1:5281:5281/tcp` for the container, or the default
