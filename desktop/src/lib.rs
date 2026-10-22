@@ -35,6 +35,7 @@ mod tray;
 #[cfg(desktop)]
 mod update;
 
+use tauri_plugin_dialog::DialogExt;
 use std::path::{Path, PathBuf};
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -82,8 +83,23 @@ pub fn run() {
             // system browser came from here. NOT the query string all the same: a URL lands in
             // history, in a log, in a screenshot.
             let token = ringtome_node::auth::mint_launch_token();
+            // A node that won't start says why, in a dialog, and the app goes (2026-10-22: 0.5.2
+            // opening data a newer build had migrated returned the error from here, Tauri took a
+            // failed setup for a panic, and macOS showed a crash report with no reason in it).
             #[cfg(desktop)]
-            let (url, attention, requests) = start_node(&data_dir, token.clone())?;
+            let (url, attention, requests) = match start_node(&data_dir, token.clone()) {
+                Ok(up) => up,
+                Err(e) => {
+                    tracing::error!(error = format!("{e:#}"), "the node could not start");
+                    let handle = app.handle().clone();
+                    app.dialog()
+                        .message(why_it_wont_start(&e))
+                        .title("Horse Drawing Tycoon 2 can't start")
+                        .kind(tauri_plugin_dialog::MessageDialogKind::Error)
+                        .show(move |_| handle.exit(1));
+                    return Ok(());
+                }
+            };
             // On a phone the node may already be up: hrseAmp's media service boots it when the car
             // or a headphone button wakes the app with no window (plans/AUDIO.md, section 10's cold
             // start) - one node per process, whichever came first.
@@ -283,14 +299,17 @@ fn start_node(
     ringtome_node::init_tracing_with(&config, &["horse_drawing_tycoon_2_lib"]);
 
     // One retry, and it costs one assembly rather than two: the library binds its listener
-    // before it builds anything, so a taken port fails early and leaves nothing running.
+    // before it builds anything, so a taken port fails early and leaves nothing running. A taken
+    // port only (2026-10-22): every failure used to be called one, a refused migration included,
+    // and retried on another port to fail again.
     let bound = match bind_blocking(config.clone()) {
         Ok(bound) => bound,
-        Err(first) => {
+        Err(first) if port_taken(&first) => {
             tracing::warn!(port = config.port, error = %first, "the remembered port is taken; picking another");
             config.port = port::pick_another(data_dir)?;
             bind_blocking(config.clone())?
         }
+        Err(e) => return Err(e),
     };
     let url = format!("http://{}/", bound.addr());
     let attention = bound.attention();
@@ -304,8 +323,68 @@ fn start_node(
     Ok((url, attention, requests))
 }
 
+/// Did the node fail to start because its port is someone else's?
+fn port_taken(e: &anyhow::Error) -> bool {
+    e.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::AddrInUse)
+    })
+}
+
+/// What the dialog says when the node won't start: the one cause a person can act on said plainly
+/// - data a newer version has opened - and anything else as the error itself, every cause of it.
+fn why_it_wont_start(e: &anyhow::Error) -> String {
+    let all = format!("{e:#}");
+    if all.contains("newer Ringtome") {
+        return "A newer version of Horse Drawing Tycoon 2 has already opened your data, and this \
+                one is too old to read it. Nothing has been lost: install the newest version and \
+                open it again."
+            .to_string();
+    }
+    format!("Horse Drawing Tycoon 2 couldn't start: {all}")
+}
+
 /// The boot, awaited before the window exists - which is the whole readiness story: by the time
 /// there is a URL to open, the listener is bound and the router is assembled.
 fn bind_blocking(config: ringtome_node::config::Config) -> anyhow::Result<ringtome_node::Bound> {
     tauri::async_runtime::block_on(ringtome_node::bind(config))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only a taken port is retried on another (2026-10-22: a refused migration was called one).
+    #[test]
+    fn only_a_taken_port_is_retried() {
+        let taken = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::AddrInUse))
+            .context("binding the node");
+        assert!(port_taken(&taken), "found through the context");
+        let migration = anyhow::anyhow!(
+            "node database is at migration 107, and this build only knows up to 105; it was \
+             written by a newer Ringtome - run that build (nothing here migrates down)"
+        )
+        .context("running node migrations");
+        assert!(!port_taken(&migration));
+        let refused = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert!(!port_taken(&refused));
+    }
+
+    /// The dialog says the one thing a person can act on plainly, and anything else as it is.
+    #[test]
+    fn a_newer_versions_data_is_said_plainly() {
+        let migration = anyhow::anyhow!(
+            "node database is at migration 107, and this build only knows up to 105; it was \
+             written by a newer Ringtome - run that build (nothing here migrates down)"
+        )
+        .context("running node migrations");
+        let said = why_it_wont_start(&migration);
+        assert!(said.contains("newest version") && said.contains("Nothing has been lost"), "{said}");
+        let other = anyhow::anyhow!("the disk is full").context("opening the node database");
+        assert_eq!(
+            why_it_wont_start(&other),
+            "Horse Drawing Tycoon 2 couldn't start: opening the node database: the disk is full"
+        );
+    }
 }

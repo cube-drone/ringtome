@@ -24827,3 +24827,30 @@ Tests: `outward.cjs`, `shell::only_the_web_and_mail_leave_the_app`, and a Device
 app claim (only the window; 400 for `file:`/`javascript:`; web and mail reach
 the shell). Not yet seen on the Mac: it wants a build of the app and a click,
 and the terminal line to look for is "opened a link in the system browser".
+
+## 2026-10-22: a desktop app that won't start says why, and `just desktop` keeps to itself
+
+After a `just desktop` run, the installed 0.5.2 crashed at every launch (Curtis):
+a macOS crash report, `abort()` inside `did_finish_launching`, no reason given.
+`just desktop` used the installed app's own data directory (the justfile said so:
+"like the shipped app"), so today's build migrated its node database forward
+(rungs 0106, 0107), and 0.5.2 refused it - "written by a newer Ringtome". That
+error left the shell's `setup` hook, Tauri panics on a failed setup, and a panic
+can't unwind out of the macOS callback it runs in. Run from a terminal, the
+installed app's last words also blamed the wrong thing: "the remembered port is
+taken; picking another", for a refused migration.
+
+- **`just desktop` has its own data**: the checkout's `data-desktop/`
+  (gitignored), unless `RINGTOME_DATA_DIRECTORY` says otherwise - the installed
+  app's directory included, on purpose.
+- **A node that won't start says why** (desktop/src/lib.rs): a dialog, and the
+  app exits, instead of the crash. Data a newer version has opened is said
+  plainly ("install the newest version ... nothing has been lost"); anything
+  else as the error with every cause (`why_it_wont_start`), and the log carries
+  the whole chain.
+- **Only a taken port is retried** on another (`port_taken`, an `AddrInUse`
+  anywhere in the chain); any other failure goes straight to the dialog.
+
+Tests: desktop `only_a_taken_port_is_retried`,
+`a_newer_versions_data_is_said_plainly`. The installed 0.5.2 itself is fixed by
+installing a release past rung 107.

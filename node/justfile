@@ -809,15 +809,17 @@ ports:
 # builds Tauri - it joins the gates at Stage 4, with the packaging matrix.
 #
 # Dev by default, which means the node serves the UI from disk: `just ui-watch` beside this
-# and a reload in the window picks up an edit. RINGTOME_DATA_DIRECTORY points it at a scratch
-# node; unset, it uses the platform's application-data directory, like the shipped app.
+# and a reload in the window picks up an edit. Its data is the checkout's own `data-desktop/`
+# (gitignored), never the installed app's (2026-10-22: a dev run migrated the installed app's data
+# forward, and the installed 0.5.2 then refused it at every launch). RINGTOME_DATA_DIRECTORY points
+# it anywhere else - the platform's application-data directory included, on purpose.
 #
 # On the dev network's local directory by default (the absolute path: this runs from desktop/,
 # where a relative `./data-dht` would quietly be a SECOND directory - the partition this line
 # exists to prevent), so the app finds `just start*` nodes and they find it. RINGTOME_DISCOVERY
 # still wins.
 desktop: ui-build
-    cd "{{workspace}}/desktop" && CARGO_TARGET_DIR="{{workspace}}/target" RINGTOME_DISCOVERY="${RINGTOME_DISCOVERY:-local:{{workspace}}/data-dht}" cargo run
+    cd "{{workspace}}/desktop" && CARGO_TARGET_DIR="{{workspace}}/target" RINGTOME_DISCOVERY="${RINGTOME_DISCOVERY:-local:{{workspace}}/data-dht}" RINGTOME_DATA_DIRECTORY="${RINGTOME_DATA_DIRECTORY:-{{workspace}}/data-desktop}" cargo run
 
 # Compile the shell without running it - what CI will do at Stage 4. Into the root target/, as above.
 desktop-check: ui-build
