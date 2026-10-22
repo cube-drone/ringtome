@@ -2625,7 +2625,8 @@ async fn serve_on(
             }
         }
     }
-    let newcomer = room_only && state.user_dbs.get(&root_hex).await?.is_none();
+    // Asked of the file, not by opening it (the conventions test counts every open).
+    let newcomer = room_only && state.user_dbs.db_mtime_ms(&root_hex).is_none();
     if newcomer {
         let room = hex::encode(rooms_named_here.first().copied().unwrap_or_default());
         let limits = &state.rate_limiter;
