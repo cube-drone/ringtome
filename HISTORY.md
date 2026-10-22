@@ -24744,3 +24744,25 @@ row's `implicit`), so a word a person typed is still offered on the notes where
 they typed it. The made-with tags stay offered: a person's session may take
 `ai-agent` off a note (made_with.rs), which is how a rewritten note sheds it.
 Checked in the app: three notes picked, `micro` gone from the panel.
+
+## 2026-10-22: a tree nobody arranged reads newest first
+
+"If we have a long-lived reverse-chronological notepad where we haven't been
+organizing the tree, the tree's default sorting should just be reverse
+chronological: it means when I open 'tree' for the first time, the order is the
+same as it's always been" (Curtis). A notebook older than its tree is nearly all
+in the unfiled bin, and the bin came out in the mirror's key order - by
+`doc_id`, which reads as no order at all.
+
+- The unfiled bin sorts as the list does (`byPinnedThenClaimed`): pinned, then
+  newest by claimed date.
+- "+ new" files a note FIRST in the tree's top level, not last
+  (`fileNewIntoTree`, `{ index: 0 }`), so a tree in use without arranging stays
+  newest first. A new page in a section still appends there - a section is
+  somewhere someone arranged.
+- The tree's ePub puts the pages its tree doesn't place newest first too, as the
+  bin shows them (`epub::newest_first`, now shared with the chronological ePub;
+  the button sends `tz` for both).
+
+Checked in the app: three notes written in turn read newest first in the bin,
+and a new note landed above every section. Gate: the ePubs area.

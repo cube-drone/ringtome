@@ -757,9 +757,9 @@ export const DocsApp = ({
                 `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(bucket)}`,
                 { method: 'PUT' },
             );
-            // When the tree column exists, a new document also takes its place in the tree - the
-            // last child of the root (append), where it's visible and draggable into shape,
-            // rather than invisibly unfiled.
+            // Where there is a tree, a new document also takes its place in it - first in its top
+            // level (2026-10-22), so a tree nobody has arranged reads newest first, as the list
+            // does; visible and draggable into shape, rather than invisibly unfiled.
             // The tree pane shows it there at once, and reads the tree again once it's filed.
             if (feat.tree) {
                 await fileNewIntoTree(root, bucket, made.doc_id, { title: named, format });
@@ -858,7 +858,7 @@ export const DocsApp = ({
                             feat.tree &&
                             html`<${EpubButton}
                             className="notes-tool jag-line"
-                            path=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/epub${treeTab ? '' : `?order=chronological&tz=${new Date().getTimezoneOffset()}`}`}
+                            path=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/epub?${treeTab ? '' : 'order=chronological&'}tz=${new Date().getTimezoneOffset()}`}
                             fallback=${`${bucket}.epub`}
                         />`
                         }

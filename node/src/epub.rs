@@ -168,13 +168,15 @@ impl Book {
 // Gathering: a notebook
 
 /// A notebook as a book: its tree (`wiki:<bucket>`) in order - a section a section, a page a
-/// chapter - then the notebook's pages the tree doesn't place. Every page the owner keeps, hidden
+/// chapter - then the notebook's pages the tree doesn't place, newest first as the tree's unfiled
+/// bin shows them (2026-10-22; they were in id order). Every page the owner keeps, hidden
 /// from the published book or not: this copy is theirs.
 async fn notebook(
     state: &AppState,
     data: &crate::record::store::Store,
     root: &str,
     bucket: &str,
+    tz_offset_min: i32,
 ) -> Result<Book> {
     let ae = |e: AppError| anyhow::anyhow!("{e}");
     let in_bucket: BTreeSet<[u8; 16]> = data
@@ -218,8 +220,10 @@ async fn notebook(
             walk_notebook(data, &tree, &root_bytes, &mut seen, &mut placed, &mut book.chapters)
                 .await?;
     }
-    for id in in_bucket.iter().filter(|id| !placed.contains(*id)) {
-        if let Some(chapter) = private_chapter(data, id).await? {
+    let unplaced: Vec<[u8; 16]> =
+        in_bucket.iter().filter(|id| !placed.contains(*id)).copied().collect();
+    for id in newest_first(data, unplaced, tz_offset_min).await? {
+        if let Some(chapter) = private_chapter(data, &id).await? {
             book.contents.push(Entry::Page(book.chapters.len()));
             book.chapters.push(chapter);
         }
@@ -229,6 +233,29 @@ async fn notebook(
     }
     book.pictures = private_pictures(data, root, &book.chapters).await?;
     Ok(book)
+}
+
+/// `ids` as the Writer's list orders them (apps/notes.js, `byPinnedThenClaimed`): pinned first,
+/// then newest first by claimed date - a page's own `display_date` where it set one, else when it
+/// last changed - ties broken by id, descending, as the list breaks them.
+async fn newest_first(
+    data: &crate::record::store::Store,
+    ids: impl IntoIterator<Item = [u8; 16]>,
+    tz_offset_min: i32,
+) -> Result<Vec<[u8; 16]>> {
+    let ae = |e: AppError| anyhow::anyhow!("{e}");
+    let pinned = data.documents().pinned().await.map_err(ae)?;
+    let mut dated: Vec<(bool, i64, [u8; 16])> = Vec::new();
+    for id in ids {
+        let Some(head) = data.documents().head(&id).await.map_err(ae)? else { continue };
+        let claimed = crate::publication::claimed(data, &id, tz_offset_min)
+            .await
+            .map_err(ae)?
+            .unwrap_or(head.head_ms);
+        dated.push((pinned.contains(&id), claimed, id));
+    }
+    dated.sort_by(|a, b| b.cmp(a));
+    Ok(dated.into_iter().map(|(_, _, id)| id).collect())
 }
 
 /// A notebook as the chronological tab lists it (apps/notes.js, `byPinnedThenClaimed`): pinned
@@ -243,20 +270,16 @@ async fn notebook_by_time(
     tz_offset_min: i32,
 ) -> Result<Book> {
     let ae = |e: AppError| anyhow::anyhow!("{e}");
-    let pinned = data.documents().pinned().await.map_err(ae)?;
-    let mut dated: Vec<(bool, i64, [u8; 16])> = Vec::new();
-    for (id, names) in data.buckets().all().await.map_err(ae)? {
-        if !names.iter().any(|n| n == bucket) {
-            continue;
-        }
-        let Some(head) = data.documents().head(&id).await.map_err(ae)? else { continue };
-        let claimed = crate::publication::claimed(data, &id, tz_offset_min)
-            .await
-            .map_err(ae)?
-            .unwrap_or(head.head_ms);
-        dated.push((pinned.contains(&id), claimed, id));
-    }
-    dated.sort_by(|a, b| b.cmp(a));
+    let in_bucket = data
+        .buckets()
+        .all()
+        .await
+        .map_err(ae)?
+        .into_iter()
+        .filter(|(_, names)| names.iter().any(|n| n == bucket))
+        .map(|(id, _)| id)
+        .collect::<Vec<_>>();
+    let ordered = newest_first(data, in_bucket, tz_offset_min).await?;
     let mut book = Book {
         title: bucket.to_string(),
         author: author_name(state, root).await,
@@ -269,7 +292,7 @@ async fn notebook_by_time(
         chapter_of: HashMap::new(),
         sealed: false,
     };
-    for (_, _, id) in dated {
+    for id in ordered {
         if let Some(chapter) = private_chapter(data, &id).await? {
             book.contents.push(Entry::Page(book.chapters.len()));
             book.chapters.push(chapter);
@@ -1326,7 +1349,7 @@ pub async fn notebook_handler(
     let book = if chronological {
         notebook_by_time(&state, &data, &root, &bucket, order.tz).await
     } else {
-        notebook(&state, &data, &root, &bucket).await
+        notebook(&state, &data, &root, &bucket, order.tz).await
     }
     .map_err(AppError::Internal)?;
     if book.chapters.is_empty() {

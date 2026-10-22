@@ -17,7 +17,7 @@ import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.
 import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
 import { rootTitleFor } from '../pure/naming.js';
-import { kindHolds, shownTags } from '../pure/doclist.js';
+import { byPinnedThenClaimed, kindHolds, shownTags } from '../pure/doclist.js';
 import { Snippet } from './snippet.js';
 import {
     docsInsideOnly,
@@ -136,15 +136,17 @@ function showEdit(key, apply, write, fail) {
 
 /// File a new page at the top of its notebook's tree, minting the tree if need be - shown there at
 /// once in any pane on that notebook, never a beat in unfiled. The list's "new" (apps/notes.js).
+/// FIRST among the top level (2026-10-22; it was appended): a tree nobody has arranged reads newest
+/// first, as the list does, and stays that way as notes are written.
 export async function fileNewIntoTree(root, bucket, docId, summary) {
     const rid = await ensureTreeRoot(root, bucket);
     const placing = api(`/api/identity/${root}/taxonomies/${rid}/members/${docId}`, {
         method: 'PUT',
-        body: JSON.stringify({}),
+        body: JSON.stringify({ index: 0 }),
     });
     showEdit(
         `${root}:${bucket}`,
-        (tr) => withMember(tr, rid, { doc_id: docId, doc: summary }),
+        (tr) => withMember(tr, rid, { doc_id: docId, doc: summary }, 0),
         () => placing,
         () => {}, // the caller says so: it awaits the same write
     );
@@ -890,7 +892,12 @@ export const WikiTree = ({
     const pages = (docs || []).filter((d) => (d.buckets || []).includes(bucket));
     const byId = new Map(pages.map((d) => [d.doc_id, d]));
     const filed = filedDocIds(tree);
-    const unfiled = showUnfiled ? pages.filter((d) => !filed.has(d.doc_id)) : [];
+    // In the list's own order, newest first (Curtis, 2026-10-22: "when I open 'tree' for the first
+    // time, the order is the same as its always been") - a notebook that predates its tree is
+    // nearly all here. They came out in id order, which looked like no order at all.
+    const unfiled = showUnfiled
+        ? pages.filter((d) => !filed.has(d.doc_id)).sort(byPinnedThenClaimed)
+        : [];
 
     const hits = useSearch(root, searchQuery);
 
