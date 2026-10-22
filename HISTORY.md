@@ -24766,3 +24766,37 @@ in the unfiled bin, and the bin came out in the mirror's key order - by
 
 Checked in the app: three notes written in turn read newest first in the bin,
 and a new note landed above every section. Gate: the ePubs area.
+
+## 2026-10-22: a pen stroke stays smooth when the pen lifts
+
+"I drew what looked to me like a long, smooth, crisp line with variable width.
+Once I let the pen leave the page the line got all... bumpy and jagged" (Curtis,
+hrseDrawing in Chrome). The live stroke paints every pen sample at full
+precision; the stored one is `encodeSamples`' - every point rounded to a whole
+canvas unit, and a canvas unit is a pixel or more on screen - and was then
+painted as straight segments between those points, each at its own width. A
+shallow curve drawn a unit a step came back a staircase, its rounding as large
+as its steps.
+
+Painted now as a curve, not a polyline, in the browser (doc/drawing.js) and the
+node (drawing_paint.rs) alike - the stored format is untouched, so every stroke
+already drawn is smoother too:
+
+- `steadied`: a stored stroke's inner points averaged with their neighbours,
+  1-4-6-4-1 (1-2-1 beside the ends, the ends kept) - the rounding more than
+  halves, the meant shape moves a fraction of a unit. Smoothing the curve alone
+  wasn't enough: zoomed in, the stored stroke still wobbled, because the noise
+  was in the points, not the corners between them.
+- `strokePieces` / `pieceAt`: a straight lead-in, a quadratic around each inner
+  point from the midpoint before it to the one after, a straight lead-out; each
+  piece as wide as its point's pressure. The live stroke paints the same pieces
+  as samples land, so lifting the pen changes nothing you can see.
+
+The paint bucket's walls keep their straight segments (pinned by the pour
+vectors); the curve never strays from them by more than a unit.
+
+Checked with a synthesized pen in headless Chrome (CDP `pointerType: 'pen'`,
+pressure rising and falling along an S-curve): live and stored strokes match
+zoomed in. Tests: drawing.cjs (pieces, steadying, the live stroke's pieces are
+the stored stroke's), drawing_paint.rs (the same pieces and steadying); the
+drawings, ePubs and exports areas.

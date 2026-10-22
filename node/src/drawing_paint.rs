@@ -417,8 +417,91 @@ fn paint_layer(
     Some(canvas)
 }
 
-/// One stroke (`paintStroke`): a dab is a disc; without pressure, one path at one width; with it,
-/// segment by segment, each as wide as the average of its ends, with round ends so the joins close.
+/// One piece of a stroke as it is painted (`strokePieces`, pure/drawing.js): from `from` to `to`,
+/// through `ctrl` as a quadratic's control (straight without one), as wide as point `at` says.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Piece {
+    from: (f64, f64),
+    ctrl: Option<(f64, f64)>,
+    to: (f64, f64),
+    at: usize,
+}
+
+/// A stroke as a curve through its points (2026-10-22: straight segments between whole-unit points
+/// painted the rounding as a staircase): a lead-in from the first point to the first midpoint, a
+/// quadratic around each inner point from the midpoint before it to the one after, a lead-out to
+/// the last; two points are one straight piece. The browser's `strokePieces`, piece for piece.
+fn stroke_pieces(points: &[(f64, f64)]) -> Vec<Piece> {
+    let n = points.len();
+    let mid = |a: (f64, f64), b: (f64, f64)| ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
+    match n {
+        0 | 1 => Vec::new(),
+        2 => vec![Piece { from: points[0], ctrl: None, to: points[1], at: 0 }],
+        _ => (0..n)
+            .map(|k| {
+                if k == 0 {
+                    Piece { from: points[0], ctrl: None, to: mid(points[0], points[1]), at: 0 }
+                } else if k == n - 1 {
+                    Piece {
+                        from: mid(points[n - 2], points[n - 1]),
+                        ctrl: None,
+                        to: points[n - 1],
+                        at: k,
+                    }
+                } else {
+                    Piece {
+                        from: mid(points[k - 1], points[k]),
+                        ctrl: Some(points[k]),
+                        to: mid(points[k], points[k + 1]),
+                        at: k,
+                    }
+                }
+            })
+            .collect(),
+    }
+}
+
+/// A stored stroke's points, steadied before the curve goes through them (`steadied`,
+/// pure/drawing.js): each inner point averaged with its neighbours, 1-4-6-4-1 (1-2-1 beside the
+/// ends, the ends where they are), so the whole-unit rounding of points a unit apart stops showing
+/// as a wobble.
+fn steadied(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let n = points.len();
+    if n < 3 {
+        return points.to_vec();
+    }
+    (0..n)
+        .map(|i| {
+            if i == 0 || i == n - 1 {
+                return points[i];
+            }
+            let p = |j: usize| points[j];
+            if i == 1 || i == n - 2 || n < 5 {
+                let (a, b, c) = (p(i - 1), p(i), p(i + 1));
+                return ((a.0 + 2.0 * b.0 + c.0) / 4.0, (a.1 + 2.0 * b.1 + c.1) / 4.0);
+            }
+            let (a, b, c, d, e) = (p(i - 2), p(i - 1), p(i), p(i + 1), p(i + 2));
+            (
+                (a.0 + 4.0 * b.0 + 6.0 * c.0 + 4.0 * d.0 + e.0) / 16.0,
+                (a.1 + 4.0 * b.1 + 6.0 * c.1 + 4.0 * d.1 + e.1) / 16.0,
+            )
+        })
+        .collect()
+}
+
+/// A piece's line onto a path already at its start.
+fn trace(pb: &mut PathBuilder, piece: &Piece) {
+    match piece.ctrl {
+        Some((cx, cy)) => {
+            pb.quad_to(cx as f32, cy as f32, piece.to.0 as f32, piece.to.1 as f32);
+        }
+        None => pb.line_to(piece.to.0 as f32, piece.to.1 as f32),
+    }
+}
+
+/// One stroke (`paintStroke`): a dab is a disc; without pressure, one curved path at one width;
+/// with it, piece by piece (`stroke_pieces`), each as wide as its point's pressure, with round ends
+/// so the joins close.
 fn paint_stroke(canvas: &mut Pixmap, s: &crate::drawing::Stroke, t: Transform) {
     let eraser = s.tool == "eraser";
     let paint = if eraser {
@@ -437,41 +520,41 @@ fn paint_stroke(canvas: &mut Pixmap, s: &crate::drawing::Stroke, t: Transform) {
         line_join: LineJoin::Round,
         ..Pen::default()
     };
-    match points.len() {
-        0 => {}
-        1 => {
-            let (x, y) = points[0];
-            if let Some(dot) = PathBuilder::from_circle(x as f32, y as f32, (width(0) / 2.0) as f32)
-            {
-                canvas.fill_path(&dot, &paint, FillRule::Winding, t, None);
-            }
+    if points.len() == 1 {
+        let (x, y) = points[0];
+        if let Some(dot) = PathBuilder::from_circle(x as f32, y as f32, (width(0) / 2.0) as f32) {
+            canvas.fill_path(&dot, &paint, FillRule::Winding, t, None);
         }
-        _ if pressure.is_none() => {
-            let mut pb = PathBuilder::new();
-            pb.move_to(points[0].0 as f32, points[0].1 as f32);
-            for &(x, y) in &points[1..] {
-                pb.line_to(x as f32, y as f32);
-            }
-            if let Some(path) = pb.finish() {
-                canvas.stroke_path(&path, &paint, &pen(width(0)), t, None);
-            }
+        return;
+    }
+    let pieces = stroke_pieces(&steadied(&points));
+    let Some(first) = pieces.first() else { return };
+    if pressure.is_none() {
+        let mut pb = PathBuilder::new();
+        pb.move_to(first.from.0 as f32, first.from.1 as f32);
+        for piece in &pieces {
+            trace(&mut pb, piece);
         }
-        _ => {
-            for i in 1..points.len() {
-                let mut pb = PathBuilder::new();
-                pb.move_to(points[i - 1].0 as f32, points[i - 1].1 as f32);
-                pb.line_to(points[i].0 as f32, points[i].1 as f32);
-                if let Some(path) = pb.finish() {
-                    canvas.stroke_path(
-                        &path,
-                        &paint,
-                        &pen((width(i - 1) + width(i)) / 2.0),
-                        t,
-                        None,
-                    );
-                }
-            }
+        if let Some(path) = pb.finish() {
+            canvas.stroke_path(&path, &paint, &pen(width(0)), t, None);
         }
+        return;
+    }
+    let one = |piece: &Piece, w: f64, canvas: &mut Pixmap| {
+        let mut pb = PathBuilder::new();
+        pb.move_to(piece.from.0 as f32, piece.from.1 as f32);
+        trace(&mut pb, piece);
+        if let Some(path) = pb.finish() {
+            canvas.stroke_path(&path, &paint, &pen(w), t, None);
+        }
+    };
+    // A two-point stroke is one straight piece, as wide as its two ends between them.
+    if pieces.len() == 1 {
+        one(first, (width(0) + width(1)) / 2.0, canvas);
+        return;
+    }
+    for piece in &pieces {
+        one(piece, width(piece.at), canvas);
     }
 }
 
@@ -664,6 +747,35 @@ pub async fn png(
 mod tests {
     use super::*;
     use crate::drawing::{read, BASE_LAYER};
+
+    /// The browser's `strokePieces` cases (integration/test/pure/drawing.cjs), the same answers.
+    #[test]
+    fn a_stroke_is_a_curve_through_its_points_as_the_browser_paints_it() {
+        let stairs = [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (4.0, 1.0)];
+        let pieces = stroke_pieces(&stairs);
+        let shape: Vec<_> = pieces.iter().map(|p| (p.from, p.ctrl, p.to, p.at)).collect();
+        assert_eq!(
+            shape,
+            vec![
+                ((0.0, 0.0), None, (1.0, 0.0), 0),
+                ((1.0, 0.0), Some((2.0, 0.0)), (2.0, 0.5), 1),
+                ((2.0, 0.5), Some((2.0, 1.0)), (3.0, 1.0), 2),
+                ((3.0, 1.0), None, (4.0, 1.0), 3),
+            ]
+        );
+        assert_eq!(
+            stroke_pieces(&[(0.0, 0.0), (5.0, 5.0)]),
+            vec![Piece { from: (0.0, 0.0), ctrl: None, to: (5.0, 5.0), at: 0 }]
+        );
+        assert!(stroke_pieces(&[(1.0, 1.0)]).is_empty());
+        // Steadied as the browser steadies (drawing.cjs): ends kept, 1-2-1 beside them, 1-4-6-4-1
+        // within - a unit's zig-zag comes out a straight line between its ends.
+        let wobbly = [(0.0, 0.0), (1.0, 1.0), (2.0, 0.0), (3.0, 1.0), (4.0, 0.0), (5.0, 1.0)];
+        assert_eq!(
+            steadied(&wobbly),
+            vec![(0.0, 0.0), (1.0, 0.5), (2.0, 0.5), (3.0, 0.5), (4.0, 0.5), (5.0, 1.0)]
+        );
+    }
 
     /// The pours as the browser's own `pour.js` works them out (spec/test-vectors/pour-v1.json):
     /// every case's canvas and every covered cell, exactly.

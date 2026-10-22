@@ -96,6 +96,67 @@ export function encodeSamples(samples) {
     return { points, pressure: pen ? pressure : null };
 }
 
+/// A stroke as it is painted (Curtis, 2026-10-22: a long smooth line "got all... bumpy and jagged"
+/// once the pen left the page). A stroke's points are stored as whole canvas units
+/// (`encodeSamples`), and a canvas unit is a pixel or more on screen, so straight segments between
+/// them drew the rounding as a staircase - and each segment its own width, a step at every one.
+/// Painted instead as one curve through them: a quadratic from the midpoint before each inner point
+/// to the midpoint after it, the point itself the control, with a straight lead-in from the first
+/// point and lead-out to the last. Every piece names the point whose pressure it wears.
+///
+/// `pieceAt(points, k)` is piece `k` of a stroke of two or more points (0 the lead-in, the last the
+/// lead-out) - what the live stroke paints as each sample lands; `strokePieces` all of them. The
+/// node's painter is the same (drawing_paint.rs `stroke_pieces`).
+const midpoint = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+
+export function pieceAt(points, k) {
+    const n = points.length;
+    if (k === 0) return { from: points[0], ctrl: null, to: midpoint(points[0], points[1]), at: 0 };
+    if (k === n - 1) {
+        return {
+            from: midpoint(points[n - 2], points[n - 1]),
+            ctrl: null,
+            to: points[n - 1],
+            at: n - 1,
+        };
+    }
+    return {
+        from: midpoint(points[k - 1], points[k]),
+        ctrl: points[k],
+        to: midpoint(points[k], points[k + 1]),
+        at: k,
+    };
+}
+
+/// A stored stroke's points, steadied before the curve is drawn through them (2026-10-22). A pen
+/// samples about one canvas unit apart, and each point was rounded to a whole unit when stored, so
+/// the rounding is as large as the step between points: a curve faithful to them wobbles. Each
+/// inner point is averaged with its neighbours - 1-4-6-4-1 (twice 1-2-1), 1-2-1 beside the ends,
+/// the ends where they are - which takes the rounding down by more than half and moves the shape
+/// that was meant by a fraction of a unit. A live stroke, never rounded, doesn't need it.
+export function steadied(points) {
+    const n = points.length;
+    if (n < 3) return points;
+    const at = (i, c) => points[i][c];
+    return points.map((p, i) => {
+        if (i === 0 || i === n - 1) return p;
+        if (i === 1 || i === n - 2 || n < 5) {
+            return [0, 1].map((c) => (at(i - 1, c) + 2 * at(i, c) + at(i + 1, c)) / 4);
+        }
+        return [0, 1].map(
+            (c) =>
+                (at(i - 2, c) + 4 * at(i - 1, c) + 6 * at(i, c) + 4 * at(i + 1, c) + at(i + 2, c)) /
+                16,
+        );
+    });
+}
+
+export function strokePieces(points) {
+    if (points.length < 2) return [];
+    if (points.length === 2) return [{ from: points[0], ctrl: null, to: points[1], at: 0 }];
+    return points.map((_, k) => pieceAt(points, k));
+}
+
 /// How wide a stroke is at a pressure, as a share of its `size` (its width at full pressure). Never
 /// nothing: the lightest touch still leaves a line.
 export function pressureWidth(pressure) {

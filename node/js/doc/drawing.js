@@ -40,7 +40,10 @@ import {
     encodeSamples,
     smoothPressure,
     decodePoints,
+    pieceAt,
     pressureWidth,
+    steadied,
+    strokePieces,
     MAX_SIZE,
     FIXED_COLOURS,
     recentColours,
@@ -125,8 +128,9 @@ const typingIn = (el) =>
 // Painting
 
 /// Paint one stroke. `points` are absolute [x, y]; `pressure` (0..100 per point) makes a pen stroke's
-/// width follow the pen - painted segment by segment, each as wide as the average of its two ends,
-/// with round caps so the joins close. Without it, one path at one width.
+/// width follow the pen. Drawn as a curve through the points (pure/drawing.js `strokePieces`), never
+/// straight segments between them: without pressure one path at one width, with it piece by piece,
+/// each as wide as its point's pressure says, with round caps so the joins close.
 function paintStroke(
     ctx,
     stroke,
@@ -145,22 +149,47 @@ function paintStroke(
         ctx.fill();
         return;
     }
+    const pieces = strokePieces(steadied(points));
     if (!pressure) {
         ctx.lineWidth = width(0);
         ctx.beginPath();
-        ctx.moveTo(points[0][0] * scale, points[0][1] * scale);
-        for (let i = 1; i < points.length; i++)
-            ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
+        ctx.moveTo(pieces[0].from[0] * scale, pieces[0].from[1] * scale);
+        for (const piece of pieces) tracePiece(ctx, piece, scale);
         ctx.stroke();
         return;
     }
-    for (let i = 1; i < points.length; i++) {
-        ctx.lineWidth = (width(i - 1) + width(i)) / 2;
-        ctx.beginPath();
-        ctx.moveTo(points[i - 1][0] * scale, points[i - 1][1] * scale);
-        ctx.lineTo(points[i][0] * scale, points[i][1] * scale);
-        ctx.stroke();
+    // A two-point stroke is one straight piece, as wide as its two ends between them.
+    if (pieces.length === 1) {
+        paintPiece(ctx, pieces[0], scale, (width(0) + width(1)) / 2);
+        return;
     }
+    for (const piece of pieces) paintPiece(ctx, piece, scale, width(piece.at));
+}
+
+/// One piece's line onto a path already at its start.
+function tracePiece(ctx, { ctrl, to }, scale) {
+    if (ctrl) ctx.quadraticCurveTo(ctrl[0] * scale, ctrl[1] * scale, to[0] * scale, to[1] * scale);
+    else ctx.lineTo(to[0] * scale, to[1] * scale);
+}
+
+/// The live stroke's newest piece (`onPointerMove`), with the brush `paintStroke` sets up: its
+/// width at that point's pressure (0..100), or the stroke's own without a pen.
+function paintLivePiece(ctx, stroke, piece, pressure) {
+    ctx.globalCompositeOperation = stroke.tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = ctx.fillStyle = stroke.tool === 'eraser' ? '#000' : stroke.color;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const share = pressure === null ? 1 : pressureWidth(pressure);
+    paintPiece(ctx, piece, BACKING, stroke.size * BACKING * share);
+}
+
+/// One piece of a pen stroke, at its own width.
+function paintPiece(ctx, piece, scale, lineWidth) {
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(piece.from[0] * scale, piece.from[1] * scale);
+    tracePiece(ctx, piece, scale);
+    ctx.stroke();
 }
 
 /// The pictures drawings refer to (DRAWING.md, "Images"), fetched once each and kept: `root/doc` ->
@@ -1848,13 +1877,11 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
             const last = l.samples[l.samples.length - 1];
             if (Math.abs(next[0] - last[0]) < 0.5 && Math.abs(next[1] - last[1]) < 0.5) continue;
             l.samples.push(next);
-            paintStroke(
-                ctx,
-                l.stroke,
-                BACKING,
-                [last, next],
-                l.pen ? [asPressure(last), asPressure(next)] : undefined,
-            );
+            // The piece this sample completes - the curve around the point before it (or, at
+            // the second, the lead-in) - as the finished stroke will paint it, so lifting the pen
+            // changes nothing you can see. The last half-segment waits for the stroke's end.
+            const piece = pieceAt(l.samples, l.samples.length - 2);
+            paintLivePiece(ctx, l.stroke, piece, l.pen ? asPressure(l.samples[piece.at]) : null);
         }
         restack();
     };

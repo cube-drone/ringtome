@@ -898,3 +898,87 @@ describe('the downloaded picture', () => {
         assert.equal(d.pictureFileName('x'.repeat(300)).length, 104);
     });
 });
+
+describe('a stroke is painted as a curve through its points (2026-10-22)', () => {
+    // A staircase - what whole-unit points make of a shallow diagonal - and its pieces.
+    const stairs = [
+        [0, 0],
+        [2, 0],
+        [2, 1],
+        [4, 1],
+    ];
+
+    it('a lead-in, a curve around every inner point from midpoint to midpoint, a lead-out', () => {
+        const pieces = d.strokePieces(stairs);
+        assert.deepEqual(
+            pieces.map((p) => [p.from, p.ctrl, p.to, p.at]),
+            [
+                [[0, 0], null, [1, 0], 0],
+                [[1, 0], [2, 0], [2, 0.5], 1],
+                [[2, 0.5], [2, 1], [3, 1], 2],
+                [[3, 1], null, [4, 1], 3],
+            ],
+        );
+        // One continuous line: every piece starts where the last one ended.
+        for (let i = 1; i < pieces.length; i++) assert.deepEqual(pieces[i].from, pieces[i - 1].to);
+        // The corners are never visited: the line turns through the curves instead.
+        assert.ok(!pieces.some((p) => p.ctrl === null && p.to[0] === 2 && p.to[1] === 1));
+    });
+
+    it('steadies a stored stroke: ends kept, 1-2-1 beside them, 1-4-6-4-1 within', () => {
+        const wobbly = [
+            [0, 0],
+            [1, 1],
+            [2, 0],
+            [3, 1],
+            [4, 0],
+            [5, 1],
+        ];
+        // A unit's zig-zag comes out a straight line between its ends.
+        assert.deepEqual(d.steadied(wobbly), [
+            [0, 0],
+            [1, 0.5],
+            [2, 0.5],
+            [3, 0.5],
+            [4, 0.5],
+            [5, 1],
+        ]);
+        // The rounding of a shallow line drawn a unit a step - the wobble - more than halves.
+        const line = Array.from({ length: 40 }, (_, x) => [x, Math.round(x * 0.37)]);
+        const off = (pts) => Math.max(...pts.slice(3, -3).map(([x, y]) => Math.abs(y - x * 0.37)));
+        assert.ok(
+            off(d.steadied(line)) < off(line) / 2,
+            `${off(d.steadied(line))} vs ${off(line)}`,
+        );
+        assert.deepEqual(
+            d.steadied([
+                [0, 0],
+                [9, 9],
+            ]),
+            [
+                [0, 0],
+                [9, 9],
+            ],
+            'two points as they are',
+        );
+    });
+
+    it('two points are one straight piece; one or none are no pieces', () => {
+        assert.deepEqual(
+            d.strokePieces([
+                [0, 0],
+                [5, 5],
+            ]),
+            [{ from: [0, 0], ctrl: null, to: [5, 5], at: 0 }],
+        );
+        assert.deepEqual(d.strokePieces([[1, 1]]), []);
+        assert.deepEqual(d.strokePieces([]), []);
+    });
+
+    it('the live stroke paints piece by piece what the finished one paints whole', () => {
+        // As each sample lands, the live stroke paints the piece it completes; the lead-out waits.
+        const live = [];
+        for (let n = 2; n <= stairs.length; n++) live.push(d.pieceAt(stairs.slice(0, n), n - 2));
+        assert.deepEqual(live, d.strokePieces(stairs).slice(0, -1));
+    });
+});
