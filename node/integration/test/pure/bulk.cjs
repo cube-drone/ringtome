@@ -78,6 +78,23 @@ describe('what an action touches', () => {
         assert.ok(!B.BULK_SOUND_FIELDS.includes('track number'));
     });
 
+    it('offers no tag the node computes for a document: removing it would change nothing (2026-10-22)', () => {
+        const docs = [
+            doc('a', [], {
+                tags: ['delta green', 'micro', 'image', 'ai-agent'],
+                implicit: ['micro', 'image'],
+            }),
+            doc('b', [], { tags: ['delta green', 'long'], implicit: ['long'] }),
+            // 'long' said by a person on this one, and not computed for it: theirs to remove.
+            doc('c', [], { tags: ['long'] }),
+        ];
+        assert.deepEqual(B.combinedTags(docs), [
+            ['delta green', 2],
+            ['ai-agent', 1],
+            ['long', 1],
+        ]);
+    });
+
     it('combines the tags, commonest first, then by name', () => {
         const docs = [
             doc('a', [], { tags: ['oats', 'hay'] }),

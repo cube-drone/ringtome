@@ -42,11 +42,17 @@ export const soundsAmong = (docs) => actionable(docs).filter((d) => fileKind(d) 
 export const BULK_SOUND_FIELDS = ['artist', 'album', 'album artist', 'composer', 'genre', 'year'];
 
 /// Every tag the documents carry between them, with how many carry it: the commonest first, then
-/// by name. What "remove a tag from all" offers.
+/// by name. What "remove a tag from all" offers - so not the tags the node computes for a document
+/// (its size and media, the row's `implicit`), which removing would leave exactly where they were
+/// (Curtis, 2026-10-22). What it was made with is offered: a person may take that off.
 export function combinedTags(docs) {
     const counts = new Map();
-    for (const d of docs)
-        for (const tag of d.tags || []) counts.set(tag, (counts.get(tag) || 0) + 1);
+    for (const d of docs) {
+        const computed = d.implicit || [];
+        for (const tag of d.tags || []) {
+            if (!computed.includes(tag)) counts.set(tag, (counts.get(tag) || 0) + 1);
+        }
+    }
     return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 

@@ -24734,3 +24734,13 @@ Checked with a real HTML5 drag in headless Chrome (DevTools drag interception):
 three pages from Agents, Operation Lantern and the unfiled bin, dragged below a
 page in Handouts, landed there in tree order, and were still there after a
 reload.
+
+## 2026-10-22: the bulk panel offers only tags a person can remove
+
+"Remove a tag from all" listed the tags the node computes - a document's size
+and media (`micro`, `image`...) - which removing leaves exactly where they were.
+`bulk::combinedTags` now skips each document's own computed tags (its mirror
+row's `implicit`), so a word a person typed is still offered on the notes where
+they typed it. The made-with tags stay offered: a person's session may take
+`ai-agent` off a note (made_with.rs), which is how a rewritten note sheds it.
+Checked in the app: three notes picked, `micro` gone from the panel.
