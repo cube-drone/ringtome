@@ -2813,6 +2813,8 @@ export default {
     // --- node/src/shell.rs ---
     'shell.only-the-desktop-app-saves-files': 'only the desktop app saves files this way',
     'shell.only-the-desktop-app-opens-a-browser': "only the desktop app's own window can ask for that",
+    'shell.only-web-and-mail-links': 'only a link to the web or to mail opens outside the app',
+    'shell.only-the-desktop-app-opens-links': "only the desktop app's own window can ask for that",
 
     // --- node/src/starters.rs ---
     'starters.not-an-address': "that isn't a person's address",

@@ -24800,3 +24800,30 @@ pressure rising and falling along an S-curve): live and stored strokes match
 zoomed in. Tests: drawing.cjs (pieces, steadying, the live stroke's pieces are
 the stored stroke's), drawing_paint.rs (the same pieces and steadying); the
 drawings, ePubs and exports areas.
+
+## 2026-10-22: the desktop app hands links out itself
+
+"External links ... are still not opening at all in Tauri environments" (Curtis:
+the version label's release notes, the update notice's "here"). Three rounds of
+fixes (2026-09-25 `on_navigation`/`on_new_window`, 2026-10-09 `BLANK_CLICKS`
+turning a blank link into a navigation, 2026-10-11 dropping its `target`) all
+leaned on the webview turning the click into a navigation `links::navigation`
+would be asked about, and none was ever seen to work on the Mac: a release app's
+stdout goes nowhere. Run from a terminal, clicking both links logged nothing at
+all - not "opened", not "could not open", not "refused" - so on the Mac the
+click never becomes a navigation the shell hears of, and no rewrite of the link
+can reach it.
+
+The page now hands the address over, by the channel that already saves files and
+opens the browser (shell.rs): a click on a link to the web or to mail at another
+origin (`pure/outward.js`) is posted to `/api/shell/open-link`, asked of the
+app's own window only (`window_offered`, as `open-in-browser` is), the node
+takes only `http`, `https` and `mailto`, and the shell opens it with
+`links::hand_out`, which refuses any other scheme again. Desktop only
+(`isDesktopApp`): a phone's shell takes no requests, and its plain links already
+open. The old paths stay for anything this doesn't catch.
+
+Tests: `outward.cjs`, `shell::only_the_web_and_mail_leave_the_app`, and a Device
+app claim (only the window; 400 for `file:`/`javascript:`; web and mail reach
+the shell). Not yet seen on the Mac: it wants a build of the app and a click,
+and the terminal line to look for is "opened a link in the system browser".

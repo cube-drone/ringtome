@@ -38,6 +38,11 @@ export const isLinuxApp = () => isDevice() && window.__ringtome_platform === 'li
 /// ...and the desktop app on a Mac.
 export const isMacApp = () => isDevice() && window.__ringtome_platform === 'macos';
 
+/// ...and the app on a computer rather than a phone: the shell that takes the page's requests
+/// (desktop/src/requests.rs runs on the desktop only).
+export const isDesktopApp = () =>
+    isDevice() && ['macos', 'windows', 'linux'].includes(window.__ringtome_platform);
+
 /// The window's name for itself, as headers: empty in a browser, where the cookie is all there is.
 function authHeaders() {
     const token = launchToken();

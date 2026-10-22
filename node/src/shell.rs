@@ -36,6 +36,12 @@ pub enum ShellRequest {
     /// poor place to be, and its sign-in says so). Always the node's own address, which the shell
     /// knows - nothing in the request can point it anywhere else.
     OpenInBrowser,
+    /// Open this link in the system's browser or mail app (Curtis, 2026-10-22: the version label
+    /// and the update notice's "here" still opened nothing on the Mac). The webview never turned
+    /// those clicks into a navigation the shell is asked about - run from a terminal, the app logged
+    /// nothing at all - so the page hands the address here instead ([`open_link_handler`]). Only
+    /// `http`, `https` and `mailto`; the shell refuses anything else again.
+    OpenLink { url: String },
 }
 
 #[derive(Clone)]
@@ -127,6 +133,45 @@ pub async fn open_in_browser_handler(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+#[derive(serde::Deserialize)]
+pub struct OpenLinkBody {
+    pub url: String,
+}
+
+/// The schemes a link may leave the app by: the web and mail. Nothing that would launch some other
+/// handler on the person's machine.
+fn outward(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    matches!(parsed.scheme(), "http" | "https" | "mailto").then(|| parsed.to_string())
+}
+
+/// POST `/api/shell/open-link` `{ url }` - the desktop app's window hands a link to the web out to
+/// the system browser. Asked of the window alone, as [`open_in_browser_handler`] is: no other page
+/// can make the app open anything. 404 where there is no shell (a server, a phone), and the page
+/// follows the link itself; 400 for a scheme that isn't the web's or mail's.
+pub async fn open_link_handler(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    headers: axum::http::HeaderMap,
+    axum::Json(body): axum::Json<OpenLinkBody>,
+) -> Result<axum::http::StatusCode, crate::error::AppError> {
+    let Some(url) = outward(&body.url) else {
+        return Err(crate::error::AppError::BadRequest(crate::msg!(
+            "shell.only-web-and-mail-links",
+            "only a link to the web or to mail opens outside the app"
+        )));
+    };
+    if !crate::auth::window_offered(&headers, &state)
+        || !crate::registration::is_device(&state)
+        || !state.shell.ask(ShellRequest::OpenLink { url })
+    {
+        return Err(crate::error::AppError::NotFound(crate::msg!(
+            "shell.only-the-desktop-app-opens-links",
+            "only the desktop app's own window can ask for that"
+        )));
+    }
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
 /// A suggested file name, safe to hand a save dialog: the last path component, no control
 /// characters, never empty.
 fn file_name(said: &str) -> String {
@@ -148,6 +193,26 @@ fn file_name(said: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_web_and_mail_leave_the_app() {
+        assert_eq!(
+            outward("https://github.com/x/releases").as_deref(),
+            Some("https://github.com/x/releases")
+        );
+        assert!(outward("http://example.com/").is_some());
+        assert!(outward("mailto:someone@example.com").is_some());
+        for refused in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "ssh://host",
+            "x-apple.systempreferences:",
+            "not a url",
+            "",
+        ] {
+            assert!(outward(refused).is_none(), "{refused}");
+        }
+    }
 
     #[test]
     fn a_suggested_name_is_one_plain_file_name() {

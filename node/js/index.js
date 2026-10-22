@@ -89,7 +89,8 @@ import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement, bucketHref } from './pure
 import { Icons, IconContext, iconFor } from './icons.js';
 import { OAuthConsent } from './oauthconsent.js';
 import { UploadLink } from './uploadlink.js';
-import { isDevice, isMacApp } from './net.js';
+import { isDesktopApp, isDevice, isMacApp } from './net.js';
+import { outwardLink } from './pure/outward.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
 import { NodeFeed, RecentPosts, SuperPins } from './nodefeed.js';
@@ -1276,6 +1277,26 @@ function rehomeLink(e) {
     });
 }
 
+/// A link to the web or to mail, clicked in the desktop app, opens in the system's browser or mail
+/// app by the shell's hand (pure/outward.js; shell.rs `open_link_handler`). The webview on the Mac
+/// never made these clicks a navigation the shell is asked about (2026-10-22: run from a terminal,
+/// the app logged nothing for the version label or the update notice), so no rewrite of the link
+/// could reach it. Bubbling, after the router and `rehomeLink` have had their say. Desktop only:
+/// a phone's shell takes no requests, and there a plain link opens as it always has. A refusal
+/// (an old shell) leaves the click to the webview, as before.
+function handOutLink(e) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+        return;
+    const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || a.hasAttribute('download')) return;
+    const url = outwardLink(a.getAttribute('href'), window.location.href);
+    if (!url) return;
+    e.preventDefault();
+    api('/api/shell/open-link', { method: 'POST', body: JSON.stringify({ url }) }).catch((err) =>
+        console.warn('the app could not open that link', err),
+    );
+}
+
 function main() {
     let app = document.getElementById('app');
     console.log('Horse Drawing Tycoon 2 UI loaded!');
@@ -1287,6 +1308,7 @@ function main() {
     installTooltips();
     for (const kind of ['pointerover', 'focusin', 'click'])
         document.addEventListener(kind, rehomeLink, true);
+    if (isDesktopApp()) document.addEventListener('click', handOutLink);
     // The Mac app's window leaves full screen on an Escape the page didn't claim (Curtis,
     // 2026-10-19: vim's normal mode, pressed once too often): the webview hands an unclaimed key
     // up to the window, and AppKit takes Escape as "cancel" - out of full screen. Escape is the

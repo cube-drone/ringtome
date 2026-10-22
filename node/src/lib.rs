@@ -1086,6 +1086,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/admin/backups/{name}/reveal", axum::routing::post(backup::reveal_handler))
         // A file the page made, saved through the desktop app (shell.rs): the upload's own cap.
         .route("/api/shell/open-in-browser", axum::routing::post(shell::open_in_browser_handler))
+        .route("/api/shell/open-link", axum::routing::post(shell::open_link_handler))
         .route(
             "/api/shell/save",
             axum::routing::post(shell::save_handler)

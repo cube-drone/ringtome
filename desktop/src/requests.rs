@@ -1,6 +1,6 @@
 //! What the node asks of this app (the node's `shell.rs`), done here, where the app is.
 //!
-//! Three things:
+//! Four things:
 //!
 //! - **show a file** - a backup, on the Device app's Backups page. It is already on this disk, so
 //!   the file manager opens with it selected rather than the webview trying to download it.
@@ -10,6 +10,11 @@
 //! - **open this node in the system browser** - the Linux sign-in's way out of a webview that is
 //!   slower than a real browser and cannot show every picture (2026-09-28). Always the node's own
 //!   address: the request carries none.
+//! - **open a link** to the web or to mail in the system's browser or mail app (2026-10-22: on the
+//!   Mac the webview never turned the version label's or the update notice's click into a
+//!   navigation `links::navigation` is asked about - run from a terminal, the app logged nothing -
+//!   so the page hands the address over instead). Through `links::hand_out`, which refuses any
+//!   other scheme again.
 
 use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
@@ -33,6 +38,10 @@ pub fn start(app: AppHandle, mut requests: tokio::sync::broadcast::Receiver<Shel
                     }
                 }
                 ShellRequest::Save { name, bytes, .. } => save(&app, name, bytes),
+                ShellRequest::OpenLink { url } => match tauri::Url::parse(&url) {
+                    Ok(url) => crate::links::hand_out(&app, &url),
+                    Err(e) => tracing::warn!(error = %e, "the page handed over a link that isn't one"),
+                },
                 ShellRequest::OpenInBrowser => {
                     if let Err(e) = app.opener().open_url(&node_url, None::<&str>) {
                         tracing::warn!(error = %e, url = %node_url, "could not open the system browser");

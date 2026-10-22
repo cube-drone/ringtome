@@ -323,6 +323,26 @@ const DEVICE_PORT = process.env.RINGTOME_TEST_DEVICE_PORT;
         assert.deepEqual((await shellAsked()).slice(before), [{ kind: 'open_in_browser' }]);
     });
 
+    it('the window, and only the window, hands a link to the web out to the system (2026-10-22)', async () => {
+        const ask = (url, headers = WINDOW) =>
+            fetch(`http://${host}/api/shell/open-link`, {
+                method: 'POST',
+                headers: { ...headers, 'content-type': 'application/json' },
+                body: JSON.stringify({ url }),
+            });
+        const before = (await shellAsked()).length;
+        const notes = 'https://github.com/cube-drone/ringtome/releases/tag/0.5.2';
+        assert.equal((await ask(notes, {})).status, 404, 'a page elsewhere cannot');
+        assert.equal((await ask('file:///etc/passwd')).status, 400, 'nor another scheme');
+        assert.equal((await ask('javascript:alert(1)')).status, 400);
+        assert.equal((await ask(notes)).status, 204);
+        assert.equal((await ask('mailto:someone@example.com')).status, 204, 'mail too');
+        assert.deepEqual((await shellAsked()).slice(before), [
+            { kind: 'open_link', url: notes },
+            { kind: 'open_link', url: 'mailto:someone@example.com' },
+        ]);
+    });
+
     it('a backup shows in the file manager rather than downloading', async () => {
         const { id } = await (await owner('api/admin/backup', { method: 'POST' })).json();
         let done = null;

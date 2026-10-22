@@ -100,7 +100,7 @@ pub fn new_window(app: &AppHandle, origin: &Url, url: Url) {
 /// a Kotlin plugin, which tauri runs by posting to that same main thread and waiting for the
 /// answer - so asked from inside the verdict, it waits on a thread that is waiting on it. Handed
 /// to another thread, the verdict returns and the main thread is free to open the link.
-fn hand_out(app: &AppHandle, url: &Url) {
+pub(crate) fn hand_out(app: &AppHandle, url: &Url) {
     match url.scheme() {
         "http" | "https" | "mailto" => {
             let (app, url) = (app.clone(), url.clone());
