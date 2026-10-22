@@ -24606,3 +24606,19 @@ Tests: `net::sync::a_room_only_push_writes_only_the_rooms_it_named`,
 acceptance area (46). The newcomer limits and the silent newcomer's cleanup have
 no rig claim: the limiter is off in local-test mode, and a crafted push needs a
 sync client the rig doesn't have. Gate: `just ci`.
+
+## 2026-10-22: alerts wait for the watcher's first look
+
+"housemates: ada's line rings for bea" failed on CI 4 of 5 reruns, never locally.
+The attention watcher's first pass over a persona is silent by design
+(`attention.rs`, "the first look announces nothing": a launch must not replay the
+backlog), and a claim that makes a persona and speaks to it at once races that
+look: a line that lands before it is learned, not announced, and never rings.
+`attention.cjs` raced it too and always won, since its cross-node setup takes long
+enough.
+
+The watcher now notes each persona whose first look is done (`Attention::primed`,
+armed with the test recorder only, so a production node keeps nothing), the rig
+reads it at `/test/attention-primed`, and `attentionPrimed` (helpers.cjs) waits
+for it. Both alert-reading files wait before anyone speaks. Gates: the housemates
+and attention areas (12), `cargo test -p ringtome-node`.

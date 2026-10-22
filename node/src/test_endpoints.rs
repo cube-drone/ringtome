@@ -820,6 +820,16 @@ pub async fn attention(
     Json(state.attention.recorded(&q.root))
 }
 
+/// GET `/test/attention-primed?root=` - has the watcher taken this persona's silent first look?
+/// Until it has, a line that lands is learned, not announced; a claim that waits for an alert
+/// waits for this first.
+pub async fn attention_primed(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<AttentionQuery>,
+) -> Json<Value> {
+    Json(serde_json::json!({ "primed": state.attention.is_primed(&q.root) }))
+}
+
 /// POST `/test/score-check?root=` - one reader's stored scores as kept incrementally, then as
 /// rebuilt from the label memo and their dials (score.rs `rebuild`): the two must be equal, and a
 /// test that stirs reactions, retractions and dial changes through the real doors says so. The

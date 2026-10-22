@@ -158,8 +158,25 @@ const IMPLICIT_TAGS = ['image', 'video', 'audio', 'micro', 'short', 'medium', 'l
 const stated = (tags) =>
     (tags || []).filter((t) => !IMPLICIT_TAGS.includes(typeof t === 'string' ? t : t.value));
 
+/*
+    The attention watcher's first look at a persona is silent (attention.rs): it learns what is
+    already unseen and announces none of it. A claim that says something and waits for the alert
+    must first wait for that look, or the line can land inside it and never ring - which is how
+    housemates lost the race on CI (2026-10-22). `/test/attention-primed` answers it.
+*/
+async function attentionPrimed(host, root) {
+    const node = makeFetch(host);
+    for (let i = 0; i < 50; i++) {
+        const { primed } = await (await node(`test/attention-primed?root=${root}`)).json();
+        if (primed) return;
+        await new Promise((r) => setTimeout(r, 200));
+    }
+    throw new Error(`the attention watcher never took its first look at ${root}`);
+}
+
 module.exports = {
     makeUserFetch,
+    attentionPrimed,
     uniqueUsername,
     decodeCode,
     settleWith,

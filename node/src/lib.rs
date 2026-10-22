@@ -1153,6 +1153,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .route("/test/dns-txt", axum::routing::post(test_endpoints::dns_txt))
             .route("/test/well-known", axum::routing::post(test_endpoints::well_known))
             .route("/test/attention", axum::routing::get(test_endpoints::attention))
+            .route("/test/attention-primed", axum::routing::get(test_endpoints::attention_primed))
             .route("/test/group-partners", axum::routing::get(test_endpoints::group_partners))
             .route("/test/group-pass", axum::routing::post(test_endpoints::group_pass))
             .route("/test/backup-verify", axum::routing::post(test_endpoints::backup_verify))

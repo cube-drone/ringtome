@@ -11,7 +11,7 @@ const assert = require('node:assert');
 const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch } = require('./helpers.cjs');
+const { makeUserFetch, attentionPrimed } = require('./helpers.cjs');
 const { beat } = require('./beat.cjs');
 const { HOST, makeFetch } = require('./fetch.cjs');
 
@@ -44,6 +44,9 @@ describe('housemates: two people on one node', function () {
             'PUT',
         );
         await beat(HOST, 'mint', beaRoot);
+        // Before anyone speaks to her: the watcher's silent first look at bea is done, so the
+        // line that rings below is news to it, not part of what it learned.
+        await attentionPrimed(HOST, beaRoot);
     });
 
     it("a chat ada opens with bea shows up in bea's chats", async () => {

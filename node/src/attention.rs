@@ -93,6 +93,10 @@ const PICTURE_BOUND: u32 = 720;
 pub struct Attention {
     tx: tokio::sync::broadcast::Sender<Alert>,
     recorded: Option<Arc<Mutex<VecDeque<Alert>>>>,
+    /// The personas whose first look is done, armed with the recorder: a rig that says
+    /// something and waits for the alert must know the line can't be absorbed by that silent
+    /// first look (`/test/attention-primed`, 2026-10-22: housemates raced it on CI).
+    primed: Option<Arc<Mutex<HashSet<String>>>>,
     /// Somebody listens for every persona (the test recorder).
     everyone: Arc<std::sync::atomic::AtomicBool>,
     /// The desktop app listens - for the personas of whichever account is signed in to its own
@@ -136,6 +140,7 @@ impl Attention {
         Self {
             tx,
             recorded: record.then(Default::default),
+            primed: record.then(Default::default),
             everyone: Arc::new(std::sync::atomic::AtomicBool::new(record)),
             embedder: Default::default(),
             window_account: Default::default(),
@@ -211,6 +216,21 @@ impl Attention {
     ) {
         seen.retain(|root, _| self.wanted(root));
         guards.retain(|root, _| self.wanted(root));
+        if let Some(p) = &self.primed {
+            p.lock().expect("primed poisoned").retain(|root| self.wanted(root));
+        }
+    }
+
+    /// The test rig's read: has this persona's first look been taken, so that anything unseen
+    /// from now on is announced?
+    pub fn is_primed(&self, root: &str) -> bool {
+        self.primed.as_ref().is_some_and(|p| p.lock().expect("primed poisoned").contains(root))
+    }
+
+    fn note_primed(&self, root: &str) {
+        if let Some(p) = &self.primed {
+            p.lock().expect("primed poisoned").insert(root.to_string());
+        }
     }
 
     /// The recorder's alerts for one persona, oldest first - the test rig's read.
@@ -326,6 +346,7 @@ pub async fn watch(state: AppState) {
                 Ok(alerts) => {
                     seen.insert(root.clone(), known);
                     if !primed {
+                        state.attention.note_primed(root);
                         continue; // the first look: learned what is unseen, announced nothing
                     }
                     let to = if many { persona_name(&state, root).await } else { None };

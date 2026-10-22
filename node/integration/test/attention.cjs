@@ -24,7 +24,7 @@ const dns = require('node:dns');
 const WebSocket = require('ws');
 dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch, makePng } = require('./helpers.cjs');
+const { makeUserFetch, makePng, attentionPrimed } = require('./helpers.cjs');
 const { beat, pullAndFold } = require('./beat.cjs');
 const { HOST, HOST_B, makeFetch, sql } = require('./fetch.cjs');
 
@@ -132,6 +132,9 @@ const roomRoute = async (author, doc) =>
                 if (!entered) await wait(400);
             }
             assert.ok(entered, 'bea is in the kitchen');
+            // Nothing said yet: the watcher's silent first look at ada is done, so every line
+            // below is news (helpers.cjs `attentionPrimed`).
+            await attentionPrimed(HOST, adaRoot);
         });
 
         it('a line somebody else says alerts me with the room and the words; my own never does', async () => {
