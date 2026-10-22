@@ -24690,3 +24690,13 @@ handles files itself, as a browser does), so the window now turns the handler
 off (`disable_drag_drop_handler`, desktop/src/lib.rs). Tauri's docs name Windows
 for this; the wry source shows macOS swallows drags the same way. Gate:
 `cargo check` of the desktop crate; the drag itself wants a person and a mouse.
+
+## 2026-10-22: the list's views are tabs
+
+"chronological" and "tree" were two buttons; now they are tabs as the groups
+page has them (Curtis: "two tab-headers over a shared line, with the
+currently-selected tab having no bottom"): the shared `tab jag-line-top` heads
+standing on the row's bottom line, the open one in the panel's own paper so the
+line breaks under it - everything below is that tab's. `.notes-views` in
+apps/notes.css, on groups.css's recipe; the buttons' own `.notes-view` style is
+gone. Checked by screenshot, both tabs open.

@@ -827,13 +827,13 @@ export const DocsApp = ({
                         <button
                             role="tab"
                             aria-selected=${!treeTab}
-                            class=${treeTab ? 'notes-view jag-line' : 'notes-view jag-line active'}
+                            class=${treeTab ? 'tab jag-line-top' : 'tab jag-line-top active'}
                             onClick=${() => setListView('list')}
                         ><${Icons.list} /> ${t('apps.notes.view-chronological', 'chronological')}</button>
                         <button
                             role="tab"
                             aria-selected=${treeTab}
-                            class=${treeTab ? 'notes-view jag-line active' : 'notes-view jag-line'}
+                            class=${treeTab ? 'tab jag-line-top active' : 'tab jag-line-top'}
                             onClick=${() => setListView('tree')}
                         ><${Icons.tree} /> ${t('apps.notes.view-tree', 'tree')}</button>
                     </div>`

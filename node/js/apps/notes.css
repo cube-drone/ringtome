@@ -48,37 +48,33 @@
     cursor: pointer;
 }
 
-/* The list column's two orders, as tabs (2026-10-22): chronological, or the notebook's tree. */
+/* The list column's two orders, as tabs (2026-10-22): chronological, or the notebook's tree. Tabs
+   as the groups page has them (groups.css): two heads standing on one shared line, the open one in
+   the panel's own paper so its bottom is open - everything below it is that tab's (Curtis). */
 .notes-views {
     display: flex;
+    align-items: flex-end;
     gap: 0.3rem;
+    padding: 0 0.3rem;
+    border-bottom: var(--lw) solid var(--border);
+    margin-bottom: 0.2rem;
 }
 
-.notes-view {
-    flex: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+.notes-views .tab {
     gap: 0.3rem;
-    background: none;
     --line: var(--border);
-    --j: 3px;
-    padding: 0.25rem 0.4rem;
-    font: inherit;
-    font-size: 0.85rem;
-    color: var(--muted);
-    cursor: pointer;
+    font-size: 0.85rem; /* the words ride beside the icon */
+    padding: 0.3rem 0.7rem;
+    margin-bottom: calc(-1 * var(--lw)); /* the open bottom stands on the shared line */
 }
 
-.notes-view:hover {
-    --line: var(--teal);
+.notes-views .tab:hover {
     color: var(--ink);
 }
 
-.notes-view.active {
-    background: var(--surface-2);
-    --line: var(--sea);
-    color: var(--ink);
+.notes-views .tab.active {
+    color: var(--teal);
+    background: var(--surface); /* the page's panel (shell.css .app-frame-inner), which the column shows */
 }
 
 /* One toolbar for both tabs, one style: what the tree's toolbar always wore. */
