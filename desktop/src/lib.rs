@@ -35,6 +35,7 @@ mod tray;
 #[cfg(desktop)]
 mod update;
 
+#[cfg(desktop)]
 use tauri_plugin_dialog::DialogExt;
 use std::path::{Path, PathBuf};
 
@@ -334,6 +335,7 @@ fn port_taken(e: &anyhow::Error) -> bool {
 
 /// What the dialog says when the node won't start: the one cause a person can act on said plainly
 /// - data a newer version has opened - and anything else as the error itself, every cause of it.
+#[cfg(desktop)]
 fn why_it_wont_start(e: &anyhow::Error) -> String {
     let all = format!("{e:#}");
     if all.contains("newer Ringtome") {
