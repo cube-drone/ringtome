@@ -282,13 +282,11 @@ fn within_bounds(w: i64, h: i64) -> bool {
 /// in whatever order its layers take them - within bounds.
 pub fn paintable(body: &Body) -> bool {
     within_bounds(body.width, body.height)
-        && body.strokes.iter().filter(|s| s.tool == "crop").all(|s| {
-            match s.points.as_deref() {
-                Some(p) if p.len() == 4 => {
-                    within_bounds(p[2].saturating_sub(p[0]), p[3].saturating_sub(p[1]))
-                }
-                _ => true,
+        && body.strokes.iter().filter(|s| s.tool == "crop").all(|s| match s.points.as_deref() {
+            Some(p) if p.len() == 4 => {
+                within_bounds(p[2].saturating_sub(p[0]), p[3].saturating_sub(p[1]))
             }
+            _ => true,
         })
 }
 
@@ -786,13 +784,22 @@ mod tests {
         let wide = huge(9_007_199_254_740_991, 600, pour);
         assert_eq!(wide.width, 9_007_199_254_740_991, "read keeps it, as the browser does");
         assert!(flatten(&wide, 800, &Pictures::new()).is_none(), "too wide to paint");
-        assert!(flatten(&huge(1, 9_007_199_254_740_991, ""), 800, &Pictures::new()).is_none(),
-            "a sliver whose picture would be impossibly tall");
-        assert!(flatten(&huge(8192, 8192, ""), 8, &Pictures::new()).is_none(), "each side fits, the area doesn't");
+        assert!(
+            flatten(&huge(1, 9_007_199_254_740_991, ""), 800, &Pictures::new()).is_none(),
+            "a sliver whose picture would be impossibly tall"
+        );
+        assert!(
+            flatten(&huge(8192, 8192, ""), 8, &Pictures::new()).is_none(),
+            "each side fits, the area doesn't"
+        );
         // A crop out to the enormous, then back: the canvas in between is what a pour paints on.
-        let through = huge(100, 80, r##"{"id":"0000000000000001","t":1,"tool":"crop","points":[0,0,9000000000,9000000000]},
+        let through = huge(
+            100,
+            80,
+            r##"{"id":"0000000000000001","t":1,"tool":"crop","points":[0,0,9000000000,9000000000]},
                {"id":"0000000000000002","t":2,"tool":"bucket","color":"#ff0000","points":[5,5],"reach":10},
-               {"id":"0000000000000003","t":3,"tool":"crop","points":[0,0,100,80]}"##);
+               {"id":"0000000000000003","t":3,"tool":"crop","points":[0,0,100,80]}"##,
+        );
         assert_eq!(size_of(&through), (100, 80));
         assert!(flatten(&through, 100, &Pictures::new()).is_none(), "the canvas it passed through");
         // A picture past the bounds, of a canvas within them.

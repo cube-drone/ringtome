@@ -8,7 +8,7 @@
 const assert = require('node:assert');
 
 let flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex, parentsOf;
-let withMember, withoutMember, memberIn, retitled;
+let withMember, withoutMember, memberIn, retitled, sectionsHolding;
 before(async () => {
     ({
         flatDocs,
@@ -22,6 +22,7 @@ before(async () => {
         withoutMember,
         memberIn,
         retitled,
+        sectionsHolding,
     } = await import('../../../js/pure/treewalk.js'));
 });
 
@@ -270,5 +271,30 @@ describe('tree edits, shown ahead of the node', () => {
             t.members.map((m) => m.taxonomy.title),
             ['renamed', 'renamed'],
         );
+    });
+});
+
+describe('sectionsHolding (a narrowed tree shows only the way to a match, 2026-10-22)', () => {
+    it('holds every section above a matching page, the root among them, and no other', () => {
+        const only =
+            (...ids) =>
+            (id) =>
+                ids.includes(id);
+        assert.deepEqual([...sectionsHolding(TREE, only('d2'))].sort(), [
+            'cold',
+            'root',
+            'starters',
+        ]);
+        assert.deepEqual([...sectionsHolding(TREE, only('d3'))].sort(), ['mains', 'root']);
+        assert.deepEqual([...sectionsHolding(TREE, only('d4'))], ['root'], 'a page at the top');
+        assert.deepEqual([...sectionsHolding(TREE, only())], [], 'nothing matches');
+    });
+
+    it('a diamond holds both placements; a stub and a dangling reference hold nothing', () => {
+        const held = sectionsHolding(TREE, (id) => id === 'd1');
+        assert.ok(held.has('starters') && held.has('mains'), 'd1 is in both');
+        const odd = sec('root', [inTree(stub('starters')), dangling('gone')]);
+        assert.deepEqual([...sectionsHolding(odd, () => true)], []);
+        assert.equal(sectionsHolding(null, () => true).size, 0);
     });
 });

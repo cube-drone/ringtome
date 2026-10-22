@@ -24,9 +24,9 @@ pub(crate) use routes::own_keys_leg;
 pub(crate) use routes::restate_labels;
 pub use routes::{router, BodyLimits};
 
+use crate::random::OsRng;
 use anyhow::{anyhow, Context, Result};
 use ed25519_dalek::SigningKey;
-use crate::random::OsRng;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Anchor, Authorize, Disposition, Payload, Revoke};
 use uuid::Uuid;

@@ -30,6 +30,10 @@ export const tuckPrefix = (appId) => `col:${appId}:`;
 export const widthKey = (appId, col) => `colw:${appId}:${col}`;
 export const widthPrefix = (appId) => `colw:${appId}:`;
 
+/// Which way a notebook's list column orders its notes - its tabs (Curtis, 2026-10-22: the list and
+/// the tree were two columns doing one job), per app and notebook. Domain: 'list' | 'tree'.
+export const listViewKey = (appId, bucket) => `view:${appId}:${bucket}`;
+
 /// Tree section folds, by taxonomy id. Domain: '1' (folded) | '0'.
 export const foldKey = (taxonomyId) => `wikifold:${taxonomyId}`;
 export const FOLD_PREFIX = 'wikifold:';

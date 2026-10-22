@@ -247,7 +247,11 @@ pub fn app_page_with(state: &AppState, head: &str, body: &str) -> String {
 /// the colourway before first paint). None of `app_page`'s substitutions fall inside one (a test
 /// holds that), so their text, and so their hashes, are the template's own.
 fn inline_scripts(page: &str) -> Vec<&str> {
-    page.split("<script>").skip(1).filter_map(|rest| rest.split_once("</script>")).map(|(s, _)| s).collect()
+    page.split("<script>")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("</script>"))
+        .map(|(s, _)| s)
+        .collect()
 }
 
 /// The page may run its own scripts - files from this origin, and the shell's inline ones by

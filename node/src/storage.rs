@@ -333,7 +333,9 @@ pub async fn persona_handler(
     let _owned = crate::record::store::open(&state, &session.account.id, &root).await?;
     let tally =
         tally(&state, &root).await.map_err(crate::error::AppError::Internal)?.unwrap_or_default();
-    let evict = evict_bytes(&state, &root, tally.db_bytes).await.map_err(crate::error::AppError::Internal)?;
+    let evict = evict_bytes(&state, &root, tally.db_bytes)
+        .await
+        .map_err(crate::error::AppError::Internal)?;
     Ok(axum::Json(serde_json::json!({
         "files_bytes": tally.files_bytes,
         "db_bytes": tally.db_bytes,

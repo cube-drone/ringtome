@@ -469,7 +469,9 @@ async fn client_for(state: &AppState, url: &reqwest::Url) -> Result<reqwest::Cli
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
         .timeout(PUSH_TIMEOUT);
-    if let (Some(addr), Some(host)) = (public_address(state.webpush.allow_http, url).await?, url.host_str()) {
+    if let (Some(addr), Some(host)) =
+        (public_address(state.webpush.allow_http, url).await?, url.host_str())
+    {
         let port = url.port_or_known_default().unwrap_or(443);
         client = client.resolve(host, std::net::SocketAddr::new(addr, port));
     }

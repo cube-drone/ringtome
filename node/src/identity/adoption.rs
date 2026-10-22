@@ -8,9 +8,9 @@
 //!
 //! This module owns the `pending_adoptions` table (the joining node's between-steps state).
 
+use crate::random::OsRng;
 use anyhow::{anyhow, Context};
 use ed25519_dalek::SigningKey;
-use crate::random::OsRng;
 use ringtome_proto::crown::KeyStatus;
 use ringtome_proto::registry::{entry_type, service};
 use ringtome_proto::{Authorize, Payload};

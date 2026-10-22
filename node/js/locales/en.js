@@ -591,11 +591,14 @@ export default {
     'apps.notes.nothing-matches': 'nothing matches.',
     'apps.notes.storage-foot-title': 'what moving this persona to another computer carries: every file, each version, and its own records',
     'apps.notes.storage-foot': '{size} in all',
+    'apps.notes.view-chronological': 'chronological',
+    'apps.notes.view-tree': 'tree',
+    'apps.notes.new-thing': 'new {thing}',
+    'apps.notes.new-section': 'new section',
     'apps.notes.count': '{n} {things}',
     'apps.notes.count-of': '{shown} of {n} {things}',
     'apps.notes.remove-filter': 'remove filter',
     'apps.notes.tags': 'tags',
-    'apps.notes.tree': 'tree',
     'apps.notes.links': 'links',
     'apps.notes.publish': 'publish',
 
@@ -1432,6 +1435,7 @@ export default {
     'doc.tree.couldnt-move-that': "couldn't move that: {message}",
     'doc.tree.tree': 'tree',
     'doc.tree.section': 'section',
+    'doc.tree.nothing-matches': 'nothing matches.',
     'doc.tree.nothing-here-yet---start': 'nothing here yet - start a {itemNoun}, or a section to put them in.',
 
     // --- node/js/doc/turbolinks.js ---
@@ -1714,6 +1718,9 @@ export default {
 
     // --- node/js/panes.js ---
     'panes.drag-to-resize': 'drag to resize',
+    'panes.tag-family-size': 'length',
+    'panes.tag-family-media': 'media',
+    'panes.tag-family-made-with': 'made with',
     'panes.tags': 'tags',
     'panes.no-tags-yet': 'no tags yet',
 

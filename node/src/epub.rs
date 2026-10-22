@@ -231,6 +231,57 @@ async fn notebook(
     Ok(book)
 }
 
+/// A notebook as the chronological tab lists it (apps/notes.js, `byPinnedThenClaimed`): pinned
+/// pages first, then newest first by claimed date - a page's own `display_date` where it set one,
+/// else when it last changed - each a chapter, no sections. Its own identity, so an e-reader keeps
+/// it apart from the tree's.
+async fn notebook_by_time(
+    state: &AppState,
+    data: &crate::record::store::Store,
+    root: &str,
+    bucket: &str,
+    tz_offset_min: i32,
+) -> Result<Book> {
+    let ae = |e: AppError| anyhow::anyhow!("{e}");
+    let pinned = data.documents().pinned().await.map_err(ae)?;
+    let mut dated: Vec<(bool, i64, [u8; 16])> = Vec::new();
+    for (id, names) in data.buckets().all().await.map_err(ae)? {
+        if !names.iter().any(|n| n == bucket) {
+            continue;
+        }
+        let Some(head) = data.documents().head(&id).await.map_err(ae)? else { continue };
+        let claimed = crate::publication::claimed(data, &id, tz_offset_min)
+            .await
+            .map_err(ae)?
+            .unwrap_or(head.head_ms);
+        dated.push((pinned.contains(&id), claimed, id));
+    }
+    dated.sort_by(|a, b| b.cmp(a));
+    let mut book = Book {
+        title: bucket.to_string(),
+        author: author_name(state, root).await,
+        identity: format!("urn:hdt2:{root}:notebook:{bucket}:chronological"),
+        chapters: Vec::new(),
+        contents: Vec::new(),
+        pictures: Vec::new(),
+        root: root.to_string(),
+        public: false,
+        chapter_of: HashMap::new(),
+        sealed: false,
+    };
+    for (_, _, id) in dated {
+        if let Some(chapter) = private_chapter(data, &id).await? {
+            book.contents.push(Entry::Page(book.chapters.len()));
+            book.chapters.push(chapter);
+        }
+    }
+    for (i, c) in book.chapters.iter().enumerate() {
+        book.chapter_of.insert(c.id.clone(), i);
+    }
+    book.pictures = private_pictures(data, root, &book.chapters).await?;
+    Ok(book)
+}
+
 fn walk_notebook<'a>(
     data: &'a crate::record::store::Store,
     node: &'a crate::record::store::TaxonomyNode,
@@ -1247,19 +1298,37 @@ async fn answer(
     Ok(polled(&job).unwrap_or_else(|| axum::http::StatusCode::ACCEPTED.into_response()))
 }
 
+/// How a notebook's ePub is ordered: as its tree is (the default), or as the Writer's
+/// chronological tab lists it (Curtis, 2026-10-22) - `?order=chronological`, with `tz` the
+/// browser's `getTimezoneOffset()` so a claimed date sorts where the list sorts it.
+#[derive(serde::Deserialize, Default)]
+pub struct NotebookOrder {
+    order: Option<String>,
+    #[serde(default)]
+    tz: i32,
+}
+
 /// GET `/api/identity/{root}/buckets/{bucket}/epub` - a notebook as an ePub, for its own persona:
 /// the file, or `202` and how far its making has got.
 pub async fn notebook_handler(
     session: Session,
     State(state): State<AppState>,
     UrlPath((root, bucket)): UrlPath<(String, String)>,
+    axum::extract::Query(order): axum::extract::Query<NotebookOrder>,
 ) -> Result<axum::response::Response, AppError> {
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
-    let job = format!("notebook:{root}:{bucket}");
+    let chronological = order.order.as_deref() == Some("chronological");
+    let job =
+        format!("notebook:{root}:{bucket}{}", if chronological { ":chronological" } else { "" });
     if let Some(r) = polled(&job) {
         return Ok(r);
     }
-    let book = notebook(&state, &data, &root, &bucket).await.map_err(AppError::Internal)?;
+    let book = if chronological {
+        notebook_by_time(&state, &data, &root, &bucket, order.tz).await
+    } else {
+        notebook(&state, &data, &root, &bucket).await
+    }
+    .map_err(AppError::Internal)?;
     if book.chapters.is_empty() {
         return Err(AppError::NotFound(crate::msg!(
             "epub.nothing-to-read",

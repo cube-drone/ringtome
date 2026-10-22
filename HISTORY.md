@@ -24306,9 +24306,8 @@ Item 3 of the security pass (`auth.rs`, `auth/routes.rs`):
 - **Sign-in is rate-limited**, as sign-up and recovery already were: 20 attempts
   an hour per address (`client_ip`). Not per account as well: that limit would
   let any stranger shut any account's sign-in by spending its attempts, so a
-  guesser with many addresses is held only by the 8-character floor and
-  Argon2's cost. The operator's own machine, talking directly, is exempt as
-  before.
+  guesser with many addresses is held only by the 8-character floor and Argon2's
+  cost. The operator's own machine, talking directly, is exempt as before.
 
 Gates: `cargo test -p ringtome-node` (664) and the `auth`, accounts, recovery
 and operator acceptance areas (21). The limiter is off under
@@ -24317,18 +24316,17 @@ and operator acceptance areas (21). The limiter is off under
 ## 2026-10-21: a drawing too big to paint
 
 Item 5 of the security pass (`drawing_paint.rs`). A drawing's width and height
-are any positive safe integer, in the browser and in `drawing::read` alike, and a
-crop's corners are whatever its entry says. The node's painter sized the pour's
-grid, each layer's pixmap and the picture from them, so one synced drawing with
-one pour, asked for as an ePub or an export, made the node ask for 5.4 exabytes
-and abort: the whole process, not the request.
+are any positive safe integer, in the browser and in `drawing::read` alike, and
+a crop's corners are whatever its entry says. The node's painter sized the
+pour's grid, each layer's pixmap and the picture from them, so one synced
+drawing with one pour, asked for as an ePub or an export, made the node ask for
+5.4 exabytes and abort: the whole process, not the request.
 
-- `paintable`: every canvas a drawing passes through (its own, then each
-  crop's, since a crop out and back hides a huge one in the middle) is at most
-  8192 units a side and 16 Mpx (`MAX_SIDE`, `MAX_AREA`); `flatten` refuses
-  anything past that, and any picture of it past the same bounds. Past them the
-  drawing has no picture on the node. The app's own canvases are 800 by 600 at
-  most.
+- `paintable`: every canvas a drawing passes through (its own, then each crop's,
+  since a crop out and back hides a huge one in the middle) is at most 8192
+  units a side and 16 Mpx (`MAX_SIDE`, `MAX_AREA`); `flatten` refuses anything
+  past that, and any picture of it past the same bounds. Past them the drawing
+  has no picture on the node. The app's own canvases are 800 by 600 at most.
 - `twice_its_width`: export and ePub painted at `width as u32 * 2`, which wraps
   (or panics, in debug) for a wide enough canvas; now bounded.
 - The reader is unchanged: capping in `read` would make the node's canonical
@@ -24344,8 +24342,8 @@ CI flake on "turbolink securiby" (storage.cjs, 0 of 5 reruns): a persona's own
 storage figures read its database's size twice. Moving used the tally's
 `db_bytes`, measured when the persona's files last moved; evicting measured the
 database afresh, so any write since (a WAL or journal grown by background work)
-made evicting free more than moving carried. `storage::evict_bytes` now takes the
-tally's figure, as the admin's list (`storage::all`) always did. Gate: the
+made evicting free more than moving carried. `storage::evict_bytes` now takes
+the tally's figure, as the admin's list (`storage::all`) always did. Gate: the
 storage accounting acceptance area.
 
 ## 2026-10-21: the serving headers
@@ -24372,8 +24370,8 @@ And:
 
 - **The sign-in cookie is `Secure`** when a proxy's `X-Forwarded-Proto` says the
   visitor came over HTTPS (`request_context::arrived_over_https`), at sign-in
-  and on every sliding renewal; a node on plain HTTP keeps its sign-ins. SERVER.md
-  lists the header among what a proxy owes the node.
+  and on every sliding renewal; a node on plain HTTP keeps its sign-ins.
+  SERVER.md lists the header among what a proxy owes the node.
 - **Upload-link tokens stay out of the log**: the request span records
   `/upload/…` and `/api/upload/…` (`request_context::loggable_uri`).
 
@@ -24396,11 +24394,11 @@ parking 128 silent connections each filled the unproven pool, and four filled
 the house, refusing the household's own sync with everyone else's.
 
 - **Every door has a bound.** Delivery, adoption and fragments take their first
-  stream and frame within the first-frame deadline sync uses
-  (`p2p::first_ask`), wait at most five seconds for the asker to hang up
-  (`p2p::linger`, sync's own figure), and run inside a wall clock: a minute for
-  delivery and fragments (`ONE_SHOT_WALL`), the exchange's for adoption. A peer
-  that never reads the answer no longer holds a seat either.
+  stream and frame within the first-frame deadline sync uses (`p2p::first_ask`),
+  wait at most five seconds for the asker to hang up (`p2p::linger`, sync's own
+  figure), and run inside a wall clock: a minute for delivery and fragments
+  (`ONE_SHOT_WALL`), the exchange's for adoption. A peer that never reads the
+  answer no longer holds a seat either.
 - **A file connection that moves no stream data for 30 seconds is closed**
   (`close_when_idle`); pings don't count. A long transfer that is moving is
   never cut.
@@ -24423,15 +24421,15 @@ endpoints on loopback).
 
 ## 2026-10-21: Marquee 0.10, and links a browser reads as javascript:
 
-Item 1 of the security pass, fixed upstream in Marquee 0.10.0 (the Marquee repo's
-own agent) and taken here: the Rust crates `=0.9.3` → `=0.10.0`, the npm
+Item 1 of the security pass, fixed upstream in Marquee 0.10.0 (the Marquee
+repo's own agent) and taken here: the Rust crates `=0.9.3` → `=0.10.0`, the npm
 packages `^0.9.2` → `^0.10.0` (a caret range on 0.x never reaches 0.10 by
 itself). A link target with a leading control character, `\x01javascript:...`,
 slipped past the renderer's scheme check as a relative link and was rendered as
-an `href`; browsers strip the control and run the script, and it arrived by sync,
-so no input stripping of ours could have helped. 0.10 refuses any target holding
-a control character and reads the scheme past leading spaces, in both renderers.
-It also brings the parser's complexity caps.
+an `href`; browsers strip the control and run the script, and it arrived by
+sync, so no input stripping of ours could have helped. 0.10 refuses any target
+holding a control character and reads the scheme past leading spaces, in both
+renderers. It also brings the parser's complexity caps.
 
 Every path we render through takes the fix: the app's profile is completed from
 `bareWebProfile` by the React renderer (one deduped copy of the html renderer in
@@ -24451,8 +24449,8 @@ requirements already allowed, plus two deliberate patch bumps.
 
 - **Rust**: `cargo update` across the workspace (261 lockfile changes - iroh's
   and tokio's trees among them), and the desktop crate's own (204; `tauri`
-  2.11.6 → 2.12.5, its permission manifests in `desktop/gen/schemas`
-  regenerated by its build).
+  2.11.6 → 2.12.5, its permission manifests in `desktop/gen/schemas` regenerated
+  by its build).
 - **turso** `=0.8.2` → `=0.8.3`, still an exact pin: fourteen commits, all bug
   fixes - nearly all in MVCC mode, which we don't use - and nothing in
   encryption or the file format.
@@ -24479,8 +24477,8 @@ builds both.
 - **Randomness from one place.** rand 0.10 made the OS generator fallible
   (`SysRng`); `random::OsRng` is the infallible bridge under the old name, so
   every key, nonce and token call site kept reading `OsRng`. Thread-local draws
-  stay thread-local (`rand::thread_rng()` → `rand::rng()`). argon2 0.6 makes
-  its own 16-byte salt from the OS generator, as `SaltString::generate` did; the
+  stay thread-local (`rand::thread_rng()` → `rand::rng()`). argon2 0.6 makes its
+  own 16-byte salt from the OS generator, as `SaltString::generate` did; the
   keystore fills its nonce from `OsRng` now that the AEAD crates dropped
   `generate_nonce`. web push's private `rand_core_compat` shim is gone.
 - **The renames**: `to_encoded_point` → `to_sec1_point`, `from_slice` →
@@ -24494,10 +24492,10 @@ they produced: a keystore key file
 (`keystore::a_key_file_sealed_before_the_upgrade_still_opens`), a sealed post
 body (`record::private::a_body_sealed_before_the_upgrade_still_opens`) and
 argon2 0.5 hashes at both parameter sets
-(`auth::a_password_hashed_before_the_upgrade_still_verifies`). Every private
-key on disk, every private record and every stored password is one of those
-shapes. Beside them: the entry vectors re-sign from their fixed seeds and match
-the published file signature for signature (`proto/tests/vectors.rs`), and RFC
+(`auth::a_password_hashed_before_the_upgrade_still_verifies`). Every private key
+on disk, every private record and every stored password is one of those shapes.
+Beside them: the entry vectors re-sign from their fixed seeds and match the
+published file signature for signature (`proto/tests/vectors.rs`), and RFC
 8291's worked example still encrypts byte for byte (p256 + hkdf + aes-gcm).
 
 Gates: `just ci`; `cargo check` of the desktop crate.
@@ -24506,11 +24504,11 @@ Gates: `just ci`; `cargo check` of the desktop crate.
 
 Item 8 of the security pass (`webpush.rs`). A push subscription's endpoint is
 whatever a signed-in person sends, and the node POSTs to it from where it
-stands. Any `https://` URL was accepted, `192.168.1.1` and `127.0.0.1`
-included; `push/test` pushed to every one at once and reported each answer, the
-status and the first 300 characters of the body. On a home node, that was a port
-scanner and page reader for the home network, run from outside it by anyone with
-an account or one of its API keys. reqwest's default redirects took a POST to
+stands. Any `https://` URL was accepted, `192.168.1.1` and `127.0.0.1` included;
+`push/test` pushed to every one at once and reported each answer, the status and
+the first 300 characters of the body. On a home node, that was a port scanner
+and page reader for the home network, run from outside it by anyone with an
+account or one of its API keys. reqwest's default redirects took a POST to
 `https://` on to any `http://` the far side named, the refusal body was read
 whole before it was cut, and a persona's subscriptions were unbounded, every
 alert a POST to each.
@@ -24521,15 +24519,15 @@ alert a POST to each.
   client pinned to the address just vetted (`client_for`), with no redirects and
   no proxy. The rig's loopback push service passes in local-test mode alone, on
   the same switch as its plain `http://`.
-- **Refusals report their status, never the far side's words.** `push/test`
-  says `refused 500`; the operator's log keeps 300 characters of the body, of at
-  most 4 KiB read (`REFUSAL_READ`).
+- **Refusals report their status, never the far side's words.** `push/test` says
+  `refused 500`; the operator's log keeps 300 characters of the body, of at most
+  4 KiB read (`REFUSAL_READ`).
 - **Ten subscriptions per persona, the newest** (`MAX_SUBSCRIPTIONS`): the
   oldest let go, as a browser that rotated its endpoint would have been told by
   a 410; subscribing again counts as new.
 
-`webpush::a_push_goes_to_the_public_internet_or_nowhere` (literals, names,
-cloud metadata, loopback; the rig's exemption), and an acceptance claim in
+`webpush::a_push_goes_to_the_public_internet_or_nowhere` (literals, names, cloud
+metadata, loopback; the rig's exemption), and an acceptance claim in
 `attention.cjs`: twelve browsers subscribed keep ten, a router's 500 page never
 reaches the person, and a 302 is reported, not followed.
 
@@ -24542,8 +24540,8 @@ alone. The cause was the slot-exhaustion fix's smaller per-key cap for strangers
 fragment connection of its own, 41 at once (`PEEK_POSTS * 2 + 1`), from a node
 that has often never dialed the reader's, so the 17th onward was refused at
 admission and the page came up short. The full run had passed by luck: earlier
-files had made the rig's nodes known to each other. Raising the cap made the area
-pass, which settled it.
+files had made the rig's nodes known to each other. Raising the cap made the
+area pass, which settled it.
 
 The default is 128 again, the same as a known peer's; the dial stays for an
 operator who wants it tighter. A node of many readers can be several peeks from
@@ -24571,8 +24569,8 @@ The lane (`net/sync.rs`):
   (`ingest_batch_in`, beside `ingest_batch`, whose callers are unchanged).
 - **A room-only persona is small.** 500 entries / 2 MiB an exchange
   (`ROOM_ONLY_*`, or the node's own budget if smaller), and nothing more read
-  once it holds 16 MiB here. A longer history arrives over passes, as any cut one
-  does.
+  once it holds 16 MiB here. A longer history arrives over passes, as any cut
+  one does.
 - **New room-only personas are few.** 20 an hour per room, 100 across the node
   (the rate limiter, so not under `RINGTOME_LOCAL_TEST`); past them the
   connection is closed with its reason.
@@ -24609,16 +24607,86 @@ sync client the rig doesn't have. Gate: `just ci`.
 
 ## 2026-10-22: alerts wait for the watcher's first look
 
-"housemates: ada's line rings for bea" failed on CI 4 of 5 reruns, never locally.
-The attention watcher's first pass over a persona is silent by design
-(`attention.rs`, "the first look announces nothing": a launch must not replay the
-backlog), and a claim that makes a persona and speaks to it at once races that
-look: a line that lands before it is learned, not announced, and never rings.
-`attention.cjs` raced it too and always won, since its cross-node setup takes long
-enough.
+"housemates: ada's line rings for bea" failed on CI 4 of 5 reruns, never
+locally. The attention watcher's first pass over a persona is silent by design
+(`attention.rs`, "the first look announces nothing": a launch must not replay
+the backlog), and a claim that makes a persona and speaks to it at once races
+that look: a line that lands before it is learned, not announced, and never
+rings. `attention.cjs` raced it too and always won, since its cross-node setup
+takes long enough.
 
-The watcher now notes each persona whose first look is done (`Attention::primed`,
-armed with the test recorder only, so a production node keeps nothing), the rig
-reads it at `/test/attention-primed`, and `attentionPrimed` (helpers.cjs) waits
-for it. Both alert-reading files wait before anyone speaks. Gates: the housemates
-and attention areas (12), `cargo test -p ringtome-node`.
+The watcher now notes each persona whose first look is done
+(`Attention::primed`, armed with the test recorder only, so a production node
+keeps nothing), the rig reads it at `/test/attention-primed`, and
+`attentionPrimed` (helpers.cjs) waits for it. Both alert-reading files wait
+before anyone speaks. Gates: the housemates and attention areas (12),
+`cargo test -p ringtome-node`.
+
+## 2026-10-22: hrseWriter's list and tree, one column
+
+From running a Delta Green session out of hrseWriter (Curtis): the tree searched
+but didn't show results, its rows carried no tags, the notes column and the tree
+column did one job two ways, and the node's own tags (`micro`, `image`,
+`ai-agent`...) crowded every row and topped the tag list.
+
+- **One column, two tabs** (`apps/notes.js`): chronological, or the notebook's
+  tree, remembered per notebook (`listViewKey`, a mirror pref). The tree is
+  `WikiTree` embedded in the column (`embedded`, no head or toolbar of its own,
+  `toolsRef` for its actions); the separate tree column, its rail, its width and
+  its `startsTucked` entry are gone. Prev/next walks the tree while its tab is
+  showing. Only where the tree is unlocked; hrseFiles and the drawing app keep
+  their plain list.
+- **One toolbar, one style** (`notes-tool`, the tree's tool look): "new note"
+  (into the tree's root, as "+ new" always filed it), "new section" in the tree
+  tab, and "ePub" in both. Asked from the chronological tab, the ePub is the
+  notes as that tab lists them, pinned first then newest by claimed date, no
+  sections, under an identity of its own (`epub::notebook_by_time`,
+  `?order=chronological&tz=`). The hard-coded `+ new ${noun}` is now in the
+  catalog.
+- **The tree narrows like the list** (`doc/tree.js`): search, the kind dial and
+  now the tag filter all hide pages (`ops.shows`); while narrowed, only the way
+  to a match shows, its sections unfolded, the rest hidden
+  (`treewalk::sectionsHolding`) - they used to stay as empty scaffolding, and a
+  match in a folded section was invisible. A matching page shows its search
+  snippet (`doc/snippet.js`, moved out of apps/notes.js so both columns share
+  it) and every row its tags, clickable into the filter.
+- **The quiet tags** (`pure/doclist.js`): size, media and made-with tags show on
+  a row only while the filter holds them (`shownTags`), and the tag list puts
+  the said tags first, then under a rule each family in its fixed order
+  (`splitCloud`): length, media, made with.
+
+Checked in headless Chrome on a scratch node (desktop and phone widths): both
+tabs, a search in the tree (snippets, a non-matching section hidden), a tag
+picked from a tree row narrowing it, the grouped tag list. That run caught the
+old tree column's `--w-tree` width still applied to the embedded tree, which
+pushed rows past the column's edge. Tests: `doclist.cjs` (quiet tags),
+`treewalk.cjs` (`sectionsHolding`), and an ePubs claim for the chronological
+order.
+
+## 2026-10-22: the tree's drop line, visible at last
+
+"Display a line in the tree where the item will be dragged to" (Curtis). The
+tree always drew one: a 2px teal `box-shadow` above or below the row under the
+pointer (`drop-before` / `drop-after`). But tree rows are clip-pathed
+(`jag-line-2`), and a shadow outside the row is exactly what the clip cuts away,
+so nobody ever saw it. It is now each row's `::before` (`::after` is the jagged
+ring's), drawn inside the row at its top or bottom edge, starting at the row's
+own indent (`--indent`, set beside its padding) so it says which level the drop
+joins, with a dot at its start. Dropping into a section keeps its tint, which
+always showed. Checked by screenshot in headless Chrome, with the drop classes
+set as a drag sets them.
+
+## 2026-10-22: drag and drop in the Mac desktop app
+
+Tree drags did nothing in the desktop build (Curtis: "it does not move at all,
+there is no error toast"), however large the tree. Tauri installs a drag-drop
+handler on the web view to turn files dragged in from the Finder into window
+events, and its listener answers `true` to every drag (tauri-runtime-wry); wry's
+macOS handler then never calls WebKit's own `draggingUpdated` or
+`performDragOperation`, so the page never sees `dragover` or `drop`. Not only
+the tree's: dragging a note into the editor as a link, and dropping a file onto
+a page, are the same events. Nothing listens for Tauri's drag events (the page
+handles files itself, as a browser does), so the window now turns the handler
+off (`disable_drag_drop_handler`, desktop/src/lib.rs). Tauri's docs name Windows
+for this; the wry source shows macOS swallows drags the same way. Gate:
+`cargo check` of the desktop crate; the drag itself wants a person and a mouse.

@@ -362,10 +362,7 @@ pub fn encrypt_record(
         crate::random::OsRng.fill_bytes(&mut nonce);
     }
     let ciphertext = cipher(epoch_key)
-        .encrypt(
-            &XNonce::from(nonce),
-            chacha20poly1305::aead::Payload { msg: &plaintext, aad },
-        )
+        .encrypt(&XNonce::from(nonce), chacha20poly1305::aead::Payload { msg: &plaintext, aad })
         .map_err(|e| AppError::Internal(anyhow!("encrypting private record: {e}")))?;
     Ok(PrivateRecord { epoch, nonce, ciphertext })
 }

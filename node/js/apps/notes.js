@@ -25,15 +25,17 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { api } from '../net.js';
-import { cachedDoc, rememberDoc } from '../mirror/doccache.js';
 import { RightColumn } from '../doc/reader.js';
+import { Snippet } from '../doc/snippet.js';
+import { EpubButton } from '../doc/epubbutton.js';
+import { listViewKey, usePref } from '../mirror/prefs.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
-import { useSearch, queryWords } from '../search.js';
+import { useSearch } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
 import { featuresOf, itemNoun, itemPlural, bucketHolds, FILES_BUCKET } from '../pure/apps.js';
 import { noteByTitle } from '../pure/bytitle.js';
 import { browseFiles, UNFILED } from '../pure/filebrowse.js';
-import { filesHides, orderDocs, tagCounts } from '../pure/doclist.js';
+import { filesHides, orderDocs, shownTags, tagCounts } from '../pure/doclist.js';
 import { WikiTree, fileNewIntoTree } from '../doc/tree.js';
 import { useColWidths, useColTucks, useNarrow, PaneHead, Rail, TagColumn } from '../panes.js';
 import { LinksColumn } from '../doc/linkcol.js';
@@ -62,109 +64,6 @@ import { pruneSelection, selectAll, toggleSelection } from '../pure/bulk.js';
 const html = htm.bind(h);
 
 const when = (ms) => formatWhen(ms);
-
-// --- search snippets: the first few body lines that contain the query, with hits highlighted.
-// The mirror only holds a token bag (no line structure), so the body is fetched per result and
-// cached - once per doc, not per keystroke, so matching stays local and instant.
-const snippetBodyCache = new Map(); // doc_id -> body text (string)
-
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-// The first `max` non-blank body lines that contain any query word (case-insensitive substring).
-function snippetLines(body, words, max = 3) {
-    if (!body || !words.length) return [];
-    const out = [];
-    for (const raw of body.split('\n')) {
-        const line = raw.trim();
-        if (line && words.some((w) => line.toLowerCase().includes(w))) {
-            out.push(line);
-            if (out.length >= max) break;
-        }
-    }
-    return out;
-}
-
-// Split a line around the query words, wrapping each hit in <mark>.
-function highlight(line, words) {
-    if (!words.length) return line;
-    const re = new RegExp('(' + words.map(escapeRegex).join('|') + ')', 'gi');
-    return line
-        .split(re)
-        .map((part, i) =>
-            i % 2 === 1 ? html`<mark class="snippet-hit" key=${i}>${part}</mark>` : part,
-        );
-}
-
-// A row reads its note only once it is on (or near) the screen, from the remembered copy when the
-// mirror still vouches for one, and a row that leaves before the read lands calls it off. Every
-// result used to read at once: a search over a 1500-note persona sent 128 note reads in one
-// breath, each queued on the persona's one database connection, and the whole persona - every
-// page, every poll - waited ten seconds behind them (2026-10-02).
-const Snippet = ({ root, docId, query }) => {
-    const [body, setBody] = useState(() =>
-        snippetBodyCache.has(docId) ? snippetBodyCache.get(docId) : null,
-    );
-    const [seen, setSeen] = useState(false);
-    const spot = useRef(null);
-    useEffect(() => {
-        if (seen || body != null) return undefined;
-        const el = spot.current;
-        if (!el || typeof IntersectionObserver === 'undefined') {
-            setSeen(true);
-            return undefined;
-        }
-        const watch = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((e) => e.isIntersecting)) {
-                    setSeen(true);
-                    watch.disconnect();
-                }
-            },
-            { rootMargin: '200px' },
-        );
-        watch.observe(el);
-        return () => watch.disconnect();
-    }, [seen, body]);
-    useEffect(() => {
-        if (snippetBodyCache.has(docId)) {
-            setBody(snippetBodyCache.get(docId));
-            return undefined;
-        }
-        if (!seen) return undefined;
-        let alive = true;
-        const stop = new AbortController();
-        const keep = (b) => {
-            snippetBodyCache.set(docId, b);
-            if (alive) setBody(b);
-        };
-        cachedDoc(root, docId)
-            .then((hit) => {
-                if (!alive) return undefined;
-                if (hit) return keep(typeof hit.body === 'string' ? hit.body : '');
-                return api(`/api/identity/${root}/docs/${docId}`, { signal: stop.signal }).then(
-                    (d) => {
-                        rememberDoc(root, docId, d);
-                        keep(d && typeof d.body === 'string' ? d.body : '');
-                    },
-                );
-            })
-            .catch(() => alive && setBody(''));
-        return () => {
-            alive = false;
-            stop.abort();
-        };
-    }, [root, docId, seen]);
-
-    if (body == null) return html`<span ref=${spot} class="note-row-snippet-wait"></span>`; // not read yet
-    const words = queryWords(query);
-    const lines = snippetLines(body, words, 3);
-    if (!lines.length) return null;
-    return html`<small class="note-row-snippet">
-        ${lines.map(
-            (line, i) => html`<span class="snippet-line" key=${i}>${highlight(line, words)}</span>`,
-        )}
-    </small>`;
-};
 
 // The three status icons (PUBLISH.md ruling 6), on every row.
 const StatusMark = ({ doc, book }) => {
@@ -333,9 +232,9 @@ const NoteRowBody = ({
     </span>`
     }
     ${
-        (doc.tags || []).length > 0 &&
+        shownTags(doc.tags, tagFilter).length > 0 &&
         html`<span class="note-row-tags">
-        ${doc.tags.map(
+        ${shownTags(doc.tags, tagFilter).map(
             (t) => html`<span
                 class=${tagFilter.includes(t) ? 'note-row-tag jag-line active' : 'note-row-tag jag-line'}
                 key=${t}
@@ -790,7 +689,14 @@ export const DocsApp = ({
             ? html`${' · '}<button class="notes-select-all" onClick=${settle}>${t('apps.notes.show-n-selected', 'show {n} selected', { n: picked.length })}</button>`
             : null;
     const tagsTucked = tucked.has('tags');
-    const treeTucked = tucked.has('tree');
+    // The list column's two orders, as tabs (Curtis, 2026-10-22: the notes column and the tree
+    // column "both provide the same functionality, kind of, in different ways"): chronological,
+    // or the notebook's tree - whichever this notebook was last read by. Only where the tree is
+    // unlocked; everywhere else the column is the plain list it always was.
+    const [listView, setListView] = usePref(root, listViewKey(app.id, bucket), 'list');
+    const treeTab = !!feat.tree && !app.everything && listView === 'tree';
+    // The tree's own new-section (and new-page) actions, reached from the column's toolbar.
+    const treeTools = useRef(null);
     const publishTucked = tucked.has('publish');
     const linksTucked = tucked.has('links');
 
@@ -804,7 +710,7 @@ export const DocsApp = ({
     const { resizer, colStyle } = useColWidths(
         root,
         app.id,
-        ['list', 'tags', 'tree', 'links', 'publish'],
+        ['list', 'tags', 'links', 'publish'],
         {},
         app.everything ? ['list'] : [],
     );
@@ -815,7 +721,7 @@ export const DocsApp = ({
     // newest-first, so next is simply "down the list" - a tucked tree always walks this way). A document
     // missing from the tree (unfiled) falls back to the list rather than stranding the arrows.
     const listOrder = list.map((d) => d.doc_id);
-    const treeShowing = feat.tree && !tucked.has('tree');
+    const treeShowing = treeTab;
     const bookish = treeShowing && treeOrder && selected && treeOrder.includes(selected);
     const nav = useDocNav(bookish ? treeOrder : listOrder, selected, select, {
         prev: bookish ? 'Previous — back up the tree' : 'Previous — newer',
@@ -916,13 +822,49 @@ export const DocsApp = ({
                         in their own apps, where they land in a real notebook. */ ''
                     }
                     ${
-                        !app.everything &&
-                        html`<button class="notes-new" data-settles disabled=${busy} onClick=${createNew}>
-                        ${busy ? '…' : `+ new ${noun}`}
-                    </button>`
+                        feat.tree &&
+                        html`<div class="notes-views" role="tablist">
+                        <button
+                            role="tab"
+                            aria-selected=${!treeTab}
+                            class=${treeTab ? 'notes-view jag-line' : 'notes-view jag-line active'}
+                            onClick=${() => setListView('list')}
+                        ><${Icons.list} /> ${t('apps.notes.view-chronological', 'chronological')}</button>
+                        <button
+                            role="tab"
+                            aria-selected=${treeTab}
+                            class=${treeTab ? 'notes-view jag-line active' : 'notes-view jag-line'}
+                            onClick=${() => setListView('tree')}
+                        ><${Icons.tree} /> ${t('apps.notes.view-tree', 'tree')}</button>
+                    </div>`
                     }
                     ${
-                        !app.everything &&
+                        /* One toolbar for both tabs, in one style: a new note (into the tree's
+                        root, which the tree tab then shows), a new section where there is a tree
+                        to put it in, and the notebook as an ePub - in the order of the tab it was
+                        asked from (Curtis, 2026-10-22). */ ''
+                    }
+                    <div class="notes-tools">
+                        <button class="notes-tool jag-line" data-settles disabled=${busy} onClick=${() => createNew()}>
+                            <${Icons.pageNew} /> ${busy ? '…' : t('apps.notes.new-thing', 'new {thing}', { thing: noun })}
+                        </button>
+                        ${
+                            treeTab &&
+                            html`<button class="notes-tool jag-line" onClick=${() => treeTools.current && treeTools.current.newSection(null)}>
+                            <${Icons.sectionNew} /> ${t('apps.notes.new-section', 'new section')}
+                        </button>`
+                        }
+                        ${
+                            feat.tree &&
+                            html`<${EpubButton}
+                            className="notes-tool jag-line"
+                            path=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/epub${treeTab ? '' : `?order=chronological&tz=${new Date().getTimezoneOffset()}`}`}
+                            fallback=${`${bucket}.epub`}
+                        />`
+                        }
+                    </div>
+                    ${
+                        !treeTab &&
                         docs &&
                         html`<p class="notes-count">
                             ${
@@ -963,7 +905,33 @@ export const DocsApp = ({
                         )}
                     </div>`
                     }
-                    ${list.map(
+                    ${
+                        treeTab &&
+                        html`${
+                            /* The unfiled bin shows (Curtis, 2026-09-30: a note copied in
+                            "doesn't join that bucket's taxonomy… it's forever lost"): the list
+                            lists every note but can't file one, so a note that reached the
+                            notebook any way but "+ new" waits in the bin, and drags from there
+                            into place. The bin shows only while something's in it. */ ''
+                        }<${WikiTree}
+                            embedded=${true}
+                            toolsRef=${treeTools}
+                            root=${root}
+                            bucket=${bucket}
+                            selected=${selected}
+                            onSelect=${choose}
+                            searchQuery=${searchQuery}
+                            searchKind=${searchKind}
+                            tags=${tagFilter}
+                            onToggleTag=${toggleTag}
+                            reloadKey=${treeReload}
+                            showUnfiled=${true}
+                            book=${book}
+                            onOrder=${setTreeOrder}
+                            itemNoun=${noun}
+                        />`
+                    }
+                    ${(treeTab ? [] : list).map(
                         (d) => html`<${NoteRow}
                                   book=${book}
                             titlePage=${d.doc_id === titlePage}
@@ -983,6 +951,7 @@ export const DocsApp = ({
                         />`,
                     )}
                     ${
+                        !treeTab &&
                         docs &&
                         list.length === 0 &&
                         html`<p class="null-sub notes-empty">
@@ -1005,32 +974,6 @@ export const DocsApp = ({
                           onToggleTag=${toggleTag}
                           onTuck=${() => toggleTuck('tags')}
                       />${resizer('tags')}`)
-                }
-                ${
-                    feat.tree &&
-                    (treeTucked
-                        ? html`<${Rail} icon=${Icons.tree} label=${t('apps.notes.tree', 'tree')} onClick=${() => toggleTuck('tree')} />`
-                        : html`${tab('tree', Icons.tree, t('apps.notes.tree', 'tree'))}${
-                              /* The unfiled bin shows (Curtis,
-                          2026-09-30: a note copied in "doesn't join that bucket's taxonomy… it's forever
-                          lost"): the list lists every note but can't file one, so a note that reached
-                          the notebook any way but "+ new" - a copy, a move, the tree minted after
-                          the notes - waits in the bin, and drags from there into place. The bin
-                          shows only while something's in it. */ ''
-                          }<${WikiTree}
-                          root=${root}
-                          bucket=${bucket}
-                          selected=${selected}
-                          onSelect=${choose}
-                          searchQuery=${searchQuery}
-                          searchKind=${searchKind}
-                          reloadKey=${treeReload}
-                          showUnfiled=${true}
-                          book=${book}
-                          onMinimize=${() => toggleTuck('tree')}
-                          onOrder=${setTreeOrder}
-                          itemNoun=${noun}
-                      />${resizer('tree')}`)
                 }
                 ${/* What links to the open note, and what it links to (2026-09-30). */ ''}
                 ${

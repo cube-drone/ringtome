@@ -6,14 +6,23 @@ const assert = require('node:assert');
 
 let orderDocs,
     tagCounts,
+    shownTags,
+    splitCloud,
     byPinnedThenClaimed,
     nextSearchKind,
     filesHides,
     appForStyle,
     DEFAULT_STYLE;
 before(async () => {
-    ({ orderDocs, tagCounts, byPinnedThenClaimed, nextSearchKind, filesHides } =
-        await import('../../../js/pure/doclist.js'));
+    ({
+        orderDocs,
+        tagCounts,
+        byPinnedThenClaimed,
+        nextSearchKind,
+        filesHides,
+        shownTags,
+        splitCloud,
+    } = await import('../../../js/pure/doclist.js'));
     ({ appForStyle, DEFAULT_STYLE } = await import('../../../js/pure/apps.js'));
 });
 
@@ -213,5 +222,49 @@ describe('tagCounts', () => {
     it('is safe on documents with no tags, and on nothing', () => {
         assert.deepEqual(tagCounts([{}, { tags: [] }]), []);
         assert.deepEqual(tagCounts(undefined), []);
+    });
+});
+
+describe('the quiet tags: what the node says for itself (2026-10-22)', () => {
+    it('a row shows what a person said, and a quiet tag only while the filter holds it', () => {
+        const tags = ['delta green', 'long', 'image', 'ai-agent', 'handler'];
+        assert.deepEqual(shownTags(tags, []), ['delta green', 'handler']);
+        assert.deepEqual(shownTags(tags, ['long']), ['delta green', 'long', 'handler']);
+        assert.deepEqual(shownTags(undefined, undefined), []);
+    });
+
+    it('the tag list: said tags as counted, then each family in its fixed order', () => {
+        const cloud = [
+            ['long', 9],
+            ['delta green', 7],
+            ['image', 4],
+            ['micro', 3],
+            ['api-key', 2],
+            ['handler', 2],
+            ['audio', 1],
+        ];
+        const { said, quiet } = splitCloud(cloud);
+        assert.deepEqual(said, [
+            ['delta green', 7],
+            ['handler', 2],
+        ]);
+        assert.deepEqual(quiet, [
+            [
+                'size',
+                [
+                    ['micro', 3],
+                    ['long', 9],
+                ],
+            ],
+            [
+                'media',
+                [
+                    ['audio', 1],
+                    ['image', 4],
+                ],
+            ],
+            ['made-with', [['api-key', 2]]],
+        ]);
+        assert.deepEqual(splitCloud([['handler', 1]]).quiet, [], 'no empty families');
     });
 });

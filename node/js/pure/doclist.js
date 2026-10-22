@@ -5,6 +5,8 @@
 import { bucketHolds } from './apps.js';
 import { claimedMs } from './docdate.js';
 import { FEED_STYLE, isTextDoc, publishedState } from './feed.js';
+import { MEDIA_TAGS, SIZE_TAGS } from './facets.js';
+import { MADE_WITH_TAGS } from './tagicons.js';
 
 // The kind filter's dial, in rotation order: what a document IS - prose, or a media file (a
 // summary with `media` facts: image, video, audio). One extra search option today; the
@@ -73,4 +75,34 @@ export function tagCounts(docs) {
         for (const t of d.tags || []) counts.set(t, (counts.get(t) || 0) + 1);
     }
     return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+}
+
+/// The tags the node says for itself (Curtis, 2026-10-22: "aren't worth displaying ... unless
+/// they're currently selected by a tag filter"): a document's size and media, minted from what it
+/// holds (documents.rs `IMPLICIT_TAGS`), and what it was made with (made_with.rs) - in the families
+/// the tag list groups them by, each in its own fixed order.
+export const QUIET_TAG_GROUPS = [
+    ['size', SIZE_TAGS],
+    ['media', MEDIA_TAGS],
+    ['made-with', MADE_WITH_TAGS],
+];
+
+export const isQuietTag = (tag) => QUIET_TAG_GROUPS.some(([, group]) => group.includes(tag));
+
+/// The tags a row shows: everything a person said, and a quiet tag only while the filter holds it -
+/// so a row narrowed by `long` still says why it is there.
+export const shownTags = (tags, active) =>
+    (tags || []).filter((t) => !isQuietTag(t) || (active || []).includes(t));
+
+/// The tag list's two halves: the said tags as `tagCounts` ordered them, then the quiet ones by
+/// family, each family in its fixed order - `[family, [[tag, count], ...]]`, empty families left out.
+export function splitCloud(cloud) {
+    const all = cloud || [];
+    return {
+        said: all.filter(([tag]) => !isQuietTag(tag)),
+        quiet: QUIET_TAG_GROUPS.map(([family, order]) => [
+            family,
+            order.map((v) => all.find(([tag]) => tag === v)).filter(Boolean),
+        ]).filter(([, rows]) => rows.length > 0),
+    };
 }

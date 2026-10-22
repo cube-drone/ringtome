@@ -165,6 +165,29 @@ describe('ePubs: notebooks and books to carry off', function () {
         );
     });
 
+    it('as the chronological tab lists it: newest first, no sections, a book of its own (2026-10-22)', async () => {
+        const path = `api/identity/${adaRoot}/buckets/${bucket}/epub`;
+        const { book } = await fetchEpub(ada, `${path}?order=chronological&tz=0`);
+        assert.deepEqual(book.bad, [], 'every page is well-formed XML');
+        const chapters = Object.keys(book.text)
+            .filter((n) => /chapter-\d+\.xhtml$/.test(n))
+            .sort()
+            .map((n) => /<h1[^>]*>([^<]*)</.exec(book.text[n])?.[1] || n);
+        assert.deepEqual(
+            chapters,
+            ['A doodle', 'The first page', 'The second page'],
+            'newest first, the doodle the tree never placed among them',
+        );
+        assert.doesNotMatch(book.text['OEBPS/nav.xhtml'], /Part one/, 'no sections');
+        const id = (opf) => /<dc:identifier[^>]*>([^<]+)</.exec(opf)?.[1];
+        const tree = (await fetchEpub(ada, path)).book;
+        assert.notEqual(
+            id(book.text['OEBPS/content.opf']),
+            id(tree.text['OEBPS/content.opf']),
+            "an e-reader keeps it apart from the tree's",
+        );
+    });
+
     it('the same notebook again is the same file; an edit is a new one', async () => {
         const first = await fetchEpub(ada, `api/identity/${adaRoot}/buckets/${bucket}/epub`);
         const again = await fetchEpub(ada, `api/identity/${adaRoot}/buckets/${bucket}/epub`);

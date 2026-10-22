@@ -48,20 +48,62 @@
     cursor: pointer;
 }
 
-.notes-new {
-    background: none;
-    border: 1px dashed var(--border-strong);
-    --j: 3px;
-    clip-path: var(--jag-1);
-    color: var(--sea);
-    padding: 0.45rem;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.9rem;
+/* The list column's two orders, as tabs (2026-10-22): chronological, or the notebook's tree. */
+.notes-views {
+    display: flex;
+    gap: 0.3rem;
 }
 
-.notes-new:hover {
-    border-color: var(--sea);
+.notes-view {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    background: none;
+    --line: var(--border);
+    --j: 3px;
+    padding: 0.25rem 0.4rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.notes-view:hover {
+    --line: var(--teal);
+    color: var(--ink);
+}
+
+.notes-view.active {
+    background: var(--surface-2);
+    --line: var(--sea);
+    color: var(--ink);
+}
+
+/* One toolbar for both tabs, one style: what the tree's toolbar always wore. */
+.notes-tools {
+    display: flex;
+    flex-wrap: wrap; /* the ePub's refusal takes a line of its own */
+    gap: 0.4rem;
+}
+
+.notes-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: var(--surface-2);
+    --line: var(--border-strong);
+    --j: 3px;
+    padding: 0.25rem 0.55rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.notes-tool:hover {
+    --line: var(--teal);
 }
 
 /* A thin tag-frequency sidebar (Recipes), left of the document list. */
@@ -376,10 +418,6 @@
     width: var(--w-list, 480px);
 }
 
-.notes-columns .tree-pane {
-    width: var(--w-tree, 270px);
-}
-
 /* The Publish column (PROJECT_PLAN's Books): a notebook published as a book. */
 .notes-columns .book-column {
     width: var(--w-publish, 260px);
@@ -601,6 +639,25 @@
 .tag-cloud-row.active .tag-cloud-count {
     color: var(--surface);
     opacity: 0.85;
+}
+
+/* The node's own tags, under a rule and by family (2026-10-22). */
+.tag-cloud-rule {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 0.4rem 0.5rem;
+}
+
+.tag-cloud-family {
+    display: flex;
+    flex-direction: column;
+}
+
+.tag-cloud-family-name {
+    color: var(--muted);
+    font-size: 0.7rem;
+    text-transform: lowercase;
+    padding: 0.35rem 0.5rem 0.1rem;
 }
 
 .tag-column-empty {

@@ -151,7 +151,14 @@ where
         span.record("remote_ip", tracing::field::display(&remote_ip));
         span.record("forwarded_for", tracing::field::display(&forwarded_for));
 
-        Ok(RequestContext { remote_ip, forwarded_for, forwarded, user_agent, correlation_id, https })
+        Ok(RequestContext {
+            remote_ip,
+            forwarded_for,
+            forwarded,
+            user_agent,
+            correlation_id,
+            https,
+        })
     }
 }
 
@@ -177,7 +184,11 @@ mod tests {
         assert_eq!(uri("/upload/0123abcd"), "/upload/…");
         assert_eq!(uri("/api/upload/0123abcd?x=1"), "/api/upload/…?x=1");
         assert_eq!(uri("/api/identity/abc/docs?q=upload"), "/api/identity/abc/docs?q=upload");
-        assert_eq!(uri("/api/identity/abc/upload/x"), "/api/identity/abc/upload/x", "only the link's own paths");
+        assert_eq!(
+            uri("/api/identity/abc/upload/x"),
+            "/api/identity/abc/upload/x",
+            "only the link's own paths"
+        );
     }
 
     #[test]

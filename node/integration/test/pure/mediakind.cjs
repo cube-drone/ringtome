@@ -104,7 +104,11 @@ describe('media kinds: ringtome spellings', () => {
         // The stored XSS of the security pass: a leading control character hid the scheme from
         // the renderer, and the browser stripped it and ran the script. Rendered as the app's
         // own profile is assembled - the base's link policy under our media and emoji.
-        const profile = { ...bareWebProfile, media: mediaResolver(bareWebProfile), emoji: () => null };
+        const profile = {
+            ...bareWebProfile,
+            media: mediaResolver(bareWebProfile),
+            emoji: () => null,
+        };
         for (const target of [
             '\u0001javascript:alert(1)',
             '\u001fjavascript:alert(1)',
@@ -118,7 +122,10 @@ describe('media kinds: ringtome spellings', () => {
             assert.doesNotMatch(html, /href=/, `${JSON.stringify(target)} kept an href: ${html}`);
         }
         // ...while an ordinary link still is one.
-        assert.match(render(parse('[x](https://e.x/)'), profile), /<a [^>]*href="https:\/\/e\.x\/"/);
+        assert.match(
+            render(parse('[x](https://e.x/)'), profile),
+            /<a [^>]*href="https:\/\/e\.x\/"/,
+        );
     });
 });
 

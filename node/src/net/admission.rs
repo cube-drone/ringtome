@@ -289,7 +289,10 @@ mod tests {
         let a = Admission::new(limits(2, 2, 2));
         let p1 = a.try_admit([1; 32], false, false).expect("first");
         let _p2 = a.try_admit([2; 32], false, false).expect("second");
-        assert!(a.try_admit([3; 32], false, false).is_none(), "over the ceiling: refused, not queued");
+        assert!(
+            a.try_admit([3; 32], false, false).is_none(),
+            "over the ceiling: refused, not queued"
+        );
         assert_eq!(a.held(), (2, 2));
         drop(p1);
         assert_eq!(a.held(), (1, 1));
@@ -301,7 +304,10 @@ mod tests {
         let a = Admission::new(limits(10, 1, 10));
         let mut p1 = a.try_admit([1; 32], false, false).expect("first unproven");
         assert!(a.try_admit([2; 32], false, false).is_none(), "the unproven pool is full");
-        assert!(a.try_admit([2; 32], true, false).is_some(), "proven at birth never needed the pool");
+        assert!(
+            a.try_admit([2; 32], true, false).is_some(),
+            "proven at birth never needed the pool"
+        );
         p1.prove();
         p1.prove(); // idempotent
         assert_eq!(a.held().1, 0, "proving released the unproven seat");
@@ -315,7 +321,10 @@ mod tests {
         let a = Admission::new(limits(100, 100, 2));
         let _x = a.try_admit([7; 32], false, false).expect("one");
         let _y = a.try_admit([7; 32], false, false).expect("two");
-        assert!(a.try_admit([7; 32], false, false).is_none(), "the third from the same peer is refused");
+        assert!(
+            a.try_admit([7; 32], false, false).is_none(),
+            "the third from the same peer is refused"
+        );
         assert!(a.try_admit([8; 32], false, false).is_some(), "another peer is not");
     }
 
@@ -339,7 +348,8 @@ mod tests {
     #[test]
     fn a_stranger_has_a_smaller_cap_than_a_known_peer() {
         let a = Admission::new(Limits { max_per_stranger: 2, ..limits(100, 100, 50) });
-        let strange: Vec<Permit> = (0..5).filter_map(|_| a.try_admit([9; 32], false, false)).collect();
+        let strange: Vec<Permit> =
+            (0..5).filter_map(|_| a.try_admit([9; 32], false, false)).collect();
         assert_eq!(strange.len(), 2);
         let known: Vec<Permit> = (0..5).filter_map(|_| a.try_admit([8; 32], false, true)).collect();
         assert_eq!(known.len(), 5);

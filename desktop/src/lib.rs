@@ -106,6 +106,14 @@ pub fn run() {
                     tauri::webview::NewWindowResponse::Deny
                 })
                 .title("Horse Drawing Tycoon 2")
+                // The page's own drag and drop (Curtis, 2026-10-22: tree drags "simply not
+                // working" in the Mac build): Tauri's handler, there to turn files dragged in from
+                // the Finder into window events nobody here listens for, answers EVERY drag over
+                // the web view itself (tauri-runtime-wry returns `true`, and wry's macOS
+                // `draggingUpdated`/`performDragOperation` then never reach WebKit) - so no
+                // `dragover`, no `drop`: no tree reorganizing, no note dragged into the editor as
+                // a link, no file dropped on a page. The page handles files itself, as a browser.
+                .disable_drag_drop_handler()
                 .inner_size(1280.0, 860.0)
                 .visible(!hidden)
                 .initialization_script(format!(

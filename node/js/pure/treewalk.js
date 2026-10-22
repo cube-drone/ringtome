@@ -61,6 +61,25 @@ export function sectionIdsUnder(node) {
     return ids;
 }
 
+/// The sections (by taxonomy id, the root among them) that hold at least one page `shows` passes,
+/// anywhere beneath them: while the tree is narrowed (a search, a tag, the kind dial), these unfold
+/// and every other section hides (Curtis, 2026-10-22). A stub - a section met a second time -
+/// holds nothing of its own, and a dangling reference is no page.
+export function sectionsHolding(tree, shows) {
+    const holding = new Set();
+    const walk = (node) => {
+        let any = false;
+        for (const m of node.members || []) {
+            if (m.taxonomy) any = walk(m.taxonomy) || any;
+            else if (m.doc && shows(m.doc_id, m.doc)) any = true;
+        }
+        if (any) holding.add(node.taxonomy_id);
+        return any;
+    };
+    if (tree) walk(tree);
+    return holding;
+}
+
 /// Every document id the tree MENTIONS, dangling references included - the question is "does the
 /// tree already account for this?", so an id it holds counts even if nothing renders for it. The
 /// complement against a bucket's documents is the unfiled bin.

@@ -878,7 +878,8 @@ pub(crate) async fn ingest_batch_in(
                 // the docs above give.
                 let svc = e.entry().chain.service;
                 let other_room = svc == service::CHAT
-                    && rooms.is_some_and(|r| e.entry().chain.instance.is_none_or(|i| !r.contains(&i)));
+                    && rooms
+                        .is_some_and(|r| e.entry().chain.instance.is_none_or(|i| !r.contains(&i)));
                 if allowed.is_some_and(|a| !a.contains(&svc))
                     || (!peer_proven && is_private_service(svc))
                     || other_room
@@ -2631,7 +2632,10 @@ async fn serve_on(
         let room = hex::encode(rooms_named_here.first().copied().unwrap_or_default());
         let limits = &state.rate_limiter;
         if limits.check("room-newcomer", &room, ROOM_NEWCOMERS_PER_ROOM, HOUR_MS).await.is_err()
-            || limits.check("room-newcomer", "node", ROOM_NEWCOMERS_PER_NODE, HOUR_MS).await.is_err()
+            || limits
+                .check("room-newcomer", "node", ROOM_NEWCOMERS_PER_NODE, HOUR_MS)
+                .await
+                .is_err()
         {
             tracing::info!(root = %root_hex, %room, "room lane: refusing a newcomer over the hour's limit");
             conn.close(4u8.into(), b"too many newcomers to this room; try later");
@@ -3788,16 +3792,24 @@ mod tests {
         assert_eq!(raw.len(), 2);
 
         let held = crate::db::test_user_db().await;
-        let outcome =
-            ingest_batch_in(&held, root, raw.clone(), false, None, Some(ROOM_SCOPE), Some(&[named]))
-                .await
-                .unwrap();
+        let outcome = ingest_batch_in(
+            &held,
+            root,
+            raw.clone(),
+            false,
+            None,
+            Some(ROOM_SCOPE),
+            Some(&[named]),
+        )
+        .await
+        .unwrap();
         assert_eq!((outcome.received, outcome.rejected), (1, 1), "only the named room's line");
         assert!(spoke_in(&held, &[named]).await);
         assert!(!spoke_in(&held, &[other]).await, "the other room was never written");
 
         let unheld = crate::db::test_user_db().await;
-        let outcome = ingest_batch(&unheld, root, raw, false, None, Some(ROOM_SCOPE)).await.unwrap();
+        let outcome =
+            ingest_batch(&unheld, root, raw, false, None, Some(ROOM_SCOPE)).await.unwrap();
         assert_eq!(outcome.received, 2, "a lane not held to rooms takes both, as before");
     }
 

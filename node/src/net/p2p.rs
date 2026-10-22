@@ -529,21 +529,45 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                             }
                         } else if conn.alpn() == crate::net::adopt::ADOPT_ALPN {
                             let wall = state.admission.limits().exchange_wall_clock;
-                            match tokio::time::timeout(wall, crate::net::adopt::serve(conn, state)).await {
-                                Ok(Err(e)) => tracing::warn!(%remote, "adopt connection ended with error: {e:#}"),
-                                Err(_) => tracing::info!(%remote, "adopt connection outran its wall clock"),
+                            match tokio::time::timeout(wall, crate::net::adopt::serve(conn, state))
+                                .await
+                            {
+                                Ok(Err(e)) => {
+                                    tracing::warn!(%remote, "adopt connection ended with error: {e:#}")
+                                }
+                                Err(_) => {
+                                    tracing::info!(%remote, "adopt connection outran its wall clock")
+                                }
                                 Ok(Ok(())) => {}
                             }
                         } else if conn.alpn() == ringtome_proto::deliver::DELIVER_ALPN {
-                            match tokio::time::timeout(ONE_SHOT_WALL, crate::net::deliver::serve(conn, state)).await {
-                                Ok(Err(e)) => tracing::warn!(%remote, "delivery connection ended with error: {e:#}"),
-                                Err(_) => tracing::info!(%remote, "delivery connection outran its wall clock"),
+                            match tokio::time::timeout(
+                                ONE_SHOT_WALL,
+                                crate::net::deliver::serve(conn, state),
+                            )
+                            .await
+                            {
+                                Ok(Err(e)) => {
+                                    tracing::warn!(%remote, "delivery connection ended with error: {e:#}")
+                                }
+                                Err(_) => {
+                                    tracing::info!(%remote, "delivery connection outran its wall clock")
+                                }
                                 Ok(Ok(())) => {}
                             }
                         } else if conn.alpn() == ringtome_proto::fragment::FRAGMENT_ALPN {
-                            match tokio::time::timeout(ONE_SHOT_WALL, crate::net::fragment::serve(conn, state)).await {
-                                Ok(Err(e)) => tracing::warn!(%remote, "fragment connection ended with error: {e:#}"),
-                                Err(_) => tracing::info!(%remote, "fragment connection outran its wall clock"),
+                            match tokio::time::timeout(
+                                ONE_SHOT_WALL,
+                                crate::net::fragment::serve(conn, state),
+                            )
+                            .await
+                            {
+                                Ok(Err(e)) => {
+                                    tracing::warn!(%remote, "fragment connection ended with error: {e:#}")
+                                }
+                                Err(_) => {
+                                    tracing::info!(%remote, "fragment connection outran its wall clock")
+                                }
                                 Ok(Ok(())) => {}
                             }
                         } else if conn.alpn() == iroh_gossip::ALPN {
@@ -697,7 +721,9 @@ mod port_tests {
     }
 
     /// Two endpoints on loopback; `b` connected to `a` on the blob protocol.
-    async fn a_pair(tag: &str) -> (Endpoint, Endpoint, Connection, Connection, Vec<std::path::PathBuf>) {
+    async fn a_pair(
+        tag: &str,
+    ) -> (Endpoint, Endpoint, Connection, Connection, Vec<std::path::PathBuf>) {
         std::env::remove_var("RINGTOME_ENVELOPE_KEY");
         let dirs = vec![scratch(&format!("{tag}-a")), scratch(&format!("{tag}-b"))];
         let off = crate::net::discovery::DiscoveryMode::Off;
@@ -748,8 +774,7 @@ mod port_tests {
                 }
             })
         };
-        let watched =
-            tokio::time::timeout(idle * 5, close_when_idle(&at_a, idle)).await;
+        let watched = tokio::time::timeout(idle * 5, close_when_idle(&at_a, idle)).await;
         assert!(watched.is_err(), "a connection moving data outlasts five idle windows");
         talking.abort();
         reading.abort();

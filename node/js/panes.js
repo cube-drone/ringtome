@@ -23,6 +23,7 @@ import {
 } from './mirror/prefs.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { splitCloud } from './pure/doclist.js';
 
 const html = htm.bind(h);
 
@@ -230,23 +231,35 @@ export function useColWidths(root, appId, cols, mins = {}, open = []) {
 // the list reads. Column furniture, so it lives here with the heads and the rails: Writer asks
 // for it through `features.tagColumn`, and the chat app keeps one for rooms (Curtis,
 // 2026-09-20). `label` names what the tags are on, when "tags" is not enough.
-export const TagColumn = ({
-    cloud,
-    active,
-    onToggleTag,
-    onTuck,
-    label,
-}) => html`<aside class="tag-column">
-    <${PaneHead} icon=${Icons.tag} label=${label || t('panes.tags', 'tags')} onTuck=${onTuck} />
-    ${cloud.map(
-        ([tag, count]) => html`<button
-            key=${tag}
-            class=${active.includes(tag) ? 'tag-cloud-row active' : 'tag-cloud-row'}
-            onClick=${() => onToggleTag(tag)}
-        >
-            <span class="tag-cloud-name">${tag}</span>
-            <span class="tag-cloud-count">${count}</span>
-        </button>`,
-    )}
-    ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('panes.no-tags-yet', 'no tags yet')}</p>`}
-</aside>`;
+//
+// The tags people said come first, most-used first; under a rule, the ones the node says for itself
+// - a document's size, its media, what it was made with - each family in its own fixed order
+// (Curtis, 2026-10-22), rather than mixed into the counts where `long` outranks every real tag.
+export const TagColumn = ({ cloud, active, onToggleTag, onTuck, label }) => {
+    const { said, quiet } = splitCloud(cloud);
+    const row = ([tag, count]) => html`<button
+        key=${tag}
+        class=${active.includes(tag) ? 'tag-cloud-row active' : 'tag-cloud-row'}
+        onClick=${() => onToggleTag(tag)}
+    >
+        <span class="tag-cloud-name">${tag}</span>
+        <span class="tag-cloud-count">${count}</span>
+    </button>`;
+    const family = {
+        size: t('panes.tag-family-size', 'length'),
+        media: t('panes.tag-family-media', 'media'),
+        'made-with': t('panes.tag-family-made-with', 'made with'),
+    };
+    return html`<aside class="tag-column">
+        <${PaneHead} icon=${Icons.tag} label=${label || t('panes.tags', 'tags')} onTuck=${onTuck} />
+        ${said.map(row)}
+        ${quiet.length > 0 && html`<hr class="tag-cloud-rule" />`}
+        ${quiet.map(
+            ([name, rows]) => html`<div class="tag-cloud-family" key=${name}>
+                <span class="tag-cloud-family-name">${family[name]}</span>
+                ${rows.map(row)}
+            </div>`,
+        )}
+        ${cloud.length === 0 && html`<p class="null-sub tag-column-empty">${t('panes.no-tags-yet', 'no tags yet')}</p>`}
+    </aside>`;
+};

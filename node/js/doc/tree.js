@@ -17,7 +17,8 @@ import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.
 import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
 import { rootTitleFor } from '../pure/naming.js';
-import { kindHolds } from '../pure/doclist.js';
+import { kindHolds, shownTags } from '../pure/doclist.js';
+import { Snippet } from './snippet.js';
 import {
     docsInsideOnly,
     dropIndex,
@@ -28,6 +29,7 @@ import {
     pathToDoc,
     retitled,
     sectionIdsUnder,
+    sectionsHolding,
     withMember,
     withoutMember,
 } from '../pure/treewalk.js';
@@ -185,8 +187,9 @@ const standingTitle = (standing) =>
               : undefined;
 
 // One page leaf. Title reads LIVE from the mirror row (so an editor rename re-titles the tree
-// immediately); the tree snapshot's summary is the fallback. A search filters pages out of the
-// tree; sections stay as scaffolding. Draggable: a page moves between sections and reorders
+// immediately); the tree snapshot's summary is the fallback. A search, the tag filter or the kind
+// dial filters pages out of the tree (`ops.shows`), and a match wears its tags and its snippet as
+// a list row does (Curtis, 2026-10-22). Draggable: a page moves between sections and reorders
 // within one; dropping on a page's top half inserts before it, bottom half after. `parent` is
 // the containing node (null for unfiled rows, which are draggable but not drop targets).
 const PageRow = ({ id, summary, depth, ops, parent }) => {
@@ -202,13 +205,8 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
             rowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
     }, [isSelected]);
-    if (ops.hits !== null && !ops.hits.has(id)) return null;
+    if (!ops.shows(id, summary)) return null;
     const live = ops.byId.get(id);
-    // The kind dial filters pages exactly as search does - sections stay as scaffolding, so a
-    // directory never vanishes, only empties. A page whose facts we don't hold (dangling or
-    // not yet synced) passes: only a KNOWN wrong kind hides a row.
-    const facts = live || summary;
-    if (facts && !kindHolds(facts, ops.kind)) return null;
     // In a book, the page's standing against the last rollout colours its icon (Curtis, 2026-09-30):
     // green in the book as published, orange changed or new since, grey hidden from it. A picture
     // filed in the notebook is not a page, and a notebook that isn't a book wears nothing.
@@ -217,6 +215,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
             ? pageStanding(live, ops.book.hiddenDocs, ops.book.hidden)
             : null;
     const title = (live && live.title) || (summary && summary.title) || 'untitled';
+    const tags = ops.onToggleTag ? shownTags(live && live.tags, ops.tags) : [];
     // A pinned page wears the pin, and its title the accent (Curtis, 2026-10-13) - the mirror's
     // row first, which a pin or an unpin moves at once; the tree's summary while it's not here.
     const pinned = live ? !!live.pinned : !!(summary && summary.pinned);
@@ -235,7 +234,7 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
     return html`<div
         class=${cls}
         ref=${rowRef}
-        style=${`padding-left: ${indent(depth)}`}
+        style=${`padding-left: ${indent(depth)}; --indent: ${indent(depth)}`}
         data-settles
         onClick=${() => ops.select(id)}
         draggable=${true}
@@ -276,7 +275,27 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         }}
     >
         <span class=${STANDING_CLASS[standing] || 'tree-row-icon'} title=${standingTitle(standing)}><${icon} /></span>
-        <span class=${pinned ? 'tree-row-title pinned' : 'tree-row-title'}>${title}</span>
+        <span class="tree-row-body">
+            <span class=${pinned ? 'tree-row-title pinned' : 'tree-row-title'}>${title}</span>
+            ${
+                tags.length > 0 &&
+                html`<span class="note-row-tags">
+                ${tags.map(
+                    (tag) => html`<span
+                        class=${ops.tags.includes(tag) ? 'note-row-tag jag-line active' : 'note-row-tag jag-line'}
+                        key=${tag}
+                        role="button"
+                        data-stays
+                        onClick=${(e) => {
+                            e.stopPropagation();
+                            ops.onToggleTag(tag);
+                        }}
+                    >${tag}</span>`,
+                )}
+            </span>`
+            }
+            ${ops.query && html`<${Snippet} root=${ops.root} docId=${id} query=${ops.query} />`}
+        </span>
     </div>`;
 };
 
@@ -287,13 +306,15 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
 const SectionNode = ({ node, parent, depth, ops }) => {
     const [hover, setHover] = useState(null); // 'before' | 'after' | 'into' | null
     const [lifting, setLifting] = useState(false);
+    // Narrowed (a search, a tag, the kind dial), only the way to a match shows, unfolded.
+    if (ops.holding && !ops.holding.has(node.taxonomy_id)) return null;
     if (!node.members) {
-        return html`<div class="tree-row jag-line-2 tree-stub" style=${`padding-left: ${indent(depth)}`}>
+        return html`<div class="tree-row jag-line-2 tree-stub" style=${`padding-left: ${indent(depth)}; --indent: ${indent(depth)}`}>
             <${Icons.section} />
             <span class="tree-row-title">${node.title || t('doc.tree.untitled-section', '(untitled section)')} ↩</span>
         </div>`;
     }
-    const open = !ops.folded.has(node.taxonomy_id);
+    const open = ops.holding ? true : !ops.folded.has(node.taxonomy_id);
     const cls = [
         'tree-row jag-line-2',
         'tree-row-section',
@@ -307,7 +328,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
     return html`
         <div
             class=${cls}
-            style=${`padding-left: ${indent(depth)}`}
+            style=${`padding-left: ${indent(depth)}; --indent: ${indent(depth)}`}
             onClick=${() => ops.toggleFold(node.taxonomy_id)}
             draggable=${true}
             onDragStart=${(e) => {
@@ -424,6 +445,7 @@ const MemberList = ({ node, depth, ops }) =>
 // (pages only; a section unhooked from the tree would be an invisible orphan).
 const UnfiledBin = ({ unfiled, ops }) => {
     const [over, setOver] = useState(false);
+    if (ops.holding && !unfiled.some((d) => ops.shows(d.doc_id, d))) return null;
     return html`<div
         class=${over ? 'tree-unfiled drop-hover' : 'tree-unfiled'}
         onDragOver=${(e) => {
@@ -466,7 +488,13 @@ const UnfiledBin = ({ unfiled, ops }) => {
  * @param itemNoun     what the hosting app calls one of its things ("page", "note") - the tree grows
  *                     notes in Writer, and says so
  * @param searchKind   the kind dial ('all' | 'docs' | 'media'): filters page rows like search
- *                     does, never sections
+ *                     does
+ * @param tags         the tag filter: pages must carry every one, as in the list
+ * @param onToggleTag  a row's tag chip toggles it in the filter (rows show tags only with this)
+ *
+ * Narrowed by any of the three, the tree shows only the way to each match: sections holding one
+ * unfold, the rest hide (Curtis, 2026-10-22 - they used to stay as empty scaffolding, and a match
+ * in a folded section was invisible).
  */
 export const WikiTree = ({
     root,
@@ -481,6 +509,10 @@ export const WikiTree = ({
     onOrder,
     itemNoun = 'page',
     book = null, // the notebook's book facts when it is one (apps/notes.js): colours the icons
+    tags = [], // the tag filter, ANDed as the list's is; empty when the host has none
+    onToggleTag, // a row's tag clicked into or out of that filter; rows show no tags without it
+    embedded = false, // inside the host's own column (Writer's tree tab): no head, no toolbar
+    toolsRef, // given, the host's toolbar reaches `{ newPage, newSection }` through it
 }) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
     const taxRows = useLive(() => openMirror(root).taxonomies.toArray(), [root]);
@@ -844,6 +876,19 @@ export const WikiTree = ({
 
     const hits = useSearch(root, searchQuery);
 
+    // Does this page pass the narrowing - search, kind dial, tags? A page whose facts we don't
+    // hold (dangling, or not yet synced) passes the kind dial: only a KNOWN wrong kind hides it.
+    const shows = (id, summary) => {
+        if (hits !== null && !hits.has(id)) return false;
+        const live = byId.get(id);
+        const facts = live || summary;
+        if (facts && !kindHolds(facts, searchKind)) return false;
+        const carried = (live && live.tags) || [];
+        return tags.every((tag) => carried.includes(tag));
+    };
+    const narrowed = hits !== null || tags.length > 0 || (searchKind || 'all') !== 'all';
+    const holding = narrowed ? sectionsHolding(tree, shows) : null;
+
     // Drag-to-reorganize. The payload lives in a ref for the drag's duration (dataTransfer is
     // read-locked during dragover, so everyone reads this instead). The server API is already
     // drag-shaped: member PUT with an index is add-and-move in one op (position counted without
@@ -923,8 +968,11 @@ export const WikiTree = ({
         root,
         bucket,
         byId,
-        hits,
-        kind: searchKind,
+        shows,
+        holding,
+        query: hits !== null ? searchQuery : '',
+        tags,
+        onToggleTag,
         folded,
         toggleFold,
         newPage,
@@ -942,10 +990,11 @@ export const WikiTree = ({
     };
 
     const empty = !tree || !(tree.members || []).length;
+    if (toolsRef) toolsRef.current = { newPage, newSection };
 
     return html`
         <aside
-            class="tree-pane"
+            class=${embedded ? 'tree-pane tree-embedded' : 'tree-pane'}
             onDragOver=${(e) => {
                 // The pane background is the root's drop zone (rows stopPropagation, so only
                 // true background drags reach here): drop to file at top level.
@@ -956,8 +1005,10 @@ export const WikiTree = ({
                 if (tree) completeDrag({ intoId: tree.taxonomy_id });
             }}
         >
-            ${onMinimize && html`<${PaneHead} icon=${Icons.tree} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
-            <div class="tree-toolbar">
+            ${!embedded && onMinimize && html`<${PaneHead} icon=${Icons.tree} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
+            ${
+                !embedded &&
+                html`<div class="tree-toolbar">
                 <button class="tree-tool jag-line" data-settles onClick=${() => newPage(null)}>
                     <${Icons.pageNew} /> ${itemNoun}
                 </button>
@@ -968,8 +1019,15 @@ export const WikiTree = ({
                     path=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/epub`}
                     fallback=${`${bucket}.epub`}
                 />
-            </div>
+            </div>`
+            }
             ${tree && html`<${MemberList} node=${tree} depth=${0} ops=${ops} />`}
+            ${
+                holding &&
+                !holding.has(tree && tree.taxonomy_id) &&
+                !unfiled.some((d) => shows(d.doc_id, d)) &&
+                html`<p class="null-sub tree-empty">${t('doc.tree.nothing-matches', 'nothing matches.')}</p>`
+            }
             ${
                 empty &&
                 !unfiled.length &&
