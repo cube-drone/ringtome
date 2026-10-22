@@ -22,6 +22,7 @@ import { Snippet } from './snippet.js';
 import {
     docsInsideOnly,
     dropIndex,
+    dropPlan,
     filedDocIds,
     flatDocs,
     memberIn,
@@ -34,6 +35,7 @@ import {
     withoutMember,
 } from '../pure/treewalk.js';
 import { Icons, formatIcon } from '../icons.js';
+import { longPress } from '../longpress.js';
 import { pageStanding } from '../pure/books.js';
 import { isTextDoc } from '../pure/feed.js';
 import { PaneHead } from '../panes.js';
@@ -45,6 +47,7 @@ const html = htm.bind(h);
 
 /// How far a row sits in for its depth: 1.2rem a level (Curtis, 2026-10-13: 0.9rem, and nested
 /// items didn't read as nested enough - about 5px more each).
+const EMPTY_PICKS = new Set();
 const indent = (depth) => `${0.4 + depth * 1.2}rem`;
 
 // The bucket's tree root, found (mirror roster, lowest id wins a concurrent-mint tie) or minted.
@@ -225,9 +228,10 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         : formatIcon((live && live.format) || (summary && summary.format)) || Icons.page;
     const cls = [
         'tree-row jag-line-2',
-        isSelected ? 'selected' : '',
+        // The bulk selection, while there is one (plans/BULK.md), as the list shows it.
+        (ops.picked.size > 0 ? ops.picked.has(id) : isSelected) ? 'selected' : '',
         hover ? `drop-${hover}` : '',
-        lifting ? 'lifting' : '',
+        lifting || (ops.lifted && ops.lifted.has(id)) ? 'lifting' : '',
     ]
         .filter(Boolean)
         .join(' ');
@@ -236,7 +240,9 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
         ref=${rowRef}
         style=${`padding-left: ${indent(depth)}; --indent: ${indent(depth)}`}
         data-settles
-        onClick=${() => ops.select(id)}
+        onMouseDown=${(e) => e.shiftKey && e.preventDefault() /* no text selection on Shift */}
+        onClick=${(e) => ops.select(id, e)}
+        ...${longPress(() => ops.select(id, { shiftKey: true }))}
         draggable=${true}
         onDragStart=${(e) => {
             // Two audiences at once: the tree's own drop targets read `ops.drag` (reorganize),
@@ -247,17 +253,24 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
                 live || { doc_id: id, title, format: summary && summary.format },
                 ops.bucket,
             );
-            ops.drag.current = { kind: 'page', id, parentId: parent ? parent.taxonomy_id : null };
+            // Dragging one of several picked pages moves them all (Curtis, 2026-10-22).
+            ops.drag.current = ops.pickedDrag(id, parent ? parent.taxonomy_id : null) || {
+                kind: 'page',
+                id,
+                parentId: parent ? parent.taxonomy_id : null,
+            };
             setLifting(true);
         }}
         onDragEnd=${() => {
             ops.drag.current = null;
+            ops.setLifted(null);
             setLifting(false);
             setHover(null);
         }}
         onDragOver=${(e) => {
             const drag = ops.drag.current;
             if (!drag || drag.id === id || !parent) return;
+            if (drag.kind === 'pages' && drag.items.some((m) => m.id === id)) return;
             e.preventDefault();
             e.stopPropagation();
             const r = e.currentTarget.getBoundingClientRect();
@@ -450,7 +463,11 @@ const UnfiledBin = ({ unfiled, ops }) => {
         class=${over ? 'tree-unfiled drop-hover' : 'tree-unfiled'}
         onDragOver=${(e) => {
             const drag = ops.drag.current;
-            if (!drag || drag.kind !== 'page' || !drag.parentId) return;
+            const filed =
+                drag &&
+                ((drag.kind === 'page' && drag.parentId) ||
+                    (drag.kind === 'pages' && drag.items.some((m) => m.parentId)));
+            if (!filed) return;
             e.preventDefault();
             e.stopPropagation();
             setOver(true);
@@ -512,6 +529,7 @@ export const WikiTree = ({
     tags = [], // the tag filter, ANDed as the list's is; empty when the host has none
     onToggleTag, // a row's tag clicked into or out of that filter; rows show no tags without it
     embedded = false, // inside the host's own column (Writer's tree tab): no head, no toolbar
+    picked = EMPTY_PICKS, // the host's bulk selection (a Set of doc ids): rows show it, Shift-click it
     toolsRef, // given, the host's toolbar reaches `{ newPage, newSection }` through it
 }) => {
     const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
@@ -899,6 +917,7 @@ export const WikiTree = ({
     const completeDrag = async (drop) => {
         const drag = dragRef.current;
         dragRef.current = null;
+        setLifted(null);
         if (!drag) return;
         const fail = (e) =>
             toast(
@@ -907,6 +926,10 @@ export const WikiTree = ({
                 }),
                 { kind: 'error' },
             );
+        if (drag.kind === 'pages') {
+            completeMany(drag.items, drop, fail);
+            return;
+        }
         if (drop.unfile) {
             // Unfiling is pages-only: a section unhooked from every parent would be an
             // invisible orphan, so sections can't land here.
@@ -962,6 +985,86 @@ export const WikiTree = ({
         );
     };
 
+    // Several picked pages, dragged as one (Curtis, 2026-10-22). The drag carries every picked page
+    // the tree shows, in the order it shows them, each with the section it sits in now (its first,
+    // for a page filed twice; none for one in the unfiled bin) - or null, for a row that isn't
+    // one of several picked, which drags alone as it always did.
+    const [lifted, setLifted] = useState(null);
+    const pickedDrag = (id, parentId) => {
+        if (!picked.has(id) || picked.size < 2) return null;
+        const order = [...flatDocs(tree), ...unfiled.map((d) => d.doc_id)].filter(
+            (d, i, all) => picked.has(d) && all.indexOf(d) === i,
+        );
+        const items = order.map((d) => ({
+            id: d,
+            parentId: d === id ? parentId : (parentsOf(tree, d)[0] ?? null),
+        }));
+        setLifted(new Set(order));
+        return { kind: 'pages', id, items };
+    };
+    // Their drop: each placed by `dropPlan` (side by side at the line, in order), and taken out of
+    // the section it came from when that isn't where it lands - shown at once, written in turn.
+    const completeMany = (items, drop, fail) => {
+        if (drop.unfile) {
+            const filed = items.filter((m) => m.parentId);
+            show(
+                (tr) => filed.reduce((t2, m) => withoutMember(t2, m.parentId, m.id), tr),
+                async () => {
+                    for (const m of filed) {
+                        await api(
+                            `/api/identity/${root}/taxonomies/${m.parentId}/members/${m.id}`,
+                            {
+                                method: 'DELETE',
+                            },
+                        );
+                    }
+                },
+                fail,
+            );
+            return;
+        }
+        const dest = drop.intoId || drop.parentNode.taxonomy_id;
+        const destMembers = drop.intoId ? [] : drop.parentNode.members;
+        const plan = drop.intoId
+            ? items.map((m) => ({ id: m.id, index: undefined }))
+            : dropPlan(
+                  destMembers,
+                  items.map((m) => m.id),
+                  drop.refId,
+                  drop.after,
+              );
+        if (!plan.length) return;
+        const from = new Map(items.map((m) => [m.id, m.parentId]));
+        const lift = (m) =>
+            (from.get(m) && memberIn(tree, from.get(m), m)) || {
+                doc_id: m,
+                doc: byId.get(m) || {},
+            };
+        show(
+            (tr) =>
+                plan.reduce((t2, { id: m, index }) => {
+                    const placed = withMember(t2, dest, lift(m), index);
+                    const was = from.get(m);
+                    return was && was !== dest ? withoutMember(placed, was, m) : placed;
+                }, tr),
+            async () => {
+                for (const { id: m, index } of plan) {
+                    await api(`/api/identity/${root}/taxonomies/${dest}/members/${m}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(index === undefined ? {} : { index }),
+                    });
+                    const was = from.get(m);
+                    if (was && was !== dest) {
+                        await api(`/api/identity/${root}/taxonomies/${was}/members/${m}`, {
+                            method: 'DELETE',
+                        });
+                    }
+                }
+            },
+            fail,
+        );
+    };
+
     const ops = {
         docId: selected,
         select: onSelect,
@@ -970,6 +1073,10 @@ export const WikiTree = ({
         byId,
         shows,
         holding,
+        picked,
+        pickedDrag,
+        lifted,
+        setLifted,
         query: hits !== null ? searchQuery : '',
         tags,
         onToggleTag,

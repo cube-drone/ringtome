@@ -24700,3 +24700,37 @@ standing on the row's bottom line, the open one in the panel's own paper so the
 line breaks under it - everything below is that tab's. `.notes-views` in
 apps/notes.css, on groups.css's recipe; the buttons' own `.notes-view` style is
 gone. Checked by screenshot, both tabs open.
+
+## 2026-10-22: multiple select in the tree
+
+"Can we support multiple-select in the tree as well as in the chronological
+view?" (Curtis). The tree tab shares the list's bulk selection (plans/BULK.md):
+Shift-click a page to add or take it away (the open one along with the first), a
+long press does the same on a touch screen, a plain click clears it and opens,
+Escape lets go - the list's own `choose`, which the tree's rows now hand their
+click event (they passed only the id, so Shift was never seen). Picked rows wear
+the selection, and the bulk panel stands where the document would. "select all"
+shows in the tree tab too: it takes the notes the tree shows, the same set the
+list narrows to. Checked in headless Chrome: three pages picked across two
+sections and the unfiled bin, the panel up.
+
+## 2026-10-22: dragging a selection in the tree
+
+"If I select three items and drag them, they should all appear at that new
+location in the tree" (Curtis). Dragging a page that is one of several picked
+carries every picked page the tree shows, in the order it shows them, each with
+the section it sits in now (`pickedDrag`); a page not among the picked still
+drags alone. While it drags, every one of them wears the lifted look, and none
+of them is a drop target. Dropped beside a row, they land side by side at the
+line in that order; dropped on a section, appended to it; on the unfiled bin,
+unfiled. Each is placed by `treewalk::dropPlan` and taken out of the section it
+came from when that isn't where it lands - shown at once, written one member PUT
+(and DELETE) at a time. `dropPlan` counts each index as the node counts it at
+that write: without the page itself, with the ones already placed, and with the
+moved pages not yet placed still where they were; its tests replay every plan
+through `withMember`, the node's own contract.
+
+Checked with a real HTML5 drag in headless Chrome (DevTools drag interception):
+three pages from Agents, Operation Lantern and the unfiled bin, dragged below a
+page in Handouts, landed there in tree order, and were still there after a
+reload.

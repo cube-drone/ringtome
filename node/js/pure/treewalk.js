@@ -157,6 +157,28 @@ export function dropIndex(members, dragId, refId, after) {
     return after ? i + 1 : i;
 }
 
+/// Several pages dropped at once (Curtis, 2026-10-22: "if I select three items and drag them, they
+/// should all appear at that new location"): where each is placed, in order, so they land side by
+/// side at the drop line in the order given - `[{ id, index }]`, one member PUT each, run in turn.
+/// `members` are the destination's as they stand; `refId`/`after` the row dropped beside, or no
+/// `refId` to append. Each index is counted as the node counts it at that write: without the page
+/// itself, with the ones placed before it, and with the moved pages not yet placed still where
+/// they were. The first goes beside `refId`, each after it right after the one before. Nothing
+/// when dropped beside one of its own.
+export function dropPlan(members, ids, refId, after) {
+    if (refId !== undefined && ids.includes(refId)) return [];
+    if (refId === undefined) return ids.map((id) => ({ id, index: undefined }));
+    let list = (members || []).map((m) => m.doc_id);
+    if (!list.includes(refId)) return [];
+    return ids.map((id, k) => {
+        list = list.filter((x) => x !== id);
+        const index =
+            k === 0 ? list.indexOf(refId) + (after ? 1 : 0) : list.indexOf(ids[k - 1]) + 1;
+        list = [...list.slice(0, index), id, ...list.slice(index)];
+        return { id, index };
+    });
+}
+
 // ---- edits, shown ahead of the node (2026-10-13) ----
 //
 // The tree pane changes what's on screen when a page is dragged, made or unfiled, and the writes

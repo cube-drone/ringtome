@@ -864,7 +864,6 @@ export const DocsApp = ({
                         }
                     </div>
                     ${
-                        !treeTab &&
                         docs &&
                         html`<p class="notes-count">
                             ${
@@ -924,6 +923,7 @@ export const DocsApp = ({
                             searchKind=${searchKind}
                             tags=${tagFilter}
                             onToggleTag=${toggleTag}
+                            picked=${pickedSet}
                             reloadKey=${treeReload}
                             showUnfiled=${true}
                             book=${book}

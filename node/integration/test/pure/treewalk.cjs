@@ -8,7 +8,7 @@
 const assert = require('node:assert');
 
 let flatDocs, pathToDoc, sectionIdsUnder, filedDocIds, docsInsideOnly, dropIndex, parentsOf;
-let withMember, withoutMember, memberIn, retitled, sectionsHolding;
+let withMember, withoutMember, memberIn, retitled, sectionsHolding, dropPlan;
 before(async () => {
     ({
         flatDocs,
@@ -23,6 +23,7 @@ before(async () => {
         memberIn,
         retitled,
         sectionsHolding,
+        dropPlan,
     } = await import('../../../js/pure/treewalk.js'));
 });
 
@@ -296,5 +297,68 @@ describe('sectionsHolding (a narrowed tree shows only the way to a match, 2026-1
         const odd = sec('root', [inTree(stub('starters')), dangling('gone')]);
         assert.deepEqual([...sectionsHolding(odd, () => true)], []);
         assert.equal(sectionsHolding(null, () => true).size, 0);
+    });
+});
+
+describe('dropPlan (several pages dragged together, 2026-10-22)', () => {
+    // Apply the plan as the node would: one member PUT at a time, each index counted without
+    // that member - which is exactly what withMember does.
+    const land = (members, plan) => {
+        let tree = sec('root', members);
+        for (const { id, index } of plan) tree = withMember(tree, 'root', leaf(id), index);
+        return tree.members.map((m) => m.doc_id);
+    };
+    const row = (...ids) => ids.map((id) => leaf(id));
+
+    it('lands them side by side at the drop line, in the order given', () => {
+        const members = row('a', 'b', 'c', 'd');
+        assert.deepEqual(land(members, dropPlan(members, ['x', 'y', 'z'], 'b', true)), [
+            'a',
+            'b',
+            'x',
+            'y',
+            'z',
+            'c',
+            'd',
+        ]);
+        assert.deepEqual(land(members, dropPlan(members, ['x', 'y'], 'a', false)), [
+            'x',
+            'y',
+            'a',
+            'b',
+            'c',
+            'd',
+        ]);
+    });
+
+    it('moves pages already in the section, wherever they were, around the ones staying', () => {
+        const members = row('a', 'b', 'c', 'd', 'e');
+        // d and a dragged after c: a was above the line and d below it.
+        assert.deepEqual(land(members, dropPlan(members, ['a', 'd'], 'c', true)), [
+            'b',
+            'c',
+            'a',
+            'd',
+            'e',
+        ]);
+        // ...and before b, with e from the bottom.
+        assert.deepEqual(land(members, dropPlan(members, ['e', 'd'], 'b', false)), [
+            'a',
+            'e',
+            'd',
+            'b',
+            'c',
+        ]);
+    });
+
+    it('appends in order with no row to drop beside; nothing beside one of its own', () => {
+        const members = row('a', 'b');
+        assert.deepEqual(land(members, dropPlan(members, ['x', 'a'], undefined, false)), [
+            'b',
+            'x',
+            'a',
+        ]);
+        assert.deepEqual(dropPlan(members, ['a', 'x'], 'a', true), [], 'dropped on itself');
+        assert.deepEqual(dropPlan(members, ['x'], 'gone', true), [], 'beside a row not here');
     });
 });
