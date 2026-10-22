@@ -168,7 +168,7 @@ async fn expire_peeks(state: &AppState, now: i64, expiry_ms: i64) -> Result<()> 
     Ok(())
 }
 
-async fn evict_one(state: &AppState, root: &str) -> Result<()> {
+pub(crate) async fn evict_one(state: &AppState, root: &str) -> Result<()> {
     state.user_dbs.evict_mirror(root).await?;
     crate::fragments::forget_peek(&state.node_db, root).await?;
     crate::speculative::forget_fetch(&state.node_db, root).await?;

@@ -85,6 +85,24 @@ pub fn service_allows_suffix(svc: u32) -> bool {
 /// the speaker - nothing else of theirs.
 pub const ROOM_SCOPE: &[u32] = &[service::IDENTITY_PUBLIC, service::PROFILE_PUBLIC, service::CHAT];
 
+// A persona held here ONLY for a room (security pass, 2026-10-21). The room lane is how a
+// newcomer's chain reaches the room's node, so it takes personas nobody here has heard of -
+// and it took them at a follow's budget, from any fresh key that named an open room, into a
+// new database each: the one way left to fill a node's disk without an account. A room-only
+// persona is now small, few, and gone when it says nothing.
+
+/// One room-only exchange's read: a newcomer's identity, profile and lines in one room fit
+/// many times over; a longer history arrives over passes, as any cut one does.
+const ROOM_ONLY_ENTRIES: u64 = 500;
+const ROOM_ONLY_BYTES: u64 = 2 * 1024 * 1024;
+/// Past this on disk, a room-only persona's pushes are read no further.
+const ROOM_ONLY_MAX_BYTES: i64 = 16 * 1024 * 1024;
+/// New room-only personas an hour, for one room and across the node. Between them and the
+/// eviction sweep's hour of quiet (`eviction`), they bound what strangers can make here.
+const ROOM_NEWCOMERS_PER_ROOM: u32 = 20;
+const ROOM_NEWCOMERS_PER_NODE: u32 = 100;
+const HOUR_MS: i64 = 60 * 60 * 1000;
+
 /// The content chains a FOLLOW may hold as a suffix (PROJECT_PLAN's Peeks, ruling 8, the design act the
 /// suffix list's own comment named): the posts chain, on a persona this node does not host.
 /// The oldest held entry's `prev_hash` commits to the whole prefix, so everything held
@@ -725,6 +743,7 @@ const INGEST_BATCH_ENTRIES: usize = 2048;
 
 /// Read the peer's half of an exchange, ingesting in bounded batches (see
 /// `INGEST_BATCH_ENTRIES`). Ends at the peer's `Done` or a clean end of stream.
+#[allow(clippy::too_many_arguments)]
 async fn ingest_stream(
     db: &Db,
     root: [u8; 32],
@@ -732,6 +751,7 @@ async fn ingest_stream(
     peer_proven: bool,
     identity_ceiling: Option<usize>,
     allowed: Option<&[u32]>,
+    rooms: Option<&[[u8; 16]]>,
     budget: &mut crate::net::admission::Budget,
 ) -> Result<IngestOutcome> {
     let mut total = IngestOutcome::default();
@@ -751,7 +771,7 @@ async fn ingest_stream(
                 if batch.len() >= INGEST_BATCH_ENTRIES {
                     let full = std::mem::take(&mut batch);
                     total.absorb(
-                        ingest_whole(db, root, full, peer_proven, identity_ceiling, allowed)
+                        ingest_whole(db, root, full, peer_proven, identity_ceiling, allowed, rooms)
                             .await?,
                     );
                     if total.over_ceiling {
@@ -765,7 +785,9 @@ async fn ingest_stream(
         }
     }
     if !batch.is_empty() {
-        total.absorb(ingest_whole(db, root, batch, peer_proven, identity_ceiling, allowed).await?);
+        total.absorb(
+            ingest_whole(db, root, batch, peer_proven, identity_ceiling, allowed, rooms).await?,
+        );
     }
     Ok(total)
 }
@@ -782,11 +804,22 @@ async fn ingest_whole(
     peer_proven: bool,
     identity_ceiling: Option<usize>,
     allowed: Option<&[u32]>,
+    rooms: Option<&[[u8; 16]]>,
 ) -> Result<IngestOutcome> {
     let db = db.clone();
     let allowed = allowed.map(<[u32]>::to_vec);
+    let rooms = rooms.map(<[[u8; 16]]>::to_vec);
     tokio::spawn(async move {
-        ingest_batch(&db, root, raw, peer_proven, identity_ceiling, allowed.as_deref()).await
+        ingest_batch_in(
+            &db,
+            root,
+            raw,
+            peer_proven,
+            identity_ceiling,
+            allowed.as_deref(),
+            rooms.as_deref(),
+        )
+        .await
     })
     .await
     .map_err(|e| anyhow!("an ingest batch stopped: {e}"))?
@@ -799,6 +832,21 @@ pub(crate) async fn ingest_batch(
     peer_proven: bool,
     identity_ceiling: Option<usize>,
     allowed: Option<&[u32]>,
+) -> Result<IngestOutcome> {
+    ingest_batch_in(db, root, raw, peer_proven, identity_ceiling, allowed, None).await
+}
+
+/// `ingest_batch`, held to `rooms` as well: when named, a room chain is admitted only for one
+/// of them. A room-only exchange names its room, and once named any room's lines came through
+/// it (security pass, 2026-10-21).
+pub(crate) async fn ingest_batch_in(
+    db: &Db,
+    root: [u8; 32],
+    raw: Vec<Vec<u8>>,
+    peer_proven: bool,
+    identity_ceiling: Option<usize>,
+    allowed: Option<&[u32]>,
+    rooms: Option<&[[u8; 16]]>,
 ) -> Result<IngestOutcome> {
     // One batch at a time per identity: concurrent exchanges (eager push makes simultaneous
     // bidirectional syncs routine) would race between head-read and insert and die on the
@@ -829,8 +877,11 @@ pub(crate) async fn ingest_batch(
                 // chains from an unproven peer are refused on the same line, for the reason
                 // the docs above give.
                 let svc = e.entry().chain.service;
+                let other_room = svc == service::CHAT
+                    && rooms.is_some_and(|r| e.entry().chain.instance.is_none_or(|i| !r.contains(&i)));
                 if allowed.is_some_and(|a| !a.contains(&svc))
                     || (!peer_proven && is_private_service(svc))
+                    || other_room
                 {
                     rejected += 1;
                 } else if e.entry().chain.service == service::IDENTITY_PUBLIC {
@@ -2170,7 +2221,7 @@ async fn exchange_on(
     let mut send_budget = state.admission.budget();
     let allowed = if wanted.is_empty() { None } else { Some(wanted) };
     let outcome =
-        ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget)
+        ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, None, &mut read_budget)
             .await?;
     if outcome.over_ceiling {
         conn.close(3u8.into(), b"identity chain over the ceiling");
@@ -2558,10 +2609,34 @@ async fn serve_on(
 
     // create, and rightly: the `wanted` gate above is this door's Pull-Not-Push enforcement,
     // so we reach here only for a persona this node hosts, has fetched, or whose followers
-    // live here. The one branch that actually MINTS is the third - somebody here follows
+    // live here - or one that named a room this node is in, held to the room-only limits
+    // above. The one branch that actually MINTS is the third - somebody here follows
     // them and their content has never arrived - and a mirror appearing then is the doctrine
     // working, not being dodged: "Follow is the demand signal: when a node's own users follow
     // an identity, the node fronts it." A local human asked; this is the asking arriving.
+    // Held here for nothing but a room (above): the newcomer limits, before a database is
+    // made for them, and the rooms named here are the only rooms their push may write to.
+    let room_only = !agented && followers.is_empty() && room_ok;
+    let mut rooms_named_here: Vec<[u8; 16]> = Vec::new();
+    if room_only {
+        for i in &rooms {
+            if crate::chat::rooms_here(&state, &[*i]).await {
+                rooms_named_here.push(*i);
+            }
+        }
+    }
+    let newcomer = room_only && state.user_dbs.get(&root_hex).await?.is_none();
+    if newcomer {
+        let room = hex::encode(rooms_named_here.first().copied().unwrap_or_default());
+        let limits = &state.rate_limiter;
+        if limits.check("room-newcomer", &room, ROOM_NEWCOMERS_PER_ROOM, HOUR_MS).await.is_err()
+            || limits.check("room-newcomer", "node", ROOM_NEWCOMERS_PER_NODE, HOUR_MS).await.is_err()
+        {
+            tracing::info!(root = %root_hex, %room, "room lane: refusing a newcomer over the hour's limit");
+            conn.close(4u8.into(), b"too many newcomers to this room; try later");
+            return Ok(());
+        }
+    }
     let db = state.user_dbs.create(&root_hex).await?;
     let peer_proven = peer_is_member(&db, root, &peer_proof, &peer_id, &our_id).await;
     let instances = crate::chat::instances_dialer_may_hold(
@@ -2733,9 +2808,41 @@ async fn serve_on(
     // connections from anyone who speaks the ALPN, so this is the buffer a stranger drives.
     let ceiling = if agented { None } else { Some(state.config.identity_chain_ceiling) };
     let mut read_budget = state.admission.budget();
-    let outcome =
-        ingest_stream(&db, root, &mut recv, peer_proven, ceiling, allowed, &mut read_budget)
-            .await?;
+    let rooms_filter = if room_only {
+        // A room-only persona's read is small, and nothing once it is large here.
+        let limits = state.admission.limits();
+        read_budget = if state.user_dbs.disk_bytes(&root_hex) > ROOM_ONLY_MAX_BYTES {
+            crate::net::admission::Budget::new(0, 0)
+        } else {
+            crate::net::admission::Budget::new(
+                ROOM_ONLY_ENTRIES.min(limits.budget_entries),
+                ROOM_ONLY_BYTES.min(limits.budget_bytes),
+            )
+        };
+        Some(rooms_named_here.as_slice())
+    } else {
+        None
+    };
+    let outcome = ingest_stream(
+        &db,
+        root,
+        &mut recv,
+        peer_proven,
+        ceiling,
+        allowed,
+        rooms_filter,
+        &mut read_budget,
+    )
+    .await?;
+    // A newcomer whose push put not one line in a room named here was never a participant:
+    // its database goes now, not after the eviction sweep's hour.
+    if newcomer && !spoke_in(&db, &rooms_named_here).await {
+        tracing::info!(root = %root_hex, "room lane: a newcomer said nothing in the room; forgotten");
+        if let Err(e) = crate::eviction::evict_one(&state, &root_hex).await {
+            tracing::warn!(root = %root_hex, "could not forget a silent newcomer: {e:#}");
+        }
+        return Ok(());
+    }
     if outcome.over_ceiling {
         conn.close(3u8.into(), b"identity chain over the ceiling");
         bail!("{root_hex}: identity chain over the ceiling - refused");
@@ -3322,6 +3429,23 @@ pub fn endpoint_addr(endpoint_id: &str, addrs: &[String]) -> Result<EndpointAddr
     Ok(ea)
 }
 
+/// Has this persona a line on any of `rooms`' chains here?
+async fn spoke_in(db: &Db, rooms: &[[u8; 16]]) -> bool {
+    for room in rooms {
+        let row: Option<(i64,)> = db
+            .fetch_optional(
+                "SELECT 1 FROM entries WHERE service = ?1 AND instance = ?2 LIMIT 1",
+                (i64::from(service::CHAT), crate::db::instance_blob(Some(*room))),
+            )
+            .await
+            .unwrap_or(None);
+        if row.is_some() {
+            return true;
+        }
+    }
+    false
+}
+
 pub async fn mark_synced(node_db: &Db, root_hex: &str, endpoint_id: &str) -> Result<()> {
     node_db
         .execute(
@@ -3620,6 +3744,60 @@ mod tests {
         assert!(other.is_empty(), "another room's lane does not");
         let mesh = missing_plan(&db, &[], true, &[], &[], Ask::default()).await.unwrap();
         assert_eq!(mesh.len(), 1, "the persona's own computers carry it, whatever the scope");
+    }
+
+    /// The 2026-10-21 hole: a room-only exchange named room A and wrote room B. Held to the
+    /// rooms it named, only A's line is admitted; unheld, both are, as before.
+    #[tokio::test]
+    async fn a_room_only_push_writes_only_the_rooms_it_named() {
+        let source = crate::db::test_user_db().await;
+        let sk = SigningKey::from_bytes(&[22u8; 32]);
+        let root = sk.verifying_key().to_bytes();
+        let (named, other) = ([7u8; 16], [8u8; 16]);
+        for room in [named, other] {
+            let msg = ringtome_proto::registry::ChatMessage {
+                room_author: [9u8; 32],
+                body: b"hi".to_vec(),
+                sealed: false,
+                refs: Vec::new(),
+                mentions: Vec::new(),
+                reacts_to: None,
+                retracts: None,
+                edits: None,
+                notice: None,
+                made_with: None,
+            };
+            crate::record::imaol::append_on(
+                &source,
+                &sk,
+                service::CHAT,
+                Some(room),
+                entry_type::CHAT_MESSAGE,
+                Payload::Inline(msg.encode().unwrap()),
+            )
+            .await
+            .unwrap();
+        }
+        let mut raw = Vec::new();
+        for room in [named, other] {
+            for e in stored_chain(&source, &root, service::CHAT, Some(room)).await.unwrap() {
+                raw.push(e.bytes().to_vec());
+            }
+        }
+        assert_eq!(raw.len(), 2);
+
+        let held = crate::db::test_user_db().await;
+        let outcome =
+            ingest_batch_in(&held, root, raw.clone(), false, None, Some(ROOM_SCOPE), Some(&[named]))
+                .await
+                .unwrap();
+        assert_eq!((outcome.received, outcome.rejected), (1, 1), "only the named room's line");
+        assert!(spoke_in(&held, &[named]).await);
+        assert!(!spoke_in(&held, &[other]).await, "the other room was never written");
+
+        let unheld = crate::db::test_user_db().await;
+        let outcome = ingest_batch(&unheld, root, raw, false, None, Some(ROOM_SCOPE)).await.unwrap();
+        assert_eq!(outcome.received, 2, "a lane not held to rooms takes both, as before");
     }
 
     async fn stored_hashes(db: &Db, author: &[u8; 32], svc: u32) -> Vec<[u8; 32]> {

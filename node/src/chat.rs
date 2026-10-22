@@ -26,7 +26,8 @@
 use anyhow::{anyhow, Context, Result};
 use ringtome_proto::registry::{entry_type, service, ChatMessage};
 use ringtome_proto::Payload;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::db::Db;
@@ -75,6 +76,17 @@ const LOCAL_BEACON_FRESH_MS: i64 = 12_000;
 const PRESENCE_TTL_MS: i64 = 30_000;
 const TYPING_TTL_MS: i64 = 6_000;
 
+// The live lane's limits (security pass, 2026-10-21). A topic's frames are anybody's who can
+// join it: a message from a speaker this node didn't hold started a whole room sync, one per
+// frame, and a beacon was a bare 32-byte root - anyone shown here or typing, and a map that
+// only grew.
+
+/// The fewest milliseconds between two heals of one room (`heal`): however many frames ask,
+/// a room is synced at most this often, one at a time.
+const HEAL_FLOOR: std::time::Duration = std::time::Duration::from_secs(5);
+/// Who a room's presence may hold at once, and the speakers it remembers having checked.
+const PRESENCE_KEPT: usize = 512;
+
 /// What a room's live lane tells the sockets watching it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LiveEvent {
@@ -104,6 +116,11 @@ pub struct RoomLive {
     /// announce again when a neighbor arrives (see `run_topic`).
     local: Mutex<HashMap<String, i64>>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Speakers checked and found known here (`known_speaker`), so a beacon costs no read.
+    known: Mutex<HashSet<String>>,
+    /// A heal is running (`heal`), and another was asked for while it did.
+    healing: AtomicBool,
+    heal_wanted: AtomicBool,
 }
 
 impl RoomLive {
@@ -133,15 +150,24 @@ impl RoomLive {
     /// Note a beacon: `Some(true)` typing, `Some(false)` stopped, `None` a plain "still
     /// here" that leaves the typing state alone (a heartbeat mid-sentence must not clear it).
     fn note_presence(&self, root: &str, typing: Option<bool>) {
-        let now = crate::clock::now_ms();
         let mut map = self.presence.lock().expect("presence poisoned");
-        let p = map.entry(root.to_string()).or_insert(Presence { seen_ms: now, typing_ms: 0 });
-        p.seen_ms = now;
-        match typing {
-            Some(true) => p.typing_ms = now,
-            Some(false) => p.typing_ms = 0,
-            None => {}
-        }
+        note_beacon(&mut map, root, typing, crate::clock::now_ms());
+    }
+}
+
+/// One beacon into a room's presence map, which holds only who is still here: a beacon older
+/// than the TTL says nobody is, so it goes, and past `PRESENCE_KEPT` a newcomer waits for room.
+fn note_beacon(map: &mut HashMap<String, Presence>, root: &str, typing: Option<bool>, now: i64) {
+    map.retain(|_, p| now - p.seen_ms < PRESENCE_TTL_MS);
+    if map.len() >= PRESENCE_KEPT && !map.contains_key(root) {
+        return;
+    }
+    let p = map.entry(root.to_string()).or_insert(Presence { seen_ms: now, typing_ms: 0 });
+    p.seen_ms = now;
+    match typing {
+        Some(true) => p.typing_ms = now,
+        Some(false) => p.typing_ms = 0,
+        None => {}
     }
 }
 
@@ -240,6 +266,9 @@ pub async fn join(
         presence: Mutex::new(HashMap::new()),
         local: Mutex::new(HashMap::new()),
         task: Mutex::new(None),
+        known: Mutex::new(HashSet::new()),
+        healing: AtomicBool::new(false),
+        heal_wanted: AtomicBool::new(false),
     });
     let task = tokio::spawn(run_topic(state.clone(), *doc, receiver, live.clone()));
     *live.task.lock().expect("task poisoned") = Some(task);
@@ -297,11 +326,7 @@ async fn run_topic(
             }
             Ok(iroh_gossip::api::Event::Lagged) => {
                 // Dropped frames are the sync lane's to heal: pull the room now.
-                let (viewer, author) = (live.viewer_root.clone(), live.room_author.clone());
-                let state = state.clone();
-                tokio::spawn(async move {
-                    let _ = sync_room(&state, &viewer, &author, &doc).await;
-                });
+                heal(&state, &doc, &live);
             }
             Ok(_) => {}
             Err(e) => {
@@ -321,6 +346,11 @@ async fn on_frame(state: &AppState, doc: &[u8; 16], frame: &[u8], live: &Arc<Roo
     let root_hex = hex::encode(root);
     match kind {
         FRAME_PRESENCE => {
+            // Unsigned, so only a speaker this node knows is shown: a stranger's beacon could
+            // name anyone. Somebody new shows once their first line arrives.
+            if !known_speaker(state, doc, live, &root_hex).await {
+                return;
+            }
             let typing = match payload.first() {
                 Some(1) => Some(true),
                 Some(0) => Some(false),
@@ -398,15 +428,59 @@ async fn ingest_live(
         return;
     }
     // Unknown speaker, or a link this node lacks: the durable lane heals it.
-    let (viewer, author) = (live.viewer_root.clone(), live.room_author.clone());
-    let state = state.clone();
-    let doc = *doc;
-    let events = live.events.clone();
+    heal(state, doc, live);
+}
+
+/// Pull the room through the durable lane, at most one sync at a time and one per
+/// `HEAL_FLOOR`: asks that arrive while one runs are answered by the next. A frame from a
+/// speaker this node didn't hold used to start a whole room sync each, unsigned frames
+/// included, since the signature can't be checked without the speaker's chain.
+fn heal(state: &AppState, doc: &[u8; 16], live: &Arc<RoomLive>) {
+    live.heal_wanted.store(true, Ordering::SeqCst);
+    if live.healing.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let (state, doc, live) = (state.clone(), *doc, live.clone());
     tokio::spawn(async move {
-        if sync_room(&state, &viewer, &author, &doc).await.is_ok() {
-            let _ = events.send(LiveEvent::Message);
+        loop {
+            while live.heal_wanted.swap(false, Ordering::SeqCst) {
+                if sync_room(&state, &live.viewer_root, &live.room_author, &doc).await.is_ok() {
+                    let _ = live.events.send(LiveEvent::Message);
+                }
+                tokio::time::sleep(HEAL_FLOOR).await;
+            }
+            live.healing.store(false, Ordering::SeqCst);
+            // An ask that landed between the last look and standing down is still answered.
+            if !live.heal_wanted.load(Ordering::SeqCst) || live.healing.swap(true, Ordering::SeqCst)
+            {
+                return;
+            }
         }
     });
+}
+
+/// Does this node know `root` as a speaker - a line of theirs in this room, or anything of
+/// theirs held? Remembered once true (to `PRESENCE_KEPT`), so a beacon costs no read.
+async fn known_speaker(state: &AppState, doc: &[u8; 16], live: &RoomLive, root: &str) -> bool {
+    if live.known.lock().expect("known speakers poisoned").contains(root) {
+        return true;
+    }
+    let spoke: Option<(i64,)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT 1 FROM room_messages WHERE speaker_root = ?1 AND room_doc = ?2 LIMIT 1",
+            (root, hex::encode(doc)),
+        )
+        .await
+        .unwrap_or(None);
+    let known = spoke.is_some() || state.user_dbs.db_mtime_ms(root).is_some();
+    if known {
+        let mut set = live.known.lock().expect("known speakers poisoned");
+        if set.len() < PRESENCE_KEPT {
+            set.insert(root.to_string());
+        }
+    }
+    known
 }
 
 fn entry_frame(root_hex: &str, bytes: &[u8]) -> Option<bytes::Bytes> {
@@ -3670,6 +3744,25 @@ pub async fn sync_open_rooms(state: &AppState, root_hex: &str) -> Result<usize> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 2026-10-21: every root ever beaconed stayed in the map, so a stranger naming a fresh
+    /// one per frame grew it for as long as the topic lived. Now the stale go, and it is
+    /// bounded.
+    #[test]
+    fn a_rooms_presence_holds_only_who_is_still_here() {
+        let mut map = HashMap::new();
+        note_beacon(&mut map, "old", None, 0);
+        note_beacon(&mut map, "new", Some(true), PRESENCE_TTL_MS);
+        assert!(!map.contains_key("old"), "a beacon past the TTL is gone");
+        assert_eq!(map["new"].typing_ms, PRESENCE_TTL_MS);
+        let now = PRESENCE_TTL_MS + 1;
+        for n in 0..PRESENCE_KEPT * 2 {
+            note_beacon(&mut map, &format!("fresh-{n}"), None, now);
+        }
+        assert_eq!(map.len(), PRESENCE_KEPT, "bounded, however many roots are named");
+        note_beacon(&mut map, "new", Some(false), now);
+        assert_eq!(map["new"].typing_ms, 0, "one already here is still heard");
+    }
 
     /// A reaction is one emoji or one sticker, and nothing else (2026-09-28): a sticker is exactly one
     /// picture embed - the speaker's own private picture when said, a public picture once baked (or

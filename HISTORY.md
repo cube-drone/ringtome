@@ -24551,3 +24551,58 @@ one key, so no small number is safe, and with keys free a per-key cap only
 multiplies a flood rather than bounding it. The bounds that matter are the
 deadlines, the idle close, the stranger/known pools and the reserve. Gate: the
 `a peek's footprint and expiry` area, alone.
+
+## 2026-10-21: strangers on the room lane, and the live lane's limits
+
+Item 9 of the security pass, the last way to fill a node's disk without an
+account. The room lane is how a newcomer's chain reaches an open room's node, so
+its gate admits personas nobody here has heard of, and it asked only whether any
+room named was one this node is in (`room_ok`), never whether the persona had
+anything to do with it. A fresh key naming an open room, from the public room
+directory, got a new database (`user_dbs.create`) and a follow's budget, 5,000
+entries / 64 MB an exchange; ingest filtered by service, not by room, so having
+named room A it could write any room. The comment above `create` still said only
+hosted, fetched or followed personas reached it.
+
+The lane (`net/sync.rs`):
+
+- **Only the named rooms are written.** A room-only exchange's chat entries are
+  admitted for the rooms it named that are here, and no others
+  (`ingest_batch_in`, beside `ingest_batch`, whose callers are unchanged).
+- **A room-only persona is small.** 500 entries / 2 MiB an exchange
+  (`ROOM_ONLY_*`, or the node's own budget if smaller), and nothing more read
+  once it holds 16 MiB here. A longer history arrives over passes, as any cut one
+  does.
+- **New room-only personas are few.** 20 an hour per room, 100 across the node
+  (the rate limiter, so not under `RINGTOME_LOCAL_TEST`); past them the
+  connection is closed with its reason.
+- **A newcomer that says nothing is forgotten at once.** If its push put no line
+  in a room named here, its database goes at the end of the exchange
+  (`eviction::evict_one`). The eviction sweep already retires room-only personas
+  after an hour's quiet; nothing there changed, and a room's history outlives
+  its speakers' chains in `room_messages`.
+
+The live lane (`chat.rs`):
+
+- **One heal per room at a time.** A frame from a speaker this node didn't hold
+  started a whole `sync_room` each, unsigned ones included (the signature can't
+  be checked without the speaker's chain). `heal` runs at most one per room,
+  answers every ask that arrived meanwhile with the next, and waits five seconds
+  between (`HEAL_FLOOR`); `Lagged` goes through it too.
+- **Presence only from speakers this node knows**: a line in this room in the
+  memo, or anything of theirs held (`known_speaker`, remembered). Beacons are
+  unsigned 32-byte roots, so anyone could show anyone here or typing; now a
+  stranger's beacon is dropped, and somebody new shows once their first line
+  arrives. A participant on another node who has never spoken in the room is no
+  longer shown as here.
+- **The presence map holds only who is still here**: stale beacons go on every
+  note, and it holds at most 512 (`note_beacon`).
+
+Signed beacons would close the spoof for known speakers too, and need a wire
+change across every node and browser; not done.
+
+Tests: `net::sync::a_room_only_push_writes_only_the_rooms_it_named`,
+`chat::a_rooms_presence_holds_only_who_is_still_here`; every chat and room
+acceptance area (46). The newcomer limits and the silent newcomer's cleanup have
+no rig claim: the limiter is off in local-test mode, and a crafted push needs a
+sync client the rig doesn't have. Gate: `just ci`.
