@@ -31,6 +31,7 @@ import {
     moveTargets,
     newNotebookName,
     soundsAmong,
+    wordsAmong,
 } from '../pure/bulk.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
@@ -123,6 +124,7 @@ export const BulkPanel = ({
     const mine = actionable(docs);
     const sounds = soundsAmong(docs);
     const leftAlone = docs.length - mine.length;
+    const words = wordsAmong(docs);
     const busy = !!running;
 
     /// Run one action over `targets`, and say how it went: `done` on success ("tagged {n}"), and on
@@ -371,6 +373,10 @@ export const BulkPanel = ({
             head &&
             html`<header class="bulk-head">
             <h2 class="bulk-count">${t('doc.bulk.n-selected', '{n} selected', { n: docs.length })}</h2>
+            ${
+                words !== null &&
+                html`<span class="bulk-words">${t('doc.bulk.n-words', '{n} words', { n: words.toLocaleString() })}</span>`
+            }
             <button class="bulk-clear" onClick=${onClear} title=${t('doc.bulk.clear-title', 'clear the selection (Escape)')}>
                 <${Icons.close} /> ${t('doc.bulk.clear', 'clear')}
             </button>

@@ -24854,3 +24854,31 @@ remembered port is taken; picking another", for a refused migration.
 Tests: desktop `only_a_taken_port_is_retried`,
 `a_newer_versions_data_is_said_plainly`. The installed 0.5.2 itself is fixed by
 installing a release past rung 107.
+
+## 2026-10-23 - Writer's toolbar fits its column
+
+Writer's "new note" and "new section" read "+ note" and "+ section" (Curtis: the
+toolbar "tends to bleed into the second column"). Copy only; `ePub` is
+unchanged.
+
+## 2026-10-23 - A selection says how many words it is
+
+Curtis: "When I select multiple documents, I'd love to see a word count for
+those documents." The bulk panel's head reads "3 selected", then "1,234 words"
+beside it (`wordsAmong`, pure/bulk.js), in the reader's own number format; a
+selection with no words in it (drawings, sounds) says no count at all.
+
+- **Every list row carries `words`** (`DocSummary`), the count the search index
+  already kept for the length tags: `private_implicit_tags` returns an
+  `Implicit { tags, words }` per document instead of the tags alone, so no new
+  read. Absent for drawings, media and the built-ins.
+
+- **A new row shape resends every row** (`STREAM_ROW_SHAPE`, routes.rs): the
+  count never showed on Curtis's dev node after a restart, because a reconnect
+  whose chains hadn't moved was "live" and shipped no documents - the mirror
+  kept its rows from before `words`. The cursor now hashes a row-shape number
+  (bump it when a streamed row changes) and the crate version, so the first
+  connect after either is a snapshot.
+
+Tests: pure `counts the words between them...`; implicit_tags.cjs asserts the
+row's count (3 words; 10 then 80 as a note grows; none on a picture).

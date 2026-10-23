@@ -1276,11 +1276,14 @@ impl Documents<'_> {
         Ok((rows, undecryptable))
     }
 
-    /// Every private document's implicit tags (`documents::IMPLICIT_TAGS`), keyed by doc id;
+    /// Every private document's implicit tags (`documents::IMPLICIT_TAGS`) and word count, keyed
+    /// by doc id;
     /// a deleted document is no picture for anything to hold. Refreshes the search rows first:
     /// their refresh is what counts a changed note's words, and a list read without it would
     /// tag the note by its last count (a clean refresh is one query and some hashing).
-    pub async fn implicit_tags(&self) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
+    pub async fn implicit_tags(
+        &self,
+    ) -> Result<BTreeMap<[u8; 16], crate::record::documents::Implicit>, AppError> {
         self.search_rows().await?;
         self.implicit_tags_as_indexed().await
     }
@@ -1291,7 +1294,7 @@ impl Documents<'_> {
     /// stream keeps the index fresh.
     pub async fn implicit_tags_as_indexed(
         &self,
-    ) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
+    ) -> Result<BTreeMap<[u8; 16], crate::record::documents::Implicit>, AppError> {
         let deleted: std::collections::HashSet<[u8; 16]> =
             self.deleted().await?.into_iter().collect();
         crate::record::documents::private_implicit_tags(

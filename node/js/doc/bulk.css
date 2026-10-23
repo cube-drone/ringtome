@@ -18,6 +18,12 @@
     font-size: 1.1rem;
 }
 
+/* The selection's word count, beside how many are selected: said, not shouted. */
+.bulk-words {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+}
+
 .bulk-clear {
     display: inline-flex;
     align-items: center;

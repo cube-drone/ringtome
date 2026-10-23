@@ -76,6 +76,8 @@ describe('implicit tags: image, video, audio for what a thing holds', function (
         const w = await row(plain);
         assert.ok(!w.tags.includes('image'));
         assert.deepEqual(w.implicit, ['micro'], 'three words: micro, and no picture');
+        assert.equal(w.words, 3, 'and its row counts them (the bulk panel sums a selection)');
+        assert.equal(p.words, undefined, 'a picture has no words to count');
     });
 
     it('is found by the tagged read, though no statement names it', async () => {
@@ -166,6 +168,7 @@ describe('implicit tags: image, video, audio for what a thing holds', function (
         await rewrite(grow, many(80));
         const r = await row(grow);
         assert.deepEqual(r.implicit, ['short'], '80 words');
+        assert.equal(r.words, 80, 'and the count with it');
         assert.ok(!r.tags.includes('micro'), 'and micro is gone');
     });
 

@@ -2375,15 +2375,25 @@ fn implicit_of(
     IMPLICIT_TAGS.into_iter().filter(|t| have.contains(t)).collect()
 }
 
-/// Every private document's implicit tags, off the memoized heads, each head's `refs`, and the
-/// search rows' word counts - three reads, no body opened. The counts are as fresh as the search
-/// index's last refresh ([`search_rows`]; the stream refreshes it before it builds the list).
-/// `gone` are documents to count as absent (the deleted). Only documents that have any appear.
+/// What a private document holds, as its list row says it: its implicit tags, and how many words
+/// it is when it is words (`None` for a drawing or a medium, which have none to count) - the bulk
+/// panel sums them for a selection (Curtis, 2026-10-23).
+#[derive(Clone, Default)]
+pub struct Implicit {
+    pub tags: Vec<&'static str>,
+    pub words: Option<i64>,
+}
+
+/// Every private document's implicit tags and word count, off the memoized heads, each head's
+/// `refs`, and the search rows' word counts - three reads, no body opened. The counts are as fresh
+/// as the search index's last refresh ([`search_rows`]; the stream refreshes it before it builds
+/// the list). `gone` are documents to count as absent (the deleted). Only documents that have
+/// either appear.
 pub async fn private_implicit_tags(
     db: &Db,
     keys: &EpochKeys,
     gone: &HashSet<[u8; 16]>,
-) -> Result<BTreeMap<[u8; 16], Vec<&'static str>>, AppError> {
+) -> Result<BTreeMap<[u8; 16], Implicit>, AppError> {
     catch_up(db, keys).await?;
     // The three reads kept against their tables (plans/CACHE.md, Stage 8): every list and tree
     // read and the stream's gather made them, the join ~280 ms a time on the live server. The
@@ -2412,10 +2422,11 @@ pub async fn private_implicit_tags(
         .iter()
         .map(|(id, own)| {
             let named = refs.get(id).into_iter().flatten().map(|r| kind.get(r).copied().flatten());
-            let length = words.get(id.as_slice()).copied().and_then(length_tag);
-            (*id, implicit_of(&[*own, length], named))
+            let count = words.get(id.as_slice()).copied();
+            let length = count.and_then(length_tag);
+            (*id, Implicit { tags: implicit_of(&[*own, length], named), words: count })
         })
-        .filter(|(_, tags)| !tags.is_empty())
+        .filter(|(_, held)| !held.tags.is_empty() || held.words.is_some())
         .collect())
 }
 

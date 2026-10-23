@@ -846,12 +846,12 @@ export const DocsApp = ({
                     }
                     <div class="notes-tools">
                         <button class="notes-tool jag-line" data-settles disabled=${busy} onClick=${() => createNew()}>
-                            <${Icons.pageNew} /> ${busy ? '…' : t('apps.notes.new-thing', 'new {thing}', { thing: noun })}
+                            <${Icons.pageNew} /> ${busy ? '…' : t('apps.notes.new-thing', '+ {thing}', { thing: noun })}
                         </button>
                         ${
                             treeTab &&
                             html`<button class="notes-tool jag-line" onClick=${() => treeTools.current && treeTools.current.newSection(null)}>
-                            <${Icons.sectionNew} /> ${t('apps.notes.new-section', 'new section')}
+                            <${Icons.sectionNew} /> ${t('apps.notes.new-section', '+ section')}
                         </button>`
                         }
                         ${

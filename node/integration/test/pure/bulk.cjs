@@ -95,6 +95,18 @@ describe('what an action touches', () => {
         ]);
     });
 
+    it('counts the words between them, and none for a selection with no words', () => {
+        const docs = [
+            doc('a', [], { words: 120 }),
+            doc('b', [], { words: 0 }),
+            doc('c', [], {}), // a drawing: no count of its own
+            doc('d', [], { words: 1000 }),
+        ];
+        assert.equal(B.wordsAmong(docs), 1120);
+        assert.equal(B.wordsAmong([docs[2]]), null);
+        assert.equal(B.wordsAmong([]), null);
+    });
+
     it('combines the tags, commonest first, then by name', () => {
         const docs = [
             doc('a', [], { tags: ['oats', 'hay'] }),

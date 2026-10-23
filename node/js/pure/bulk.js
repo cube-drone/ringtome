@@ -56,6 +56,15 @@ export function combinedTags(docs) {
     return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
+/// How many words the documents are between them (Curtis, 2026-10-23: "when I select multiple
+/// documents, I'd love to see a word count"), off each row's `words` - the node's count, which
+/// only words have. `null` when none of them is words: a selection of drawings has no count to
+/// show, rather than a count of nothing.
+export function wordsAmong(docs) {
+    const counted = docs.filter((d) => d && typeof d.words === 'number');
+    return counted.length ? counted.reduce((sum, d) => sum + d.words, 0) : null;
+}
+
 /// The ones that carry `tag` - what removing it writes to.
 export const carrying = (docs, tag) => docs.filter((d) => (d.tags || []).includes(tag));
 

@@ -8221,6 +8221,10 @@ struct DocSummary {
     /// so every filter sees them, and here so the tag editor offers no remove on them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     implicit: Vec<&'static str>,
+    /// How many words it is, when it is words (`documents::word_count`, as the search index last
+    /// counted): the bulk panel sums a selection's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    words: Option<i64>,
     fields: std::collections::BTreeMap<String, String>,
     /// The document's bucket memberships (its projects/notebooks) - the axis the client scopes
     /// search and tag-filters to. Joined here like tags, from a separate namespace. Empty when
@@ -8249,10 +8253,11 @@ fn summarize(
     annots: &std::collections::BTreeMap<String, crate::record::store::AnnotationRow>,
     buckets: &std::collections::BTreeMap<String, Vec<String>>,
     pinned: &std::collections::BTreeSet<[u8; 16]>,
-    implicit: &std::collections::BTreeMap<[u8; 16], Vec<&'static str>>,
+    implicit: &std::collections::BTreeMap<[u8; 16], crate::record::documents::Implicit>,
 ) -> DocSummary {
     let is_pinned = pinned.contains(&row.doc_id);
-    let implicit = implicit.get(&row.doc_id).cloned().unwrap_or_default();
+    let crate::record::documents::Implicit { tags: implicit, words } =
+        implicit.get(&row.doc_id).cloned().unwrap_or_default();
     let doc_id = hex::encode(row.doc_id);
     let (mut tags, fields) =
         annots.get(&doc_id).map(|a| (a.tags.clone(), a.fields.clone())).unwrap_or_default();
@@ -8276,6 +8281,7 @@ fn summarize(
         doc_id,
         tags,
         implicit,
+        words,
         fields,
         buckets,
         pinned: is_pinned,
@@ -8337,6 +8343,7 @@ fn builtin_row(
         created_ms: 0,
         tags,
         implicit,
+        words: None,
         fields,
         buckets: buckets.get(&doc_id).cloned().unwrap_or_default(),
         pinned: pinned.contains(&b.id),
@@ -8680,7 +8687,7 @@ async fn docs_by_tag_handler(
     doc_ids.extend(
         implicit
             .iter()
-            .filter(|(id, tags)| tags.contains(&tag.as_str()) && !doc_ids.contains(id))
+            .filter(|(id, held)| held.tags.contains(&tag.as_str()) && !doc_ids.contains(id))
             .map(|(id, _)| *id)
             .collect::<Vec<_>>(),
     );
@@ -9391,9 +9398,20 @@ impl StreamStamp {
         }
         // The app's own pictures move with the build, not with any chain.
         hasher.update(&crate::builtin::fingerprint());
+        // So does the rows' shape: a field a new build adds (`DocSummary::words`) is in no row a
+        // mirror already holds, and nothing on any chain moves to resend them.
+        hasher.update(&STREAM_ROW_SHAPE.to_le_bytes());
+        hasher.update(env!("CARGO_PKG_VERSION").as_bytes());
         hasher.finalize().to_hex().to_string()
     }
 }
+
+/// Bump when a streamed row gains, loses or changes a field (Curtis, 2026-10-23: the bulk panel's
+/// word count never showed on a node restarted onto it, the mirror's rows being from before it). It
+/// is in every cursor, so the next connect after a bump is a snapshot - every row resent, in the
+/// new shape - rather than a "live" that keeps the old rows. A release forces one too (the
+/// version), in case a bump was forgotten; this is for builds between releases.
+const STREAM_ROW_SHAPE: u32 = 1;
 
 async fn stream_stamp(
     db: &crate::db::Db,
