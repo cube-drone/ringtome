@@ -780,6 +780,44 @@ export const DocsApp = ({
         <div class="notes">
             <div class="notes-columns panes" style=${colStyle}>
                 ${
+                    /* The list comes LAST of the columns, beside the editor (Curtis, 2026-10-23:
+                    the rails between them fanned open every time the pointer crossed from a note
+                    to its words - "distracting"). It stood leftmost until then, the filters
+                    after it (2026-10-04). */ ''
+                }
+                ${
+                    feat.tagColumn &&
+                    (tagsTucked
+                        ? html`<${Rail} icon=${Icons.tag} label=${t('apps.notes.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
+                        : html`${tab('tags', Icons.tag, t('apps.notes.tags', 'tags'))}<${TagColumn}
+                          cloud=${tagCloud}
+                          active=${tagFilter}
+                          onToggleTag=${toggleTag}
+                          onTuck=${() => toggleTuck('tags')}
+                      />${resizer('tags')}`)
+                }
+                ${/* What links to the open note, and what it links to (2026-09-30). */ ''}
+                ${
+                    feat.linkColumn &&
+                    (linksTucked
+                        ? html`<${Rail} icon=${Icons.link} label=${t('apps.notes.links', 'links')} onClick=${() => toggleTuck('links')} />`
+                        : html`${tab('links', Icons.link, t('apps.notes.links', 'links'))}<${LinksColumn} root=${root} docId=${selected} docs=${docs} onTuck=${() => toggleTuck('links')} />${resizer('links')}`)
+                }
+                ${
+                    feat.bookColumn &&
+                    (publishTucked
+                        ? html`<${Rail} icon=${Icons.book} label=${t('apps.notes.publish', 'publish')} onClick=${() => toggleTuck('publish')} />`
+                        : html`${tab('publish', Icons.book, t('apps.notes.publish', 'publish'))}<${BookColumn}
+                          root=${root}
+                          bucket=${bucket}
+                          docs=${(docs || []).filter((d) => bucketHolds(d, app, bucket))}
+                          facts=${bookFacts}
+                          tree=${bookTree}
+                          onTuck=${() => toggleTuck('publish')}
+                          onSelect=${choose}
+                      />${resizer('publish')}`)
+                }
+                ${
                     tucked.has('list')
                         ? html`<${Rail} icon=${Icons.list} label=${nouns} onClick=${() => toggleTuck('list')} />`
                         : app.everything
@@ -959,42 +997,6 @@ export const DocsApp = ({
                     </p>`
                     }
                 </aside>${resizer('list')}`
-                }
-                ${
-                    /* The tags come after the list (Curtis, 2026-10-04): the thing-selector
-                    stands leftmost in every app, and the filters beside it. */ ''
-                }
-                ${
-                    feat.tagColumn &&
-                    (tagsTucked
-                        ? html`<${Rail} icon=${Icons.tag} label=${t('apps.notes.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
-                        : html`${tab('tags', Icons.tag, t('apps.notes.tags', 'tags'))}<${TagColumn}
-                          cloud=${tagCloud}
-                          active=${tagFilter}
-                          onToggleTag=${toggleTag}
-                          onTuck=${() => toggleTuck('tags')}
-                      />${resizer('tags')}`)
-                }
-                ${/* What links to the open note, and what it links to (2026-09-30). */ ''}
-                ${
-                    feat.linkColumn &&
-                    (linksTucked
-                        ? html`<${Rail} icon=${Icons.link} label=${t('apps.notes.links', 'links')} onClick=${() => toggleTuck('links')} />`
-                        : html`${tab('links', Icons.link, t('apps.notes.links', 'links'))}<${LinksColumn} root=${root} docId=${selected} docs=${docs} onTuck=${() => toggleTuck('links')} />${resizer('links')}`)
-                }
-                ${
-                    feat.bookColumn &&
-                    (publishTucked
-                        ? html`<${Rail} icon=${Icons.book} label=${t('apps.notes.publish', 'publish')} onClick=${() => toggleTuck('publish')} />`
-                        : html`${tab('publish', Icons.book, t('apps.notes.publish', 'publish'))}<${BookColumn}
-                          root=${root}
-                          bucket=${bucket}
-                          docs=${(docs || []).filter((d) => bucketHolds(d, app, bucket))}
-                          facts=${bookFacts}
-                          tree=${bookTree}
-                          onTuck=${() => toggleTuck('publish')}
-                          onSelect=${choose}
-                      />${resizer('publish')}`)
                 }
                 ${
                     picked.length > 0

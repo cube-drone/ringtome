@@ -24882,3 +24882,36 @@ selection with no words in it (drawings, sounds) says no count at all.
 
 Tests: pure `counts the words between them...`; implicit_tags.cjs asserts the
 row's count (3 words; 10 then 80 as a note grows; none on a picture).
+
+## 2026-10-23 - The list sits beside the editor
+
+Curtis: "having the other columns accordioning every time I transition between
+notes and editor is distracting." The tucked tags, links and publish rails stood
+between the list and the editor, and fan open under a passing pointer. The list
+is now the last of the columns (apps/notes.js), so the editor is next door and
+the rails are out of the way at the far left. Narrow windows' tabs follow the
+same order. The chat app's rooms column moved the same way (apps/chat.js): tags,
+then chats, then the room.
+
+## 2026-10-23 - Chat groups fold, and a new chat's tags are everyone's tags
+
+Curtis: "I'd prefer if groups were collapsible, and the 'new chat' button
+appeared at the top of the list of chats for this particular group. Also: the
+'tag' interface for new chats is different from every other tag interface in our
+application."
+
+- **A group's section folds** (apps/chat.js `GroupPile`): a click on its divider
+  (not its name, which still goes to the group) folds it, with the tree's
+  turning caret; remembered per browser (`chatFoldKey`, mirror/prefs.js).
+  Folded, the room open now still shows. The group's "+ new chat" heads its
+  rooms instead of sitting as a "+" beside its name. What a group holds is
+  stepped in under its caret, with a faint rule down the left, so it reads as
+  the group's.
+- **One tag field** (`TagField`, doc/annotations.js): the chips, their ×, the "+
+  tag" box and the refusal line, drawn the same for a document's tags and a new
+  chat's. The new chat's tags are now kept by `normalTag` like every other tag
+  (lowercased, cut at the cap) - including one left typed in the box when the
+  room is made.
+
+Checked in headless Chrome on a scratch node: folding, the group's new chat, and
+tags typed into the new-chat form (lowercased; an emoji refused in words).

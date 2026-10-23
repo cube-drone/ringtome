@@ -38,6 +38,11 @@ export const listViewKey = (appId, bucket) => `view:${appId}:${bucket}`;
 export const foldKey = (taxonomyId) => `wikifold:${taxonomyId}`;
 export const FOLD_PREFIX = 'wikifold:';
 
+/// A group's section of the chats column, folded (Curtis, 2026-10-23), by group id. Domain: '1'
+/// (folded) | '0'.
+export const chatFoldKey = (group) => `chatfold:${group}`;
+export const CHAT_FOLD_PREFIX = 'chatfold:';
+
 /// A document's remembered editor view mode. Domain: a key of doc/editor.js's `MODES`.
 export const viewModeKey = (docId) => `mode:${docId}`;
 

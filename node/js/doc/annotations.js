@@ -19,7 +19,7 @@ import { withTagOps, tagOpsSettled } from '../pure/optimistic.js';
 import { DISPLAY_DATE_FIELD, splitClaimed, joinClaimed } from '../pure/docdate.js';
 import { t } from '../i18n.js';
 import { useUnlocked } from '../unlocks.js';
-import { normalTag } from '../pure/annotations.js';
+import { MAX_TAG_CHARS, normalTag } from '../pure/annotations.js';
 import { appForStyle, appTypeOf, bucketsForApp, RESERVED_STYLE } from '../pure/apps.js';
 import { bucketHref, docPlacement } from '../pure/naming.js';
 import { docHref } from '../links.js';
@@ -232,56 +232,82 @@ export const TagEditor = ({ root, docId, showImplicit = true }) => {
         }
     };
 
-    return html`<div class="annot-tags">
-                ${
-                    /* `tag`, never `t`: the map's parameter once shadowed the i18n t(), so the
-                    remove button's title called the TAG STRING as a function and the whole
-                    panel threw the moment a tag existed - a new tag never "confirmed"
-                    (Curtis, 2026-08-29; the strings migration wrapped the literal without
-                    seeing the shadow). */ ''
-                }
-                ${shownTags.map((tag) =>
-                    implicitTags.includes(tag)
-                        ? html`<span
-                              class="annot-tag annot-tag-implicit jag-line"
-                              key=${tag}
-                              title=${t('doc.annotations.tagged-for-what-it-holds', 'tagged for what it holds - it comes and goes with the media')}
-                          >${tag}</span>`
-                        : html`<span class="annot-tag jag-line" key=${tag}>
-                        ${tag}
-                        ${
-                            tagging &&
-                            html`<button
-                            class="annot-tag-x"
-                            title=${t('doc.annotations.remove-tag', 'remove tag')}
-                            onClick=${() => removeTag(tag)}
-                        >×</button>`
-                        }
-                    </span>`,
-                )}
-                ${
-                    tagging &&
-                    html`<input
-                    class="annot-tag-input"
-                    maxlength="32"
-                    placeholder=${t('doc.annotations.tag', '+ tag')}
-                    value=${tagInput}
-                    onInput=${(e) => {
-                        setTagInput(e.currentTarget.value);
-                        setTagRefused(null);
-                    }}
-                    onKeyDown=${(e) => {
-                        if (e.key === 'Enter' || e.key === ',') {
-                            e.preventDefault();
-                            addTag(tagInput);
-                        }
-                    }}
-                    onBlur=${() => addTag(tagInput)}
-                />`
-                }
-                ${tagRefused && html`<span class="annot-tag-refused">${tagRefused}</span>`}
-            </div>`;
+    return html`<${TagField}
+        tags=${shownTags}
+        implicit=${implicitTags}
+        editable=${tagging}
+        draft=${tagInput}
+        onDraft=${(value) => {
+            setTagInput(value);
+            setTagRefused(null);
+        }}
+        onAdd=${addTag}
+        onRemove=${removeTag}
+        refused=${tagRefused}
+    />`;
 };
+
+/// The tags as every tag editor draws them: chips, each with its × while `editable`, the implicit
+/// ones plain, and a "+ tag" box that adds on Enter, a comma or leaving it. Only the drawing - what
+/// a tag is and where it goes are the caller's (`TagEditor` writes a document's; the new-chat form
+/// holds a room's until the room exists, Curtis 2026-10-23: "different from every other tag
+/// interface in our application").
+export const TagField = ({
+    tags,
+    implicit = [],
+    editable,
+    draft,
+    onDraft,
+    onAdd,
+    onRemove,
+    refused,
+}) => html`<div class="annot-tags">
+    ${
+        /* `tag`, never `t`: the map's parameter once shadowed the i18n t(), so the
+        remove button's title called the TAG STRING as a function and the whole
+        panel threw the moment a tag existed - a new tag never "confirmed"
+        (Curtis, 2026-08-29; the strings migration wrapped the literal without
+        seeing the shadow). */ ''
+    }
+    ${tags.map((tag) =>
+        implicit.includes(tag)
+            ? html`<span
+                  class="annot-tag annot-tag-implicit jag-line"
+                  key=${tag}
+                  title=${t('doc.annotations.tagged-for-what-it-holds', 'tagged for what it holds - it comes and goes with the media')}
+              >${tag}</span>`
+            : html`<span class="annot-tag jag-line" key=${tag}>
+                  ${tag}
+                  ${
+                      editable &&
+                      html`<button
+                          type="button"
+                          class="annot-tag-x"
+                          title=${t('doc.annotations.remove-tag', 'remove tag')}
+                          onClick=${() => onRemove(tag)}
+                      >×</button>`
+                  }
+              </span>`,
+    )}
+    ${
+        editable &&
+        html`<input
+            class="annot-tag-input"
+            maxlength=${MAX_TAG_CHARS}
+            placeholder=${t('doc.annotations.tag', '+ tag')}
+            value=${draft}
+            onInput=${(e) => onDraft(e.currentTarget.value)}
+            onKeyDown=${(e) => {
+                if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    onAdd(draft);
+                }
+            }}
+            onBlur=${() => onAdd(draft)}
+        />`
+    }
+    ${refused && html`<span class="annot-tag-refused">${refused}</span>`}
+</div>`;
 
 /// The description: a field, saved a beat after the typing stops.
 export const DescInput = ({ root, docId }) => {

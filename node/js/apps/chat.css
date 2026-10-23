@@ -109,16 +109,49 @@
     text-decoration: underline;
 }
 
+/* A group's "+ new chat", heading its own rooms: the column's new-chat button, smaller. */
 .chat-group-new {
-    padding: 0 0.4rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    color: var(--muted);
+    display: block;
+    margin: 0.1rem 0 0.2rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px dashed var(--border-strong);
+    --j: 3px;
+    clip-path: var(--jag-1);
+    color: var(--sea);
+    font-size: 0.85em;
     text-decoration: none;
 }
 
 .chat-group-new:hover {
-    color: var(--ink);
+    border-color: var(--sea);
+}
+
+/* What a group holds sits inside it (Curtis, 2026-10-23: "obviously part of the group"): stepped
+   in under the caret, with a faint rule down from it. */
+.chat-group-pile > .chat-list {
+    margin-left: 0.3rem;
+    padding-left: 0.6rem;
+    border-left: 1px solid var(--border);
+}
+
+/* The divider folds its group (2026-10-23); the caret turns as the tree's does. */
+.chat-group-divider {
+    cursor: pointer;
+}
+
+.chat-group-caret {
+    display: inline-flex;
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 0.8em;
+    color: var(--muted);
+    cursor: pointer;
+    transition: transform 0.12s;
+}
+
+.chat-group-caret.open {
+    transform: rotate(90deg);
 }
 
 .chat-left-note,
@@ -210,14 +243,6 @@
     white-space: nowrap;
 }
 
-/* The tags on the new-chat form: chips, then the input that makes them. */
-.chat-new-tags {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-}
-
 /* The description's count, once it is past halfway - the composer's manners. */
 .chat-new-count {
     margin: 0;
@@ -225,16 +250,6 @@
     font-size: 0.75em;
     font-variant-numeric: tabular-nums;
     color: var(--muted);
-}
-
-.chat-new-tag {
-    flex: 1;
-    min-width: 8rem;
-    font: inherit;
-    color: var(--ink);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    padding: 0.35rem 0.5rem;
 }
 
 /* The right side: a room, the new-chat form, or the null state. */

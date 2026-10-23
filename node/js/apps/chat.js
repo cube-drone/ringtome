@@ -24,14 +24,22 @@ import { openMirror, useLive } from '../mirror.js';
 import { unlandedLines } from '../pure/optimistic.js';
 import { tagCounts } from '../pure/contacttags.js';
 import { contactCollection } from '../pure/contact.js';
-import { isEmojiTag, MAX_TAG_CHARS } from '../pure/annotations.js';
+import { normalTag } from '../pure/annotations.js';
 import { veilsMedia, withoutMedia } from '../pure/chatveil.js';
 import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
 import { useUnlocked } from '../unlocks.js';
 import { tagCounts as roomTagCounts } from '../pure/doclist.js';
 import { Modal } from '../modal.js';
-import { usePref, OPEN_ROOM_KEY } from '../mirror/prefs.js';
+import {
+    usePref,
+    usePrefMap,
+    flagsOf,
+    setFlag,
+    chatFoldKey,
+    CHAT_FOLD_PREFIX,
+    OPEN_ROOM_KEY,
+} from '../mirror/prefs.js';
 import { keptFloor, keepFloor } from '../mirror/keep.js';
 
 /// Whether a trust dial says anything: absent or "none" is a stranger, whatever else a
@@ -82,6 +90,7 @@ import {
 } from '../links.js';
 import { AudienceSelect } from '../audience.js';
 import { publishTo } from '../doc/publish.js';
+import { TagField } from '../doc/annotations.js';
 import { groupFeeds } from '../pure/groups.js';
 import { GroupMark, useGroupFace } from '../groupface.js';
 import { RoomTitle } from '../roomtitle.js';
@@ -210,25 +219,46 @@ const RoomRow = ({ room, current, selected }) => {
 };
 
 /// One group's section of the chats column (plans/GROUP_ROOMS.md): the group's triangle and name
-/// for its divider, linking to its page, and a way to start another room in it.
-const GroupPile = ({ pile, children }) => {
+/// for its divider, linking to its page, then a way to start another room in it and its rooms.
+/// It folds (Curtis, 2026-10-23: "I'd prefer if groups were collapsible, and the 'new chat' button
+/// appeared at the top of the list of chats for this particular group") - a click anywhere on the
+/// divider but the name, which still goes to the group. The caret is the keyboard's way in: its
+/// click bubbles to the divider, so it has no handler of its own (panes.js `PaneHead`). Folded, the
+/// room open now still shows, so folding never hides where you are.
+const GroupPile = ({ pile, row, folded, onFold, isOpen }) => {
     const face = useGroupFace(pile.group);
+    const shown = folded ? pile.rooms.filter(isOpen) : pile.rooms;
+    const name = (face && face.name) || pile.name;
     return html`<div class="chat-group-pile">
-        <p class="chat-list-divider chat-group-divider">
+        <div class="chat-list-divider chat-group-divider" onClick=${onFold}>
+            <button
+                class=${folded ? 'chat-group-caret' : 'chat-group-caret open'}
+                aria-expanded=${!folded}
+                title=${folded ? t('apps.chat.show-this-groups-chats', "show this group's chats") : t('apps.chat.fold-this-groups-chats', "fold this group's chats away")}
+            >
+                <${Icons.forward} />
+            </button>
             <${GroupMark} group=${pile.group} picture=${face && face.picture && `${face.picture}/thumb`} />
-            <a class="chat-group-name" href=${groupHref(pile.group)}>${(face && face.name) || pile.name}</a>
-            <a
-                class="chat-group-new"
-                href=${groupChatHref(pile.group)}
-                title=${t('apps.chat.start-a-room-in-this-group', 'start a room in this group')}
-            >+</a>
-        </p>
-        ${children}
+            <a class="chat-group-name" href=${groupHref(pile.group)} onClick=${(e) => e.stopPropagation()}>${name}</a>
+        </div>
+        <ul class="chat-list">
+            ${
+                !folded &&
+                html`<li>
+                    <a class="chat-group-new" data-settles href=${groupChatHref(pile.group)}>
+                        ${t('apps.chat.new-chat', '+ new chat')}
+                    </a>
+                </li>`
+            }
+            ${shown.map(row)}
+        </ul>
     </div>`;
 };
 
 const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     const loc = useLocation();
+    const root = current && current.root;
+    const folds = flagsOf(usePrefMap(root, CHAT_FOLD_PREFIX));
     // Active rooms on top, the rooms this persona left beneath a divider (Curtis,
     // 2026-09-19): left rooms are not synced and never bold, until rejoined. Closed rooms
     // sit at the bottom of that pile for everyone - the door sorts them last.
@@ -256,11 +286,12 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     // answered. Nothing about it rings, and nothing of it syncs, until it is accepted.
     const requests = (rooms || []).filter((r) => r.im && r.request);
     const left = (rooms || []).filter((r) => !r.im && (r.left || r.closed));
+    const isOpen = (r) => !!selected && selected.author === r.author && selected.doc === r.doc_id;
     const row = (r) => html`<${RoomRow}
         key=${`${r.author}/${r.doc_id}`}
         room=${r}
         current=${current}
-        selected=${!!selected && selected.author === r.author && selected.doc === r.doc_id}
+        selected=${isOpen(r)}
     />`;
     return html`<aside class="chat-rooms">
         <${PaneHead} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onTuck=${onTuck} />
@@ -273,9 +304,14 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
                 : html`<ul class="chat-list">${active.map(row)}</ul>`
         }
         ${ofGroups.map(
-            (pile) => html`<${GroupPile} key=${pile.group} pile=${pile}>
-                <ul class="chat-list">${pile.rooms.map(row)}</ul>
-            </${GroupPile}>`,
+            (pile) => html`<${GroupPile}
+                key=${pile.group}
+                pile=${pile}
+                row=${row}
+                folded=${folds.has(pile.group)}
+                onFold=${() => setFlag(root, chatFoldKey(pile.group), !folds.has(pile.group))}
+                isOpen=${isOpen}
+            />`,
         )}
         ${
             ims.length > 0 &&
@@ -333,25 +369,17 @@ const NewRoom = ({ root, onMade }) => {
     // post, said after it is published and shown beside it in every chats column.
     const [roomTags, setRoomTags] = useState([]);
     const [tagInput, setTagInput] = useState('');
+    const [tagRefused, setTagRefused] = useState(null);
+    // Kept as any tag editor keeps one (pure/annotations.js `normalTag`): trimmed, lowercased, cut
+    // at the door's limit - so no chip forms that the door would refuse (Curtis, 2026-09-20, having
+    // tagged a room with a film script), and the room is made with every label it shows. An emoji
+    // is refused in words: the room is your own post, and a reaction is for somebody else's.
     const addRoomTag = (raw) => {
-        const value = (raw || '').trim().replace(/,+$/, '');
+        const { tag, refused } = normalTag(raw);
         setTagInput('');
-        if (!value || roomTags.includes(value)) return;
-        // The door's own limit, met at the gesture (Curtis, 2026-09-20, having tagged a room
-        // with a film script): a chip the door would refuse must never form, or the room is
-        // made and the label quietly is not.
-        if ([...value].length > MAX_TAG_CHARS) {
-            setError(
-                t('apps.chat.a-tag-is-n-characters-at-most', 'a tag is {cap} characters at most', {
-                    cap: MAX_TAG_CHARS,
-                }),
-            );
-            return;
-        }
-        // The room is your own post, and a reaction is for somebody else's (2026-09-27): the
-        // door refuses an author's emoji tag, so it is refused here, before the room is made.
-        if (isEmojiTag(value)) {
-            setError(
+        if (refused === 'empty' || roomTags.includes(tag)) return;
+        if (refused === 'emoji') {
+            setTagRefused(
                 t(
                     'apps.chat.no-reacting-to-your-own-room',
                     "a reaction is for somebody else's post - tag your room with words",
@@ -359,8 +387,8 @@ const NewRoom = ({ root, onMade }) => {
             );
             return;
         }
-        setError(null);
-        setRoomTags((have) => [...have, value]);
+        setTagRefused(null);
+        setRoomTags((have) => [...have, tag]);
     };
     const contactRows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
     const tags = tagCounts(contactRows || []).map((c) => c.value);
@@ -391,7 +419,8 @@ const NewRoom = ({ root, onMade }) => {
             // under its key - the door does both. Best-effort: a refused label costs a
             // label, never the room.
             const said = [...roomTags];
-            if (tagInput.trim()) said.push(tagInput.trim());
+            const left = normalTag(tagInput);
+            if (!left.refused && !said.includes(left.tag)) said.push(left.tag);
             const refused = [];
             for (const value of said) {
                 try {
@@ -455,33 +484,18 @@ const NewRoom = ({ root, onMade }) => {
             />
             ${
                 tagging &&
-                html`<div class="chat-new-tags">
-                ${roomTags.map(
-                    (value) => html`<span class="label-chip" key=${value}>
-                        ${value}
-                        <button
-                            class="label-x"
-                            type="button"
-                            title=${t('apps.chat.take-this-tag-off', 'take this tag off')}
-                            onClick=${() => setRoomTags((have) => have.filter((v) => v !== value))}
-                        >×</button>
-                    </span>`,
-                )}
-                <input
-                    class="chat-new-tag"
-                    placeholder=${t('apps.chat.a-tag-optional', 'a tag (optional)')}
-                    maxlength=${MAX_TAG_CHARS}
-                    value=${tagInput}
-                    onInput=${(e) => setTagInput(e.currentTarget.value)}
-                    onKeyDown=${(e) => {
-                        if (e.key === 'Enter' || e.key === ',') {
-                            e.preventDefault();
-                            addRoomTag(e.currentTarget.value);
-                        }
+                html`<${TagField}
+                    tags=${roomTags}
+                    editable=${true}
+                    draft=${tagInput}
+                    onDraft=${(value) => {
+                        setTagInput(value);
+                        setTagRefused(null);
                     }}
-                    onBlur=${(e) => addRoomTag(e.currentTarget.value)}
-                />
-            </div>`
+                    onAdd=${addRoomTag}
+                    onRemove=${(tag) => setRoomTags((have) => have.filter((v) => v !== tag))}
+                    refused=${tagRefused}
+                />`
             }
             <textarea
                 class="chat-new-words"
@@ -2456,20 +2470,9 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     return html`<div class="chat">
         <div class="chat-columns panes" style=${colStyle}>
             ${
-                ownsChat &&
-                (roomsTucked
-                    ? html`<${Rail} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onClick=${() => toggleTuck('rooms')} />`
-                    : html`${tab('rooms', Icons.chat, t('apps.chat.chats', 'chats'))}<${RoomsColumn}
-                      current=${current}
-                      rooms=${rooms}
-                      selected=${selected}
-                      filtered=${tagFilter.length > 0}
-                      onTuck=${() => toggleTuck('rooms')}
-                  />${resizer('rooms')}`)
-            }
-            ${
-                /* The tags come after the chats (Curtis, 2026-10-04): the thing-selector stands
-                leftmost in every app, and the filters beside it. */ ''
+                /* The chats come LAST of the columns, beside the room (Curtis, 2026-10-23, as
+                Writer's list: a rail between them fans open under the pointer on its way from a
+                chat to its words). They stood leftmost until then (2026-10-04). */ ''
             }
             ${
                 tagging &&
@@ -2482,6 +2485,18 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                       onToggleTag=${(tag) => setTagFilter((have) => (have.includes(tag) ? have.filter((x) => x !== tag) : [...have, tag]))}
                       onTuck=${() => toggleTuck('tags')}
                   />${resizer('tags')}`)
+            }
+            ${
+                ownsChat &&
+                (roomsTucked
+                    ? html`<${Rail} icon=${Icons.chat} label=${t('apps.chat.chats', 'chats')} onClick=${() => toggleTuck('rooms')} />`
+                    : html`${tab('rooms', Icons.chat, t('apps.chat.chats', 'chats'))}<${RoomsColumn}
+                      current=${current}
+                      rooms=${rooms}
+                      selected=${selected}
+                      filtered=${tagFilter.length > 0}
+                      onTuck=${() => toggleTuck('rooms')}
+                  />${resizer('rooms')}`)
             }
             <section class="chat-main">
                 ${
