@@ -2098,6 +2098,15 @@ pub struct BucketSummary {
     pub members: usize,
 }
 
+/// A notebook's rename, checked and ready to carry out (`Buckets::rename_plan`).
+#[derive(Debug, Clone)]
+pub struct RenamePlan {
+    pub from: String,
+    pub to: String,
+    app: String,
+    pub members: Vec<[u8; 16]>,
+}
+
 pub struct Buckets<'s> {
     store: &'s Store,
 }
@@ -2295,6 +2304,70 @@ impl Buckets<'_> {
         )
         .await?;
         Ok(registers.into_iter().find(|r| r.key == name && !r.value.is_empty()).map(|r| r.value))
+    }
+
+    /// The notebooks an app owns by name (pure/apps.js): each IS its app's type, so it can be
+    /// neither renamed away nor named into.
+    pub const APP_OWNED: &'static [&'static str] = &["feed", "default", "drawing", "files", "chat"];
+
+    /// Rename a notebook (Curtis, 2026-10-23), first half: everything that would refuse it, asked
+    /// before anything moves - an app's own notebook, a name already on the shelf (that would be a
+    /// merge), a notebook that isn't there - and the documents it holds. `rename_carry` moves them.
+    pub async fn rename_plan(&self, from: &str, to: &str) -> Result<RenamePlan, AppError> {
+        let from = Self::clean(from)?;
+        let to = Self::clean(to)?;
+        if Self::APP_OWNED.contains(&from.as_str()) || Self::APP_OWNED.contains(&to.as_str()) {
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.bucket-is-an-apps-own",
+                "an app's own notebook keeps its name"
+            )));
+        }
+        let roster = self.roster().await?;
+        let Some(old) = roster.iter().find(|b| b.name == from) else {
+            return Err(AppError::NotFound(crate::msg!(
+                "record.store.no-such-notebook",
+                "there is no notebook called \"{name}\"",
+                name = from,
+            )));
+        };
+        if from != to && roster.iter().any(|b| b.name == to) {
+            return Err(AppError::BadRequest(crate::msg!(
+                "record.store.bucket-name-is-taken",
+                "there is already a notebook called \"{name}\"",
+                name = to,
+            )));
+        }
+        let app = if old.app.is_empty() { "default".to_string() } else { old.app.clone() };
+        let members = if from == to { Vec::new() } else { self.own_docs_in(&from).await? };
+        Ok(RenamePlan { from, to, app, members })
+    }
+
+    /// The second half: a bucket is keyed by its name, so a rename is a move - the new name
+    /// registered to the old one's app, every document placed in the new before it leaves the
+    /// old (a failure halfway leaves one in both, never in neither), the Writer tree
+    /// (`wiki:<name>`) retitled, and then the old name forgotten. `progress` hears each document
+    /// as it lands. Returns how many moved.
+    pub async fn rename_carry(
+        &self,
+        plan: &RenamePlan,
+        progress: &(dyn Fn(usize) + Sync),
+    ) -> Result<usize, AppError> {
+        if plan.from == plan.to {
+            return Ok(0);
+        }
+        self.define(&plan.to, &plan.app).await?;
+        for (n, doc_id) in plan.members.iter().enumerate() {
+            self.place(doc_id, &plan.to).await?;
+            self.remove(doc_id, &plan.from).await?;
+            progress(n + 1);
+        }
+        let tree = format!("wiki:{}", plan.from);
+        let renamed = format!("wiki:{}", plan.to);
+        for tax in self.store.taxonomies().all().await?.into_iter().filter(|t| t.title == tree) {
+            self.store.annotations().set_field(&tax.taxonomy_id, "title", &renamed).await?;
+        }
+        self.undefine(&plan.from).await?;
+        Ok(plan.members.len())
     }
 
     /// This identity's own documents currently in `bucket` - the app view's spine (the inverse
@@ -3578,6 +3651,48 @@ mod tests {
             assert_eq!(members, vec![kept], "gone from the list, the other left");
         }
         assert!(store.documents().deleted().await.unwrap().contains(&gone), "and deleted");
+    }
+
+    /// A renamed notebook keeps what it held: its documents, its app, its tree; the old name
+    /// leaves the shelf, and an app's own notebook or a name already taken is refused.
+    #[tokio::test]
+    async fn renaming_a_notebook_moves_its_documents_and_tree() {
+        let store = test_store().await;
+        let b = store.buckets();
+        b.define("poems", "default").await.unwrap();
+        b.define("music", "default").await.unwrap();
+        let tree = store.taxonomies().create("wiki:poems").await.unwrap();
+        let mut ids = Vec::new();
+        for n in 0..3 {
+            let (id, _) = store
+                .documents()
+                .create(&format!("p{n}"), b"words", crate::record::documents::Format::Plaintext)
+                .await
+                .unwrap();
+            b.place(&id, "poems").await.unwrap();
+            ids.push(id);
+        }
+        let both = ids[0];
+        b.place(&both, "music").await.unwrap();
+
+        assert!(b.rename_plan("poems", "default").await.is_err(), "an app's own name");
+        assert!(b.rename_plan("default", "verse").await.is_err(), "an app's own notebook");
+        assert!(b.rename_plan("poems", "music").await.is_err(), "a name already taken");
+        let plan = b.rename_plan("poems", "  verse ").await.unwrap();
+        let heard = std::sync::Mutex::new(Vec::new());
+        assert_eq!(b.rename_carry(&plan, &|n| heard.lock().unwrap().push(n)).await.unwrap(), 3);
+        assert_eq!(*heard.lock().unwrap(), vec![1, 2, 3], "each document, as it lands");
+
+        let names: Vec<String> = b.roster().await.unwrap().into_iter().map(|r| r.name).collect();
+        assert!(names.contains(&"verse".to_string()) && !names.contains(&"poems".to_string()));
+        assert_eq!(b.app_of("verse").await.unwrap().as_deref(), Some("default"));
+        let mut held = b.own_docs_in("verse").await.unwrap();
+        held.sort();
+        ids.sort();
+        assert_eq!(held, ids);
+        assert_eq!(b.of(&both).await.unwrap(), vec!["music", "verse"], "its other notebook stays");
+        let titled = store.taxonomies().all().await.unwrap();
+        assert!(titled.iter().any(|t| t.taxonomy_id == tree && t.title == "wiki:verse"));
     }
 
     /// One view, everything the tree read wants from it, the same as the whole-persona reads

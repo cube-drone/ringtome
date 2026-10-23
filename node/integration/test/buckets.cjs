@@ -150,6 +150,82 @@ describe('buckets: which notebook a document lives in', function () {
         assert.equal(inBucket.docs[0].doc_id, doc.doc_id);
     });
 
+    it('renames a notebook: its documents, its tree and its book go with it', async () => {
+        const { user, root } = await makeIdentity('bucketname');
+        const a = await createDoc(user, root, 'a', 'x');
+        const b = await createDoc(user, root, 'b', 'y');
+        await defineBucket(user, root, 'drafts', 'default');
+        await defineBucket(user, root, 'poems', 'default');
+        await putBucket(user, root, a.doc_id, 'drafts');
+        await putBucket(user, root, b.doc_id, 'drafts');
+        await putBucket(user, root, b.doc_id, 'poems');
+        const tree = await (
+            await user(`api/identity/${root}/taxonomies`, {
+                method: 'POST',
+                body: JSON.stringify({ title: 'wiki:drafts' }),
+            })
+        ).json();
+        await user(`api/identity/${root}/private/kv/books/drafts`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: JSON.stringify({ mode: 'book' }) }),
+        });
+        const rename = (from, name) =>
+            user(`api/identity/${root}/buckets/${encodeURIComponent(from)}/rename`, {
+                method: 'POST',
+                body: JSON.stringify({ name }),
+            });
+
+        assert.equal((await rename('drafts', 'poems')).status, 400, 'a name already taken');
+        assert.equal((await rename('default', 'mine')).status, 400, "an app's own notebook");
+        assert.equal((await rename('nowhere', 'x')).status, 404);
+        const started = await rename('drafts', 'the long poem');
+        assert.equal(started.status, 202, 'it carries on in the background');
+        assert.deepEqual(await started.json(), {
+            status: 'renaming',
+            name: 'the long poem',
+            done: 0,
+            total: 2,
+        });
+        // How far it has got, until it's done - said once, then forgotten.
+        let polled;
+        for (let i = 0; i < 100; i++) {
+            polled = await (await user(`api/identity/${root}/buckets/drafts/rename`)).json();
+            if (polled.status !== 'renaming') break;
+            await new Promise((r) => setTimeout(r, 50));
+        }
+        assert.deepEqual(polled, { status: 'done', name: 'the long poem', done: 2, total: 2 });
+        assert.equal((await user(`api/identity/${root}/buckets/drafts/rename`)).status, 404);
+
+        const r = await roster(user, root);
+        const byName = Object.fromEntries(r.buckets.map((x) => [x.name, x]));
+        assert.equal(byName.drafts, undefined, 'the old name has left the shelf');
+        assert.equal(byName['the long poem'].members, 2);
+        assert.equal(byName['the long poem'].app, 'default');
+        const rows = (await listDocs(user, root)).docs;
+        assert.deepEqual(rows.find((d) => d.doc_id === b.doc_id).buckets, [
+            'poems',
+            'the long poem',
+        ]);
+        const trees = (await (await user(`api/identity/${root}/taxonomies`)).json()).taxonomies;
+        assert.equal(
+            trees.find((x) => x.taxonomy_id === tree.taxonomy_id).title,
+            'wiki:the long poem',
+        );
+        const books = (await (await user(`api/identity/${root}/private/kv/books`)).json()).values;
+        assert.equal(JSON.parse(books.find((v) => v.key === 'the long poem').value).mode, 'book');
+        assert.ok(
+            !books.some((v) => v.key === 'drafts' && v.value),
+            "the old name's facts are cleared",
+        );
+
+        // Not while its book rolls out: the sweep reads the notebook by name.
+        await user(`api/identity/${root}/private/kv/book_rollout/poems`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: JSON.stringify({ status: 'running' }) }),
+        });
+        assert.equal((await rename('poems', 'verse')).status, 400, 'mid-rollout');
+    });
+
     it('rejects an empty bucket name', async () => {
         const { user, root } = await makeIdentity('bucketbad');
         const doc = await createDoc(user, root, 'doc', 'z');

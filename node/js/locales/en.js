@@ -720,6 +720,12 @@ export default {
     'buckets.make-it': 'make it',
     'buckets.name-is-reserved': '"{name}" is kept for another app - choose another name',
     'buckets.couldnt-create-it': "couldn't create it: {message}",
+    'buckets.rename-title': 'rename the {noun}',
+    'buckets.rename-label': 'A new name for “{name}”:',
+    'buckets.rename-it': 'rename it',
+    'buckets.renaming-title': 'renaming the {noun}',
+    'buckets.renaming-body': 'Moving everything in “{from}” to “{name}”. Closing this doesn’t stop it.',
+    'buckets.couldnt-rename-it': "couldn't rename it: {message}",
     'buckets.delete-empty': 'It is empty - nothing else is lost.',
     'buckets.delete-one-inside': 'EVERY DOCUMENT INSIDE IT - all 1 of it - GOES TOO.',
     'buckets.delete-n-inside': 'EVERY DOCUMENT INSIDE IT - all {n} of them - GOES TOO.',
@@ -729,6 +735,7 @@ export default {
     'buckets.delete-it-all': 'delete it all',
     'buckets.couldnt-delete-it': "couldn't delete it: {message}",
     'buckets.new': 'New {bucketNoun}',
+    'buckets.rename-this': 'Rename this {bucketNoun}…',
     'buckets.delete-this': 'Delete this {bucketNoun}…',
 
     // --- node/js/census.js ---
@@ -2587,6 +2594,9 @@ export default {
     'identity.routes.preview-not-on-this-node': 'preview not on this node yet',
     'identity.routes.document-not-found-4': 'document not found',
     'identity.routes.unknown-order-other-modified-created': 'unknown order {other:?} (modified | created)',
+    'identity.routes.notebook-is-rolling-out': "its book is being published - rename it when that's done",
+    'identity.routes.notebook-is-being-renamed': 'that notebook is being renamed already',
+    'identity.routes.no-rename-under-way': "that notebook isn't being renamed",
     'identity.routes.unknown-order-other-modified-created-2': 'unknown order {other:?} (modified | created)',
     'identity.routes.bad-root-pubkey': 'bad root pubkey',
     'identity.routes.bad-member-root-pubkey': 'bad member root pubkey',
@@ -2731,6 +2741,9 @@ export default {
     'record.store.bucket-name-is-empty': 'bucket name is empty',
     'record.store.bucket-name-exceeds-bytes': 'bucket name exceeds {limit} bytes',
     'record.store.app-type-exceeds-bytes': 'app-type exceeds {limit} bytes',
+    'record.store.bucket-is-an-apps-own': "an app's own notebook keeps its name",
+    'record.store.no-such-notebook': 'there is no notebook called "{name}"',
+    'record.store.bucket-name-is-taken': 'there is already a notebook called "{name}"',
     'record.store.placing-this-list-here-would': "a list can't go inside itself",
 
     // --- node/src/registration.rs ---

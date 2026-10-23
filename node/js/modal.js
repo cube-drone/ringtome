@@ -10,6 +10,7 @@ import htm from 'htm';
 
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
+import { Progress } from './progress.js';
 
 const html = htm.bind(h);
 
@@ -179,4 +180,50 @@ export function tell({ title, body, ok = null }) {
             </div>
         <//>`,
     );
+}
+
+/// A job the node carries on in the background, watched in the house modal with a bar (Curtis,
+/// 2026-10-23: a large notebook's rename "is going to take some time"). `poll` answers
+/// `{done, total, running}`, asked every `every` ms until it stops running; the modal opens only if
+/// the job outlasts the first wait, so a quick one never flashes it. The [x] hides the bar, never
+/// the job. Resolves to the last answer, and `hidden` when the [x] was pressed.
+export function followProgress({ title, body, poll, every = 400 }) {
+    if (typeof document === 'undefined') return Promise.resolve(null);
+    const host = document.createElement('div');
+    let hidden = false;
+    let shown = false;
+    const show = (r) => {
+        if (hidden) return;
+        shown = true;
+        render(
+            html`<${Modal} title=${title} onClose=${hide}>
+                <div class="modal-ask">
+                    <div class="modal-ask-body">${said(body)}</div>
+                    <${Progress} done=${r.done} total=${r.total} doing=${body} />
+                </div>
+            <//>`,
+            host,
+        );
+    };
+    const hide = () => {
+        hidden = true;
+        if (shown) render(null, host);
+        host.remove();
+    };
+    document.body.appendChild(host);
+    return (async () => {
+        for (;;) {
+            await new Promise((go) => setTimeout(go, every));
+            const r = await poll();
+            if (!r.running) {
+                const wasHidden = hidden;
+                hide();
+                return { ...r, hidden: wasHidden };
+            }
+            show(r);
+        }
+    })().catch((e) => {
+        hide();
+        throw e;
+    });
 }

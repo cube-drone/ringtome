@@ -24915,3 +24915,39 @@ application."
 
 Checked in headless Chrome on a scratch node: folding, the group's new chat, and
 tags typed into the new-chat form (lowercased; an emoji refused in words).
+
+## 2026-10-23 - Renaming a notebook
+
+Curtis: "I think I need the ability to rename notebooks." A notebook is keyed by
+its name - every document's membership, the Writer tree (`wiki:<name>`), and a
+book's facts and rollout plan all hold the string - so a rename is a move, done
+on the server in one pass under one fold: `POST …/buckets/{bucket}/rename`
+(store `Buckets::rename_plan` and `rename_carry`, books.rs `follow_rename`).
+
+- **What moves**: the new name is registered to the old one's app; each document
+  is placed in the new name before it leaves the old (a failure halfway leaves
+  it in both, never in neither); the tree is retitled, keeping its sections; the
+  book keeps its id, key and destination; then the old name is forgotten. The
+  list's tree-or-list pick follows it in the browser.
+- **What's refused**: an app's own notebook, a name already on the shelf (that
+  would be a merge), and a notebook whose book is mid-rollout.
+- **What stays**: posts already published are not touched - the rename moves the
+  private notebook, not what went out from it.
+- **In the background, with a bar** (Curtis: "for larger collections, is going
+  to take some time: maybe we should display a pop-up with a progress bar?"):
+  each note is two signed appends, about fifteen milliseconds - 500 notes took
+  eight seconds. The POST checks everything that would refuse the rename, then
+  answers `202` and moves the notes in a spawned task, as an ePub is made, so a
+  closed tab can't cut it off halfway; `GET …/rename` says how far it has got.
+  The browser shows it in the house modal (`followProgress`, modal.js, with the
+  export's `Progress` bar), opened only if the job outlasts its first wait, so a
+  small notebook never flashes one. The [x] hides the bar, not the rename.
+- **The switcher** offers "Rename this Notebook…" above delete, for every
+  notebook but the app's own. Switching to a notebook too new for the roster -
+  just renamed, or just created - now carries its row, so a sketchbook lands in
+  the drawing app rather than at Writer's address until the stream catches up.
+
+Checked: a store test, an acceptance claim in buckets.cjs (started, polled to
+done), and renames driven through the switcher in headless Chrome on a scratch
+node - a 406-note notebook showed the bar at 83 of 406, an empty sketchbook
+none.

@@ -297,9 +297,13 @@ body {
     }
 }
 
-.bucket-menu-delete {
+/* The current notebook's own two, set off from the shelf: rename, then delete. */
+.bucket-menu-rename {
     margin-top: 0.3rem;
     border-top: 1px solid var(--border);
+}
+
+.bucket-menu-delete {
     --j: 3px;
     clip-path: var(--jag-bottom);
     color: var(--coral);

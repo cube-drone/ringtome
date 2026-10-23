@@ -255,6 +255,10 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
             "/api/identity/{root}/buckets/{bucket}",
             axum::routing::delete(bucket_undefine_handler),
         )
+        .route(
+            "/api/identity/{root}/buckets/{bucket}/rename",
+            get(bucket_renaming_handler).post(bucket_rename_handler),
+        )
         .route("/api/identity/{root}/docs/bucketed/{bucket}", get(docs_by_bucket_handler))
         // Taxonomies: user-defined ordered lists of document references on the doc-meta chain.
         // Rename/describe ride the annotations routes above (a taxonomy id is annotatable like
@@ -8811,6 +8815,119 @@ async fn bucket_undefine_handler(
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
     }))
+}
+
+#[derive(Deserialize)]
+struct BucketRename {
+    name: String,
+}
+
+/// A rename under way, as a poll sees it.
+#[derive(Clone, Serialize)]
+struct Renaming {
+    status: &'static str,
+    name: String,
+    done: usize,
+    total: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// Every rename under way, by `root:notebook` (Curtis, 2026-10-23: "for larger collections, is
+/// going to take some time" - two appends a document, some fifteen milliseconds). Run in the
+/// background, as an ePub is made (epub.rs `builds`): a closed tab can't cut it off halfway.
+fn renamings() -> &'static std::sync::Mutex<std::collections::HashMap<String, Renaming>> {
+    static RENAMINGS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Renaming>>,
+    > = std::sync::OnceLock::new();
+    RENAMINGS.get_or_init(Default::default)
+}
+
+/// POST `.../buckets/{bucket}/rename {name}` - rename a notebook (store `Buckets::rename_plan`):
+/// refused at once if it would be, else its documents, its tree and its book move to the new
+/// name in the background, under one fold, and the answer is `202` and how many there are to
+/// move. Not while its book is rolling out - that sweep reads the old name.
+async fn bucket_rename_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, bucket)): Path<(String, String)>,
+    Json(req): Json<BucketRename>,
+) -> Result<(StatusCode, Json<Renaming>), AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    if crate::books::rolling_out(&data, &bucket).await? {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.notebook-is-rolling-out",
+            "its book is being published - rename it when that's done"
+        )));
+    }
+    let plan = data.buckets().rename_plan(&bucket, &req.name).await?;
+    let job = format!("{root}:{}", plan.from);
+    let started = Renaming {
+        status: "renaming",
+        name: plan.to.clone(),
+        done: 0,
+        total: plan.members.len(),
+        error: None,
+    };
+    {
+        let mut all =
+            renamings().lock().map_err(|_| AppError::Internal(anyhow::anyhow!("renamings")))?;
+        if all.get(&job).is_some_and(|r| r.status == "renaming") {
+            return Err(AppError::BadRequest(crate::msg!(
+                "identity.routes.notebook-is-being-renamed",
+                "that notebook is being renamed already"
+            )));
+        }
+        all.insert(job.clone(), started.clone());
+    }
+    tokio::spawn(async move {
+        let held = crate::fold::hold(&root);
+        let progress = |done: usize| {
+            if let Some(r) = renamings().lock().ok().as_mut().and_then(|all| all.get_mut(&job)) {
+                r.done = done;
+            }
+        };
+        let carried = match data.buckets().rename_carry(&plan, &progress).await {
+            Ok(_) => crate::books::follow_rename(&data, &plan.from, &plan.to).await,
+            Err(e) => Err(e),
+        };
+        drop(held);
+        if let Some(r) = renamings().lock().ok().as_mut().and_then(|all| all.get_mut(&job)) {
+            match carried {
+                Ok(()) => r.status = "done",
+                Err(e) => {
+                    tracing::warn!(job = %job, error = ?e, "a notebook rename stopped");
+                    r.status = "failed";
+                    r.error = Some(e.to_string());
+                }
+            }
+        }
+    });
+    Ok((StatusCode::ACCEPTED, Json(started)))
+}
+
+/// GET `.../buckets/{bucket}/rename` - how far the notebook's rename has got. Its end - done or
+/// failed - is said once, then forgotten.
+async fn bucket_renaming_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, bucket)): Path<(String, String)>,
+) -> Result<Json<Renaming>, AppError> {
+    // The door is the persona's, as the rename's own is.
+    store::open(&state, &session.account.id, &root).await?;
+    let job = format!("{root}:{}", bucket.trim());
+    let mut all =
+        renamings().lock().map_err(|_| AppError::Internal(anyhow::anyhow!("renamings")))?;
+    let Some(r) = all.get(&job).cloned() else {
+        return Err(AppError::NotFound(crate::msg!(
+            "identity.routes.no-rename-under-way",
+            "that notebook isn't being renamed"
+        )));
+    };
+    if r.status != "renaming" {
+        all.remove(&job);
+    }
+    Ok(Json(r))
 }
 
 /// This identity's documents currently in `bucket`, in the docs-list per-doc shape - the app

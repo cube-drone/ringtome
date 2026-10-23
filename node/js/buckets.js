@@ -26,8 +26,9 @@ import { appTypeOf, bucketsForApp, DEFAULT_STYLE, RESERVED_BUCKETS } from './pur
 import { bucketHref } from './pure/naming.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
-import { askText, askYes } from './modal.js';
+import { askText, askYes, followProgress } from './modal.js';
 import { toast } from './toasts.js';
+import { listViewKey, readPref, setPref } from './mirror/prefs.js';
 
 const html = htm.bind(h);
 
@@ -47,12 +48,14 @@ export function useBucketChoice({ root, appHere, roster, cozyBucketRow, docSegme
     const loc = useLocation();
     const [bucketPick, setBucketPick] = useState(null);
 
-    const switchBucket = (name) => {
+    // `made` is the roster row of a notebook too new for the roster - just created or renamed,
+    // its row still on its way down the stream - so its address is its app's, not the default's.
+    const switchBucket = (name, made = null) => {
         setBucketPick(name);
         if (root && appHere) lastBucketMemory.set(`${root}:${appHere.id}`, name);
         // The notebook is in the address (2026-09-28): switching goes to its list - the app's own
         // for its home notebook, `…/notebook/<slug>` for any other.
-        loc.route(bucketHref(name, roster));
+        loc.route(bucketHref(name, made ? [...(roster || []), made] : roster));
     };
 
     useEffect(() => {
@@ -169,10 +172,66 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
                 method: 'POST',
                 body: JSON.stringify({ name, app: app.style }),
             });
-            onSwitch(name); // it exists empty right away; the roster row follows via the stream
+            onSwitch(name, { name, app: app.style }); // it exists empty right away; the roster row follows via the stream
         } catch (e) {
             toast(
                 t('buckets.couldnt-create-it', "couldn't create it: {message}", {
+                    message: e.message,
+                }),
+                { kind: 'error' },
+            );
+        }
+    };
+
+    // Renaming moves the notebook whole on the server - its documents, its tree, its book - and
+    // the list's tree-or-list pick, which is ours, follows it here once it's done.
+    const rename = async () => {
+        setMenu(false);
+        const name = (
+            (await askText({
+                title: t('buckets.rename-title', 'rename the {noun}', { noun: app.bucketNoun }),
+                label: t('buckets.rename-label', 'A new name for “{name}”:', { name: bucket }),
+                initial: bucket,
+                ok: t('buckets.rename-it', 'rename it'),
+            })) || ''
+        ).trim();
+        if (!name || name === bucket) return;
+        if (RESERVED_BUCKETS.has(name)) {
+            toast(
+                t(
+                    'buckets.name-is-reserved',
+                    '"{name}" is kept for another app - choose another name',
+                    { name },
+                ),
+                { kind: 'error' },
+            );
+            return;
+        }
+        const path = `/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/rename`;
+        try {
+            await api(path, { method: 'POST', body: JSON.stringify({ name }) });
+            // The node moves it in the background, two writes a note: a large notebook takes a
+            // while, and the bar says how far it has got.
+            const end = await followProgress({
+                title: t('buckets.renaming-title', 'renaming the {noun}', { noun: app.bucketNoun }),
+                body: t(
+                    'buckets.renaming-body',
+                    'Moving everything in “{from}” to “{name}”. Closing this doesn’t stop it.',
+                    { from: bucket, name },
+                ),
+                poll: async () => {
+                    const r = await api(path);
+                    if (r.status === 'failed') throw new Error(r.error || r.status);
+                    return { ...r, running: r.status === 'renaming' };
+                },
+            });
+            const view = await readPref(root, listViewKey(app.id, bucket));
+            if (view) setPref(root, listViewKey(app.id, name), view);
+            // Hidden, they may have gone elsewhere since: the shelf has it, and they find it there.
+            if (!end.hidden) onSwitch(name, { name, app: app.style });
+        } catch (e) {
+            toast(
+                t('buckets.couldnt-rename-it', "couldn't rename it: {message}", {
                     message: e.message,
                 }),
                 { kind: 'error' },
@@ -261,6 +320,12 @@ export const BucketSwitcher = ({ root, app, roster, bucket, onSwitch }) => {
                         <span class="bucket-menu-count">${membersOf(name)}</span>
                     </button>`,
                 )}
+                ${
+                    !isHome &&
+                    html`<button class="bucket-menu-item bucket-menu-rename" onClick=${rename}>
+                    ${t('buckets.rename-this', 'Rename this {bucketNoun}…', { bucketNoun: app.bucketNoun })}
+                </button>`
+                }
                 ${
                     !isHome &&
                     html`<button class="bucket-menu-item bucket-menu-delete" onClick=${destroy}>

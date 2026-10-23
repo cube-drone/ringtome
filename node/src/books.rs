@@ -1037,6 +1037,38 @@ pub struct Takedown {
     pub book: bool,
 }
 
+/// Whether `bucket`'s book is rolling out right now - a renamed notebook would pull its pages
+/// out from under the sweep, so a rename waits for it.
+pub async fn rolling_out(
+    data: &store::Store,
+    bucket: &str,
+) -> Result<bool, crate::error::AppError> {
+    let (plans, _) = data.private_registers(ROLLOUT_KV).all().await?;
+    Ok(plans
+        .iter()
+        .filter(|r| r.key == bucket)
+        .filter_map(|r| serde_json::from_str::<Plan>(&r.value).ok())
+        .any(|p| matches!(p.status.as_str(), "pending" | "running" | "baking")))
+}
+
+/// A renamed notebook keeps its book (store `Buckets::rename`): its facts - the book's id, its
+/// key, where it went - and its last rollout's plan move to the new name. The published book
+/// stays the same book; its next rollout goes out from here.
+pub async fn follow_rename(
+    data: &store::Store,
+    from: &str,
+    to: &str,
+) -> Result<(), crate::error::AppError> {
+    for kv in [BOOKS_KV, ROLLOUT_KV] {
+        let (rows, _) = data.private_registers(kv).all().await?;
+        if let Some(row) = rows.into_iter().find(|r| r.key == from && !r.value.is_empty()) {
+            data.private_registers(kv).set(to, &row.value).await?;
+            data.private_registers(kv).set(from, "").await?;
+        }
+    }
+    Ok(())
+}
+
 /// Take a book down whole (ruling 10): every page the book names, every update threaded
 /// under it, and the book itself are retracted; each page's note becomes a draft again;
 /// the bucket's book facts forget the id (a tombstone is final for it - the next rollout
