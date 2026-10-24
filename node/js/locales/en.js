@@ -1351,6 +1351,10 @@ export default {
     'doc.reader.untitled': 'untitled',
     'index.not-here': "that isn't here - it was deleted, or hasn't reached this computer yet.",
 
+    // --- node/js/doc/relabel.js ---
+    'doc.relabel.one': 'the link to it in 1 note now says “{title}”',
+    'doc.relabel.n': 'the links to it in {n} notes now say “{title}”',
+
     // --- node/js/doc/session.js ---
     'doc.session.embed-removed-over-cap': '(“{alt}” removed — one page holds {cap} embedded files)',
 

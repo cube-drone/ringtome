@@ -24951,3 +24951,33 @@ Checked: a store test, an acceptance claim in buckets.cjs (started, polled to
 done), and renames driven through the switcher in headless Chrome on a scratch
 node - a 406-note notebook showed the bar at 83 of 406, an empty sketchbook
 none.
+
+## 2026-10-23 - A renamed note's links follow it
+
+Curtis: "If I had created a link that just read [here](http:///), I probably
+wouldn't want it renamed - if I'd created a link [JEFF KAPLAN], I probably
+_would_ want it renamed, right?" A dragged link points at the note's id, so it
+never broke; only its words went stale.
+
+- **The rule** (bake.rs `relabel`): a link or a picture naming the note whose
+  words are its old title - in any case, brackets and parentheses dropped as
+  drag-to-link drops them - takes the new title. `[here]` stays, and so does a
+  link to another note of the same name. The parser says which are links and
+  what they say; the words are changed in the source, and a note whose source
+  holds more such spellings than the parser found links (one inside code) is
+  left alone whole.
+- **Which notes** (store `relabel_links`): found through the indexes - the
+  search rows' links and the heads' embeds - not by opening every note; each
+  that changes is a new version on its heads. A note in conflict is left for its
+  owner to settle, a deleted one as it is. Only this persona's own notes.
+- **When**: a title box autosaves as it is typed, so the editors (notes and
+  drawings, doc/relabel.js `useRelabel`) ask `POST …/docs/{id}/relabel` once the
+  title lets go - on blur, or vim's `:file` - from the title the note opened
+  with, and toast how many notes changed. A rename said once follows at once:
+  `PATCH …/title` (the details panel, a picture's name) and the MCP's
+  `write_document`, which answers `links_renamed_in`.
+
+Checked: a bake test (every spelling, a picture, `[here]`, another note, code
+holding a copy), an acceptance claim (relabel.cjs: the PATCH and the editor's
+ask), and in headless Chrome: a title typed a few letters at a time left the
+linking note alone until the box let go, then changed it once, with one toast.

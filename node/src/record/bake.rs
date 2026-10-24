@@ -269,6 +269,107 @@ pub fn own_doc(target: &str, root_hex: &str) -> Option<String> {
     None
 }
 
+/// A note's own words for a document's title, as drag-to-link writes them (doc/crosslink.js
+/// `startDocDrag`): brackets and parentheses out, trimmed.
+fn link_words(title: &str) -> String {
+    title.replace(['[', ']', '(', ')'], "").trim().to_string()
+}
+
+/// The author's own document a link or an embed names: a link's address (`own_doc`), or the byte
+/// URL a dragged picture embeds, `/api/identity/<root>/docs/<id>/body/…`.
+fn names_doc(target: &str, root_hex: &str) -> Option<String> {
+    if let Some(id) = own_doc(target, root_hex) {
+        return Some(id);
+    }
+    let rest = link_path(target)?.strip_prefix(&format!("/api/identity/{root_hex}/docs/"))?;
+    let id = rest.split('/').next()?;
+    (id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())).then(|| id.to_ascii_lowercase())
+}
+
+/// The words with each link and picture naming document `doc_hex` whose words are its old title
+/// `from` - in any case - worded with its new one, `to` (Curtis, 2026-10-23: "if I'd created a
+/// link [JEFF KAPLAN], I probably _would_ want it renamed"; a `[here]` stays). The parser says
+/// which are links to it and what they say, as `doc_links` reads them; the words are changed in
+/// the source, where `[words](target)` is spelled. A source holding more of those than the
+/// parser found links - one inside code, say - is left alone whole: it can't be told which is
+/// which. `None` when nothing changes.
+pub fn relabel(body: &str, root_hex: &str, doc_hex: &str, from: &str, to: &str) -> Option<String> {
+    use marquee_parser::Node;
+    let from = link_words(from).to_lowercase();
+    if from.is_empty() {
+        return None;
+    }
+    let to = Some(link_words(to)).filter(|t| !t.is_empty()).unwrap_or_else(|| "untitled".into());
+    let doc = marquee_parser::parse(body).ok()?;
+    fn each(node: &Node, found: &mut dyn FnMut(&str, &str)) {
+        match node {
+            Node::Link { target, children } => {
+                let mut text = String::new();
+                for child in children {
+                    text_of(child, &mut text);
+                }
+                found(target, &text);
+            }
+            Node::Embed { target, alt } => found(target, alt),
+            Node::Document { children, .. }
+            | Node::Paragraph { children }
+            | Node::Heading { children, .. }
+            | Node::Blockquote { children }
+            | Node::List { children, .. }
+            | Node::ListItem { children }
+            | Node::Emphasis { children }
+            | Node::Strong { children }
+            | Node::Strikethrough { children }
+            | Node::Span { children, .. }
+            | Node::Directive { children, .. }
+            | Node::InvalidDirective { children, .. } => {
+                for child in children {
+                    each(child, found);
+                }
+            }
+            _ => {}
+        }
+    }
+    // How many links to it, per target, wear its old title.
+    let mut wanted: std::collections::BTreeMap<String, usize> = Default::default();
+    each(&doc, &mut |target, text| {
+        if text.trim().to_lowercase() == from
+            && names_doc(target, root_hex).as_deref() == Some(doc_hex)
+        {
+            *wanted.entry(target.to_string()).or_default() += 1;
+        }
+    });
+    let mut swaps: Vec<std::ops::Range<usize>> = Vec::new();
+    for (target, links) in &wanted {
+        let tail = format!("]({target})");
+        let mut here = 0;
+        for (at, _) in body.match_indices(&tail) {
+            // Back to this link's own `[` on its line: the words drag-to-link writes hold no
+            // brackets, so the nearest one is theirs.
+            let Some(open) = body[..at].rfind(['[', ']', '\n']) else { continue };
+            if body.as_bytes()[open] != b'[' {
+                continue;
+            }
+            if body[open + 1..at].trim().to_lowercase() == from {
+                swaps.push(open + 1..at);
+                here += 1;
+            }
+        }
+        if here > *links {
+            return None;
+        }
+    }
+    if swaps.is_empty() {
+        return None;
+    }
+    swaps.sort_by_key(|r| std::cmp::Reverse(r.start));
+    let mut out = body.to_string();
+    for range in swaps {
+        out.replace_range(range, &to);
+    }
+    Some(out)
+}
+
 /// A link target's path, at any origin, without its query or fragment.
 fn link_path(target: &str) -> Option<&str> {
     let path = match target.find("://") {
@@ -1485,6 +1586,41 @@ mod tests {
         {
             assert_eq!(linked_root(target), None, "{target}");
         }
+    }
+
+    /// A renamed note's links follow it when they wore its name (2026-10-23): in any case, a picture
+    /// too, every spelling of its address; a link with words of its own, a link to another note,
+    /// and a body whose code holds a copy are left as they are.
+    #[test]
+    fn links_wearing_a_renamed_note_s_title_take_its_new_one() {
+        use super::relabel;
+        let me = [7u8; 32];
+        let me_hex = hex::encode(me);
+        let short = crate::speakable::speakable(&me).rsplit('-').next().unwrap().to_string();
+        let (a, b) = ("a".repeat(32), "b".repeat(32));
+        let link = format!("/ringtome/user/{short}/doc/{a}?bucket=x");
+        let body = format!(
+            "Met [JEFF KAPLAN]({link}) - [here]({link}), [Jeff Kaplan](/home/notes/{a}) and \
+             [JEFF KAPLAN](/ringtome/user/{short}/doc/{b}).\n\n\
+             ![jeff kaplan](/api/identity/{me_hex}/docs/{a}/body/jeff.png) and *[JEFF KAPLAN]({link})*"
+        );
+        let out = relabel(&body, &me_hex, &a, "JEFF KAPLAN", "BONK (MONKEYDONK)").unwrap();
+        assert_eq!(
+            out,
+            format!(
+                "Met [BONK MONKEYDONK]({link}) - [here]({link}), [BONK MONKEYDONK](/home/notes/{a}) and \
+                 [JEFF KAPLAN](/ringtome/user/{short}/doc/{b}).\n\n\
+                 ![BONK MONKEYDONK](/api/identity/{me_hex}/docs/{a}/body/jeff.png) and *[BONK MONKEYDONK]({link})*"
+            )
+        );
+        assert_eq!(relabel(&body, &me_hex, &b, "nobody", "x"), None, "nothing wears it");
+        assert_eq!(relabel(&body, &me_hex, &a, "", "x"), None, "no old title, nothing to match");
+        let in_code = format!("[JEFF KAPLAN]({link}) and `[JEFF KAPLAN]({link})`");
+        assert_eq!(
+            relabel(&in_code, &me_hex, &a, "JEFF KAPLAN", "BONK"),
+            None,
+            "code holds a copy"
+        );
     }
 
     /// A body's links, for the Writer's Links column (2026-09-30): each target once, in order, its

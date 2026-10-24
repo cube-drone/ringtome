@@ -338,14 +338,14 @@ impl Tools {
             .flatten()
             .filter_map(|h| h.get("version").cloned())
             .collect();
-        let title =
-            args.title.or_else(|| doc.get("title").and_then(Value::as_str).map(str::to_string));
+        let was = doc.get("title").and_then(Value::as_str).unwrap_or_default().to_string();
+        let title = args.title.unwrap_or_else(|| was.clone());
         self.call(
             parts,
             Method::PUT,
             &path,
             Some(json!({
-                "title": title.unwrap_or_default(),
+                "title": title,
                 "body": words,
                 "parents": parents,
                 "format": format,
@@ -354,6 +354,20 @@ impl Tools {
         .await?;
         let mut answered =
             json!({ "document": document, "written": "a new version; the old ones are kept" });
+        // Renamed: the links to it wearing its old title follow, as they do in the app.
+        if !was.trim().is_empty() && !title.trim().is_empty() && was.trim() != title.trim() {
+            let relabeled = self
+                .call(
+                    parts,
+                    Method::POST,
+                    &format!("{path}/relabel"),
+                    Some(json!({ "from": was, "to": title })),
+                )
+                .await?;
+            if let Some(n) = relabeled.get("changed").and_then(Value::as_u64).filter(|n| *n > 0) {
+                answered["links_renamed_in"] = json!(n);
+            }
+        }
         if let Some(tags) = &args.tags {
             answered["tags"] = json!(self.retag(parts, &persona.root, document, tags).await?);
         }

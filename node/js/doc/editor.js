@@ -56,6 +56,7 @@ import { pickedReference } from './pickref.js';
 import { DrawingThumb } from './drawing.js';
 import { CopyLinkChip, docHref, LAUNCHER } from '../links.js';
 import { useLocation } from 'preact-iso';
+import { useRelabel } from './relabel.js';
 import { useGatedFeatures, useUnlocked } from '../unlocks.js';
 
 const html = htm.bind(h);
@@ -129,6 +130,9 @@ export const Editor = ({
         remove,
         row,
     } = useDocSession(root, docId, { onDeleted });
+
+    // Links to it wearing its old title follow a new one, once the title lets go (doc/relabel.js).
+    const relabel = useRelabel(root, docId, loaded, title);
 
     const [chosenMode, setChosenMode] = useState(null); // null = follow the format's default
     const [showMeta, setShowMeta] = useState(false);
@@ -532,6 +536,7 @@ export const Editor = ({
                         if (!name) return;
                         setTitle(name);
                         touched();
+                        relabel(name);
                     },
                     newNote: onNew,
                     open: (params) => {
@@ -753,7 +758,10 @@ export const Editor = ({
                               setTitle(e.currentTarget.value);
                               touched();
                           }}
-                          onBlur=${() => save()}
+                          onBlur=${() => {
+                              save();
+                              relabel();
+                          }}
                           placeholder="untitled"
                       />`
                 }

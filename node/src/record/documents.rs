@@ -2430,6 +2430,26 @@ pub async fn private_implicit_tags(
         .collect())
 }
 
+/// The private documents whose display head embeds `doc_id` (header `refs`) - a picture dragged
+/// into a note: who to ask when its title changes (store `relabel_links`).
+pub async fn embedders(db: &Db, doc_id: &[u8; 16]) -> Result<Vec<[u8; 16]>, AppError> {
+    let rows: Vec<(Vec<u8>, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT h.doc_id, v.refs FROM doc_heads h
+             JOIN doc_versions v ON v.entry_hash = h.entry_hash AND v.doc_id = h.doc_id
+             WHERE h.lane = 'private' AND length(v.refs) > 0",
+            (),
+        )
+        .await
+        .context("reading private refs for a retitle")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter(|(_, refs)| decode_refs(refs).contains(doc_id))
+        .filter_map(|(id, _)| <[u8; 16]>::try_from(id.as_slice()).ok())
+        .collect())
+}
+
 /// `private_implicit_tags`' three reads: the private heads' formats, their refs, the word counts.
 type ImplicitReads =
     (Vec<(Vec<u8>, Option<i64>, i64)>, BTreeMap<[u8; 16], Vec<[u8; 16]>>, BTreeMap<Vec<u8>, i64>);

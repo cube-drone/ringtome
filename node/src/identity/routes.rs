@@ -181,6 +181,7 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         // Rename without touching content: a media-safe retitle (a new version reusing the
         // head's blobs). The rename path for processed uploads; sound for text docs too.
         .route("/api/identity/{root}/docs/{doc_id}/title", patch(docs_retitle_handler))
+        .route("/api/identity/{root}/docs/{doc_id}/relabel", post(docs_relabel_handler))
         // Pin a document to the top of its list (PUT) or release it (DELETE) - a doc-meta flag,
         // like delete but opposite in effect.
         .route("/api/identity/{root}/posts/{post_id}/replies", get(own_post_replies_handler))
@@ -7325,6 +7326,35 @@ async fn docs_save_handler(
 }
 
 #[derive(Deserialize)]
+struct DocRelabel {
+    from: String,
+    to: String,
+}
+
+#[derive(Serialize)]
+struct DocRelabeled {
+    changed: usize,
+}
+
+/// POST `.../docs/{doc_id}/relabel {from, to}` - the note was retitled, and its title has settled:
+/// the links to it that wore the old title take the new one (store `relabel_links`), and the
+/// answer is how many notes that changed. Asked by the editor when the title box lets go, never
+/// per keystroke - each step of the typing would be an edit to every linking note.
+async fn docs_relabel_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, doc_id)): Path<(String, String)>,
+    Json(req): Json<DocRelabel>,
+) -> Result<Json<DocRelabeled>, AppError> {
+    let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let held = crate::fold::hold(&root);
+    let changed = data.documents().relabel_links(&doc_id, &req.from, &req.to).await?;
+    drop(held);
+    Ok(Json(DocRelabeled { changed }))
+}
+
+#[derive(Deserialize)]
 struct DocRetitle {
     title: String,
 }
@@ -7340,8 +7370,16 @@ async fn docs_retitle_handler(
 ) -> Result<Json<DocSaved>, AppError> {
     let doc_id = hex_fixed::<16>(&doc_id, "doc id")?;
     let data = store::open(&state, &session.account.id, &root).await?;
+    let was = data.documents().head(&doc_id).await?.map(|h| h.title).unwrap_or_default();
     let version = data.documents().retitle(&doc_id, &req.title).await?;
     crate::made_with::mark(&session, &data, &doc_id).await?;
+    // A rename here is said once, not typed into a saving box: the links wearing the old title
+    // follow it now (store `relabel_links`; the editors ask on letting go of theirs).
+    if !was.trim().is_empty() && was.trim() != req.title.trim() && !req.title.trim().is_empty() {
+        let held = crate::fold::hold(&root);
+        data.documents().relabel_links(&doc_id, &was, &req.title).await?;
+        drop(held);
+    }
     Ok(Json(DocSaved { version: hex::encode(version) }))
 }
 

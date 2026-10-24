@@ -21,6 +21,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { useDocSession } from './session.js';
+import { useRelabel } from './relabel.js';
 import { Chip, NavChips, PublishChip, useChipMenu } from './chips.js';
 import { Annotations } from './annotations.js';
 import { cachedDoc, rememberDoc, versionedBodyUrl } from '../mirror/doccache.js';
@@ -982,6 +983,8 @@ const LayerThumb = ({ source, painted }) => {
 
 export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
     const session = useDocSession(root, docId, { onDeleted });
+    // Notes embedding it under its old title follow a new one, once the title lets go (relabel.js).
+    const relabel = useRelabel(root, docId, session.loaded, session.title);
     const loc = useLocation();
     const [copying, setCopying] = useState(false);
     const [actionError, setActionError] = useState(null);
@@ -2522,7 +2525,10 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
                 session.setTitle(e.currentTarget.value);
                 session.touched();
             }}
-            onBlur=${() => session.save()}
+            onBlur=${() => {
+                session.save();
+                relabel();
+            }}
         />
         <span class="reader-chips">
             ${

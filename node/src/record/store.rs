@@ -1045,6 +1045,60 @@ impl Documents<'_> {
             .await
     }
 
+    /// A note was retitled `from` -> `to` (Curtis, 2026-10-23): each of this persona's notes whose
+    /// links or pictures name it in its old title's words takes the new one (bake.rs `relabel`),
+    /// as a new version on its heads. Found through the indexes - the search rows' links and the
+    /// heads' embeds - not by opening every note. A note in conflict is left for its owner to
+    /// settle first; a deleted one is left as it is. Returns how many notes changed.
+    pub async fn relabel_links(
+        &self,
+        doc_id: &[u8; 16],
+        from: &str,
+        to: &str,
+    ) -> Result<usize, AppError> {
+        let doc_hex = hex::encode(doc_id);
+        let root_hex = hex::encode(self.store.root);
+        let mut ask: BTreeSet<[u8; 16]> = self
+            .search_rows()
+            .await?
+            .into_iter()
+            .filter(|r| r.links.iter().any(|l| l.doc.as_deref() == Some(doc_hex.as_str())))
+            .filter_map(|r| hex::decode(&r.doc_id).ok()?.try_into().ok())
+            .collect();
+        ask.extend(crate::record::documents::embedders(&self.store.db, doc_id).await?);
+        let deleted = self.deleted().await?;
+        let mut changed = 0;
+        for id in ask.difference(&deleted) {
+            let Some(doc) = self.one(id).await? else { continue };
+            let [head] = doc.logical_heads.as_slice() else { continue };
+            let Some(version) = doc.versions.get(head) else { continue };
+            let format = crate::record::documents::Format::from_wire(version.header.format);
+            if format != crate::record::documents::Format::Marquee {
+                continue;
+            }
+            let Some(body) = self.body(version).await?.and_then(|b| String::from_utf8(b).ok())
+            else {
+                continue;
+            };
+            let Some(body) = crate::record::bake::relabel(&body, &root_hex, &doc_hex, from, to)
+            else {
+                continue;
+            };
+            self.save(crate::record::documents::Save {
+                doc_id: *id,
+                parents: doc.heads.clone(),
+                title: version.header.title.clone(),
+                body: body.into_bytes(),
+                format,
+                media: None,
+                refs: Vec::new(), // derived in save
+            })
+            .await?;
+            changed += 1;
+        }
+        Ok(changed)
+    }
+
     /// The search index, current: one token-bag row per document over title, resolved body,
     /// and annotation text (field values and tags, so a long description is exactly as
     /// findable as body prose). Stale rows refresh on this read, the same catch-up-on-read
