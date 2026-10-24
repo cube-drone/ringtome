@@ -24981,3 +24981,20 @@ Checked: a bake test (every spelling, a picture, `[here]`, another note, code
 holding a copy), an acceptance claim (relabel.cjs: the PATCH and the editor's
 ask), and in headless Chrome: a title typed a few letters at a time left the
 linking note alone until the box let go, then changed it once, with one toast.
+
+## 2026-10-24 - A notebook's ePub leaves its deleted pages out
+
+Curtis: an ePub of a notebook kept as a tree "included my deleted notes at the
+end of the book". Deleting a page tombstones it and unfiles it from every tree,
+but leaves its notebook name on it, so a restore brings it back to the notebook.
+The tree's book ends on every page the notebook names that the tree doesn't
+place, and the deleted pages were among them. The chronological book had the
+same gap, with its deleted pages mixed in among the rest by date.
+
+- **The fix** (epub.rs `notebook_pages`): both books build from the notebook's
+  pages minus the tombstone roster. The tree walk counts the deleted as placed
+  already, so it also skips any that a tree still holds from before deleting
+  unfiled (2026-10-13).
+
+Checked: an acceptance claim (epub.cjs: a page filed, then deleted, is in
+neither book). It failed 5 of 5 without the fix and passes with it.

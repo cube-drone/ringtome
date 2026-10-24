@@ -209,6 +209,30 @@ describe('ePubs: notebooks and books to carry off', function () {
         assert.match(edited.book.text['OEBPS/chapter-002.xhtml'], /renamed/);
     });
 
+    it('a deleted page is in neither book (2026-10-24)', async () => {
+        // Deleting unfiles a page from every tree but leaves its notebook name on it, and the tree's
+        // book ended on every unplaced page the notebook named - the deleted among them.
+        const gone = (
+            await (
+                await j(ada, `api/identity/${adaRoot}/docs`, {
+                    title: 'A deleted page',
+                    body: 'Thrown away.',
+                    format: 'marquee',
+                })
+            ).json()
+        ).doc_id;
+        await ada(`api/identity/${adaRoot}/docs/${gone}/buckets/${bucket}`, { method: 'PUT' });
+        const del = await ada(`api/identity/${adaRoot}/docs/${gone}`, { method: 'DELETE' });
+        assert.ok(del.ok, await del.text());
+        const path = `api/identity/${adaRoot}/buckets/${bucket}/epub`;
+        for (const p of [path, `${path}?order=chronological&tz=0`]) {
+            const { book } = await fetchEpub(ada, p);
+            const pages = Object.values(book.text).join('\n');
+            assert.doesNotMatch(pages, /A deleted page/, `${p}: the deleted page left out`);
+            assert.match(pages, /The second page/, `${p}: the kept pages still in`);
+        }
+    });
+
     it("a notebook's ePub is its persona's alone", async () => {
         const eve = await makeUserFetch({ prefix: 'epubeve' });
         assert.notEqual((await eve(`api/identity/${adaRoot}/buckets/${bucket}/epub`)).status, 200);

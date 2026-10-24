@@ -179,15 +179,8 @@ async fn notebook(
     tz_offset_min: i32,
 ) -> Result<Book> {
     let ae = |e: AppError| anyhow::anyhow!("{e}");
-    let in_bucket: BTreeSet<[u8; 16]> = data
-        .buckets()
-        .all()
-        .await
-        .map_err(ae)?
-        .into_iter()
-        .filter(|(_, names)| names.iter().any(|n| n == bucket))
-        .map(|(id, _)| id)
-        .collect();
+    let deleted = data.documents().deleted().await.map_err(ae)?;
+    let in_bucket = notebook_pages(data, bucket, &deleted).await?;
     let tree_title = format!("wiki:{bucket}");
     let tree_id = data
         .taxonomies()
@@ -212,7 +205,9 @@ async fn notebook(
     };
     let root_bytes: [u8; 32] =
         hex::decode(root).ok().and_then(|b| b.try_into().ok()).context("a root")?;
-    let mut placed: BTreeSet<[u8; 16]> = BTreeSet::new();
+    // The deleted count as placed already, so the walk passes over any a tree still holds (one
+    // deleted before deleting unfiled it, 2026-10-13).
+    let mut placed: BTreeSet<[u8; 16]> = deleted;
     if let Some(id) = tree_id {
         let tree = data.taxonomies().tree(&id).await.map_err(ae)?;
         let mut seen = BTreeSet::new();
@@ -233,6 +228,26 @@ async fn notebook(
     }
     book.pictures = private_pictures(data, root, &book.chapters).await?;
     Ok(book)
+}
+
+/// The pages in notebook `bucket`, less the deleted: deleting a page tombstones it and unfiles
+/// it from every tree, but leaves its notebook name on it (so a restore puts it back), and a
+/// book of every page the notebook names ended on the owner's deleted notes (Curtis, 2026-10-24).
+async fn notebook_pages(
+    data: &crate::record::store::Store,
+    bucket: &str,
+    deleted: &BTreeSet<[u8; 16]>,
+) -> Result<BTreeSet<[u8; 16]>> {
+    let ae = |e: AppError| anyhow::anyhow!("{e}");
+    Ok(data
+        .buckets()
+        .all()
+        .await
+        .map_err(ae)?
+        .into_iter()
+        .filter(|(id, names)| !deleted.contains(id) && names.iter().any(|n| n == bucket))
+        .map(|(id, _)| id)
+        .collect())
 }
 
 /// `ids` as the Writer's list orders them (apps/notes.js, `byPinnedThenClaimed`): pinned first,
@@ -270,15 +285,8 @@ async fn notebook_by_time(
     tz_offset_min: i32,
 ) -> Result<Book> {
     let ae = |e: AppError| anyhow::anyhow!("{e}");
-    let in_bucket = data
-        .buckets()
-        .all()
-        .await
-        .map_err(ae)?
-        .into_iter()
-        .filter(|(_, names)| names.iter().any(|n| n == bucket))
-        .map(|(id, _)| id)
-        .collect::<Vec<_>>();
+    let deleted = data.documents().deleted().await.map_err(ae)?;
+    let in_bucket = notebook_pages(data, bucket, &deleted).await?;
     let ordered = newest_first(data, in_bucket, tz_offset_min).await?;
     let mut book = Book {
         title: bucket.to_string(),
