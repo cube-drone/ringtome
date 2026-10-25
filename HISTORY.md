@@ -24998,3 +24998,21 @@ same gap, with its deleted pages mixed in among the rest by date.
 
 Checked: an acceptance claim (epub.cjs: a page filed, then deleted, is in
 neither book). It failed 5 of 5 without the fix and passes with it.
+
+## 2026-10-25 - Typing a heading no longer wedges the writer
+
+Curtis: typing `###` in the writer ate the next space, and after `### potato`
+the "p" wouldn't delete. A heading with no words yet (`### `) planned an empty
+style mark for its text, and CodeMirror throws on an empty mark. The keystroke
+reached the screen but never the editor's state, and the two drifted apart.
+
+- **The fix** is upstream, in Marquee 0.10.1 (marquee-codemirror): a heading
+  with no words plans no mark, and an empty mark is dropped before it reaches
+  CodeMirror. Ringtome takes 0.10.1 everywhere: the npm packages and the four
+  Rust crates, which change nothing but their version.
+
+Checked: an upstream planner test (fails without the fix), and in headless
+Chrome on a scratch node: `###`, space, `potato`, then backspacing to the start
+threw `RangeError: Mark decorations may not be empty` before and nothing after,
+on an empty line and at the end of one. ui-check (1078) and the Rust suite (682)
+pass on 0.10.1.
