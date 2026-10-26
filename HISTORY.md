@@ -25016,3 +25016,35 @@ Chrome on a scratch node: `###`, space, `potato`, then backspacing to the start
 threw `RangeError: Mark decorations may not be empty` before and nothing after,
 on an empty line and at the end of one. ui-check (1078) and the Rust suite (682)
 pass on 0.10.1.
+
+## 2026-10-26 - A notebook downloads as files, not only an ePub
+
+Curtis: "replace "ePub" with "download" and have that bring up a list of
+download types" - ePub at the top, then markdown.zip, markdown.yaml.zip,
+html.zip and marquee.zip - since the full export's renderings "would be useful
+to also support ... per-notebook".
+
+- **The menu** (doc/download.js, was doc/epubbutton.js): the Writer's tree
+  toolbar, its list column (the chronological order still asked for there), the
+  public book reader and a book's feed card all say "download", and open the
+  five. The list sits on the page itself, placed by its button, so the narrow
+  notes column can't clip it.
+- **The doors**: `…/buckets/{bucket}/download/{kind}` and
+  `/ringtome/user/{seg}/post/{book}/download/{kind}`, kind `epub`, `markdown`,
+  `markdown-yaml`, `html` or `marquee`. The `/epub` doors stay, as the ePub. A
+  zip is gathered exactly as the ePub is - the same pages, order, pictures and
+  seals, a notebook its persona's alone - and made, cached and polled the same
+  way, the kind in its cache name.
+- **The zips** (epub/zips.rs): one folder, the book's, with a section a folder
+  and a page a file named for its title (its id's first eight hex where two
+  share a name). Pictures go in `pictures/` as stored (AVIF, PNG), a drawing
+  painted. Links between pages and every picture point to the files, relative
+  and escaped, so the folder reads offline; other links are left as written.
+  Front matter and `:::meta` are the export's own (export.rs). html.zip renders
+  with the ePub's profile and adds `index.html`, `style.css` and the fonts used.
+
+Checked: unit tests for the names, the link rewriting and the contents page; two
+acceptance claims (epub.cjs: each zip of a notebook, its links, pictures, front
+matter and sections; a public book's markdown.zip for a stranger), with the ePub
+claims still green; and in headless Chrome, the menu opening in both Writer tabs
+and on a phone, html.zip downloading, a press elsewhere closing it.

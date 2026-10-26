@@ -56,6 +56,56 @@ pub const CACHE_BYTES: u64 = 512 * 1024 * 1024;
 /// How many books are made at once, node-wide: each reads every page and decodes every picture.
 const BUILDING: usize = 2;
 
+mod zips;
+
+/// What a notebook or a book downloads as (Curtis, 2026-10-26: "replace "ePub" with "download"
+/// and have that bring up a list of download types"): the ePub, or a zip of its pages as files -
+/// the full export's renderings (export.rs), one notebook's worth (epub/zips.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Epub,
+    /// `.md` pages.
+    Markdown,
+    /// `.md` pages, each opening on YAML front matter.
+    MarkdownYaml,
+    /// `.html` pages, an `index.html` of the contents, and their stylesheet and fonts.
+    Html,
+    /// `.mq` pages, each opening on its `:::meta`.
+    Marquee,
+}
+
+impl Kind {
+    /// As the download's address names it.
+    pub fn parse(s: &str) -> Option<Kind> {
+        Some(match s {
+            "epub" => Kind::Epub,
+            "markdown" => Kind::Markdown,
+            "markdown-yaml" => Kind::MarkdownYaml,
+            "html" => Kind::Html,
+            "marquee" => Kind::Marquee,
+            _ => return None,
+        })
+    }
+
+    /// The file's ending, as it downloads and as the cache keeps it.
+    fn ending(self) -> &'static str {
+        match self {
+            Kind::Epub => "epub",
+            Kind::Markdown => "markdown.zip",
+            Kind::MarkdownYaml => "markdown.yaml.zip",
+            Kind::Html => "html.zip",
+            Kind::Marquee => "marquee.zip",
+        }
+    }
+
+    fn content_type(self) -> &'static str {
+        match self {
+            Kind::Epub => "application/epub+zip",
+            _ => "application/zip",
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // What a book is made of
 
@@ -80,6 +130,12 @@ struct Chapter {
     words: Words,
     /// The key a sealed page opened with - and its pictures open with. Never in the cache key.
     key: Option<[u8; 32]>,
+    /// What a download's front matter says of it (epub/zips.rs): its format, when it was first
+    /// and last written, and its tags (a note's; a public page has none).
+    format: Format,
+    created_ms: i64,
+    updated_ms: i64,
+    tags: Vec<String>,
 }
 
 /// The contents, as the tree or the book's sections nest: a page, or a section of them.
@@ -125,6 +181,17 @@ struct Book {
 }
 
 impl Book {
+    /// The chapter a link target names: a page of this book by its note's id, or - in a public
+    /// book - by its own post's.
+    fn chapter_for(&self, target: &str) -> Option<usize> {
+        let note = if self.public {
+            crate::record::bake::own_doc(target, &self.root).or_else(|| post_link(target))
+        } else {
+            crate::record::bake::own_doc(target, &self.root)
+        }?;
+        self.chapter_of.get(&note).copied()
+    }
+
     /// The cache key: the format's version and everything the book is made of, in order.
     fn key(&self) -> String {
         let mut h = blake3::Hasher::new();
@@ -375,6 +442,10 @@ async fn private_chapter(
         title: head.title,
         words,
         key: None,
+        format,
+        created_ms: head.genesis_ms,
+        updated_ms: head.head_ms,
+        tags: data.annotations().tags(id).await.map_err(ae)?,
     }))
 }
 
@@ -638,13 +709,24 @@ async fn public_page(
         bytes = open;
     }
     let text = String::from_utf8_lossy(&bytes).into_owned();
-    let words = match Format::from_wire(doc.format) {
+    let format = Format::from_wire(doc.format);
+    let words = match format {
         Format::Plaintext => Words::Plain(text),
         Format::Marquee | Format::Room => Words::Marquee(text),
         _ => return Ok(None),
     };
     let title = page["title"].as_str().map(str::to_string).unwrap_or(doc.title);
-    chapters.push(Chapter { id: post.to_string(), head: hex::encode(head), title, words, key });
+    chapters.push(Chapter {
+        id: post.to_string(),
+        head: hex::encode(head),
+        title,
+        words,
+        key,
+        format,
+        created_ms: doc.genesis_ms,
+        updated_ms: doc.head_ms,
+        tags: Vec::new(),
+    });
     Ok(Some(Entry::Page(chapters.len() - 1)))
 }
 
@@ -835,14 +917,7 @@ async fn make(
         made.insert(p.doc.clone(), name.clone());
         picture_files.insert(p.target.clone(), name);
     }
-    let chapter_of = |target: &str| -> Option<String> {
-        let note = if book.public {
-            crate::record::bake::own_doc(target, &book.root).or_else(|| post_link(target))
-        } else {
-            crate::record::bake::own_doc(target, &book.root)
-        }?;
-        book.chapter_of.get(&note).map(|i| chapter_file(*i))
-    };
+    let chapter_of = |target: &str| book.chapter_for(target).map(chapter_file);
     let profile = BookProfile { pictures: &picture_files, chapters: &chapter_of };
     // The cover (Curtis, 2026-10-09): the first picture on the title page - the book's first page,
     // a public book's own cover page - when it has one.
@@ -949,6 +1024,28 @@ fn post_link(target: &str) -> Option<String> {
     (id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())).then(|| id.to_ascii_lowercase())
 }
 
+/// A picture's bytes as they are stored: a note's blob, or a public twin's - opened, when the page
+/// it is on was sealed.
+async fn picture_bytes(
+    state: &AppState,
+    data: Option<&crate::record::store::Store>,
+    book: &Book,
+    file_hash: [u8; 32],
+    key: Option<[u8; 32]>,
+) -> Result<Option<Vec<u8>>> {
+    let bytes = match (book.public, data) {
+        (false, Some(data)) => {
+            data.documents().blob(file_hash).await.map_err(|e| anyhow::anyhow!("{e}"))?
+        }
+        _ => state.files.get_public(iroh_blobs::Hash::from_bytes(file_hash)).await?,
+    };
+    let Some(bytes) = bytes else { return Ok(None) };
+    match key {
+        Some(k) => Ok(crate::record::private::open_post_body(&bytes, &k)),
+        None => Ok(Some(bytes)),
+    }
+}
+
 /// A picture's bytes, read and converted for a book.
 async fn picture(
     state: &AppState,
@@ -958,19 +1055,9 @@ async fn picture(
     file_hash: [u8; 32],
     key: Option<[u8; 32]>,
 ) -> Result<Option<(Vec<u8>, &'static str)>> {
-    let bytes = match (book.public, data) {
-        (false, Some(data)) => {
-            data.documents().blob(file_hash).await.map_err(|e| anyhow::anyhow!("{e}"))?
-        }
-        _ => state.files.get_public(iroh_blobs::Hash::from_bytes(file_hash)).await?,
+    let Some(bytes) = picture_bytes(state, data, book, file_hash, key).await? else {
+        return Ok(None);
     };
-    let Some(mut bytes) = bytes else { return Ok(None) };
-    if let Some(k) = key {
-        let Some(open) = crate::record::private::open_post_body(&bytes, &k) else {
-            return Ok(None);
-        };
-        bytes = open;
-    }
     if format == Format::Drawing {
         let Some(data) = data else { return Ok(None) };
         let width =
@@ -1122,11 +1209,12 @@ async fn file_for(
     state: &AppState,
     data: Option<&crate::record::store::Store>,
     book: &Book,
+    kind: Kind,
     progress: &(dyn Fn(usize) + Sync),
 ) -> Result<PathBuf> {
     let dir = cache_dir(state);
     tokio::fs::create_dir_all(&dir).await.context("making the ePub cache")?;
-    let path = dir.join(format!("{}.epub", book.key()));
+    let path = cached(state, book, kind);
     if path.is_file() {
         // Asked for again: kept longer.
         if let Ok(f) = std::fs::File::options().append(true).open(&path) {
@@ -1138,15 +1226,29 @@ async fn file_for(
     if path.is_file() {
         return Ok(path);
     }
-    let (files, cover) = make(state, data, book, progress).await?;
-    let partial = dir.join(format!("{}.{}.partial", book.key(), rand::random::<u64>()));
-    let (book_shape, to) = (BookShape::of(book), partial.clone());
-    tokio::task::spawn_blocking(move || zip_book(&book_shape.0, &files, cover.as_deref(), &to))
-        .await
-        .context("the ePub's thread")??;
+    let partial =
+        dir.join(format!("{}.{}.{}.partial", book.key(), kind.ending(), rand::random::<u64>()));
+    let to = partial.clone();
+    if kind == Kind::Epub {
+        let (files, cover) = make(state, data, book, progress).await?;
+        let book_shape = BookShape::of(book);
+        tokio::task::spawn_blocking(move || zip_book(&book_shape.0, &files, cover.as_deref(), &to))
+            .await
+            .context("the ePub's thread")??;
+    } else {
+        let files = zips::make(state, data, book, kind, progress).await?;
+        tokio::task::spawn_blocking(move || zips::write(&files, &to))
+            .await
+            .context("the zip's thread")??;
+    }
     tokio::fs::rename(&partial, &path).await.context("moving the ePub into place")?;
     prune(&dir);
     Ok(path)
+}
+
+/// Where the cache keeps this book made as `kind`. An ePub keeps the name it always had.
+fn cached(state: &AppState, book: &Book, kind: Kind) -> PathBuf {
+    cache_dir(state).join(format!("{}.{}", book.key(), kind.ending()))
 }
 
 /// What the zip's own files need of a book, owned, for its thread.
@@ -1187,7 +1289,7 @@ fn prune(dir: &Path) {
         let abandoned = path.extension().is_some_and(|e| e == "partial") && age.as_secs() > 3600;
         if stale || abandoned {
             let _ = std::fs::remove_file(&path);
-        } else if path.extension().is_some_and(|e| e == "epub") {
+        } else if !path.extension().is_some_and(|e| e == "partial") {
             kept.push((modified, meta.len(), path));
         }
     }
@@ -1202,7 +1304,7 @@ fn prune(dir: &Path) {
 }
 
 /// The file's name as it downloads: the book's title, cut to letters, digits and hyphens.
-fn download_name(title: &str) -> String {
+fn download_name(title: &str, kind: Kind) -> String {
     let mut slug = String::new();
     for c in title.chars().flat_map(char::to_lowercase) {
         if c.is_ascii_alphanumeric() {
@@ -1213,14 +1315,10 @@ fn download_name(title: &str) -> String {
     }
     let slug: String = slug.chars().take(60).collect();
     let slug = slug.trim_end_matches('-');
-    if slug.is_empty() {
-        "book.epub".to_string()
-    } else {
-        format!("{slug}.epub")
-    }
+    format!("{}.{}", if slug.is_empty() { "book" } else { slug }, kind.ending())
 }
 
-async fn serve(path: PathBuf, title: &str) -> Result<impl IntoResponse, AppError> {
+async fn serve(path: PathBuf, title: &str, kind: Kind) -> Result<impl IntoResponse, AppError> {
     let file = tokio::fs::File::open(&path)
         .await
         .context("opening the ePub")
@@ -1229,11 +1327,11 @@ async fn serve(path: PathBuf, title: &str) -> Result<impl IntoResponse, AppError
     let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file));
     Ok((
         [
-            (axum::http::header::CONTENT_TYPE, "application/epub+zip".to_string()),
+            (axum::http::header::CONTENT_TYPE, kind.content_type().to_string()),
             (axum::http::header::CONTENT_LENGTH, bytes.to_string()),
             (
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", download_name(title)),
+                format!("attachment; filename=\"{}\"", download_name(title, kind)),
             ),
         ],
         body,
@@ -1280,13 +1378,14 @@ async fn answer(
     state: &AppState,
     job: String,
     book: Book,
+    kind: Kind,
 ) -> Result<axum::response::Response, AppError> {
-    let path = cache_dir(state).join(format!("{}.epub", book.key()));
+    let path = cached(state, &book, kind);
     if path.is_file() {
         if let Ok(f) = std::fs::File::options().append(true).open(&path) {
             let _ = f.set_modified(std::time::SystemTime::now());
         }
-        return Ok(serve(path, &book.title).await?.into_response());
+        return Ok(serve(path, &book.title, kind).await?.into_response());
     }
     let total = book.pictures.len() + book.chapters.len();
     {
@@ -1308,7 +1407,7 @@ async fn answer(
                         }
                     }
                 };
-                let made = file_for(&state, data.as_ref(), &book, &progress).await;
+                let made = file_for(&state, data.as_ref(), &book, kind, &progress).await;
                 if let Ok(mut all) = builds().lock() {
                     match made {
                         // Made: the next ask finds it in the cache.
@@ -1316,7 +1415,7 @@ async fn answer(
                             all.remove(&job);
                         }
                         Err(e) => {
-                            tracing::warn!(job = %job, error = ?e, "an ePub could not be made");
+                            tracing::warn!(job = %job, error = ?e, "a download could not be made");
                             if let Some(b) = all.get_mut(&job) {
                                 b.error = Some(format!("{e:#}"));
                             }
@@ -1343,14 +1442,42 @@ pub struct NotebookOrder {
 /// the file, or `202` and how far its making has got.
 pub async fn notebook_handler(
     session: Session,
-    State(state): State<AppState>,
+    state: State<AppState>,
     UrlPath((root, bucket)): UrlPath<(String, String)>,
+    order: axum::extract::Query<NotebookOrder>,
+) -> Result<axum::response::Response, AppError> {
+    notebook_download(session, state, root, bucket, Kind::Epub, order).await
+}
+
+/// GET `/api/identity/{root}/buckets/{bucket}/download/{kind}` - a notebook as any of the
+/// downloads (`Kind::parse`), as the ePub door answers.
+pub async fn notebook_download_handler(
+    session: Session,
+    state: State<AppState>,
+    UrlPath((root, bucket, kind)): UrlPath<(String, String, String)>,
+    order: axum::extract::Query<NotebookOrder>,
+) -> Result<axum::response::Response, AppError> {
+    let kind = Kind::parse(&kind).ok_or_else(|| {
+        AppError::NotFound(crate::msg!("epub.no-such-download", "no such download"))
+    })?;
+    notebook_download(session, state, root, bucket, kind, order).await
+}
+
+async fn notebook_download(
+    session: Session,
+    State(state): State<AppState>,
+    root: String,
+    bucket: String,
+    kind: Kind,
     axum::extract::Query(order): axum::extract::Query<NotebookOrder>,
 ) -> Result<axum::response::Response, AppError> {
     let data = crate::record::store::open(&state, &session.account.id, &root).await?;
     let chronological = order.order.as_deref() == Some("chronological");
-    let job =
-        format!("notebook:{root}:{bucket}{}", if chronological { ":chronological" } else { "" });
+    let job = format!(
+        "notebook:{root}:{bucket}:{}{}",
+        kind.ending(),
+        if chronological { ":chronological" } else { "" }
+    );
     if let Some(r) = polled(&job) {
         return Ok(r);
     }
@@ -1366,7 +1493,7 @@ pub async fn notebook_handler(
             "that notebook has nothing to read yet"
         )));
     }
-    answer(&state, job, book).await
+    answer(&state, job, book, kind).await
 }
 
 /// GET `/ringtome/user/{seg}/post/{book}/epub` - a public book as an ePub, for anyone; a book or a page
@@ -1374,8 +1501,31 @@ pub async fn notebook_handler(
 /// or `202` and how far its making has got.
 pub async fn book_handler(
     session: Option<Session>,
-    State(state): State<AppState>,
+    state: State<AppState>,
     UrlPath((seg, book)): UrlPath<(String, String)>,
+) -> Result<axum::response::Response, AppError> {
+    book_download(session, state, seg, book, Kind::Epub).await
+}
+
+/// GET `/ringtome/user/{seg}/post/{book}/download/{kind}` - a public book as any of the downloads
+/// (`Kind::parse`), as the ePub door answers.
+pub async fn book_download_handler(
+    session: Option<Session>,
+    state: State<AppState>,
+    UrlPath((seg, book, kind)): UrlPath<(String, String, String)>,
+) -> Result<axum::response::Response, AppError> {
+    let kind = Kind::parse(&kind).ok_or_else(|| {
+        AppError::NotFound(crate::msg!("epub.no-such-download", "no such download"))
+    })?;
+    book_download(session, state, seg, book, kind).await
+}
+
+async fn book_download(
+    session: Option<Session>,
+    State(state): State<AppState>,
+    seg: String,
+    book: String,
+    kind: Kind,
 ) -> Result<axum::response::Response, AppError> {
     let not_here = || AppError::NotFound(crate::msg!("epub.no-such-book", "no such book here"));
     let Some(crate::speakable::Parsed::Ok(root)) = crate::speakable::parse(&seg) else {
@@ -1386,7 +1536,7 @@ pub async fn book_handler(
         return Err(not_here());
     };
     let asker = session.as_ref().map_or("anyone".to_string(), |s| s.account.id.to_string());
-    let job = format!("book:{root}:{}:{asker}", hex::encode(book_id));
+    let job = format!("book:{root}:{}:{asker}:{}", hex::encode(book_id), kind.ending());
     if let Some(r) = polled(&job) {
         return Ok(r);
     }
@@ -1399,7 +1549,7 @@ pub async fn book_handler(
     if book.chapters.is_empty() {
         return Err(not_here());
     }
-    answer(&state, job, book).await
+    answer(&state, job, book, kind).await
 }
 
 #[cfg(test)]
@@ -1426,7 +1576,17 @@ mod tests {
     }
 
     fn chapter(id: &str, title: &str, words: Words) -> Chapter {
-        Chapter { id: id.repeat(16), head: "00".repeat(32), title: title.into(), words, key: None }
+        Chapter {
+            id: id.repeat(16),
+            head: "00".repeat(32),
+            title: title.into(),
+            words,
+            key: None,
+            format: Format::Marquee,
+            created_ms: 0,
+            updated_ms: 0,
+            tags: Vec::new(),
+        }
     }
 
     #[test]
@@ -1588,7 +1748,7 @@ mod tests {
             ),
             None
         );
-        assert_eq!(download_name("My Stable: Book Two!"), "my-stable-book-two.epub");
-        assert_eq!(download_name("馬"), "book.epub");
+        assert_eq!(download_name("My Stable: Book Two!", Kind::Epub), "my-stable-book-two.epub");
+        assert_eq!(download_name("馬", Kind::Epub), "book.epub");
     }
 }

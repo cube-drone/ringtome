@@ -373,4 +373,91 @@ describe('ePubs: notebooks and books to carry off', function () {
             assert.equal(res.headers.get('content-type'), 'application/epub+zip');
         },
     );
+
+    // Downloads as files (Curtis, 2026-10-26: "replace "ePub" with "download" and have that bring
+    // up a list of download types"): the same pages, in one folder, as the tree nests them, with
+    // their links and pictures pointing into it.
+    const ZIP = `
+import sys, zipfile, json
+z = zipfile.ZipFile(sys.argv[1])
+out = {"names": z.namelist(), "text": {}}
+for n in z.namelist():
+    if n.endswith((".md", ".mq", ".html", ".css", ".txt")):
+        out["text"][n] = z.read(n).decode()
+print(json.dumps(out))
+`;
+    const fetchZip = async (who, p, named) => {
+        let res;
+        for (let i = 0; i < 120; i++) {
+            res = await who(p);
+            if (res.status !== 202) break;
+            const made = await res.json();
+            assert.notEqual(made.status, 'failed', made.error);
+            await new Promise((r) => setTimeout(r, 250));
+        }
+        assert.equal(res.status, 200, await res.clone().text());
+        assert.equal(res.headers.get('content-type'), 'application/zip');
+        assert.match(res.headers.get('content-disposition'), new RegExp(`filename="${named}"`));
+        const file = path.join(work, `${crypto.randomBytes(4).toString('hex')}.zip`);
+        fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+        return JSON.parse(execFileSync('python3', ['-c', ZIP, file], { encoding: 'utf8' }));
+    };
+
+    it('a notebook downloads as Markdown, Markdown with front matter, Marquee, and HTML', async () => {
+        const door = `api/identity/${adaRoot}/buckets/${bucket}/download`;
+        const md = await fetchZip(ada, `${door}/markdown`, 'stable.markdown.zip');
+        const first = md.text['stable/The first page.md'];
+        assert.ok(first, `the page, named for its title: ${md.names.join(', ')}`);
+        assert.ok(md.text['stable/Part one/The second page.md'], 'the section, a folder');
+        assert.match(first, /\]\(Part%20one\/The%20second%20page\.md\)/, 'the link, to its file');
+        const plate = new RegExp(`\\]\\((pictures/${pic}\\.(avif|png))\\)`).exec(first);
+        assert.ok(plate, `the picture, to its file: ${first}`);
+        assert.ok(md.names.includes(`stable/${plate[1]}`), 'which is in the zip, as stored');
+        assert.ok(md.names.includes('stable/A doodle.png'), 'the drawing, painted');
+        assert.doesNotMatch(first, /^---/, 'no front matter');
+
+        const yml = await fetchZip(ada, `${door}/markdown-yaml`, 'stable.markdown.yaml.zip');
+        const front = yml.text['stable/The first page.md'];
+        assert.match(front, /^---\n/);
+        assert.match(front, /"title": "The first page"/);
+        assert.match(front, /"buckets": \["stable"\]/);
+
+        const mq = await fetchZip(ada, `${door}/marquee`, 'stable.marquee.zip');
+        const source = mq.text['stable/The first page.mq'];
+        assert.match(source, /^:::meta /);
+        assert.match(source, /\[the next page\]\(Part%20one\/The%20second%20page\.mq\)/);
+
+        const web = await fetchZip(ada, `${door}/html`, 'stable.html.zip');
+        assert.match(web.text['stable/index.html'], /href="Part%20one\/The%20second%20page\.html"/);
+        assert.match(
+            web.text['stable/The first page.html'],
+            /href="Part%20one\/The%20second%20page\.html"/,
+        );
+        assert.match(web.text['stable/The first page.html'], new RegExp(`src="pictures/${pic}\\.`));
+        const deep = web.text['stable/Part one/The second page.html'];
+        assert.match(deep, /href="\.\.\/style\.css"/, 'a page in a section finds the stylesheet');
+        assert.match(deep, /href="\.\.\/index\.html"/, 'and the contents');
+        assert.ok(web.text['stable/style.css'], 'the stylesheet');
+
+        assert.equal((await ada(`${door}/docx`)).status, 404, 'no such download');
+        const eve = await makeUserFetch({ prefix: 'epubeve2' });
+        assert.notEqual((await eve(`${door}/markdown`)).status, 200, "the persona's alone");
+    });
+
+    it('a public book downloads as files too, for anyone', async () => {
+        const stranger = makeFetch();
+        const door = `ringtome/user/${adaRoot}/post/${bookId}/download`;
+        const md = await fetchZip(stranger, `${door}/markdown`, '[a-z0-9-]+\\.markdown\\.zip');
+        const pages = Object.entries(md.text)
+            .filter(([n]) => n.endsWith('.md'))
+            .map(([, text]) => text)
+            .join('\n');
+        assert.match(pages, /renamed/, `its pages: ${md.names.join(', ')}`);
+        assert.ok(
+            md.names.some((n) => /\/pictures\/[0-9a-f]{32}\.(avif|png)$/.test(n)),
+            `the published picture, as stored: ${md.names.join(', ')}`,
+        );
+        const res = await stranger(`${door}/epub`);
+        assert.ok([200, 202].includes(res.status), 'the ePub, by the same door');
+    });
 });

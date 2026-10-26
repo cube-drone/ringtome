@@ -10,7 +10,7 @@ import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from '../net.js';
-import { EpubButton } from './epubbutton.js';
+import { DownloadButton } from './download.js';
 import { openMirror, useLive, holdNewDoc } from '../mirror.js';
 import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from '../mirror/prefs.js';
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
@@ -1129,9 +1129,9 @@ export const WikiTree = ({
                 <button class="tree-tool jag-line" onClick=${() => newSection(null)}>
                     <${Icons.sectionNew} /> ${t('doc.tree.section', 'section')}
                 </button>
-                <${EpubButton}
-                    path=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/epub`}
-                    fallback=${`${bucket}.epub`}
+                <${DownloadButton}
+                    base=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/download`}
+                    stem=${bucket}
                 />
             </div>`
             }

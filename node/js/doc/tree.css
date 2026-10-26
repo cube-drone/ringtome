@@ -30,12 +30,78 @@
     margin-bottom: 0.5rem;
 }
 
-/* The ePub button's refusal (doc/epubbutton.js), on its own line under the toolbar's buttons, inside
-   the column rather than past its border. */
+/* The download button's refusal (doc/download.js), on its own line under the toolbar's buttons,
+   inside the column rather than past its border. */
 .epub-error {
     flex-basis: 100%;
     margin: 0;
     overflow-wrap: anywhere;
+}
+
+/* The downloads' list (doc/download.js), hung under its button as the notebook menu hangs under
+   the notebook's name (shell.css .bucket-menu). It is placed on the page itself, by its button
+   (the script sets top and left), so the column it opens from can't clip it. */
+.download-anchor {
+    display: inline-flex;
+}
+
+.download-menu {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    min-width: 15rem;
+    padding: 0.3rem;
+    background: var(--surface);
+    color: var(--ink);
+    border: 2px solid transparent;
+    --line: var(--ink);
+    --lw: 2px;
+    --j: 4px;
+    clip-path: var(--jag-1);
+    box-shadow: 0 8px 20px var(--shadow-drop);
+}
+
+.download-menu-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    background: none;
+    border: 0;
+    --j: 2.5px;
+    clip-path: var(--jag);
+    padding: 0.4rem 0.55rem;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.download-menu-item:hover,
+.download-menu-item:focus-visible {
+    background: var(--surface-2);
+}
+
+/* The ePub, a book, set off from the zips of files below it. */
+.download-menu-item:first-child {
+    margin-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.download-menu-name {
+    font-weight: 700;
+}
+
+.download-menu-hint {
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+@media (max-width: 900px) {
+    .download-menu-item {
+        padding: 0.7rem 0.7rem;
+    }
 }
 
 .tree-tool {

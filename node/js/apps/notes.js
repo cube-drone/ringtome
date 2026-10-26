@@ -27,7 +27,7 @@ import { useLocation } from 'preact-iso';
 import { api } from '../net.js';
 import { RightColumn } from '../doc/reader.js';
 import { Snippet } from '../doc/snippet.js';
-import { EpubButton } from '../doc/epubbutton.js';
+import { DownloadButton } from '../doc/download.js';
 import { listViewKey, usePref } from '../mirror/prefs.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch } from '../search.js';
@@ -894,10 +894,11 @@ export const DocsApp = ({
                         }
                         ${
                             feat.tree &&
-                            html`<${EpubButton}
+                            html`<${DownloadButton}
                             className="notes-tool jag-line"
-                            path=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/epub?${treeTab ? '' : 'order=chronological&'}tz=${new Date().getTimezoneOffset()}`}
-                            fallback=${`${bucket}.epub`}
+                            base=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/download`}
+                            query=${`?${treeTab ? '' : 'order=chronological&'}tz=${new Date().getTimezoneOffset()}`}
+                            stem=${bucket}
                         />`
                         }
                     </div>

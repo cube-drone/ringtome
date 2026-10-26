@@ -976,6 +976,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/ringtome/user/{seg}/doc/{doc}/thumb", get(idface::public_thumb_route))
         // A public book as an ePub (epub.rs): a static segment, ahead of the page wildcard.
         .route("/ringtome/user/{seg}/post/{book}/epub", get(epub::book_handler))
+        .route("/ringtome/user/{seg}/post/{book}/download/{kind}", get(epub::book_download_handler))
         .route("/ringtome/user/{seg}/rss.xml", get(rss::rss_handler))
         .route("/ringtome/user/{seg}", get(idface::idface))
         .route("/ringtome/user/{seg}/{*rest}", get(idface::idface_deep))

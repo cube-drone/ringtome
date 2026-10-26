@@ -703,7 +703,7 @@ fn stem(title: &str, doc_id: &[u8; 16]) -> String {
     format!("{}--{}", file_name(&display_title(title)), &hex::encode(doc_id)[..8])
 }
 
-fn display_title(title: &str) -> String {
+pub(crate) fn display_title(title: &str) -> String {
     let t = title.trim();
     if t.is_empty() {
         "untitled".to_string()
@@ -737,19 +737,19 @@ pub(crate) fn file_name(name: &str) -> String {
 // The renderings
 
 /// What a note's renderings say about it, besides its words.
-struct Meta {
-    id: String,
+pub(crate) struct Meta {
+    pub(crate) id: String,
     /// The version exported, hex: the document's display head (plans/EXPORT.md - cheap now, and
     /// what an import that ever wants more than "additive" would anchor on).
-    head: Option<String>,
-    title: String,
-    format: Format,
-    created_ms: i64,
-    updated_ms: i64,
-    tags: Vec<String>,
-    buckets: Vec<String>,
+    pub(crate) head: Option<String>,
+    pub(crate) title: String,
+    pub(crate) format: Format,
+    pub(crate) created_ms: i64,
+    pub(crate) updated_ms: i64,
+    pub(crate) tags: Vec<String>,
+    pub(crate) buckets: Vec<String>,
     /// Its annotation fields, bookkeeping still in: [`Meta::pairs`] drops it.
-    fields: BTreeMap<String, String>,
+    pub(crate) fields: BTreeMap<String, String>,
 }
 
 impl Meta {
@@ -846,7 +846,7 @@ fn media_ext(format: Format) -> Option<&'static str> {
 /// The `:::meta` directive (Marquee SPEC, Document metadata), written by the parser crate's own
 /// serializer so every value is quoted as the parser reads it. A list is joined with commas, as
 /// the spec's own `tags="…"` example does; a newline would end the directive's line, so it goes.
-fn meta_directive(meta: &Meta) -> String {
+pub(crate) fn meta_directive(meta: &Meta) -> String {
     let attrs: marquee_parser::Attrs = meta
         .pairs()
         .into_iter()
@@ -868,7 +868,7 @@ fn meta_directive(meta: &Meta) -> String {
 
 /// YAML front matter. Every scalar is a JSON string - which YAML reads as a double-quoted
 /// scalar - so no value can break the file, and no YAML library is needed to write it.
-fn front_matter(meta: &Meta) -> String {
+pub(crate) fn front_matter(meta: &Meta) -> String {
     let mut out = String::from("---\n");
     for (k, v) in meta.pairs() {
         out.push_str(&yaml_line(&k, &v));

@@ -1106,6 +1106,17 @@ export default {
     'doc.diffpage.public-only': 'public only',
     'doc.diffpage.private-only': 'private only',
 
+    // --- node/js/doc/download.js ---
+    'doc.download.epub-hint': 'a book, for an e-reader',
+    'doc.download.markdown-hint': 'every page as Markdown',
+    'doc.download.markdown-yaml-hint': 'Markdown, each page opening on its details',
+    'doc.download.html-hint': 'web pages, to open in any browser',
+    'doc.download.marquee-hint': 'every page as it is written',
+    'doc.download.title': 'download it as a book, or as files',
+    'doc.download.making-it': 'making it…',
+    'doc.download.download': 'download',
+    'doc.download.percent': '{percent}%',
+
     // --- node/js/doc/drawing.js ---
     'doc.drawing.not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
     'doc.drawing.untitled': 'untitled',
@@ -1229,12 +1240,6 @@ export default {
     'doc.editor.hide-from-the-book': 'hide from the book',
     'doc.editor.the-book-rolls-out-from': 'publish from the Publish column',
     'doc.editor.publish-the-changes': 'publish the changes',
-
-    // --- node/js/doc/epubbutton.js ---
-    'doc.epubbutton.download-as-an-epub': 'download as an ePub, for an e-reader',
-    'doc.epubbutton.making-it': 'making it…',
-    'doc.epubbutton.epub': 'ePub',
-    'doc.epubbutton.percent': '{percent}%',
 
     // --- node/js/doc/imagepick.js ---
     'doc.imagepick.not-a-still': "that isn't a still picture - an animation becomes a video, and this wants a picture",
@@ -2471,6 +2476,7 @@ export default {
     'domainsite.reading-only': "a person's own domain is for reading",
 
     // --- node/src/epub.rs ---
+    'epub.no-such-download': 'no such download',
     'epub.nothing-to-read': 'that notebook has nothing to read yet',
     'epub.no-such-book': 'no such book here',
 

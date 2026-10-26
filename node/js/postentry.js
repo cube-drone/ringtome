@@ -26,7 +26,7 @@ import { Icons } from './icons.js';
 import { tagIconRole } from './pure/tagicons.js';
 import { SuperPinChip } from './frontdoor.js';
 import { useChipMenu } from './doc/chips.js';
-import { EpubChip } from './doc/epubbutton.js';
+import { DownloadChip } from './doc/download.js';
 import { Modal } from './modal.js';
 import { speakable } from './speakable.js';
 import { parse } from '@cube-drone/marquee-react-renderer';
@@ -1474,7 +1474,7 @@ const PostEntryBody = ({
                         too: the node opens it for the trusted reader it is shown to, as the reader
                         does, and for nobody else. */ ''
                     }
-                    ${!open && item.format === 'book' && html`<${EpubChip} path=${`/ringtome/user/${item.author}/post/${item.doc_id}/epub`} />`}
+                    ${!open && item.format === 'book' && html`<${DownloadChip} base=${`/ringtome/user/${item.author}/post/${item.doc_id}/download`} />`}
                     ${/* Its QR code, for another phone (plans/QR.md): a public post's only. */ ''}
                     ${!open && !item.private_doc && html`<${QrChip} webPath=${shareHref} appPath=${href} />`}
                     ${!open && html`<${CopyLinkChip} path=${shareHref} />`}

@@ -1873,9 +1873,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-html-renderer"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a12b058b7755845a776c059589fd940314564695587bd6a2f613ddf6cc6a31c"
+checksum = "fc4ec895167c0d62601cd79103598b5428f6c099e6f0e2c8fbad36d876590cb8"
 dependencies = [
  "cube-drone-marquee-parser",
  "serde_json",
@@ -1884,9 +1884,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-markdown"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dc07b5ed270aaa1b62e00c84a31f0b859910d8a77268e508cd643b59d17035e"
+checksum = "94b59c7fe25760abd95665b0d9f6c8835b1fe6b6fbdc29619c8a4e74dc7afbc4"
 dependencies = [
  "comrak",
  "cube-drone-marquee-parser",
@@ -1894,9 +1894,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-markup"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6618dc34b89b0ddeff0d41f674892c002de556254e50cfa9c623c3476f0c0bd0"
+checksum = "9668fe2b117e5d621a7a9c080e2683712fbe775f87e90346cb35d060337f3dc5"
 dependencies = [
  "base64 0.22.1",
  "cube-drone-marquee-html-renderer",
@@ -1909,9 +1909,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-parser"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b15a3933abbddef737a7cd0b759dd0c543b60079f002015818af6cadcae1fd1"
+checksum = "b46e069fc4118575540d738113f971581dce2088b165b5f257fc4cfb0bd8774d"
 dependencies = [
  "serde",
  "serde_json",
@@ -7432,7 +7432,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-desktop"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "anyhow",
  "jni 0.22.4",
@@ -7453,7 +7453,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "ab_glyph",
  "aes-gcm 0.11.1",
@@ -7528,7 +7528,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "blake3",
  "ed25519-dalek",

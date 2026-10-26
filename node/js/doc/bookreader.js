@@ -15,7 +15,7 @@ import { MarqueeBody, bareSource } from './marqueebody.js';
 import { useTurbolinks } from './turbolinks.js';
 import { groupPostHref, postHref, postLink, siteSeg, useSlugOf } from '../links.js';
 import { useArrowNav } from './docapp.js';
-import { EpubButton } from './epubbutton.js';
+import { DownloadButton } from './download.js';
 
 const html = htm.bind(h);
 
@@ -204,11 +204,11 @@ export const BookReader = ({ root, book, page: asked, title, group = null }) => 
     return html`<section class="book-reader">
         <aside class="book-reader-tree">
             <p class="book-reader-book"><${Icons.book} /> ${title || payload.title || t('doc.bookreader.a-book', 'a book')}</p>
-            ${/* The book as an .epub is its public form's (epub.rs): none for a group's. */ ''}
+            ${/* The book's downloads are its public form's (epub.rs): none for a group's. */ ''}
             ${
                 !group &&
                 html`<div class="book-reader-epub">
-                    <${EpubButton} path=${`/ringtome/user/${root}/post/${book}/epub`} fallback="book.epub" className="book-reader-step" />
+                    <${DownloadButton} base=${`/ringtome/user/${root}/post/${book}/download`} stem="book" className="book-reader-step" />
                 </div>`
             }
             <${Tree} section=${{ pages: shownBook.pages, sections: shownBook.sections }} root=${root} book=${book} page=${page} depth=${0} loc=${loc} slug=${slug} group=${group} />
