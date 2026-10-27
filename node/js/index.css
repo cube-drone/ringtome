@@ -45,6 +45,7 @@
 @import "./apps/device.css";  /* Device / Server: registration and backups, for administrators */
 @import "./apps/bank.css";    /* hrseBank: horse capital, and the ledger that shows its working */
 @import "./apps/amp.css";     /* hrseAmp: the music table, the file panel and the player */
+@import "./apps/rss.css";     /* hrseRSS: the feeds, and what they say */
 @import "./modal.css";        /* the house modal */
 @import "./qr.css";           /* QR codes of a person or a post (plans/QR.md) */
 @import "./doc/upload.css";   /* the upload flow inside it */

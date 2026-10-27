@@ -1,14 +1,27 @@
 # hrseRSS™
 
-A design draft (2026-09-30). Nothing built.
+A design draft (2026-09-30), ruled on 2026-10-27 (_Rulings_, below). Slice 1
+built 2026-10-27 (_Slices_).
 
 A feed reader inside Horse Drawing Tycoon 2. You add feeds, which the node
 fetches and turns into Marquee documents you read in the app, and you can pass
 an item on to the people who follow you.
 
-What Curtis asked for is under _The ask_. The sections after it are Claude's
-proposals and are not yet rulings: in particular _Where the items live_, which
-changes one part of the ask, and _Rebroadcasting_, which narrows another.
+What Curtis asked for is under _The ask_. The sections after it began as
+Claude's proposals; _Rulings_ says which of them Curtis took.
+
+## Rulings (Curtis, 2026-10-27)
+
+- **Items live in the node cache,** not on chains: _Where the items live_ stands
+  as proposed.
+- **A rebroadcast republishes the full text,** with the source metadata. The
+  pointer-only narrowing in _Rebroadcasting_ is declined.
+- **Read state is one watermark per feed,** on the private chain.
+- **The translator already exists:** `cube-drone-marquee-html-import`
+  (marqueemarkup's `rust/html_import`, shipped in 0.9.0). It parses with
+  html5ever through `scraper`, resolves relative links against a `base_url`, and
+  reports what it dropped. _Converting_ below is what it does, not what has to
+  be built.
 
 ## The ask (Curtis, 2026-09-30)
 
@@ -125,9 +138,9 @@ sanitize.**
     quotes, code, http/https links, and images;
   - everything else disappears, because Marquee has no way to express a script,
     a style, a form, an iframe or an event handler.
-- **Where it lives:** a new crate beside `marqueemarkup/rust/markdown` (the
-  Markdown converter is the precedent), so the translator belongs to the markup,
-  not to Ringtome.
+- **Where it lives:** `marqueemarkup/rust/html_import`, published as
+  `cube-drone-marquee-html-import`, so the translator belongs to the markup, not
+  to Ringtome.
 - **Body choice and links:** prefer `content:encoded` or Atom `content` over the
   summary. Resolve relative URLs against the item's link.
 - **Images:**
@@ -162,10 +175,13 @@ sanitize.**
 - **HorseBucks:** reading earns nothing, and an item copied into notes isn't
   "words written". A rebroadcast earns like any post.
 
-## Rebroadcasting (proposal, narrower than the ask)
+## Rebroadcasting
 
-The ask republishes the item under the user's nameplate. The narrowing:
-**republish the pointer, not the article.**
+Ruled 2026-10-27: **the full text**, as the ask had it. What follows is the
+narrower proposal it replaced, kept for its reasoning; the source metadata, the
+"via _The Source_" line and the **subscribe** chip still stand.
+
+The proposal was: **republish the pointer, not the article.**
 
 - **The item's words aren't the user's.** A full copy under their name, served
   by their node to strangers (and possibly the front page), is a copy of
@@ -177,16 +193,22 @@ The ask republishes the item under the user's nameplate. The narrowing:
   - the user's own words, if they add any.
 - **It reads as "via _The Source_"**, with a **subscribe** chip that adds the
   feed to the reader's own hrseRSS, which is point 7's discovery.
-- **Open question for Curtis:** whether full-text republishing is wanted anyway,
-  perhaps only for feeds whose licence says so (`<copyright>` / Creative
-  Commons).
+- **Ruled:** full text, every feed.
 
 ## Slices
 
 1. **Subscriptions and the cache.** The subscription register on the private
    chain, the fetcher with its guards, the node-level cache with plain-text
-   items, the 3-hour worker, and a bare list.
-2. **The translator.** HTML to Marquee, and images through the node.
+   items, the 3-hour worker, and a bare list. **Built 2026-10-27**
+   (`feedreader.rs`, `js/apps/rss.js`), and more than the slice asked: the tags,
+   the tag column and the per-feed watermark are in, and each item's body is
+   already kept as Marquee through the importer, waiting for slice 2's pictures
+   and slice 3's reading pane. hrseRSS™ is a Market unlock (2,500 HB, nothing
+   required first: Claude's pick, Curtis's to change). Not yet: a feed followed
+   on another computer starts being fetched here only once the reader is opened
+   here.
+2. **The translator, wired in.** Item bodies through `marquee_html_import`, and
+   images through the node.
 3. **The app.** Columns, tags, the merged view, and the reading pane.
 4. **Rebroadcast** with source metadata, **subscribe** from a rebroadcast, and
    **follow instead** for Ringtome feeds.
@@ -195,10 +217,6 @@ The ask republishes the item under the user's nameplate. The narrowing:
 
 ## Open questions
 
-- **The items' home.** The cache (proposed) or each subscriber's chain (as
-  asked)? Everything else in this document assumes the cache.
-- **Rebroadcast contents.** Pointer and summary (proposed), or the full text?
-- **Read/unread:** wanted? And per feed or per item?
 - **How long items live.** Forever, or the newest _n_ per feed? The cache makes
   either cheap; chains would make "forever" the only answer.
 - **Private feeds** (URLs with a token in them): allowed? The URL would sit on

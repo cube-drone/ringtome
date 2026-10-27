@@ -50,6 +50,7 @@ import { DeviceApp } from './apps/device.js';
 import { SettingsApp } from './apps/settings.js';
 import { BankApp } from './apps/bank.js';
 import { AmpApp } from './apps/amp.js';
+import { RssApp } from './apps/rss.js';
 import { PlayerProvider, MiniPlayer } from './player.js';
 import { watchUncarried } from './rights.js';
 
@@ -741,6 +742,7 @@ const Inside = ({ session }) => {
             <${KeptRoute} path=${FEED_PATH} />
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
+            <${RssApp} path="/ringtome/rss" current=${persona.current} />
             <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
             <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} current=${persona.current} />
             <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} current=${persona.current} />

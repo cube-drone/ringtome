@@ -25048,3 +25048,45 @@ acceptance claims (epub.cjs: each zip of a notebook, its links, pictures, front
 matter and sections; a public book's markdown.zip for a stranger), with the ePub
 claims still green; and in headless Chrome, the menu opening in both Writer tabs
 and on a phone, html.zip downloading, a press elsewhere closing it.
+
+## 2026-10-27 - hrseRSS™, a feed reader (slice 1)
+
+Curtis: "Let's work on Horse's RSS, I think we have a plan for that open." The
+plan's open questions were ruled first (plans/RSS.md, _Rulings_): the items live
+in the node's cache, not on chains; a rebroadcast will carry the full text; read
+state is one watermark per feed; and the translator is marqueemarkup's own
+`cube-drone-marquee-html-import`, already shipped in 0.9.0.
+
+- **Following** (feedreader.rs - not rss.rs, which serves a person's own feed):
+  a persona's feeds are `rss_feeds` registers on its private chain, keyed by the
+  hash of the normalised address, the address, name and tags as JSON; how far
+  each is read is an `rss_seen` register. A feed's address or a page's (its
+  `<link rel="alternate">`) is followed; it's asked at once, so a bad one is
+  refused then. At most 300 feeds a persona, 24 tags a feed.
+- **The cache** (node rung 0108): `rss_feeds`, `rss_follows` and `rss_items` in
+  node.db, one copy of a feed however many here follow it. The `feed-refresh`
+  loop asks what's due every five minutes: about every three hours, give or take
+  an eighth, longer if the feed's `<ttl>` or `Cache-Control` asks (a day at
+  most); `If-None-Match` and `If-Modified-Since` sent back; `429`/`503`
+  honoured; failures back off 3h, 6h, 12h, a day, and weekly once quiet a month.
+  The newest 200 items a feed are kept, and a feed nobody follows is forgotten.
+- **Fetching** goes through `net::unfurl::guarded_get`, factored out of
+  `fetch_media_bytes` (which now calls it): every hop re-vetted for a public
+  address and pinned, a 5 MB cap for a feed, the caller's headers sent and the
+  status handed back. A fetch a person asks for spends the unfurl budget.
+  Parsing is feed-rs over quick-xml: no DTD, no entities beyond the five.
+- **Items** keep their words as Marquee from the importer (never HTML), with
+  links resolved against the item's address, a plain-text summary, and a date -
+  the item's own unless it is before 1995 or more than a day ahead.
+- **The app** (js/apps/rss.js): tags, feeds and items in chat's columns; all
+  feeds newest first, or one feed with its tags, refresh and unfollow; unread
+  counts, and opening a feed reads it to its newest. Titles link out - the
+  reading pane and the items' pictures are slices 2 and 3. hrseRSS™ is a Market
+  unlock, 2,500 HB, nothing first (Claude's pick).
+
+Checked: unit tests (addresses and ids, tags, a page naming its feed, the
+schedule and backoff, an item translated with its script dropped, a
+billion-laughs DTD not expanded); five acceptance claims (feedreader.cjs: by a
+page, a watermark and tags, a shared cache, refusals, another persona's feeds),
+with publish.cjs, rss.cjs, unfurl, domains and web addresses still green; and in
+headless Chrome, the app on a desktop and a phone.

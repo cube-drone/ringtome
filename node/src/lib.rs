@@ -51,6 +51,7 @@ pub mod error;
 pub mod eviction;
 pub mod export;
 pub mod fanout;
+pub mod feedreader;
 pub mod files;
 pub mod fold;
 pub mod fragments;
@@ -920,6 +921,14 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         state.clone(),
         publinks::warm_pass,
     );
+    // The feed reader (feedreader.rs): the feeds anybody here follows, each asked about every
+    // three hours. The beat only finds the ones that are due; their own rows say when.
+    loops::periodic(
+        "feed-refresh",
+        std::time::Duration::from_secs(5 * 60),
+        state.clone(),
+        feedreader::pass,
+    );
     // Custom domains (domains.rs): each claim this node shows is asked about again about daily,
     // hourly while its lookups fail; a new claim is asked about the moment it's noted.
     loops::periodic(
@@ -1069,6 +1078,16 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/web-address", get(web_address_handler))
         .route("/api/identity/{root}/slug", get(nodeface::slug_get).put(nodeface::slug_put))
         .route("/api/identity/{root}/domain", get(domains::domain_get).put(domains::domain_put))
+        .route("/api/identity/{root}/rss", get(feedreader::feeds_get).post(feedreader::feeds_post))
+        .route("/api/identity/{root}/rss/items", get(feedreader::items_get))
+        .route(
+            "/api/identity/{root}/rss/{feed}",
+            axum::routing::put(feedreader::feed_put).delete(feedreader::feed_delete),
+        )
+        .route(
+            "/api/identity/{root}/rss/{feed}/refresh",
+            axum::routing::post(feedreader::feed_refresh),
+        )
         .route("/api/identity/{root}/domain/check", axum::routing::post(domains::domain_check))
         .route("/api/node/domains", get(domainsite::domains_handler))
         .route("/api/identity/{root}/listed", get(nodeface::listed_get).put(nodeface::listed_put))

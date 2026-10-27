@@ -239,8 +239,9 @@ impl Unfurler {
 
 impl Unfurler {
     /// Spend one fetch: from the asker's share first, so someone over theirs takes nothing
-    /// from the node's; then from the node's.
-    async fn spend(&self, asker: &str, now_ms: i64) -> Result<(), Refusal> {
+    /// from the node's; then from the node's. The feed reader spends here too, for the fetches a
+    /// person asks for (feedreader.rs: adding a feed, refreshing one now).
+    pub(crate) async fn spend(&self, asker: &str, now_ms: i64) -> Result<(), Refusal> {
         let rate = self.asker_rate_per_min;
         let share = self
             .askers
@@ -331,6 +332,41 @@ pub async fn fetch_media_bytes(
     max_bytes: usize,
     allow_loopback: bool,
 ) -> Result<Vec<u8>, String> {
+    let got = guarded_get(
+        raw_url,
+        reqwest::header::HeaderMap::new(),
+        max_bytes,
+        std::time::Duration::from_secs(30),
+        allow_loopback,
+    )
+    .await?;
+    if !got.status.is_success() {
+        return Err(format!("the server answered {}", got.status));
+    }
+    Ok(got.body)
+}
+
+/// What [`guarded_get`] brought back: the last hop's answer, whatever its status.
+pub struct Fetched {
+    pub status: reqwest::StatusCode,
+    pub headers: reqwest::header::HeaderMap,
+    /// The body of a 2xx answer, under the cap; empty for any other.
+    pub body: Vec<u8>,
+    /// Where the redirects ended.
+    pub url: url::Url,
+}
+
+/// A GET on the open web under [`fetch_media_bytes`]'s guards - every hop re-vetted and
+/// address-pinned, three hops at most, a hard byte cap - that sends the caller's `headers` and
+/// hands back the status and headers of whatever answered (the feed reader's conditional
+/// requests: a `304`, a `429`'s `Retry-After`). A redirect is followed, never returned.
+pub async fn guarded_get(
+    raw_url: &str,
+    headers: reqwest::header::HeaderMap,
+    max_bytes: usize,
+    timeout: std::time::Duration,
+    allow_loopback: bool,
+) -> Result<Fetched, String> {
     let mut url = url::Url::parse(raw_url).map_err(|_| "that isn't a URL".to_string())?;
     for _hop in 0..3 {
         if !matches!(url.scheme(), "http" | "https") {
@@ -355,16 +391,17 @@ pub async fn fetch_media_bytes(
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy() // the pin above holds only for a direct dial
             .resolve(&host, std::net::SocketAddr::new(addr, port))
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(timeout)
             .build()
             .map_err(|e| format!("client: {e}"))?;
         let resp = client
             .get(url.clone())
             .header(reqwest::header::USER_AGENT, UA)
+            .headers(headers.clone())
             .send()
             .await
             .map_err(|e| format!("fetch failed: {e}"))?;
-        if resp.status().is_redirection() {
+        if resp.status().is_redirection() && resp.status() != reqwest::StatusCode::NOT_MODIFIED {
             let loc = resp
                 .headers()
                 .get(reqwest::header::LOCATION)
@@ -374,8 +411,9 @@ pub async fn fetch_media_bytes(
             url = url.join(loc).map_err(|_| "unfollowable redirect".to_string())?;
             continue;
         }
-        if !resp.status().is_success() {
-            return Err(format!("the server answered {}", resp.status()));
+        let (status, headers) = (resp.status(), resp.headers().clone());
+        if !status.is_success() {
+            return Ok(Fetched { status, headers, body: Vec::new(), url });
         }
         if let Some(len) = resp.content_length() {
             if len as usize > max_bytes {
@@ -392,7 +430,7 @@ pub async fn fetch_media_bytes(
                     }
                     bytes.extend_from_slice(&chunk);
                 }
-                Ok(None) => return Ok(bytes),
+                Ok(None) => return Ok(Fetched { status, headers, body: bytes, url }),
                 Err(e) => return Err(format!("read failed: {e}")),
             }
         }

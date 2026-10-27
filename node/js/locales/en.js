@@ -664,6 +664,30 @@ export default {
     'apps.people.relationships-you-set-and-later': 'people you used to follow',
     'apps.people.cleared': 'cleared',
 
+    // --- node/js/apps/rss.js ---
+    'apps.rss.just-now': 'just now',
+    'apps.rss.feeds': 'feeds',
+    'apps.rss.follow-placeholder': "a feed's address, or its site's",
+    'apps.rss.fetching': 'fetching…',
+    'apps.rss.follow': '+ follow',
+    'apps.rss.all-tagged': 'all of these',
+    'apps.rss.all-feeds': 'all feeds',
+    'apps.rss.no-feeds-wear-those-tags': 'no feeds wear those tags',
+    'apps.rss.no-feeds-yet': 'no feeds yet - paste a feed or a blog above',
+    'apps.rss.unfollow-title': 'stop following this feed',
+    'apps.rss.unfollow': 'unfollow',
+    'apps.rss.refresh-title': 'ask the feed for anything new, now',
+    'apps.rss.refresh': 'refresh',
+    'apps.rss.fetched': 'fetched {when}',
+    'apps.rss.not-fetched': 'not fetched yet',
+    'apps.rss.quiet': 'quiet: it has failed for a month, so it is asked weekly',
+    'apps.rss.untitled': '(untitled)',
+    'apps.rss.tags': 'tags',
+    'apps.rss.loading': 'loading…',
+    'apps.rss.nothing-followed': 'follow a feed, and what it says shows up here',
+    'apps.rss.no-items': 'nothing here yet',
+    'apps.rss.more': 'older',
+
     // --- node/js/apps/settings.js ---
     'settings.title': 'your settings',
 
@@ -2267,6 +2291,7 @@ export default {
     'unlocks.post-editing': 'Public post editing',
     'unlocks.video-upload': 'Video upload',
     'unlocks.music': 'hrseAmp',
+    'unlocks.rss': 'hrseRSS',
     'unlocks.sharing': 'Sharing',
     'unlocks.links': 'Links',
     'unlocks.chats-for-two': 'Chats for two',
@@ -2285,6 +2310,7 @@ export default {
     'unlocks.post-editing-about': 'Change a post after it is published: everyone who has it gets the new version, and its history shows what changed.',
     'unlocks.video-upload-about': 'Upload video, maybe. It might not work.',
     'unlocks.music-about': 'Unlocks hrseAmp™: every sound you and the people you follow have posted, in one sortable table, with a player that keeps playing wherever you go in the app.',
+    'unlocks.rss-about': 'Unlocks hrseRSS™: follow blogs and news sites by their feeds, and read what they say here, newest first.',
     'unlocks.sharing-about': "Share someone else's post with the people who follow you.",
     'unlocks.links-about': "Unlocks hrseWriter™'s links column: every note that links in, and every note that links out.",
     'unlocks.chats-for-two-about': 'Start a private chat with one person, from their page: only the two of you can read it.',
@@ -2484,6 +2510,17 @@ export default {
     'export.no-export-yet': 'no export is ready yet',
     'export.no-export-yet-2': 'no export is ready yet',
     'export.only-the-desktop-app-shows-files': 'only the desktop app can show a file on this computer',
+
+    // --- node/src/feedreader.rs ---
+    'feedreader.not-a-url': "that isn't a web address - paste the feed's, or its site's",
+    'feedreader.only-the-web': 'only http and https feeds can be followed',
+    'feedreader.url-too-long': 'that address is too long to follow',
+    'feedreader.too-many-fetches': 'this node has fetched a lot just now - try again in a minute',
+    'feedreader.too-many-feeds': 'you follow {n} feeds already, which is as many as one persona can',
+    'feedreader.no-feed-there': "that page isn't a feed, and doesn't name one",
+    'feedreader.feed-busy': "that feed's server is busy - try again later",
+    'feedreader.could-not-fetch': "couldn't fetch that feed: {reason}",
+    'feedreader.not-followed': "you don't follow that feed",
 
     // --- node/src/frontdoor.rs ---
     'frontdoor.name-too-long': 'that name is longer than a header can hold',

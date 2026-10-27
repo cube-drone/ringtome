@@ -30,6 +30,15 @@ cube-drone-marquee-markdown = "=0.10.1"
 # And its HTML renderer directly, for the XHTML mode an ePub's pages are written in (epub.rs) -
 # the markup crate doesn't re-export `render_marquee_with` or `Output`.
 cube-drone-marquee-html-renderer = "=0.10.1"
+# And its HTML importer, for the feed reader (feedreader.rs, plans/RSS.md): an item's body is
+# someone else's HTML, translated into Marquee rather than sanitized and shown.
+cube-drone-marquee-html-import = "=0.10.1"
+# The feed reader's parser: RSS 0.x, 1.0 and 2.0, Atom and JSON Feed. Over quick-xml, which
+# resolves only the five predefined entities and never reads a DTD - a feed is hostile input.
+feed-rs = "3"
+# The browser-grade HTML parser the importer already brings: a page's `<link rel="alternate">`
+# when someone pastes a site rather than its feed, and an item's summary as plain text.
+scraper = "0.27"
 # the protocol layer: canonical bytes, hashing, signing, chain validation
 ringtome-proto = { path = "../proto" }
 # How full the disk under the data directory is (registration.rs: a sign-up limit an operator can

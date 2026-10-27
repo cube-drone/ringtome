@@ -209,6 +209,7 @@ const NAMES = {
     'post-editing': () => t('unlocks.post-editing', 'Public post editing'),
     'video-upload': () => t('unlocks.video-upload', 'Video upload'),
     music: () => t('unlocks.music', 'hrseAmp'),
+    rss: () => t('unlocks.rss', 'hrseRSS'),
     sharing: () => t('unlocks.sharing', 'Sharing'),
     links: () => t('unlocks.links', 'Links'),
     'chats-for-two': () => t('unlocks.chats-for-two', 'Chats for two'),
@@ -280,6 +281,11 @@ const ABOUT = {
             'unlocks.music-about',
             'Unlocks hrseAmp™: every sound you and the people you follow have posted, in one sortable table, with a player that keeps playing wherever you go in the app.',
         ),
+    rss: () =>
+        t(
+            'unlocks.rss-about',
+            'Unlocks hrseRSS™: follow blogs and news sites by their feeds, and read what they say here, newest first.',
+        ),
     sharing: () =>
         t('unlocks.sharing-about', "Share someone else's post with the people who follow you."),
     links: () =>
@@ -326,6 +332,7 @@ const ICONS = {
     'post-editing': Icons.update,
     'video-upload': Icons.fileVideo,
     music: Icons.cassette,
+    rss: Icons.rss,
     sharing: Icons.colRebroadcast,
     links: Icons.link,
     'chats-for-two': Icons.room,
