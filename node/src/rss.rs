@@ -27,7 +27,7 @@ const ITEMS: i64 = 50;
 const ITEM_CHARS: usize = 4000;
 
 /// Escape text for XML (element text and attribute values alike).
-fn xml(s: &str) -> String {
+pub(crate) fn xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

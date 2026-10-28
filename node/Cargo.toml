@@ -36,6 +36,9 @@ cube-drone-marquee-html-import = "=0.10.1"
 # The feed reader's parser: RSS 0.x, 1.0 and 2.0, Atom and JSON Feed. Over quick-xml, which
 # resolves only the five predefined entities and never reads a DTD - a feed is hostile input.
 feed-rs = "3"
+# The same quick-xml feed-rs reads with, for the one shape it doesn't know: a Google News sitemap
+# (feedreader.rs `news_sitemap`), which some sites offer where a feed would be.
+quick-xml = "0.42"
 # The browser-grade HTML parser the importer already brings: a page's `<link rel="alternate">`
 # when someone pastes a site rather than its feed, and an item's summary as plain text.
 scraper = "0.27"

@@ -280,7 +280,12 @@ async fn ask(
         _ => {}
     }
     let parser = feed_rs::parser::Builder::new().base_uri(Some(got.url.as_str())).build();
-    match parser.parse(got.body.as_slice()) {
+    let parsed =
+        parser.parse(got.body.as_slice()).or_else(|e| match news_sitemap(&got.body, &got.url) {
+            Some(atom) => parser.parse(atom.as_bytes()),
+            None => Err(e),
+        });
+    match parsed {
         Ok(feed) => {
             let hint_ms = (feed.ttl.unwrap_or(0) as i64 * 60 * 1000).max(max_age);
             Ok(Answer::Feed {
@@ -295,6 +300,122 @@ async fn ask(
     }
 }
 
+/// A Google News sitemap read as the feed it nearly is (Curtis, 2026-10-27, on Serious Eats
+/// offering one where its feed would be): Atom, one entry per `<url>` that has a `<news:title>` -
+/// its title, its address, its dates, and its picture as the entry's only words. `None` for
+/// anything else, a plain sitemap included: a site's every page, untitled, is not a feed.
+///
+/// The same quick-xml feed-rs reads with, and as warily: the five predefined entities and
+/// character references only, never a DTD.
+fn news_sitemap(body: &[u8], at: &url::Url) -> Option<String> {
+    use quick_xml::events::Event;
+    #[derive(Default)]
+    struct Entry {
+        link: String,
+        title: String,
+        published: String,
+        updated: String,
+        picture: String,
+    }
+    let text = std::str::from_utf8(body).ok()?;
+    let mut reader = quick_xml::Reader::from_str(text);
+    let mut path: Vec<String> = Vec::new();
+    let mut said = String::new();
+    let mut publication = String::new();
+    let mut entry: Option<Entry> = None;
+    let mut entries = Vec::new();
+    loop {
+        match reader.read_event().ok()? {
+            Event::Start(e) => {
+                let name = e.local_name().as_ref().to_string();
+                if path.is_empty() && name != "urlset" {
+                    return None;
+                }
+                if name == "url" {
+                    entry = Some(Entry::default());
+                }
+                path.push(name);
+                said.clear();
+            }
+            Event::Text(t) => said.push_str(&t.xml10_content()),
+            Event::CData(t) => said.push_str(&t),
+            Event::GeneralRef(r) => {
+                let name = r.xml10_content();
+                said.push_str(&quick_xml::escape::unescape(&format!("&{name};")).ok()?);
+            }
+            Event::End(_) => {
+                let name = path.pop()?;
+                let parent = path.last().map(String::as_str).unwrap_or_default();
+                let value = said.trim().to_string();
+                said.clear();
+                match (parent, name.as_str()) {
+                    (_, "url") => entries.extend(entry.take()),
+                    ("publication", "name") if publication.is_empty() => publication = value,
+                    (_, field) => {
+                        let Some(entry) = entry.as_mut() else { continue };
+                        match (parent, field) {
+                            ("url", "loc") => entry.link = value,
+                            ("url", "lastmod") => entry.updated = value,
+                            ("news", "title") => entry.title = value,
+                            ("news", "publication_date") => entry.published = value,
+                            ("image", "loc") if entry.picture.is_empty() => entry.picture = value,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    let entries: Vec<Entry> =
+        entries.into_iter().filter(|e| !e.title.is_empty() && !e.link.is_empty()).collect();
+    if entries.is_empty() {
+        return None;
+    }
+    let x = crate::rss::xml;
+    let site = url::Url::parse(&entries[0].link)
+        .map(|u| u.origin().ascii_serialization() + "/")
+        .unwrap_or_default();
+    let name = if publication.is_empty() {
+        url::Url::parse(&site)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_default()
+    } else {
+        publication
+    };
+    let mut atom = format!(
+        "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>{}</title><link href=\"{}\"/><id>{}</id>",
+        x(&name),
+        x(&site),
+        x(at.as_str())
+    );
+    for e in entries {
+        let published = if e.published.is_empty() { &e.updated } else { &e.published };
+        let updated = if e.updated.is_empty() { published } else { &e.updated };
+        atom.push_str(&format!(
+            "<entry><title>{}</title><link href=\"{}\"/><id>{}</id>",
+            x(&e.title),
+            x(&e.link),
+            x(&e.link)
+        ));
+        if !published.is_empty() {
+            atom.push_str(&format!("<published>{}</published>", x(published)));
+        }
+        if !updated.is_empty() {
+            atom.push_str(&format!("<updated>{}</updated>", x(updated)));
+        }
+        if !e.picture.is_empty() {
+            let html = format!("<p><img src=\"{}\" alt=\"\"></p>", x(&e.picture));
+            atom.push_str(&format!("<content type=\"html\">{}</content>", x(&html)));
+        }
+        atom.push_str("</entry>");
+    }
+    atom.push_str("</feed>");
+    Some(atom)
+}
+
 /// `max-age` from a `Cache-Control` header, in ms.
 fn max_age_ms(cache_control: &str) -> Option<i64> {
     cache_control.split(',').find_map(|d| {
@@ -307,7 +428,16 @@ fn max_age_ms(cache_control: &str) -> Option<i64> {
 /// The feed a web page names as its own: its first `<link rel="alternate">` of a feed type -
 /// the tag our own person pages carry for their `rss.xml`.
 fn alternate(html: &str, page: &url::Url) -> Option<url::Url> {
-    let doc = scraper::Html::parse_document(html);
+    // A page's links are in its head: only that much is read, and not at all past the guard.
+    let cut = &html[..floor_char(html, PAGE_HEAD_BYTES)];
+    let head = match cut.to_ascii_lowercase().find("</head") {
+        Some(end) => &cut[..end],
+        None => cut,
+    };
+    if too_much(head) {
+        return None;
+    }
+    let doc = scraper::Html::parse_document(head);
     let links = scraper::Selector::parse("link[rel~=alternate][href]").ok()?;
     doc.select(&links).find_map(|link| {
         let kind = link.value().attr("type").unwrap_or_default().to_ascii_lowercase();
@@ -488,8 +618,215 @@ fn is_html(subtype: &str) -> bool {
 
 /// HTML's words, as a browser would show them, on one line.
 fn plain(html: &str) -> String {
+    if too_much(html) {
+        return squash(&stripped(html));
+    }
     let fragment = scraper::Html::parse_fragment(html);
     squash(&fragment.root_element().text().collect::<Vec<_>>().join(" "))
+}
+
+/// How deep someone else's HTML may nest before the node stops parsing it (2026-10-28).
+/// html5ever slows quadratically with depth - a 5 MiB item of nested lists took two minutes of
+/// CPU - while real writing nests a few dozen deep. Past this, an item keeps its words, unparsed.
+const DEEPEST: usize = 512;
+
+/// How many attributes one tag may carry: html5ever checks each against those before it.
+const MOST_ATTRIBUTES: usize = 256;
+
+/// How much HTML one item may be before it is kept as its words, unparsed, whatever the scan says:
+/// the scan estimates the parser, and this bounds what an estimate that's wrong could cost.
+const PARSED_BYTES: usize = 512 * 1024;
+
+/// How much of a page is read for its head when it never closes one.
+const PAGE_HEAD_BYTES: usize = 256 * 1024;
+
+/// Elements that never hold others (void), or that the parser closes for themselves when their
+/// like comes along (`<p>`, `<li>`, a table's cells): a run of them is never deep.
+const FLAT: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track",
+    "wbr", "p", "li", "dt", "dd", "option", "optgroup", "tr", "td", "th", "thead", "tbody",
+    "tfoot", "rb", "rt", "rp", "colgroup", "caption",
+];
+
+/// Elements whose insides are text to the parser, up to their own closing tag - outside SVG and
+/// MathML, where a `<title>` or a `<style>` holds elements. `noscript` too: html5ever parses as a
+/// browser running scripts does.
+const RAW: &[&str] = &[
+    "script",
+    "style",
+    "textarea",
+    "title",
+    "xmp",
+    "iframe",
+    "noembed",
+    "noframes",
+    "noscript",
+    "plaintext",
+];
+
+/// Elements a closing tag can't reach past unless it closes them: the parser's scope boundaries.
+const SCOPES: &[&str] = &[
+    "applet", "caption", "html", "table", "td", "th", "marquee", "object", "template", "svg",
+    "math",
+];
+
+/// Whether someone else's HTML is too much to parse: too big, too deep, or a tag with too many
+/// attributes. Depth is a scan of its tags, read as the parser's tokenizer reads them, that never
+/// builds a tree: an opening tag of anything but [`FLAT`] goes one deeper, and a closing tag goes
+/// back to its opening one unless a scope boundary is in the way. Where the scan and the parser
+/// could differ, the scan errs deep: a closing tag nothing opened closes nothing, and `<div/>` is
+/// an opening tag, since HTML ignores that slash.
+fn too_much(html: &str) -> bool {
+    if html.len() > PARSED_BYTES {
+        return true;
+    }
+    let bytes = html.as_bytes();
+    let n = bytes.len();
+    let find = |from: usize, needle: &[u8]| -> usize {
+        bytes[from.min(n)..]
+            .windows(needle.len())
+            .position(|w| w.eq_ignore_ascii_case(needle))
+            .map_or(n, |at| from + at)
+    };
+    // What is open, where each name is open, and where the scope boundaries are: a closing tag
+    // finds its element in one look, so a flood of them costs no more than the bytes they take.
+    let mut open: Vec<String> = Vec::new();
+    let mut at_depth: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut scopes: Vec<usize> = Vec::new();
+    let mut i = 0;
+    while let Some(at) = memchr(b'<', &bytes[i..]) {
+        i += at + 1;
+        // A comment, a doctype, CDATA or a processing instruction: no tags inside.
+        if bytes[i..].starts_with(b"!--") {
+            i = find(i + 3, b"-->");
+            continue;
+        }
+        if matches!(bytes.get(i), Some(b'!' | b'?')) {
+            i = find(i, b">");
+            continue;
+        }
+        let closing = bytes.get(i) == Some(&b'/');
+        let start = i + usize::from(closing);
+        if !bytes.get(start).is_some_and(u8::is_ascii_alphabetic) {
+            continue;
+        }
+        let mut end = start;
+        while end < n && !matches!(bytes[end], b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'/' | b'>')
+        {
+            end += 1;
+        }
+        let name = html[start..end].to_ascii_lowercase();
+        // Its attributes, to its end, as the tokenizer reads them.
+        let (mut j, mut attributes) = (end, 0);
+        while j < n && bytes[j] != b'>' {
+            match bytes[j] {
+                b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'/' => j += 1,
+                _ => {
+                    attributes += 1;
+                    if attributes > MOST_ATTRIBUTES {
+                        return true;
+                    }
+                    j += 1;
+                    while j < n
+                        && !matches!(
+                            bytes[j],
+                            b'\t' | b'\n' | b'\x0c' | b'\r' | b' ' | b'/' | b'>' | b'='
+                        )
+                    {
+                        j += 1;
+                    }
+                    while j < n && bytes[j].is_ascii_whitespace() {
+                        j += 1;
+                    }
+                    if bytes.get(j) == Some(&b'=') {
+                        j += 1;
+                        while j < n && bytes[j].is_ascii_whitespace() {
+                            j += 1;
+                        }
+                        match bytes.get(j) {
+                            Some(&q @ (b'"' | b'\'')) => {
+                                j = memchr(q, &bytes[j + 1..]).map_or(n, |e| j + 1 + e + 1)
+                            }
+                            _ => {
+                                while j < n && !bytes[j].is_ascii_whitespace() && bytes[j] != b'>' {
+                                    j += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i = j;
+        if closing {
+            let opened = at_depth.get(&name).and_then(|d| d.last().copied());
+            if let Some(at) = opened.filter(|&at| scopes.last().is_none_or(|&s| at >= s)) {
+                while open.len() > at {
+                    let gone = open.pop().expect("deeper than at");
+                    at_depth.get_mut(&gone).and_then(Vec::pop);
+                    if scopes.last() == Some(&open.len()) {
+                        scopes.pop();
+                    }
+                }
+            }
+            continue;
+        }
+        let foreign =
+            ["svg", "math"].iter().any(|f| at_depth.get(*f).is_some_and(|d| !d.is_empty()));
+        if RAW.contains(&name.as_str()) && !foreign {
+            i = find(i, format!("</{name}").as_bytes());
+            continue;
+        }
+        if FLAT.contains(&name.as_str()) {
+            continue;
+        }
+        if SCOPES.contains(&name.as_str()) {
+            scopes.push(open.len());
+        }
+        at_depth.entry(name.clone()).or_default().push(open.len());
+        open.push(name);
+        if open.len() > DEEPEST {
+            return true;
+        }
+    }
+    false
+}
+
+fn memchr(needle: u8, hay: &[u8]) -> Option<usize> {
+    hay.iter().position(|&b| b == needle)
+}
+
+/// The largest char boundary at or before `at`.
+fn floor_char(s: &str, at: usize) -> usize {
+    let mut at = at.min(s.len());
+    while !s.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
+/// HTML's text without a parser: every tag a space, the common entities read. For what is too
+/// deep to parse, so rough is fine.
+fn stripped(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() / 2);
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => {
+                in_tag = false;
+                out.push(' ');
+            }
+            c if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
 }
 
 fn squash(s: &str) -> String {
@@ -557,6 +894,8 @@ fn item(entry: &feed_rs::model::Entry, feed_at: &url::Url, now: i64) -> Item {
         (_, Some(summary)) => as_html(&summary.content),
         _ => String::new(),
     };
+    // Too much to parse: its words, flattened to a paragraph the importer reads in no time.
+    let html = if too_much(&html) { as_html(&squash(&stripped(&html))) } else { html };
     let tags = automatic_tags(entry, &html);
     let base = if link.is_empty() { feed_at.to_string() } else { link.clone() };
     let body = marquee_html_import::to_marquee_with(
@@ -633,8 +972,17 @@ async fn keep(
         .context("reading a feed's items")?;
     let known: HashMap<String, (String, i64)> =
         known.into_iter().map(|(item, hash, fetched)| (item, (hash, fetched))).collect();
-    for entry in feed.entries.iter().take(ITEMS_KEPT) {
-        let item = item(entry, at, now);
+    // Translating someone else's HTML is CPU work a feed's author chooses the size of: off the
+    // threads that answer requests.
+    let entries: Vec<feed_rs::model::Entry> =
+        feed.entries.iter().take(ITEMS_KEPT).cloned().collect();
+    let feed_at = at.clone();
+    let items = tokio::task::spawn_blocking(move || {
+        entries.iter().map(|entry| item(entry, &feed_at, now)).collect::<Vec<_>>()
+    })
+    .await
+    .context("translating a feed's items")?;
+    for item in items {
         match known.get(&item.id) {
             Some((hash, fetched)) => {
                 // An item with no believable date stays where it was first filed.
@@ -1797,6 +2145,135 @@ mod tests {
             ("a".repeat(64), "0".repeat(32)),
         ];
         assert_eq!(items_of(&posts), vec![(id.as_str(), "0".repeat(32).as_str())]);
+    }
+
+    /// Serious Eats' news sitemap, trimmed: an entry with its picture, one without a title (not
+    /// news, so not an item), and an ampersand that stays one.
+    #[test]
+    fn a_news_sitemap_reads_as_a_feed() {
+        let sitemap = r#"<?xml version="1.0" encoding="UTF-8" standalone="no"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+<url><loc>
+https://www.seriouseats.com/porcupine-meatballs-recipe-12196859
+</loc><lastmod>2026-10-27T21:30:00-04:00</lastmod>
+<news:news><news:publication><news:language>en</news:language><news:name>seriouseats.com</news:name></news:publication>
+<news:publication_date>2026-10-27T21:30:00-04:00</news:publication_date>
+<news:title>Porcupine Meatballs &amp; Rice</news:title></news:news>
+<image:image><image:loc>https://www.seriouseats.com/thmb/a.jpg</image:loc></image:image></url>
+<url><loc>https://www.seriouseats.com/about</loc></url>
+</urlset>"#;
+        let at = url::Url::parse("https://feeds.feedburner.com/seriouseatsfeaturesvideos").unwrap();
+        let atom = news_sitemap(sitemap.as_bytes(), &at).expect("a news sitemap");
+        let feed = feed_rs::parser::parse(atom.as_bytes()).unwrap();
+        assert_eq!(feed_title(&feed, &at), "seriouseats.com");
+        assert_eq!(feed_site(&feed), "https://www.seriouseats.com/");
+        assert_eq!(feed.entries.len(), 1, "the untitled page is not news");
+        let hay = item(&feed.entries[0], &at, 1_793_200_000_000);
+        assert_eq!(hay.title, "Porcupine Meatballs & Rice");
+        assert_eq!(hay.link, "https://www.seriouseats.com/porcupine-meatballs-recipe-12196859");
+        assert!(hay.body.contains("https://www.seriouseats.com/thmb/a.jpg"), "{}", hay.body);
+        assert_eq!(hay.dated_ms, Some(1793151000000));
+
+        // A plain sitemap, an RSS feed and a web page are none of them a news sitemap.
+        let plain = r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url></urlset>"#;
+        assert!(news_sitemap(plain.as_bytes(), &at).is_none());
+        assert!(news_sitemap(b"<rss version=\"2.0\"><channel></channel></rss>", &at).is_none());
+        assert!(news_sitemap(b"<html><body>hi</body></html>", &at).is_none());
+    }
+
+    /// Real writing nests shallowly and passes; nesting past [`DEEPEST`] doesn't, however it's
+    /// spelled - including the two spellings a count of tags alone would miss.
+    #[test]
+    fn deep_html_is_caught_without_a_parser() {
+        let deep =
+            |open: &str, close: &str, n: usize| format!("{}x{}", open.repeat(n), close.repeat(n));
+        let post =
+            "<div><p>One <em>two</em><p>three<ul><li>a<li>b<ul><li>c</ul></ul><img src=x><br>\
+                    <table><tr><td>1<td>2<tr><td>3</table></div>";
+        assert!(!too_much(&post.repeat(1_000)), "siblings are not depth");
+        assert!(!too_much(&"<p>unclosed ".repeat(5_000)));
+        assert!(!too_much(&"<div><table><tr><td>a</td></tr></table></div>".repeat(2_000)));
+        assert!(!too_much(&deep("<div>", "</div>", DEEPEST)));
+        assert!(too_much(&deep("<div>", "</div>", DEEPEST + 1)));
+        assert!(too_much(&deep("<UL><LI>", "</li></ul>", 600)));
+        assert!(too_much(&deep("<blockquote class=\"q\">", "</blockquote>", 600)));
+        assert!(too_much(&"<div/>".repeat(600)), "HTML ignores the slash");
+        assert!(too_much(&"<div></span>".repeat(600)), "a stray closing tag closes nothing");
+        // Closing tags the parser never sees as tags, or never lets reach their element.
+        assert!(too_much(&"<div><!-- </div> -->".repeat(600)), "a comment holds no tags");
+        assert!(
+            too_much(&"<div><script></div></script>".repeat(600)),
+            "a script's insides are text"
+        );
+        assert!(too_much(&"<div title='</div>'>".repeat(600)), "nor are an attribute's");
+        assert!(
+            too_much(&"<div><table></div>".repeat(300)),
+            "a table is a scope a div's end can't reach into"
+        );
+        assert!(!too_much(&"<!-- <div> -->".repeat(600)));
+        assert!(
+            too_much(&format!("<svg><title>{}", "<g>".repeat(600))),
+            "an SVG's title holds elements"
+        );
+        assert!(too_much(&"<div><noscript></div></noscript>".repeat(600)));
+        assert!(!too_much(&"<script>if (a<b) { x = '<div>'; }</script>".repeat(600)));
+        // A tag with too many attributes: html5ever checks each against all before it.
+        let attributes: String =
+            (0..MOST_ATTRIBUTES + 1).map(|i| format!(" a{i}=\"1 2 3\"")).collect();
+        assert!(too_much(&format!("<div{attributes}>x</div>")));
+        assert!(!too_much(
+            r#"<img src="data:image/png;base64,iVBOR==" alt="a > b" title='c "d"'>"#
+        ));
+        assert!(too_much(&"x".repeat(PARSED_BYTES + 1)), "and past a size, unread");
+    }
+
+    /// The probe that found it (2026-10-28): 5 MiB of nested lists took html5ever two minutes. Now
+    /// the item keeps its words, flattened, in well under a second - and so does its summary.
+    #[test]
+    fn a_deep_item_is_kept_as_its_words_in_no_time() {
+        let n = 5 * 1024 * 1024 / 19;
+        let html = format!("{}hay and oats{}", "<ul><li>".repeat(n), "</li></ul>".repeat(n));
+        let rss = format!(
+            "<rss version=\"2.0\"><channel><title>t</title><item><title>deep</title><guid>1</guid>\
+             <description><![CDATA[{html}]]></description></item></channel></rss>"
+        );
+        let feed = feed_rs::parser::parse(rss.as_bytes()).unwrap();
+        let at = url::Url::parse("https://evil.example/feed").unwrap();
+        let started = std::time::Instant::now();
+        let deep = item(&feed.entries[0], &at, 0);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
+        assert_eq!(deep.body.trim(), "hay and oats");
+        assert_eq!(deep.summary, "hay and oats");
+
+        // The worst for the scan itself: closing tags that each look all the way down.
+        let lopsided = format!(
+            "{}{}",
+            "<div>".repeat(DEEPEST),
+            "</x>".repeat((PARSED_BYTES - 5 * DEEPEST) / 4)
+        );
+        let started = std::time::Instant::now();
+        assert!(!too_much(&lopsided));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "{:?}", started.elapsed());
+    }
+
+    /// A page too deep to read for its head names no feed, and costs nothing to find out.
+    #[test]
+    fn a_deep_page_names_no_feed() {
+        let page = url::Url::parse("https://example.com/").unwrap();
+        let deep = format!(
+            "<html><head>{}<link rel=\"alternate\" type=\"application/rss+xml\" href=\"f.xml\">",
+            "<div>".repeat(600)
+        );
+        assert!(alternate(&deep, &page).is_none());
+        let fine = format!(
+            "{}</head><body>{}",
+            r#"<html><head><link rel="alternate" type="application/rss+xml" href="f.xml">"#,
+            "<div>".repeat(100_000)
+        );
+        assert_eq!(
+            alternate(&fine, &page).unwrap().as_str(),
+            "https://example.com/f.xml",
+            "only its head is read"
+        );
     }
 
     #[test]

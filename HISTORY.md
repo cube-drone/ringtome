@@ -25161,3 +25161,47 @@ links or emphasis, and cut off at 4000 characters. The loss was in our own feed
 Checked: a unit test for the addresses; a person's RSS (rss.cjs) carries a
 rendered heading, emphasis and a whole link; Horse's RSS (feedreader.cjs) reads
 the heading and the whole link back as Marquee.
+
+## 2026-10-27 - Horse's RSS reads Google News sitemaps
+
+Serious Eats offers a Google News sitemap (`<urlset>` with `news:` and `image:`
+entries) where a feed would be, at a FeedBurner address and at
+`/feeds/google-news` (that one behind a bot check that answers a server 403).
+The node now reads one as a feed: when feed-rs can't parse a document,
+feedreader.rs `news_sitemap` writes it as Atom - one entry per `<url>` with a
+`news:title`, carrying its address, publication date, and hero picture as its
+only words - and feed-rs parses that. A plain sitemap is refused. It uses
+quick-xml directly, at the version feed-rs already reads with, and as warily: no
+DTD, only predefined entities and character references.
+
+Checked: a unit test (title, site, date, picture, an untitled entry dropped, a
+plain sitemap, RSS and a page refused); and a scratch node following the live
+FeedBurner address: 14 items with titles, dates, the site's logo and each hero
+picture.
+
+## 2026-10-28 - Horse's RSS survives HTML built to stall it
+
+Asked whether a feed could crash the node, a probe fed every stage hostile input
+under the 5 MiB fetch cap on a 2 MiB stack. Nothing overflowed or panicked; the
+DTD-free parser already shrugs off entity bombs. But html5ever, under the HTML
+importer and `scraper`, slows quadratically with nesting depth (100,000 nested
+`<div>`s: 22 s; nested lists: 120 s) and with one tag's attribute count
+(minutes) - and it ran inline on an async worker, so a few hostile feeds could
+tie up the threads that answer requests.
+
+- **A guard before every parse** (feedreader.rs `too_much`): a single pass over
+  the tags, read as the tokenizer reads them - comments, raw-text elements
+  outside SVG and MathML, quoted attribute values - estimates the parser's
+  depth, erring deep where they could differ (a stray closing tag closes
+  nothing, `<div/>` opens, a closing tag can't reach past a scope boundary).
+  Past 512 deep, 256 attributes on a tag, or 512 KiB, an item keeps its words,
+  stripped without a parser; a page is read only to its `</head>`. The scan is
+  linear: a flood of closing tags costs what its bytes do.
+- **Off the request threads:** an item's translation runs in `spawn_blocking`.
+
+Checked: unit tests for the guard (real writing passes; deep, attribute-heavy
+and evasive spellings don't), a 5 MiB nested item kept as its words in well
+under a second, and a deep page naming no feed; a probe of html5ever's other
+slow shapes (misnested formatting, foster-parented tables, select, SVG,
+entities) at the cap: under 0.4 s an item, the deep ones milliseconds. The Rust
+suite, clippy, and both RSS acceptance areas.

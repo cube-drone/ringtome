@@ -132,6 +132,18 @@ What it costs:
   choice. Whatever parser is used must never expand entities or read a DTD: a
   feed is hostile input, and the entity tricks (billion laughs, external
   entities) are the classic attacks on XML.
+- **HTML too much to parse** (2026-10-28, built): html5ever slows quadratically
+  with nesting depth and with one tag's attribute count - 5 MiB of nested lists
+  took two minutes of CPU. Before any parse, a scan that reads tags as the
+  tokenizer does refuses HTML that nests past 512, carries a tag with more than
+  256 attributes, or is over 512 KiB; such an item keeps its words, stripped
+  without a parser. Translation runs on a blocking thread, never on the threads
+  that answer requests.
+- **Google News sitemaps** (Curtis, 2026-10-27, built): some sites, Serious Eats
+  among them, offer a `<urlset>` with `news:` entries where a feed would be.
+  Each entry that has a `news:title` becomes an item with its title, address,
+  date and hero picture, and nothing to read in place. A plain sitemap is
+  refused: a site's every page, untitled, is not a feed.
 - **Item identity:** the feed's `guid` / `id`, else its link, else a hash of
   title and date. A content hash detects changes, so point 4's update is
   re-convert-and-replace.
