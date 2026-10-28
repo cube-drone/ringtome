@@ -408,6 +408,12 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0109_feed_items_as_posts.sql"),
         refold: &[],
     },
+    Rung {
+        version: 110,
+        name: "0110_feed_pictures.sql",
+        sql: include_str!("../migrations/node/0110_feed_pictures.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).

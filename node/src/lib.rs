@@ -1079,6 +1079,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/identity/{root}/slug", get(nodeface::slug_get).put(nodeface::slug_put))
         .route("/api/identity/{root}/domain", get(domains::domain_get).put(domains::domain_put))
         .route("/api/identity/{root}/rss", get(feedreader::feeds_get).post(feedreader::feeds_post))
+        // A feed item's picture, as this node keeps it (feedreader.rs, slice 7).
+        .route("/api/rss/pictures/{file}", get(feedreader::picture_get))
         .route(
             "/api/identity/{root}/rss/{feed}",
             axum::routing::put(feedreader::feed_put).delete(feedreader::feed_delete),

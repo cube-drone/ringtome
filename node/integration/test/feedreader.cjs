@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
-const { makeUserFetch } = require('./helpers.cjs');
+const { makeUserFetch, makePng } = require('./helpers.cjs');
 const { HOST } = require('./fetch.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
@@ -257,5 +257,76 @@ describe("Horse's RSS", function () {
         assert.ok(items.status === 403 || items.status === 404, `got ${items.status}`);
         const body = await cal(`api/identity/${calRoot}/rss/${feedId}/${'0'.repeat(32)}/body`);
         assert.equal(body.status, 404, 'no item of a feed they do not follow');
+    });
+
+    it("brings an item's pictures through the node, and never sends a reader to the feed's site for one", async () => {
+        const upload = async (title, png) => {
+            const pic = await (
+                await ada(`api/identity/${adaRoot}/docs/binary?title=${title}`, {
+                    method: 'POST',
+                    body: png,
+                    file: true,
+                })
+            ).json();
+            assert.ok(pic.doc_id, JSON.stringify(pic));
+            for (let i = 0; i < 60; i++) {
+                if ((await ada(`api/identity/${adaRoot}/docs/${pic.doc_id}/body`)).status === 200)
+                    break;
+                await new Promise((resolve) => setTimeout(resolve, 300));
+            }
+            return pic.doc_id;
+        };
+        const horse = await upload('horse', makePng(24, 24));
+        const pixel = await upload('pixel', makePng(1, 1));
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        await publish(
+            'pictures',
+            `a horse\n\n![a horse](/api/identity/${adaRoot}/docs/${horse}/body/horse.avif)\n\n` +
+                `![](/api/identity/${adaRoot}/docs/${pixel}/body/pixel.avif)`,
+        );
+        // The feed again, at an address of its own, so this node asks it now.
+        const res = await j(bea, `api/identity/${beaRoot}/rss`, { url: `${feedUrl}?pictures` });
+        assert.equal(res.status, 200, await res.clone().text());
+        const pictured = (await res.json()).followed;
+        const items = (await (await bea(`api/identity/${beaRoot}/rss/${pictured}/feed`)).json())
+            .items;
+        const item = items.find((i) => i.title === 'pictures');
+        assert.ok(item, JSON.stringify(items.map((i) => i.title)));
+
+        // Until its pictures are here, the item's words link them - never embed them from there.
+        let words = '';
+        for (let i = 0; i < 100; i++) {
+            const body = await bea(`api/identity/${beaRoot}/rss/${pictured}/${item.doc_id}/body`);
+            assert.equal(body.status, 200);
+            words = await body.text();
+            assert.ok(!/!\[[^\]]*\]\(https?:/.test(words), `no picture from the web: ${words}`);
+            if (words.includes('/api/rss/pictures/')) break;
+            await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+        const here = words.match(/!\[a horse\]\((\/api\/rss\/pictures\/[0-9a-f]{32}\.avif)\)/);
+        assert.ok(here, `the horse, from this node: ${words}`);
+        assert.ok(!words.includes('pixel'), `a tracking pixel is dropped: ${words}`);
+        assert.match(words, /^a horse/);
+
+        // The picture itself, for someone signed in here - and nobody else.
+        const pic = await bea(here[1].slice(1));
+        assert.equal(pic.status, 200);
+        assert.equal(pic.headers.get('content-type'), 'image/avif');
+        assert.ok((await pic.arrayBuffer()).byteLength > 0);
+        const { makeFetch } = require('./fetch.cjs');
+        assert.equal((await makeFetch()(here[1].slice(1))).status, 401, 'a stranger gets nothing');
+
+        // Copying keeps the feed's own address: publication bakes it, as any web picture.
+        const copy = await j(bea, `api/identity/${beaRoot}/docs/copy`, {
+            author: item.author,
+            doc_id: item.doc_id,
+            bucket: 'clippings',
+            new: true,
+        });
+        assert.equal(copy.status, 200, await copy.clone().text());
+        const note = await (
+            await bea(`api/identity/${beaRoot}/docs/${(await copy.json()).doc_id}`)
+        ).json();
+        assert.match(note.body, /!\[a horse\]\(http:\/\/[^)]+\/body\/media\.avif\)/, note.body);
     });
 });

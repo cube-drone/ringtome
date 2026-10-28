@@ -99,6 +99,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("rss_follows", vec!["feedreader.rs"]),
         ("rss_items", vec!["feedreader.rs"]),
         ("rss_tags", vec!["feedreader.rs"]),
+        ("rss_pictures", vec!["feedreader.rs"]),
+        ("rss_item_pictures", vec!["feedreader.rs"]),
         ("node_listing", vec!["nodeshelf.rs"]),
         ("node_slugs", vec!["slugs.rs"]),
         ("feed_shares", vec!["fanout.rs"]),

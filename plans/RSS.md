@@ -316,7 +316,8 @@ The proposal was: **republish the pointer, not the article.**
    **follow instead** for Ringtome feeds is not.
 7. **Images through the node** in item bodies, the reading pane if the card's
    "see more" is not enough, and **sharing caches** between a persona's own
-   nodes.
+   nodes. **Pictures built 2026-10-28**; the reading pane and shared caches are
+   not.
 
 ### How slices 2 to 6 came out
 
@@ -342,6 +343,26 @@ The proposal was: **republish the pointer, not the article.**
   it back is taking the post down.
 - **Copying** gives the note the item's words with its source beneath them, and
   the reader's tags; it names no provenance, since a feed has no root.
+
+### How slice 7's pictures came out
+
+- **The words keep the feed's addresses.** An item's body is stored as the
+  importer wrote it; the body door (`body_get`) swaps each web picture as it
+  hands the words out: this node's copy at `/api/rss/pictures/<key>.avif` when
+  it has one, nothing for a tracking pixel (2×2 or smaller once crushed), and a
+  link to where it lives for anything else - not fetched yet, failed, or past an
+  item's first twenty. A reader's browser never loads one from the feed's site.
+- **Fetching** is the publish bake's: `fetch_media_bytes` under the guards, and
+  the upload crush on the media lane; only a still or an APNG is kept. Pictures
+  wait in `rss_pictures`, one row per address however many items embed it, and
+  each refresh pass crushes up to 24, newest first - a follow starts one at
+  once. `rss_item_pictures` says which items embed which; a picture nothing
+  embeds loses its row, and the blob reaper (`feedreader::blob_refs`) its bytes.
+- **`/api/rss/pictures/{key}`** answers anyone signed in here: they are the open
+  web's pictures, and the session keeps the node from being anybody's proxy.
+- **Copying and rebroadcasting** read the words as the feed gave them, so
+  publication bakes their web pictures as it does any post's. A copy into notes
+  keeps the feed's addresses, as a pasted web picture does.
 
 ## Open questions
 

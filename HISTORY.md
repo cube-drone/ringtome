@@ -25205,3 +25205,34 @@ under a second, and a deep page naming no feed; a probe of html5ever's other
 slow shapes (misnested formatting, foster-parented tables, select, SVG,
 entities) at the cap: under 0.4 s an item, the deep ones milliseconds. The Rust
 suite, clippy, and both RSS acceptance areas.
+
+## 2026-10-28 - Horse's RSS: pictures through the node (slice 7)
+
+A feed item's pictures used to load straight from the feed's site in the
+reader's browser - a tracking pixel learned who read what, and a site that
+blocks hotlinking left holes. Now the node fetches them.
+
+- **Fetched and kept here:** when an item is kept, the web pictures its words
+  embed (its first twenty) are noted in `rss_item_pictures`, and each address
+  once in `rss_pictures`. Each refresh pass fetches and crushes up to 24 with
+  the publish bake's own tools - `fetch_media_bytes` under the guards, the
+  upload crush on the media lane - and keeps a still or an APNG as a public
+  blob; a follow starts a pass at once. A picture 2×2 or smaller is a tracking
+  pixel, and dropped. When no item embeds a picture its row goes, and the blob
+  reaper takes its bytes (`feedreader::blob_refs` in its live set).
+- **Swapped as the words go out:** the stored body keeps the feed's addresses;
+  the body door hands each web picture out as this node's copy
+  (`/api/rss/pictures/<key>.avif`, for anyone signed in here), nothing for a
+  pixel, or a link to its source for anything not here. No picture is ever
+  embedded from the feed's site.
+- **Copy and rebroadcast** read the feed's own addresses, so publishing a
+  rebroadcast bakes its pictures as any post's.
+- Migration 0110 makes the tables and asks every feed again, so items already
+  kept have their pictures noted.
+
+Checked: a unit test for the swap (kept, dropped, failed, past the cap, a link
+and our own path left alone); an acceptance claim (feedreader.cjs: an item's
+uploaded picture comes through as this node's AVIF, a 1×1 is dropped, the words
+never embed a web picture meanwhile, a stranger gets 401, a copy keeps the
+feed's address); the Rust suite and clippy; and in headless Chrome, the card in
+Horse's RSS and the main feed showing the node's copy, no console errors.

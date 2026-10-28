@@ -87,6 +87,13 @@ const QUIET_AFTER_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 const QUIET_EVERY_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// The most feeds one refresh pass asks, so a node that has been off doesn't wake to a storm.
 const PASS_FEEDS: i64 = 40;
+/// The most pictures of one item the node fetches (plans/RSS.md, slice 7): past them, a picture
+/// is a link to where it lives.
+const PICTURES_PER_ITEM: usize = 20;
+/// The most pictures one pass fetches and crushes - a crush is seconds of CPU, on the media lane.
+const PICTURES_PER_PASS: usize = 24;
+/// Where the app asks for a feed's pictures, by key.
+const PICTURE_PATH: &str = "/api/rss/pictures/";
 /// How soon "refresh now" asks again: sooner, it answers with what it has.
 const AGAIN_GAP_MS: i64 = 60 * 1000;
 /// How much of an item its summary keeps.
@@ -566,6 +573,7 @@ pub async fn pass(state: AppState) -> Result<()> {
     db.execute("DELETE FROM rss_feeds WHERE feed_id NOT IN (SELECT feed_id FROM rss_follows)", ())
         .await
         .context("forgetting unfollowed feeds")?;
+    forget_pictures(db).await?;
     let due: Vec<(String,)> = db
         .fetch_all(
             "SELECT feed_id FROM rss_feeds WHERE due_ms <= ?1 ORDER BY due_ms LIMIT ?2",
@@ -578,7 +586,7 @@ pub async fn pass(state: AppState) -> Result<()> {
             tracing::debug!(feed = %id, error = ?e, "feed refresh failed");
         }
     }
-    Ok(())
+    pictures_pass(&state).await
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -982,6 +990,7 @@ async fn keep(
     })
     .await
     .context("translating a feed's items")?;
+    let mut noted: Vec<(String, Vec<String>)> = Vec::new();
     for item in items {
         match known.get(&item.id) {
             Some((hash, fetched)) => {
@@ -999,6 +1008,7 @@ async fn keep(
                 )
                 .await
                 .context("replacing a changed item")?;
+                noted.push((item.id.clone(), embedded_pictures(&item.body)));
             }
             None => {
                 let dated = item.dated_ms.unwrap_or(now);
@@ -1010,6 +1020,7 @@ async fn keep(
                 )
                 .await
                 .context("keeping a new item")?;
+                noted.push((item.id.clone(), embedded_pictures(&item.body)));
             }
         }
     }
@@ -1022,7 +1033,267 @@ async fn keep(
             .await
             .context("dropping an old item")?;
     }
+    note_pictures(db, id, &noted, now).await?;
+    forget_pictures(db).await?;
     journal(state, id, None).await
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pictures through the node (plans/RSS.md, slice 7, 2026-10-28). An item's words keep the
+// addresses its feed gave its pictures; the node fetches each, crushes it to its own formats and
+// keeps it as a public blob, and the body door (`body_get`) swaps each address for this node's
+// copy as it hands the words out - or, for a picture that isn't here, a link to where it lives.
+// A reader's browser never loads a picture from a feed's site, so no tracking pixel learns who
+// read what. Copying and rebroadcasting read the words as the feed gave them: publication bakes
+// a post's web pictures itself (record::bake).
+
+/// The key the app asks for a picture by: the first sixteen bytes of its address's BLAKE3.
+fn picture_key(url: &str) -> String {
+    hex::encode(&blake3::hash(url.as_bytes()).as_bytes()[..16])
+}
+
+/// The web pictures an item's words embed, each once, in order.
+fn embedded_pictures(body: &str) -> Vec<String> {
+    let Ok(doc) = marquee_parser::parse(body) else { return Vec::new() };
+    let mut found: Vec<String> = Vec::new();
+    crate::record::bake::each_embed(&doc, &mut |target| {
+        let web = target.starts_with("https://") || target.starts_with("http://");
+        if web && !found.iter().any(|f| f == target) {
+            found.push(target.to_string());
+        }
+    });
+    found
+}
+
+/// Note which pictures these items embed - their first [`PICTURES_PER_ITEM`] - and ask for any
+/// this node hasn't met.
+async fn note_pictures(
+    db: &crate::db::Db,
+    feed: &str,
+    items: &[(String, Vec<String>)],
+    now: i64,
+) -> Result<()> {
+    for (item, pictures) in items {
+        db.execute(
+            "DELETE FROM rss_item_pictures WHERE feed_id = ?1 AND item_id = ?2",
+            (feed, item.as_str()),
+        )
+        .await
+        .context("forgetting an item's pictures")?;
+        for url in pictures.iter().take(PICTURES_PER_ITEM) {
+            db.execute(
+                "INSERT OR IGNORE INTO rss_item_pictures (feed_id, item_id, source_url) VALUES (?1, ?2, ?3)",
+                (feed, item.as_str(), url.as_str()),
+            )
+            .await
+            .context("noting an item's picture")?;
+            db.execute(
+                "INSERT OR IGNORE INTO rss_pictures (key, source_url, status, created_ms)
+                 VALUES (?1, ?2, 'pending', ?3)",
+                (picture_key(url), url.as_str(), now),
+            )
+            .await
+            .context("asking for a picture")?;
+        }
+    }
+    Ok(())
+}
+
+/// Forget what no kept item embeds: its row goes, and the blob reaper takes its bytes.
+async fn forget_pictures(db: &crate::db::Db) -> Result<()> {
+    db.execute(
+        "DELETE FROM rss_item_pictures WHERE NOT EXISTS (SELECT 1 FROM rss_items i
+         WHERE i.feed_id = rss_item_pictures.feed_id AND i.item_id = rss_item_pictures.item_id)",
+        (),
+    )
+    .await
+    .context("forgetting gone items' pictures")?;
+    db.execute(
+        "DELETE FROM rss_pictures WHERE source_url NOT IN (SELECT source_url FROM rss_item_pictures)",
+        (),
+    )
+    .await
+    .context("forgetting pictures nothing embeds")?;
+    Ok(())
+}
+
+/// The pictures' blobs, for the reaper (reaper.rs `live_set`): every ready picture is a
+/// reference.
+pub async fn blob_refs(node_db: &crate::db::Db) -> Result<Vec<[u8; 32]>> {
+    let rows: Vec<(Vec<u8>,)> = node_db
+        .fetch_all("SELECT hash FROM rss_pictures WHERE hash IS NOT NULL", ())
+        .await
+        .context("reading the feed pictures' blob references")?;
+    rows.into_iter()
+        .map(|(h,)| {
+            <[u8; 32]>::try_from(h.as_slice())
+                .map_err(|_| anyhow::anyhow!("corrupt hash on a feed picture"))
+        })
+        .collect()
+}
+
+/// Fetch and crush the pictures waiting, [`PICTURES_PER_PASS`] at most, oldest first: after each
+/// refresh pass, and when somebody follows a feed. One at a time across the node.
+async fn pictures_pass(state: &AppState) -> Result<()> {
+    static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if RUNNING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+    let done = pictures_pass_inner(state).await;
+    RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    done
+}
+
+async fn pictures_pass_inner(state: &AppState) -> Result<()> {
+    let db = &state.node_db;
+    for _ in 0..PICTURES_PER_PASS {
+        let next: Option<(String, String)> = db
+            .fetch_optional(
+                "SELECT key, source_url FROM rss_pictures WHERE status = 'pending'
+                 ORDER BY created_ms DESC LIMIT 1",
+                (),
+            )
+            .await
+            .context("finding a picture to fetch")?;
+        let Some((key, url)) = next else { break };
+        match fetch_picture(state, &url).await {
+            Ok(Some((put, format, width, height))) => {
+                db.execute(
+                    "UPDATE rss_pictures SET status = 'ready', hash = ?2, format = ?3, width = ?4,
+                     height = ?5, error = NULL WHERE key = ?1",
+                    (key.as_str(), put.hash.as_bytes().to_vec(), format, width, height),
+                )
+                .await
+                .context("keeping a picture")?;
+                drop(put);
+            }
+            Ok(None) => {
+                db.execute(
+                    "UPDATE rss_pictures SET status = 'dropped' WHERE key = ?1",
+                    (key.as_str(),),
+                )
+                .await
+                .context("dropping a tracking pixel")?;
+            }
+            Err(why) => {
+                db.execute(
+                    "UPDATE rss_pictures SET status = 'failed', error = ?2 WHERE key = ?1",
+                    (key.as_str(), why),
+                )
+                .await
+                .context("noting a picture's failure")?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// One picture: downloaded under the guards, crushed on the media lane, and kept as a public
+/// blob - with its format and size. `None` for a tracking pixel; `Err` for anything that isn't a
+/// picture the node can show.
+async fn fetch_picture(
+    state: &AppState,
+    url: &str,
+) -> Result<Option<(crate::files::Put, &'static str, i64, i64)>, String> {
+    let bytes =
+        unfurl::fetch_media_bytes(url, state.config.max_upload_bytes, state.config.local_test)
+            .await?;
+    let crushed = crate::media::lane::background(move || {
+        crate::media::crush_with_sidecar(&bytes, None, &|_: u8| {})
+    })
+    .await
+    .map_err(|e| format!("the crush died: {e}"))?
+    .map_err(|e| format!("couldn't read that picture: {e}"))?;
+    let format = match crushed.format {
+        crate::record::documents::Format::Avif => "avif",
+        crate::record::documents::Format::Apng => "apng",
+        _ => return Err("not a picture".into()),
+    };
+    let (width, height) = (crushed.width.unwrap_or(0), crushed.height.unwrap_or(0));
+    if width <= 2 && height <= 2 {
+        return Ok(None);
+    }
+    let put = state.files.put_public(&crushed.body).await.map_err(|e| format!("{e:#}"))?;
+    Ok(Some((put, format, i64::from(width), i64::from(height))))
+}
+
+/// An item's words as a reader's browser gets them: each web picture this node keeps, swapped
+/// for its copy here; a tracking pixel, gone; and any other - not fetched yet, failed, or past
+/// the first twenty - a link to where it lives, never a picture loaded from there.
+fn served_words(body: &str, pictures: &HashMap<String, (String, String, String)>) -> String {
+    static EMBED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"!\[((?:[^\]\\]|\\.)*)\]\(([^()\s]+)\)").expect("a fixed pattern")
+    });
+    EMBED
+        .replace_all(body, |c: &regex::Captures| {
+            let (alt, target) = (&c[1], &c[2]);
+            if !(target.starts_with("https://") || target.starts_with("http://")) {
+                return c[0].to_string();
+            }
+            match pictures.get(target).map(|(s, k, f)| (s.as_str(), k, f.as_str())) {
+                Some(("ready", key, format)) => {
+                    let ext = if format == "apng" { "png" } else { "avif" };
+                    format!("![{alt}]({PICTURE_PATH}{key}.{ext})")
+                }
+                Some(("dropped", ..)) => String::new(),
+                _ => {
+                    let words = if alt.trim().is_empty() {
+                        url::Url::parse(target)
+                            .ok()
+                            .and_then(|u| u.host_str().map(str::to_string))
+                            .unwrap_or_else(|| "↗".to_string())
+                    } else {
+                        alt.to_string()
+                    };
+                    format!("[{words}]({target})")
+                }
+            }
+        })
+        .into_owned()
+}
+
+/// `GET /api/rss/pictures/{key}.{ext}`: one feed picture this node keeps, for anyone signed in
+/// here - they're the open web's pictures, and the session keeps the node from being anybody's
+/// proxy.
+pub async fn picture_get(
+    _session: Session,
+    State(state): State<AppState>,
+    Path(file): Path<String>,
+) -> Result<axum::response::Response, AppError> {
+    let missing =
+        || AppError::NotFound(crate::msg!("feedreader.no-picture", "that picture isn't here"));
+    let key = file.split('.').next().unwrap_or_default();
+    if !is_id(key) {
+        return Err(missing());
+    }
+    let row: Option<(Vec<u8>, String)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT hash, format FROM rss_pictures WHERE key = ?1 AND status = 'ready'",
+            (key,),
+        )
+        .await
+        .map_err(AppError::Internal)?;
+    let Some((hash, format)) = row else { return Err(missing()) };
+    let hash = <[u8; 32]>::try_from(hash.as_slice()).map_err(|_| missing())?;
+    let Some(bytes) = state
+        .files
+        .get_public(iroh_blobs::Hash::from_bytes(hash))
+        .await
+        .map_err(AppError::Internal)?
+    else {
+        return Err(missing());
+    };
+    let kind = if format == "apng" { "image/apng" } else { "image/avif" };
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, kind),
+            (axum::http::header::CACHE_CONTROL, "private, max-age=31536000, immutable"),
+            (axum::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1362,6 +1633,13 @@ pub async fn feeds_post(
         title = t;
     }
     journal(&state, &id, Some(&root)).await.map_err(AppError::Internal)?;
+    // Its pictures now, so the first look finds them: not on this request's time.
+    let pictures = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = pictures_pass(&pictures).await {
+            tracing::debug!(error = ?e, "feed pictures pass failed");
+        }
+    });
     let tags = tidy_tags(&req.tags);
     let tags = match subs.iter().find(|(had, _)| *had == id) {
         // Followed already: the tags given join the ones it wears.
@@ -1498,9 +1776,24 @@ pub async fn body_get(
             "that item isn't in a feed you follow"
         )));
     };
+    let words = if body.is_empty() { summary } else { body };
+    let wanted = serde_json::to_string(&embedded_pictures(&words)).unwrap_or_default();
+    let rows: Vec<(String, String, String, Option<String>)> = state
+        .node_db
+        .fetch_all(
+            "SELECT source_url, status, key, format FROM rss_pictures
+             WHERE source_url IN (SELECT value FROM json_each(?1))",
+            (wanted,),
+        )
+        .await
+        .map_err(AppError::Internal)?;
+    let pictures = rows
+        .into_iter()
+        .map(|(url, status, key, format)| (url, (status, key, format.unwrap_or_default())))
+        .collect();
     Ok((
         [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        if body.is_empty() { summary } else { body },
+        served_words(&words, &pictures),
     )
         .into_response())
 }
@@ -2273,6 +2566,44 @@ https://www.seriouseats.com/porcupine-meatballs-recipe-12196859
             alternate(&fine, &page).unwrap().as_str(),
             "https://example.com/f.xml",
             "only its head is read"
+        );
+    }
+
+    /// A body's pictures as a reader gets them: a kept one from here, a pixel gone, any other a
+    /// link - and an address that isn't the web's, a link, and code left alone.
+    #[test]
+    fn a_readers_pictures_come_from_here_or_not_at_all() {
+        let body = "Hay.\n\n![a bale](https://hay.example/bale.jpg)\n\n![](https://t.example/p.gif)\n\n\
+                    ![](https://hay.example/later.png) and ![a \\] bracket](http://hay.example/b.jpg)\n\n\
+                    [a link](https://hay.example/bale.jpg) ![ours](/api/rss/pictures/x.avif)";
+        assert_eq!(
+            embedded_pictures(body),
+            [
+                "https://hay.example/bale.jpg",
+                "https://t.example/p.gif",
+                "https://hay.example/later.png",
+                "http://hay.example/b.jpg"
+            ]
+        );
+        let key = picture_key("https://hay.example/bale.jpg");
+        let row = |status: &str, key: &str, format: &str| {
+            (status.to_string(), key.to_string(), format.to_string())
+        };
+        let pictures: HashMap<String, (String, String, String)> = [
+            ("https://hay.example/bale.jpg", row("ready", &key, "avif")),
+            ("https://t.example/p.gif", row("dropped", "", "")),
+            ("http://hay.example/b.jpg", row("failed", "", "")),
+        ]
+        .into_iter()
+        .map(|(url, r)| (url.to_string(), r))
+        .collect();
+        assert_eq!(
+            served_words(body, &pictures),
+            format!(
+                "Hay.\n\n![a bale](/api/rss/pictures/{key}.avif)\n\n\n\n\
+                 [hay.example](https://hay.example/later.png) and [a \\] bracket](http://hay.example/b.jpg)\n\n\
+                 [a link](https://hay.example/bale.jpg) ![ours](/api/rss/pictures/x.avif)"
+            )
         );
     }
 

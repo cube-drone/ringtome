@@ -58,6 +58,11 @@ async fn live_set(state: &AppState) -> Result<HashSet<Hash>> {
         live.insert(Hash::from_bytes(hash));
     }
 
+    // Feed items' pictures (feedreader.rs, slice 7): kept while an item embeds them.
+    for hash in crate::feedreader::blob_refs(&state.node_db).await? {
+        live.insert(Hash::from_bytes(hash));
+    }
+
     // Mid-heal wants: referenced by intent, protected until reconciled away.
     for hash in crate::net::bodies::wanted_hashes(&state.node_db).await? {
         live.insert(Hash::from_bytes(hash));
