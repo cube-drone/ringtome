@@ -25090,3 +25090,74 @@ billion-laughs DTD not expanded); five acceptance claims (feedreader.cjs: by a
 page, a watermark and tags, a shared cache, refusals, another persona's feeds),
 with publish.cjs, rss.cjs, unfurl, domains and web addresses still green; and in
 headless Chrome, the app on a desktop and a phone.
+
+## 2026-10-27 - hrseRSS™ is Horse's RSS
+
+- Curtis named the feed reader: **Horse's RSS**, outside the hrse-name model the
+  other apps follow. The app's name, its Market unlock (`bank.rs` and
+  `unlocks.js`, the locale catalog), the plan, README and the code's comments
+  say so; the unlock's id stays `rss`.
+
+## 2026-10-27 - Horse's RSS: feed items are posts (slices 2 to 6)
+
+Curtis's second round (plans/RSS.md, _Feed items are posts_): an item looks and
+acts like a post, folds into the main feed under its filters, and Horse's RSS's
+merged view is that same feed. Rulings: an item's tags are private until it is
+rebroadcast; every followed feed folds in, with a kind chip to leave them out.
+
+- **On the node** (node rung 0109, feedreader.rs): each item keeps a post's
+  automatic tags (image, audio or video from its enclosures and pictures; micro
+  to long from its words); each feed keeps a logo (its own, its icon, else the
+  site's favicon), served only when its bytes are png, jpeg, gif, webp or ico;
+  and a body door serves an item's Marquee.
+- **Into the feed**: a kept item is journalled into every follower's
+  `feed_journal` as the post of `rss:<feed id>`, format `rss` - backfilled on a
+  follow, taken out on letting go or when the feed stops keeping it. The joins
+  that ask an author's chain ask the feed reader instead: bylines (the feed's
+  name), labels (`for_posts` and the cloud's window), tag picks, search words,
+  the new `rss` kind ("feed items"), feeds as author chips, and the stop rule,
+  which every followed feed's item passes as a group post does.
+- **The card** (js/feedbanner.js, postentry.js): the feed's logo in a circle,
+  its name (to the feed in Horse's RSS) and its site; the title opens the
+  original; the deck is share, link (the original's) and copy.
+- **Horse's RSS** is the feed stream over `rss/feed` and `rss/{feed}/feed`,
+  paged and filtered as the feed is; a feed is chosen by `?feed=`. The stream
+  moved out of apps/feed.js into js/feedstream.js, since an app may not import
+  another. The old item list and its `rss/items` door are gone.
+- **Tagging** an item is private: an `rss_tags` register per item, two tags at
+  most, noted in node.db's `rss_tags` so the filters read it.
+- **Copy into notes** gives the item's words with its source beneath them, and
+  the reader's tags.
+- **Rebroadcast** (full text): the node makes a draft in the reader's feed
+  notebook - words, source, their tags, and `source_feed`, `source_name` and
+  `source_link` fields - and the card publishes it as the composer does, to
+  everyone or into a group. Publishing states the fields as labels, so every
+  reader's card says "via" the feed, with a follow chip. Once per item and
+  place.
+
+Checked: unit tests (automatic tags, logo bytes, a feed author no root can be);
+seven acceptance claims (feedreader.cjs: items as posts in both feeds with kind,
+size and author filters, the watermark, private tags and copying, rebroadcast, a
+shared cache, refusals, another persona's feeds); the whole integration rig
+(1992 passing) and the Rust suite; and in headless Chrome, Horse's RSS and the
+main feed on a desktop and a phone, and a rebroadcast's "via" line.
+
+## 2026-10-27 - A person's RSS carries the whole post
+
+Curtis's blog arrived in Horse's RSS as one paragraph: no headings, pictures,
+links or emphasis, and cut off at 4000 characters. The loss was in our own feed
+(rss.rs), not the reader: an item's only words were its plain-text
+`description`.
+
+- Each text post's item now also has `content:encoded`: its words as the reading
+  copy renders them (reading.rs `words_html`), with every `/…` address made
+  whole at the node's public base, since a feed reader fetches pictures and
+  follows links from somewhere else. `description` stays the short plain summary
+  for readers that show one.
+- Horse's RSS already prefers an item's content to its summary. Run through the
+  HTML importer, the Mork Borg post comes back as its Marquee: headings, every
+  picture, links, the blockquote and emphasis.
+
+Checked: a unit test for the addresses; a person's RSS (rss.cjs) carries a
+rendered heading, emphasis and a whole link; Horse's RSS (feedreader.cjs) reads
+the heading and the whole link back as Marquee.

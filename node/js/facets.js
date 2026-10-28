@@ -75,6 +75,7 @@ const KIND_NAMES = {
     rebroadcast: () => t('facets.kind-rebroadcasts', 'rebroadcasts'),
     book: () => t('facets.kind-books', 'books'),
     room: () => t('facets.kind-rooms', 'rooms'),
+    rss: () => t('facets.kind-feed-items', 'feed items'),
 };
 
 /// A chip's look and its words, by where it stands: left alone, "only", or left out - and what the

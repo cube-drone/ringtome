@@ -874,6 +874,8 @@ pub async fn for_journal_since(
             value,
         });
     }
+    // The window's feed items (feedreader.rs), whose labels the memo never holds.
+    out.extend(crate::feedreader::labels_since(&state.node_db, reader, since_ms).await?);
     Ok(out)
 }
 
@@ -904,6 +906,9 @@ async fn for_posts_inner(
     for MemoRow { target_author: ta, target_doc: td, annotator, key, value, .. } in rows {
         out.entry((ta, td)).or_default().push(KnownAnnotation { annotator, key, value });
     }
+    // A followed feed's items (feedreader.rs): their automatic tags, and the viewer's own private
+    // ones - never in the memo, which holds what was said in public.
+    out.extend(crate::feedreader::labels(&state.node_db, viewer.flatten(), posts).await?);
     Ok(out)
 }
 

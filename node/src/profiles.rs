@@ -205,6 +205,9 @@ pub async fn bylines(
     if roots.is_empty() {
         return Ok(out);
     }
+    // A followed feed stands where an author would (feedreader.rs, plans/RSS.md): its name is
+    // its byline.
+    out.extend(crate::feedreader::bylines(node_db, roots).await?);
     // Quoted IN-list, hex-filtered belt-and-braces: anything that isn't a hex root cannot
     // name a row this module wrote.
     let quoted: Vec<String> = roots

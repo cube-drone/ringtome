@@ -28,6 +28,7 @@ import { SuperPinChip } from './frontdoor.js';
 import { useChipMenu } from './doc/chips.js';
 import { DownloadChip } from './doc/download.js';
 import { Modal } from './modal.js';
+import { toast } from './toasts.js';
 import { speakable } from './speakable.js';
 import { parse } from '@cube-drone/marquee-react-renderer';
 import { descriptionOf, excerpt } from './pure/excerpt.js';
@@ -70,6 +71,7 @@ import { parseRingtome } from './pure/ringtome.js';
 import { parseSpeakable } from './speakable.js';
 import { agoUnit, agoWords } from './pure/ago.js';
 import { PersonBanner, PersonChip, PersonHex, usePerson } from './person.js';
+import { FeedBanner, siteWords } from './feedbanner.js';
 import { GroupMark, useGroupFace } from './groupface.js';
 import { parseBook } from './pure/books.js';
 import { useShared, markShared, useSharedIn, markSharedIn } from './shares.js';
@@ -223,7 +225,12 @@ export function useOwnPostEditing(current, decorate = (row) => row) {
  * unlock-then-edit-in-place ceremony.
  *
  * `item`: { author, doc_id (PUBLIC), title, format, published_ms, mine,
- *           author_name?, author_avatar? }
+ *           author_name?, author_avatar?, feed? }
+ *
+ * A followed feed's item (plans/RSS.md, _Feed items are posts_) is a card too: `feed` says which
+ * feed (feedreader.rs `FeedCard`), its author is spelled `rss:<feed id>`, and it wears the feed
+ * where a post wears its author. Its words come from the feed reader's cache, its title opens the
+ * original, and what only an author can do, or only a post on a chain can be, it goes without.
  */
 /// "Take it down": recall a post you published.
 ///
@@ -552,6 +559,152 @@ const ShareButton = ({ item, current }) => {
         }`;
 };
 
+/// Where this reader has rebroadcast feed items (feedreader.rs `REBROADCASTS`): the register, read
+/// once a page for every card - `feed id + item id` -> ["everyone", group ids].
+const rebroadcastsAsked = new Map();
+const rebroadcastPlaces = (root) => {
+    if (!rebroadcastsAsked.has(root)) {
+        rebroadcastsAsked.set(
+            root,
+            api(`/api/identity/${root}/private/kv/rss_rebroadcasts`)
+                .then(
+                    (r) =>
+                        new Map(
+                            (r.values || [])
+                                .filter((v) => v.value)
+                                .map((v) => [v.key, JSON.parse(v.value)]),
+                        ),
+                )
+                .catch(() => new Map()),
+        );
+    }
+    return rebroadcastsAsked.get(root);
+};
+
+/// A feed's item, rebroadcast (plans/RSS.md, ruled 2026-10-27: the full text): the node makes it a
+/// draft of the reader's own - its words, where it came from, their tags on it - and it is published
+/// as the composer publishes, to everyone or into a group. A post of theirs from then on, taken down
+/// as any post is; so once per item and place, and never taken back from here.
+const FeedShareButton = ({ item, current }) => {
+    const me = current.root;
+    const key = `${item.feed.id}${item.doc_id}`;
+    const [places, setPlaces] = useState(null);
+    const [asking, setAsking] = useState(false);
+    const [sending, setSending] = useState(false);
+    const [baking, setBaking] = useState(null);
+    const elsewhere = useSharedIn(me, item.author, item.doc_id);
+    const groups = (elsewhere && elsewhere.groups) || [];
+    useEffect(() => {
+        let live = true;
+        rebroadcastPlaces(me).then((known) => live && setPlaces(known.get(key) || []));
+        return () => {
+            live = false;
+        };
+    }, [me, key]);
+    const send = async (group) => {
+        if (sending) return;
+        setSending(true);
+        try {
+            const draft = await api(
+                `/api/identity/${me}/rss/${item.feed.id}/${item.doc_id}/rebroadcast`,
+                { method: 'POST', body: JSON.stringify(group ? { group } : {}) },
+            );
+            await publishTo(
+                me,
+                draft.doc_id,
+                { words: true },
+                { onBaking: setBaking, ...(group ? { choice: `group:${group}` } : {}) },
+            );
+            const next = [...(places || []), group || 'everyone'];
+            setPlaces(next);
+            (await rebroadcastPlaces(me)).set(key, next);
+            toast(t('postentry.rebroadcast-posted', 'rebroadcast - a post of yours now'));
+        } catch (err) {
+            toast(err.message, { kind: 'error' });
+        } finally {
+            setSending(false);
+            setBaking(null);
+            setAsking(false);
+        }
+    };
+    const sent = !!places && places.length > 0;
+    const click = () => (groups.length ? setAsking(true) : send(null));
+    return html`<button
+            class=${sent ? 'chip chip-button chip-worded chip-open' : 'chip chip-button chip-worded'}
+            disabled=${sending || places === null || (sent && !groups.length)}
+            title=${
+                groups.length
+                    ? t(
+                          'postentry.rebroadcast-where',
+                          'rebroadcast this as a post of yours - to everyone, or into a group',
+                      )
+                    : sent
+                      ? t('postentry.rebroadcast-done', 'you rebroadcast this')
+                      : t('postentry.rebroadcast-feed-item', 'rebroadcast this as a post of yours')
+            }
+            onClick=${click}
+        >
+            <${Icons.colRebroadcast} />
+            <span class="chip-word">${t('chips.share', 'share')}</span>
+        </button>
+        ${baking && html`<${BakeModal} items=${baking} />`}
+        ${
+            asking &&
+            html`<${Modal} title=${t('postentry.rebroadcast-to', 'rebroadcast to:')} onClose=${() => setAsking(false)}>
+                <div class="share-to">
+                    ${[
+                        { group: null, name: t('postentry.share-to-everyone', 'everyone') },
+                        ...groups.map((g) => ({ group: g.group, name: g.name })),
+                    ].map((d) => {
+                        const on = (places || []).includes(d.group || 'everyone');
+                        return html`<button
+                            key=${d.group || 'everyone'}
+                            class=${on ? 'copy-bucket modal-ask-ok' : 'copy-bucket'}
+                            aria-pressed=${on}
+                            disabled=${sending || on}
+                            onClick=${() => send(d.group)}
+                        >
+                            <span class="share-to-name">${d.name}</span>
+                            <span class="share-to-state"
+                                >${on ? t('postentry.rebroadcast-there', 'rebroadcast') : t('chips.share', 'share')}</span
+                            >
+                        </button>`;
+                    })}
+                </div>
+            </${Modal}>`
+        }`;
+};
+
+/// Following, from a rebroadcast's "via" line, the feed it came from (plans/RSS.md, point 7):
+/// Horse's RSS's own follow, asked here.
+const FollowFeedChip = ({ source, current }) => {
+    const [state, setState] = useState(null); // null, 'busy', 'done'
+    const follow = async () => {
+        setState('busy');
+        try {
+            await api(`/api/identity/${current.root}/rss`, {
+                method: 'POST',
+                body: JSON.stringify({ url: source.feed }),
+            });
+            setState('done');
+            toast(
+                t('postentry.following-feed', "following {name} in Horse's RSS", {
+                    name: source.name,
+                }),
+            );
+        } catch (err) {
+            setState(null);
+            toast(err.message, { kind: 'error' });
+        }
+    };
+    return html`<button
+        class="feed-entry-via-follow"
+        type="button"
+        disabled=${state !== null}
+        onClick=${follow}
+    >${state === 'done' ? t('postentry.feed-followed', 'followed') : t('postentry.follow-feed', '+ follow')}</button>`;
+};
+
 /// A post, REFERRED to - the mini-card (2026-08-26): title and date in a small clickable
 /// footprint, for surfaces that mention a post rather than show it (the bell's rebroadcast
 /// rows first). Not a compact PostEntry on purpose: the one-component ruling covers "a
@@ -875,6 +1028,7 @@ const PostEntryBody = ({
     const ownsPins = useUnlocked(me, 'pins');
     const ownsEditing = useUnlocked(me, 'post-editing');
     const ownsTags = useUnlocked(me, 'tags');
+    const ownsFeeds = useUnlocked(me, 'rss');
     const cardMenu = useChipMenu();
     const [body, setBody] = useState(undefined);
     const [sealedWords, setSealedWords] = useState('');
@@ -915,10 +1069,25 @@ const PostEntryBody = ({
     const [amended, setAmended] = useState(null);
     const itemRef = useRef(null);
     const groupId = item.group && item.group.id;
+    const feed = item.feed || null;
+    const feedId = feed && feed.id;
+    const reader = current && current.root;
+    // A feed's item somebody rebroadcast (plans/RSS.md): its source, as its author's labels say.
+    const said = (key) =>
+        ((item.annotations || []).find((a) => a.annotator === item.author && a.key === key) || {})
+            .value;
+    const sourceFeed = !feed && said('source_feed');
+    const source = sourceFeed
+        ? {
+              feed: sourceFeed,
+              name: said('source_name') || siteWords(sourceFeed),
+              link: said('source_link') || null,
+          }
+        : null;
     // The card's backdrop (Curtis, 2026-10-16, an experiment): the banner of whoever posted it -
     // or, posted to a group, the group's - faint behind the top of the card and fading out down it.
     // Only a banner someone chose: the tiled pattern standing in for none stays off the card.
-    const poster = usePerson(item.author, { current });
+    const poster = usePerson(feed ? null : item.author, { current });
     // The band's group: the one it was posted within, or the public group it was posted as.
     const bandGroup = item.group || item.as_group || null;
     const groupFace = useGroupFace(bandGroup && bandGroup.id);
@@ -943,11 +1112,14 @@ const PostEntryBody = ({
         // onward" (Contact tags, ruling 7) the sharer is whose trust opens it, so a feed
         // row that came by a share names them too.
         // A group post's words are behind the group's own door (plans/GROUPS.md, slice 4b).
-        const bodyUrl = groupId
-            ? `/api/groups/${groupId}/docs/${item.doc_id}/body`
-            : item.private_doc
-              ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
-              : `/id/${item.author}/docs/${item.doc_id}/body${item.via ? `?via=${item.via}` : ''}`;
+        // A feed's item's words are in the reader's node's cache of the feed.
+        const bodyUrl = feedId
+            ? `/api/identity/${reader}/rss/${feedId}/${item.doc_id}/body`
+            : groupId
+              ? `/api/groups/${groupId}/docs/${item.doc_id}/body`
+              : item.private_doc
+                ? `/api/identity/${item.author}/docs/${item.doc_id}/body`
+                : `/id/${item.author}/docs/${item.doc_id}/body${item.via ? `?via=${item.via}` : ''}`;
         // A public post's words under its last edit's time are those words for good: kept, so
         // coming back to the feed doesn't ask for every visible card again (plans/CACHE.md,
         // Stage 9). A scheduled draft's private words change without a new time - always asked.
@@ -975,6 +1147,8 @@ const PostEntryBody = ({
     }, [
         item.author,
         item.doc_id,
+        feedId,
+        reader,
         groupId,
         item.private_doc,
         item.kind,
@@ -1032,18 +1206,23 @@ const PostEntryBody = ({
     const pathLabel = (item.annotations || []).find(
         (a) => a.annotator === item.author && a.key === 'path',
     );
-    const slug = useSlugOf(item.author, !item.group && !item.private_doc);
-    const href = item.group
-        ? groupPostHref(item.group.id, item.doc_id)
-        : postLink(item.author, item.doc_id, { path: pathLabel ? pathLabel.value : null, slug });
+    const slug = useSlugOf(item.author, !feed && !item.group && !item.private_doc);
+    // A feed's item has no page here: its address is the original's, on its website.
+    const href = feed
+        ? feed.link || feed.site
+        : item.group
+          ? groupPostHref(item.group.id, item.doc_id)
+          : postLink(item.author, item.doc_id, { path: pathLabel ? pathLabel.value : null, slug });
     // ...and at their own domain ahead of either, where it is their canonical address
     // (plans/CUSTOM_DOMAINS.md).
-    const domain = useDomainOf(item.author, !item.private_doc);
-    const shareHref = shareHrefOf(item.author, item.doc_id, {
-        path: pathLabel ? pathLabel.value : null,
-        slug,
-        domain,
-    });
+    const domain = useDomainOf(item.author, !feed && !item.private_doc);
+    const shareHref = feed
+        ? href
+        : shareHrefOf(item.author, item.doc_id, {
+              path: pathLabel ? pathLabel.value : null,
+              slug,
+              domain,
+          });
     // The words as shown: after an in-place edit, the buffer the user just confirmed - not a
     // refetch of what they typed. The item prop's copies are snapshots; a page refresh
     // reconciles everything against the canonical fold anyway.
@@ -1054,10 +1233,15 @@ const PostEntryBody = ({
     const shownBody = amended ? amended.body : body;
     const title = amended ? amended.title : item.title || sealedWords || '';
     // A room's description is Marquee (CHAT.md, ruling 1): rendered as such.
-    const bodyFormat = item.format === 'room' ? 'marquee' : item.format;
+    // A feed's item is kept as Marquee (feedreader.rs: translated, never kept as HTML).
+    const bodyFormat = item.format === 'room' || feed ? 'marquee' : item.format;
     // Its own address goes along, so a reader who isn't signed in still gets its links' cards
     // (doc/turbolinks.js `placeOf`): the node fetches them for a link a public post here holds.
-    const tlProfile = useTurbolinks(shownBody || '', bodyFormat, `${item.author}/${item.doc_id}`);
+    const tlProfile = useTurbolinks(
+        shownBody || '',
+        bodyFormat,
+        feed ? null : `${item.author}/${item.doc_id}`,
+    );
     const { lead, cut: leadCut } = leadOf(shownBody || '', emphasis);
     // A book's card always draws its whole table (below), so nothing is ever held back from it -
     // nor from a post on its own page (Curtis, 2026-10-08: "if someone has bothered to click on
@@ -1146,15 +1330,17 @@ const PostEntryBody = ({
     // wish), and not signed out - the front page's visitors. Where they cannot, the foot is just the
     // post's own link rather than an offer that goes nowhere.
     const canReply = !!(current && current.root) && !item.settled;
-    const replyWords = item.replies
-        ? item.replies === 1
-            ? t('postentry.1-reply', '1 reply')
-            : t('postentry.n-replies', '{n} replies', { n: item.replies })
-        : !seeMore && item.format !== 'room'
-          ? canReply
-              ? t('postentry.reply', 'reply')
-              : t('postentry.link', 'link')
-          : null;
+    const replyWords = feed
+        ? null
+        : item.replies
+          ? item.replies === 1
+              ? t('postentry.1-reply', '1 reply')
+              : t('postentry.n-replies', '{n} replies', { n: item.replies })
+          : !seeMore && item.format !== 'room'
+            ? canReply
+                ? t('postentry.reply', 'reply')
+                : t('postentry.link', 'link')
+            : null;
     const [saidLabels, setSaidLabels] = useState([]);
     const [retractedLabels, setRetractedLabels] = useState([]);
     const [tagging, setTagging] = useState(false);
@@ -1193,6 +1379,15 @@ const PostEntryBody = ({
             have.some((a) => labelKey(a) === labelKey(said)) ? have : [...have, said],
         );
         try {
+            // A feed's item takes the reader's tags privately (Curtis, 2026-10-27), until they
+            // rebroadcast it.
+            if (feed) {
+                await api(
+                    `/api/identity/${me}/rss/${feed.id}/${item.doc_id}/tags/${encodeURIComponent(value)}`,
+                    { method: 'PUT' },
+                );
+                return;
+            }
             // A group post's labels ride its lane, through the group's door; the node files your
             // own post's tag on its draft itself.
             if (item.group) {
@@ -1242,6 +1437,13 @@ const PostEntryBody = ({
         // Gone at once, back if the node refuses (2026-10-02), as a tag added is shown at once.
         setRetractedLabels((have) => [...have, labelKey(a)]);
         try {
+            if (feed) {
+                await api(
+                    `/api/identity/${me}/rss/${feed.id}/${item.doc_id}/tags/${encodeURIComponent(a.value)}`,
+                    { method: 'DELETE' },
+                );
+                return;
+            }
             if (item.group) {
                 await api(
                     `/api/identity/${me}/groups/${item.group.id}/docs/${item.doc_id}/labels`,
@@ -1314,7 +1516,9 @@ const PostEntryBody = ({
         // The room's own word (Contact tags, ruling 5): "@mentioned", said by the author as
         // a sealed label so the people in the room see why they are there - it dresses
         // the wish chip below, never a chip of its own.
-        .filter((a) => a.key !== 'audience');
+        .filter((a) => a.key !== 'audience')
+        // A rebroadcast feed item's source (feedreader.rs `SOURCE_*`) is its "via" line, never a chip.
+        .filter((a) => !a.key.startsWith('source_'));
     // The author's own description is the post's subtitle (Curtis, 2026-10-02): small italics under
     // the title, not an "about" chip among the tags. Anyone else's description stays a label.
     const subtitle = descriptionOf(shownLabels, item.author);
@@ -1420,9 +1624,18 @@ const PostEntryBody = ({
             onClick=${hideInGroup}
         ><${hidden ? Icons.eye : Icons.hidden} /></button>`
     }`;
-    const cardDeck = item.group
-        ? groupDeck
-        : html`
+    // A feed's item: its link (the original's address) and the copy into notes - the rest of a
+    // post's chips are an author's, or a chain's.
+    const feedDeck = html`
+        ${ownsSharing && !!current && !!current.root && !open && html`<${FeedShareButton} item=${item} current=${current} />`}
+        ${!open && html`<${CopyLinkChip} path=${href} title=${t('postentry.copy-the-originals-address', "copy the original's address")} />`}
+        ${!!current && !!current.root && !open && html`<${CopyButton} item=${item} current=${current} />`}
+    `;
+    const cardDeck = feed
+        ? feedDeck
+        : item.group
+          ? groupDeck
+          : html`
                     ${
                         /* The takedown first, after the date: trash is always the leftmost chip, on every
                         row (Curtis, 2026-09-27). Only ever on your own posts, so never beside share. */ ''
@@ -1536,6 +1749,24 @@ const PostEntryBody = ({
             </p>`
             }
             ${
+                /* A rebroadcast feed item says where it came from, in the seat a share's line takes,
+                and offers its feed to follow (plans/RSS.md): the post is the rebroadcaster's, the
+                words the feed's. */ ''
+            }
+            ${
+                !!source &&
+                html`<p class="feed-entry-via">
+                <${Icons.rss} />
+                ${t('postentry.via-feed', 'via')}
+                ${
+                    source.link
+                        ? html`<a href=${source.link} target="_blank" rel="noopener noreferrer">${source.name}</a>`
+                        : source.name
+                }
+                ${ownsFeeds && !!current && !!current.root && html`<${FollowFeedChip} source=${source} current=${current} />`}
+            </p>`
+            }
+            ${
                 /* A group post says which group, in the seat a share's line takes (plans/GROUPS.md,
                 slice 4b): it is here because you're in it. A band across the card's top in the
                 frame's colour, with the group's triangle (Curtis, 2026-10-16: the line was small). */ ''
@@ -1600,8 +1831,10 @@ const PostEntryBody = ({
                 hover. The when and - for your own posts - the unlock ride its actions slot. */ ''
             }
             <div class="feed-entry-head">
-            <${PersonBanner}
+            <${feed ? FeedBanner : PersonBanner}
                 root=${item.author}
+                feed=${feed}
+                name=${item.author_name}
                 current=${current}
                 profile=${authorProfile}
                 actions=${html`${
@@ -1625,7 +1858,7 @@ const PostEntryBody = ({
             ${
                 !open &&
                 !!title &&
-                html`<h2 class="feed-entry-title"><a href=${href}>${
+                html`<h2 class="feed-entry-title"><a href=${href} target=${feed ? '_blank' : undefined} rel=${feed ? 'noopener noreferrer' : undefined}>${
                     item.format === 'room' && !item.im
                         ? html`<${RoomTitle}>${title}</${RoomTitle}>`
                         : item.format === 'book'

@@ -1,13 +1,15 @@
-// hrseRSS™ (plans/RSS.md, slice 1): the feeds this persona follows, and what they say. Following
-// is a fact of the persona's private chain - one register per feed, kept by the node's doors
+// Horse's RSS (plans/RSS.md): the feeds this persona follows, and what they say. Following is a
+// fact of the persona's private chain - one register per feed, kept by the node's doors
 // (feedreader.rs) - and the items are the node's cache of each feed, fetched once however many
 // people here follow it. How far each feed has been read is one watermark per feed (Curtis,
 // 2026-10-27), the `rss_seen` register, written here as the rooms' `rooms_seen` is.
 //
-// Slice 1 is the bare list: an item's title links to where it was published. The reading pane,
-// with the item's words translated into Marquee and its pictures made by the node, is slice 3.
+// The items are posts (plans/RSS.md, _Feed items are posts_): the right side is the feed's own
+// stream (apps/feed.js `FeedStream`) over the node's `rss/feed` door - every followed feed's
+// items, or one feed's - with the feed's filters, and each item is a post's card wearing its feed.
 import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import { useLocation } from 'preact-iso';
 import htm from 'htm';
 
 import { api, whileVisible } from '../net.js';
@@ -16,6 +18,7 @@ import { Icons } from '../icons.js';
 import { PaneHead, Rail, TagColumn, useColTucks, useColWidths } from '../panes.js';
 import { TagField } from '../doc/annotations.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
+import { FeedStream } from '../feedstream.js';
 
 const html = htm.bind(h);
 
@@ -108,7 +111,7 @@ const FeedsColumn = ({ root, feeds, max, selected, onSelect, onFollowed, onTuck,
                 data-settles
                 onClick=${() => onSelect(null)}
             >
-                <span class="rss-feed-name">${filtered ? t('apps.rss.all-tagged', 'all of these') : t('apps.rss.all-feeds', 'all feeds')}</span>
+                <span class="rss-feed-name">${t('apps.rss.all-feeds', 'all feeds')}</span>
                 ${unread > 0 && html`<span class="rss-feed-count">${unread}</span>`}
             </li>
             ${(feeds || []).map(row)}
@@ -191,34 +194,13 @@ const FeedHead = ({ root, feed, onPage }) => {
     </header>`;
 };
 
-/// One item: its title, out to where it was published; its feed, date and author; its summary.
-/// Marked while it is newer than how far its feed had been read when the list was opened.
-const ItemRow = ({
-    item,
-    feed,
-    showFeed,
-    seen,
-}) => html`<article class=${item.dated_ms > seen ? 'rss-item rss-item-new' : 'rss-item'}>
-    <a class="rss-item-title" href=${item.link} target="_blank" rel="noopener noreferrer">
-        ${item.title || t('apps.rss.untitled', '(untitled)')}
-    </a>
-    <p class="rss-item-meta">
-        ${showFeed && feed && html`<span class="rss-item-feed">${feed.title || feed.url}</span>`}
-        <span title=${new Date(item.dated_ms).toLocaleString()}>${whenWords(item.dated_ms)}</span>
-        ${item.author && html`<span>${item.author}</span>`}
-    </p>
-    ${item.summary && html`<p class="rss-item-summary">${item.summary}</p>`}
-</article>`;
-
 export const RssApp = ({ current }) => {
     const root = current && current.root;
+    const loc = useLocation();
     const [page, setPage] = useState(null); // { feeds, max } - null until the first load
-    const [selected, setSelected] = useState(null); // a feed's id, or null for every feed
-    const [items, setItems] = useState(null);
-    const [more, setMore] = useState(false);
-    // How far each feed had been read when its items were shown: what's newer is marked, even
-    // after the watermark moves past it.
-    const [seenAt, setSeenAt] = useState({});
+    // A feed's id, or null for every feed: the address says (`?feed=`), so a feed's name on a
+    // card anywhere opens it here.
+    const selected = new URLSearchParams(loc.url.split('?')[1] || '').get('feed') || null;
     const [tagFilter, setTagFilter] = useState([]);
     // In a narrow window the feeds are the tab it opens on until a feed is chosen, as chat's rooms are.
     const { tucked, toggleTuck, settle, tab } = useColTucks(root, APP_ID, ['tags'], {
@@ -245,71 +227,31 @@ export const RssApp = ({ current }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [root]);
     const feeds = page && page.feeds;
-    const feedById = new Map((feeds || []).map((f) => [f.id, f]));
-    const itemsUrl = (before) => {
-        const q = new URLSearchParams();
-        if (selected) q.set('feed', selected);
-        if (before) q.set('before', String(before));
-        const s = q.toString();
-        return `/api/identity/${root}/rss/items${s ? `?${s}` : ''}`;
-    };
-    // A feed's items, or everyone's; and opening a feed reads it to its newest item.
+    const feed = selected && (feeds || []).find((f) => f.id === selected);
+    // Opening a feed reads it to its newest item.
     useEffect(() => {
-        if (!root || !page) return;
-        let live = true;
-        api(itemsUrl())
-            .then((got) => {
-                if (!live) return;
-                setItems(got.items);
-                setMore(got.more);
-                setSeenAt(
-                    Object.fromEntries((page.feeds || []).map((f) => [f.id, f.seen_ms || 0])),
-                );
-                const feed = selected && feedById.get(selected);
-                const newest = got.items.length > 0 ? got.items[0].dated_ms : 0;
-                if (feed && newest > (feed.seen_ms || 0)) {
-                    api(`/api/identity/${root}/private/kv/${SEEN}/${selected}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({ value: String(newest) }),
-                    })
-                        .then(loadFeeds)
-                        .catch(() => {});
-                }
-            })
-            .catch(() => live && setItems([]));
-        return () => {
-            live = false;
-        };
-        // `page` is read for the watermarks, but a new page (a count moving) is no reason to
-        // fetch the items again; following or letting go of a feed changes `feeds.length`.
+        if (!root || !feed || feed.newest_ms <= (feed.seen_ms || 0)) return;
+        api(`/api/identity/${root}/private/kv/${SEEN}/${feed.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: String(feed.newest_ms) }),
+        })
+            .then(loadFeeds)
+            .catch(() => {});
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [root, selected, !!page, feeds && feeds.length]);
+    }, [root, feed && feed.id, feed && feed.newest_ms]);
     if (!root) return null;
     const cloud = feedTagCounts(feeds);
     const shownFeeds =
         feeds && tagFilter.length > 0
             ? feeds.filter((f) => tagFilter.every((tag) => (f.tags || []).includes(tag)))
             : feeds;
-    const shownIds = new Set((shownFeeds || []).map((f) => f.id));
-    const shownItems = (items || []).filter(
-        (i) => selected || tagFilter.length === 0 || shownIds.has(i.feed),
-    );
-    const feed = selected && feedById.get(selected);
-    const loadMore = () => {
-        const last = items && items[items.length - 1];
-        if (!last) return;
-        api(itemsUrl(last.dated_ms))
-            .then((got) => {
-                setItems([...items, ...got.items]);
-                setMore(got.more);
-            })
-            .catch(() => {});
-    };
     const select = (id) => {
-        setSelected(id);
-        setItems(null);
+        loc.route(id ? `/ringtome/rss?feed=${id}` : '/ringtome/rss');
         settle();
     };
+    const door = selected
+        ? `/api/identity/${root}/rss/${selected}/feed`
+        : `/api/identity/${root}/rss/feed`;
     return html`<div class="rss">
         <div class="rss-columns panes" style=${colStyle}>
             ${
@@ -354,29 +296,25 @@ export const RssApp = ({ current }) => {
                     />`
                 }
                 ${
-                    items === null
-                        ? html`<p class="rss-empty">${t('apps.rss.loading', 'loading…')}</p>`
-                        : shownItems.length === 0
-                          ? html`<p class="rss-empty">${
-                                feeds && feeds.length === 0
-                                    ? t(
-                                          'apps.rss.nothing-followed',
-                                          'follow a feed, and what it says shows up here',
-                                      )
-                                    : t('apps.rss.no-items', 'nothing here yet')
-                            }</p>`
-                          : html`<div class="rss-items">
-                                ${shownItems.map(
-                                    (i) => html`<${ItemRow}
-                                        key=${`${i.feed}/${i.id}`}
-                                        item=${i}
-                                        feed=${feedById.get(i.feed)}
-                                        showFeed=${!selected}
-                                        seen=${seenAt[i.feed] || 0}
-                                    />`,
-                                )}
-                                ${more && html`<button class="rss-more" type="button" onClick=${loadMore}>${t('apps.rss.more', 'older')}</button>`}
-                            </div>`
+                    page &&
+                    html`<${FeedStream}
+                        key=${door}
+                        root=${root}
+                        current=${current}
+                        contacts=${[]}
+                        feedUrl=${door}
+                        labelsUrl=${`${door}/labels`}
+                        dial=${false}
+                        picksKey=${`rss:${root}`}
+                        nullState=${html`<p class="rss-empty">${
+                            feeds && feeds.length === 0
+                                ? t(
+                                      'apps.rss.nothing-followed',
+                                      'follow a feed, and what it says shows up here',
+                                  )
+                                : t('apps.rss.no-items', 'nothing here yet')
+                        }</p>`}
+                    />`
                 }
             </section>
         </div>

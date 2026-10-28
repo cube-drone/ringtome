@@ -191,7 +191,7 @@ lightly federated, unapologetically Old Internet.
   address where the node has a public URL, else a `ringtome://` address only the
   Android app opens, and an "open in the app" button on a phone's web page.
   Built 2026-10-12; the app's half awaits a phone.
-- [`RSS.md`](plans/RSS.md) — hrseRSS, a feed reader: subscriptions on the
+- [`RSS.md`](plans/RSS.md) — Horse's RSS, a feed reader: subscriptions on the
   private chain, items fetched once per node into a shared cache and translated
   to Marquee (never rendered as HTML), images through the node, a merged
   newest-first view, and a rebroadcast that carries its source. A design draft

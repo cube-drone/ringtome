@@ -116,6 +116,11 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
         .route("/api/identity/{root}/sync", post(sync_handler))
         .route("/api/identity/{root}/feed", get(feed_handler))
         .route("/api/identity/{root}/feed/labels", get(feed_labels_handler))
+        .route("/api/identity/{root}/rss/feed", get(rss_feed_handler))
+        .route("/api/identity/{root}/rss/feed/labels", get(rss_feed_labels_handler))
+        .route("/api/identity/{root}/rss/{feed}/feed", get(rss_one_feed_handler))
+        .route("/api/identity/{root}/rss/{feed}/feed/labels", get(rss_one_feed_labels_handler))
+        .route("/api/identity/{root}/rss/{feed}/{item}/rebroadcast", post(rss_rebroadcast_handler))
         .route("/api/identity/{root}/groups/{group}/posts/{doc}", get(group_post_handler))
         .route("/api/identity/{root}/docs/copy", post(docs_copy_handler))
         .route("/api/identity/{root}/notifications", get(notifications_handler))
@@ -690,6 +695,10 @@ struct LabelsQuery {
 
 #[derive(Serialize)]
 struct FeedItem {
+    /// A followed feed's item (feedreader.rs, plans/RSS.md): its feed, which the card wears where
+    /// a post wears its author, and the item's own address. The author is spelled `rss:<feed>`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    feed: Option<crate::feedreader::FeedCard>,
     /// The group it was posted to (plans/GROUPS.md; ONE_FEED.md): its words and pictures are behind
     /// the group's own door, and it is never shared out.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -835,8 +844,8 @@ struct Sharer {
     avatar: Option<String>,
 }
 
-/// The kind of each journal row (search.rs KINDS): a share by its via, a book by its
-/// format, a reply by its link, a post otherwise. One links read for the whole set.
+/// The kind of each journal row (search.rs KINDS): a followed feed's item by its format, a share
+/// by its via, a book by its format, a reply by its link, a post otherwise. One links read for the whole set.
 async fn feed_kinds(
     state: &AppState,
     rows: &[crate::fanout::FeedRow],
@@ -848,7 +857,9 @@ async fn feed_kinds(
     Ok(rows
         .iter()
         .map(|r| {
-            if r.via_root.is_some() {
+            if r.format.as_deref() == Some("rss") {
+                "rss"
+            } else if r.via_root.is_some() {
                 "rebroadcast"
             } else if r.format.as_deref() == Some("book") {
                 "book"
@@ -2313,10 +2324,51 @@ async fn feed_labels_handler(
     axum::extract::Query(q): axum::extract::Query<LabelsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    feed_labels_answer(session, state, root, q, raw, crate::fanout::FEED_FORMATS, None).await
+}
+
+/// GET `/api/identity/{root}/rss/feed/labels` - the filter strip of Horse's RSS's merged view.
+async fn rss_feed_labels_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<LabelsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, AppError> {
+    feed_labels_answer(session, state, root, q, raw, RSS_FORMATS, None).await
+}
+
+/// GET `/api/identity/{root}/rss/{feed}/feed/labels` - one followed feed's filter strip.
+async fn rss_one_feed_labels_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, feed)): Path<(String, String)>,
+    axum::extract::Query(q): axum::extract::Query<LabelsQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let only = format!("{}{feed}", crate::feedreader::AUTHOR);
+    feed_labels_answer(session, state, root, q, raw, RSS_FORMATS, Some(only)).await
+}
+
+async fn feed_labels_answer(
+    session: Session,
+    state: AppState,
+    root: String,
+    q: LabelsQuery,
+    raw: Option<String>,
+    formats: &'static [&'static str],
+    only: Option<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let only = only.as_deref();
     let owned = store::open(&state, &session.account.id, &root).await?;
     // Kept an hour, unless something moved first (search.rs's cloud cache): the whole request is
     // the key, so every dial stop, window and pick is its own cloud.
-    let key = format!("{root}?{}", raw.as_deref().unwrap_or(""));
+    let key = format!(
+        "{root}{}{}?{}",
+        formats.join(","),
+        only.unwrap_or(""),
+        raw.as_deref().unwrap_or("")
+    );
     let stamp = crate::search::cloud_stamp(&state, &root);
     if let Some(cloud) = crate::search::cached_cloud(&key, stamp) {
         return Ok(Json(cloud));
@@ -2336,6 +2388,8 @@ async fn feed_labels_handler(
     };
     let filter = crate::fanout::JournalFilter {
         own: wants_own(&q.me),
+        formats,
+        author: only,
         since_ms: Some(since),
         stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
         ..crate::fanout::JournalFilter::feed(&root)
@@ -2481,6 +2535,47 @@ async fn feed_handler(
     axum::extract::Query(q): axum::extract::Query<FeedQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    feed_answer(session, state, root, q, raw, crate::fanout::FEED_FORMATS, None).await
+}
+
+/// GET `/api/identity/{root}/rss/feed` - the feed, narrowed to followed feeds' items: Horse's
+/// RSS's merged view (plans/RSS.md, _Feed items are posts_), paged and filtered as the feed is.
+async fn rss_feed_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<FeedQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, AppError> {
+    feed_answer(session, state, root, q, raw, RSS_FORMATS, None).await
+}
+
+/// GET `/api/identity/{root}/rss/{feed}/feed` - one followed feed's items, as the merged view.
+async fn rss_one_feed_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, feed)): Path<(String, String)>,
+    axum::extract::Query(q): axum::extract::Query<FeedQuery>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let only = format!("{}{feed}", crate::feedreader::AUTHOR);
+    feed_answer(session, state, root, q, raw, RSS_FORMATS, Some(only)).await
+}
+
+/// A followed feed's items alone (feedreader.rs).
+const RSS_FORMATS: &[&str] = &["rss"];
+
+/// The feed's answer, over journal rows of these formats.
+async fn feed_answer(
+    session: Session,
+    state: AppState,
+    root: String,
+    q: FeedQuery,
+    raw: Option<String>,
+    formats: &'static [&'static str],
+    only: Option<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let only = only.as_deref();
     // Ownership is the only reason to open the reader's own store here (the feed itself is a
     // node.db memo), and `store::open` is that check.
     let _owned = store::open(&state, &session.account.id, &root).await?;
@@ -2498,8 +2593,11 @@ async fn feed_handler(
         // like, all of time, the dials brought up to date first as best's are.
         let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
         crate::score::refresh_dials(&state, &root, &facts).await.map_err(AppError::Internal)?;
-        let filter =
-            feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
+        let filter = crate::fanout::JournalFilter {
+            formats,
+            author: only,
+            ..feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?
+        };
         let mut ranked: Vec<(crate::score::HotRank, crate::fanout::FeedRow, i64)> = if narrow
             .is_empty()
         {
@@ -2567,6 +2665,8 @@ async fn feed_handler(
             };
             let filter = crate::fanout::JournalFilter {
                 own,
+                formats,
+                author: only,
                 since_ms: Some(since),
                 stop: stop.and_then(|s| crate::selectivity::stop_rule(s, &facts, &levels)),
                 ..crate::fanout::JournalFilter::feed(&root)
@@ -2584,8 +2684,11 @@ async fn feed_handler(
         } else {
             // A search or the picks inside best: narrowed off the indexes, then ordered by the
             // stored scores.
-            let filter =
-                feed_filter(&state, &facts, &root, own, Some(since), q.stop.as_deref()).await?;
+            let filter = crate::fanout::JournalFilter {
+                formats,
+                author: only,
+                ..feed_filter(&state, &facts, &root, own, Some(since), q.stop.as_deref()).await?
+            };
             let all = narrowed(&state, &root, &filter, &narrow).await?;
             let pairs: Vec<(String, String)> =
                 all.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect();
@@ -2621,22 +2724,26 @@ async fn feed_handler(
             (ranked.into_iter().map(|(_, r)| r).collect(), false)
         }
     } else if narrow.is_empty() {
-        let mut rows = crate::fanout::feed_page(
-            &state.node_db,
-            &root,
-            before.clone(),
-            page + 1,
-            wants_own(&q.me),
-        )
-        .await
-        .map_err(AppError::Internal)?;
+        let filter = crate::fanout::JournalFilter {
+            own: wants_own(&q.me),
+            formats,
+            author: only,
+            ..crate::fanout::JournalFilter::feed(&root)
+        };
+        let mut rows =
+            crate::fanout::journal_page(&state.node_db, &filter, before.clone(), page + 1)
+                .await
+                .map_err(AppError::Internal)?;
         let more = rows.len() as i64 > page;
         rows.truncate(page as usize);
         (rows, more)
     } else {
         let facts: crate::selectivity::Facts = _owned.contacts().await?.into_iter().collect();
-        let filter =
-            feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?;
+        let filter = crate::fanout::JournalFilter {
+            formats,
+            author: only,
+            ..feed_filter(&state, &facts, &root, wants_own(&q.me), None, q.stop.as_deref()).await?
+        };
         (narrowed(&state, &root, &filter, &narrow).await?, false)
     };
 
@@ -2709,6 +2816,8 @@ async fn dress_feed(
             .collect::<Vec<_>>(),
     )
     .await;
+    let feed_cards =
+        crate::feedreader::cards(&state.node_db, &page_pairs).await.map_err(AppError::Internal)?;
     let reply_counts = crate::replies::known_counts(
         &state.node_db,
         &rows.iter().map(|r| (r.author_root.clone(), r.doc_id.clone())).collect::<Vec<_>>(),
@@ -2822,6 +2931,7 @@ async fn dress_feed(
             let audience = if mine { own_audiences.get(&r.doc_id).cloned() } else { None };
             let is_lifted = lifted.contains(&(r.author_root.clone(), r.doc_id.clone()));
             FeedItem {
+                feed: feed_cards.get(&(r.author_root.clone(), r.doc_id.clone())).cloned(),
                 group_draft: r
                     .group
                     .as_ref()
@@ -3009,6 +3119,12 @@ async fn narrowed_public(
                     }
                 }
                 None => any = None,
+            }
+            // A followed feed's items wear tags the memo never holds (feedreader.rs).
+            if let (Some(set), "tag") = (any.as_mut(), key) {
+                set.extend(
+                    crate::feedreader::tagged(db, root, value).await.map_err(AppError::Internal)?,
+                );
             }
         }
         sets.extend(any);
@@ -7091,6 +7207,34 @@ async fn docs_copy_handler(
     let author_hex = req.author.to_lowercase();
     let doc_hex = req.doc_id.to_lowercase();
     let doc_id = hex_fixed::<16>(&doc_hex, "doc id")?;
+    // A followed feed's item (plans/RSS.md, _Feed items are posts_): its words from the feed
+    // reader's cache, with the reader's own tags on it, and where it came from at its foot - a
+    // feed has no root for the provenance stack to name.
+    if let Some(src) = crate::feedreader::copy_source(&state.node_db, &root, &author_hex, &doc_hex)
+        .await
+        .map_err(AppError::Internal)?
+    {
+        if req.new {
+            data.buckets().define(&req.bucket, "default").await?;
+        }
+        let new_doc = mint_copy(
+            &state,
+            &session,
+            &data,
+            &root,
+            &root,
+            &src.title,
+            src.body().into_bytes(),
+            crate::record::documents::Format::Marquee,
+            &src.tags,
+            &[],
+            false,
+            &req.bucket,
+            false,
+        )
+        .await?;
+        return Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }));
+    }
     if req.private {
         if author_hex != root {
             return Err(AppError::BadRequest(crate::msg!(
@@ -7267,6 +7411,69 @@ async fn docs_copy_handler(
     )
     .await?;
     Ok(Json(DocCreated { doc_id: hex::encode(new_doc), version: String::new() }))
+}
+
+#[derive(Deserialize)]
+struct RssRebroadcast {
+    /// Into this group (hex); to everyone when absent.
+    #[serde(default)]
+    group: Option<String>,
+}
+
+/// POST `/api/identity/{root}/rss/{feed}/{item}/rebroadcast` - a followed feed's item, made a post
+/// of the persona's own (plans/RSS.md, ruled 2026-10-27: the full text): a draft in their feed's
+/// notebook with the item's title and words, where it came from beneath them, their own tags on it,
+/// and the source as its fields - which publishing states as the post's labels, so every reader's
+/// card says "via" the feed and can follow it. The card publishes the draft as the composer does,
+/// to everyone or into the group; this answers the draft. Once per item and place.
+async fn rss_rebroadcast_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, feed, item)): Path<(String, String, String)>,
+    Json(req): Json<RssRebroadcast>,
+) -> Result<Json<DocCreated>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let author = format!("{}{feed}", crate::feedreader::AUTHOR);
+    let src = crate::feedreader::copy_source(&state.node_db, &root, &author, &item)
+        .await
+        .map_err(AppError::Internal)?
+        .ok_or_else(|| {
+            AppError::NotFound(crate::msg!(
+                "feedreader.no-item",
+                "that item isn't in a feed you follow"
+            ))
+        })?;
+    let to = match req.group.as_deref() {
+        Some(g) => hex::encode(hex_fixed::<16>(g, "group")?),
+        None => "everyone".to_string(),
+    };
+    crate::feedreader::note_rebroadcast(&data, &feed, &item, &to).await?;
+    let draft = mint_copy(
+        &state,
+        &session,
+        &data,
+        &root,
+        &root,
+        &src.title,
+        src.body().into_bytes(),
+        crate::record::documents::Format::Marquee,
+        &src.tags,
+        &[],
+        false,
+        "feed",
+        false,
+    )
+    .await?;
+    for (key, value) in [
+        (crate::feedreader::SOURCE_FEED, &src.feed_url),
+        (crate::feedreader::SOURCE_NAME, &src.feed_name),
+        (crate::feedreader::SOURCE_LINK, &src.link),
+    ] {
+        if !value.is_empty() {
+            data.annotations().set_field(&draft, key, value).await?;
+        }
+    }
+    Ok(Json(DocCreated { doc_id: hex::encode(draft), version: String::new() }))
 }
 
 async fn docs_create_handler(

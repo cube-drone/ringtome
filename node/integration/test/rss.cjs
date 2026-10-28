@@ -36,7 +36,10 @@ describe("a person's RSS", function () {
 
     it('carries their open posts, newest first, and never a sealed one', async () => {
         await publish('hay & oats', 'the first post, about hay & oats');
-        await publish('a canter', 'the second post');
+        await publish(
+            'a canter',
+            'the *second* post\n\n## At a canter\n\n[more of her](/ringtome/user/ada)',
+        );
         await publish('for my people', 'quiet words', { trusted_only: true });
 
         const res = await stranger(`ringtome/user/${root}/rss.xml`);
@@ -68,6 +71,19 @@ describe("a person's RSS", function () {
                 '<description>&lt;p&gt;the first post, about hay &amp;amp; oats&lt;/p&gt;</description>',
             ),
             'its words, plain, inside escaped HTML',
+        );
+        // And the whole of it (2026-10-27): rendered, as escaped HTML, with its paths made whole.
+        assert.match(xml, /xmlns:content="http:\/\/purl.org\/rss\/1.0\/modules\/content\/"/);
+        const whole = [...xml.matchAll(/<content:encoded>([^<]*)<\/content:encoded>/g)].map(
+            (m) => m[1],
+        );
+        assert.equal(whole.length, 2, 'each item carries its whole words');
+        assert.ok(whole[0].includes('&lt;em&gt;second&lt;/em&gt;'), whole[0]);
+        assert.ok(whole[0].includes('&lt;h2'), `its heading: ${whole[0]}`);
+        assert.match(
+            whole[0],
+            /href=&quot;https?:\/\/[^&]+\/ringtome\/user\/ada&quot;/,
+            'its link, whole',
         );
         assert.match(xml, /<pubDate>\w{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} GMT<\/pubDate>/);
     });

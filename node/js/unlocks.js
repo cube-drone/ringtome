@@ -209,7 +209,7 @@ const NAMES = {
     'post-editing': () => t('unlocks.post-editing', 'Public post editing'),
     'video-upload': () => t('unlocks.video-upload', 'Video upload'),
     music: () => t('unlocks.music', 'hrseAmp'),
-    rss: () => t('unlocks.rss', 'hrseRSS'),
+    rss: () => t('unlocks.rss', "Horse's RSS"),
     sharing: () => t('unlocks.sharing', 'Sharing'),
     links: () => t('unlocks.links', 'Links'),
     'chats-for-two': () => t('unlocks.chats-for-two', 'Chats for two'),
@@ -284,7 +284,7 @@ const ABOUT = {
     rss: () =>
         t(
             'unlocks.rss-about',
-            'Unlocks hrseRSS™: follow blogs and news sites by their feeds, and read what they say here, newest first.',
+            "Unlocks Horse's RSS: follow blogs and news sites by their feeds, and read what they say here, newest first.",
         ),
     sharing: () =>
         t('unlocks.sharing-about', "Share someone else's post with the people who follow you."),

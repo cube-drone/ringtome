@@ -4,6 +4,11 @@
 //! each with its title, its address, its date, and what it says (the author's description, else its
 //! words) under the picture it carries. Not their shares: those are other people's words.
 //!
+//! And the whole of it (Curtis, 2026-10-27, on his blog arriving in a feed reader as one paragraph
+//! with its headings, pictures and links gone): `content:encoded` carries a post's words as its
+//! reading copy renders them (reading.rs), every address made whole, since a reader fetches them
+//! from somewhere else. `description` stays the short plain one, for readers that show a summary.
+//!
 //! Only for a persona this node hosts, as the page's own head is (idface.rs `post_page`): the node
 //! vouches for a shelf it keeps, and for nobody else's. A sealed post never appears - a feed reader
 //! is a stranger, and its title and words are for trusted readers.
@@ -103,6 +108,13 @@ pub async fn rss_handler(
             said.picture.map(|path| format!("{base}{path}"))
         };
         let text = said.described.unwrap_or_else(|| crate::idface::clip(&said.words, ITEM_CHARS));
+        let format = crate::record::documents::Format::from_wire(post.format);
+        let whole = if format.is_mergeable_text() {
+            let source = crate::reading::public_text(&state, &db, &post.doc_id).await;
+            absolute(&crate::reading::words_html(&source, format), &base)
+        } else {
+            String::new()
+        };
         let mut body = String::new();
         if let Some(picture) = picture {
             body.push_str(&format!("<p><img src=\"{}\" alt=\"\"></p>", xml(&picture)));
@@ -110,13 +122,19 @@ pub async fn rss_handler(
         if !text.is_empty() {
             body.push_str(&format!("<p>{}</p>", xml(&text)));
         }
+        let content = if whole.is_empty() {
+            String::new()
+        } else {
+            format!("<content:encoded>{}</content:encoded>", xml(&whole))
+        };
         items.push_str(&format!(
-            "<item><title>{}</title><link>{}</link><guid isPermaLink=\"true\">{}</guid><pubDate>{}</pubDate><description>{}</description></item>\n",
+            "<item><title>{}</title><link>{}</link><guid isPermaLink=\"true\">{}</guid><pubDate>{}</pubDate><description>{}</description>{}</item>\n",
             xml(&said.title),
             xml(&link),
             xml(&link),
             rfc822(post.display_ms()),
             xml(&body),
+            content,
         ));
     }
     let description = if bio.is_empty() { name.clone() } else { bio };
@@ -128,7 +146,8 @@ pub async fn rss_handler(
     };
     let feed = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-         <rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n<channel>\n\
+         <rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\" \
+         xmlns:content=\"http://purl.org/rss/1.0/modules/content/\">\n<channel>\n\
          <title>{}</title>\n<link>{}</link>\n<description>{}</description>\n\
          <atom:link href=\"{}\" rel=\"self\" type=\"application/rss+xml\"/>\n{}</channel>\n</rss>\n",
         xml(&name),
@@ -150,6 +169,28 @@ pub async fn rss_handler(
         .into_response())
 }
 
+/// HTML whose addresses are this node's paths, with each made whole at `base`: a feed's words are
+/// read somewhere else, where `/ringtome/…` means nothing. A `//host` address stays as it is.
+fn absolute(html: &str, base: &str) -> String {
+    let mut out = html.to_string();
+    for attr in ["src=\"/", "href=\"/"] {
+        let mut made = String::with_capacity(out.len());
+        let mut rest = out.as_str();
+        while let Some(i) = rest.find(attr) {
+            let (before, after) = rest.split_at(i + attr.len());
+            made.push_str(&before[..before.len() - 1]);
+            if !after.starts_with('/') {
+                made.push_str(base);
+            }
+            made.push('/');
+            rest = after;
+        }
+        made.push_str(rest);
+        out = made;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +201,16 @@ mod tests {
         assert_eq!(rfc822(0), "Thu, 01 Jan 1970 00:00:00 GMT");
         assert_eq!(rfc822(951_782_400_000), "Tue, 29 Feb 2000 00:00:00 GMT");
         assert_eq!(rfc822(1_790_777_109_000), "Wed, 30 Sep 2026 14:05:09 GMT");
+    }
+
+    /// A path is made whole; an address that is already whole, or names its own host, is not.
+    #[test]
+    fn a_feeds_addresses_are_whole() {
+        let html = r#"<p><img src="/ringtome/user/a/doc/b/body/x.avif"><a href="/ringtome/user/a">a</a> <a href="https://elsewhere.example/">e</a><img src="//cdn.example/p.png"></p>"#;
+        assert_eq!(
+            absolute(html, "https://hay.example"),
+            r#"<p><img src="https://hay.example/ringtome/user/a/doc/b/body/x.avif"><a href="https://hay.example/ringtome/user/a">a</a> <a href="https://elsewhere.example/">e</a><img src="//cdn.example/p.png"></p>"#
+        );
     }
 
     #[test]

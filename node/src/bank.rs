@@ -225,9 +225,9 @@ pub const UNLOCKS: [Unlock; 29] = [
     // hrseAmp (Curtis, 2026-10-12, plans/AUDIO.md ruling 2): music, after File upload, and
     // experimental as video is.
     unlock("music", "hrseAmp", 5_000, &["file-upload"]),
-    // hrseRSS (plans/RSS.md, 2026-10-27): a feed reader. Reading the web asks nothing else first;
+    // Horse's RSS (plans/RSS.md, 2026-10-27): a feed reader. Reading the web asks nothing else first;
     // priced with Links and Sharing.
-    unlock("rss", "hrseRSS", 2_500, &[]),
+    unlock("rss", "Horse's RSS", 2_500, &[]),
     // The colourways (Curtis, 2026-10-05): cosmetic, each sold alone - horse-relax and witchlight
     // stay free - and not meant to be reachable on contract money: something to keep playing for.
     // The Market shows them in a section of their own (`colorway-` is the client's word for it).

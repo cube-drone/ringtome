@@ -121,11 +121,12 @@ pub fn tag_family(tag: &str) -> usize {
 }
 
 /// The kinds a row can be, in the row's fixed order; a post is what is none of the others.
-pub const KINDS: [&str; 5] = ["post", "reply", "rebroadcast", "book", "room"];
+/// `rss` is a followed feed's item (feedreader.rs, plans/RSS.md).
+pub const KINDS: [&str; 6] = ["post", "reply", "rebroadcast", "book", "room", "rss"];
 
 /// The kind row's counts over a set of kinds, in the fixed order, the absent left out.
 pub fn kind_counts<'a>(kinds: impl Iterator<Item = &'a str>) -> Vec<(String, i64)> {
-    let mut n = [0i64; 5];
+    let mut n = [0i64; KINDS.len()];
     for k in kinds {
         if let Some(i) = KINDS.iter().position(|x| *x == k) {
             n[i] += 1;
@@ -149,8 +150,13 @@ impl Narrow {
                 "not_bucket" => n.not_buckets.push(v.to_string()),
                 "not_tag" => n.not_tags.push(v.to_string()),
                 "not_kind" if KINDS.contains(&v) => n.not_kinds.push(v.to_string()),
-                "author" if is_root(v) => n.authors.push(v.to_ascii_lowercase()),
-                "not_author" if is_root(v) => n.not_authors.push(v.to_ascii_lowercase()),
+                // A followed feed is an author chip too (feedreader.rs).
+                "author" if is_root(v) || crate::feedreader::feed_of(v).is_some() => {
+                    n.authors.push(v.to_ascii_lowercase())
+                }
+                "not_author" if is_root(v) || crate::feedreader::feed_of(v).is_some() => {
+                    n.not_authors.push(v.to_ascii_lowercase())
+                }
                 "group" if is_group(v) => n.groups.push(v.to_ascii_lowercase()),
                 "not_group" if is_group(v) => n.not_groups.push(v.to_ascii_lowercase()),
                 _ => {}
@@ -303,6 +309,15 @@ async fn bag_for(state: &AppState, c: &Candidate, budget: &mut usize) -> Result<
     }
     if *budget == 0 {
         return Ok(None);
+    }
+    // A followed feed's item: its words are in the feed reader's cache, not a blob.
+    if let Some(words) =
+        crate::feedreader::words(&state.node_db, &c.author_root, &c.doc_hex).await?
+    {
+        *budget -= 1;
+        let tokens = tokens_of(&c.title, &words);
+        keep_bag(&state.node_db, c, c.updated_ms, &tokens).await?;
+        return Ok(Some(tokens));
     }
     let Ok(raw) = hex::decode(&c.doc_hex) else { return Ok(None) };
     let Ok(doc_id) = <[u8; 16]>::try_from(raw.as_slice()) else { return Ok(None) };

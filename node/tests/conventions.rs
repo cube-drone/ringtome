@@ -61,7 +61,9 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         // The tag cloud (2026-09-28) reads a journal window's labels in one join, in the memo's
         // module - joined, rather than an IN list of every post.
         // roster.rs writes a group post's rows (ONE_FEED.md, slice 3), only ever those with a group.
-        ("feed_journal", vec!["fanout.rs", "annotations.rs", "roster.rs"]),
+        // feedreader.rs writes a followed feed's items (plans/RSS.md, _Feed items are posts_),
+        // only ever those of format `rss`.
+        ("feed_journal", vec!["fanout.rs", "annotations.rs", "roster.rs", "feedreader.rs"]),
         ("post_search", vec!["search.rs"]),
         ("post_terms", vec!["search.rs"]),
         ("room_messages", vec!["chat.rs"]),
@@ -96,6 +98,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("rss_feeds", vec!["feedreader.rs"]),
         ("rss_follows", vec!["feedreader.rs"]),
         ("rss_items", vec!["feedreader.rs"]),
+        ("rss_tags", vec!["feedreader.rs"]),
         ("node_listing", vec!["nodeshelf.rs"]),
         ("node_slugs", vec!["slugs.rs"]),
         ("feed_shares", vec!["fanout.rs"]),

@@ -1079,7 +1079,6 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/identity/{root}/slug", get(nodeface::slug_get).put(nodeface::slug_put))
         .route("/api/identity/{root}/domain", get(domains::domain_get).put(domains::domain_put))
         .route("/api/identity/{root}/rss", get(feedreader::feeds_get).post(feedreader::feeds_post))
-        .route("/api/identity/{root}/rss/items", get(feedreader::items_get))
         .route(
             "/api/identity/{root}/rss/{feed}",
             axum::routing::put(feedreader::feed_put).delete(feedreader::feed_delete),
@@ -1087,6 +1086,12 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route(
             "/api/identity/{root}/rss/{feed}/refresh",
             axum::routing::post(feedreader::feed_refresh),
+        )
+        .route("/api/identity/{root}/rss/{feed}/logo", get(feedreader::logo_get))
+        .route("/api/identity/{root}/rss/{feed}/{item}/body", get(feedreader::body_get))
+        .route(
+            "/api/identity/{root}/rss/{feed}/{item}/tags/{tag}",
+            axum::routing::put(feedreader::tag_put).delete(feedreader::tag_delete),
         )
         .route("/api/identity/{root}/domain/check", axum::routing::post(domains::domain_check))
         .route("/api/node/domains", get(domainsite::domains_handler))

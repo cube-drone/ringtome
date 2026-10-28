@@ -93,11 +93,11 @@ export const APPS = [
         itemNoun: 'notification',
     },
     {
-        // hrseRSS™ (plans/RSS.md, 2026-10-27): a feed reader. The feeds a persona follows are
+        // Horse's RSS (plans/RSS.md, 2026-10-27): a feed reader. The feeds a persona follows are
         // registers on its private chain; what they say is the node's cache, fetched once however
         // many follow (feedreader.rs). Not a documents app.
         id: 'rss',
-        name: 'hrseRSS™',
+        name: "Horse's RSS",
         icon: 'rss',
         live: true,
         unlock: 'rss',

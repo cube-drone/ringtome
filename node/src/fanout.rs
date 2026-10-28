@@ -1897,8 +1897,9 @@ impl Own {
     }
 }
 
-/// The kinds of post a feed shows: text, books and rooms - never media, which are ingredients.
-pub const FEED_FORMATS: &[&str] = &["marquee", "plaintext", "book", "room"];
+/// The kinds of post a feed shows: text, books, rooms and followed feeds' items (feedreader.rs) -
+/// never media, which are ingredients.
+pub const FEED_FORMATS: &[&str] = &["marquee", "plaintext", "book", "room", "rss"];
 
 /// Which of one reader's journal rows a caller wants (2026-09-27, PROJECT_PLAN's Scores and sort
 /// orders, *Shape*): the one filter every reader of the journal goes through, in SQL on an index -
@@ -1915,13 +1916,15 @@ pub struct JournalFilter<'a> {
     pub since_ms: Option<i64>,
     /// The curiosity dial's stop, with the reader's dials in it (`selectivity::stop_rule`); the
     /// reader's own rows always pass it, and so does every group post (ONE_FEED.md, ruling 2: a
-    /// group is somewhere you chose to be).
+    /// group is somewhere you chose to be) and every followed feed's item.
     pub stop: Option<crate::selectivity::StopRule>,
     /// Only posts in these groups (hex ids), or none of these: the groups row's picks. A public
     /// post is in no group, so picking a group leaves only its posts - and the public posts its
     /// members shared into it (`group_shares`, plans/GROUPS.md section 7).
     pub groups: &'a [String],
     pub not_groups: &'a [String],
+    /// Only this author's posts - a followed feed's items, in Horse's RSS (feedreader.rs).
+    pub author: Option<&'a str>,
 }
 
 impl<'a> JournalFilter<'a> {
@@ -1935,6 +1938,7 @@ impl<'a> JournalFilter<'a> {
             stop: None,
             groups: &[],
             not_groups: &[],
+            author: None,
         }
     }
 
@@ -1960,9 +1964,20 @@ impl<'a> JournalFilter<'a> {
         if let Some(since) = self.since_ms {
             parts.push(format!("{t}published_ms >= {since}"));
         }
+        // A root, or a feed spelled as an author: checked, so nothing a caller typed reaches the SQL.
+        if let Some(author) = self.author {
+            let root = author.len() == 64 && author.bytes().all(|b| b.is_ascii_hexdigit());
+            if root || crate::feedreader::feed_of(author).is_some() {
+                parts.push(format!("{t}author_root = '{author}'"));
+            } else {
+                parts.push("0".to_string());
+            }
+        }
+        // A followed feed's item passes it too: following a feed is the reader's own choice, as
+        // a group is (plans/RSS.md, _Feed items are posts_).
         if let Some(stop) = &self.stop {
             parts.push(format!(
-                "({t}author_root = {t}reader_root OR {t}group_id <> x'' OR {})",
+                "({t}author_root = {t}reader_root OR {t}group_id <> x'' OR {t}format = 'rss' OR {})",
                 stop.sql(t)
             ));
         }

@@ -1,7 +1,7 @@
-# hrseRSS™
+# Horse's RSS
 
-A design draft (2026-09-30), ruled on 2026-10-27 (_Rulings_, below). Slice 1
-built 2026-10-27 (_Slices_).
+A design draft (2026-09-30), ruled on 2026-10-27 (_Rulings_, below). Slices 1 to
+6 built 2026-10-27 (_Slices_).
 
 A feed reader inside Horse Drawing Tycoon 2. You add feeds, which the node
 fetches and turns into Marquee documents you read in the app, and you can pass
@@ -12,6 +12,17 @@ Claude's proposals; _Rulings_ says which of them Curtis took.
 
 ## Rulings (Curtis, 2026-10-27)
 
+- **Feed items are posts** (second round): the same card, automatic tags,
+  tagging, rebroadcast and copy, folded into the main feed. See _Feed items are
+  posts_.
+- **Tags on an item are private until it is rebroadcast.** They live in a
+  register on the tagger's private chain. A rebroadcast is an ordinary post on
+  the network: the tagger's tags go onto it as its own, and everyone else's join
+  them as on any post. No new chain entry.
+- **Every followed feed folds into the main feed,** and the "feed item" kind
+  chip leaves them out.
+- **The app is called Horse's RSS,** not hrseRSS™: it doesn't follow the
+  hrse-name model the other apps use.
 - **Items live in the node cache,** not on chains: _Where the items live_ stands
   as proposed.
 - **A rebroadcast republishes the full text,** with the source metadata. The
@@ -25,7 +36,7 @@ Claude's proposals; _Rulings_ says which of them Curtis took.
 
 ## The ask (Curtis, 2026-09-30)
 
-1. **A new app, hrseRSS™.** The user adds RSS feeds, and the list is saved on
+1. **A new app, Horse's RSS.** The user adds RSS feeds, and the list is saved on
    their **private chain**.
 2. **Feeds in a column on the left, taggable.**
 3. **Adding a feed makes the server fetch it** and convert each item into a
@@ -175,6 +186,76 @@ sanitize.**
 - **HorseBucks:** reading earns nothing, and an item copied into notes isn't
   "words written". A rebroadcast earns like any post.
 
+## Feed items are posts (Curtis, 2026-10-27)
+
+The ask, second round: **a feed item looks like a post and acts like one.**
+
+- **The same card.** `PostEntry` (`js/postentry.js`) draws an item. Where a post
+  has its author's banner, an item has **the feed's**: a circle with the feed's
+  logo, then the feed's name and its site's address.
+- **The same capabilities:**
+  - **automatic tags:** image, audio or video, and micro, short, medium or long,
+    with the post thresholds (`length_tag`, `media_tag` in
+    `record/documents.rs`);
+  - **tagging**, up to two tags, as on somebody else's post: private, in the
+    register `rss_tags` (key: feed id and item id), until the item is
+    rebroadcast;
+  - **rebroadcast**, to everyone or to one group;
+  - **copy into a notebook.**
+- **In the main feed.** Items from followed feeds are folded into the main feed
+  beside everything else, and every filter there applies to them.
+- **Horse's RSS's merged view is that feed too:** the same stream and filters,
+  narrowed to feed items. The feeds column picks one feed, as an author chip
+  would.
+
+### What that means for the machinery
+
+Today everything in the feed is keyed by `(author root, doc id)`, and the card,
+the routes and the filters all assume the author is a persona with a chain.
+These are the joins:
+
+- **An item's identity:** `(feed id, item id)`. Both are hashes of what the feed
+  itself says (its normalised URL; the entry's guid), so **an item is the same
+  item on every node** that follows the same address.
+  - The feed takes the author's slot as `rss:<feed id>`, a string that can never
+    be a root, so nothing that looks up a person can be fooled by it.
+  - The item id fills the doc id's slot. It is 16 bytes like a doc id.
+- **The main feed is `feed_journal`** (`fanout.rs`), a row per reader. When the
+  refresher keeps a new item, it journals a row for each persona on this node
+  that follows the feed, with format `rss`. Paging, sorting, the updates bar and
+  the server-side filters (`search::Narrow`) then work unchanged.
+  - Following a feed backfills its kept items into the follower's journal;
+    letting go removes them.
+  - **A new kind, "feed item",** joins post, reply, rebroadcast, book and room
+    on the kind chips, so the main feed can leave them all out, and Horse's RSS
+    narrows to only them.
+  - **Feeds join the author chips,** by name.
+- **Automatic tags are worked out when the item is kept,** from the converted
+  body's word count and the item's enclosures and media (a podcast's audio, a
+  video, or pictures). They are stored with the item, since there is no author
+  chain to sign them; the filters read them where they read a post's implicit
+  tags.
+- **The card** draws a `FeedBanner` where it draws `PersonBanner`.
+  - The banner keeps the date and the chip deck.
+  - The deck drops what only an author can do (unpublish, edit, pin) and the
+    links built from an author (QR, the post's own page). "Copy link" copies the
+    item's original address.
+  - The title links to the original, and the body door is the node's cache:
+    `/api/identity/{root}/rss/{feed}/{item}/body`.
+- **The feed's logo** is fetched with the feed, from its `<image>` or `<icon>`,
+  else the site's favicon. It is kept small and served by the node, never
+  hot-linked. With no logo, the circle shows the feed's initial.
+- **Rebroadcast** is ruled full text: it publishes a post of the user's own,
+  carrying the item's title, words and link, the source (the feed's address and
+  name, and the item's id), and the user's private tags on the item as its own.
+  It reads "via _The Source_" with a **subscribe** chip. To a group, the same
+  post lands in the group. Once published it is an ordinary post, so others tag,
+  rebroadcast and copy it as any other.
+- **Copy into a notebook** copies the cached Marquee body, its title and the
+  original link into a new private note, with the feed as its provenance.
+- **Unread** stays the per-feed watermark: a "new" dot on an item newer than its
+  feed's mark, and opening Horse's RSS marks what it showed.
+
 ## Rebroadcasting
 
 Ruled 2026-10-27: **the full text**, as the ask had it. What follows is the
@@ -192,7 +273,7 @@ The proposal was: **republish the pointer, not the article.**
   - the source metadata: the feed's URL and title, and the item's id;
   - the user's own words, if they add any.
 - **It reads as "via _The Source_"**, with a **subscribe** chip that adds the
-  feed to the reader's own hrseRSS, which is point 7's discovery.
+  feed to the reader's own list of feeds, which is point 7's discovery.
 - **Ruled:** full text, every feed.
 
 ## Slices
@@ -203,17 +284,52 @@ The proposal was: **republish the pointer, not the article.**
    (`feedreader.rs`, `js/apps/rss.js`), and more than the slice asked: the tags,
    the tag column and the per-feed watermark are in, and each item's body is
    already kept as Marquee through the importer, waiting for slice 2's pictures
-   and slice 3's reading pane. hrseRSS™ is a Market unlock (2,500 HB, nothing
+   and slice 3's reading pane. Horse's RSS is a Market unlock (2,500 HB, nothing
    required first: Claude's pick, Curtis's to change). Not yet: a feed followed
    on another computer starts being fetched here only once the reader is opened
    here.
-2. **The translator, wired in.** Item bodies through `marquee_html_import`, and
-   images through the node.
-3. **The app.** Columns, tags, the merged view, and the reading pane.
-4. **Rebroadcast** with source metadata, **subscribe** from a rebroadcast, and
-   **follow instead** for Ringtome feeds.
-5. **Sharing caches** between a persona's own nodes, so a device that was off
-   catches up.
+2. **Items as posts on the node.** Automatic tags kept with each item; the
+   feed's logo, fetched and served; the body door; an item shaped like a
+   `FeedItem`. **Built 2026-10-27** (node rung 0109).
+3. **The card.** `FeedBanner` and the item's chip deck in `PostEntry`; Horse's
+   RSS's items drawn as cards. **Built 2026-10-27** (`js/feedbanner.js`).
+4. **Into the main feed.** Items journalled into `feed_journal` for followers,
+   with backfill and letting go; the "feed item" kind and feeds as author chips.
+   Horse's RSS's merged view becomes the feed stream with its filters, narrowed
+   to feed items. **Built 2026-10-27**: the stream moved out of the feed app
+   into `js/feedstream.js` so both apps can use it.
+5. **Tagging** feed items, privately. **Built 2026-10-27.**
+6. **Copy into a notebook**, and **rebroadcast** (full text), to everyone or to
+   a group, with the "via" line and a **follow** chip. **Built 2026-10-27**;
+   **follow instead** for Ringtome feeds is not.
+7. **Images through the node** in item bodies, the reading pane if the card's
+   "see more" is not enough, and **sharing caches** between a persona's own
+   nodes.
+
+### How slices 2 to 6 came out
+
+- **The joins** are where _What that means for the machinery_ said: the feed's
+  author spelling `rss:<feed id>` reaches `profiles::bylines` (the feed's name),
+  `annotations::for_posts` and the tag cloud's window (automatic and private
+  tags), the narrowed walk's tag picks, the search's word bags, the kind row
+  (`rss`), the author chips, and the stop rule (a followed feed's item passes
+  every curiosity stop, as a group post does).
+- **Horse's RSS's doors** are the feed's own handler over journal rows of format
+  `rss`: `rss/feed` for every feed, `rss/{feed}/feed` for one, each with its
+  `labels`. Choosing a feed is `?feed=` in the app's address, which the feed's
+  name on any card links to.
+- **The per-feed tag column** now narrows only the feeds column; the merged view
+  is every feed (the stream knows no set of feeds).
+- **Unread** stays the feeds column's counts; the cards wear no "new" dot.
+- **Rebroadcast** asks the node for a draft in the reader's feed notebook (the
+  item's title and words, its source beneath them, the reader's tags on it, and
+  `source_feed`, `source_name` and `source_link` as fields), then publishes it
+  as the composer does. Publishing states every draft field as a label, so the
+  source travels with no protocol change, and every card reads it as a "via"
+  line with a follow chip. Once per item and place (`rss_rebroadcasts`); taking
+  it back is taking the post down.
+- **Copying** gives the note the item's words with its source beneath them, and
+  the reader's tags; it names no provenance, since a feed has no root.
 
 ## Open questions
 

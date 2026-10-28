@@ -7,7 +7,7 @@ import htm from 'htm';
 
 import { useLocation } from 'preact-iso';
 
-import { FeedStream } from './apps/feed.js';
+import { FeedStream } from './feedstream.js';
 import { PostEntry } from './postentry.js';
 import { api } from './net.js';
 import { t } from './i18n.js';
