@@ -194,7 +194,7 @@ const FeedHead = ({ root, feed, onPage }) => {
     </header>`;
 };
 
-export const RssApp = ({ current }) => {
+export const RssApp = ({ current, searchQuery, onSearch }) => {
     const root = current && current.root;
     const loc = useLocation();
     const [page, setPage] = useState(null); // { feeds, max } - null until the first load
@@ -306,6 +306,8 @@ export const RssApp = ({ current }) => {
                         labelsUrl=${`${door}/labels`}
                         dial=${false}
                         picksKey=${`rss:${root}`}
+                        searchQuery=${searchQuery}
+                        onSearch=${onSearch}
                         nullState=${html`<p class="rss-empty">${
                             feeds && feeds.length === 0
                                 ? t(

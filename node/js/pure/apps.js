@@ -207,6 +207,10 @@ export const APPS = [
         icon: 'rss',
         live: true,
         unlock: 'rss',
+        // The header's search, over every followed feed's items or the chosen one's (Curtis,
+        // 2026-10-30): the feed's own search (feedstream.js), on the rss door.
+        searchable: true,
+        plainSearch: true,
         itemNoun: 'item',
     },
     {

@@ -25308,3 +25308,12 @@ The "+ follow" button beside a rebroadcast feed item's "via seriouseats.com"
 came off: helpful, but the card was cluttered enough. The via link stays.
 `FollowFeedChip`, its CSS and its three strings are gone; following a feed is
 Horse's RSS's own business again. Checked: strings-check, ui-check.
+
+## Horse's RSS gets the header's search box (2026-10-30)
+
+`apps.js` marks Horse's RSS `searchable` and `plainSearch`, and the shell hands
+it the header's query, which `RssApp` passes to its `FeedStream`: the main
+feed's own search, asked of the rss door - every followed feed's items, or the
+chosen feed's. The node already answered `?q=` there (`feed_answer`), so no Rust
+moved. Checked: a new Horse's RSS claim (a word finds its item, in all feeds and
+in one; a word nowhere finds nothing), ui-check, strings-check.

@@ -121,6 +121,15 @@ describe("Horse's RSS", function () {
         assert.match(words, /\[her page\]\(https?:\/\/[^)]+\/ringtome\/user\/ada\)/, words);
     });
 
+    it("searches what its feeds say, from the header's box", async () => {
+        const find = async (path) => (await (await bea(path)).json()).items.map((i) => i.title);
+        assert.deepEqual(await find(`api/identity/${beaRoot}/rss/feed?q=hay`), ['hay & oats']);
+        assert.deepEqual(await find(`api/identity/${beaRoot}/rss/${feedId}/feed?q=second`), [
+            'a canter',
+        ]);
+        assert.deepEqual(await find(`api/identity/${beaRoot}/rss/feed?q=zebra`), []);
+    });
+
     it('reads a feed up to a watermark, and retags it', async () => {
         let page = await (await bea(`api/identity/${beaRoot}/rss`)).json();
         const newest = page.feeds[0].newest_ms;
