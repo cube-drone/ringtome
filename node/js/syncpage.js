@@ -145,6 +145,14 @@ export const SyncActs = ({ root, status, look }) => {
             )}</p>`
         }
         ${
+            status.bodies_lost > 0 &&
+            html`<p class="null-sub">${t(
+                'syncpage.bodies-lost',
+                "{n} files and notes are on none of your computers - they're still asked for once a day, in case one turns up",
+                { n: count(status.bodies_lost) },
+            )}</p>`
+        }
+        ${
             others &&
             html`<div class="sync-acts">
                 <button class="welcome-go sync-now" type="button" disabled=${asked} onClick=${syncNow}>
@@ -272,6 +280,7 @@ export const ThisComputer = ({ root }) => {
             ${row(t('syncpage.files', 'files'), count(d.files))}
             ${row(t('syncpage.books', 'books'), count(d.books))}
             ${row(t('syncpage.still-coming', 'still on their way here'), count(held.bodies_waiting))}
+            ${held.bodies_lost > 0 && row(t('syncpage.lost', 'on none of your computers'), count(held.bodies_lost))}
             ${row(t('syncpage.posts', 'posts published'), count(p.published))}
             ${row(t('syncpage.replies', 'replies'), count(p.replies))}
             ${row(t('syncpage.shares', 'shares'), count(p.shares))}

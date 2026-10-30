@@ -235,7 +235,14 @@ const FirstSync = ({ first }) => {
         files: t('computers.first-sync-files', 'and the files - {waiting} still on their way', {
             waiting: Number(first.bodies_waiting || 0).toLocaleString(),
         }),
-        done: t('computers.first-sync-done', "everything's here."),
+        done:
+            first.bodies_lost > 0
+                ? t(
+                      'computers.first-sync-done-lost',
+                      "everything's here - but {n} old files are on none of your computers, so they can't come.",
+                      { n: Number(first.bodies_lost).toLocaleString() },
+                  )
+                : t('computers.first-sync-done', "everything's here."),
     }[p.phase];
     return html`<section class="first-sync jag-line">
         <h3 class="first-sync-title">${t('computers.first-sync', 'first sync')}</h3>

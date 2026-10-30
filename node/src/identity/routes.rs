@@ -5698,17 +5698,16 @@ async fn sync_status_handler(
         })
         .collect();
     status["computers"] = serde_json::json!(computers);
-    status["bodies_waiting"] =
-        serde_json::json!(crate::net::bodies::remaining(&state.node_db, &root)
-            .await
-            .map_err(AppError::Internal)?);
-    status["face"] = serde_json::json!(state
-        .sync_ledger
-        .face(&root, status["bodies_waiting"].as_u64().unwrap_or(0)));
+    let bodies =
+        crate::net::bodies::waiting(&state.node_db, &root).await.map_err(AppError::Internal)?;
+    status["bodies_waiting"] = serde_json::json!(bodies.coming);
+    status["bodies_lost"] = serde_json::json!(bodies.lost);
+    status["face"] = serde_json::json!(state.sync_ledger.face(&root, bodies.coming));
     // A first sync's progress, when this node adopted the persona (the computers page's box).
     status["first"] = serde_json::json!(state.sync_ledger.first_sync(
         &root,
-        status["bodies_waiting"].as_u64().unwrap_or(0),
+        bodies.coming,
+        bodies.lost,
         state.behind.is_behind(&root),
     ));
     Ok(Json(status))
@@ -5768,13 +5767,16 @@ async fn sync_held_handler(
         .count();
     let unlocks = crate::bank::unlocks_owned(&data).await.map_err(AppError::Internal)?.len();
     let ledger = crate::bank::line_count(&data).await.map_err(AppError::Internal)?;
+    let bodies =
+        crate::net::bodies::waiting(&state.node_db, &root).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({
         "sync_code": crate::syncstatus::sync_code(&frontiers),
         "chains": frontiers.len(),
         "entries": crate::record::imaol::entry_count(db).await?,
         "disk_bytes": state.user_dbs.disk_bytes(&root),
         "documents": { "notes": notes, "drawings": drawings, "files": files, "books": books },
-        "bodies_waiting": crate::net::bodies::remaining(&state.node_db, &root).await.map_err(AppError::Internal)?,
+        "bodies_waiting": bodies.coming,
+        "bodies_lost": bodies.lost,
         "posts": { "published": public.saturating_sub(replies), "replies": replies, "shares": shares },
         "chat": { "rooms": rooms, "lines": lines },
         "people": { "following": dialled("interest"), "trusting": dialled("trust"), "followers": followers },
@@ -10231,7 +10233,7 @@ async fn serve_stream(
     first.unread_chat = Some(last_chat);
     // The corner cloud's face, on every first frame; then whenever it changes (the tick below).
     let mut bodies_waiting =
-        crate::net::bodies::remaining(&state.node_db, &root).await.unwrap_or(0);
+        crate::net::bodies::waiting(&state.node_db, &root).await.map(|w| w.coming).unwrap_or(0);
     let mut last_face = state.sync_ledger.face(&root, bodies_waiting);
     first.sync = Some(last_face);
     let mut ticks: u64 = 0;
@@ -10260,11 +10262,14 @@ async fn serve_stream(
         tokio::select! {
             _ = tick.tick() => {
                 // The cloud moves on its own clock, not the database's: looked at every tick,
-                // sent only when its face changes. The bodies count is a seek, taken every fifth.
+                // sent only when its face changes. The bodies count is two small reads, taken
+                // every fifth.
                 ticks += 1;
                 if ticks.is_multiple_of(5) {
-                    bodies_waiting =
-                        crate::net::bodies::remaining(&state.node_db, &root).await.unwrap_or(0);
+                    bodies_waiting = crate::net::bodies::waiting(&state.node_db, &root)
+                        .await
+                        .map(|w| w.coming)
+                        .unwrap_or(0);
                 }
                 let face = state.sync_ledger.face(&root, bodies_waiting);
                 if face.face != last_face.face || (face.face != crate::syncstatus::Face::Idle && face != last_face) {

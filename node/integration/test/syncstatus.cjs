@@ -91,6 +91,7 @@ async function pullOnB(aliceOnB, root) {
             'how far apart, both ways',
         );
         assert.equal(typeof onB.bodies_waiting, 'number');
+        assert.equal(onB.bodies_lost, 0, 'and none on no computer');
         assert.ok(['down', 'up', 'sun', 'idle'].includes(onB.face.face), JSON.stringify(onB.face));
         assert.equal(typeof onB.network.people, 'number', 'the network, in counts');
 
@@ -150,6 +151,7 @@ async function pullOnB(aliceOnB, root) {
         assert.equal(b.sync_code, a.sync_code, 'the same chains, the same code');
         assert.equal(a.documents.notes, 3);
         assert.equal(b.documents.notes, a.documents.notes, 'and the same notes');
+        assert.equal(b.bodies_lost, 0, 'nothing that none of its computers has');
 
         // A writes; until B has it, the codes differ - which is what the code is for.
         await j(alice, `api/identity/${root}/docs`, {

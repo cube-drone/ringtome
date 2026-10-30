@@ -33,6 +33,43 @@ use crate::AppState;
 /// at whole), and the backoff ladder already paces how often a stubborn persona retries.
 const ASKER_CANDIDATE_CAP: i64 = 64;
 
+/// A wanted body is LOST when every computer of the persona's that's been around has been asked
+/// for it and none had it (2026-10-29: the first version of a post edited on 2026-09-29, its words
+/// reaped by the day-after rule that 2026-10-02 retired, held "1 still on their way" on every
+/// computer for good, and no new computer's first sync could ever finish). Every exchange between
+/// a persona's computers ends in a body walk against the other side, so a computer that synced
+/// with this one an hour or more after the want was noted has been asked by a walk other than the
+/// one that noted it - the hour is the margin for a transfer that failed on the way.
+const LOST_GRACE_MS: i64 = 60 * 60 * 1000;
+/// ...and the sweep has tried it this many times too, asking every candidate it can name.
+const LOST_AFTER_TRIES: i64 = 3;
+/// A computer that hasn't synced with this one in a week isn't waited for: an old laptop in a
+/// drawer must not keep a file "on its way" forever.
+const LOST_PEER_WINDOW_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+/// A lost body is still asked for, once a day: nothing is forgotten, and a computer back from
+/// the drawer may have it after all. It just stops counting as on its way.
+const LOST_REST_MS: i64 = 24 * 60 * 60 * 1000;
+
+/// Is this want lost? `peers_synced` is when each of the persona's other computers last synced
+/// with this one. With none seen in the window there is nobody whose silence means anything,
+/// and the body stays on its way.
+fn lost(first_noted_ms: i64, tries: i64, peers_synced: &[i64], now: i64) -> bool {
+    let recent: Vec<i64> =
+        peers_synced.iter().copied().filter(|s| *s >= now - LOST_PEER_WINDOW_MS).collect();
+    tries >= LOST_AFTER_TRIES
+        && !recent.is_empty()
+        && recent.iter().all(|s| *s >= first_noted_ms + LOST_GRACE_MS)
+}
+
+/// When each of the persona's other computers last synced with this one - those that ever have.
+async fn peers_synced(node_db: &Db, root_hex: &str) -> Result<Vec<i64>> {
+    Ok(crate::net::sync::peer_leaves(node_db, root_hex)
+        .await?
+        .into_iter()
+        .filter_map(|(_, _, synced)| synced)
+        .collect())
+}
+
 /// Note ONE blob as wanted, additively.
 ///
 /// The counterpart to [`reconcile`], which replaces a whole persona's set from a body walk over
@@ -106,9 +143,10 @@ fn backoff_ms(tries: i64) -> i64 {
     (30_000i64 << capped).min(3_600_000)
 }
 
-/// Is a row worth another attempt now? Never-tried rows are always due.
-fn due(tries: i64, last_tried_ms: i64, now: i64) -> bool {
-    last_tried_ms == 0 || last_tried_ms + backoff_ms(tries) <= now
+/// Is a row worth another attempt now? Never-tried rows are always due; a lost one rests a day.
+fn due(tries: i64, last_tried_ms: i64, now: i64, lost: bool) -> bool {
+    let rest = if lost { LOST_REST_MS } else { backoff_ms(tries) };
+    last_tried_ms == 0 || last_tried_ms + rest <= now
 }
 
 /// Every blob the ledger still wants, for the reaper's mark: a blob mid-heal is referenced by
@@ -254,15 +292,26 @@ pub(crate) async fn force_due(node_db: &crate::db::Db) -> Result<()> {
 }
 
 pub async fn sweep(state: AppState) -> Result<()> {
-    let rows: Vec<(String, i64, i64)> = state
+    let rows: Vec<(String, i64, i64, i64)> = state
         .node_db
-        .fetch_all("SELECT DISTINCT root_pubkey, tries, last_tried_ms FROM missing_bodies", ())
+        .fetch_all(
+            "SELECT root_pubkey, tries, last_tried_ms, first_noted_ms FROM missing_bodies",
+            (),
+        )
         .await
         .context("reading the missing-bodies ledger")?;
     let now = now_ms();
     let mut roots: Vec<String> = Vec::new();
-    for (root, tries, last_tried) in rows {
-        if due(tries, last_tried, now) && !roots.contains(&root) {
+    let mut synced: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+    for (root, tries, last_tried, first_noted) in rows {
+        if roots.contains(&root) {
+            continue;
+        }
+        if !synced.contains_key(&root) {
+            synced.insert(root.clone(), peers_synced(&state.node_db, &root).await?);
+        }
+        let lost = lost(first_noted, tries, &synced[&root], now);
+        if due(tries, last_tried, now, lost) {
             roots.push(root);
         }
     }
@@ -427,8 +476,36 @@ pub async fn sweep(state: AppState) -> Result<()> {
     Ok(())
 }
 
-/// How many rows one persona still has on the ledger - the bodies still to come (also the sync
-/// ledger's "bodies waiting", crate::syncstatus).
+/// One persona's wanted bodies, as a person reads them: those still on their way, and those
+/// none of its computers has (`lost`, above).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Waiting {
+    pub coming: u64,
+    pub lost: u64,
+}
+
+/// Count one persona's wants, split by [`lost`] - what the sync pages and the sync ledger's
+/// "bodies waiting" (crate::syncstatus) read. The healing loops ask [`remaining`] instead:
+/// a lost body is still worth every candidate when it is asked for.
+pub async fn waiting(node_db: &Db, root_hex: &str) -> Result<Waiting> {
+    let rows: Vec<(i64, i64)> = node_db
+        .fetch_all(
+            "SELECT first_noted_ms, tries FROM missing_bodies WHERE root_pubkey = ?1",
+            (root_hex,),
+        )
+        .await
+        .context("reading a persona's wanted bodies")?;
+    if rows.is_empty() {
+        return Ok(Waiting { coming: 0, lost: 0 });
+    }
+    let synced = peers_synced(node_db, root_hex).await?;
+    let now = now_ms();
+    let lost_n = rows.iter().filter(|(noted, tries)| lost(*noted, *tries, &synced, now)).count();
+    Ok(Waiting { coming: (rows.len() - lost_n) as u64, lost: lost_n as u64 })
+}
+
+/// How many rows one persona still has on the ledger, lost or not - the healing loops' "is
+/// anything still wanted".
 pub async fn remaining(node_db: &Db, root_hex: &str) -> Result<u64> {
     let row: Vec<(i64,)> = node_db
         .fetch_all("SELECT COUNT(*) FROM missing_bodies WHERE root_pubkey = ?1", (root_hex,))
@@ -452,17 +529,49 @@ mod tests {
 
     #[test]
     fn never_tried_rows_are_always_due() {
-        assert!(due(0, 0, 1));
-        assert!(due(99, 0, 1), "tries without a timestamp cannot delay a first attempt");
+        assert!(due(0, 0, 1, false));
+        assert!(due(99, 0, 1, false), "tries without a timestamp cannot delay a first attempt");
     }
 
     #[test]
     fn rested_rows_wait_their_rung_out() {
         let now = 1_000_000;
-        assert!(!due(0, now - 29_999, now), "still resting");
-        assert!(due(0, now - 30_000, now), "rested exactly long enough");
-        assert!(!due(3, now - 200_000, now), "higher rungs rest longer (240s at 3)");
-        assert!(due(3, now - 240_000, now));
+        assert!(!due(0, now - 29_999, now, false), "still resting");
+        assert!(due(0, now - 30_000, now, false), "rested exactly long enough");
+        assert!(!due(3, now - 200_000, now, false), "higher rungs rest longer (240s at 3)");
+        assert!(due(3, now - 240_000, now, false));
+    }
+
+    #[test]
+    fn a_lost_body_is_asked_for_once_a_day() {
+        let now = 10 * LOST_REST_MS;
+        assert!(!due(9, now - 2 * 3_600_000, now, true), "past the hour ceiling, still resting");
+        assert!(due(9, now - LOST_REST_MS, now, true));
+    }
+
+    /// Lost means every computer seen this week synced here an hour past the want, and the sweep
+    /// tried it too - each condition short by a hair keeps it on its way.
+    #[test]
+    fn lost_is_every_recent_computer_asked_since() {
+        let now = 100 * LOST_PEER_WINDOW_MS;
+        let noted = now - 3 * LOST_GRACE_MS;
+        let after = noted + LOST_GRACE_MS;
+        assert!(lost(noted, LOST_AFTER_TRIES, &[after, now], now));
+        assert!(
+            !lost(noted, LOST_AFTER_TRIES - 1, &[after, now], now),
+            "the sweep hasn't tried enough"
+        );
+        assert!(
+            !lost(noted, LOST_AFTER_TRIES, &[after - 1, now], now),
+            "one synced only within the hour"
+        );
+        assert!(!lost(noted, LOST_AFTER_TRIES, &[], now), "no computer to have asked");
+        let drawer = now - LOST_PEER_WINDOW_MS - 1;
+        assert!(
+            lost(noted, LOST_AFTER_TRIES, &[drawer, now], now),
+            "a week-gone computer isn't waited for"
+        );
+        assert!(!lost(noted, LOST_AFTER_TRIES, &[drawer], now), "nor does it count as asked");
     }
 
     async fn node_db() -> Db {
@@ -531,5 +640,29 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(rows, vec![(5, 777)]);
+    }
+
+    /// The split the sync pages read: a want every computer has been asked for is lost, a fresh
+    /// one is on its way, and a persona with no computer seen counts all of its wants as coming.
+    #[tokio::test]
+    async fn waiting_splits_lost_from_coming() {
+        let db = node_db().await;
+        let (old, fresh) = ([7u8; 32], [8u8; 32]);
+        reconcile(&db, "aa11", &[old, fresh], &[]).await.unwrap();
+        db.execute(
+            "UPDATE missing_bodies SET first_noted_ms = ?1, tries = ?2 WHERE blob_hash = ?3",
+            (now_ms() - 2 * LOST_GRACE_MS, LOST_AFTER_TRIES, old.to_vec()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            waiting(&db, "aa11").await.unwrap(),
+            Waiting { coming: 2, lost: 0 },
+            "no computer"
+        );
+        crate::net::sync::add_peer(&db, "aa11", "laptop").await.unwrap();
+        crate::net::sync::mark_synced(&db, "aa11", "laptop").await.unwrap();
+        assert_eq!(waiting(&db, "aa11").await.unwrap(), Waiting { coming: 1, lost: 1 });
+        assert_eq!(remaining(&db, "aa11").await.unwrap(), 2, "the healers still want both");
     }
 }

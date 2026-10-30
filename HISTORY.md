@@ -25236,3 +25236,42 @@ uploaded picture comes through as this node's AVIF, a 1×1 is dropped, the words
 never embed a web picture meanwhile, a stranger gets 401, a copy keeps the
 feed's address); the Rust suite and clippy; and in headless Chrome, the card in
 Horse's RSS and the main feed showing the node's copy, no console errors.
+
+## 2026-10-29 - a file none of your computers has stops being "on its way"
+
+Curtis: a new laptop's first sync sat at "and the files - 1 still on their way"
+for good. This Mac said the same. The one want (read from the node's
+`missing_bodies` with the local keys) was the first version of the public post
+"What is Horse Drawing Tycoon 2?", written 2026-09-29 01:46 and edited two hours
+later: the day-after rule that reaped a post's superseded bodies, retired
+2026-10-02, had taken its words on every computer, and the walk that has wanted
+every version since asked for them hourly, forever. The same day's look at the
+chains: 98,395 entries, 73% doc-meta, nearly all of it from imports writing one
+entry per field (title, artist, each tag, each notebook); ordinary writing is
+one version entry per ten-second autosave.
+
+- **Lost** (`net::bodies::lost`): a want is lost once every computer of the
+  persona's that has synced here in the past week synced again at least an hour
+  after the want was noted (each exchange between a persona's computers ends in
+  a body walk against the other side, and the hour is the margin for a transfer
+  that failed), the sweep has tried it three times, and it still isn't here. A
+  persona with no computer seen this week has nobody whose silence means
+  anything, and its wants stay on their way.
+- **Still asked for, once a day:** a lost row keeps its place in the ledger (and
+  the reaper's live set) and rests a day between sweeps instead of an hour. The
+  healing loops still count it (`remaining`); the pages count `waiting`, which
+  splits `coming` from `lost`.
+- **Said, not waited for:** the status and held routes carry `bodies_lost`
+  beside `bodies_waiting`, which is now only what's coming. A first sync ends
+  without the lost ones, and its box says "everything's here - but {n} old files
+  are on none of your computers, so they can't come."; the sync page says how
+  many are on none of them, and the held list has a row for it.
+- **CI:** the RSS pictures push left `main` red at `strings-check`
+  (`feedreader.no-picture` had no catalog entry); `just strings` seeded it.
+
+Checked: unit tests for the rule (each condition short by a hair keeps it on its
+way; a week-gone computer is neither waited for nor counted as asked), the daily
+rest, the split over a real node db, and the first sync ending past a lost file;
+the node suite, clippy, ui-check and strings-check; and the sync-status
+acceptance area (both routes carry `bodies_lost`, 0 between two computers that
+agree).

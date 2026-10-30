@@ -452,11 +452,14 @@ impl Ledger {
     /// How far `root`'s first sync has come, or `None` when this node didn't adopt it in this
     /// process's life. Done once a whole exchange has said what was missing, nothing is pulling,
     /// the loops aren't behind, the computers it last heard from have nothing more for it (or as
-    /// much has come as was missing), and no file is still on its way.
+    /// much has come as was missing), and no file is still on its way. A file none of the
+    /// persona's computers has (`bodies_lost`, net::bodies) is not on its way - it is said beside
+    /// the end, not waited for (2026-10-29).
     pub fn first_sync(
         &self,
         root: &str,
         bodies_waiting: u64,
+        bodies_lost: u64,
         behind: bool,
     ) -> Option<serde_json::Value> {
         let mut books = self.books();
@@ -481,6 +484,7 @@ impl Ledger {
             "brought": brought,
             "bodies_waiting": bodies_waiting,
             "bodies_most": first.bodies_most,
+            "bodies_lost": bodies_lost,
             "done_ms": first.done_ms,
         }))
     }
@@ -847,9 +851,9 @@ mod tests {
     fn a_first_sync_ends_when_it_is_all_here() {
         let ledger = Ledger::default();
         let root = "first-sync-root";
-        assert!(ledger.first_sync(root, 0, false).is_none(), "not adopted here");
+        assert!(ledger.first_sync(root, 0, 0, false).is_none(), "not adopted here");
         ledger.first_sync_began(root);
-        let at = |w: u64, behind| ledger.first_sync(root, w, behind).unwrap();
+        let at = |w: u64, behind| ledger.first_sync(root, w, 0, behind).unwrap();
         assert!(at(0, false)["done_ms"].is_null(), "nothing has said what's missing");
         ledger.gap(root, "peer", 120, 0);
         assert_eq!(at(0, false)["missing"], 120);
@@ -858,7 +862,11 @@ mod tests {
         assert!(at(0, true)["done_ms"].is_null(), "the loops are behind");
         assert!(at(7, false)["done_ms"].is_null(), "files on their way");
         assert_eq!(at(3, false)["bodies_most"], 7, "counted down from the most");
-        assert!(at(0, false)["done_ms"].is_i64(), "all here");
+        assert!(
+            ledger.first_sync(root, 0, 1, false).unwrap()["done_ms"].is_i64(),
+            "all here - a file no computer has is said, not waited for"
+        );
+        assert_eq!(ledger.first_sync(root, 0, 1, false).unwrap()["bodies_lost"], 1);
         assert_eq!(at(0, false)["missing"], 120, "what was missing stays the bar's measure");
         ledger.gap(root, "peer", 5, 0);
         assert!(at(0, false)["done_ms"].is_i64(), "and it stays done");
