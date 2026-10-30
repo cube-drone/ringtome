@@ -675,36 +675,6 @@ const FeedShareButton = ({ item, current }) => {
         }`;
 };
 
-/// Following, from a rebroadcast's "via" line, the feed it came from (plans/RSS.md, point 7):
-/// Horse's RSS's own follow, asked here.
-const FollowFeedChip = ({ source, current }) => {
-    const [state, setState] = useState(null); // null, 'busy', 'done'
-    const follow = async () => {
-        setState('busy');
-        try {
-            await api(`/api/identity/${current.root}/rss`, {
-                method: 'POST',
-                body: JSON.stringify({ url: source.feed }),
-            });
-            setState('done');
-            toast(
-                t('postentry.following-feed', "following {name} in Horse's RSS", {
-                    name: source.name,
-                }),
-            );
-        } catch (err) {
-            setState(null);
-            toast(err.message, { kind: 'error' });
-        }
-    };
-    return html`<button
-        class="feed-entry-via-follow"
-        type="button"
-        disabled=${state !== null}
-        onClick=${follow}
-    >${state === 'done' ? t('postentry.feed-followed', 'followed') : t('postentry.follow-feed', '+ follow')}</button>`;
-};
-
 /// A post, REFERRED to - the mini-card (2026-08-26): title and date in a small clickable
 /// footprint, for surfaces that mention a post rather than show it (the bell's rebroadcast
 /// rows first). Not a compact PostEntry on purpose: the one-component ruling covers "a
@@ -1028,7 +998,6 @@ const PostEntryBody = ({
     const ownsPins = useUnlocked(me, 'pins');
     const ownsEditing = useUnlocked(me, 'post-editing');
     const ownsTags = useUnlocked(me, 'tags');
-    const ownsFeeds = useUnlocked(me, 'rss');
     const cardMenu = useChipMenu();
     const [body, setBody] = useState(undefined);
     const [sealedWords, setSealedWords] = useState('');
@@ -1749,9 +1718,9 @@ const PostEntryBody = ({
             </p>`
             }
             ${
-                /* A rebroadcast feed item says where it came from, in the seat a share's line takes,
-                and offers its feed to follow (plans/RSS.md): the post is the rebroadcaster's, the
-                words the feed's. */ ''
+                /* A rebroadcast feed item says where it came from, in the seat a share's line takes
+                (plans/RSS.md): the post is the rebroadcaster's, the words the feed's. No follow
+                button on it (Curtis, 2026-10-30: the card is busy enough). */ ''
             }
             ${
                 !!source &&
@@ -1763,7 +1732,6 @@ const PostEntryBody = ({
                         ? html`<a href=${source.link} target="_blank" rel="noopener noreferrer">${source.name}</a>`
                         : source.name
                 }
-                ${ownsFeeds && !!current && !!current.root && html`<${FollowFeedChip} source=${source} current=${current} />`}
             </p>`
             }
             ${

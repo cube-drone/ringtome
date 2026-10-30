@@ -25301,3 +25301,10 @@ Checked: a unit test for the `:::meta` (parsed back, quotes and all) and for
 and clippy; the Horse's RSS and a person's RSS acceptance areas (the copy's
 `:::meta`, the rebroadcast's words without the line, its `rss.xml` with the via
 line).
+
+## A rebroadcast's "via" line drops its follow button (2026-10-30)
+
+The "+ follow" button beside a rebroadcast feed item's "via seriouseats.com"
+came off: helpful, but the card was cluttered enough. The via link stays.
+`FollowFeedChip`, its CSS and its three strings are gone; following a feed is
+Horse's RSS's own business again. Checked: strings-check, ui-check.

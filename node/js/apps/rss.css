@@ -215,22 +215,6 @@
     text-decoration: underline;
 }
 
-/* Following a rebroadcast's feed, from its "via" line (postentry.js `FollowFeedChip`). */
-.feed-entry-via-follow {
-    background: none;
-    border: 1px dashed var(--border-strong);
-    color: var(--sea);
-    font: inherit;
-    font-size: 0.9em;
-    padding: 0.05rem 0.45rem;
-    cursor: pointer;
-}
-
-.feed-entry-via-follow:disabled {
-    cursor: default;
-    opacity: 0.7;
-}
-
 .feed-entry-via > a {
     color: inherit;
 }

@@ -312,7 +312,8 @@ The proposal was: **republish the pointer, not the article.**
    into `js/feedstream.js` so both apps can use it.
 5. **Tagging** feed items, privately. **Built 2026-10-27.**
 6. **Copy into a notebook**, and **rebroadcast** (full text), to everyone or to
-   a group, with the "via" line and a **follow** chip. **Built 2026-10-27**;
+   a group, with the "via" line and a **follow** chip. **Built 2026-10-27**; the
+   follow chip came off again 2026-10-30 (the card was cluttered enough);
    **follow instead** for Ringtome feeds is not.
 7. **Images through the node** in item bodies, the reading pane if the card's
    "see more" is not enough, and **sharing caches** between a persona's own
@@ -338,11 +339,12 @@ The proposal was: **republish the pointer, not the article.**
   item's title and words, the reader's tags on it, and `source_feed`,
   `source_name` and `source_link` as fields), then publishes it as the composer
   does. Publishing states every draft field as a label, so the source travels
-  with no protocol change, and every card reads it as a "via" line with a follow
-  chip. Once per item and place (`rss_rebroadcasts`); taking it back is taking
-  the post down. Its words carry no source line (2026-10-30): the fields are the
-  record, and a surface that shows only words - the person's own `rss.xml`, the
-  reading copy - writes a "via" line from them (`feedreader::via_html`).
+  with no protocol change, and every card reads it as a "via" line (its follow
+  chip removed 2026-10-30). Once per item and place (`rss_rebroadcasts`); taking
+  it back is taking the post down. Its words carry no source line (2026-10-30):
+  the fields are the record, and a surface that shows only words - the person's
+  own `rss.xml`, the reading copy - writes a "via" line from them
+  (`feedreader::via_html`).
 - **Copying** gives the note the item's words, with its source beneath them as a
   `:::meta source_name=… source_link=… source_feed=…` (2026-10-30: it renders
   nothing, and travels with the words into exports), and the reader's tags; it

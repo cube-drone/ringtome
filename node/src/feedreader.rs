@@ -2234,7 +2234,7 @@ pub fn via_html(labels: &[crate::annotations::KnownAnnotation], author: &str) ->
 
 /// The labels a rebroadcast item's post carries, said by its author as a post's own fields are
 /// (routes.rs `draft_labels`): where it came from - the feed's address, its name, and the item's own
-/// address - so every reader's card says "via" it, and can follow the feed (plans/RSS.md).
+/// address - so every reader's card says "via" it (plans/RSS.md).
 pub const SOURCE_FEED: &str = "source_feed";
 pub const SOURCE_NAME: &str = "source_name";
 pub const SOURCE_LINK: &str = "source_link";
