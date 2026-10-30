@@ -116,6 +116,11 @@ const html = htm.bind(h);
 /// The rooms' drafts live in the app's eponymous bucket, as the feed's do in `feed`.
 const CHAT_STYLE = 'chat';
 const APP_ID = 'chat';
+/// Each persona's list of rooms as last read, by root (Curtis, 2026-10-30: "wouldn't it make more
+/// sense to keep the last known result… and update it when we look at the page again?"): the app
+/// opens on it at once, and the list asked for behind it replaces it when it comes. Per tab, like
+/// hrseAmp's mixtapes (`keptTapes`).
+const keptRooms = new Map();
 
 /// The floor's backstop poll; the socket is what makes it live.
 const HISTORY_POLL_MS = 15000;
@@ -2398,7 +2403,13 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     const ownsChat = useUnlocked(root, 'chat');
     const tagging = useUnlocked(root, 'tags') && ownsChat;
     const loc = useLocation();
-    const [page, setPage] = useState(null);
+    const [page, setRoomsPage] = useState(() => keptRooms.get(root) || null);
+    const setPage = (next) =>
+        setRoomsPage((was) => {
+            const now = typeof next === 'function' ? next(was) : next;
+            if (now && root) keptRooms.set(root, now);
+            return now;
+        });
     // Where this browser was (Curtis, 2026-09-20): the room last opened here, remembered
     // across a close and a refresh, and only here - a per-browser gesture, like a tucked
     // column, never a fact about the persona.
@@ -2426,13 +2437,26 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
         rooms: 180,
         tags: 150,
     });
+    // The persona showing now, for an answer that comes back after a switch: kept for the persona
+    // it was asked for, drawn only if that's still who is here.
+    const shownRoot = useRef(root);
+    shownRoot.current = root;
     const load = () => {
         if (!root) return;
-        api(`/api/identity/${root}/rooms`)
-            .then(setPage)
+        const asked = root;
+        api(`/api/identity/${asked}/rooms`)
+            .then((fresh) => {
+                keptRooms.set(asked, fresh);
+                if (shownRoot.current === asked) setRoomsPage(fresh);
+            })
             .catch(() => {});
     };
-    useEffect(load, [root]);
+    useEffect(() => {
+        // Another persona's list is never shown under this one's, even for the moment it takes to ask.
+        setRoomsPage(keptRooms.get(root) || null);
+        load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [root]);
     useEffect(() => {
         if (author && doc) {
             restored.current = true;

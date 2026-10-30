@@ -25362,3 +25362,29 @@ once - dot and bold both - rather than once its history has loaded and
 `rooms_seen` is written, and a list refresh landing first doesn't bring them
 back. Checked in headless Chrome: the dot gone 60ms after a click on its room,
 and still gone after the list reloaded; ui-check.
+
+## The chats list stops waiting on the network (2026-10-30)
+
+"It feels like the whole chat application is waiting for something to sync." The
+list's handler asked the key lane, inside the request and one after another, for
+every private chat this node couldn't yet judge - up to eight seconds an
+endpoint - and a transport failure memoed nothing, so a private chat whose other
+side was offline held every load of the list, its thirty-second refresh and
+every window focus included. Now (`rooms_handler`, `ims_keyed`) the asks run at
+once and the list waits 1.5s for them; one still out finishes on its own and its
+key, remembered, lists the room next load; one room is asked once at a time; and
+a room nobody answered for is left alone five minutes. Checked: the node suite
+and clippy; the IMs, housemates, rooms, room lane and group rooms acceptance
+areas (40 passing). Not yet checked against the slowness itself: the falsifying
+number is the real node's `slow network wait` lines for "a sealed post's key".
+
+## The chats list opens on what it last showed (2026-10-30)
+
+The chat app held its list of rooms in component state, gone whenever you left
+the app, so every visit opened empty and waited for the node's whole answer.
+Each persona's list is now kept for the tab (`keptRooms`, as hrseAmp keeps its
+mixtapes): the app draws it at once and the list asked for behind it replaces it
+when it comes. An answer that lands after a persona switch is kept for the
+persona it was asked for and drawn only if that persona is still the one
+showing. Checked: a scratch node in headless Chrome - chat opened, left, and
+reopened with `/rooms` blocked still drew both rooms; ui-check.

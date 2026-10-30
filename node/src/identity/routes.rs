@@ -1165,6 +1165,74 @@ pub(crate) async fn ims_addressed_to(
     Ok(out)
 }
 
+/// How long the chats list waits on the key lane before it answers (Curtis, 2026-10-30: "it feels
+/// like the whole chat application is waiting for something to sync"). The asks used to run one
+/// after another inside the request, eight seconds an endpoint, and a transport failure memoed
+/// nothing - so a private chat whose other side was offline held every load of the list, its
+/// thirty-second refresh and every window focus included. Now they run at once, the list waits
+/// this long for them, and one still out finishes on its own: its key, once had, is remembered
+/// (`fetch_key`), so the next load lists the room off the memo.
+const IM_KEY_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+/// A room whose key the lane couldn't reach anyone for is not asked again for this long. A
+/// refusal is the lane's own memo (`postkeys::refused`); this is "nobody answered".
+const IM_KEY_RETRY: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
+/// What this node is asking, or asked and couldn't reach anyone for: (author, doc, viewer) to the
+/// moment the ask ended without a key, `None` while it is out.
+type ImKeyAsks = std::collections::HashMap<(String, String, String), Option<std::time::Instant>>;
+static IM_KEY_ASKS: std::sync::LazyLock<std::sync::Mutex<ImKeyAsks>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// The private chats among `rows` whose key the lane gave `viewer` within [`IM_KEY_WAIT`]: each
+/// asked in its own task, at most one ask per room at a time, and a room nobody could answer for
+/// left alone for [`IM_KEY_RETRY`].
+async fn ims_keyed(
+    state: &AppState,
+    viewer: &str,
+    rows: Vec<(crate::fanout::FeedRow, [u8; 16])>,
+) -> Vec<crate::fanout::FeedRow> {
+    let deadline = tokio::time::Instant::now() + IM_KEY_WAIT;
+    let mut asks = Vec::new();
+    for (r, doc) in rows {
+        let key = (r.author_root.clone(), r.doc_id.clone(), viewer.to_string());
+        {
+            let mut out = IM_KEY_ASKS.lock().unwrap_or_else(|e| e.into_inner());
+            match out.get(&key) {
+                Some(None) => continue,
+                Some(Some(failed)) if failed.elapsed() < IM_KEY_RETRY => continue,
+                _ => {}
+            }
+            out.insert(key.clone(), None);
+        }
+        let state = state.clone();
+        let viewer = viewer.to_string();
+        let via = r.via_root.clone();
+        let author = r.author_root.clone();
+        asks.push((
+            r,
+            tokio::spawn(async move {
+                let got = crate::idface::key_for(&state, &author, &doc, &viewer, via.as_deref())
+                    .await
+                    .is_some();
+                let mut out = IM_KEY_ASKS.lock().unwrap_or_else(|e| e.into_inner());
+                if got {
+                    out.remove(&key);
+                } else {
+                    out.insert(key, Some(std::time::Instant::now()));
+                }
+                got
+            }),
+        ));
+    }
+    let mut keyed = Vec::new();
+    for (r, ask) in asks {
+        if let Ok(Ok(true)) = tokio::time::timeout_at(deadline, ask).await {
+            keyed.push(r);
+        }
+    }
+    keyed
+}
+
 /// GET `/api/identity/{root}/rooms` - every room this persona may see (CHAT.md, ruling 7):
 /// its own, the ones its feed carries (a followed author's, or a share), and the ones it
 /// entered by link. One row per room, newest first; a room the feed's gate would hide is
@@ -1224,6 +1292,7 @@ async fn rooms_handler(
     // lane is asked once; the lane's own refusal memo is what keeps "once" honest.
     let judged: std::collections::HashSet<String> =
         readable.iter().map(|r| r.doc_id.clone()).collect();
+    let mut unjudged = Vec::new();
     for r in rows {
         if judged.contains(&r.doc_id) {
             continue;
@@ -1240,13 +1309,9 @@ async fn rooms_handler(
         {
             continue;
         }
-        if crate::idface::key_for(&state, &r.author_root, &doc, &root, r.via_root.as_deref())
-            .await
-            .is_some()
-        {
-            readable.push(r);
-        }
+        unjudged.push((r, doc));
     }
+    readable.extend(ims_keyed(&state, &root, unjudged).await);
     for r in readable {
         // A group's room is listed with its group, below.
         if r.group.is_some() {
