@@ -93,17 +93,6 @@ export const APPS = [
         itemNoun: 'notification',
     },
     {
-        // Horse's RSS (plans/RSS.md, 2026-10-27): a feed reader. The feeds a persona follows are
-        // registers on its private chain; what they say is the node's cache, fetched once however
-        // many follow (feedreader.rs). Not a documents app.
-        id: 'rss',
-        name: "Horse's RSS",
-        icon: 'rss',
-        live: true,
-        unlock: 'rss',
-        itemNoun: 'item',
-    },
-    {
         id: 'drawing',
         // The horse-drawing part of Horse Drawing Tycoon 2 (DRAWING.md), of paramount horseportance
         // (Curtis, 2026-09-27) - first of the making apps since 2026-10-04's order (you, people,
@@ -207,6 +196,18 @@ export const APPS = [
         searchable: true,
         plainSearch: true,
         itemNoun: 'song',
+    },
+    {
+        // Horse's RSS (plans/RSS.md, 2026-10-27): a feed reader. The feeds a persona follows are
+        // registers on its private chain; what they say is the node's cache, fetched once however
+        // many follow (feedreader.rs). Not a documents app.
+        // After hrseAmp in the list (Curtis, 2026-10-30).
+        id: 'rss',
+        name: "Horse's RSS",
+        icon: 'rss',
+        live: true,
+        unlock: 'rss',
+        itemNoun: 'item',
     },
     {
         id: 'bank',

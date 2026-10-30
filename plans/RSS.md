@@ -335,14 +335,18 @@ The proposal was: **republish the pointer, not the article.**
   is every feed (the stream knows no set of feeds).
 - **Unread** stays the feeds column's counts; the cards wear no "new" dot.
 - **Rebroadcast** asks the node for a draft in the reader's feed notebook (the
-  item's title and words, its source beneath them, the reader's tags on it, and
-  `source_feed`, `source_name` and `source_link` as fields), then publishes it
-  as the composer does. Publishing states every draft field as a label, so the
-  source travels with no protocol change, and every card reads it as a "via"
-  line with a follow chip. Once per item and place (`rss_rebroadcasts`); taking
-  it back is taking the post down.
-- **Copying** gives the note the item's words with its source beneath them, and
-  the reader's tags; it names no provenance, since a feed has no root.
+  item's title and words, the reader's tags on it, and `source_feed`,
+  `source_name` and `source_link` as fields), then publishes it as the composer
+  does. Publishing states every draft field as a label, so the source travels
+  with no protocol change, and every card reads it as a "via" line with a follow
+  chip. Once per item and place (`rss_rebroadcasts`); taking it back is taking
+  the post down. Its words carry no source line (2026-10-30): the fields are the
+  record, and a surface that shows only words - the person's own `rss.xml`, the
+  reading copy - writes a "via" line from them (`feedreader::via_html`).
+- **Copying** gives the note the item's words, with its source beneath them as a
+  `:::meta source_name=… source_link=… source_feed=…` (2026-10-30: it renders
+  nothing, and travels with the words into exports), and the reader's tags; it
+  names no provenance, since a feed has no root.
 
 ### How slice 7's pictures came out
 

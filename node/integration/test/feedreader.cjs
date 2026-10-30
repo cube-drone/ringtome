@@ -178,7 +178,18 @@ describe("Horse's RSS", function () {
         ).json();
         assert.equal(note.title, 'a canter');
         assert.match(note.body, /the second post/);
-        assert.match(note.body, /Ada Gazette: http/, 'where it came from, at its foot');
+        // The parser's own serializer writes it: keys in order, a value quoted when it must be
+        // (as the exporter's is: a `:::meta` line, closed beneath).
+        const meta = note.body.trim().split('\n').slice(-2).join('\n');
+        assert.match(
+            meta,
+            /^:::meta .*\n:::$/,
+            'where it came from, at its foot, in a :::meta no reader sees',
+        );
+        assert.match(meta, /source_name="Ada Gazette"/);
+        assert.match(meta, /source_link="?http/);
+        assert.match(meta, / source_feed="?http/);
+        assert.doesNotMatch(note.body, /Ada Gazette: http/);
     });
 
     it('rebroadcasts an item as a post of their own: full text, their tags, and its source', async () => {
@@ -213,7 +224,17 @@ describe("Horse's RSS", function () {
             'their private tag on the item is a tag on their post now',
         );
         const body = await bea(`id/${beaRoot}/docs/${post.doc_id}/body`);
-        assert.match(await body.text(), /the second post/, 'the full text');
+        const words = await body.text();
+        assert.match(words, /the second post/, 'the full text');
+        assert.doesNotMatch(words, /Ada Gazette|:::meta/, 'its fields say where it came from');
+
+        // Their own feed, which shows only words, says it under them.
+        const xml = await (await bea(`ringtome/user/${beaRoot}/rss.xml`)).text();
+        assert.match(
+            xml,
+            /&lt;p&gt;Via &lt;a href=&quot;http.+?&quot;&gt;Ada Gazette&lt;\/a&gt;&lt;\/p&gt;/,
+            xml,
+        );
     });
 
     it('a second follower here shares the cache; letting go leaves the other', async () => {

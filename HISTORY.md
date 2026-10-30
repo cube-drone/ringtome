@@ -25275,3 +25275,29 @@ rest, the split over a real node db, and the first sync ending past a lost file;
 the node suite, clippy, ui-check and strings-check; and the sync-status
 acceptance area (both routes carry `bodies_lost`, 0 between two computers that
 agree).
+
+## Horse's RSS moves after hrseAmp in the app list (2026-10-30)
+
+Its entry in `js/pure/apps.js` moved from after Notifications to after hrseAmp,
+so the console tiles and the dock list it there; the Market already did.
+Checked: ui-check.
+
+## Horse's RSS: a source said once, out of the words (2026-10-30)
+
+A rebroadcast's words ended in a visible `seriouseats.com: https://…` line,
+saying again what its `source_*` fields already say on every card's "via" line.
+
+- **Rebroadcast** now drafts the item's words alone; the fields are the record.
+- **Copy to notes** puts the source in a
+  `:::meta source_name=… source_link=… source_feed=…` beneath the words: it
+  renders nothing, and travels with the note into exports and back.
+- **Surfaces that show only words** - a person's `rss.xml` (description and
+  `content:encoded`) and a post's reading copy - add a "Via <name>" line from
+  the author's own labels (`feedreader::via_html`: web addresses only, the
+  feed's host when it names nothing).
+
+Checked: a unit test for the `:::meta` (parsed back, quotes and all) and for
+`via_html` (only the author's labels, no `javascript:`, escaped); the node suite
+and clippy; the Horse's RSS and a person's RSS acceptance areas (the copy's
+`:::meta`, the rebroadcast's words without the line, its `rss.xml` with the via
+line).

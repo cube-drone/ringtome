@@ -139,8 +139,12 @@ pub async fn post_copy(
     let labels = crate::annotations::for_posts(state, &[(root_hex.clone(), doc_hex.clone())], None)
         .await
         .unwrap_or_default();
-    let tags: Vec<String> = labels
-        .get(&(root_hex.clone(), doc_hex))
+    let mine = labels.get(&(root_hex.clone(), doc_hex));
+    // A rebroadcast's source (feedreader.rs `via_html`), beneath its words.
+    if let Some(via) = mine.and_then(|l| crate::feedreader::via_html(l, &root_hex)) {
+        out.push_str(&via);
+    }
+    let tags: Vec<String> = mine
         .into_iter()
         .flatten()
         // The author's own words for it - not its size or medium, which the node says for it.

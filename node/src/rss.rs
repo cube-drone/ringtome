@@ -95,9 +95,16 @@ pub async fn rss_handler(
 
     let posts =
         crate::record::documents::public_open_posts(&db, None, ITEMS).await.unwrap_or_default();
+    // Their labels, for a rebroadcast's source (feedreader.rs `via_html`).
+    let keys: Vec<(String, String)> =
+        posts.iter().map(|p| (root_hex.clone(), hex::encode(p.doc_id))).collect();
+    let labels = crate::annotations::for_posts(&state, &keys, None).await.unwrap_or_default();
     let mut items = String::new();
     for post in &posts {
         let doc_hex = hex::encode(post.doc_id);
+        let via = labels
+            .get(&(root_hex.clone(), doc_hex.clone()))
+            .and_then(|l| crate::feedreader::via_html(l, &root_hex));
         let said = crate::idface::post_words(&state, &db, &root_hex, post, &name).await?;
         // Its canonical address (plans/WEB_ADDRESSES.md): its path, where it has one.
         let link = crate::webpath::post_url(&state, &root, &doc_hex, &base).await;
@@ -109,7 +116,7 @@ pub async fn rss_handler(
         };
         let text = said.described.unwrap_or_else(|| crate::idface::clip(&said.words, ITEM_CHARS));
         let format = crate::record::documents::Format::from_wire(post.format);
-        let whole = if format.is_mergeable_text() {
+        let mut whole = if format.is_mergeable_text() {
             let source = crate::reading::public_text(&state, &db, &post.doc_id).await;
             absolute(&crate::reading::words_html(&source, format), &base)
         } else {
@@ -121,6 +128,12 @@ pub async fn rss_handler(
         }
         if !text.is_empty() {
             body.push_str(&format!("<p>{}</p>", xml(&text)));
+        }
+        if let Some(via) = &via {
+            body.push_str(via);
+            if !whole.is_empty() {
+                whole.push_str(via);
+            }
         }
         let content = if whole.is_empty() {
             String::new()

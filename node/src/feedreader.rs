@@ -2182,15 +2182,54 @@ pub struct CopySource {
 }
 
 impl CopySource {
-    /// Its words, and where they came from beneath them.
-    pub fn body(&self) -> String {
-        let from = if self.link.is_empty() {
-            self.feed_name.clone()
-        } else {
-            format!("{}: {}", self.feed_name, self.link)
-        };
-        format!("{}\n\n{from}", self.words)
+    /// Its words as a note of the reader's, with where they came from beneath them in a `:::meta`
+    /// (Marquee SPEC, Document metadata; Curtis, 2026-10-30): a note has no fields to say it in,
+    /// and a `:::meta` renders nothing but travels with the words - into exports, and back in. A
+    /// rebroadcast takes the words alone: its post says its source as fields, which every card
+    /// reads as its "via" line.
+    pub fn note_body(&self) -> String {
+        let attrs: marquee_parser::Attrs = [
+            (SOURCE_NAME, &self.feed_name),
+            (SOURCE_LINK, &self.link),
+            (SOURCE_FEED, &self.feed_url),
+        ]
+        .into_iter()
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(k, v)| (k.to_string(), v.replace(['\n', '\r'], " ")))
+        .collect();
+        if attrs.is_empty() {
+            return self.words.clone();
+        }
+        let meta = marquee_parser::serialize(&marquee_parser::Node::Directive {
+            name: "meta".to_string(),
+            attrs,
+            children: Vec::new(),
+        });
+        format!("{}\n\n{}", self.words.trim_end(), meta.trim_end())
     }
+}
+
+/// A rebroadcast's "via" line, for a surface that shows only a post's words (rss.rs, reading.rs):
+/// the cards read it from the same labels. Only what its author said, and only a web address.
+pub fn via_html(labels: &[crate::annotations::KnownAnnotation], author: &str) -> Option<String> {
+    let said = |key: &str| {
+        labels
+            .iter()
+            .find(|a| a.annotator == author && a.key == key)
+            .map(|a| a.value.trim())
+            .filter(|v| !v.is_empty())
+    };
+    let web = |v: &str| url::Url::parse(v).ok().filter(|u| matches!(u.scheme(), "http" | "https"));
+    let feed = said(SOURCE_FEED).and_then(web)?;
+    let link = said(SOURCE_LINK).and_then(web).unwrap_or_else(|| feed.clone());
+    let name = said(SOURCE_NAME)
+        .map(str::to_string)
+        .unwrap_or_else(|| feed.host_str().unwrap_or_default().to_string());
+    Some(format!(
+        "<p>Via <a href=\"{}\">{}</a></p>",
+        marquee_html_renderer::escape_attr(link.as_str()),
+        crate::reading::esc(&name)
+    ))
 }
 
 /// The labels a rebroadcast item's post carries, said by its author as a post's own fields are
@@ -2571,6 +2610,68 @@ https://www.seriouseats.com/porcupine-meatballs-recipe-12196859
 
     /// A body's pictures as a reader gets them: a kept one from here, a pixel gone, any other a
     /// link - and an address that isn't the web's, a link, and code left alone.
+    #[test]
+    fn a_copy_says_its_source_in_a_meta_and_a_post_in_its_labels() {
+        let src = CopySource {
+            title: "a canter".into(),
+            words: "the *second* post\n".into(),
+            link: "https://example.com/canter?a=1&b=\"2\"".into(),
+            feed_url: "https://example.com/rss.xml".into(),
+            feed_name: "Ada \"the\" Gazette".into(),
+            tags: Vec::new(),
+        };
+        let body = src.note_body();
+        assert!(body.starts_with("the *second* post\n\n:::meta "), "{body}");
+        let doc = marquee_parser::parse(&body).unwrap();
+        let marquee_parser::Node::Document { children, .. } = &doc else { panic!() };
+        let meta = children
+            .iter()
+            .find_map(|c| match c {
+                marquee_parser::Node::Directive { name, attrs, .. } if name == "meta" => {
+                    Some(attrs.clone())
+                }
+                _ => None,
+            })
+            .expect("a :::meta");
+        assert_eq!(meta.get(SOURCE_NAME).map(String::as_str), Some("Ada \"the\" Gazette"));
+        assert_eq!(meta.get(SOURCE_LINK).map(String::as_str), Some(src.link.as_str()));
+        assert_eq!(meta.get(SOURCE_FEED).map(String::as_str), Some(src.feed_url.as_str()));
+        let bare = CopySource {
+            link: String::new(),
+            feed_url: String::new(),
+            feed_name: String::new(),
+            ..src
+        };
+        assert_eq!(bare.note_body(), bare.words);
+
+        let said = |who: &str, key: &str, value: &str| crate::annotations::KnownAnnotation {
+            annotator: who.into(),
+            key: key.into(),
+            value: value.into(),
+        };
+        let labels = vec![
+            said("someone", SOURCE_FEED, "https://elsewhere.example/rss"),
+            said("me", SOURCE_FEED, "https://example.com/rss.xml"),
+            said("me", SOURCE_NAME, "Ada <b>Gazette</b>"),
+            said("me", SOURCE_LINK, "https://example.com/canter?a=1&b=2"),
+        ];
+        assert_eq!(
+            via_html(&labels, "me").unwrap(),
+            "<p>Via <a href=\"https://example.com/canter?a=1&amp;b=2\">Ada &lt;b&gt;Gazette&lt;/b&gt;</a></p>"
+        );
+        let hostile = vec![
+            said("me", SOURCE_FEED, "https://example.com/rss.xml"),
+            said("me", SOURCE_LINK, "javascript:alert(1)"),
+        ];
+        assert_eq!(
+            via_html(&hostile, "me").unwrap(),
+            "<p>Via <a href=\"https://example.com/rss.xml\">example.com</a></p>",
+            "only a web address, and the feed's host when it names none"
+        );
+        assert!(via_html(&labels, "someone-else").is_none(), "only what its author said");
+        assert!(via_html(&[said("me", SOURCE_FEED, "javascript:x")], "me").is_none());
+    }
+
     #[test]
     fn a_readers_pictures_come_from_here_or_not_at_all() {
         let body = "Hay.\n\n![a bale](https://hay.example/bale.jpg)\n\n![](https://t.example/p.gif)\n\n\
