@@ -196,9 +196,14 @@
     font-size: 1rem;
 }
 
-.pane-rail:hover {
-    color: var(--teal);
-    --line: var(--teal);
+/* Only where a pointer hovers (field-found 2026-10-30, the APK's bank): a touch leaves `:hover` on
+   whatever button it last touched, and switching tabs hands that button to another column - Preact
+   reuses it for the rail that slot now draws - so a closed tab stayed lit beside the open one. */
+@media (hover: hover) {
+    .pane-rail:hover {
+        color: var(--teal);
+        --line: var(--teal);
+    }
 }
 
 /* The open tab in a narrow window's strip (panes.js `tab`): still in its place, lifted to the page's

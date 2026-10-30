@@ -25317,3 +25317,15 @@ feed's own search, asked of the rss door - every followed feed's items, or the
 chosen feed's. The node already answered `?q=` there (`feed_answer`), so no Rust
 moved. Checked: a new Horse's RSS claim (a word finds its item, in all feeds and
 in one; a word nowhere finds nothing), ui-check, strings-check.
+
+## A phone's column tabs light only the open one (2026-10-30)
+
+A tester on the APK found the bank's Market tab lit beside the open Portfolio
+after tapping from one tab to the other. Every narrow-window column slot
+switches between a lone rail and its open tab plus column, so Preact reuses the
+tapped rail's button for another column's rail - and a touch leaves `:hover` on
+the button it touched. `.pane-rail:hover` now applies only under
+`(hover: hover)`, which settles it in all eighteen rail sites at once. Checked:
+reproduced on a scratch node in headless Chrome with touch emulation (Market
+`[hover] [focus]` and teal beside the active Portfolio), then the same taps
+after the fix (only the open tab teal); ui-check.
