@@ -503,6 +503,23 @@
     padding-top: 10px;
 }
 
+/* A narrow window (Curtis, 2026-10-30: on a phone it hung over the chat's buttons): a bar of its
+   own above the app bar, a flex band of `.app-main`'s column as the app bar is, so the app's region
+   gives it the room and nothing is under it. */
+@media (max-width: 900px) {
+    .player-mini {
+        position: static;
+        flex-shrink: 0;
+        max-width: none;
+        margin: 0 4px 4px;
+        border-width: 1px;
+    }
+
+    .player-mini-now {
+        flex: 1;
+    }
+}
+
 .player-mini-now {
     display: flex;
     flex-direction: column;

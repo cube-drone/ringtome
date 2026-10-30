@@ -288,6 +288,7 @@ export default {
     'apps.chat.a-sealed-room': 'a sealed room',
     'apps.chat.an-unnamed-room': 'an unnamed room',
     'apps.chat.a-private-chat': 'a private chat',
+    'apps.chat.something-new': 'something new',
     'apps.chat.quiet': 'quiet',
     'apps.chat.show-this-groups-chats': "show this group's chats",
     'apps.chat.fold-this-groups-chats': "fold this group's chats away",
@@ -2006,6 +2007,7 @@ export default {
     'player.shrink': 'back to the list',
     'player.expand': 'fill the page',
     'player.open-hrseamp': 'open hrseAmp',
+    'player.stop-and-close': 'stop, and close the player',
     'player.open-in-hrseamp': 'open hrseAmp',
 
     // --- node/js/postentry.js ---

@@ -185,8 +185,22 @@
 
 /* Whoever opened the room, in the slot a chat icon used to waste. */
 .chat-row-face {
+    position: relative;
     display: flex;
     flex: none;
+}
+
+/* Something new in this room (chat.js `RoomRow`): the dock badge's red, a circle on the face's
+   top corner, ringed in the list's own surface so it reads over any face. */
+.chat-row-dot {
+    position: absolute;
+    top: -2px;
+    right: -3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--coral);
+    box-shadow: 0 0 0 2px var(--surface);
 }
 
 .chat-row-main {

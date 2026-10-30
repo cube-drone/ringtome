@@ -25329,3 +25329,36 @@ the button it touched. `.pane-rail:hover` now applies only under
 reproduced on a scratch node in headless Chrome with touch emulation (Market
 `[hover] [focus]` and teal beside the active Portfolio), then the same taps
 after the fix (only the open tab teal); ui-check.
+
+## On a phone the compact player is a bar of its own, with an X (2026-10-30)
+
+A tester on the APK couldn't get the compact player off the chat's buttons (it
+floated over the app, and lingered five minutes after a pause) and had to
+restart the app. Two changes:
+
+- **In a narrow window it is a band** of `.app-main`'s column between the app
+  and the app bar, so the app's region gives it the room and nothing sits under
+  it. A wide window keeps it floating, as before.
+- **An X** on it is the player's stop: the song ends and the player goes at
+  once.
+
+Checked: on a scratch node in headless Chrome at 390px, a song played in hrseAmp
+and then hrseFiles opened - the frame ended above the band, the band above the
+app bar, its buttons clear of the bar's tiles; the X took it away and the frame
+took the room back. ui-check, strings-check.
+
+## A red dot on the chats with something new (2026-10-30)
+
+The dock's count says how many chats have something new; the chats column now
+says which: a room whose newest word is after this persona last looked
+(`room.unread`, off the `rooms_seen` register) wears a red dot on its face's top
+corner - the dock badge's coral, ringed in the list's surface - beside the bold
+name it already had. Checked: a scratch node with two rooms, a word said in one,
+in headless Chrome (the dot on that room's face and not the other's); ui-check,
+strings-check.
+
+A click is the attention paid (same day): the room open now draws as read at
+once - dot and bold both - rather than once its history has loaded and
+`rooms_seen` is written, and a list refresh landing first doesn't bring them
+back. Checked in headless Chrome: the dot gone 60ms after a click on its room,
+and still gone after the list reloaded; ui-check.

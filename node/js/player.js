@@ -1211,7 +1211,10 @@ export const Cassette = ({ rating = '', onRate = null }) => {
 /// Anywhere else in the app (ruling 1): a compact player above the dock while there's a song - the
 /// song, play and pause, and next - which opens hrseAmp when its words are pressed, and the song's
 /// file when its cover is. It goes when the music stops: at once for a stop, a few minutes after a
-/// pause, and a song a refresh brought back waits in hrseAmp until it's played.
+/// pause, and a song a refresh brought back waits in hrseAmp until it's played. Its X is that stop
+/// (Curtis, 2026-10-30, from a tester who couldn't get it off the chat's buttons): the song ends and
+/// the player goes. In a narrow window it is a band of its own above the app bar (amp.css), so it
+/// never hangs over what an app shows.
 export const MiniPlayer = () => {
     const p = usePlayer();
     const loc = useLocation();
@@ -1243,6 +1246,7 @@ export const MiniPlayer = () => {
             ${p.playing ? html`<${Icons.pause} />` : html`<${Icons.play} />`}
         </button>
         <button class="player-button" title=${t('player.next', 'next')} onClick=${p.next}><${Icons.skipForward} /></button>
+        <button class="player-button player-mini-close" title=${t('player.stop-and-close', 'stop, and close the player')} onClick=${p.stop}><${Icons.close} /></button>
     </div>`;
 };
 

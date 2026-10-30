@@ -191,8 +191,9 @@ const RoomRow = ({ room, current, selected }) => {
     const person = usePerson(room.im && room.other ? room.other : room.author, { current });
     // Every row in this list is a chat, so no row wears a chat icon (Curtis, 2026-09-20):
     // the slot holds the face of whoever opened the room, and the title gets the width.
-    // Bold where something was said since this persona last looked (the `rooms_seen`
-    // register, synced to every computer); the newest word's time beneath every room.
+    // Bold, with a red dot on the face, where something was said since this persona last looked
+    // (the `rooms_seen` register, synced to every computer); the newest word's time beneath every
+    // room.
     const cls = [
         'chat-row',
         selected ? 'chat-row-selected' : '',
@@ -203,6 +204,11 @@ const RoomRow = ({ room, current, selected }) => {
     return html`<li class=${cls} data-settles onClick=${() => loc.route(roomHref(room.author, room.doc_id))}>
         <span class="chat-row-face" title=${person.primary || speakable(room.author)}>
             <${PersonHex} person=${person} size="small" />
+            ${
+                /* A red dot on the face where something's new (Curtis, 2026-10-30: the dock's count
+                says how many, this says which). */ ''
+            }
+            ${room.unread && html`<span class="chat-row-dot" role="img" aria-label=${t('apps.chat.something-new', 'something new')}></span>`}
         </span>
         <span class="chat-row-main">
             <span class="chat-row-name">
@@ -2460,10 +2466,19 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     // Counted over every room this persona may see, so the cloud shows what could be picked
     // rather than only what survives the picking; the list narrows, the cloud does not.
     const cloud = roomTagCounts(all);
-    const rooms =
+    // The room open now is read (Curtis, 2026-10-30: "as soon as I click on a chat with a dot, we
+    // should clear that dot"): at once, not when its history has loaded and `rooms_seen` is written
+    // (Room), and still so if a refresh of the list lands before that write does.
+    const opened = (list) =>
+        list &&
+        list.map((r) =>
+            r.unread && r.author === author && r.doc_id === doc ? { ...r, unread: false } : r,
+        );
+    const rooms = opened(
         all && tagFilter.length > 0
             ? all.filter((r) => tagFilter.every((tag) => (r.tags || []).includes(tag)))
-            : all;
+            : all,
+    );
     const selected = author && doc ? { author, doc } : null;
     const roomsTucked = tucked.has('rooms');
     const tagsTucked = tucked.has('tags');
@@ -2505,7 +2520,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                           current=${current}
                           needle=${needle}
                           hits=${hits}
-                          rooms=${roomsNamed(all, needle)}
+                          rooms=${roomsNamed(opened(all), needle)}
                           onRoom=${(r) => {
                               if (onSearch) onSearch('');
                               loc.route(roomHref(r.author, r.doc_id));
