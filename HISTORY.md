@@ -25454,3 +25454,21 @@ company after the head start, a slow first that is up still wins, a failure
 starts the next at once, nobody answering is `None` once all were asked, and
 never more than four run at once. The chat, sealed-key and group acceptance
 areas pass (75), as do 712 unit tests and clippy.
+
+**CI's runner kills, instrumented (2026-10-30).** Five CI attempts since
+2026-10-30 01:30 died the same way: "the runner has received a shutdown signal",
+about three and a half minutes into compiling `ringtome-node`'s test builds in
+`test-unit`, with no test failing and no error. All five ran on the ARM runner
+image 20261025.165.1. That image generation moved the kernel from 6.17 to 7.0
+(`7.0.0-1017-azure`), and seven of its attempts did pass. The three attempts
+since 2026-10-26 on the image before it, 20261012.149.1, never died this way.
+Meanwhile the test build's compile time grew from 3m54s (2026-10-26) to 5m39s.
+Locally, the same non-incremental test build peaks at 2.7 GB across its `rustc`
+processes (2 GB for the largest), on a runner with 16 GB. That makes plain
+memory exhaustion unlikely unless Linux's linker needs far more than macOS's,
+but nothing proves it either way: no step records the machine. `ci.yml` now
+does. A `Machine` step prints the kernel, CPUs, memory, swap, disk, whether
+systemd-oomd is running, and memory pressure. Beside `just ci`, a monitor prints
+a `[machine]` line every 15 seconds with memory, swap, disk, memory pressure and
+the three biggest processes, live, so the last reading before a kill stays in
+the log. `just ci` is still the gate, and the step exits with its code.

@@ -67,9 +67,39 @@ jobs:
         working-directory: node
         run: just integration-install
 
+      # The machine, for the runner kills (2026-10-30): five runs since the ARM image moved to
+      # 20261025.165.1 (kernel 7.0) died mid-`test-unit` with "the runner has received a shutdown
+      # signal" and nothing else - no test failed, no error, and none on the image before it.
+      # This says what the runner was given; the monitor in the next step says what it ran out of.
+      - name: Machine
+        run: |
+          uname -r
+          nproc
+          free -m
+          swapon --show || true
+          df -h / /home/runner || true
+          systemctl is-active systemd-oomd || true
+          cat /proc/pressure/memory || true
+
       - name: Full check (just ci)
         working-directory: node
-        run: just ci
+        # `just ci` is the gate, verbatim. Beside it, a line every 15 seconds of memory, swap,
+        # disk, memory pressure and the three biggest processes - printed live, so the last
+        # line before a kill survives it in this log (the runner-kill investigation above).
+        run: |
+          (while sleep 15; do
+            echo "[machine] $(date -u +%T)" \
+              "$(free -m | awk '/^Mem:/ {print "mem " $3 "/" $2 "MB, available " $7 "MB"}')" \
+              "$(free -m | awk '/^Swap:/ {print "swap " $3 "/" $2 "MB"}')" \
+              "disk $(df -h / | awk 'NR==2 {print $3 "/" $2}')" \
+              "pressure $(head -1 /proc/pressure/memory 2>/dev/null | cut -d' ' -f2-3)" \
+              "top $(ps -eo rss=,comm= --sort=-rss | head -3 | awk '{printf "%s:%dMB ", $2, $1/1024}')"
+          done) &
+          monitor=$!
+          status=0
+          just ci || status=$?
+          kill "$monitor"
+          exit "$status"
         env:
           # Triple every time budget in the suite - the settle loops (helpers.cjs::settleWith)
           # AND mocha's per-test ceiling (.mocharc.cjs), one knob for both: five rig nodes on
