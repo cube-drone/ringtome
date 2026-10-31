@@ -594,49 +594,50 @@ async fn fetch_key_from_anyone(
         }
     }
     tracing::trace!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
-    let mut refused_by_someone = false;
-    for endpoint_id in endpoints {
-        match tokio::time::timeout(
-            FETCH_TIMEOUT,
-            ask_key(state, &endpoint_id, author, doc_id, for_root),
-        )
-        .await
-        {
-            Ok(Ok(Some(key))) => {
-                if let Err(e) = crate::postkeys::remember(
-                    &state.node_db,
-                    &author_hex,
-                    &hex::encode(doc_id),
-                    &key,
-                )
-                .await
-                {
-                    tracing::debug!(error = ?e, "fetched key not remembered");
+    // Raced, staggered (net::race, 2026-10-30): a silent endpoint used to cost the next its whole
+    // FETCH_TIMEOUT, one after another. A key is one round trip, so the asks race whole; a "no"
+    // doesn't end the race - somebody else may say yes.
+    let refused = std::sync::atomic::AtomicBool::new(false);
+    let won = crate::net::race::first(endpoints, crate::net::race::STAGGER, |endpoint_id| {
+        let refused = &refused;
+        async move {
+            match tokio::time::timeout(
+                FETCH_TIMEOUT,
+                ask_key(state, &endpoint_id, author, doc_id, for_root),
+            )
+            .await
+            {
+                Ok(Ok(Some(key))) => Some(key),
+                Ok(Ok(None)) => {
+                    refused.store(true, std::sync::atomic::Ordering::Relaxed);
+                    None
                 }
-                let _ = crate::postkeys::grant(
-                    &state.node_db,
-                    &author_hex,
-                    &hex::encode(doc_id),
-                    &for_hex,
-                )
-                .await;
-                let _ = crate::postkeys::unrefuse(
-                    &state.node_db,
-                    &author_hex,
-                    &hex::encode(doc_id),
-                    &for_hex,
-                )
-                .await;
-                return Some(key);
+                Ok(Err(e)) => {
+                    tracing::trace!(endpoint = %endpoint_id, error = ?e, "key ask failed");
+                    None
+                }
+                Err(_) => {
+                    tracing::debug!(endpoint = %endpoint_id, "key ask timed out");
+                    None
+                }
             }
-            Ok(Ok(None)) => {
-                refused_by_someone = true;
-                continue;
-            }
-            Ok(Err(e)) => tracing::trace!(endpoint = %endpoint_id, error = ?e, "key ask failed"),
-            Err(_) => tracing::debug!(endpoint = %endpoint_id, "key ask timed out"),
         }
+    })
+    .await;
+    if let Some((_, key)) = won {
+        if let Err(e) =
+            crate::postkeys::remember(&state.node_db, &author_hex, &hex::encode(doc_id), &key).await
+        {
+            tracing::debug!(error = ?e, "fetched key not remembered");
+        }
+        let _ = crate::postkeys::grant(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex)
+            .await;
+        let _ =
+            crate::postkeys::unrefuse(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex)
+                .await;
+        return Some(key);
     }
+    let refused_by_someone = refused.load(std::sync::atomic::Ordering::Relaxed);
     // Every endpoint that answered said no (Contact tags, ruling 4): the author's node holds
     // the key and would not give it to this one - remember that, so the feed and the shelf
     // stop showing a card the door would refuse. A transport failure remembers nothing.

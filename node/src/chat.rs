@@ -522,14 +522,13 @@ async fn pull_speaker(
             candidates.push(ep);
         }
     }
-    for endpoint in candidates {
-        let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
-        if let Ok(stats) = crate::net::sync::sync_room_with_peer(state, speaker, addr, *doc).await {
+    match crate::net::sync::sync_room_with_first(state, speaker, &candidates, *doc).await {
+        Ok((_, stats)) => {
             crate::fold::fold_now(state, speaker).await;
-            return stats.received > 0;
+            stats.received > 0
         }
+        Err(_) => false,
     }
-    false
 }
 
 /// Publish a just-appended message on the room's topic (ruling 5: append first, publish
@@ -3204,47 +3203,56 @@ async fn directory_ask(
         &mut others,
     );
     let ours = state.endpoint.id().to_string();
-    for (endpoint, from_creator) in
-        creator.iter().map(|e| (e, true)).chain(others.iter().map(|e| (e, false)))
-    {
-        if *endpoint == ours {
-            continue;
-        }
-        // Where each speaker is served, if the node knows the question; the bare directory from
-        // a node that predates it.
-        let answer: anyhow::Result<Vec<(String, Vec<String>)>> =
-            match crate::net::fragment::fetch_room_reach(state, endpoint, &author, doc, &for_root)
-                .await
-            {
-                Ok(rows) => Ok(rows
-                    .into_iter()
-                    .map(|(root, eps)| {
-                        let eps = eps
-                            .iter()
-                            .filter_map(|e| iroh::PublicKey::from_bytes(e).ok())
-                            .map(|k| k.to_string())
-                            .collect();
-                        (hex::encode(root), eps)
-                    })
-                    .collect()),
-                Err(_) => {
-                    crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root)
+    let asks: Vec<(String, bool)> = creator
+        .iter()
+        .map(|e| (e.clone(), true))
+        .chain(others.iter().map(|e| (e.clone(), false)))
+        .filter(|(e, _)| *e != ours)
+        .collect();
+    // Raced, staggered (net::race, 2026-10-30), the creator's endpoints first: each ask is one
+    // round trip. A creator slower than the head start and somebody else's answer counts as not
+    // answering this time, and the pull goes to the others - each of whom holds the whole room.
+    let won = crate::net::race::first(asks, crate::net::race::STAGGER, |(endpoint, from_creator)| {
+        async move {
+            // Where each speaker is served, if the node knows the question; the bare directory
+            // from a node that predates it.
+            let answer: anyhow::Result<Vec<(String, Vec<String>)>> =
+                match crate::net::fragment::fetch_room_reach(state, &endpoint, &author, doc, &for_root)
+                    .await
+                {
+                    Ok(rows) => Ok(rows
+                        .into_iter()
+                        .map(|(root, eps)| {
+                            let eps = eps
+                                .iter()
+                                .filter_map(|e| iroh::PublicKey::from_bytes(e).ok())
+                                .map(|k| k.to_string())
+                                .collect();
+                            (hex::encode(root), eps)
+                        })
+                        .collect()),
+                    Err(_) => crate::net::fragment::fetch_room(state, &endpoint, &author, doc, &for_root)
                         .await
-                        .map(|list| list.iter().map(|r| (hex::encode(r), Vec::new())).collect())
+                        .map(|list| list.iter().map(|r| (hex::encode(r), Vec::new())).collect()),
+                };
+            match answer {
+                Ok(rows) if from_creator || !rows.is_empty() => Some(rows),
+                Ok(_) => None,
+                Err(e) => {
+                    tracing::debug!(endpoint = %endpoint, error = ?e, "room directory ask failed");
+                    None
                 }
-            };
-        match answer {
-            Ok(rows) if from_creator || !rows.is_empty() => {
-                remember_directory(&state.node_db, author_hex, &doc_hex, &rows).await;
-                return (rows.into_iter().map(|(r, _)| r).collect(), from_creator);
-            }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::debug!(endpoint = %endpoint, error = ?e, "room directory ask failed")
             }
         }
+    })
+    .await;
+    match won {
+        Some(((_, from_creator), rows)) => {
+            remember_directory(&state.node_db, author_hex, &doc_hex, &rows).await;
+            (rows.into_iter().map(|(r, _)| r).collect(), from_creator)
+        }
+        None => (Vec::new(), false),
     }
-    (Vec::new(), false)
 }
 
 /// The endpoints that serve the room's creator, in the order the key lane asks them.
@@ -3267,6 +3275,21 @@ async fn creator_endpoints(state: &AppState, author_hex: &str) -> Vec<String> {
     endpoints
 }
 
+/// The viewer's own other computers, proven so (Curtis, 2026-10-30: a chat held on one computer,
+/// opened on another while the other person's node was off - and the second showed only its own
+/// half). A sibling that was there when the room spoke holds every speaker's chain, though it is
+/// nobody the room names: not the creator, not a speaker, not another participant.
+async fn sibling_endpoints(state: &AppState, root_hex: &str) -> Vec<String> {
+    let ours = state.endpoint.id().to_string();
+    crate::net::sync::peer_leaves(&state.node_db, root_hex)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(ep, leaf, _)| leaf.is_some() && *ep != ours)
+        .map(|(ep, _, _)| ep)
+        .collect()
+}
+
 /// Push this persona's room chain to the creator's node (a participant's half of ruling
 /// 4): one room-scoped exchange, at the first creator endpoint that answers. Nothing to
 /// push when the creator is hosted here - the chain is already where the directory reads.
@@ -3274,16 +3297,15 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     if crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false) {
         return; // this node IS the directory: the others pull from it
     }
-    for endpoint in creator_endpoints(state, author_hex).await {
-        let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
-        match crate::net::sync::sync_room_with_peer(state, root_hex, addr, *doc).await {
-            Ok(stats) => {
-                tracing::debug!(root = %root_hex, room = %hex::encode(doc), sent = stats.sent, "room chain pushed to the creator's node");
-                return;
-            }
-            Err(e) => {
-                tracing::debug!(root = %root_hex, endpoint = %endpoint, error = ?e, "room push failed")
-            }
+    // Each list raced, staggered (net::race): a dark computer costs the next a head start.
+    let creator = creator_endpoints(state, author_hex).await;
+    match crate::net::sync::sync_room_with_first(state, root_hex, &creator, *doc).await {
+        Ok((_, stats)) => {
+            tracing::debug!(root = %root_hex, room = %hex::encode(doc), sent = stats.sent, "room chain pushed to the creator's node");
+            return;
+        }
+        Err(e) => {
+            tracing::debug!(root = %root_hex, error = ?e, "room push failed")
         }
     }
     // The creator's node is dark: every other speaker's node instead (ruling 4), each of whom
@@ -3291,11 +3313,9 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     // computer is off) - and a group room's every member's node first, which holds it whole.
     let doc_hex = hex::encode(doc);
     if let Some(group) = room_group(state, author_hex, doc).await {
-        for endpoint in crate::roster::group_endpoints(state, &group).await {
-            let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
-            if crate::net::sync::sync_room_with_peer(state, root_hex, addr, *doc).await.is_ok() {
-                return;
-            }
+        let members = crate::roster::group_endpoints(state, &group).await;
+        if crate::net::sync::sync_room_with_first(state, root_hex, &members, *doc).await.is_ok() {
+            return;
         }
     }
     for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
@@ -3305,12 +3325,8 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
         {
             continue;
         }
-        for endpoint in speaker_endpoints(state, &speaker).await {
-            let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
-            if crate::net::sync::sync_room_with_peer(state, root_hex, addr, *doc).await.is_ok() {
-                break;
-            }
-        }
+        let theirs = speaker_endpoints(state, &speaker).await;
+        let _ = crate::net::sync::sync_room_with_first(state, root_hex, &theirs, *doc).await;
     }
 }
 
@@ -3394,6 +3410,7 @@ pub async fn sync_room(
     }
     let others: Vec<String> = speakers.iter().filter(|s| *s != root_hex).cloned().collect();
     speakers.retain(|s| s != root_hex);
+    let siblings = sibling_endpoints(state, root_hex).await;
     let mut exchanged = 0usize;
     let mut landed = false;
     for speaker in speakers {
@@ -3420,22 +3437,44 @@ pub async fn sync_room(
                 candidates.push(ep.clone());
             }
         }
-        for endpoint in candidates {
-            let Ok(addr) = crate::net::sync::dial_addr(state, &endpoint).await else { continue };
-            match crate::net::sync::sync_room_with_peer(state, &speaker, addr, *doc).await {
-                Ok(stats) => {
+        // The viewer's own computers first (Curtis, 2026-10-30: "computers I own are much more
+        // likely to be network colocated with me"), but never instead: a sibling that slept
+        // through part of the room answers with less than the room holds, so its answer doesn't
+        // end the search. Whatever it had shows at once; the room's own nodes, asked next, add
+        // only what is newer, since chains sync as suffixes.
+        let theirs: Vec<String> =
+            siblings.iter().filter(|ep| !candidates.contains(ep)).cloned().collect();
+        if !theirs.is_empty() {
+            match crate::net::sync::sync_room_with_first(state, &speaker, &theirs, *doc).await {
+                Ok((_, stats)) => {
                     exchanged += 1;
-                    // Awaited, so the door's answer means the floor is current (a page that
-                    // read right after the pull found nothing, 2026-09-18).
                     crate::fold::fold_now(state, &speaker).await;
                     if stats.received > 0 {
                         landed = true;
+                        if let Some(live) = state.live.get(doc) {
+                            let _ = live.events.send(LiveEvent::Message);
+                        }
                     }
-                    break;
                 }
                 Err(e) => {
-                    tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "room pull failed")
+                    tracing::debug!(speaker = %speaker, error = ?e, "room pull from a sibling failed")
                 }
+            }
+        }
+        // The room's own nodes, raced in the order above (net::race): a dark creator or speaker
+        // costs the next one a head start, not a whole connect timeout.
+        match crate::net::sync::sync_room_with_first(state, &speaker, &candidates, *doc).await {
+            Ok((_, stats)) => {
+                exchanged += 1;
+                // Awaited, so the door's answer means the floor is current (a page that
+                // read right after the pull found nothing, 2026-09-18).
+                crate::fold::fold_now(state, &speaker).await;
+                if stats.received > 0 {
+                    landed = true;
+                }
+            }
+            Err(e) => {
+                tracing::debug!(speaker = %speaker, error = ?e, "room pull failed")
             }
         }
     }

@@ -1881,13 +1881,74 @@ pub async fn sync_with_peer_scoped(
 /// A room-scoped exchange (CHAT.md, ruling 4): one persona's chain for ONE room, with the
 /// identity and profile its readers need, and nothing else of theirs. Whole, never
 /// ceilinged - the room's budget is what bounds it (ruling 6).
-pub async fn sync_room_with_peer(
+///
+/// With whichever of `endpoints` answers first (Curtis, 2026-10-30): their
+/// connects race, staggered (`net::race`), in the order given, and the exchange runs on the
+/// winner's connection alone. One whose exchange then fails is set aside and the rest race again,
+/// as a walk down the list moved on to the next; a connect that failed isn't tried twice. The
+/// endpoint that served, and what the exchange moved.
+pub async fn sync_room_with_first(
     state: &AppState,
     root_hex: &str,
-    addr: EndpointAddr,
+    endpoints: &[String],
     room: [u8; 16],
-) -> Result<ExchangeStats> {
-    sync_with_peer_asking(state, root_hex, addr, ROOM_SCOPE, &[room], Ask::default()).await
+) -> Result<(String, ExchangeStats)> {
+    let mut left: Vec<String> = endpoints.to_vec();
+    let mut last = anyhow!("no computer to ask");
+    while !left.is_empty() {
+        let unreached = std::sync::Mutex::new(Vec::new());
+        let won = crate::net::race::first(left.clone(), crate::net::race::STAGGER, |ep| {
+            let unreached = &unreached;
+            async move {
+                let dialled = match dial_addr(state, &ep).await {
+                    Ok(addr) => crate::net::p2p::dial(
+                        &state.unplugged,
+                        &state.endpoint,
+                        addr.clone(),
+                        ringtome_proto::sync::SYNC_ALPN,
+                    )
+                    .await
+                    .map(|conn| (addr, conn)),
+                    Err(e) => Err(e),
+                };
+                match dialled {
+                    Ok(won) => Some(won),
+                    Err(e) => {
+                        tracing::debug!(endpoint = %ep, error = ?e, "room connect failed");
+                        if let Ok(mut u) = unreached.lock() {
+                            u.push(ep);
+                        }
+                        None
+                    }
+                }
+            }
+        })
+        .await;
+        let unreached = unreached.into_inner().unwrap_or_default();
+        left.retain(|ep| !unreached.contains(ep));
+        let Some((ep, (addr, conn))) = won else {
+            return Err(anyhow!("none of {} computers answered", endpoints.len()));
+        };
+        left.retain(|e| *e != ep);
+        match sync_with_peer_on(
+            state,
+            root_hex,
+            addr,
+            Some(conn),
+            ROOM_SCOPE,
+            &[room],
+            Ask::default(),
+        )
+        .await
+        {
+            Ok(stats) => return Ok((ep, stats)),
+            Err(e) => {
+                tracing::debug!(endpoint = %ep, error = ?e, "room exchange failed");
+                last = e;
+            }
+        }
+    }
+    Err(last)
 }
 
 /// What an exchange asks for, as the sync ledger tells one from another (step 7): the chains, the
@@ -1948,6 +2009,20 @@ pub async fn sync_with_peer_asking(
     instances: &[[u8; 16]],
     ask: Ask,
 ) -> Result<ExchangeStats> {
+    sync_with_peer_on(state, root_hex, addr, None, wanted, instances, ask).await
+}
+
+/// `sync_with_peer_asking`, on a connection already open when there is one (a race's winner,
+/// `sync_room_with_first`) - else it dials.
+async fn sync_with_peer_on(
+    state: &AppState,
+    root_hex: &str,
+    addr: EndpointAddr,
+    conn: Option<Connection>,
+    wanted: &[u32],
+    instances: &[[u8; 16]],
+    ask: Ask,
+) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
     // On the sync ledger (crate::syncstatus) for as long as it runs: the persona's own when this
     // node hosts it and the peer is one of its computers, the network's otherwise.
@@ -1967,7 +2042,8 @@ pub async fn sync_with_peer_asking(
     };
     let entries_at_start = crate::db::writes_to(root_hex, "entries");
     let started_ms = now_ms();
-    let result = sync_with_peer_dialled(state, root_hex, root, addr, wanted, instances, ask).await;
+    let result =
+        sync_with_peer_dialled(state, root_hex, root, addr, conn, wanted, instances, ask).await;
     if personal {
         let moved = crate::db::writes_to(root_hex, "entries").saturating_sub(entries_at_start);
         let error = result.as_ref().err().map(|e| format!("{e:#}"));
@@ -1996,24 +2072,30 @@ pub async fn sync_with_peer_asking(
     result
 }
 
-/// `sync_with_peer_asking`'s dial and exchange, under its wall clock.
+/// `sync_with_peer_asking`'s dial (unless it was handed a connection) and exchange, under its
+/// wall clock.
+#[allow(clippy::too_many_arguments)]
 async fn sync_with_peer_dialled(
     state: &AppState,
     root_hex: &str,
     root: [u8; 32],
     addr: EndpointAddr,
+    conn: Option<Connection>,
     wanted: &[u32],
     instances: &[[u8; 16]],
     ask: Ask,
 ) -> Result<ExchangeStats> {
-    let conn = crate::net::p2p::dial(
-        &state.unplugged,
-        &state.endpoint,
-        addr.clone(),
-        ringtome_proto::sync::SYNC_ALPN,
-    )
-    .await
-    .map_err(|e| anyhow!("connecting to peer: {e}"))?;
+    let conn = match conn {
+        Some(conn) => conn,
+        None => crate::net::p2p::dial(
+            &state.unplugged,
+            &state.endpoint,
+            addr.clone(),
+            ringtome_proto::sync::SYNC_ALPN,
+        )
+        .await
+        .map_err(|e| anyhow!("connecting to peer: {e}"))?,
+    };
     // The whole-exchange wall clock (PROJECT_PLAN's Peeks, ruling 14): the callers' pass timeout bounds
     // their WAIT and detaches the work; this bounds the work. Over it, the connection is
     // closed - a trickle is not an exchange.

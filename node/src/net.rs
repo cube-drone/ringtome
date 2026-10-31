@@ -46,6 +46,7 @@ pub mod discovery;
 pub mod fragment;
 pub mod frontier;
 pub mod p2p;
+pub mod race;
 pub mod resync;
 pub mod subscriptions;
 pub mod sync;

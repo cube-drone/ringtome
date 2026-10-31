@@ -25404,3 +25404,53 @@ a long press's leftover click doesn't either. Installed once for the whole app
 emulated touch: a tap opened an 800x600 picture shown at 266px wide, a pinch and
 a drag moved it, a double tap returned it to the fit, the X closed it, and the
 same picture shown at full size did not open.
+
+**A chat opened on your other computer shows both sides (2026-10-30).** Curtis
+chatted with someone from Computer A. Later, with the other person's node
+offline, he opened the chat on Computer B, which showed only his own half. His
+own lines reached B with his own chains. The other person's lines were held only
+by the other person's nodes and by Computer A, and `chat::sync_room` never asked
+A: it asks the room's creator, then the speaker, then the room's other
+participants and its group, and the persona's own computers are none of those.
+Now it asks the viewer's proven sibling computers first (`sibling_endpoints`:
+peer rows bound to a leaf, not this node), because "computers I own are much
+more likely to be network colocated with me". What a sibling brings shows at
+once. A sibling's answer never ends the search, though, because a sibling can be
+behind: the room's own nodes are asked after it, and since chains sync as
+suffixes they add only what is newer. A's serve gate already admitted B, since B
+serves a persona the seal admits. The new acceptance file `chat_siblings.cjs`
+puts Ada on two computers and has Bea talk with her from the first. It darkens
+Bea's node and reads both halves on the second computer, then has Bea speak
+while the first computer is away and checks the second still gets that line from
+Bea's node. Without the change the first claim fails with Ada's half alone. With
+a sibling's answer ending the search, the second fails without Bea's newest
+line. The IMs, offline-creator and room lane areas pass (23), as do the unit
+tests and clippy.
+
+**Asking several computers is a staggered race, not a queue (2026-10-30).**
+Curtis: "our current procedure is to call Node Q, wait for it to time-out, then
+call Node R ... should we consider dialing them all in parallel?" Every walk
+down a candidate list waited out each silent computer's whole connect, up to 6
+seconds each in production (`p2p::CONNECT_DEADLINE`) and 8 per key ask. The new
+`net::race::first` gives the first candidate a head start (`STAGGER`, 500ms). If
+it hasn't answered by then, the next starts beside it, never in its place, so a
+slow computer that is up still wins by answering first. An ask that fails starts
+the next at once. At most four run together (`IN_FLIGHT`), and the first answer
+ends the race and drops the rest. It isn't all-at-once, because every ask spends
+one of somebody else's connection seats and tells them this computer is
+interested. Room syncs race only the connect (`sync::sync_room_with_first`,
+which runs the exchange on the winner's connection, so nothing is downloaded
+twice). A winner whose exchange fails is set aside and the rest race again, as
+the walk used to move on. The key lane, whose ask is one round trip, races whole
+asks. A "no" doesn't end its race, and a key is recorded as refused only when
+everyone asked said no, as before. Callers: `chat::sync_room` (siblings, then
+the room's own nodes), `pull_speaker`, `push_room`'s three lists,
+`directory_ask`, and `fragment`'s key lane. A creator slower than the head start
+plus another participant's answer counts as not answering for that pass, and the
+pull goes to the others, each of whom holds the whole room.
+`sync_room_with_peer` had no callers left and is gone. Six paused-clock unit
+tests pin the timing: the quick first is the only one asked, a silent first gets
+company after the head start, a slow first that is up still wins, a failure
+starts the next at once, nobody answering is `None` once all were asked, and
+never more than four run at once. The chat, sealed-key and group acceptance
+areas pass (75), as do 712 unit tests and clippy.
