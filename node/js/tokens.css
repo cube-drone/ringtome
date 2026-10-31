@@ -160,6 +160,8 @@
     --floor-light: #c9c9c9;   /* transparency's floor (Drawing): the checkerboard's lighter square */
     --floor-dark: #a3a3a3;    /* ...and its darker one - the universal sign for "nothing is here" */
     --crop-shade: rgba(0, 0, 0, 0.4); /* the crop tool's shade over what is about to be cut away (Drawing) */
+    --picture-dark: rgba(0, 0, 0, 0.92); /* behind a picture opened full size (zoomview.js): a darkroom in every colourway */
+    --picture-ink: #f4f4f4;   /* ...and its close button on that dark */
     --viewport: #e0302a;      /* the navigator's red square (Drawing): where the stage is looking, on the minimap */
     /* A held-back card's words fading away (postentry.js): a mask reads only alpha, so this is the
        same in every colourway - solid down to the last few lines, then gone. */

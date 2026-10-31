@@ -2362,6 +2362,10 @@ export default {
     'warnings.hidden-tags': 'hidden',
     'warnings.hidden-hint': 'posts tagged with these will not be displayed on your feed at all',
 
+    // --- node/js/zoomview.js ---
+    'zoomview.picture': 'picture',
+    'zoomview.close': 'close',
+
     // --- node/src/accounts.rs ---
     'accounts.no-such-account': "there's no such account here",
     'accounts.thats-your-own-account': "that's your own account",

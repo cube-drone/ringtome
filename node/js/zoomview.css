@@ -1,0 +1,47 @@
+/* --- a picture opened full size (zoomview.js): the whole screen, dark, to pinch and pan in --- */
+.zoomview {
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    background: var(--picture-dark);
+    overflow: hidden;
+    /* The fingers are the viewer's: no page scroll, no browser zoom under it. */
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+}
+
+.zoomview:active {
+    cursor: grabbing;
+}
+
+.zoomview-picture {
+    position: absolute;
+    top: 0;
+    left: 0;
+    max-width: none;
+    transform-origin: 0 0;
+    pointer-events: none;
+}
+
+.zoomview-close {
+    position: absolute;
+    top: calc(0.75rem + var(--safe-top));
+    right: calc(0.75rem + var(--safe-right));
+    width: 2.75rem;
+    height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--picture-ink);
+    border-radius: 50%;
+    background: var(--picture-dark);
+    color: var(--picture-ink);
+    font-size: 1.4rem;
+    cursor: pointer;
+}
+
+/* A picture the page shows smaller than it is says it opens. */
+.zoomview-opens {
+    cursor: zoom-in;
+}

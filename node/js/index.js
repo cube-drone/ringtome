@@ -102,6 +102,7 @@ import { SlugPage } from './slugpage.js';
 import { PersonOrPath } from './pathpage.js';
 import { DomainSite } from './domainsite.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
+import { installPictureViewer } from './zoomview.js';
 import { usePerson, faceOf } from './person.js';
 import { useNarrow } from './panes.js';
 import { useOwnColorway } from './colorway.js';
@@ -1310,6 +1311,8 @@ function main() {
     setLocale(detectLocale());
     // Every `title` in the app becomes the house tooltip - quicker than the browser's (tooltip.js).
     installTooltips();
+    // A picture shown smaller than it is opens full size, to pinch and pan (zoomview.js).
+    installPictureViewer();
     for (const kind of ['pointerover', 'focusin', 'click'])
         document.addEventListener(kind, rehomeLink, true);
     if (isDesktopApp()) document.addEventListener('click', handOutLink);

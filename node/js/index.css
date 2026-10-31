@@ -47,6 +47,7 @@
 @import "./apps/amp.css";     /* hrseAmp: the music table, the file panel and the player */
 @import "./apps/rss.css";     /* Horse's RSS: the feeds, and what they say */
 @import "./modal.css";        /* the house modal */
+@import "./zoomview.css";     /* a shrunk picture opened full size, to pinch and pan */
 @import "./qr.css";           /* QR codes of a person or a post (plans/QR.md) */
 @import "./doc/upload.css";   /* the upload flow inside it */
 @import "./toasts.css";       /* toasts: short messages that fade, above the quickbar */

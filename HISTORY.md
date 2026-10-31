@@ -25388,3 +25388,19 @@ when it comes. An answer that lands after a persona switch is kept for the
 persona it was asked for and drawn only if that persona is still the one
 showing. Checked: a scratch node in headless Chrome - chat opened, left, and
 reopened with `/rooms` blocked still drew both rooms; ui-check.
+
+**Pictures open full size (2026-10-30).** A picture that the page shows smaller
+than its own pixels (a post's, a chat line's, a picture opened in the reader)
+opens over everything on a tap, fitted to the screen and darkened behind it.
+Pinch zooms and two fingers drag, one finger drags, a double tap or double click
+goes to the picture's own pixels and back to the fit, a mouse wheel zooms at the
+pointer, and the round X, Escape, or a tap beside the picture closes it. It
+zooms from the fit up to four times the picture's own pixels, never shows a gap
+at an edge it could fill, and never blows up a picture that already fits. A
+picture inside a link or a button, one under a veil and an emoji don't open, and
+a long press's leftover click doesn't either. Installed once for the whole app
+(`js/zoomview.js`); the arithmetic is `js/pure/zoomview.js`, and its tests are
+`test/pure/zoomview.cjs`. Checked at phone width in headless Chrome with
+emulated touch: a tap opened an 800x600 picture shown at 266px wide, a pinch and
+a drag moved it, a double tap returned it to the fit, the X closed it, and the
+same picture shown at full size did not open.
