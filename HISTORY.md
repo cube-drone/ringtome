@@ -25621,3 +25621,33 @@ a network call. Failures now name what each loop waits on.
 Also: `publish.cjs`' "dates a post by when it was FIRST said" spends 3.3 of
 mocha's default 5 seconds in deliberate gaps between stamps, and timed out once
 in five under the full suite. It has 30 seconds now.
+
+## A chat line announced again and again (2026-10-31)
+
+Curtis: "the chat notification system is erroneously notifying me about the last
+chat message from Rob, in two different channels, again and again and again".
+
+The loop: a room page opens on the history it kept from last time (the in-memory
+floor or the browser's kept page), and wrote that history's newest stamp to
+`rooms_seen` at once - before the node's own read replaced it, five seconds
+later under the throttle. If Rob's line was newer than the kept page, it went
+back to unread for those seconds. The attention watcher's set of lines announced
+was replaced every pass by what was unseen _now_, so a line that was read had
+left the set; unread again, it was news again, and was announced again. Each
+room opened, or each stale page anywhere, was one more alert.
+
+Two fixes, each enough on its own for this case:
+
+- **A read stamp only goes forward.** The private-register PUT keeps the later
+  of the asked and the held value for `rooms_seen` and `rss_seen`
+  (`identity/routes.rs` `READ_STAMPS`), and the chats list's own copy does the
+  same.
+- **A line is news once.** The watcher's chat set is now a memory of the newest
+  2000 lines met (`attention.rs` `Heard`), not the last pass's unseen set, so a
+  seen stamp that does go backwards - synced from a computer running older code
+  - can't re-announce a line. A pass records the lines only once every room has
+    been read, so a pass that fails part-way loses no news.
+
+`attention.cjs` gained "a line read stays read": read, then a stamp from before
+the line, and the line was announced once and the register kept the later stamp.
+With both fixes removed it fails on "announced once".

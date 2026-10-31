@@ -7,6 +7,7 @@
       * a line somebody else says in a room I'm in alerts me, with the room and the words;
         my own line never does;
       * a line I have SEEN never alerts, however it arrives - and the next unseen one still does;
+        a seen stamp never goes backwards, and a line is announced once however it moves;
       * a row that lights my bell alerts me, in the bell's words, pointing at the bell;
       * a picture said in a room is said as plain words, not markup, and rides along: its twin's
         path for a browser to fetch, and a PNG rendered for the desktop - in a sealed room too,
@@ -185,6 +186,34 @@ const roomRoute = async (author, doc) =>
                 before + 1,
                 'exactly one new alert for exactly one new line',
             );
+        });
+
+        it('a line read stays read: a seen stamp written from an older page never takes it back, nor re-announces it (2026-10-31)', async () => {
+            const lines = await history();
+            const latest = Math.max(...lines.map((m) => m.said_ms));
+            const done = lines.find((m) => m.words === "bread's done");
+            assert.ok(done, 'the line from the claim before');
+            const seenAt = (ms) =>
+                j(
+                    ada,
+                    `api/identity/${adaRoot}/private/kv/rooms_seen/${adaRoot}:${kitchen}`,
+                    { value: String(ms) },
+                    'PUT',
+                );
+            assert.ok((await seenAt(latest)).status < 300, 'ada reads the room');
+            await wait(1500); // two guarded ticks: the watcher has looked
+            // A room page opening on the history it kept from before "bread's done" was said.
+            assert.ok((await seenAt(done.said_ms - 1)).status < 300);
+            await wait(1500);
+            assert.equal(
+                (await alertsFor(adaRoot)).filter((a) => a.body === "bread's done").length,
+                1,
+                'announced once, when it was news',
+            );
+            const held = (
+                await (await ada(`api/identity/${adaRoot}/private/kv/rooms_seen`)).json()
+            ).values.find((r) => r.key === `${adaRoot}:${kitchen}`);
+            assert.equal(held && held.value, String(latest), 'the stamp did not go backwards');
         });
 
         it('an open page hears the alert down its live stream, and opening it replays nothing (plans/TOASTS.md)', async () => {

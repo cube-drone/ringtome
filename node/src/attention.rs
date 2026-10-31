@@ -11,11 +11,14 @@
 //! can therefore never disagree with the badge: if it rang, the badge is lit.
 //!
 //! **"Not yet announced" is a set, never a clock.** Each persona keeps the keys of the unseen
-//! items it last looked at; an unseen item not in that set is news. A time mark would miss what
+//! items it has looked at; an unseen item not in that set is news. A time mark would miss what
 //! arrives late wearing an old stamp - a message said while its speaker's node was offline, synced
 //! an hour later, is still news here, and is exactly the one a person wants to hear about. The
-//! set is replaced every pass by what is unseen NOW, so it is bounded by the badges themselves,
-//! and something read on another device leaves it the moment the seen register syncs.
+//! bell's set is replaced every pass by what is unseen NOW, so it is bounded by the badge itself.
+//! The chat's set is a memory instead, the newest [`HEARD`] lines met, since a line is news
+//! once: a line read and then unread again - a seen stamp that went backwards, written by a page
+//! showing an old history or synced from a computer behind this one - was announced again on
+//! every round trip (2026-10-31, Curtis: "again and again and again").
 //!
 //! **The first look announces nothing.** A persona's first pass only learns what is already
 //! unseen: a launch must not replay the backlog the badge is already showing.
@@ -51,6 +54,8 @@ const BURST: usize = 3;
 const LINES_PER_ROOM: i64 = 20;
 /// The test recorder's depth.
 const RECORDED: usize = 200;
+/// How many lines one persona's chat memory holds: every room's unseen window many times over.
+const HEARD: usize = 2000;
 
 /// One thing worth a person's attention, worded and ready to show.
 #[derive(Debug, Clone, Serialize)]
@@ -283,11 +288,36 @@ impl Attention {
     }
 }
 
-/// What one persona's last pass saw unseen.
+/// What one persona's passes have seen unseen: the last pass's bell rows, and the chat lines met.
 #[derive(Default)]
 struct Seen {
     bell: HashSet<String>,
-    chat: HashSet<String>,
+    chat: Heard,
+}
+
+/// The chat lines a persona's passes have met, newest last, bounded at [`HEARD`]: a line
+/// stays remembered after it is read, so it is announced once however its seen stamp moves.
+#[derive(Default)]
+struct Heard {
+    order: VecDeque<String>,
+    held: HashSet<String>,
+}
+
+impl Heard {
+    fn contains(&self, hash: &str) -> bool {
+        self.held.contains(hash)
+    }
+
+    fn remember(&mut self, hash: String) {
+        if self.held.insert(hash.clone()) {
+            self.order.push_back(hash);
+            while self.order.len() > HEARD {
+                if let Some(old) = self.order.pop_front() {
+                    self.held.remove(&old);
+                }
+            }
+        }
+    }
 }
 
 /// The watcher: spawned once at boot, runs for the node's life.
@@ -408,7 +438,7 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
         bell.insert(key);
     }
 
-    let mut chat = HashSet::new();
+    let mut met = Vec::new();
     for (author, doc, since) in crate::identity::routes::chat_rooms_with_seen(state, &data, root)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?
@@ -446,11 +476,14 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
                 });
             }
         }
-        chat.extend(lines.into_iter().map(|l| l.hash));
+        met.extend(lines.into_iter().map(|l| l.hash));
     }
 
+    // Only once every room has been read: a pass that fails part-way keeps no record of it.
     known.bell = bell;
-    known.chat = chat;
+    for hash in met {
+        known.chat.remember(hash);
+    }
     Ok(alerts)
 }
 
@@ -968,6 +1001,23 @@ mod tests {
         assert!(!a.any_wanted(), "nobody listening at all - the case that used to be skipped");
         a.forget_unwatched(&mut seen, &mut guards);
         assert!(seen.is_empty() && guards.is_empty(), "nobody listening: forgotten");
+    }
+
+    /// A line is news once: read, then unread again by a seen stamp gone backwards, it is still
+    /// remembered - and the memory forgets its oldest past its bound, never its newest.
+    #[test]
+    fn a_line_heard_stays_heard_and_the_memory_is_bounded() {
+        let mut heard = Heard::default();
+        heard.remember("rob".into());
+        heard.remember("rob".into());
+        assert_eq!(heard.order.len(), 1, "remembered once");
+        for i in 0..HEARD - 1 {
+            heard.remember(format!("line {i}"));
+        }
+        assert!(heard.contains("rob"), "at the bound, still held");
+        heard.remember("one more".into());
+        assert!(!heard.contains("rob") && heard.contains("one more"), "the oldest goes first");
+        assert_eq!((heard.order.len(), heard.held.len()), (HEARD, HEARD));
     }
 
     fn alert(route: &str, body: &str) -> Alert {

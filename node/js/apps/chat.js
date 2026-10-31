@@ -2584,9 +2584,12 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                                                 r.author === a && r.doc_id === d
                                                     ? {
                                                           ...r,
-                                                          seen_ms: ms,
+                                                          // A stamp only goes forward (the node keeps the later).
+                                                          seen_ms: Math.max(ms, r.seen_ms || 0),
                                                           unread: !!(
-                                                              r.latest_ms && r.latest_ms > ms
+                                                              r.latest_ms &&
+                                                              r.latest_ms >
+                                                                  Math.max(ms, r.seen_ms || 0)
                                                           ),
                                                       }
                                                     : r,

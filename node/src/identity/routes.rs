@@ -6809,6 +6809,32 @@ struct PrivateWriteResponse {
     entry_hash: String,
 }
 
+/// The registers whose values are how far a persona has read (`rooms_seen`, `rss_seen`): a
+/// stamp that only goes forward (2026-10-31, Curtis: "the chat notification system is
+/// erroneously notifying me about the last chat message from Rob ... again and again"). A room
+/// page opens on the history it kept from last time, and wrote that page's newest stamp before
+/// the node's own read replaced it - so a line already read went back to unread for a few
+/// seconds, and the attention watcher announced it again each time.
+const READ_STAMPS: [&str; 2] = [ROOMS_SEEN, crate::feedreader::SEEN];
+
+/// The later of the stamp asked for and the stamp already held. A value that is not a number
+/// is written as asked.
+async fn newest_stamp(
+    data: &store::Store,
+    collection: &str,
+    key: &str,
+    asked: &str,
+) -> Result<String, AppError> {
+    let Ok(asked_ms) = asked.trim().parse::<i64>() else { return Ok(asked.to_string()) };
+    let (held, _) = data.private_registers(collection).all().await?;
+    let held_ms = held
+        .iter()
+        .find(|r| r.key == key)
+        .and_then(|r| r.value.trim().parse::<i64>().ok())
+        .unwrap_or(i64::MIN);
+    Ok(asked_ms.max(held_ms).to_string())
+}
+
 /// Set one register in a private collection (LWW per key).
 async fn private_kv_put_handler(
     session: Session,
@@ -6817,7 +6843,12 @@ async fn private_kv_put_handler(
     Json(req): Json<PrivateKvPut>,
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let signed = data.private_registers(&collection).set(&key, &req.value).await?;
+    let value = if READ_STAMPS.contains(&collection.as_str()) {
+        newest_stamp(&data, &collection, &key, &req.value).await?
+    } else {
+        req.value.clone()
+    };
+    let signed = data.private_registers(&collection).set(&key, &value).await?;
     // A contact dial's 200 means the dial COUNTS (2026-08-25): the memo derives from this
     // write asynchronously (the nudged sweep), and "follow, then open your feed" raced it -
     // on a slow machine a publish could fire into a follower list that did not yet name the
