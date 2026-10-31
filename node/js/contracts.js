@@ -30,6 +30,11 @@ const NAMES = {
     'seal-a-post': () => t('contracts.seal-a-post', 'Seal a post'),
     'share-a-post': () => t('contracts.share-a-post', "Share someone else's post"),
     'start-a-chat-for-two': () => t('contracts.start-a-chat-for-two', 'Start a chat for two'),
+    'follow-an-rss-feed': () => t('contracts.follow-an-rss-feed', 'Follow an RSS feed'),
+    'make-a-mixtape': () => t('contracts.make-a-mixtape', 'Create a mixtape in hrseAmp™'),
+    'make-a-radio-station': () =>
+        t('contracts.make-a-radio-station', 'Create a radio station in hrseAmp™'),
+    'pin-something': () => t('contracts.pin-something', 'Pin a note or a post'),
 };
 
 /// The fine print (Curtis, 2026-10-04): exactly what reaching the goal takes, said on hover over a
@@ -181,6 +186,34 @@ const FINE_PRINT = {
             "Open somebody's page in hrseNeighbors™ and start a private chat with them.",
         ),
         href: appHref('people'),
+    }),
+    'follow-an-rss-feed': () => ({
+        text: t(
+            'contracts.follow-an-rss-feed-fine-print',
+            "Open Horse's RSS and follow a feed: a site's feed address, or the address of a page that names one.",
+        ),
+        href: appHref('rss'),
+    }),
+    'make-a-mixtape': () => ({
+        text: t(
+            'contracts.make-a-mixtape-fine-print',
+            'Select some songs in hrseAmp™ and add them to a new mixtape.',
+        ),
+        href: appHref('amp'),
+    }),
+    'make-a-radio-station': () => ({
+        text: t(
+            'contracts.make-a-radio-station-fine-print',
+            'Press + beside "radio stations" in hrseAmp™\'s Playlists column and name a station.',
+        ),
+        href: appHref('amp'),
+    }),
+    'pin-something': () => ({
+        text: t(
+            'contracts.pin-something-fine-print',
+            'Pin a note in hrseWriter™ to the top of its list, or pin one of your posts to your page.',
+        ),
+        href: appHref('notes'),
     }),
 };
 

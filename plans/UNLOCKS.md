@@ -32,7 +32,7 @@ _Rulings_. Everything after that is Claude's proposal for him to correct.
    | Reactions, tags & filters   | H$ 2,500     | tags, the tag columns and filters, reactions                                         |
    | File upload                 | H$ 5,000     | hrseFiles, and every upload button                                                   |
    | Pins                        | H$ 2,500     | pinning                                                                              |
-   | Public post editing         | H$ 5,000     | editing a post after it's published                                                  |
+   | Public post editing         | H$ 2,000     | editing a post after it's published                                                  |
    | Video upload                | H$ 10,000    | uploading video - with a warning that it is experimental and doesn't work everywhere |
 
 4. More will come; build these first, and see.
@@ -40,12 +40,12 @@ _Rulings_. Everything after that is Claude's proposal for him to correct.
 The second batch, from Ruling 5 - the picks are Curtis's, **the prices and
 prerequisites are Claude's proposal**:
 
-| Unlock                   | Price     | Opens                            | Requires        |
-| ------------------------ | --------- | -------------------------------- | --------------- |
-| Sharing                  | H$ 2,500  | rebroadcasting someone's post    | Social          |
-| Links                    | H$ 2,500  | Writer's links column            | Private notes   |
-| Chats for two            | H$ 2,500  | a private chat with one person   | Chat, Friends   |
-| Sealed posts & audiences | H$ 10,000 | choosing who a post is meant for | Social, Friends |
+| Unlock                   | Price    | Opens                            | Requires        |
+| ------------------------ | -------- | -------------------------------- | --------------- |
+| Sharing                  | H$ 2,500 | rebroadcasting someone's post    | Social          |
+| Links                    | H$ 2,500 | Writer's links column            | Private notes   |
+| Chats for two            | H$ 2,500 | a private chat with one person   | Chat, Friends   |
+| Sealed posts & audiences | H$ 2,000 | choosing who a post is meant for | Social, Friends |
 
 A third (Curtis, 2026-10-05): **Horse Financial**, H$ 500, opens hrseBonds "and
 other financial instruments" - second to last in the Market, with **Video upload
@@ -53,8 +53,13 @@ last**. A bond already held stays in the portfolio, and sells there in debt: the
 way out of debt is never for sale.
 
 A fourth (Curtis, 2026-10-12, plans/AUDIO.md ruling 2): **hrseAmp**, H$ 5,000,
-opens the music app, after File upload, with Video upload's kind of warning: it
-is new and experimental.
+opens the music app, after File upload. It carried Video upload's kind of
+warning - new and experimental - until 2026-10-31, when Curtis called it done.
+
+Prices changed 2026-10-31 (Curtis): Trusted only posts & post audiences H$
+10,000 to 2,000, Public post editing H$ 5,000 to 2,000. A purchase from before
+recorded no price, and is charged what it cost then (`bank.rs` `LISTED_BEFORE`);
+every purchase since records its price, so a later change needs no such table.
 
 Pins need both Private notes and Social (Curtis, 2026-10-05): a note and a post
 are the two things a pin pins.
@@ -293,6 +298,21 @@ The person card's chat button (`person.js` `ChatWithButton`, which calls
 `ims.js` `openIm`). A chat for two someone else started with you still opens -
 being reached is not a feature you buy.
 
+### Automated Luxury Horse Communism
+
+Curtis, 2026-10-31: the final unlock, always last in the Market, H$ 5,000,000 -
+"This destroys the bank forever, unlocking everything permanently (including
+future unlocks) and hiding both the Bank and your Horsebucks."
+
+Bought like any unlock (`COMMUNISM` in `bank.rs`, a ledger line and a fact on
+the private chain), it makes the bank's `everything` true for good - asked of
+the purchase, so an unlock added later is owned too - and a "destroy the bank"
+confirm comes first. It stays for sale to someone who already owns everything
+(an administrator's "Unlock everything"), who still has a bank to destroy. Once
+bought, the client hides hrseBank from the dock and the launcher, sends its
+address home, and takes the HorseBucks out of the corner (`unlocks.js`
+`abolishedIn`).
+
 ## Never gated
 
 Open from the first minute, whatever is owned (Rulings 4 and 6):
@@ -334,6 +354,10 @@ done - it just never showed.
 | React to someone else's post         | Social, Reactions…               |
 | Link one private note to another     | Links                            |
 | Organize a note into a tree section  | Private notes, Taxonomy & tree   |
+| Follow an RSS feed (2026-10-31)      | Horse's RSS                      |
+| Create a mixtape in hrseAmp™         | hrseAmp                          |
+| Create a radio station in hrseAmp™   | hrseAmp                          |
+| Pin a note or a post (H$ 2,600)      | Pins                             |
 
 The magic words need Social (they're said in a public post) but aren't a
 contract. Since 2026-10-05 they pay H$ 10,000 for every post that says them: the

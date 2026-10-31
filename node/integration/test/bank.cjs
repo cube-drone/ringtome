@@ -905,6 +905,37 @@ describe('HorseBucks: unlocks', function () {
         assert.deepEqual(corner.unlocked, ['friends'], 'the corner poll carries the gates');
     });
 
+    // Prices changed (Curtis, 2026-10-31: Trusted only posts H$ 10,000 -> 2,000, Public post
+    // editing H$ 5,000 -> 2,000): a purchase made before recorded no price, and is still charged
+    // what it cost then; every purchase since records what it paid.
+    it('a price cut never refunds a purchase made before it, and a purchase now records its price', async () => {
+        const who = await makeUserFetch({ prefix: 'unlockprice' });
+        const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const bank = async () => (await who(`api/identity/${root}/bank`)).json();
+        const listed = (await bank()).unlocks.find((u) => u.id === 'sealing');
+        assert.equal(listed.pennies, '200000', 'H$ 2,000 now');
+
+        // Enough for the H$ 10,000 the old purchase cost and H$ 1,000 more, first - a balance in debt
+        // pays interest.
+        await j(rig, 'test/credit', { root, pennies: 1100000 });
+        // An old purchase, as an old node recorded it: when, and nothing about the price.
+        await who(`api/identity/${root}/private/kv/unlocks/sealing`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: String(Date.now()) }),
+        });
+        const old = (await bank()).lines.find((l) => l.kind === 'unlock' && l.source === 'sealing');
+        assert.equal(old.pennies, '-1000000', 'charged the H$ 10,000 it cost then');
+
+        const bought = await j(who, `api/identity/${root}/bank/unlocks`, { id: 'friends' });
+        assert.equal(bought.status, 200, await bought.text());
+        const paid = await (await who(`api/identity/${root}/private/kv/unlock_paid`)).json();
+        assert.deepEqual(
+            (paid.values || []).map((v) => [v.key, v.value]),
+            [['friends', '100000']],
+            'a list-price purchase records its price too',
+        );
+    });
+
     // An unlock another persona of the same account owns here sells for 5% (Curtis, 2026-10-07: "a
     // 95% discount ... you already own this somewhere else") - and the ledger charges what was
     // paid, on every computer, because the purchase records it. Another ACCOUNT's purchase counts
@@ -1224,5 +1255,117 @@ describe('HorseBucks: a gift from developer options', function () {
         assert.equal((kv.values || []).length, 2, 'both recorded on the private chain');
         const again = await bank();
         assert.equal(again.balance, b.balance, 'asking again pays nothing twice');
+    });
+});
+
+describe('HorseBucks: Automated Luxury Horse Communism', function () {
+    this.timeout(60000);
+
+    it('is the last unlock, H$ 5,000,000, and bought it owns everything for good (2026-10-31)', async () => {
+        const kit = await makeUserFetch({ prefix: 'commkit' });
+        const root = (await (await kit('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const bank = async () => (await kit(`api/identity/${root}/bank`)).json();
+        const first = await bank();
+        const last = first.unlocks[first.unlocks.length - 1];
+        assert.equal(last.id, 'luxury-communism', 'the last unlock the node lists');
+        assert.equal(last.name, 'Automated Luxury Horse Communism');
+        assert.equal(last.pennies, '500000000', 'H$ 5,000,000, in horsepennies');
+
+        const buy = () =>
+            kit(`api/identity/${root}/bank/unlocks`, {
+                method: 'POST',
+                body: JSON.stringify({ id: 'luxury-communism' }),
+            });
+        const poor = await buy();
+        assert.equal(poor.status, 400, 'a new persona cannot afford it');
+
+        for (let i = 0; i < 5; i++) {
+            await kit(`api/identity/${root}/bank/gift`, { method: 'POST' });
+        }
+        const before = BigInt((await bank()).balance);
+        const bought = await buy();
+        assert.equal(bought.status, 200, await bought.clone().text());
+        const after = await bank();
+        assert.equal(BigInt(after.balance), before - 500000000n, 'paid in full');
+        const owned = await (await kit(`api/identity/${root}/bank/unlocks`)).json();
+        assert.ok(owned.unlocked.includes('luxury-communism'), 'a fact on the private chain');
+        assert.equal(owned.everything, true, 'and it owns everything');
+        assert.equal((await buy()).status, 400, 'once: there is no second bank to destroy');
+    });
+});
+
+describe("HorseBucks: hrseAmp's contracts", function () {
+    this.timeout(60000);
+
+    it('a mixtape and a radio station each pay H$ 2,500 - hrseAmp pays back its price (2026-10-31)', async () => {
+        const amy = await makeUserFetch({ prefix: 'ampamy' });
+        const root = (await (await amy('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const done = async () =>
+            Object.fromEntries(
+                ((await (await amy(`api/identity/${root}/bank`)).json()).contracts || [])
+                    .filter((c) => c.id === 'make-a-mixtape' || c.id === 'make-a-radio-station')
+                    .map((c) => [
+                        c.id,
+                        { done: !!c.completed_ms, pennies: c.pennies, requires: c.requires },
+                    ]),
+            );
+        const fresh = await done();
+        assert.deepEqual(fresh['make-a-mixtape'], {
+            done: false,
+            pennies: '250000',
+            requires: ['music'],
+        });
+        assert.deepEqual(fresh['make-a-radio-station'], {
+            done: false,
+            pennies: '250000',
+            requires: ['music'],
+        });
+
+        // A notebook's tree is no mixtape.
+        await amy(`api/identity/${root}/taxonomies`, {
+            method: 'POST',
+            body: JSON.stringify({ title: 'wiki:notes' }),
+        });
+        assert.equal((await done())['make-a-mixtape'].done, false, 'a tree is not a mixtape');
+        await amy(`api/identity/${root}/taxonomies`, {
+            method: 'POST',
+            body: JSON.stringify({ title: 'mixtape:road trip' }),
+        });
+        assert.equal((await done())['make-a-mixtape'].done, true, 'a mixtape');
+        assert.equal((await done())['make-a-radio-station'].done, false, 'is not a station');
+
+        await amy(`api/identity/${root}/private/kv/amp_stations/0123456789abcdef`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: JSON.stringify({ name: 'night drive', slices: [] }) }),
+        });
+        assert.equal((await done())['make-a-radio-station'].done, true, 'a station');
+    });
+});
+
+describe("HorseBucks: Pins' contract", function () {
+    this.timeout(60000);
+
+    it('pinning a note completes "Pin a note or a post", H$ 2,600 (2026-10-31)', async () => {
+        const pia = await makeUserFetch({ prefix: 'pinpia' });
+        const root = (await (await pia('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const contract = async () =>
+            ((await (await pia(`api/identity/${root}/bank`)).json()).contracts || []).find(
+                (c) => c.id === 'pin-something',
+            );
+        const fresh = await contract();
+        assert.deepEqual(
+            [fresh.pennies, fresh.requires, !!fresh.completed_ms],
+            ['260000', ['pins'], false],
+        );
+        const d = await (
+            await j(pia, `api/identity/${root}/docs`, {
+                title: 'oats',
+                body: 'x',
+                format: 'marquee',
+            })
+        ).json();
+        const pinned = await pia(`api/identity/${root}/docs/${d.doc_id}/pin`, { method: 'PUT' });
+        assert.ok(pinned.status < 300, await pinned.text());
+        assert.ok((await contract()).completed_ms, 'a pinned note');
     });
 });

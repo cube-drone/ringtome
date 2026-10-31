@@ -158,8 +158,8 @@ pub struct Subscription {
     pub tags: Vec<String>,
 }
 
-/// Every feed the persona follows, by id.
-async fn subscriptions(data: &Store) -> Result<Vec<(String, Subscription)>, AppError> {
+/// Every feed the persona follows, by id - and whether it follows any (bank.rs's contract).
+pub(crate) async fn subscriptions(data: &Store) -> Result<Vec<(String, Subscription)>, AppError> {
     let (registers, _) = data.private_registers(SUBSCRIPTIONS).all().await?;
     Ok(registers
         .into_iter()

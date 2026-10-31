@@ -4,15 +4,21 @@
 import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
+import { useLocation } from 'preact-iso';
 
 import { api } from '../net.js';
+import { LAUNCHER } from '../links.js';
+import { askYes } from '../modal.js';
 import { t } from '../i18n.js';
 import { PersonChip } from '../person.js';
 import { Icons } from '../icons.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { contractName, contractFinePrint } from '../contracts.js';
 import {
+    COMMUNISM,
+    abolishedIn,
     noteBank,
+    useLedger,
     refreshUnlocks,
     unlockAbout,
     unlockIcon,
@@ -287,7 +293,19 @@ const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
     const Icon = unlockIcon(unlock.id);
     // A colourway's card shows the colourway (2026-10-05): its swatch, not an icon.
     const colorway = colorwayOf(unlock.id);
+    const loc = useLocation();
     const buy = async () => {
+        // The bank destroyed forever: asked once more, out loud, before it goes.
+        if (
+            unlock.id === COMMUNISM &&
+            !(await askYes({
+                title: unlockName(unlock.id, unlock.name),
+                body: unlockAbout(unlock.id),
+                yes: t('apps.bank.destroy-the-bank', 'destroy the bank'),
+                danger: true,
+            }))
+        )
+            return;
         setBusy(true);
         setError(null);
         try {
@@ -296,6 +314,11 @@ const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
                 body: JSON.stringify({ id: unlock.id }),
             });
             await refreshUnlocks(root);
+            // There's no bank to stay in.
+            if (unlock.id === COMMUNISM) {
+                loc.route(LAUNCHER);
+                return;
+            }
             onBought();
         } catch (e) {
             setError(e.message || String(e));
@@ -399,15 +422,26 @@ const CommodityCard = ({ root, commodity: c, balance, onBought }) => {
     </section>`;
 };
 
+/// The unlock that is every unlock (bank.rs `EVERYTHING`).
+const EVERYTHING = 'everything';
+
 const Market = ({ root, balance, unlocks, everything, goods, onBought }) => {
     const owned = new Set(unlocks.filter((u) => u.bought_ms).map((u) => u.id));
     // Owning everything - the test rig, or an administrator who bought "Unlock everything" - the
     // Market sells nothing (bank.rs `owns_everything`).
-    const forSale = everything ? [] : unlocks.filter((u) => !u.bought_ms);
+    // ...but for Automated Luxury Horse Communism, which still has the bank to destroy.
+    const forSale = unlocks.filter((u) => !u.bought_ms && (!everything || u.id === COMMUNISM));
     const financial = everything || owned.has('horse-financial');
     // The colourways (2026-10-05) have a section of their own, after the instruments: cosmetic,
     // and dear, so they don't crowd the pieces of the game.
-    const features = forSale.filter((u) => !colorwayOf(u.id));
+    // "Unlock everything", a node administrator's, always last of all (Curtis, 2026-10-31) - after
+    // the instruments and the colourways - however the node orders it.
+    const everyUnlock = forSale.find((u) => u.id === EVERYTHING) || null;
+    // ...and Automated Luxury Horse Communism after even that: the last unlock, always.
+    const lastUnlock = forSale.find((u) => u.id === COMMUNISM) || null;
+    const features = forSale.filter(
+        (u) => u.id !== EVERYTHING && u.id !== COMMUNISM && !colorwayOf(u.id),
+    );
     const colorways = forSale.filter((u) => colorwayOf(u.id));
     const card = (u) => html`<${UnlockCard}
         key=${u.id}
@@ -449,6 +483,8 @@ const Market = ({ root, balance, unlocks, everything, goods, onBought }) => {
             <p class="bank-contracts-head">${t('apps.bank.colorways-heading', 'Colorways')}</p>
             <div class="bank-colorways">${colorways.map(card)}</div>`
         }
+        ${everyUnlock && html`<hr class="bank-rule" />${card(everyUnlock)}`}
+        ${lastUnlock && html`<hr class="bank-rule" />${card(lastUnlock)}`}
         ${
             /* What's owned (plans/UNLOCKS.md): after the Market's wares, a short list of what's
             been bought and when - a returning player's answer to "what do I have?". */ ''
@@ -611,6 +647,13 @@ const Portfolio = ({ root, instruments, lots, inDebt, onSold }) => {
 
 export const BankApp = ({ current }) => {
     const root = current && current.root;
+    // Destroyed (Automated Luxury Horse Communism): there is no bank to open, from any address.
+    const loc = useLocation();
+    const gone = abolishedIn(useLedger(root));
+    useEffect(() => {
+        if (gone) loc.route(LAUNCHER, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [gone]);
     const [bank, setBank] = useState(null);
     const [error, setError] = useState(null);
     // Each month's lines, once fetched; the newest arrives with the first answer.

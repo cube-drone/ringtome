@@ -308,14 +308,24 @@ export const RssApp = ({ current, searchQuery, onSearch }) => {
                         picksKey=${`rss:${root}`}
                         searchQuery=${searchQuery}
                         onSearch=${onSearch}
-                        nullState=${html`<p class="rss-empty">${
+                        nullState=${
                             feeds && feeds.length === 0
-                                ? t(
-                                      'apps.rss.nothing-followed',
-                                      'follow a feed, and what it says shows up here',
-                                  )
-                                : t('apps.rss.no-items', 'nothing here yet')
-                        }</p>`}
+                                ? html`<div>
+                                      ${
+                                          /* What RSS even is (Curtis, 2026-10-31), for whoever opens
+                                          the app before following anything. */ ''
+                                      }
+                                      <p class="rss-empty">${t(
+                                          'apps.rss.what-rss-is',
+                                          'RSS, or Really Simple Syndication, is a now-largely-defunct protocol for following updates on individual websites, back when that was a thing people did. It is presented here as a historical curiosity.',
+                                      )}</p>
+                                      <p class="rss-empty">${t(
+                                          'apps.rss.nothing-followed',
+                                          'follow a feed, and what it says shows up here',
+                                      )}</p>
+                                  </div>`
+                                : html`<p class="rss-empty">${t('apps.rss.no-items', 'nothing here yet')}</p>`
+                        }
                     />`
                 }
             </section>

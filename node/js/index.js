@@ -63,7 +63,7 @@ import { BucketShelf, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
 import { SyncCloud } from './synccloud.js';
 import { CornerBank } from './cornerbank.js';
-import { LockedApp, useLedger, useLedgerPoll, unlockedIn } from './unlocks.js';
+import { LockedApp, useAbolished, useLedger, useLedgerPoll, unlockedIn } from './unlocks.js';
 import { Toasts } from './toasts.js';
 import { DeveloperOptions } from './developer.js';
 import { Version } from './version.js';
@@ -119,6 +119,8 @@ const html = htm.bind(h);
 const BELL_APP_ID = 'notifications';
 // The chat app's heptagon wears the unseen-messages badge (Curtis, 2026-09-19).
 const CHAT_APP_ID = 'chat';
+// hrseBank's id: the app Automated Luxury Horse Communism takes away (unlocks.js `COMMUNISM`).
+const BANK_APP_ID = 'bank';
 // The persona app's id, hoisted for the same reason: its dock tile lights on your own /id page.
 const PERSONA_APP_ID = 'persona';
 
@@ -409,6 +411,8 @@ const Inside = ({ session }) => {
     // Opening an app is using it (plans/RECENTS.md): the dock and the launcher order by it.
     useEffect(() => noteApp(root, appHereId), [root, appHereId]);
     const recents = useRecents(root);
+    // The bank destroyed (Automated Luxury Horse Communism): hrseBank leaves the dock.
+    const abolished = useAbolished();
     // A person's page filters too (2026-09-07), from the same slot; the query is the
     // page's, so walking to another person - or another app - starts it blank.
     const idSeg = inId ? (ref ? ref.seg : loc.path.split('/')[1] || '') : null;
@@ -506,7 +510,10 @@ const Inside = ({ session }) => {
     </footer>`;
     // The dock in order of use, persona first, home second, and your three newest things after them in tiles of
     // their own (plans/RECENTS.md) - only things of apps you may open.
-    const dockApps = orderByUse(appsFor(nodeAdmin, owns), recents.used);
+    const dockApps = orderByUse(
+        appsFor(nodeAdmin, owns).filter((a) => !(abolished && a.id === BANK_APP_ID)),
+        recents.used,
+    );
     const recentThings = newestThings(recents.things, (id) => dockApps.some((a) => a.id === id));
     // Home, second, always (Curtis, 2026-10-31): the phone bar's home tile, at the dock's size -
     // the launcher, from wherever you are.

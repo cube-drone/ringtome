@@ -5,7 +5,7 @@ import { h } from 'preact';
 import htm from 'htm';
 
 import { consoleCellsFor, appLabel } from './pure/apps.js';
-import { useOwnership } from './unlocks.js';
+import { useAbolished, useOwnership } from './unlocks.js';
 import { tileLabel } from './pure/tilelabel.js';
 import { iconFor } from './icons.js';
 import { isDevice } from './net.js';
@@ -130,13 +130,18 @@ export const Console = ({ onLaunch, personaName, me, admin, current }) => {
     const columns = useNarrow() ? NARROW_COLUMNS : COLUMNS;
     // Read here, not handed down: the router keeps a matched route's first props (unlocks.js).
     const owns = useOwnership();
+    // The bank destroyed (Automated Luxury Horse Communism): hrseBank is no app of theirs any more.
+    const hidden = useAbolished() ? ['bank'] : [];
     // In order of use, headed by your three newest things (plans/RECENTS.md) - only things of apps
     // you may open.
     const root = current && current.root;
     const { used, things } = useRecents(root);
     const mine = consoleCellsFor(admin, columns, owns);
     const shown = newestThings(things, (id) => mine.some((c) => c.id === id));
-    const rows = chunk(consoleCellsFor(admin, columns, owns, { used, things: shown }), columns);
+    const rows = chunk(
+        consoleCellsFor(admin, columns, owns, { used, things: shown, hidden }),
+        columns,
+    );
     return html`
         <div class="console">
             <${UpdateNotice} />

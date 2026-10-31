@@ -8,7 +8,7 @@ import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
 import { t } from './i18n.js';
-import { useLedger } from './unlocks.js';
+import { useLedger, abolishedIn } from './unlocks.js';
 import { appHref } from './links.js';
 import { formatHorseBucks } from './pure/horsebucks.js';
 
@@ -21,7 +21,8 @@ export const CornerBank = ({ root }) => {
     const loc = useLocation();
     // BigInt horsepennies, from the node: the shell's one poll (unlocks.js `useLedgerPoll`) asks,
     // since the same answer carries what's unlocked.
-    const target = useLedger(root).balance;
+    const ledger = useLedger(root);
+    const target = ledger.balance;
     const [shown, setShown] = useState(null);
     const from = useRef(null);
     // Roll from what's shown to the new figure (BigInt steps, so a squidjillion rolls too).
@@ -46,6 +47,8 @@ export const CornerBank = ({ root }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [target]);
     if (!root || shown === null) return null;
+    // The bank destroyed (unlocks.js `COMMUNISM`): no HorseBucks to show.
+    if (abolishedIn(ledger)) return null;
     // Inside the clock's box: a divider, then the balance on the time's own line.
     return html`<span class="quickbar-clock-sep" aria-hidden="true"></span><button
             class="quickbar-bank"

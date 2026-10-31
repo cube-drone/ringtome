@@ -102,6 +102,15 @@ export const useOwnership = () => {
     return (id) => unlockedIn(s, id);
 };
 
+/// Automated Luxury Horse Communism (bank.rs `COMMUNISM`): bought, it owns everything - the node
+/// says `everything` - and the bank is gone: hrseBank and the corner's balance are hidden.
+export const COMMUNISM = 'luxury-communism';
+/// Is the bank gone for this ledger? Asked of the purchase itself, never of `everything`: an
+/// administrator who owns everything still has a bank.
+export const abolishedIn = (ledger) => ledger.owned.has(COMMUNISM);
+/// The same, for the persona open in this tab (the launcher, the dock).
+export const useAbolished = () => abolishedIn(useLedgerState());
+
 /// Is this unlock owned? No id is always yes - the starting set needs nothing.
 export const unlockedIn = (ledger, id) => !id || ledger.everything || ledger.owned.has(id);
 
@@ -215,9 +224,16 @@ const NAMES = {
     'chats-for-two': () => t('unlocks.chats-for-two', 'Chats for two'),
     sealing: () => t('unlocks.sealing', 'Trusted only posts & post audiences'),
     'horse-financial': () => t('unlocks.horse-financial', 'Horse Financial'),
+    'luxury-communism': () => t('unlocks.luxury-communism', 'Automated Luxury Horse Communism'),
 };
 
 const ABOUT = {
+    // The last unlock (Curtis, 2026-10-31; bank.rs `COMMUNISM`).
+    'luxury-communism': () =>
+        t(
+            'unlocks.luxury-communism-about',
+            'This destroys the bank forever, unlocking everything permanently (including future unlocks) and hiding both the Bank and your Horsebucks.',
+        ),
     // A node administrator's alone (Curtis, 2026-10-07; bank.rs `EVERYTHING`).
     everything: () =>
         t(
@@ -307,11 +323,6 @@ const ABOUT = {
 
 /// The warning a card carries, for the unlocks that need one.
 const WARNINGS = {
-    music: () =>
-        t(
-            'unlocks.music-warning',
-            "Experimental: hrseAmp is new, and some of what's planned for it isn't here yet.",
-        ),
     'video-upload': () =>
         t(
             'unlocks.video-upload-warning',
@@ -338,6 +349,7 @@ const ICONS = {
     'chats-for-two': Icons.room,
     sealing: Icons.lock,
     'horse-financial': Icons.bond,
+    'luxury-communism': Icons.syncSun,
 };
 
 /// The unlock's name as the reader reads it: this table's, a colourway's own, else the node's

@@ -25765,3 +25765,89 @@ player kept the toast layer's 200 over the bar's 2. The phone's player is at 1
 now. Seen in headless Chrome at 390px, playing the sample buck audio: the tip
 over the band (the browser's topmost element there is the home tile's face); and
 at 1200px, the desktop player centred above the dock.
+
+Horse's RSS's empty state, before anything is followed, now says what RSS is
+first (Curtis's words): "RSS, or Really Simple Syndication, is a
+now-largely-defunct protocol for following updates on individual websites, back
+when that was a thing people did. It is presented here as a historical
+curiosity." Then "follow a feed, and what it says shows up here", as before.
+
+## "Follow an RSS feed", and "Unlock everything" last (2026-10-31)
+
+Curtis: a contract offered once Horse's RSS is bought, "Follow an RSS feed",
+worth H$ 5,000. It's in `CONTRACTS` (`requires: ["rss"]`), completed by a pass
+that finds a feed standing in the persona's `rss_feeds` registers
+(`feedreader::subscriptions`, now `pub(crate)`), named and given fine print in
+`contracts.js` (its link opens Horse's RSS), and listed in `plans/UNLOCKS.md`.
+`feedreader.cjs` gained a claim: bea, who follows a feed, has it done at
+`500000` pennies; cal, who follows none, doesn't. The Horse's RSS and HorseBucks
+acceptance areas pass (10 and 26).
+
+And: "Unlock everything", a node administrator's, is always last in the Market
+now - after the instruments and the colourways (`apps/bank.js`), though the node
+still lists it first, which the Unlocked list's order keeps. Seen on a scratch
+node that keeps the locks (`RINGTOME_TEST_LOCKS=1`) with its account made an
+administrator: the unlocks, the Colorways, then "Unlock everything".
+
+## Automated Luxury Horse Communism (2026-10-31)
+
+Curtis: a final unlock, always last, H$ 5,000,000: "This destroys the bank
+forever, unlocking everything permanently (including future unlocks) and hiding
+both the Bank and your Horsebucks." `bank.rs` sells it as `luxury-communism`,
+the last of `UNLOCKS`; owning it makes `owns_everything` true (and counts as
+owning everything elsewhere on the account, as "Unlock everything" does). The
+Market puts it after "Unlock everything", keeps offering it to a persona that
+already owns everything, and asks "destroy the bank" before buying. Once it's
+bought, the launcher opens; hrseBank leaves the dock and the launcher
+(`consoleCellsFor` gained `hidden`), its address goes home, and the corner's
+HorseBucks go (`unlocks.js` `abolishedIn` - asked of the purchase, never of
+`everything`, so an administrator keeps a bank). Written up in
+`plans/UNLOCKS.md`.
+
+`bank.cjs` gained "HorseBucks: Automated Luxury Horse Communism": last in the
+node's list at H$ 5,000,000, refused until it's afforded, paid in full, owning
+everything after, and refused a second time; the HorseBucks area passes (27).
+`harness/communism-probe.mjs`, on a scratch node that keeps the locks: the last
+card, the confirm, the launcher, no corner balance, no hrseBank in the dock or
+the launcher, hrseWriter open, and `/ringtome/bank` sending you home.
+
+## hrseAmp's contracts (2026-10-31)
+
+Curtis: "every app unlocked should provide at least as much money as it took to
+buy it in the first place". hrseAmp costs H$ 5,000, so it gained two contracts
+at H$ 2,500 each, both requiring `music`: "Create a mixtape in hrseAmp™" (a
+taxonomy titled `mixtape:…`, amp.rs `MIXTAPE`) and "Create a radio station in
+hrseAmp™" (a standing `amp_stations` register). Named and given fine print in
+`contracts.js`, listed in `plans/UNLOCKS.md`. `bank.cjs` gained "HorseBucks:
+hrseAmp's contracts" - a notebook's tree isn't a mixtape, a mixtape isn't a
+station - and the HorseBucks area passes (28).
+
+An audit of the rest against the same rule (an unlock's price against the
+contracts that need it, colourways and the last unlock aside) found four short:
+Pins (H$ 2,500, no contract), Public post editing (H$ 5,000, none), Trusted only
+posts & post audiences (H$ 10,000, "Seal a post" pays 2,500) and Video upload
+(H$ 10,000, none). Tags pays back only through contracts it shares with Social
+or Private notes.
+
+## hrseAmp out of experiment; a Pins contract; two prices cut (2026-10-31)
+
+Curtis: hrseAmp is no longer experimental - its Market card's warning is gone.
+Pins gained a contract, "Pin a note or a post", H$ 2,600: a note pinned to the
+top of its list, or a post pinned to your page. Trusted only posts & post
+audiences now costs H$ 2,000 (was 10,000), and Public post editing H$ 2,000 (was
+5,000).
+
+The price cut found a trap: a purchase recorded only WHEN (the price only when
+discounted), and the ledger charged the current list price - so a cut would have
+refunded everyone who'd bought, and two computers of one persona, one that had
+charged the old price and one charging fresh, would have disagreed about the
+balance. Now every purchase records what it paid (`unlock_paid`), and a purchase
+from before that recorded none is charged the price of its day (`bank.rs`
+`LISTED_BEFORE`: the two old prices). A later price change needs nothing.
+
+`bank.cjs` gained "a price cut never refunds a purchase made before it, and a
+purchase now records its price" (an old-style purchase of Trusted only posts is
+charged H$ 10,000; a new purchase records its H$ 1,000) and "pinning a note
+completes 'Pin a note or a post', H$ 2,600". The HorseBucks area passes (30).
+Still short of paying back its price: Public post editing (H$ 2,000, no
+contract) and Video upload (H$ 10,000, none).

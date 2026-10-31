@@ -100,7 +100,7 @@ const fn contract(
 }
 
 /// Every contract, in the order the column lists them.
-pub const CONTRACTS: [Contract; 21] = [
+pub const CONTRACTS: [Contract; 25] = [
     contract("draw-a-horse", "Draw a horse in hrseDrawing™", 5_000, &[]),
     contract("post-a-horse", "Post your horse to the hrseFeed™", 10_000, &["social"]),
     contract("follow-a-stranger", "Follow a stranger", 5_000, &["friends"]),
@@ -125,7 +125,19 @@ pub const CONTRACTS: [Contract; 21] = [
     contract("seal-a-post", "Seal a post", 2_500, &["sealing"]),
     contract("share-a-post", "Share someone else's post", 2_500, &["sharing"]),
     contract("start-a-chat-for-two", "Start a chat for two", 2_500, &["chats-for-two"]),
+    // Offered once Horse's RSS is bought (Curtis, 2026-10-31).
+    contract("follow-an-rss-feed", "Follow an RSS feed", 5_000, &["rss"]),
+    // hrseAmp's (Curtis, 2026-10-31: every app's contracts pay back at least what it cost - hrseAmp
+    // is H$ 5,000).
+    contract("make-a-mixtape", "Create a mixtape in hrseAmp™", 2_500, &["music"]),
+    contract("make-a-radio-station", "Create a radio station in hrseAmp™", 2_500, &["music"]),
+    // Pins' (Curtis, 2026-10-31): a note pinned to the top of its list, or a post to your page.
+    contract("pin-something", "Pin a note or a post", 2_600, &["pins"]),
 ];
+
+/// The private collection hrseAmp's radio stations are registers in (js/pure/stations.js
+/// `AMP_STATIONS`): one per station, emptied when it's forgotten.
+const AMP_STATIONS: &str = "amp_stations";
 
 // ---- unlocks (Curtis, 2026-10-05; plans/UNLOCKS.md) ----
 //
@@ -138,9 +150,10 @@ pub const CONTRACTS: [Contract; 21] = [
 /// The private register purchases are recorded in.
 const UNLOCKS_KV: &str = "unlocks";
 
-/// What a purchase cost, when it wasn't the list price (2026-10-07): id -> pennies paid. The ledger's
-/// `unlock` line reads it, so every computer charges what was paid - a purchase only says WHEN.
-/// Written before the purchase itself, so no computer ever sees the purchase without its price.
+/// What a purchase cost (2026-10-07, when only a discount was recorded; every purchase since
+/// 2026-10-31): id -> pennies paid. The ledger's `unlock` line reads it, so every computer charges
+/// what was paid - a purchase only says WHEN. Written before the purchase itself, so no computer
+/// ever sees the purchase without its price.
 const UNLOCKS_PAID_KV: &str = "unlock_paid";
 
 /// What one persona pays for an unlock another persona of the same account already owns on this
@@ -167,7 +180,7 @@ async fn owned_elsewhere(
         }
         let other = crate::record::store::open(state, account, &persona.root_pubkey).await?;
         let owned = unlocks_owned(&other).await.map_err(crate::error::AppError::Internal)?;
-        if owned.contains_key(EVERYTHING) {
+        if owned.contains_key(EVERYTHING) || owned.contains_key(COMMUNISM) {
             out.extend(UNLOCKS.iter().map(|u| u.id.to_string()));
         }
         out.extend(owned.into_keys());
@@ -175,7 +188,21 @@ async fn owned_elsewhere(
     Ok(out)
 }
 
-/// What each discounted purchase cost: id -> pennies.
+/// The prices unlocks were listed at before they changed (Curtis, 2026-10-31: Trusted only posts
+/// from H$ 10,000, Public post editing from H$ 5,000, both to H$ 2,000): what a purchase that
+/// recorded no price paid. Until that day only a discounted purchase recorded what it paid, so
+/// every other purchase made before it was charged the list price of its day - this one. Since
+/// then every purchase records its price (`unlock_handler`), so a price changed later needs no
+/// entry here: a purchase is never charged today's price for yesterday's.
+const LISTED_BEFORE: [(&str, i64); 2] =
+    [("sealing", 10_000 * HORSEBUCK), ("post-editing", 5_000 * HORSEBUCK)];
+
+/// What a purchase of this unlock that recorded no price was charged.
+fn unrecorded_price(u: &Unlock) -> i64 {
+    LISTED_BEFORE.iter().find(|(id, _)| *id == u.id).map_or(u.pennies, |(_, p)| *p)
+}
+
+/// What each purchase cost, where it recorded it: id -> pennies.
 async fn unlocks_paid(data: &Store) -> Result<HashMap<String, i64>> {
     let (recorded, _) = data.private_registers(UNLOCKS_PAID_KV).all().await?;
     Ok(recorded
@@ -203,7 +230,7 @@ const fn unlock(
 }
 
 /// Every unlock, in the order the Market lists them.
-pub const UNLOCKS: [Unlock; 29] = [
+pub const UNLOCKS: [Unlock; 30] = [
     unlock("friends", "Friends", 1_000, &[]),
     unlock("social", "Social", 1_000, &[]),
     unlock("private-notes", "Private notes", 2_500, &[]),
@@ -213,17 +240,17 @@ pub const UNLOCKS: [Unlock; 29] = [
     unlock("file-upload", "File upload", 5_000, &[]),
     // Notes and posts both (Curtis, 2026-10-05): a pin with nothing to pin is no purchase.
     unlock("pins", "Pins", 2_500, &["private-notes", "social"]),
-    unlock("post-editing", "Public post editing", 5_000, &["social"]),
+    unlock("post-editing", "Public post editing", 2_000, &["social"]),
     unlock("sharing", "Sharing", 2_500, &["social"]),
     unlock("links", "Links", 2_500, &["private-notes"]),
     unlock("chats-for-two", "Chats for two", 2_500, &["chat", "friends"]),
-    unlock("sealing", "Trusted only posts & post audiences", 10_000, &["social", "friends"]),
+    unlock("sealing", "Trusted only posts & post audiences", 2_000, &["social", "friends"]),
     // hrseBonds, and the financial instruments to come (Curtis, 2026-10-05).
     unlock("horse-financial", "Horse Financial", 500, &[]),
     // Last, and dearest: experimental, and said so (Curtis, 2026-10-05).
     unlock("video-upload", "Video upload", 10_000, &["file-upload"]),
-    // hrseAmp (Curtis, 2026-10-12, plans/AUDIO.md ruling 2): music, after File upload, and
-    // experimental as video is.
+    // hrseAmp (Curtis, 2026-10-12, plans/AUDIO.md ruling 2): music, after File upload - experimental
+    // until 2026-10-31.
     unlock("music", "hrseAmp", 5_000, &["file-upload"]),
     // Horse's RSS (plans/RSS.md, 2026-10-27): a feed reader. Reading the web asks nothing else first;
     // priced with Links and Sharing.
@@ -243,7 +270,17 @@ pub const UNLOCKS: [Unlock; 29] = [
     unlock("colorway-bi", "bi", 25_000, &[]),
     unlock("colorway-ace", "ace", 25_000, &[]),
     unlock("colorway-terminal-gold", "terminal-gold", 500_000, &[]),
+    // The last (Curtis, 2026-10-31), and always last in the Market: `COMMUNISM`.
+    unlock(COMMUNISM, "Automated Luxury Horse Communism", 5_000_000, &[]),
 ];
+
+/// "Automated Luxury Horse Communism" (Curtis, 2026-10-31): "This destroys the bank forever,
+/// unlocking everything permanently (including future unlocks) and hiding both the Bank and your
+/// Horsebucks." Bought like any unlock - a fact on the private chain, paid by a ledger line - and
+/// then the persona owns everything (`owns_everything`), an unlock added later included, since
+/// owning is asked of the purchase rather than of a list. The hiding is the client's: hrseBank and
+/// the corner's balance go (js/unlocks.js `abolishedIn`). Nothing here ever un-buys it.
+pub const COMMUNISM: &str = "luxury-communism";
 
 /// The unlocks owned, as the private chain records them: id -> when bought.
 pub async fn unlocks_owned(data: &Store) -> Result<HashMap<String, i64>> {
@@ -268,9 +305,10 @@ fn everything_unlocked(state: &AppState) -> bool {
 /// no entry of `UNLOCKS`: nobody else is ever offered it, and it pays no ledger line.
 const EVERYTHING: &str = "everything";
 
-/// The bank's `everything`: the test rig's answer, or a persona that bought "Unlock everything".
+/// The bank's `everything`: the test rig's answer, or a persona that bought "Unlock everything" - or
+/// Automated Luxury Horse Communism (`COMMUNISM`).
 fn owns_everything(state: &AppState, owned: &HashMap<String, i64>) -> bool {
-    everything_unlocked(state) || owned.contains_key(EVERYTHING)
+    everything_unlocked(state) || owned.contains_key(EVERYTHING) || owned.contains_key(COMMUNISM)
 }
 
 /// Is this account a node administrator - the one "Unlock everything" is offered to?
@@ -1490,6 +1528,41 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     if !done.contains_key("organize-a-note") && organized_a_note(data).await? {
         complete_contract(state, data, root_hex, "organize-a-note", &mut done).await?;
     }
+    // "Pin a note or a post": a private pin standing, or a pin of the persona's on its page.
+    if !done.contains_key("pin-something") {
+        let pinned =
+            !data.documents().pinned().await.map_err(|e| anyhow::anyhow!("{e}"))?.is_empty()
+                || !crate::record::imaol::pinned_docs(data.db(), root_hex)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))?
+                    .is_empty();
+        if pinned {
+            complete_contract(state, data, root_hex, "pin-something", &mut done).await?;
+        }
+    }
+    // "Create a mixtape": a taxonomy wearing a mixtape's title (amp.rs `MIXTAPE`).
+    if !done.contains_key("make-a-mixtape") {
+        let tapes = data.taxonomies().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+        if tapes.iter().any(|t| t.title.starts_with(crate::amp::MIXTAPE)) {
+            complete_contract(state, data, root_hex, "make-a-mixtape", &mut done).await?;
+        }
+    }
+    // "Create a radio station": a station standing in the persona's registers.
+    if !done.contains_key("make-a-radio-station") {
+        let (stations, _) = data.private_registers(AMP_STATIONS).all().await?;
+        if stations.iter().any(|r| !r.value.trim().is_empty()) {
+            complete_contract(state, data, root_hex, "make-a-radio-station", &mut done).await?;
+        }
+    }
+    // "Follow an RSS feed": a feed standing in the persona's `rss_feeds` registers.
+    if !done.contains_key("follow-an-rss-feed")
+        && !crate::feedreader::subscriptions(data)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .is_empty()
+    {
+        complete_contract(state, data, root_hex, "follow-an-rss-feed", &mut done).await?;
+    }
     for c in &CONTRACTS {
         if let Some(at) = done.get(c.id).filter(|_| is_new("contract", c.id)) {
             lines.push(Line {
@@ -1603,8 +1676,10 @@ async fn instruments(data: &Store) -> Result<()> {
             lines.push(Line {
                 kind: "unlock",
                 source: u.id.to_string(),
-                // What was paid, when the purchase recorded it (a discount); the list price else.
-                pennies: BigInt::from(-paid.get(u.id).copied().unwrap_or(u.pennies)),
+                // What was paid, as the purchase recorded it; else the list price of its day.
+                pennies: BigInt::from(
+                    -paid.get(u.id).copied().unwrap_or_else(|| unrecorded_price(u)),
+                ),
                 at_ms: *at,
                 detail: json!({ "title": u.name }),
             });
@@ -1893,9 +1968,8 @@ pub async fn unlock_handler(
         )));
     }
     let at = crate::clock::now_ms();
-    if price != u.pennies {
-        data.private_registers(UNLOCKS_PAID_KV).set(u.id, &price.to_string()).await?;
-    }
+    // What was paid, always (2026-10-31): a price changed later never reaches this purchase.
+    data.private_registers(UNLOCKS_PAID_KV).set(u.id, &price.to_string()).await?;
     data.private_registers(UNLOCKS_KV).set(u.id, &at.to_string()).await?;
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
     Ok(axum::Json(json!({ "id": u.id, "bought_ms": at, "pennies": price.to_string() })))

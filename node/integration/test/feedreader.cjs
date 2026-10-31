@@ -121,6 +121,18 @@ describe("Horse's RSS", function () {
         assert.match(words, /\[her page\]\(https?:\/\/[^)]+\/ringtome\/user\/ada\)/, words);
     });
 
+    it('following a feed completes the "Follow an RSS feed" contract (2026-10-31)', async () => {
+        const contract = async (who, root) =>
+            ((await (await who(`api/identity/${root}/bank`)).json()).contracts || []).find(
+                (c) => c.id === 'follow-an-rss-feed',
+            );
+        const beas = await contract(bea, beaRoot);
+        assert.ok(beas && beas.completed_ms, `bea follows a feed: ${JSON.stringify(beas)}`);
+        assert.equal(beas.pennies, '500000', 'worth H$ 5,000');
+        const cals = await contract(cal, calRoot);
+        assert.ok(cals && !cals.completed_ms, 'cal follows none');
+    });
+
     it("searches what its feeds say, from the header's box", async () => {
         const find = async (path) => (await (await bea(path)).json()).items.map((i) => i.title);
         assert.deepEqual(await find(`api/identity/${beaRoot}/rss/feed?q=hay`), ['hay & oats']);
