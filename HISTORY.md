@@ -25540,3 +25540,11 @@ check 41s to 53s, clippy 48s to 1m42s, `test-unit`'s compile 4m02s to 9m24s, the
 integration build 2m51s to 4m34s. Memory peaked near 10 GB with 6 GB free and no
 swap touched. That is a nine-minute price for the headroom, not the two the
 entry above guessed.
+
+**CI gets more swap instead (2026-10-31).** Nine minutes a run was too much for
+headroom. The job limit is gone, and a `More swap` step adds an 8 GB swap file
+(`/swapfile-ci`) before the gate, on top of the runner's 3 GB. The passing run
+that came closest needed about 18.6 GB across RAM and swap. Total room is now
+about 27 GB. The two big compiles run side by side again, and swap slows only
+the minute or two where they overlap. The `Machine` step runs after it, so the
+log shows the swap in place.

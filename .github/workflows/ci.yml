@@ -67,6 +67,19 @@ jobs:
         working-directory: node
         run: just integration-install
 
+      # More swap (2026-10-31): the runner kills were memory. `test-unit` compiles ringtome-node's
+      # library and its unit tests side by side, ~7.5 GB each on this runner (2 GB on a Mac), in
+      # 15.9 GB of RAM and 3 GB of swap - a passing run filled both, and the runs that went past
+      # them were shut down. Compiling one crate at a time fit in RAM but cost nine minutes a run
+      # (20m50s to 29m50s); 8 GB more swap keeps the parallel build and gives the peak somewhere
+      # to go. Swapping is slow, but only for the minute or two the two big compiles overlap.
+      - name: More swap
+        run: |
+          sudo fallocate -l 8G /swapfile-ci
+          sudo chmod 600 /swapfile-ci
+          sudo mkswap /swapfile-ci
+          sudo swapon /swapfile-ci
+
       # The machine, for the runner kills (2026-10-30): five runs since the ARM image moved to
       # 20261025.165.1 (kernel 7.0) died mid-`test-unit` with "the runner has received a shutdown
       # signal" and nothing else - no test failed, no error, and none on the image before it.
@@ -109,14 +122,6 @@ jobs:
           # they finish, so patience costs a green run almost nothing - only failures wait
           # longer to be declared.
           RINGTOME_TEST_SETTLE_SCALE: "3"
-          # One compiler at a time (2026-10-31): the runner kills were memory. The monitor above
-          # caught `test-unit` compiling ringtome-node twice at once - the library and its unit
-          # tests, ~7.5 GB each on this runner (2 GB on a Mac) - in 15.9 GB of RAM: 340 MB
-          # free, the 3 GB of swap full, and the runs that went past that were shut down. Alone,
-          # the biggest compile seen here peaks at ~9 GB. Slower when the cache is cold, since
-          # dependencies build one at a time too; a warm run pays mostly for the two big ones
-          # in a row rather than side by side.
-          CARGO_BUILD_JOBS: "1"
 
       # The rig nodes' tracing logs, saved ONLY when the gate fails. Remote-only reds were
       # undiagnosable without these (2026-08-23: three CI-only integration failures whose
