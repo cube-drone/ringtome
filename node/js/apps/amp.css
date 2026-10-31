@@ -478,10 +478,13 @@
     gap: 0.3rem;
 }
 
-/* Anywhere else in the app, above the dock on the left - the toasts take the right. */
+/* Anywhere else in the app, above the dock, centred (Curtis, 2026-10-31): on the left it covered the
+   persona switcher that stacks up from the persona tile, and pushed just past it, it looked
+   misplaced. The toasts take the right. */
 .player-mini {
     position: fixed;
-    left: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
     bottom: calc(3rem + var(--safe-bottom) + 0.75rem);
     z-index: var(--layer-toast);
     display: flex;
@@ -509,6 +512,10 @@
 @media (max-width: 900px) {
     .player-mini {
         position: static;
+        transform: none;
+        /* Under the bar, so the home tile's tip stands over the band (Curtis, 2026-10-31): a flex
+           item takes its z-index even unpositioned, and the toast layer's put it over the bar's. */
+        z-index: 1;
         flex-shrink: 0;
         max-width: none;
         margin: 0 4px 4px;

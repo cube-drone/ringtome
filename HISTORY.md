@@ -25746,3 +25746,22 @@ And (Curtis): the launcher's recent tiles drop the app tiles' diagonal fill,
 which covered half of a thumbnail or a face - as the persona's own tile already
 did (`console.css`). Their nameplate is inverted too, ink with cream words,
 since without the fill behind it the cream band read faintly over a picture.
+
+## The mini player covered the persona switcher (2026-10-31)
+
+Curtis: "the "playing music now" overlay lives overtop the persona switcher: so
+if I'm listening to music, I can't switch personas". The mini player sits fixed
+above the dock's left end on the toast layer, and the switcher stacks up out of
+the persona tile inside the dock's far lower layer, so it could never come out
+on top. Moved just past the persona tile it looked misplaced (Curtis), so it's
+centred above the dock instead, well clear of the switcher. A phone's player is
+a band of its own above the bar and unchanged; its rule undoes the centring's
+transform.
+
+And (Curtis): on a phone, where the player is a band of its own above the bar,
+the home tile's tip should stand over it. It was under it: `.app-main` is a flex
+column, a flex item takes its z-index even when it isn't positioned, and the
+player kept the toast layer's 200 over the bar's 2. The phone's player is at 1
+now. Seen in headless Chrome at 390px, playing the sample buck audio: the tip
+over the band (the browser's topmost element there is the home tile's face); and
+at 1200px, the desktop player centred above the dock.
