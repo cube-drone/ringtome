@@ -1872,6 +1872,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cube-drone-marquee-html-import"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dfc6239a6ec1fe4e4ff7a86035b25865432c1995c86785086cf902f8d3617ad"
+dependencies = [
+ "cube-drone-marquee-parser",
+ "ego-tree",
+ "scraper",
+ "url",
+]
+
+[[package]]
 name = "cube-drone-marquee-html-renderer"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2407,6 +2419,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ego-tree"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bd50d24b1b75aa817bb0339cb9f2e0e664bdfab1e160a69a0fda9145b77fab2"
+
+[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2697,6 +2715,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
+]
+
+[[package]]
+name = "feed-rs"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1b8e25998007f8af0befc64e16ac2dd23cc0d5b76052d52d0b15d5acd7ed908"
+dependencies = [
+ "chrono",
+ "mediatype",
+ "quick-xml",
+ "regex",
+ "serde",
+ "serde_json",
+ "siphasher",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -3153,6 +3188,15 @@ checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
 dependencies = [
  "rustix 1.1.5",
  "windows-link",
+]
+
+[[package]]
+name = "getopts"
+version = "0.2.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfe4fbac503b8d1f88e6676011885f34b7174f46e59956bba534ba83abded4df"
+dependencies = [
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -5017,6 +5061,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mediatype"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0695a693e38d35838dd34bc3ab19911395f6837ccf55c7271189cfb12cb8b57f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5048,7 +5101,7 @@ checksum = "5f98efec8807c63c752b5bd61f862c165c115b0a35685bdcfd9238c7aeb592b7"
 dependencies = [
  "cfg-if",
  "miette-derive",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -6905,6 +6958,7 @@ version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
+ "encoding_rs",
  "memchr",
 ]
 
@@ -7432,7 +7486,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-desktop"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "jni 0.22.4",
@@ -7453,7 +7507,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-node"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "ab_glyph",
  "aes-gcm 0.11.1",
@@ -7466,6 +7520,7 @@ dependencies = [
  "blake3",
  "bytes",
  "chacha20poly1305",
+ "cube-drone-marquee-html-import",
  "cube-drone-marquee-html-renderer",
  "cube-drone-marquee-markdown",
  "cube-drone-marquee-markup",
@@ -7473,6 +7528,7 @@ dependencies = [
  "diffy",
  "dryoc",
  "ed25519-dalek",
+ "feed-rs",
  "flate2",
  "fs4",
  "gethostname",
@@ -7492,6 +7548,7 @@ dependencies = [
  "p256",
  "pkarr",
  "png 0.18.1",
+ "quick-xml",
  "rand 0.10.3",
  "rav1d",
  "rav1e",
@@ -7503,6 +7560,7 @@ dependencies = [
  "ringtome-proto",
  "rmcp",
  "rubato",
+ "scraper",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -7528,7 +7586,7 @@ dependencies = [
 
 [[package]]
 name = "ringtome-proto"
-version = "0.5.7"
+version = "0.6.0"
 dependencies = [
  "blake3",
  "ed25519-dalek",
@@ -7902,6 +7960,21 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "scraper"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdd0be4d296f048bfb06dd01bbc80ef789ddd2e55583e8d2e6b804942abfabc2"
+dependencies = [
+ "cssparser",
+ "ego-tree",
+ "getopts",
+ "html5ever",
+ "precomputed-hash",
+ "selectors",
+ "tendril",
+]
 
 [[package]]
 name = "sec1"
@@ -10397,6 +10470,12 @@ name = "unicode-width"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "unicode-xid"
