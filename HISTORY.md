@@ -25548,3 +25548,32 @@ that came closest needed about 18.6 GB across RAM and swap. Total room is now
 about 27 GB. The two big compiles run side by side again, and swap slows only
 the minute or two where they overlap. The `Machine` step runs after it, so the
 log shows the swap in place.
+
+**Network loops that wait one turn at a time, found by a test (2026-10-31).**
+After the chat pull's fix, Curtis asked whether the class could be caught
+instead of found by accident. `tests/conventions.rs` has a new test,
+`network_attempts_in_a_loop_are_raced_or_explained`, beside the dial-gate test.
+It finds the functions that go to the network: those that call `p2p::dial` or
+`dial_addr` outside any loop of their own, or call one that does, worked out to
+a fixpoint (97 of them). It then flags every `for` loop that awaits one of them
+turn by turn, or waits on a `timeout(` each turn. Work a loop spawns doesn't
+count, and neither does a call that isn't awaited. A function with its own
+ladder inside is flagged at that ladder, not at its callers. On today's source
+it finds 39 loops. 11 are one at a time on purpose and now say why in a
+`// one at a time: <why>` comment: redirect hops, frames off one stream, an
+exchange that stands on the one before, disclosure order in
+`speculative::acquire_one`, and the paced background passes (room beat and
+pulse, census, keyprefetch, publinks). The other 28 are pinned as `DEBT` by
+`file::function`. 12 are ladders that want `net::race::first`. The rest are
+fan-outs, mostly the roster's and the reaper's, that want a bounded fan-out. The
+list is pinned both ways, so a fixed loop must leave it, and a failure names
+only what changed. STYLE.md's Boundaries section says the rule. NEXT_STEPS has
+the order to work through the debt.
+
+A broader rule, "anything that touches the network at all", was tried in a
+prototype. It flagged 89 loops, mostly background passes over posts that
+eventually sync, and was dropped. The narrow rule misses one known ladder,
+`fragments::heal_covers`, which goes through `fragment::fetch`. That ladder is
+flagged where it lives, and racing it fixes both. As a text match the test can
+be fooled by a call through a method or a closure handed elsewhere. Removing one
+comment was checked to make it fail, naming just the two loops that lost it.

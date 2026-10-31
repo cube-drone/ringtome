@@ -325,6 +325,7 @@ pub async fn fetch_group_heads(
     send.finish().ok();
     let mut heads = Vec::new();
     // A group of thousands of lanes is a few dozen frames; past that, a node is sending nonsense.
+    // one at a time: frames off one stream, in the order they were sent
     for _ in 0..64 {
         let frame = tokio::time::timeout(FETCH_TIMEOUT, read_frame(&mut recv))
             .await

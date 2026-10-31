@@ -3670,6 +3670,8 @@ async fn pulse(state: AppState, pacing: Pacing) -> Result<()> {
     let keys: Vec<(String, String)> = rooms.keys().cloned().collect();
     let local = latest_for_rooms(&state.node_db, &keys).await?;
     let mut asked = 0usize;
+    // one at a time: the pulse is paced on purpose, PULSE_ASKS_PER_PASS rooms a pass and each at
+    // most once per PULSE_ASK_TTL_MS; nobody waits on it
     for ((author, doc_hex), (reader, published_ms)) in rooms {
         let latest = match local.get(&(author.clone(), doc_hex.clone())) {
             Some(ms) => Some(*ms),
@@ -3749,6 +3751,8 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
             rows.push((root, author, doc_hex));
         }
     }
+    // one at a time: the beat is slow and bounded on purpose (this function's doc) - each room's
+    // pull races its own nodes, and live chat is the live lane's
     for (root, author, doc_hex) in rows {
         let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
             continue;
@@ -3774,6 +3778,8 @@ pub async fn sync_open_rooms(state: &AppState, root_hex: &str) -> Result<usize> 
         .await
         .context("listing a persona's open rooms")?;
     let mut n = 0;
+    // one at a time: the test beat, whose callers want every room pulled and a count they can
+    // reason about
     for (author, doc_hex) in rows {
         let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
             continue;

@@ -109,6 +109,7 @@ pub async fn warm_pass(state: AppState) -> Result<()> {
 
     let now = crate::clock::now_ms();
     let mut started = 0;
+    // one at a time: a background pass of at most PEEKS_PER_PASS peeks; nobody waits on it
     for (root, via) in linked {
         if started >= PEEKS_PER_PASS {
             break;

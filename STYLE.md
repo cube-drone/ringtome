@@ -111,6 +111,17 @@
   (`persona_frontiers`, `subscriptions`, `persona_profiles`, `feed_journal`);
   the conventions test pins every `get` call site so a new one is a deliberate
   act.
+- **A list of computers is never walked one silent timeout at a time** (added
+  2026-10-31, after the chat pull asked a room's nodes in turn and a dark one
+  cost the next a whole connect timeout). A list where any one answer will do is
+  asked through `net::race::first`: staggered, the first answer wins, the rest
+  finish on their own. A list where everyone must hear is a bounded fan-out. A
+  loop that truly is one at a time - redirects, frames off one stream, a beat
+  paced on purpose, an order that is an invariant - says why in a
+  `// one at a time: <why>` comment. Like the database rule above, this one
+  passes every test, because slow isn't wrong; the conventions test
+  (`network_attempts_in_a_loop_are_raced_or_explained`) finds these loops, and
+  pins the ones not yet fixed.
 
 ## Testing
 

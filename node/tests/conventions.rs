@@ -764,3 +764,233 @@ fn the_public_road_never_touches_a_group_row() {
         unscoped.join("\n  ")
     );
 }
+
+/// A loop that waits on one computer before asking the next (Curtis, 2026-10-31: "is there a way to
+/// generalize this solution so that we don't make this class of mistake as often?"). The chat pull
+/// asked a room's nodes one after another, each silent one costing its whole connect timeout
+/// before the next was tried; `net::race` fixed that one, and a survey found a dozen more.
+///
+/// Flagged: a `for` loop that awaits, turn by turn, a call that goes to the network - a function
+/// that dials (`p2p::dial`, `dial_addr`) outside any loop of its own, or calls one that does - or
+/// waits on a `timeout(` each turn. Not flagged: work a loop spawns, which doesn't hold it up; a
+/// call whose own ladder is inside it, which is flagged there instead.
+///
+/// The ways out: ask the list through `net::race::first` (any one answer will do), or a bounded
+/// fan-out (everyone must be told); or say why it is one at a time, in a `// one at a time: <why>`
+/// comment on the loop or the four lines above it - redirects follow one another, frames come
+/// off one stream, a beat is paced on purpose. A decision on the record, not a silence.
+///
+/// `DEBT` is the survey: the loops known to want racing or fanning out, by `file::function`, which
+/// shrinks as they are fixed. It is pinned both ways - a loop fixed must leave it, so the list
+/// stays the truth.
+///
+/// A text match, so it errs: a call through a method or a closure handed elsewhere can hide, and a
+/// loop over local work that happens to share a dialler's name can show. The comment answers the
+/// second; the first is what review is for.
+#[test]
+fn network_attempts_in_a_loop_are_raced_or_explained() {
+    const DEBT: &[(&str, usize)] = &[
+        // Ladders: try one, wait it out, try the next, stop at the first answer. `net::race`.
+        ("chat.rs::archive_history", 1),
+        ("chat.rs::archive_pull", 2),
+        ("chat.rs::remote_latest", 1),
+        ("identity/adoption.rs::complete", 1),
+        ("net/bodies.rs::heal_from", 1),
+        ("net/bodies.rs::sweep", 1),
+        ("net/deliver.rs::deliver", 1), // racing knocks can deliver twice: the far side must dedup
+        ("net/fragment.rs::fetch", 1),
+        ("net/fragment.rs::fetch_deaths", 1),
+        ("net/fragment.rs::fetch_replies", 1),
+        ("net/fragment.rs::revalidate", 1),
+        ("roster.rs::fetch_bodies", 1),
+        // Fan-outs: everyone in the list is asked or told, one after another. A bounded fan-out.
+        ("chat.rs::push_room", 1),
+        ("chat.rs::search", 1),
+        ("chat.rs::sync_room", 1),
+        ("epub.rs::public_book", 1),
+        ("epub.rs::public_section", 1),
+        ("export.rs::chat_files", 1),
+        ("fragments.rs::reap", 2),
+        ("net/sync.rs::sync_peers", 1),
+        ("notifications.rs::open_sealed_statements", 1),
+        ("roster.rs::gossip_group", 2),
+        ("roster.rs::public_sync", 2),
+        ("roster.rs::sync_group", 1),
+    ];
+    let expected: BTreeMap<&str, usize> = DEBT.iter().copied().collect();
+
+    let fn_re =
+        regex::Regex::new(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z_0-9]+)").unwrap();
+    let for_re = regex::Regex::new(r"^\s*for\s.*\sin\s").unwrap();
+    let call_re = regex::Regex::new(r"((?:[a-z_][a-z0-9_]*::)*)([a-z_][a-z0-9_]*)\s*\(").unwrap();
+
+    struct File {
+        stem: String,
+        raw: Vec<String>,
+        owner: Vec<Option<String>>,
+        loops: Vec<(usize, usize)>,
+        spawned: Vec<bool>,
+        calls: Vec<Vec<(String, String)>>,
+        direct: Vec<bool>,
+        timeout: Vec<bool>,
+    }
+    // The line where the block opened at `from` closes, by braces.
+    let block_end = |code: &[String], from: usize| {
+        let mut depth = 0i64;
+        let mut opened = false;
+        for (k, line) in code.iter().enumerate().skip(from) {
+            depth += line.matches('{').count() as i64 - line.matches('}').count() as i64;
+            opened |= line.contains('{');
+            if opened && depth <= 0 {
+                return k;
+            }
+        }
+        code.len().saturating_sub(1)
+    };
+
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut paths = Vec::new();
+    rust_files(&src, &mut paths);
+    let mut files: BTreeMap<String, File> = BTreeMap::new();
+    for path in paths {
+        let source = std::fs::read_to_string(&path).expect("readable source");
+        let body = &source[..source.find("#[cfg(test)]\nmod tests").unwrap_or(source.len())];
+        let rel = path.strip_prefix(&src).unwrap().to_string_lossy().replace('\\', "/");
+        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        let raw: Vec<String> = body.lines().map(str::to_string).collect();
+        let code: Vec<String> =
+            raw.iter().map(|l| l.split("//").next().unwrap_or("").to_string()).collect();
+        let loops: Vec<(usize, usize)> = (0..code.len())
+            .filter(|&n| for_re.is_match(&code[n]))
+            .map(|n| (n, block_end(&code, n)))
+            .collect();
+        let mut spawned = vec![false; code.len()];
+        for n in (0..code.len()).filter(|&n| code[n].contains("spawn(")) {
+            for s in spawned.iter_mut().take(block_end(&code, n) + 1).skip(n) {
+                *s = true;
+            }
+        }
+        let mut owner = vec![None; code.len()];
+        let starts: Vec<(usize, String)> = (0..code.len())
+            .filter_map(|n| fn_re.captures(&code[n]).map(|c| (n, c[1].to_string())))
+            .collect();
+        for (i, (n, name)) in starts.iter().enumerate() {
+            let end = starts.get(i + 1).map_or(code.len(), |s| s.0);
+            for o in owner.iter_mut().take(end).skip(*n) {
+                *o = Some(name.clone());
+            }
+        }
+        let calls = code
+            .iter()
+            .map(|l| {
+                call_re
+                    .captures_iter(l)
+                    .filter(|c| {
+                        let at = c.get(0).unwrap().start();
+                        !l[..at]
+                            .ends_with(|ch: char| ch.is_alphanumeric() || ch == '_' || ch == '.')
+                    })
+                    .map(|c| {
+                        let module = c[1].trim_end_matches("::").rsplit("::").next().unwrap_or("");
+                        let module =
+                            if module.is_empty() { stem.clone() } else { module.to_string() };
+                        (module, c[2].to_string())
+                    })
+                    .collect()
+            })
+            .collect();
+        let direct =
+            code.iter().map(|l| l.contains("p2p::dial(") || l.contains("dial_addr(")).collect();
+        let timeout = (0..code.len())
+            .map(|n| {
+                code[n].contains("timeout(")
+                    && code[n..(n + 12).min(code.len())].concat().contains(".await")
+            })
+            .collect();
+        files.insert(rel, File { stem, raw, owner, loops, spawned, calls, direct, timeout });
+    }
+    let in_loop = |f: &File, n: usize| f.loops.iter().any(|&(a, b)| a < n && n <= b);
+
+    // The diallers: a function that goes to the network outside any loop of its own, to a fixpoint.
+    let mut dialers: std::collections::BTreeSet<(String, String)> = Default::default();
+    loop {
+        let mut added = false;
+        for f in files.values() {
+            for n in 0..f.raw.len() {
+                let Some(o) = &f.owner[n] else { continue };
+                let key = (f.stem.clone(), o.clone());
+                if in_loop(f, n) || dialers.contains(&key) {
+                    continue;
+                }
+                if f.direct[n] || f.calls[n].iter().any(|c| dialers.contains(c)) {
+                    dialers.insert(key);
+                    added = true;
+                }
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+
+    let mut found: BTreeMap<String, usize> = BTreeMap::new();
+    let mut where_: Vec<(String, String)> = Vec::new();
+    for (rel, f) in &files {
+        let mut flagged = std::collections::BTreeSet::new();
+        for n in 0..f.raw.len() {
+            if f.spawned[n] {
+                continue;
+            }
+            // Awaited before the statement ends, or it doesn't hold the loop up.
+            let stmt: String = f.raw[n..(n + 15).min(f.raw.len())]
+                .iter()
+                .enumerate()
+                .take_while(|(i, l)| *i == 0 || !(l.contains('{') && *i > 0) || l.contains(';'))
+                .map(|(_, l)| l.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let stmt = &stmt[..stmt.find(';').map_or(stmt.len(), |i| i + 1)];
+            let network = (f.direct[n] || f.calls[n].iter().any(|c| dialers.contains(c)))
+                && stmt.contains(".await");
+            if !network && !f.timeout[n] {
+                continue;
+            }
+            let Some(&(start, _)) =
+                f.loops.iter().filter(|&&(a, b)| a < n && n <= b).max_by_key(|l| l.0)
+            else {
+                continue;
+            };
+            if !flagged.insert(start) {
+                continue;
+            }
+            let said =
+                f.raw[start.saturating_sub(4)..=start].iter().any(|l| l.contains("one at a time:"));
+            if said {
+                continue;
+            }
+            let func = f.owner[start].clone().unwrap_or_default();
+            *found.entry(format!("{rel}::{func}")).or_default() += 1;
+            where_.push((format!("{rel}::{func}"), format!("src/{rel}:{} ({func})", start + 1)));
+        }
+    }
+    let found_ref: BTreeMap<&str, usize> = found.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    // Only what changed: loops in functions whose count rose, and debt that is gone.
+    let mut changed: Vec<String> = where_
+        .iter()
+        .filter(|(key, _)| found_ref.get(key.as_str()) > expected.get(key.as_str()))
+        .map(|(_, at)| format!("new: {at}"))
+        .collect();
+    for (key, n) in &expected {
+        if found_ref.get(key).copied().unwrap_or(0) < *n {
+            changed.push(format!("fixed, so out of DEBT: {key}"));
+        }
+    }
+    assert!(
+        changed.is_empty(),
+        "a loop awaits the network one turn at a time, or a known one was fixed. A list of \
+         computers where any answer will do goes through `net::race::first`; one where all must \
+         hear wants a bounded fan-out; one that truly is one at a time says why in a \
+         `// one at a time: <why>` comment (this test's doc). A loop fixed leaves `DEBT`.\n  {}",
+        changed.join("\n  ")
+    );
+}

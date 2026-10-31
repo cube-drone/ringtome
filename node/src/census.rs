@@ -238,6 +238,8 @@ async fn swap(state: AppState, paced: bool) -> Result<()> {
             .take(if paced { PEERS_PER_PASS } else { usize::MAX })
             .collect()
     };
+    // one at a time: each answer is merged before the next ask's sketches are drawn, so later peers
+    // hear what earlier ones said; paced at PEERS_PER_PASS
     for endpoint in due {
         let sketches = recent_sketches(&state).await;
         let answered = crate::net::fragment::fetch_census(&state, &endpoint, sketches).await;

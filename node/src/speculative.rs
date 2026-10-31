@@ -541,6 +541,8 @@ async fn acquire_one(state: &AppState, candidate: &AcquireCandidate) -> bool {
     }
 
     let mut seen: HashSet<String> = HashSet::new();
+    // one at a time: disclosure order is the invariant (this function's doc) - only sequential
+    // tries make it a guarantee, so the target is never dialled while an introducer path exists
     for via in vias.into_iter().filter(|v| seen.insert(v.clone())) {
         // The ceiling bounds the WAIT, never the exchange: the pull runs on its own task and
         // a slow one is DETACHED to finish, not cancelled. The first shape of this loop

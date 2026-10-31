@@ -1986,6 +1986,8 @@ pub async fn sync_group(state: &AppState, me: &str, group: &GroupId, seed: &[Str
     names.extend(named(&lanes_of(state, group).await.unwrap_or_default()));
     let mut exchanged = 0;
     for ep in endpoints(state, group, &names).await {
+        // one at a time: the second exchange stands on the first - a node meeting `me` for the
+        // first time learns it from the first (this function's doc)
         for _ in 0..2 {
             if exchange(state, me, &ep, group).await {
                 exchanged += 1;

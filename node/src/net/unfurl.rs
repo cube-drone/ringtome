@@ -179,6 +179,7 @@ impl Unfurler {
 
     /// The redirect-following fetch, every hop re-vetted and address-pinned.
     async fn fetch(&self, mut url: url::Url) -> Result<Option<Summary>, FetchEnd> {
+        // one at a time: each redirect names the next hop
         for _ in 0..=MAX_REDIRECTS {
             let addr = vetted_addr(&url).await.map_err(FetchEnd::Refused)?;
             let host = url.host_str().unwrap_or_default().to_string();
@@ -368,6 +369,7 @@ pub async fn guarded_get(
     allow_loopback: bool,
 ) -> Result<Fetched, String> {
     let mut url = url::Url::parse(raw_url).map_err(|_| "that isn't a URL".to_string())?;
+    // one at a time: each redirect names the next hop
     for _hop in 0..3 {
         if !matches!(url.scheme(), "http" | "https") {
             return Err("only http(s) can be fetched".into());

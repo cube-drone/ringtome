@@ -71,6 +71,8 @@ pub async fn prefetch_pass(state: AppState) -> anyhow::Result<()> {
         let k = state.node_db.writes_key();
         crate::db::writes_to(k, "post_keys") + crate::db::writes_to(k, "post_key_grants")
     };
+    // one at a time: a background pass of at most ASKS keys, each ask raced inside `key_for`;
+    // nobody waits on it
     for (reader, author, doc_hex, via) in rows {
         if asked >= ASKS {
             break;
