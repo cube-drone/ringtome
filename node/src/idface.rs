@@ -1105,30 +1105,40 @@ async fn pinned_here(state: &AppState, root_hex: &str, peek: bool) -> Pinned {
         } else {
             Vec::new()
         };
-    let mut out = Vec::with_capacity(ids.len());
+    // Each pin held in the chain, or else to be read as a fragment.
+    let mut held: Vec<([u8; 16], Option<crate::record::documents::PublicDoc>)> = Vec::new();
     for id in ids {
         let doc = if peek {
-            crate::fragments::public_doc_of(&state.node_db, root_hex, &hex::encode(id))
+            None
+        } else {
+            crate::record::documents::public_doc(&db, &id).await.ok().flatten()
+        };
+        held.push((id, doc));
+    }
+    // Beneath the follow ceiling's floor (PROJECT_PLAN's Peeks, ruling 13): acquired by id over the
+    // fragment road, never by deepening the chain - a few at once (net::race::each, 2026-10-31),
+    // since the page waits on every one.
+    if !peek {
+        if let Some(author) = crate::pubkey::decode(root_hex) {
+            let below: Vec<[u8; 16]> =
+                held.iter().filter(|(_, d)| d.is_none()).map(|(id, _)| *id).collect();
+            let root = root_hex.to_string();
+            crate::net::race::each(below, crate::net::race::AT_ONCE, |id| {
+                let (state, root, id) = (state.clone(), root.clone(), *id);
+                async move { crate::fragments::fetch_post(&state, &root, &author, &id).await }
+            })
+            .await;
+        }
+    }
+    let mut out = Vec::with_capacity(held.len());
+    for (id, doc) in held {
+        let doc = match doc {
+            Some(p) => Some(p),
+            None => crate::fragments::public_doc_of(&state.node_db, root_hex, &hex::encode(id))
                 .await
                 .ok()
                 .flatten()
-                .map(|(p, _)| p)
-        } else {
-            match crate::record::documents::public_doc(&db, &id).await.ok().flatten() {
-                Some(p) => Some(p),
-                None => {
-                    // Beneath the follow ceiling's floor (PROJECT_PLAN's Peeks, ruling 13): acquired by id
-                    // over the fragment road, never by deepening the chain.
-                    if let Some(author) = crate::pubkey::decode(root_hex) {
-                        crate::fragments::fetch_post(state, root_hex, &author, &id).await;
-                    }
-                    crate::fragments::public_doc_of(&state.node_db, root_hex, &hex::encode(id))
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|(p, _)| p)
-                }
-            }
+                .map(|(p, _)| p),
         };
         if let Some(p) = doc {
             out.push(p);

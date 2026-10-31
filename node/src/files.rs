@@ -116,6 +116,26 @@ pub type LiveSource = std::sync::Arc<
 /// The blob-serving ALPN. New protocol beside the sync ALPN on the same endpoint.
 pub const BLOB_ALPN: &[u8] = iroh_blobs::ALPN;
 
+/// Where a body fetch gets its bytes: an address to dial, or a connection already made - the
+/// winner of a raced connect (`net::sync::connect_first`), worked alone so the same bytes don't
+/// come from everyone.
+pub enum Provider {
+    At(EndpointAddr),
+    Connected(Connection),
+}
+
+impl From<EndpointAddr> for Provider {
+    fn from(addr: EndpointAddr) -> Self {
+        Provider::At(addr)
+    }
+}
+
+impl From<Connection> for Provider {
+    fn from(conn: Connection) -> Self {
+        Provider::Connected(conn)
+    }
+}
+
 /// The blob-size cap a store defaults to when none is configured (tests, ephemeral stores). A real
 /// node overrides this from config (`max_document_bytes` + framing). Generous enough for any legit
 /// blob; the point is only that "unset" isn't "unbounded".
@@ -533,15 +553,19 @@ impl FileStore {
     pub async fn fetch_many(
         &self,
         endpoint: &Endpoint,
-        provider: EndpointAddr,
+        provider: impl Into<Provider>,
         hashes: &[Hash],
     ) -> usize {
-        let conn = match crate::net::p2p::dial(&self.unplugged, endpoint, provider, BLOB_ALPN).await
-        {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!("dialing blob provider: {e}");
-                return 0;
+        let conn = match provider.into() {
+            Provider::Connected(conn) => conn,
+            Provider::At(addr) => {
+                match crate::net::p2p::dial(&self.unplugged, endpoint, addr, BLOB_ALPN).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::warn!("dialing blob provider: {e}");
+                        return 0;
+                    }
+                }
             }
         };
         let mut fetched = 0;

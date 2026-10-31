@@ -3669,8 +3669,9 @@ pub async fn search_rows(
 pub async fn fetch_missing_bodies(
     state: &crate::AppState,
     root_hex: &str,
-    addr: iroh::EndpointAddr,
+    provider: impl Into<crate::files::Provider>,
 ) -> u64 {
+    let provider = provider.into();
     // Test-only, LOCAL_TEST-gated: hold the body lane open for a beat so the multi-hop race
     // (headers pushed onward before their bodies arrive here) can be made deterministic
     // instead of lucky - the fanout probe sets this on the middle node. Production ignores it.
@@ -3766,7 +3767,7 @@ pub async fn fetch_missing_bodies(
         let fetched = if missing.is_empty() {
             0u64
         } else {
-            state.files.fetch_many(&state.endpoint, addr, &missing).await as u64
+            state.files.fetch_many(&state.endpoint, provider, &missing).await as u64
         };
 
         // The gravedigger's ledger (net::bodies): whatever is STILL absent after this attempt

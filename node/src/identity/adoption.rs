@@ -464,6 +464,8 @@ pub async fn complete(
         Err(e) => bootstrap_err = Some(format!("bad grant code addresses: {e}")),
     }
     if boot_peer.is_none() {
+        // The siblings the code names, each resolved to the endpoint serving it.
+        let mut siblings: Vec<(String, String)> = Vec::new();
         for sibling in code.sibling_leaves.iter().take(10) {
             let Some(leaf_key) = pubkey::decode(sibling) else {
                 continue;
@@ -477,42 +479,50 @@ pub async fn complete(
             let Ok(ep) = iroh::PublicKey::from_bytes(&record.record().endpoint_id) else {
                 continue;
             };
-            let Ok(addr) = crate::net::sync::dial_addr(state, &ep.to_string()).await else {
-                continue;
-            };
-            // Bounded per rung: a ladder of dead siblings must cost seconds each, not a
-            // hanging dial apiece - the human is standing at the new computer waiting.
+            siblings.push((ep.to_string(), sibling.clone()));
+        }
+        // The connects raced, staggered (net::sync::connect_first, 2026-10-31) - the human is
+        // standing at the new computer waiting, and a dead sibling used to cost the next its whole
+        // rung. The bootstrap runs on the winner alone, bounded: a sibling that connects and then
+        // stalls must cost seconds, not a hanging exchange.
+        let mut left: Vec<String> = siblings.iter().map(|(ep, _)| ep.clone()).collect();
+        let ask = crate::net::sync::Ask { ceiling: state.config.follow_posts_ceiling, below: 0 };
+        while let Some((ep, addr, conn)) =
+            crate::net::sync::connect_first(state, &mut left, ringtome_proto::sync::SYNC_ALPN).await
+        {
+            let sibling = siblings.iter().find(|(e, _)| *e == ep).map(|(_, s)| s.clone());
             let attempt = tokio::time::timeout(
                 std::time::Duration::from_secs(8),
-                crate::net::sync::sync_with_peer_scoped(
+                crate::net::sync::sync_with_peer_on(
                     state,
                     &code.root_pubkey,
                     addr.clone(),
+                    Some(conn),
                     BOOTSTRAP_SCOPE,
+                    &[],
+                    ask,
                 ),
             )
             .await;
             match attempt {
                 Err(_) => {
-                    tracing::debug!(sibling = %sibling, "sibling bootstrap timed out");
-                    continue;
+                    tracing::debug!(sibling = ?sibling, "sibling bootstrap timed out");
                 }
                 Ok(Err(e)) => {
-                    tracing::debug!(sibling = %sibling, "sibling bootstrap failed: {e:#}");
-                    continue;
+                    tracing::debug!(sibling = ?sibling, "sibling bootstrap failed: {e:#}");
                 }
                 Ok(Ok(stats)) => {
-                    tracing::info!(root = %code.root_pubkey, sibling = %sibling, ?stats,
+                    tracing::info!(root = %code.root_pubkey, sibling = ?sibling, ?stats,
                         "adoption sync completed through a sibling - the granter was unreachable");
                     crate::net::sync::add_peer_with_leaf(
                         &state.node_db,
                         &code.root_pubkey,
-                        &ep.to_string(),
-                        Some(sibling),
+                        &ep,
+                        sibling.as_deref(),
                     )
                     .await
                     .map_err(AppError::Internal)?;
-                    boot_peer = Some((ep.to_string(), addr));
+                    boot_peer = Some((ep, addr));
                     break;
                 }
             }

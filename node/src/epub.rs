@@ -584,6 +584,7 @@ async fn public_book(
         chapter_of: HashMap::new(),
         sealed: false,
     };
+    prefetch_keys(state, session, root, &db, &payload).await;
     let mut seen = BTreeSet::new();
     if !payload["cover"].is_null() {
         if let Some(e) =
@@ -593,6 +594,8 @@ async fn public_book(
             book.contents.push(e);
         }
     }
+    // one at a time: chapters are numbered in the book's order, and the keys the pages wait on
+    // were fetched a few at once above (`prefetch_keys`).
     for page in payload["pages"].as_array().into_iter().flatten() {
         if let Some(e) =
             public_page(state, session, root, &db, page, &mut book.chapters, &mut seen).await?
@@ -730,6 +733,64 @@ async fn public_page(
     Ok(Some(Entry::Page(chapters.len() - 1)))
 }
 
+/// Every page's post in a book's JSON - the cover, its pages, its sections' pages, as deep as
+/// `public_section` walks.
+fn book_posts(payload: &serde_json::Value) -> Vec<String> {
+    fn walk(section: &serde_json::Value, depth: usize, out: &mut Vec<String>) {
+        if depth > 16 {
+            return;
+        }
+        for page in section["pages"].as_array().into_iter().flatten() {
+            if let Some(post) = page["post"].as_str() {
+                out.push(post.to_string());
+            }
+        }
+        for inner in section["sections"].as_array().into_iter().flatten() {
+            walk(inner, depth + 1, out);
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(post) = payload["cover"]["post"].as_str() {
+        out.push(post.to_string());
+    }
+    walk(payload, 0, &mut out);
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// The keys a book's sealed pages open with, fetched a few at once (net::race::each, 2026-10-31)
+/// before the book is walked in order: a key this node doesn't hold is asked of the key lane, and
+/// the walk used to wait on each sealed page's in turn. What arrives is remembered there, so the
+/// walk's own `reader_key` finds it.
+async fn prefetch_keys(
+    state: &AppState,
+    session: &Option<Session>,
+    root: &str,
+    db: &crate::db::Db,
+    payload: &serde_json::Value,
+) {
+    let mut sealed: Vec<[u8; 16]> = Vec::new();
+    for post in book_posts(payload) {
+        let Some(id) = hex::decode(&post).ok().and_then(|b| <[u8; 16]>::try_from(b).ok()) else {
+            continue;
+        };
+        if let Ok(Some(doc)) = crate::record::documents::public_doc(db, &id).await {
+            if doc.trusted_only {
+                sealed.push(id);
+            }
+        }
+    }
+    let (session, root) = (session.clone(), root.to_string());
+    crate::net::race::each(sealed, crate::net::race::AT_ONCE, |id| {
+        let (state, session, root, id) = (state.clone(), session.clone(), root.clone(), *id);
+        async move {
+            let _ = reader_key(&state, &session, &root, &id).await;
+        }
+    })
+    .await;
+}
+
 #[allow(clippy::too_many_arguments)]
 fn public_section<'a>(
     state: &'a AppState,
@@ -747,6 +808,8 @@ fn public_section<'a>(
             return Ok(None);
         }
         let mut entries = Vec::new();
+        // one at a time: chapters are numbered in the book's order, and the keys the pages wait
+        // on were fetched a few at once before the book was walked (`prefetch_keys`).
         for page in section["pages"].as_array().into_iter().flatten() {
             if let Some(e) = public_page(state, session, root, db, page, chapters, seen).await? {
                 entries.push(e);

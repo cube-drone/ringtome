@@ -194,6 +194,8 @@ fn beat_pass<'a>(
             // test that just made headers arrive rings this to walk the heal's whole
             // candidate ladder (deliverers first, then each origin's resolution) to
             // completion before asserting the served body.
+            // one at a time: the test beat, which wants the whole ladder walked to completion
+            // before it answers.
             for origin in crate::fragments::origins_of_author(&state.node_db, author).await? {
                 crate::net::bodies::heal_from(state, author, &origin).await;
             }

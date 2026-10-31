@@ -16,6 +16,10 @@
 //! dials to that computer wedge behind it (2026-08-21 and 2026-08-24, `speculative::acquire_one` and
 //! `idface::race`; the first shape of this module dropped the also-rans, and was this bug again).
 //!
+//! `each` is the other shape (2026-10-31): a list where everyone must be asked or told, worked
+//! through a few at once, each on its own task - so a dark one holds up only its own slot. The
+//! conventions test (`network_attempts_in_a_loop_are_raced_or_explained`) sends a loop here.
+//!
 //! An ask answers `None` for "nothing here": it failed, or was refused, or had nothing. What counts
 //! as an answer is the caller's: a connection for a sync, which then runs its exchange on the
 //! winner alone (racing whole exchanges would download the same entries from everyone); a key for
@@ -77,6 +81,53 @@ where
         }
     }
 }
+
+/// Work through `items`, `at_once` at a time, for a list where everyone must be asked or told -
+/// the fan-out beside `first`'s race (2026-10-31: a pass that told its partners one after another
+/// cost each dark one its whole timeout, and the rest waited behind it). Every item's answer, in
+/// the order they came back. Each runs on its own task, as `first`'s asks do: a caller dropped
+/// midway leaves the ones under way to finish, never cancelled midway through an exchange.
+pub async fn each<C, T, F, Fut>(
+    items: impl IntoIterator<Item = C>,
+    at_once: usize,
+    work: F,
+) -> Vec<(C, T)>
+where
+    C: Send + 'static,
+    T: Send + 'static,
+    F: Fn(&C) -> Fut,
+    Fut: Future<Output = T> + Send + 'static,
+{
+    let mut waiting = items.into_iter();
+    let (tx, mut answers) = tokio::sync::mpsc::unbounded_channel::<(C, T)>();
+    let mut running = 0usize;
+    let mut out = Vec::new();
+    loop {
+        while running < at_once.max(1) {
+            let Some(c) = waiting.next() else { break };
+            let done = work(&c);
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let _ = tx.send((c, done.await));
+            });
+            running += 1;
+        }
+        if running == 0 {
+            return out;
+        }
+        match answers.recv().await {
+            Some(answer) => {
+                running -= 1;
+                out.push(answer);
+            }
+            None => return out,
+        }
+    }
+}
+
+/// How many at once a fan-out runs, unless it has a reason of its own: as many as a race lets
+/// run, so a pass and a race cost a computer's neighbours alike.
+pub const AT_ONCE: usize = IN_FLIGHT;
 
 #[cfg(test)]
 mod tests {
@@ -172,6 +223,47 @@ mod tests {
         assert!(!finished.load(std::sync::atomic::Ordering::SeqCst), "the first still running");
         sleep(Duration::from_millis(200)).await;
         assert!(finished.load(std::sync::atomic::Ordering::SeqCst), "and it finished, not dropped");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_fan_out_tells_everyone_a_few_at_a_time() {
+        let start = Instant::now();
+        let busy = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let most = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let told = each(0..6u32, 4, |_| {
+            let (busy, most) = (busy.clone(), most.clone());
+            async move {
+                let now = busy.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                most.fetch_max(now, std::sync::atomic::Ordering::SeqCst);
+                sleep(Duration::from_secs(1)).await;
+                busy.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                true
+            }
+        })
+        .await;
+        let mut who: Vec<u32> = told.iter().map(|(c, _)| *c).collect();
+        who.sort();
+        assert_eq!(who, [0, 1, 2, 3, 4, 5], "everyone, once");
+        assert_eq!(most.load(std::sync::atomic::Ordering::SeqCst), 4, "never more than four");
+        assert_eq!(start.elapsed(), Duration::from_secs(2), "two rounds, not six");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dark_one_holds_up_only_its_own_slot() {
+        let start = Instant::now();
+        let told = each([6000u64, 100, 100, 100, 100, 100], 4, |ms| {
+            let ms = *ms;
+            async move {
+                sleep(Duration::from_millis(ms)).await;
+                ms
+            }
+        })
+        .await;
+        assert_eq!(told.len(), 6);
+        assert_eq!(told.last().map(|(c, _)| *c), Some(6000), "the dark one answers last");
+        // The five quick ones go through the other three slots: 100ms, then 200ms.
+        assert_eq!(told[4].1, 100);
+        assert_eq!(start.elapsed(), Duration::from_millis(6000));
     }
 
     #[tokio::test(start_paused = true)]

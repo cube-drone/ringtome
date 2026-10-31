@@ -763,6 +763,8 @@ async fn open_sealed_statements(
     let mut keys: std::collections::HashMap<(String, [u8; 16]), Option<[u8; 32]>> =
         Default::default();
     let mut followers: Option<Vec<String>> = None;
+    // one at a time: fold work, and a key asked for one label is remembered for every label after
+    // it on the same post.
     for l in labels {
         if l.key != crate::annotations::SEALED_KEY {
             out.push(l);
@@ -791,6 +793,7 @@ async fn open_sealed_statements(
                     if let Some(author) =
                         hex::decode(author_root).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())
                     {
+                        let mut readers: Vec<[u8; 32]> = Vec::new();
                         for f in followers.as_deref().unwrap_or(&[]) {
                             if crate::postkeys::refused(&state.node_db, author_root, &doc_hex, f)
                                 .await
@@ -798,23 +801,26 @@ async fn open_sealed_statements(
                             {
                                 continue;
                             }
-                            let Some(reader) =
+                            if let Some(reader) =
                                 hex::decode(f).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())
-                            else {
-                                continue;
-                            };
-                            k = crate::net::fragment::fetch_key(
-                                state,
-                                &author,
-                                &l.target_doc,
-                                &reader,
-                                None,
-                            )
-                            .await;
-                            if k.is_some() {
-                                break;
+                            {
+                                readers.push(reader);
                             }
                         }
+                        // Raced, staggered (net::race, 2026-10-31): the first follower granted
+                        // the key ends it, and a refusal no longer costs the next its turn.
+                        let doc = l.target_doc;
+                        k = crate::net::race::first(readers, crate::net::race::STAGGER, |reader| {
+                            let state = state.clone();
+                            async move {
+                                crate::net::fragment::fetch_key(
+                                    &state, &author, &doc, &reader, None,
+                                )
+                                .await
+                            }
+                        })
+                        .await
+                        .map(|(_, key)| key);
                     }
                 }
                 keys.insert(at, k);

@@ -120,7 +120,10 @@ describe('publication', () => {
         assert.equal(count(after), count(before), 'a re-post of identical words writes nothing');
     });
 
-    it("dates a post by when it was FIRST said, and re-saying it doesn't move it", async () => {
+    it("dates a post by when it was FIRST said, and re-saying it doesn't move it", async function () {
+        // 3.3s of it is the gaps between stamps, on purpose: the default 5s left the five
+        // publishes and two folds 1.7s, which a loaded machine overran (2026-10-31, 1 run in 5).
+        this.timeout(30000);
         const owner3 = await makeUserFetch({ prefix: 'dated' });
         const id = await (await owner3('api/identity', { method: 'POST' })).json();
         const who = id.root_pubkey;

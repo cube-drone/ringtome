@@ -170,7 +170,12 @@ pub async fn wanted_hashes(node_db: &Db) -> Result<Vec<[u8; 32]>> {
 /// the walk heals nothing) - but the ledger already names the precise blobs, noted at fragment
 /// intake, and a public blob's hash is the whole capability. Landed rows clear; the rest stay
 /// for the next candidate or beat.
-pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::EndpointAddr) -> u64 {
+pub async fn fetch_wanted(
+    state: &AppState,
+    root_hex: &str,
+    provider: impl Into<crate::files::Provider>,
+) -> u64 {
+    let provider = provider.into();
     let inner: Result<u64> = async {
         let rows: Vec<(Vec<u8>,)> = state
             .node_db
@@ -203,7 +208,7 @@ pub async fn fetch_wanted(state: &AppState, root_hex: &str, addr: iroh::Endpoint
         if hashes.is_empty() {
             return Ok(0);
         }
-        let fetched = state.files.fetch_many(&state.endpoint, addr, &hashes).await as u64;
+        let fetched = state.files.fetch_many(&state.endpoint, provider, &hashes).await as u64;
         for hash in &hashes {
             if state.files.has(*hash).await {
                 state
@@ -250,13 +255,16 @@ pub async fn heal_from(state: &AppState, author_root: &str, origin_root: &str) {
             endpoints.push(ep);
         }
     }
+    // The connects raced, staggered (net::sync::connect_first, 2026-10-31): a dark rung used to
+    // cost the next its whole connect timeout. The download runs on the winner alone - racing it
+    // would pull the same bytes from everyone - and the next is raced for only if bodies remain.
     let mut fetched = 0u64;
-    for ep in endpoints {
-        let Ok(addr) = crate::net::sync::dial_addr(state, &ep).await else {
-            continue;
-        };
+    let mut left = endpoints;
+    while let Some((_, _, conn)) =
+        crate::net::sync::connect_first(state, &mut left, crate::files::BLOB_ALPN).await
+    {
         tried += 1;
-        fetched += fetch_wanted(state, author_root, addr).await;
+        fetched += fetch_wanted(state, author_root, conn).await;
         if let Ok(0) = remaining(&state.node_db, author_root).await {
             // Spoken too (2026-10-14): "healed" and "found nothing wanted" were both silent, and
             // the face flake's wants had been erased under it by a walk - indistinguishable here.
@@ -321,6 +329,8 @@ pub async fn sweep(state: AppState) -> Result<()> {
     let cohort = crate::net::sync::cohort_endpoints(&state).await.unwrap_or_default();
     let mut resolved: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
+    // one at a time: a background sweep, each root due only on its backoff ladder and its
+    // candidates raced in `connect_first`; nobody waits on it.
     for root in roots {
         // Candidates, most-likely first - split by WHICH relationship vouches for them
         // (2026-08-22, second draft: the first gated a hunch-held author down to the
@@ -433,20 +443,18 @@ pub async fn sweep(state: AppState) -> Result<()> {
             tracing::debug!(root = %root, "missing-body sweep: due rows, zero candidates");
         }
         let mut healed = 0u64;
-        for candidate in &candidates {
-            let addr = match crate::net::sync::dial_addr(&state, candidate).await {
-                Ok(a) => a,
-                Err(e) => {
-                    tracing::debug!(root = %root, candidate = %candidate,
-                        "missing-body sweep: candidate did not resolve: {e:#}");
-                    continue; // unparseable/unresolvable id - the next guess may not be
-                }
-            };
+        // The connects raced, staggered (net::sync::connect_first, 2026-10-31), the downloads on
+        // the winner alone, as `heal_from`. A candidate that won't resolve or connect is logged
+        // there and left behind.
+        let mut left = candidates.clone();
+        while let Some((candidate, _, conn)) =
+            crate::net::sync::connect_first(&state, &mut left, crate::files::BLOB_ALPN).await
+        {
             // The ledger-exact fetch first (it is what works for fragment authors, where the
             // chain walk below has nothing to open), then the walk, which can additionally
             // discover references nothing had noted yet.
-            let here = fetch_wanted(&state, &root, addr.clone()).await
-                + crate::record::documents::fetch_missing_bodies(&state, &root, addr).await;
+            let here = fetch_wanted(&state, &root, conn.clone()).await
+                + crate::record::documents::fetch_missing_bodies(&state, &root, conn).await;
             tracing::trace!(root = %root, candidate = %candidate, healed = here,
                 "missing-body sweep: candidate tried");
             healed += here;

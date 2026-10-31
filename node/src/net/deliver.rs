@@ -216,24 +216,47 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
             DeliverMessage::NeedsStamp(bits) => Outcome::NeedsStamp(bits),
         };
     }
+    let mut endpoints: Vec<String> = Vec::new();
     for candidate in candidates(state, recipient_root).await {
         let endpoint_id =
             crate::idface::leaf_via_to_endpoint(state, recipient_root, &candidate).await;
-        match tokio::time::timeout(DELIVER_TIMEOUT, knock(state, &endpoint_id, envelope)).await {
-            // A busy door is a door that did not work, so the ladder continues rather than
-            // spending the whole attempt on one unlucky machine - the sender needs *a* node of
-            // theirs, not this one. Every candidate busy falls out of the loop as Unreachable.
-            Ok(Ok(Outcome::Unreachable)) => {
-                tracing::debug!(candidate = %endpoint_id, "delivery door was busy");
-            }
-            Ok(Ok(outcome)) => return outcome,
-            Ok(Err(e)) => {
-                tracing::debug!(candidate = %endpoint_id, error = ?e, "delivery attempt failed");
-            }
-            Err(_) => tracing::debug!(candidate = %endpoint_id, "delivery attempt timed out"),
+        if !endpoints.contains(&endpoint_id) {
+            endpoints.push(endpoint_id);
         }
     }
-    Outcome::Unreachable
+    // Raced, staggered (net::race, 2026-10-31): a knock is one round trip, and a dark door used to
+    // cost the next its whole DELIVER_TIMEOUT. Two of the recipient's computers taking the same
+    // envelope is a case the gate already holds (`inbox::accept`'s idempotence: "or to a sibling
+    // node, then synced here") - and the walk could make it too, whenever a knock that timed out
+    // had landed.
+    let envelope = std::sync::Arc::new(envelope.to_vec());
+    let won = crate::net::race::first(endpoints, crate::net::race::STAGGER, |endpoint_id| {
+        let (state, envelope) = (state.clone(), envelope.clone());
+        async move {
+            match tokio::time::timeout(DELIVER_TIMEOUT, knock(&state, &endpoint_id, &envelope))
+                .await
+            {
+                // A busy door is a door that did not work, so the others are asked rather than
+                // spending the whole attempt on one unlucky machine - the sender needs *a* node of
+                // theirs, not this one. Every candidate busy comes out as Unreachable.
+                Ok(Ok(Outcome::Unreachable)) => {
+                    tracing::debug!(candidate = %endpoint_id, "delivery door was busy");
+                    None
+                }
+                Ok(Ok(outcome)) => Some(outcome),
+                Ok(Err(e)) => {
+                    tracing::debug!(candidate = %endpoint_id, error = ?e, "delivery attempt failed");
+                    None
+                }
+                Err(_) => {
+                    tracing::debug!(candidate = %endpoint_id, "delivery attempt timed out");
+                    None
+                }
+            }
+        }
+    })
+    .await;
+    won.map_or(Outcome::Unreachable, |(_, outcome)| outcome)
 }
 
 /// Where to try reaching one identity, liveliest guess first: the endpoint that actually served

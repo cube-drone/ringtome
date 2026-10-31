@@ -25577,3 +25577,47 @@ eventually sync, and was dropped. The narrow rule misses one known ladder,
 flagged where it lives, and racing it fixes both. As a text match the test can
 be fooled by a call through a method or a closure handed elsewhere. Removing one
 comment was checked to make it fail, naming just the two loops that lost it.
+
+**The network loops' debt, worked through (2026-10-31).** Every entry on the
+conventions test's `DEBT` list is now raced, fanned out, or explained.
+`net::race` gained `each`, a bounded fan-out (`AT_ONCE`, as many at once as a
+race lets run). Each item runs on its own task and finishes on its own, so a
+caller dropped midway cancels nothing. `net::sync::connect_first`, lifted out of
+`sync_room_with_first`, races only the connects. It is for work that must run on
+one computer alone, where racing the whole of it would pull the same bytes from
+everyone: a body download, a bootstrap. `files::fetch_many` and the body walks
+take either an address or a connection already open (`files::Provider`).
+
+The ladders, each now a race: `fragment::fetch`, `fetch_deaths`, `fetch_replies`
+and `revalidate`'s sharer and cohort tiers (one helper, `first_answer`; the
+tiers stay in order, each raced). Also `chat::archive_history`, `remote_latest`,
+`archive_pull`'s directory, the cover fetches (`cover_from_first`) and
+`deliver`'s knocks. The inbox already holds an envelope taken by two of the
+recipient's computers, and the walk could cause that too, whenever a knock that
+timed out had landed. Then `open_sealed_statements`' ask on behalf of each
+follower. On `connect_first`: `bodies::heal_from` and `sweep`,
+`roster::fetch_bodies`, the adoption sibling ladder (its 8-second bound now on
+the exchange) and `archive_pull`'s rounds (via `sync_room_with_first_asking`,
+the last server asked first).
+
+The fan-outs, now `each`: `sync_room`'s speakers (`pull_speaker_chain`) and
+`push_room`'s, `chat::search`'s sealed-room keys, a book's sealed-page keys
+(`epub::prefetch_keys`, before the walk numbers chapters in order),
+`export::chat_files`' histories (written back in the rooms' order), the reaper's
+logs, a post's and a line's pictures, `journal_shares_to`'s unheld documents,
+`idface::pinned_here` (a page waits on it), `sync_peers`, `sync_group`'s pushes
+and pulls, and `gossip_group`'s and `public_sync`'s partners. Order is kept
+wherever it mattered: `me` first and twice per gossip partner, a group's rounds,
+each speaker's siblings before the room's nodes.
+
+Each fix exposed the loops above it: a function whose ladder became a race
+counts as one network call, so its callers' loops showed up. Those got the same
+treatment, mostly a `// one at a time:` reason for a paced background pass. The
+test needed two refinements along the way. A `race::each` counts as a loop when
+deciding what is one network call. Spawned work doesn't count at all:
+`roster::push_soon` spawns its gossip, and had made every group write look like
+a network call. Failures now name what each loop waits on.
+
+Also: `publish.cjs`' "dates a post by when it was FIRST said" spends 3.3 of
+mocha's default 5 seconds in deliberate gaps between stamps, and timed out once
+in five under the full suite. It has 30 seconds now.

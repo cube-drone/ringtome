@@ -1013,19 +1013,26 @@ pub async fn revalidate(
     let sharers = crate::fanout::sharers_of_doc(&state.node_db, &author_hex, &hex::encode(doc_id))
         .await
         .unwrap_or_default();
-    let mut walked = 0;
-    for sharer in sharers {
-        if sharer == author_hex || sharer == origin_root {
-            continue;
+    // Raced, staggered (net::race, 2026-10-31): each sharer is a ladder of its own computers, and a
+    // dark one used to cost the next its whole walk. Unknown is "not here": the next is asked.
+    let sharers: Vec<String> = sharers
+        .into_iter()
+        .filter(|s| *s != author_hex && s != origin_root)
+        .take(SHARER_WALK_CAP)
+        .collect();
+    let (author_key, doc) = (*author, *doc_id);
+    let won = crate::net::race::first(sharers, crate::net::race::STAGGER, |sharer| {
+        let state = state.clone();
+        async move {
+            match fetch(&state, &sharer, &author_key, &doc).await {
+                Fetched::Unknown => None,
+                answered => Some(answered),
+            }
         }
-        if walked >= SHARER_WALK_CAP {
-            break;
-        }
-        walked += 1;
-        match fetch(state, &sharer, author, doc_id).await {
-            Fetched::Unknown => {}
-            answered => return answered,
-        }
+    })
+    .await;
+    if let Some((_, answered)) = won {
+        return answered;
     }
     // The cohort, last (2026-08-15): every rung above names the DOCUMENT's own machinery -
     // author, recorded origin, the byline ledger's sharers - and all of it can be dark for
@@ -1033,19 +1040,60 @@ pub async fn revalidate(
     // Endpoint-addressed rather than root-addressed, because the sibling is not a persona in
     // this document's tree; it is our own household, reached by the addresses the ceremony
     // already bound.
-    for endpoint in crate::net::sync::cohort_endpoints(state).await.unwrap_or_default() {
-        let asked =
-            tokio::time::timeout(FETCH_TIMEOUT, ask(state, &endpoint, author, doc_id)).await;
-        match asked {
-            Ok(Ok(Fetched::Unknown)) => {}
-            Ok(Ok(answered)) => return answered,
-            Ok(Err(e)) => {
-                tracing::debug!(cohort = %endpoint, error = ?e, "cohort fragment ask failed")
+    let cohort = crate::net::sync::cohort_endpoints(state).await.unwrap_or_default();
+    let answered = first_answer(cohort, "cohort fragment ask", |endpoint| {
+        let state = state.clone();
+        async move {
+            match ask(&state, &endpoint, &author_key, &doc).await? {
+                Fetched::Unknown => Err(anyhow!("not held there")),
+                answered => Ok(answered),
             }
-            Err(_) => tracing::debug!(cohort = %endpoint, "cohort fragment ask timed out"),
+        }
+    })
+    .await;
+    answered.unwrap_or(Fetched::Unknown)
+}
+
+/// The first of `endpoints` to answer `ask`, each within FETCH_TIMEOUT: raced, staggered
+/// (net::race, 2026-10-31), so a silent endpoint costs the next a head start rather than its
+/// whole timeout. An ask that errs is "nothing here"; the rest are asked. `what` names the ask
+/// in the debug log.
+async fn first_answer<T, F, Fut>(endpoints: Vec<String>, what: &'static str, ask: F) -> Option<T>
+where
+    T: Send + 'static,
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Result<T>> + Send + 'static,
+{
+    let won = crate::net::race::first(endpoints, crate::net::race::STAGGER, |endpoint| {
+        let asked = ask(endpoint.clone());
+        async move {
+            match tokio::time::timeout(FETCH_TIMEOUT, asked).await {
+                Ok(Ok(answer)) => Some(answer),
+                Ok(Err(e)) => {
+                    tracing::debug!(endpoint = %endpoint, error = ?e, "{what} failed");
+                    None
+                }
+                Err(_) => {
+                    tracing::debug!(endpoint = %endpoint, "{what} timed out");
+                    None
+                }
+            }
+        }
+    })
+    .await;
+    won.map(|(_, answer)| answer)
+}
+
+/// The endpoints serving `root_hex`'s delivery candidates, in the candidates' order.
+async fn candidate_endpoints(state: &AppState, root_hex: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for candidate in crate::net::deliver::candidates(state, root_hex).await {
+        let endpoint = crate::idface::leaf_via_to_endpoint(state, root_hex, &candidate).await;
+        if !out.contains(&endpoint) {
+            out.push(endpoint);
         }
     }
-    Fetched::Unknown
+    out
 }
 
 /// Fallback sharers dialed per revalidation after the author and the recorded origin both
@@ -1091,19 +1139,14 @@ pub async fn fetch(
         };
     }
 
-    for candidate in crate::net::deliver::candidates(state, origin_root).await {
-        let endpoint_id = crate::idface::leaf_via_to_endpoint(state, origin_root, &candidate).await;
-        let asked =
-            tokio::time::timeout(FETCH_TIMEOUT, ask(state, &endpoint_id, author, doc_id)).await;
-        match asked {
-            Ok(Ok(answer)) => return answer,
-            Ok(Err(e)) => {
-                tracing::debug!(origin = %origin_root, error = ?e, "fragment fetch failed")
-            }
-            Err(_) => tracing::debug!(origin = %origin_root, "fragment fetch timed out"),
-        }
-    }
-    Fetched::Unknown
+    let (author, doc) = (*author, *doc_id);
+    let endpoints = candidate_endpoints(state, origin_root).await;
+    let answered = first_answer(endpoints, "fragment fetch", |endpoint| {
+        let state = state.clone();
+        async move { ask(&state, &endpoint, &author, &doc).await }
+    })
+    .await;
+    answered.unwrap_or(Fetched::Unknown)
 }
 
 /// One document from one named endpoint, verified at the edge exactly as `fetch` does - for
@@ -1154,19 +1197,12 @@ pub async fn fetch_deaths(
     origin_root: &str,
     since: u64,
 ) -> Option<(Vec<ringtome_proto::fragment::DeathProof>, u64, usize)> {
-    for candidate in crate::net::deliver::candidates(state, origin_root).await {
-        let endpoint_id = crate::idface::leaf_via_to_endpoint(state, origin_root, &candidate).await;
-        let asked =
-            tokio::time::timeout(FETCH_TIMEOUT, ask_deaths(state, &endpoint_id, since)).await;
-        match asked {
-            Ok(Ok(answer)) => return Some(answer),
-            Ok(Err(e)) => {
-                tracing::trace!(origin = %origin_root, error = ?e, "death cursor ask failed")
-            }
-            Err(_) => tracing::debug!(origin = %origin_root, "death cursor ask timed out"),
-        }
-    }
-    None
+    let endpoints = candidate_endpoints(state, origin_root).await;
+    first_answer(endpoints, "death cursor ask", |endpoint| {
+        let state = state.clone();
+        async move { ask_deaths(&state, &endpoint, since).await }
+    })
+    .await
 }
 
 /// The death-cursor ask, endpoint-addressed - the reap's cohort rung (2026-08-15). A sibling
@@ -1202,23 +1238,13 @@ pub async fn fetch_replies(
     parent_doc: &[u8; 16],
     since: u64,
 ) -> Option<(Vec<(ringtome_proto::fragment::ReplyProof, [u8; 16], i64)>, u64)> {
-    let author_hex = hex::encode(parent_author);
-    for candidate in crate::net::deliver::candidates(state, &author_hex).await {
-        let endpoint_id = crate::idface::leaf_via_to_endpoint(state, &author_hex, &candidate).await;
-        let asked = tokio::time::timeout(
-            FETCH_TIMEOUT,
-            ask_replies(state, &endpoint_id, parent_author, parent_doc, since),
-        )
-        .await;
-        match asked {
-            Ok(Ok(answer)) => return Some(answer),
-            Ok(Err(e)) => {
-                tracing::debug!(author = %author_hex, error = ?e, "reply index ask failed")
-            }
-            Err(_) => tracing::debug!(author = %author_hex, "reply index ask timed out"),
-        }
-    }
-    None
+    let (author, doc) = (*parent_author, *parent_doc);
+    let endpoints = candidate_endpoints(state, &hex::encode(parent_author)).await;
+    first_answer(endpoints, "reply index ask", |endpoint| {
+        let state = state.clone();
+        async move { ask_replies(&state, &endpoint, &author, &doc, since).await }
+    })
+    .await
 }
 
 async fn ask_replies(

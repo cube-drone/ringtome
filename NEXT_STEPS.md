@@ -264,14 +264,6 @@ are driving towards.
 
 ### Sync
 
-- Network loops that wait one turn at a time: the `DEBT` list in
-  `node/tests/conventions.rs`
-  (`network_attempts_in_a_loop_are_raced_or_explained`), which shrinks as each
-  is fixed. In order: `fragment::fetch` and `chat::archive_history` (a person
-  waits on both), then `bodies`, then the other ladders through
-  `net::race::first`; `deliver` last, once the far side is checked to drop a
-  knock it already took. Then the fan-outs, through a bounded fan-out beside
-  `race::first` (`race::each`: a few at once, each finishing on its own).
 - A flake in `follow_ceiling.cjs` (seen 2026-10-06): "scrollback backfills
   beneath the floor" reached 260 of 300 posts once under a full `just ci`, then
   passed three times alone and in the next full run, on the same tree. Paging

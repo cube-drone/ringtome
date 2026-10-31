@@ -1984,29 +1984,49 @@ async fn exchange(state: &AppState, persona: &str, endpoint: &str, group: &Group
 pub async fn sync_group(state: &AppState, me: &str, group: &GroupId, seed: &[String]) -> usize {
     let mut names: BTreeSet<String> = seed.iter().cloned().collect();
     names.extend(named(&lanes_of(state, group).await.unwrap_or_default()));
-    let mut exchanged = 0;
-    for ep in endpoints(state, group, &names).await {
-        // one at a time: the second exchange stands on the first - a node meeting `me` for the
-        // first time learns it from the first (this function's doc)
-        for _ in 0..2 {
-            if exchange(state, me, &ep, group).await {
-                exchanged += 1;
+    // The group's nodes a few at once (net::race::each, 2026-10-31), first the pushes and then
+    // each round's pulls: a dark node used to hold up every one after it.
+    let me_owned = me.to_string();
+    let group_id = *group;
+    let pushed = crate::net::race::each(
+        endpoints(state, group, &names).await,
+        crate::net::race::AT_ONCE,
+        |ep| {
+            let (state, me, ep) = (state.clone(), me_owned.clone(), ep.clone());
+            async move {
+                let mut n = 0;
+                // one at a time: the second exchange stands on the first - a node meeting `me`
+                // for the first time learns it from the first (this function's doc)
+                for _ in 0..2 {
+                    if exchange(&state, &me, &ep, &group_id).await {
+                        n += 1;
+                    }
+                }
+                n
             }
-        }
-    }
+        },
+    )
+    .await;
+    let mut exchanged: usize = pushed.iter().map(|(_, n)| n).sum();
     let mut pulled: BTreeSet<String> = BTreeSet::from([me.to_string()]);
+    // one at a time: each round pulls the names the round before it found.
     for _ in 0..4 {
         let fresh: Vec<String> = names.difference(&pulled).cloned().collect();
         if fresh.is_empty() {
             break;
         }
         let eps = endpoints(state, group, &names).await;
+        let pairs: Vec<(String, String)> = fresh
+            .iter()
+            .flat_map(|who| eps.iter().map(move |ep| (who.clone(), ep.clone())))
+            .collect();
+        let pulls = crate::net::race::each(pairs, crate::net::race::AT_ONCE, |(who, ep)| {
+            let (state, who, ep) = (state.clone(), who.clone(), ep.clone());
+            async move { exchange(&state, &who, &ep, &group_id).await }
+        })
+        .await;
+        exchanged += pulls.iter().filter(|(_, ok)| *ok).count();
         for who in &fresh {
-            for ep in &eps {
-                if exchange(state, who, ep, group).await {
-                    exchanged += 1;
-                }
-            }
             crate::fold::fold_now(state, who).await;
             pulled.insert(who.clone());
         }
@@ -2265,29 +2285,50 @@ pub async fn gossip_group(state: &AppState, me: &str, group: &GroupId) -> usize 
     names.retain(|n| n != me);
     names.insert(0, me.to_string());
     let (_, partners) = gossip_partners(state, group).await;
-    let mut exchanged = 0;
-    for ep in &partners {
-        let first = !heard_at(state, group, ep).await;
-        // The digest first (plans/NETWORK.md): only the personas whose lanes the two sides
-        // disagree on are worth an exchange - none, on a quiet pass. A machine met for the first
-        // time is exchanged with in full, `me` twice, so it learns this node speaks for `me`.
-        let worth = if first { None } else { worth_exchanging(state, group, ep, true).await };
-        for who in &with_news(&names, worth.as_ref()) {
-            if worth.as_ref().is_some_and(|w| !w.contains(who)) {
-                continue;
-            }
-            let times = if first && who == me { 2 } else { 1 };
-            for _ in 0..times {
-                if exchange(state, who, ep, group).await {
-                    exchanged += 1;
-                }
-            }
-        }
-    }
+    // The partners a few at once (net::race::each, 2026-10-31): a dark one used to hold up the
+    // others behind it.
+    let (me_owned, group_id, shared) = (me.to_string(), *group, std::sync::Arc::new(names.clone()));
+    let told = crate::net::race::each(partners, crate::net::race::AT_ONCE, |ep| {
+        let (state, me, names, ep) = (state.clone(), me_owned.clone(), shared.clone(), ep.clone());
+        async move { gossip_with(&state, &me, &names, &ep, &group_id).await }
+    })
+    .await;
+    let exchanged: usize = told.iter().map(|(_, n)| n).sum();
     for who in &names {
         crate::fold::fold_now(state, who).await;
     }
     fetch_bodies(state, group, &names.iter().cloned().collect()).await;
+    exchanged
+}
+
+/// One partner of a gossip pass, its exchanges in order: `me` first, and twice to a machine met for
+/// the first time.
+async fn gossip_with(
+    state: &AppState,
+    me: &str,
+    names: &[String],
+    ep: &str,
+    group: &GroupId,
+) -> usize {
+    let mut exchanged = 0;
+    let first = !heard_at(state, group, ep).await;
+    // The digest first (plans/NETWORK.md): only the personas whose lanes the two sides
+    // disagree on are worth an exchange - none, on a quiet pass. A machine met for the first
+    // time is exchanged with in full, `me` twice, so it learns this node speaks for `me`.
+    let worth = if first { None } else { worth_exchanging(state, group, ep, true).await };
+    for who in &with_news(names, worth.as_ref()) {
+        if worth.as_ref().is_some_and(|w| !w.contains(who)) {
+            continue;
+        }
+        let times = if first && who == me { 2 } else { 1 };
+        // one at a time: `me` comes first, and its second exchange stands on its first - the
+        // machine learns from the first that this node speaks for `me`.
+        for _ in 0..times {
+            if exchange(state, who, ep, group).await {
+                exchanged += 1;
+            }
+        }
+    }
     exchanged
 }
 
@@ -2333,6 +2374,8 @@ pub async fn sync_pass(state: AppState) -> Result<()> {
         .fetch_all("SELECT group_id, root, standing FROM group_people ORDER BY group_id, root", ())
         .await
         .context("listing the groups to keep in step")?;
+    // one at a time: the group beat, each group refolded after its own gossip - two of a group's
+    // personas at once would refold it against each other. Each gossip's partners run at once.
     for (group, root, standing) in rows {
         let Ok(group) = <[u8; 16]>::try_from(group.as_slice()) else { continue };
         if crate::identity::is_agented(&state.node_db, &root).await.unwrap_or(false) {
@@ -2472,23 +2515,36 @@ pub async fn public_sync(state: &AppState, group: &GroupId, seed: &[String]) -> 
             }
         }
     }
-    let mut exchanged = 0;
-    for ep in &partners {
-        // The digest, over the public lanes: only what differs (plans/NETWORK.md).
-        let worth = worth_exchanging(state, group, ep, false).await;
-        for who in &with_news(&names, worth.as_ref()) {
-            if worth.as_ref().is_some_and(|w| !w.contains(who)) {
-                continue;
-            }
-            if exchange(state, who, ep, group).await {
-                exchanged += 1;
-            }
-        }
-    }
+    // The partners a few at once, and each partner's exchanges too (net::race::each, 2026-10-31):
+    // the public lanes have no order to keep.
+    let (group_id, shared) = (*group, std::sync::Arc::new(names.clone()));
+    let told = crate::net::race::each(partners, crate::net::race::AT_ONCE, |ep| {
+        let (state, names, ep) = (state.clone(), shared.clone(), ep.clone());
+        async move { public_with(&state, &names, &ep, &group_id).await }
+    })
+    .await;
+    let exchanged: usize = told.iter().map(|(_, n)| n).sum();
     for who in &names {
         crate::fold::fold_now(state, who).await;
     }
     exchanged
+}
+
+/// One partner of a public sync: the digest, then whoever it says differs.
+async fn public_with(state: &AppState, names: &[String], ep: &str, group: &GroupId) -> usize {
+    // The digest, over the public lanes: only what differs (plans/NETWORK.md).
+    let worth = worth_exchanging(state, group, ep, false).await;
+    let who: Vec<String> = with_news(names, worth.as_ref())
+        .into_iter()
+        .filter(|who| worth.as_ref().is_none_or(|w| w.contains(who)))
+        .collect();
+    let (ep, group) = (ep.to_string(), *group);
+    let done = crate::net::race::each(who, crate::net::race::AT_ONCE, |who| {
+        let (state, who, ep) = (state.clone(), who.clone(), ep.clone());
+        async move { exchange(&state, &who, &ep, &group).await }
+    })
+    .await;
+    done.iter().filter(|(_, ok)| *ok).count()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3644,9 +3700,13 @@ async fn fetch_bodies(state: &AppState, group: &GroupId, names: &BTreeSet<String
     if missing.is_empty() {
         return;
     }
-    for ep in endpoints(state, group, names).await {
-        let Ok(addr) = crate::net::sync::dial_addr(state, &ep).await else { continue };
-        state.files.fetch_many(&state.endpoint, addr, &missing).await;
+    // The connects raced, staggered (net::sync::connect_first, 2026-10-31), the download on the
+    // winner alone; the next is raced for only if bodies remain.
+    let mut left = endpoints(state, group, names).await;
+    while let Some((_, _, conn)) =
+        crate::net::sync::connect_first(state, &mut left, crate::files::BLOB_ALPN).await
+    {
+        state.files.fetch_many(&state.endpoint, conn, &missing).await;
         let mut still = Vec::new();
         for h in missing {
             if !state.files.has(h).await {

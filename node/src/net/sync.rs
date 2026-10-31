@@ -1893,57 +1893,24 @@ pub async fn sync_room_with_first(
     endpoints: &[String],
     room: [u8; 16],
 ) -> Result<(String, ExchangeStats)> {
+    sync_room_with_first_asking(state, root_hex, endpoints, room, Ask::default()).await
+}
+
+/// `sync_room_with_first` asking for `ask` - the archive's walk down a chain, a budget below its
+/// floor at a time.
+pub async fn sync_room_with_first_asking(
+    state: &AppState,
+    root_hex: &str,
+    endpoints: &[String],
+    room: [u8; 16],
+    ask: Ask,
+) -> Result<(String, ExchangeStats)> {
     let mut left: Vec<String> = endpoints.to_vec();
-    let mut last = anyhow!("no computer to ask");
-    while !left.is_empty() {
-        let unreached = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let won = crate::net::race::first(left.clone(), crate::net::race::STAGGER, |ep| {
-            let unreached = unreached.clone();
-            let state = state.clone();
-            async move {
-                let dialled = match dial_addr(&state, &ep).await {
-                    Ok(addr) => crate::net::p2p::dial(
-                        &state.unplugged,
-                        &state.endpoint,
-                        addr.clone(),
-                        ringtome_proto::sync::SYNC_ALPN,
-                    )
-                    .await
-                    .map(|conn| (addr, conn)),
-                    Err(e) => Err(e),
-                };
-                match dialled {
-                    Ok(won) => Some(won),
-                    Err(e) => {
-                        tracing::debug!(endpoint = %ep, error = ?e, "room connect failed");
-                        if let Ok(mut u) = unreached.lock() {
-                            u.push(ep);
-                        }
-                        None
-                    }
-                }
-            }
-        })
-        .await;
-        // Who failed by now: a dial still running when the race was won is detached, and stays on
-        // the list for another round if the winner's exchange fails.
-        let unreached = unreached.lock().map(|u| u.clone()).unwrap_or_default();
-        left.retain(|ep| !unreached.contains(ep));
-        let Some((ep, (addr, conn))) = won else {
-            return Err(anyhow!("none of {} computers answered", endpoints.len()));
-        };
-        left.retain(|e| *e != ep);
-        match sync_with_peer_on(
-            state,
-            root_hex,
-            addr,
-            Some(conn),
-            ROOM_SCOPE,
-            &[room],
-            Ask::default(),
-        )
-        .await
-        {
+    let mut last = anyhow!("none of {} computers answered", endpoints.len());
+    while let Some((ep, addr, conn)) =
+        connect_first(state, &mut left, ringtome_proto::sync::SYNC_ALPN).await
+    {
+        match sync_with_peer_on(state, root_hex, addr, Some(conn), ROOM_SCOPE, &[room], ask).await {
             Ok(stats) => return Ok((ep, stats)),
             Err(e) => {
                 tracing::debug!(endpoint = %ep, error = ?e, "room exchange failed");
@@ -1952,6 +1919,55 @@ pub async fn sync_room_with_first(
         }
     }
     Err(last)
+}
+
+/// The first of `left` to connect for `alpn` (Curtis, 2026-10-30): the connects race, staggered
+/// (`net::race`), in the order given. The winner leaves `left`, and so does every endpoint whose
+/// connect failed by then; one still connecting when the race was won is detached and stays, for
+/// another round if the caller's work on the winner falls short. `None` when nobody connected.
+///
+/// For work that must run on one computer alone - an exchange, a body download - where racing the
+/// whole of it would move the same bytes from everyone: race the connect, then work the winner,
+/// and come back for the next if it wasn't enough.
+pub async fn connect_first(
+    state: &AppState,
+    left: &mut Vec<String>,
+    alpn: &'static [u8],
+) -> Option<(String, EndpointAddr, Connection)> {
+    if left.is_empty() {
+        return None;
+    }
+    let unreached = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let won = crate::net::race::first(left.clone(), crate::net::race::STAGGER, |ep| {
+        let unreached = unreached.clone();
+        let state = state.clone();
+        async move {
+            let dialled = match dial_addr(&state, &ep).await {
+                Ok(addr) => {
+                    crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr.clone(), alpn)
+                        .await
+                        .map(|conn| (addr, conn))
+                }
+                Err(e) => Err(e),
+            };
+            match dialled {
+                Ok(won) => Some(won),
+                Err(e) => {
+                    tracing::debug!(endpoint = %ep, error = ?e, "connect failed");
+                    if let Ok(mut u) = unreached.lock() {
+                        u.push(ep);
+                    }
+                    None
+                }
+            }
+        }
+    })
+    .await;
+    let unreached = unreached.lock().map(|u| u.clone()).unwrap_or_default();
+    left.retain(|ep| !unreached.contains(ep));
+    let (ep, (addr, conn)) = won?;
+    left.retain(|e| *e != ep);
+    Some((ep, addr, conn))
 }
 
 /// What an exchange asks for, as the sync ledger tells one from another (step 7): the chains, the
@@ -2017,7 +2033,7 @@ pub async fn sync_with_peer_asking(
 
 /// `sync_with_peer_asking`, on a connection already open when there is one (a race's winner,
 /// `sync_room_with_first`) - else it dials.
-async fn sync_with_peer_on(
+pub(crate) async fn sync_with_peer_on(
     state: &AppState,
     root_hex: &str,
     addr: EndpointAddr,
@@ -3433,63 +3449,61 @@ pub async fn sync_peers(
     root_hex: &str,
     peers: &[String],
 ) -> Result<Vec<PeerSyncResult>> {
-    let mut results = Vec::new();
-    for peer_id in peers {
-        // Resolve at dial time: id -> addresses via the directory (or iroh's own discovery).
-        // The exchange rides its own task so the deadline DETACHES rather than cancels it -
-        // an abort mid-exchange leaves zombie connection state for the next dial to trip
-        // over, which is how the unbounded version's hangs were minted in the first place.
-        let task_state = state.clone();
-        let task_root = root_hex.to_string();
-        let task_peer = peer_id.clone();
-        let mut attempt = tokio::spawn(async move {
-            let addr = dial_addr(&task_state, &task_peer).await?;
-            // Continue while behind (PROJECT_PLAN's Peeks, ruling 2), a bounded number of passes per
-            // wake: each pass is one budgeted connection, and the mark carries the rest
-            // to the next beat.
-            let mut passes = 0;
-            loop {
-                let stats = sync_with_peer(&task_state, &task_root, addr.clone()).await?;
-                passes += 1;
-                if !stats.behind || passes >= CONTINUATIONS_PER_WAKE {
-                    break Ok::<_, anyhow::Error>(stats);
-                }
+    // A few peers at once (net::race::each, 2026-10-31): each waited out its PEER_PASS_TIMEOUT in
+    // turn, so one dark peer held up every one after it. The results in the peers' order.
+    let indexed: Vec<(usize, String)> = peers.iter().cloned().enumerate().collect();
+    let root = root_hex.to_string();
+    let mut answered =
+        crate::net::race::each(indexed, crate::net::race::AT_ONCE, |(_, peer_id)| {
+            let (state, root, peer_id) = (state.clone(), root.clone(), peer_id.clone());
+            async move { sync_one_peer(&state, &root, &peer_id).await }
+        })
+        .await;
+    answered.sort_by_key(|((i, _), _)| *i);
+    answered.into_iter().map(|(_, r)| r).collect()
+}
+
+/// One peer of `sync_peers`, within PEER_PASS_TIMEOUT.
+async fn sync_one_peer(state: &AppState, root_hex: &str, peer_id: &str) -> Result<PeerSyncResult> {
+    // Resolve at dial time: id -> addresses via the directory (or iroh's own discovery).
+    // The exchange rides its own task so the deadline DETACHES rather than cancels it -
+    // an abort mid-exchange leaves zombie connection state for the next dial to trip
+    // over, which is how the unbounded version's hangs were minted in the first place.
+    let task_state = state.clone();
+    let task_root = root_hex.to_string();
+    let task_peer = peer_id.to_string();
+    let mut attempt = tokio::spawn(async move {
+        let addr = dial_addr(&task_state, &task_peer).await?;
+        // Continue while behind (PROJECT_PLAN's Peeks, ruling 2), a bounded number of passes per
+        // wake: each pass is one budgeted connection, and the mark carries the rest
+        // to the next beat.
+        let mut passes = 0;
+        loop {
+            let stats = sync_with_peer(&task_state, &task_root, addr.clone()).await?;
+            passes += 1;
+            if !stats.behind || passes >= CONTINUATIONS_PER_WAKE {
+                break Ok::<_, anyhow::Error>(stats);
             }
-        });
-        match tokio::time::timeout(PEER_PASS_TIMEOUT, &mut attempt).await {
-            Ok(Ok(Ok(stats))) => {
-                mark_synced(&state.node_db, root_hex, peer_id).await?;
-                results.push(PeerSyncResult {
-                    peer: peer_id.clone(),
-                    ok: true,
-                    stats: Some(stats),
-                    error: None,
-                });
-            }
-            Ok(Ok(Err(e))) => results.push(PeerSyncResult {
-                peer: peer_id.clone(),
-                ok: false,
-                stats: None,
-                error: Some(format!("{e:#}")),
-            }),
-            Ok(Err(join_error)) => results.push(PeerSyncResult {
-                peer: peer_id.clone(),
-                ok: false,
-                stats: None,
-                error: Some(format!("exchange task died: {join_error}")),
-            }),
-            Err(_) => results.push(PeerSyncResult {
-                peer: peer_id.clone(),
-                ok: false,
-                stats: None,
-                error: Some(format!(
-                    "no answer within {}s - detached, moving to the next peer",
-                    PEER_PASS_TIMEOUT.as_secs()
-                )),
-            }),
         }
-    }
-    Ok(results)
+    });
+    let failed = |error: String| PeerSyncResult {
+        peer: peer_id.to_string(),
+        ok: false,
+        stats: None,
+        error: Some(error),
+    };
+    Ok(match tokio::time::timeout(PEER_PASS_TIMEOUT, &mut attempt).await {
+        Ok(Ok(Ok(stats))) => {
+            mark_synced(&state.node_db, root_hex, peer_id).await?;
+            PeerSyncResult { peer: peer_id.to_string(), ok: true, stats: Some(stats), error: None }
+        }
+        Ok(Ok(Err(e))) => failed(format!("{e:#}")),
+        Ok(Err(join_error)) => failed(format!("exchange task died: {join_error}")),
+        Err(_) => failed(format!(
+            "no answer within {}s - detached, moving to the next peer",
+            PEER_PASS_TIMEOUT.as_secs()
+        )),
+    })
 }
 
 /// Build a dialable address for a peer: the endpoint id, plus whatever addresses the directory

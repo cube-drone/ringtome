@@ -1871,9 +1871,6 @@ pub async fn answer_room_history(
     (out, total)
 }
 
-/// What the archive answers: `(speaker root, signed entry)` pairs and its count of the room.
-type HistoryAnswer = (Vec<([u8; 32], Vec<u8>)>, u64);
-
 /// The reader's road to the archive (ruling 6): older messages than this node keeps, asked
 /// of the creator's node, each entry verified here - the signature, the room it names -
 /// and its attribution checked against the speaker's key tree as this node holds it; an
@@ -1890,27 +1887,28 @@ async fn archive_history(
 ) -> (Vec<(String, ringtome_proto::SignedEntry)>, i64) {
     let Some(author) = crate::pubkey::decode(author_hex) else { return (Vec::new(), 0) };
     let Some(for_root) = crate::pubkey::decode(viewer_hex) else { return (Vec::new(), 0) };
-    let mut fetched: Option<HistoryAnswer> = None;
-    for endpoint in creator_endpoints(state, author_hex).await {
-        match crate::net::fragment::fetch_room_history(
-            state,
-            &endpoint,
-            &author,
-            doc,
-            &for_root,
-            before_ms.max(0) as u64,
-            limit as u64,
-        )
-        .await
-        {
-            Ok(answer) => {
-                fetched = Some(answer);
-                break;
+    // Raced, staggered (net::race, 2026-10-31): the reader scrolling back waits on this, and a dark
+    // creator endpoint used to cost the next its whole connect timeout. One round trip, so the
+    // asks race whole.
+    let room = *doc;
+    let (before, limit) = (before_ms.max(0) as u64, limit as u64);
+    let won = crate::net::race::first(
+        creator_endpoints(state, author_hex).await,
+        crate::net::race::STAGGER,
+        |endpoint| {
+            let state = state.clone();
+            async move {
+                crate::net::fragment::fetch_room_history(
+                    &state, &endpoint, &author, &room, &for_root, before, limit,
+                )
+                .await
+                .map_err(|e| tracing::debug!(endpoint = %endpoint, error = ?e, "room history ask failed"))
+                .ok()
             }
-            Err(e) => tracing::debug!(endpoint = %endpoint, error = ?e, "room history ask failed"),
-        }
-    }
-    let Some((items, total)) = fetched else { return (Vec::new(), 0) };
+        },
+    )
+    .await;
+    let Some((_, (items, total))) = won else { return (Vec::new(), 0) };
     let mut trees: HashMap<String, Option<ringtome_proto::Crown>> = HashMap::new();
     let mut out = Vec::with_capacity(items.len());
     for (root, bytes) in items {
@@ -2113,17 +2111,33 @@ pub async fn search(
         });
     }
 
+    // The sealed rooms this persona may read, and then their keys, a few at once
+    // (net::race::each, 2026-10-31): a key not held here is asked of the key lane, and the
+    // search waits on every one.
+    let mut readable: Vec<(String, String, [u8; 16])> = Vec::new();
     for (author_hex, doc_hex) in sealed_rooms {
         let at = (author_hex.clone(), doc_hex.clone());
         if !rooms.contains_key(&at) {
             let verdict = room_verdict(state, viewer_hex, &author_hex, &doc_hex).await;
             rooms.insert(at.clone(), verdict);
         }
-        let Some(Some((head, muted))) = rooms.get(&at).cloned() else { continue };
         let Ok(Ok(doc)) = hex::decode(&doc_hex).map(|b| <[u8; 16]>::try_from(b.as_slice())) else {
             continue;
         };
-        let Some(key) = room_key(state, &author_hex, &doc, viewer_hex).await else { continue };
+        if matches!(rooms.get(&at), Some(Some(_))) {
+            readable.push((author_hex, doc_hex, doc));
+        }
+    }
+    let viewer = viewer_hex.to_string();
+    let keyed = crate::net::race::each(readable, crate::net::race::AT_ONCE, |(author, _, doc)| {
+        let (state, author, doc, viewer) = (state.clone(), author.clone(), *doc, viewer.clone());
+        async move { room_key(&state, &author, &doc, &viewer).await }
+    })
+    .await;
+    for ((author_hex, doc_hex, _), key) in keyed {
+        let Some(key) = key else { continue };
+        let at = (author_hex.clone(), doc_hex.clone());
+        let Some(Some((head, muted))) = rooms.get(&at).cloned() else { continue };
         let rows: Vec<SearchRow> = state
             .node_db
             .fetch_all(
@@ -3321,6 +3335,7 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
             return;
         }
     }
+    let mut lists: Vec<Vec<String>> = Vec::new();
     for speaker in recent_speakers(&state.node_db, author_hex, &doc_hex).await {
         if speaker == root_hex
             || speaker == author_hex
@@ -3328,9 +3343,16 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
         {
             continue;
         }
-        let theirs = speaker_endpoints(state, &speaker).await;
-        let _ = crate::net::sync::sync_room_with_first(state, root_hex, &theirs, *doc).await;
+        lists.push(speaker_endpoints(state, &speaker).await);
     }
+    // Every speaker's node told, a few at once (net::race::each, 2026-10-31): a dark one used to
+    // hold up the rest behind it.
+    let (root, room) = (root_hex.to_string(), *doc);
+    crate::net::race::each(lists, crate::net::race::AT_ONCE, |theirs| {
+        let (state, root, theirs) = (state.clone(), root.clone(), theirs.clone());
+        async move { crate::net::sync::sync_room_with_first(&state, &root, &theirs, room).await.is_ok() }
+    })
+    .await;
 }
 
 /// Pull a room: ask the creator's node who has spoken, then pull each speaker's chain for
@@ -3414,8 +3436,8 @@ pub async fn sync_room(
     let others: Vec<String> = speakers.iter().filter(|s| *s != root_hex).cloned().collect();
     speakers.retain(|s| s != root_hex);
     let siblings = sibling_endpoints(state, root_hex).await;
-    let mut exchanged = 0usize;
-    let mut landed = false;
+    // Each speaker's candidates first - this node's own knowledge, asking nobody.
+    let mut plans: Vec<(String, Vec<String>, Vec<String>)> = Vec::new();
     for speaker in speakers {
         if crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
             continue; // their chain is already here, whole
@@ -3440,47 +3462,26 @@ pub async fn sync_room(
                 candidates.push(ep.clone());
             }
         }
-        // The viewer's own computers first (Curtis, 2026-10-30: "computers I own are much more
-        // likely to be network colocated with me"), but never instead: a sibling that slept
-        // through part of the room answers with less than the room holds, so its answer doesn't
-        // end the search. Whatever it had shows at once; the room's own nodes, asked next, add
-        // only what is newer, since chains sync as suffixes.
         let theirs: Vec<String> =
             siblings.iter().filter(|ep| !candidates.contains(ep)).cloned().collect();
-        if !theirs.is_empty() {
-            match crate::net::sync::sync_room_with_first(state, &speaker, &theirs, *doc).await {
-                Ok((_, stats)) => {
-                    exchanged += 1;
-                    crate::fold::fold_now(state, &speaker).await;
-                    if stats.received > 0 {
-                        landed = true;
-                        if let Some(live) = state.live.get(doc) {
-                            let _ = live.events.send(LiveEvent::Message);
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::debug!(speaker = %speaker, error = ?e, "room pull from a sibling failed")
-                }
-            }
-        }
-        // The room's own nodes, raced in the order above (net::race): a dark creator or speaker
-        // costs the next one a head start, not a whole connect timeout.
-        match crate::net::sync::sync_room_with_first(state, &speaker, &candidates, *doc).await {
-            Ok((_, stats)) => {
-                exchanged += 1;
-                // Awaited, so the door's answer means the floor is current (a page that
-                // read right after the pull found nothing, 2026-09-18).
-                crate::fold::fold_now(state, &speaker).await;
-                if stats.received > 0 {
-                    landed = true;
-                }
-            }
-            Err(e) => {
-                tracing::debug!(speaker = %speaker, error = ?e, "room pull failed")
-            }
-        }
+        plans.push((speaker, candidates, theirs));
     }
+    // Then the speakers' chains, a few at once (net::race::each, 2026-10-31): each is its own
+    // chain from its own candidates, and a dark creator used to hold up every speaker after the
+    // first one it stalled.
+    let room = *doc;
+    let pulled = crate::net::race::each(
+        plans,
+        crate::net::race::AT_ONCE,
+        |(speaker, candidates, theirs)| {
+            let (state, speaker, candidates, theirs) =
+                (state.clone(), speaker.clone(), candidates.clone(), theirs.clone());
+            async move { pull_speaker_chain(&state, &speaker, &candidates, &theirs, room).await }
+        },
+    )
+    .await;
+    let exchanged: usize = pulled.iter().map(|(_, (n, _))| n).sum();
+    let landed = pulled.iter().any(|(_, (_, l))| *l);
     // What the durable lane brought is news to the sockets too.
     if landed {
         if let Some(live) = state.live.get(doc) {
@@ -3498,6 +3499,57 @@ pub async fn sync_room(
     Ok(exchanged)
 }
 
+/// One speaker's chain for a room, as `sync_room` pulls it: the viewer's own computers first,
+/// then the room's own nodes. How many exchanges went through, and whether anything landed.
+async fn pull_speaker_chain(
+    state: &AppState,
+    speaker: &str,
+    candidates: &[String],
+    theirs: &[String],
+    room: [u8; 16],
+) -> (usize, bool) {
+    let (mut exchanged, mut landed) = (0usize, false);
+    // The viewer's own computers first (Curtis, 2026-10-30: "computers I own are much more
+    // likely to be network colocated with me"), but never instead: a sibling that slept
+    // through part of the room answers with less than the room holds, so its answer doesn't
+    // end the search. Whatever it had shows at once; the room's own nodes, asked next, add
+    // only what is newer, since chains sync as suffixes.
+    if !theirs.is_empty() {
+        match crate::net::sync::sync_room_with_first(state, speaker, theirs, room).await {
+            Ok((_, stats)) => {
+                exchanged += 1;
+                crate::fold::fold_now(state, speaker).await;
+                if stats.received > 0 {
+                    landed = true;
+                    if let Some(live) = state.live.get(&room) {
+                        let _ = live.events.send(LiveEvent::Message);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!(speaker = %speaker, error = ?e, "room pull from a sibling failed")
+            }
+        }
+    }
+    // The room's own nodes, raced in the order given (net::race): a dark creator or speaker
+    // costs the next one a head start, not a whole connect timeout.
+    match crate::net::sync::sync_room_with_first(state, speaker, candidates, room).await {
+        Ok((_, stats)) => {
+            exchanged += 1;
+            // Awaited, so the door's answer means the floor is current (a page that
+            // read right after the pull found nothing, 2026-09-18).
+            crate::fold::fold_now(state, speaker).await;
+            if stats.received > 0 {
+                landed = true;
+            }
+        }
+        Err(e) => {
+            tracing::debug!(speaker = %speaker, error = ?e, "room pull failed")
+        }
+    }
+    (exchanged, landed)
+}
+
 /// The full-sync pull (ruling 6): every speaker's chain walked down from this node's floor
 /// to its beginning, a budget's worth per exchange, from the creator's node - the room held
 /// whole from then on, with the archive mark keeping it so. Bounded rounds; the beat's
@@ -3510,16 +3562,22 @@ pub async fn archive_pull(
 ) -> Result<usize> {
     let for_root = crate::pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root"))?;
     let author = crate::pubkey::decode(author_hex).ok_or_else(|| anyhow!("bad room author"))?;
-    let endpoints = creator_endpoints(state, author_hex).await;
-    let mut speakers: Vec<String> = Vec::new();
-    for endpoint in &endpoints {
-        if let Ok(list) =
-            crate::net::fragment::fetch_room(state, endpoint, &author, doc, &for_root).await
-        {
-            speakers = list.iter().map(hex::encode).collect();
-            break;
-        }
-    }
+    let mut endpoints = creator_endpoints(state, author_hex).await;
+    // The creator's endpoints raced, staggered (net::race, 2026-10-31): the directory first, then
+    // each round of each speaker's walk down, the last endpoint that served asked first.
+    let room = *doc;
+    let directory =
+        crate::net::race::first(endpoints.clone(), crate::net::race::STAGGER, |endpoint| {
+            let state = state.clone();
+            async move {
+                crate::net::fragment::fetch_room(&state, &endpoint, &author, &room, &for_root)
+                    .await
+                    .ok()
+            }
+        })
+        .await;
+    let mut speakers: Vec<String> =
+        directory.map(|(_, list)| list.iter().map(hex::encode).collect()).unwrap_or_default();
     if !speakers.contains(&author_hex.to_string()) {
         speakers.push(author_hex.to_string());
     }
@@ -3529,29 +3587,26 @@ pub async fn archive_pull(
         if crate::identity::is_hosted(&state.node_db, &speaker).await.unwrap_or(false) {
             continue;
         }
+        // one at a time: each round asks below the floor the last one left, so it needs that
+        // round landed first.
         for _round in 0..64 {
-            let mut received = 0u64;
-            for endpoint in &endpoints {
-                let Ok(addr) = crate::net::sync::dial_addr(state, endpoint).await else { continue };
-                match crate::net::sync::sync_with_peer_asking(
-                    state,
-                    &speaker,
-                    addr,
-                    crate::net::sync::ROOM_SCOPE,
-                    &[*doc],
-                    ask,
-                )
-                .await
-                {
-                    Ok(stats) => {
-                        received = stats.received;
-                        break;
+            let received = match crate::net::sync::sync_room_with_first_asking(
+                state, &speaker, &endpoints, room, ask,
+            )
+            .await
+            {
+                Ok((served, stats)) => {
+                    if let Some(at) = endpoints.iter().position(|e| *e == served) {
+                        let ep = endpoints.remove(at);
+                        endpoints.insert(0, ep);
                     }
-                    Err(e) => {
-                        tracing::debug!(speaker = %speaker, endpoint = %endpoint, error = ?e, "archive pull failed")
-                    }
+                    stats.received
                 }
-            }
+                Err(e) => {
+                    tracing::debug!(speaker = %speaker, error = ?e, "archive pull failed");
+                    0
+                }
+            };
             if received == 0 {
                 break;
             }
@@ -3589,43 +3644,50 @@ async fn remote_latest(
 ) -> Option<i64> {
     let author = crate::pubkey::decode(author_hex)?;
     let for_root = crate::pubkey::decode(viewer_hex)?;
-    for endpoint in creator_endpoints(state, author_hex).await {
-        let Ok((items, _)) = crate::net::fragment::fetch_room_history(
-            state,
-            &endpoint,
-            &author,
-            doc,
-            &for_root,
-            u64::MAX,
-            1,
-        )
-        .await
-        else {
+    // Raced, staggered (net::race, 2026-10-31): the first creator endpoint to answer is the answer.
+    let room = *doc;
+    let (_, (items, _)) = crate::net::race::first(
+        creator_endpoints(state, author_hex).await,
+        crate::net::race::STAGGER,
+        |endpoint| {
+            let state = state.clone();
+            async move {
+                crate::net::fragment::fetch_room_history(
+                    &state,
+                    &endpoint,
+                    &author,
+                    &room,
+                    &for_root,
+                    u64::MAX,
+                    1,
+                )
+                .await
+                .ok()
+            }
+        },
+    )
+    .await?;
+    let mut newest: Option<i64> = None;
+    for (_, bytes) in items {
+        let Ok(signed) = ringtome_proto::SignedEntry::decode(&bytes) else { continue };
+        if signed.verify().is_err() {
             continue;
-        };
-        let mut newest: Option<i64> = None;
-        for (_, bytes) in items {
-            let Ok(signed) = ringtome_proto::SignedEntry::decode(&bytes) else { continue };
-            if signed.verify().is_err() {
-                continue;
-            }
-            let entry = signed.entry();
-            if entry.chain.service != service::CHAT
-                || entry.chain.instance != Some(*doc)
-                || entry.entry_type != entry_type::CHAT_MESSAGE
-            {
-                continue;
-            }
-            let Payload::Inline(payload) = &entry.payload else { continue };
-            let Ok(msg) = ChatMessage::decode(payload) else { continue };
-            if msg.room_author != author {
-                continue;
-            }
-            newest = Some(newest.map_or(entry.timestamp_ms, |n| n.max(entry.timestamp_ms)));
         }
-        return newest;
+        let entry = signed.entry();
+        if entry.chain.service != service::CHAT
+            || entry.chain.instance != Some(*doc)
+            || entry.entry_type != entry_type::CHAT_MESSAGE
+        {
+            continue;
+        }
+        let Payload::Inline(payload) = &entry.payload else { continue };
+        let Ok(msg) = ChatMessage::decode(payload) else { continue };
+        if msg.room_author != author {
+            continue;
+        }
+        newest = Some(newest.map_or(entry.timestamp_ms, |n| n.max(entry.timestamp_ms)));
     }
-    None
+    newest
 }
 
 /// The pass: every room in a feed here moves up to its last word. Rooms this node holds

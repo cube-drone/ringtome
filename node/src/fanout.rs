@@ -1083,17 +1083,28 @@ pub async fn journal_shares_to(
         );
 
         let mut wanted: Vec<JournalRow> = Vec::new();
+        let mut missing: Vec<([u8; 16], i64)> = Vec::new();
         for r in &rows {
             let doc_hex = hex::encode(r.doc_id);
             if let Some(held) = page.iter().find(|p| p.doc_id_hex == doc_hex) {
                 wanted.push(as_shared(held, r.received_at_ms));
-                continue;
+            } else {
+                missing.push((r.doc_id, r.received_at_ms));
             }
-            let origin = if from_author { author_root } else { sharer_root };
-            if let Some(row) =
-                crate::fragments::journalable(state, origin, author_root, &r.doc_id).await
-            {
-                wanted.push(as_shared(&row, r.received_at_ms));
+        }
+        // The documents not on the shelf, fetched as fragments a few at once
+        // (net::race::each, 2026-10-31): each is its own fetch from the origin.
+        let origin = if from_author { author_root } else { sharer_root }.to_string();
+        let author = author_root.to_string();
+        let fetched = crate::net::race::each(missing, crate::net::race::AT_ONCE, |(doc, _)| {
+            let (state, origin, author, doc) =
+                (state.clone(), origin.clone(), author.clone(), *doc);
+            async move { crate::fragments::journalable(&state, &origin, &author, &doc).await }
+        })
+        .await;
+        for ((_, received_at_ms), row) in fetched {
+            if let Some(row) = row {
+                wanted.push(as_shared(&row, received_at_ms));
             }
         }
         if wanted.is_empty() {

@@ -773,7 +773,7 @@ fn the_public_road_never_touches_a_group_row() {
 /// Flagged: a `for` loop that awaits, turn by turn, a call that goes to the network - a function
 /// that dials (`p2p::dial`, `dial_addr`) outside any loop of its own, or calls one that does - or
 /// waits on a `timeout(` each turn. Not flagged: work a loop spawns, which doesn't hold it up; a
-/// call whose own ladder is inside it, which is flagged there instead.
+/// call whose own ladder or fan-out (`race::each`) is inside it, which is flagged there instead.
 ///
 /// The ways out: ask the list through `net::race::first` (any one answer will do), or a bounded
 /// fan-out (everyone must be told); or say why it is one at a time, in a `// one at a time: <why>`
@@ -791,31 +791,7 @@ fn the_public_road_never_touches_a_group_row() {
 fn network_attempts_in_a_loop_are_raced_or_explained() {
     const DEBT: &[(&str, usize)] = &[
         // Ladders: try one, wait it out, try the next, stop at the first answer. `net::race`.
-        ("chat.rs::archive_history", 1),
-        ("chat.rs::archive_pull", 2),
-        ("chat.rs::remote_latest", 1),
-        ("identity/adoption.rs::complete", 1),
-        ("net/bodies.rs::heal_from", 1),
-        ("net/bodies.rs::sweep", 1),
-        ("net/deliver.rs::deliver", 1), // racing knocks can deliver twice: the far side must dedup
-        ("net/fragment.rs::fetch", 1),
-        ("net/fragment.rs::fetch_deaths", 1),
-        ("net/fragment.rs::fetch_replies", 1),
-        ("net/fragment.rs::revalidate", 1),
-        ("roster.rs::fetch_bodies", 1),
         // Fan-outs: everyone in the list is asked or told, one after another. A bounded fan-out.
-        ("chat.rs::push_room", 1),
-        ("chat.rs::search", 1),
-        ("chat.rs::sync_room", 1),
-        ("epub.rs::public_book", 1),
-        ("epub.rs::public_section", 1),
-        ("export.rs::chat_files", 1),
-        ("fragments.rs::reap", 2),
-        ("net/sync.rs::sync_peers", 1),
-        ("notifications.rs::open_sealed_statements", 1),
-        ("roster.rs::gossip_group", 2),
-        ("roster.rs::public_sync", 2),
-        ("roster.rs::sync_group", 1),
     ];
     let expected: BTreeMap<&str, usize> = DEBT.iter().copied().collect();
 
@@ -829,6 +805,7 @@ fn network_attempts_in_a_loop_are_raced_or_explained() {
         raw: Vec<String>,
         owner: Vec<Option<String>>,
         loops: Vec<(usize, usize)>,
+        fanned: Vec<bool>,
         spawned: Vec<bool>,
         calls: Vec<Vec<(String, String)>>,
         direct: Vec<bool>,
@@ -864,6 +841,13 @@ fn network_attempts_in_a_loop_are_raced_or_explained() {
             .filter(|&n| for_re.is_match(&code[n]))
             .map(|n| (n, block_end(&code, n)))
             .collect();
+        // A fan-out (`race::each`) is a loop by another name: what it runs, it runs for many.
+        let mut fanned = vec![false; code.len()];
+        for n in (0..code.len()).filter(|&n| code[n].contains("race::each(")) {
+            for s in fanned.iter_mut().take(block_end(&code, n) + 1).skip(n) {
+                *s = true;
+            }
+        }
         let mut spawned = vec![false; code.len()];
         for n in (0..code.len()).filter(|&n| code[n].contains("spawn(")) {
             for s in spawned.iter_mut().take(block_end(&code, n) + 1).skip(n) {
@@ -907,9 +891,10 @@ fn network_attempts_in_a_loop_are_raced_or_explained() {
                     && code[n..(n + 12).min(code.len())].concat().contains(".await")
             })
             .collect();
-        files.insert(rel, File { stem, raw, owner, loops, spawned, calls, direct, timeout });
+        files
+            .insert(rel, File { stem, raw, owner, loops, fanned, spawned, calls, direct, timeout });
     }
-    let in_loop = |f: &File, n: usize| f.loops.iter().any(|&(a, b)| a < n && n <= b);
+    let in_loop = |f: &File, n: usize| f.fanned[n] || f.loops.iter().any(|&(a, b)| a < n && n <= b);
 
     // The diallers: a function that goes to the network outside any loop of its own, to a fixpoint.
     let mut dialers: std::collections::BTreeSet<(String, String)> = Default::default();
@@ -919,7 +904,8 @@ fn network_attempts_in_a_loop_are_raced_or_explained() {
             for n in 0..f.raw.len() {
                 let Some(o) = &f.owner[n] else { continue };
                 let key = (f.stem.clone(), o.clone());
-                if in_loop(f, n) || dialers.contains(&key) {
+                // Spawned work isn't waited on, so it doesn't make its function a network call.
+                if in_loop(f, n) || f.spawned[n] || dialers.contains(&key) {
                     continue;
                 }
                 if f.direct[n] || f.calls[n].iter().any(|c| dialers.contains(c)) {
@@ -955,6 +941,12 @@ fn network_attempts_in_a_loop_are_raced_or_explained() {
             if !network && !f.timeout[n] {
                 continue;
             }
+            // What the loop waits on, for the message.
+            let waits = match f.calls[n].iter().find(|c| dialers.contains(c)) {
+                Some((m, c)) if network => format!("{m}::{c}"),
+                _ if network => "a dial".to_string(),
+                _ => "a timeout".to_string(),
+            };
             let Some(&(start, _)) =
                 f.loops.iter().filter(|&&(a, b)| a < n && n <= b).max_by_key(|l| l.0)
             else {
@@ -970,7 +962,10 @@ fn network_attempts_in_a_loop_are_raced_or_explained() {
             }
             let func = f.owner[start].clone().unwrap_or_default();
             *found.entry(format!("{rel}::{func}")).or_default() += 1;
-            where_.push((format!("{rel}::{func}"), format!("src/{rel}:{} ({func})", start + 1)));
+            where_.push((
+                format!("{rel}::{func}"),
+                format!("src/{rel}:{} ({func}), waiting on {waits}", start + 1),
+            ));
         }
     }
     let found_ref: BTreeMap<&str, usize> = found.iter().map(|(k, v)| (k.as_str(), *v)).collect();

@@ -1103,25 +1103,45 @@ async fn chat_files(
     let rooms = crate::identity::routes::chat_rooms_with_seen(state, data, root)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    for (author, doc_hex, _) in rooms {
-        let Some(doc) = hex::decode(&doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b).ok())
-        else {
-            continue;
-        };
-        let mut lines = Vec::new();
-        let mut before = None;
-        loop {
-            let (page, _, more, _) =
-                crate::chat::history(state, root, &author, &doc, before, CHAT_PAGE, None)
+    // Every room's lines gathered a few at once (net::race::each, 2026-10-31) - a room's older
+    // pages can be asked of its creator's node, and the export used to wait on each room's in
+    // turn - then written in the rooms' own order, so the zip comes out the same every time.
+    let rooms: Vec<(usize, String, String, [u8; 16])> = rooms
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, (author, doc_hex, _))| {
+            let doc = hex::decode(&doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b).ok())?;
+            Some((i, author, doc_hex, doc))
+        })
+        .collect();
+    let viewer = root.to_string();
+    let mut gathered =
+        crate::net::race::each(rooms, crate::net::race::AT_ONCE, |(_, author, _, doc)| {
+            let (state, viewer, author, doc) =
+                (state.clone(), viewer.clone(), author.clone(), *doc);
+            async move {
+                let mut lines = Vec::new();
+                let mut before = None;
+                loop {
+                    let (page, _, more, _) = crate::chat::history(
+                        &state, &viewer, &author, &doc, before, CHAT_PAGE, None,
+                    )
                     .await
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let Some(oldest) = page.iter().map(|m| m.said_ms).min() else { break };
-            before = Some(oldest);
-            lines.extend(page);
-            if !more {
-                break;
+                    let Some(oldest) = page.iter().map(|m| m.said_ms).min() else { break };
+                    before = Some(oldest);
+                    lines.extend(page);
+                    if !more {
+                        break;
+                    }
+                }
+                anyhow::Ok(lines)
             }
-        }
+        })
+        .await;
+    gathered.sort_by_key(|((i, ..), _)| *i);
+    for ((_, author, doc_hex, _), lines) in gathered {
+        let mut lines = lines?;
         if lines.is_empty() {
             continue;
         }

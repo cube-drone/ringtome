@@ -362,6 +362,8 @@ pub async fn sweep(state: AppState) -> Result<()> {
         .context("reading the outbound ledger")?;
     let now = now_ms();
     let mut dialed = 0usize;
+    // one at a time: a background sweep of at most SWEEP_DIAL_CAP knocks, each one's doors raced in
+    // `deliver`; nobody waits on it.
     for (sender, recipient, kind, envelope, first_noted, last_tried, tries) in rows {
         if expired(first_noted, now) {
             tracing::info!(

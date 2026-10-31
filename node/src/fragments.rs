@@ -346,13 +346,20 @@ async fn cover_refs_inner(
             "an edit dropped the last cover - media fragment released");
         forget_one(&state.node_db, author_root, &media).await?;
     }
+    let mut wanted: Vec<[u8; 16]> = Vec::new();
     for media in refs {
-        let media_hex = hex::encode(media);
-        if held(&state.node_db, author_root, &media_hex).await?.is_some() {
-            continue;
+        if held(&state.node_db, author_root, &hex::encode(media)).await?.is_none() {
+            wanted.push(*media);
         }
-        fetch_cover(state, origin_root, author_root, media).await;
     }
+    // A post's pictures fetched a few at once (net::race::each, 2026-10-31), each its own fetch.
+    let (origin, author) = (origin_root.to_string(), author_root.to_string());
+    crate::net::race::each(wanted, crate::net::race::AT_ONCE, |media| {
+        let (state, origin, author, media) =
+            (state.clone(), origin.clone(), author.clone(), *media);
+        async move { fetch_cover(&state, &origin, &author, &media).await }
+    })
+    .await;
     Ok(())
 }
 
@@ -385,20 +392,23 @@ async fn cover_for_message_inner(
     for media in reconcile_covers(&state.node_db, author_root, message_hex, refs).await? {
         forget_one(&state.node_db, author_root, &media).await?;
     }
+    let mut wanted: Vec<[u8; 16]> = Vec::new();
     for media in refs {
-        let media_hex = hex::encode(media);
-        if held(&state.node_db, author_root, &media_hex).await?.is_some()
-            || entombed(&state.node_db, author_root, media).await?
+        if held(&state.node_db, author_root, &hex::encode(media)).await?.is_none()
+            && !entombed(&state.node_db, author_root, media).await?
         {
-            continue;
-        }
-        for origin in origins {
-            fetch_cover(state, origin, author_root, media).await;
-            if held(&state.node_db, author_root, &media_hex).await?.is_some() {
-                break;
-            }
+            wanted.push(*media);
         }
     }
+    // A line's pictures fetched a few at once (net::race::each, 2026-10-31), each raced across
+    // the origins.
+    let (origins, author) = (origins.to_vec(), author_root.to_string());
+    crate::net::race::each(wanted, crate::net::race::AT_ONCE, |media| {
+        let (state, origins, author, media) =
+            (state.clone(), origins.clone(), author.clone(), *media);
+        async move { cover_from_first(&state, origins, &author, &media).await }
+    })
+    .await;
     Ok(())
 }
 
@@ -494,6 +504,26 @@ pub async fn fetch_post(
 
 /// Fetch one covered media document from an origin and remember it - the media half of what
 /// `journalable` does for the post, minus the feed row an image must never become.
+/// A cover's media from the first of `origins` that has it: raced, staggered (net::race,
+/// 2026-10-31), so a dark origin costs the next a head start rather than a whole fetch. An origin
+/// answers when the media is held after its fetch; a later one still running finishes on its own.
+async fn cover_from_first(
+    state: &crate::AppState,
+    origins: Vec<String>,
+    author_root: &str,
+    media: &[u8; 16],
+) {
+    let (author, media) = (author_root.to_string(), *media);
+    crate::net::race::first(origins, crate::net::race::STAGGER, |origin| {
+        let (state, author) = (state.clone(), author.clone());
+        async move {
+            fetch_cover(&state, &origin, &author, &media).await;
+            held(&state.node_db, &author, &hex::encode(media)).await.ok().flatten().map(|_| ())
+        }
+    })
+    .await;
+}
+
 async fn fetch_cover(
     state: &crate::AppState,
     origin_root: &str,
@@ -553,6 +583,8 @@ async fn heal_covers(state: &crate::AppState) -> Result<()> {
         )
         .await
         .context("listing uncovered media fetches")?;
+    // one at a time: a background sweep of at most 16 covers, each one's origins raced in
+    // `cover_from_first`; nobody waits on it.
     for (author_hex, media_hex, post_hex, origin_root) in rows {
         let Ok(bytes) = hex::decode(&media_hex) else { continue };
         let Ok(media) = <[u8; 16]>::try_from(bytes.as_slice()) else { continue };
@@ -571,12 +603,8 @@ async fn heal_covers(state: &crate::AppState) -> Result<()> {
                 candidates.push(sharer);
             }
         }
-        for candidate in candidates.iter().take(4) {
-            fetch_cover(state, candidate, &author_hex, &media).await;
-            if held(&state.node_db, &author_hex, &media_hex).await?.is_some() {
-                break;
-            }
-        }
+        candidates.truncate(4);
+        cover_from_first(state, candidates, &author_hex, &media).await;
     }
     Ok(())
 }
@@ -766,6 +794,7 @@ pub async fn reap(state: &crate::AppState) -> Result<()> {
         );
     }
     let mut seen = std::collections::HashSet::new();
+    let mut origins: Vec<String> = Vec::new();
     for (peer,) in peers {
         if !seen.insert(peer.clone()) {
             continue;
@@ -773,10 +802,24 @@ pub async fn reap(state: &crate::AppState) -> Result<()> {
         if crate::identity::is_agented(&state.node_db, &peer).await.unwrap_or(false) {
             continue;
         }
-        drain_death_log(state, ReapDoor::Origin(&peer)).await?;
+        origins.push(peer);
     }
-    for endpoint in crate::net::sync::cohort_endpoints(state).await.unwrap_or_default() {
-        drain_death_log(state, ReapDoor::Cohort(&endpoint)).await?;
+    // Every log drained, a few at once (net::race::each, 2026-10-31): each has its own cursor, and
+    // a dark origin used to hold up every death behind it. The cohort still last.
+    let drained = crate::net::race::each(origins, crate::net::race::AT_ONCE, |peer| {
+        let (state, peer) = (state.clone(), peer.clone());
+        async move { drain_death_log(&state, ReapDoor::Origin(&peer)).await }
+    })
+    .await;
+    let cohort = crate::net::sync::cohort_endpoints(state).await.unwrap_or_default();
+    let siblings = crate::net::race::each(cohort, crate::net::race::AT_ONCE, |endpoint| {
+        let (state, endpoint) = (state.clone(), endpoint.clone());
+        async move { drain_death_log(&state, ReapDoor::Cohort(&endpoint)).await }
+    })
+    .await;
+    // A failed drain no longer stops the others; the first failure is still the pass's.
+    for (_, drained) in drained.into_iter().chain(siblings) {
+        drained?;
     }
     Ok(())
 }
@@ -1690,6 +1733,8 @@ async fn revalidate_due_fragments(state: &crate::AppState) -> Result<()> {
     if !rows.is_empty() {
         tracing::debug!(due = rows.len(), "fragment sweep: revalidating");
     }
+    // one at a time: a background sweep of at most SWEEP_CAP copies, each copy's origins raced
+    // inside `revalidate`; nobody waits on it.
     for (author_hex, doc_hex, origin_root) in rows {
         revalidate_one(state, &author_hex, &doc_hex, &origin_root).await?;
     }
@@ -1891,6 +1936,8 @@ async fn drain_wants(state: &crate::AppState) -> Result<()> {
         .await
         .context("listing unmet fragment wants")?;
 
+    // one at a time: a background sweep of at most SWEEP_CAP wants, each one's origins raced
+    // inside `fetch`; nobody waits on it.
     for (author_hex, doc_hex, origin_root, first_noted, _tries) in rows {
         if now - first_noted > WANT_GIVE_UP_MS {
             settle_want(&state.node_db, &author_hex, &doc_hex).await?;
