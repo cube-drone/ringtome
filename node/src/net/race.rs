@@ -7,8 +7,14 @@
 //! candidate gets a head start, as a browser gives the first of a site's addresses: when it hasn't
 //! answered within `STAGGER`, the next starts beside it, never in place of it - a slow computer that
 //! is up still wins if it answers first - and an ask that fails starts the next at once. The first
-//! answer ends the race, and the asks still running are dropped. Where the candidates are in good
-//! order, which is the caller's business, the first is usually the only one asked.
+//! answer ends the race. Where the candidates are in good order, which is the caller's business, the
+//! first is usually the only one asked.
+//!
+//! The asks still running when one wins are DETACHED, never cancelled: each runs on its own task and
+//! finishes on its own, its answer dropped - a late connection closed cleanly, a late key stored. A
+//! connection cancelled mid-exchange leaves QUIC state its peer trips over later, and the next
+//! dials to that computer wedge behind it (2026-08-21 and 2026-08-24, `speculative::acquire_one` and
+//! `idface::race`; the first shape of this module dropped the also-rans, and was this bug again).
 //!
 //! An ask answers `None` for "nothing here": it failed, or was refused, or had nothing. What counts
 //! as an answer is the caller's: a connection for a sync, which then runs its exchange on the
@@ -17,8 +23,6 @@
 
 use std::future::Future;
 use std::time::Duration;
-
-use n0_future::{FuturesUnordered, StreamExt};
 
 /// The head start: half a second, long enough for a nearby computer, or a far one through a relay,
 /// to connect before anyone else is asked; short beside the six seconds a silent one costs
@@ -29,35 +33,41 @@ pub const STAGGER: Duration = Duration::from_millis(500);
 pub const IN_FLIGHT: usize = 4;
 
 /// Ask `candidates` in order, staggered: the first answer, and whose it was. `None` when every
-/// candidate was asked and none answered.
+/// candidate was asked and none answered. Each ask is spawned, so it owns what it needs.
 pub async fn first<C, T, F, Fut>(
     candidates: impl IntoIterator<Item = C>,
     stagger: Duration,
     ask: F,
 ) -> Option<(C, T)>
 where
-    C: Clone,
+    C: Clone + Send + 'static,
+    T: Send + 'static,
     F: Fn(C) -> Fut,
-    Fut: Future<Output = Option<T>>,
+    Fut: Future<Output = Option<T>> + Send + 'static,
 {
     let mut waiting = candidates.into_iter().peekable();
-    let mut running = FuturesUnordered::new();
-    let launch = |c: C| {
-        let asked = ask(c.clone());
-        async move { (c, asked.await) }
-    };
+    let (tx, mut answers) = tokio::sync::mpsc::unbounded_channel::<(C, Option<T>)>();
+    let mut running = 0usize;
     loop {
-        if running.len() < IN_FLIGHT {
+        if running < IN_FLIGHT {
             if let Some(c) = waiting.next() {
-                running.push(launch(c));
+                let asked = ask(c.clone());
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    // Nobody listening once the race is won: the answer is dropped, and with it
+                    // a late connection, which closes.
+                    let _ = tx.send((c, asked.await));
+                });
+                running += 1;
             }
         }
-        if running.is_empty() {
+        if running == 0 {
             return None;
         }
-        let another = waiting.peek().is_some() && running.len() < IN_FLIGHT;
+        let another = waiting.peek().is_some() && running < IN_FLIGHT;
         tokio::select! {
-            Some((c, answer)) = running.next() => {
+            Some((c, answer)) = answers.recv() => {
+                running -= 1;
                 if let Some(t) = answer {
                     return Some((c, t));
                 }
@@ -141,6 +151,27 @@ mod tests {
         let (won, _, asked) = race(vec![down("q", 6000), down("r", 6000), down("s", 0)]).await;
         assert_eq!(won, None);
         assert_eq!(asked, ["q", "r", "s"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_losers_finish_on_their_own_rather_than_being_cancelled() {
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let late = finished.clone();
+        let won = first([700u64, 100], STAGGER, move |ms| {
+            let late = late.clone();
+            async move {
+                sleep(Duration::from_millis(ms)).await;
+                if ms == 700 {
+                    late.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                Some(ms)
+            }
+        })
+        .await;
+        assert_eq!(won.map(|(_, ms)| ms), Some(100), "the second answered first, at 600ms");
+        assert!(!finished.load(std::sync::atomic::Ordering::SeqCst), "the first still running");
+        sleep(Duration::from_millis(200)).await;
+        assert!(finished.load(std::sync::atomic::Ordering::SeqCst), "and it finished, not dropped");
     }
 
     #[tokio::test(start_paused = true)]

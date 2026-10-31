@@ -597,13 +597,15 @@ async fn fetch_key_from_anyone(
     // Raced, staggered (net::race, 2026-10-30): a silent endpoint used to cost the next its whole
     // FETCH_TIMEOUT, one after another. A key is one round trip, so the asks race whole; a "no"
     // doesn't end the race - somebody else may say yes.
-    let refused = std::sync::atomic::AtomicBool::new(false);
+    let refused = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (author_key, doc, reader) = (*author, *doc_id, *for_root);
     let won = crate::net::race::first(endpoints, crate::net::race::STAGGER, |endpoint_id| {
-        let refused = &refused;
+        let refused = refused.clone();
+        let state = state.clone();
         async move {
             match tokio::time::timeout(
                 FETCH_TIMEOUT,
-                ask_key(state, &endpoint_id, author, doc_id, for_root),
+                ask_key(&state, &endpoint_id, &author_key, &doc, &reader),
             )
             .await
             {

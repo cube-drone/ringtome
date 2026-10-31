@@ -3212,8 +3212,11 @@ async fn directory_ask(
     // Raced, staggered (net::race, 2026-10-30), the creator's endpoints first: each ask is one
     // round trip. A creator slower than the head start and somebody else's answer counts as not
     // answering this time, and the pull goes to the others - each of whom holds the whole room.
+    let room = *doc;
     let won = crate::net::race::first(asks, crate::net::race::STAGGER, |(endpoint, from_creator)| {
+        let state = state.clone();
         async move {
+            let (state, doc) = (&state, &room);
             // Where each speaker is served, if the node knows the question; the bare directory
             // from a node that predates it.
             let answer: anyhow::Result<Vec<(String, Vec<String>)>> =

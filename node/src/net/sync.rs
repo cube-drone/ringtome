@@ -1896,11 +1896,12 @@ pub async fn sync_room_with_first(
     let mut left: Vec<String> = endpoints.to_vec();
     let mut last = anyhow!("no computer to ask");
     while !left.is_empty() {
-        let unreached = std::sync::Mutex::new(Vec::new());
+        let unreached = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let won = crate::net::race::first(left.clone(), crate::net::race::STAGGER, |ep| {
-            let unreached = &unreached;
+            let unreached = unreached.clone();
+            let state = state.clone();
             async move {
-                let dialled = match dial_addr(state, &ep).await {
+                let dialled = match dial_addr(&state, &ep).await {
                     Ok(addr) => crate::net::p2p::dial(
                         &state.unplugged,
                         &state.endpoint,
@@ -1924,7 +1925,9 @@ pub async fn sync_room_with_first(
             }
         })
         .await;
-        let unreached = unreached.into_inner().unwrap_or_default();
+        // Who failed by now: a dial still running when the race was won is detached, and stays on
+        // the list for another round if the winner's exchange fails.
+        let unreached = unreached.lock().map(|u| u.clone()).unwrap_or_default();
         left.retain(|ep| !unreached.contains(ep));
         let Some((ep, (addr, conn))) = won else {
             return Err(anyhow!("none of {} computers answered", endpoints.len()));

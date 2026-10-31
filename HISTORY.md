@@ -25472,3 +25472,39 @@ systemd-oomd is running, and memory pressure. Beside `just ci`, a monitor prints
 a `[machine]` line every 15 seconds with memory, swap, disk, memory pressure and
 the three biggest processes, live, so the last reading before a kill stays in
 the log. `just ci` is still the gate, and the step exits with its code.
+
+**The race lets its losers finish (2026-10-30).** `net::race::first` used to
+drop the asks still running once one answered. Twice before (2026-08-21 and
+2026-08-24, the comments in `speculative::acquire_one` and `idface::race`),
+cancelling a QUIC exchange midway left connection state that the next dials to
+the same computer stalled behind, for minutes. So each ask now runs on its own
+task, the race waits on a channel for the first answer, and the rest finish on
+their own with their answers dropped: a late connection closes cleanly, a late
+key is ignored. Callers hand each attempt owned copies of what it needs. That
+covers `sync_room_with_first`, the key lane and `directory_ask`. A dial still
+running when the race is won stays on the list for another round. A new
+paused-clock test checks that the slower ask keeps running after the race is
+won, then finishes. 713 unit tests and clippy pass. The chat, sealed-key and
+group areas passed 75 of 75 in four runs out of six. The other two each failed
+the two `chat_siblings` claims, on an older problem the race didn't cause: on
+the persona's second computer, `sync_room` never learned that Bea had spoken.
+When the room's creator is hosted on this node, the speakers come from this
+node's own messages and from `postkeys::members`. That member list is written
+only on the computer that published the post, so it never reaches the persona's
+other computers. In passing runs something else had told the second computer
+about Bea first.
+
+**CI compiles one crate at a time (2026-10-31).** The monitor answered the
+runner kills. On run 41168935549, which passed, `test-unit` compiled
+`ringtome-node`'s library and its unit tests side by side, two `rustc` processes
+growing together to ~7.5 GB each, in a runner with 15.9 GB. At the peak 340 MB
+was free, the 3 GB of swap was full and memory pressure reached 18%. The runs
+that died went past that. On a Mac the same compiles peak at 2 GB each. The
+largest single compile in that run, the integration build's, peaked at 9.2 GB
+alone, which fits. The `Full check` step in `ci.yml` now sets
+`CARGO_BUILD_JOBS=1`. `just ci` is unchanged, and so are local builds. A warm
+run pays for the two big compiles in a row instead of side by side, about two
+more minutes judging by the four they took together (not yet measured). A
+cold-cache run builds its dependencies one at a time too, and will be much
+slower. If one ever nears the 45-minute timeout, the fallback is a bigger swap
+file, kept in place of or alongside the job limit.
