@@ -95,6 +95,8 @@ import { groupFeeds } from '../pure/groups.js';
 import { GroupMark, useGroupFace } from '../groupface.js';
 import { RoomTitle } from '../roomtitle.js';
 import { formatWhen } from '../pure/when.js';
+import { imCandidates, filterContacts, PEOPLE_SHELF_SLICE } from '../pure/people.js';
+import { openIm } from '../ims.js';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
@@ -269,6 +271,8 @@ const GroupPile = ({ pile, row, folded, onFold, isOpen }) => {
 const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
     const loc = useLocation();
     const root = current && current.root;
+    // Starting a chat for two is bought (plans/UNLOCKS.md, "Chats for two"), as on a person's page.
+    const twoUnlocked = useUnlocked(root, 'chats-for-two');
     const folds = flagsOf(usePrefMap(root, CHAT_FOLD_PREFIX));
     // Active rooms on top, the rooms this persona left beneath a divider (Curtis,
     // 2026-09-19): left rooms are not synced and never bold, until rejoined. Closed rooms
@@ -325,10 +329,21 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
             />`,
         )}
         ${
-            ims.length > 0 &&
-            html`<p class="chat-list-divider">${t('apps.chat.ims', 'IMs')}</p>
-            <ul class="chat-list">${ims.map(row)}</ul>`
+            /* Always, with a way to start one at its head (Rob, via Curtis, 2026-10-31: looking
+            for how to open a chat with Curtis, he found it in Neighborhood at last). */ ''
         }
+        <p class="chat-list-divider">${t('apps.chat.ims', 'IMs')}</p>
+        <ul class="chat-list">
+            ${
+                twoUnlocked &&
+                html`<li>
+                    <a class="chat-group-new" data-settles href=${`${appHref('chat')}/new-im`}>
+                        ${t('apps.chat.new-im', '+ new IM')}
+                    </a>
+                </li>`
+            }
+            ${ims.map(row)}
+        </ul>
         ${
             requests.length > 0 &&
             html`<p class="chat-list-divider">${t('apps.chat.requests', 'requests')}</p>
@@ -343,6 +358,91 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
 };
 
 // ---------------------------------------------------------------------------------------------
+// A new chat for two (fills the right side when "+ new IM" is chosen): the people this persona
+// knows with no open chat yet (pure/people.js `imCandidates`), found by a filter as the People shelf
+// finds them, and one click from the chat - the same door a person's page opens (ims.js).
+
+const NewIm = ({ current, rooms }) => {
+    const root = current && current.root;
+    const loc = useLocation();
+    const [query, setQuery] = useState('');
+    const [going, setGoing] = useState(null);
+    const [error, setError] = useState(null);
+    const contactRows = useLive(() => (root ? openMirror(root).contacts.toArray() : []), [root]);
+    const known = useMemo(
+        () =>
+            imCandidates(contactRows, rooms, root).map((r) => ({ ...r, words: speakable(r.root) })),
+        [contactRows, rooms, root],
+    );
+    const found = filterContacts(known, query);
+    const shown = found.slice(0, PEOPLE_SHELF_SLICE);
+    const open = async (other, name) => {
+        if (going) return;
+        setGoing(other);
+        setError(null);
+        try {
+            const room = await openIm(root, other, name);
+            loc.route(roomHref(room.author, room.doc_id));
+        } catch (e) {
+            setError(e.message || String(e));
+            setGoing(null);
+        }
+    };
+    return html`<section class="chat-new-pane">
+        <header class="chat-room-head">
+            <h2 class="chat-room-name">${t('apps.chat.a-new-im', 'a new IM')}</h2>
+        </header>
+        <div class="chat-new">
+            <input
+                class="chat-new-name"
+                placeholder=${t('apps.chat.who-to-chat-with', 'who would you like to chat with?')}
+                value=${query}
+                onInput=${(e) => setQuery(e.currentTarget.value)}
+            />
+            ${error && html`<p class="form-error">${error}</p>`}
+            ${
+                contactRows &&
+                known.length === 0 &&
+                html`<p class="chat-rooms-empty">
+                    ${t('apps.chat.nobody-to-start-an-im-with', 'everyone you know already has a chat with you - or find new people in Neighborhood')}
+                </p>`
+            }
+            ${
+                known.length > 0 &&
+                found.length === 0 &&
+                html`<p class="chat-rooms-empty">${t('apps.chat.nobody-by-that-name', 'nobody you know by that name')}</p>`
+            }
+            <ul class="chat-list chat-im-people">
+                ${shown.map(
+                    (r) => html`<${ImCandidate}
+                        key=${r.root}
+                        root=${r.root}
+                        current=${current}
+                        going=${going === r.root}
+                        onOpen=${open}
+                    />`,
+                )}
+            </ul>
+            ${
+                found.length > shown.length &&
+                html`<p class="chat-rooms-empty">${t('apps.chat.type-to-find-more', 'type a name to find the rest')}</p>`
+            }
+        </div>
+    </section>`;
+};
+
+/// One person a chat could be opened with: their face and name, as a chats-column row.
+const ImCandidate = ({ root, current, going, onOpen }) => {
+    const person = usePerson(root, { current });
+    return html`<li class="chat-row" onClick=${() => onOpen(root, person.primary)}>
+        <span class="chat-row-face"><${PersonHex} person=${person} size="small" /></span>
+        <span class="chat-row-main">
+            <span class="chat-row-name">${person.primary || speakable(root)}</span>
+            ${going && html`<span class="chat-row-by">${t('person.opening', 'opening…')}</span>`}
+        </span>
+    </li>`;
+};
+
 // The new-chat form (fills the right side when "new chat" is chosen)
 
 const NewRoom = ({ root, onMade }) => {
@@ -2286,7 +2386,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
 // ---------------------------------------------------------------------------------------------
 // The app: the chats column and whatever the right side holds
 
-/// The chat app at `/home/chat`, `/home/chat/new` and `/home/chat/:author/:doc`: one shell,
+/// The chat app at `/home/chat`, `/home/chat/new`, `/home/chat/new-im` and `/home/chat/:author/:doc`: one shell,
 /// the chats column on the left, the chosen room (or the new-chat form) on the right.
 /// Mark the newest read stamp as seen: one private register per room, written at most
 /// every few seconds while the floor moves and once more when the page leaves.
@@ -2417,6 +2517,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     // The header's search, over every conversation this computer holds: asked a beat after
     // the typing stops, so a long word is one question rather than eight.
     const makingNew = mode === 'new';
+    const makingIm = mode === 'new-im';
     const needle = (searchQuery || '').trim();
     const searching = needle.length >= 2;
     const hits = useRoomSearch(root, needle);
@@ -2558,16 +2659,18 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                               loc.route(roomHref(h.author, h.doc_id, h.hash));
                           }}
                       />`
-                        : makingNew
-                          ? html`<${NewRoom}
+                        : makingIm
+                          ? html`<${NewIm} current=${current} rooms=${all} />`
+                          : makingNew
+                            ? html`<${NewRoom}
                           root=${root}
                           onMade=${(post) => {
                               load();
                               loc.route(roomHref(root, post));
                           }}
                       />`
-                          : selected
-                            ? html`<${Room}
+                            : selected
+                              ? html`<${Room}
                             key=${`${author}/${doc}/${line || ''}`}
                             at=${line || null}
                             current=${current}
@@ -2597,7 +2700,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                                         },
                                 )}
                         />`
-                            : html`<p class="chat-empty">
+                              : html`<p class="chat-empty">
                             <${Icons.chat} />
                             ${
                                 rooms && rooms.length === 0

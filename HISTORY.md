@@ -25651,3 +25651,20 @@ Two fixes, each enough on its own for this case:
 `attention.cjs` gained "a line read stays read": read, then a stamp from before
 the line, and the line was announced once and the register kept the later stamp.
 With both fixes removed it fails on "announced once".
+
+## "+ new IM" in the chats column (2026-10-31)
+
+Rob wanted to open a chat with Curtis, went to Chats, and couldn't find how; he
+found it in Neighborhood at last, on Curtis's page, and suggested the chat app
+needed a way. The IMs heading now always shows, even with no IMs, and is headed
+by "+ new IM" (for whoever owns _Chats for two_, as the button on a person's
+page is). It opens `/ringtome/chat/new-im`: the people this persona knows -
+standing in its ledger, not blocked - with no open chat yet, most recently
+active first (`pure/people.js` `imCandidates`), with a filter box and the People
+shelf's slice. A click opens the chat through the same door a person's page uses
+(`ims.js` `openIm`). A chat left counts as no open chat, so its person is
+offered again, and opening finds the same room.
+
+`harness/new-im-probe.mjs` walks it on a scratch node: the heading with no IMs,
+the person offered, the click opening the chat, the chat under IMs, and nobody
+left to offer.

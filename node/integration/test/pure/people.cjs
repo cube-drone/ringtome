@@ -1,9 +1,9 @@
 // The rolodex's ordering rules.
 const assert = require('node:assert');
 
-let PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts;
+let PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts, imCandidates;
 before(async () => {
-    ({ PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts } =
+    ({ PEOPLE_SORTS, PEOPLE_SHELF_SLICE, filterContacts, sortContacts, imCandidates } =
         await import('../../../js/pure/people.js'));
 });
 
@@ -128,6 +128,30 @@ describe('standing on the shelf', () => {
         assert.ok(
             standingFacts({ blocked: 'yes' }),
             'blocked stands - hidden would mean unfindable',
+        );
+    });
+});
+
+describe('a new chat for two', () => {
+    it('offers the people you know with no open chat, the most recently active first', () => {
+        const rows = [
+            { root: 'me', facts: { nickname: 'myself' } },
+            { root: 'rob', facts: { trust: 'high' }, last_active: 100 },
+            { root: 'ada', facts: { interest: 'low' }, last_active: 300 },
+            { root: 'gone', facts: { trust: '', interest: '' }, last_active: 500 },
+            { root: 'troll', facts: { blocked: 'yes' }, last_active: 400 },
+            { root: 'bea', facts: { trust: 'high' }, last_active: 200 },
+            { root: 'cal', facts: { trust: 'high' }, last_active: 250 },
+        ];
+        const rooms = [
+            { im: true, other: 'bea' },
+            { im: true, other: 'cal', left: true },
+            { im: false, author: 'rob' },
+        ];
+        assert.deepEqual(
+            imCandidates(rows, rooms, 'me').map((r) => r.root),
+            ['ada', 'cal', 'rob'],
+            'not me, not cleared, not blocked, not bea (talking already); cal left theirs',
         );
     });
 });

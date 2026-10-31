@@ -752,6 +752,7 @@ const Inside = ({ session }) => {
             <${DeviceApp} path="/ringtome/device/account/:account" page="account" admin=${nodeAdmin} current=${persona.current} />
             <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${ChatApp} path="/ringtome/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
+            <${ChatApp} path="/ringtome/chat/new-im" mode="new-im" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${RoomRoute} path="/ringtome/user/:seg/room/:doc" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${RoomRoute} path="/ringtome/user/:seg/room/:doc/line/:line" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${PersonDemo} path="/ringtome/user/:seg/ui-demo" current=${persona.current} />

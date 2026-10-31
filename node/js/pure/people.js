@@ -61,3 +61,23 @@ export function filterContacts(rows, query) {
 export function standingFacts(facts) {
     return Object.values(facts || {}).some((v) => v !== '' && v !== undefined && v !== null);
 }
+
+/// Who a new chat for two could be with (Rob, via Curtis, 2026-10-31: the chat app needs a way
+/// to start one): the people this persona knows - standing in its ledger - and not blocked, and
+/// with no open chat yet, the most recently active first. `rooms` is the chats column's rows; a
+/// chat left is no open chat, so its person comes back (opening it again finds the same room).
+export function imCandidates(rows, rooms, me) {
+    const talking = new Set(
+        (rooms || []).filter((r) => r.im && !r.left && r.other).map((r) => r.other),
+    );
+    return sortContacts(
+        (rows || []).filter(
+            (r) =>
+                r.root !== me &&
+                standingFacts(r.facts) &&
+                (r.facts || {}).blocked !== 'yes' &&
+                !talking.has(r.root),
+        ),
+        'recent',
+    );
+}
