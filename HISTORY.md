@@ -25508,3 +25508,35 @@ more minutes judging by the four they took together (not yet measured). A
 cold-cache run builds its dependencies one at a time too, and will be much
 slower. If one ever nears the 45-minute timeout, the fallback is a bigger swap
 file, kept in place of or alongside the job limit.
+
+**A chat on the persona's other computer knows who it's with (2026-10-31).** The
+`chat_siblings` failures from the race work, and likely Curtis's Computer B that
+never learned Rob had spoken, came from the members memo. A post sealed to the
+people it mentions keeps those people in `post_audience_members`. The publishing
+computer writes them at the mint. The persona's other computers write them in
+`memo_own_keys` when the draft's private meta syncs over, reading the mentions
+from the draft's text. When the meta arrived before the text, the memo named
+nobody. The key was noted all the same, so the memo was never written again. A
+chat for two opened there then named nobody on the far end: the chats list
+couldn't say who it was with, and `sync_room` (the creator being hosted there)
+never asked after the other person's lines. `memo_own_keys` now rewrites the
+memo for any post whose draft says `@mentioned` but whose members are empty. The
+fold's leg keeps the posts still unsettled and retries them on every fold, since
+the draft text arrives without the meta chain moving. A new `chat_siblings`
+claim checks that the second computer knows who the chat is with before anyone
+has spoken. With the fix off it failed one run in six, stuck for all 30 tries in
+that run. With it on, the area passed 8 runs of 8, and the IM, audience,
+key-prefetch, adoption, sync-status, trusted-post and room areas passed together
+(50). 713 unit tests and clippy pass.
+
+On the way there, a first diagnosis said members were written only at the mint.
+Having the second computer ask its siblings for the room's directory made the
+claim pass. So did turning that ask off, which disproved the diagnosis. It was
+taken out in favour of the fix above.
+
+The first CI run with `CARGO_BUILD_JOBS=1` (41186030179, 2026-10-31) passed in
+29m50s, up from 20m50s. Every compile got slower, not just the two big ones:
+check 41s to 53s, clippy 48s to 1m42s, `test-unit`'s compile 4m02s to 9m24s, the
+integration build 2m51s to 4m34s. Memory peaked near 10 GB with 6 GB free and no
+swap touched. That is a nine-minute price for the headroom, not the two the
+entry above guessed.

@@ -4171,10 +4171,16 @@ pub(crate) async fn memo_post_key(
 /// The fold's leg for `memo_own_keys`: on a computer hosting the persona, whenever the drafts'
 /// private meta (`DOC_META_PRIVATE`, where a draft's key and its `published_as` live) has moved
 /// since the leg last ran - and once per persona per process, so an upgraded computer mends
-/// itself at its first fold.
+/// itself at its first fold. Between those, every fold retries the posts whose members it couldn't
+/// yet say (`memo_own_keys`, 2026-10-31): the draft text they come from arrives on its own
+/// schedule, and nothing on the meta chain moves when it does.
 pub(crate) async fn own_keys_leg(state: &AppState, root: &str) {
+    type Pending = Vec<([u8; 16], [u8; 16])>;
     static SEEN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, u64>>> =
         std::sync::LazyLock::new(Default::default);
+    static PENDING: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<String, Pending>>,
+    > = std::sync::LazyLock::new(Default::default);
     if !crate::identity::is_agented(&state.node_db, root).await.unwrap_or(false) {
         return;
     }
@@ -4184,20 +4190,61 @@ pub(crate) async fn own_keys_leg(state: &AppState, root: &str) {
         .filter(|c| c.1 == ringtome_proto::registry::service::DOC_META_PRIVATE)
         .map(|c| c.4 + 1)
         .sum();
+    let pending: Pending =
+        PENDING.lock().map(|p| p.get(root).cloned().unwrap_or_default()).unwrap_or_default();
     if SEEN.lock().map(|s| s.get(root) == Some(&mark)).unwrap_or(false) {
+        if pending.is_empty() {
+            return;
+        }
+        let Ok(data) = store::open_agented(state, root).await else { return };
+        let mut still = Pending::new();
+        for (draft, post) in pending {
+            memo_post_key(state, &data, root, &draft, post).await;
+            if members_unsaid(state, &data, root, &draft, &post).await {
+                still.push((draft, post));
+            }
+        }
+        if let Ok(mut p) = PENDING.lock() {
+            p.insert(root.to_string(), still);
+        }
         return;
     }
     let Ok(data) = store::open_agented(state, root).await else { return };
     match memo_own_keys(state, &data, root).await {
-        Ok(_) => {
+        Ok((_, unsaid)) => {
             if let Ok(mut seen) = SEEN.lock() {
                 seen.insert(root.to_string(), mark);
+            }
+            if let Ok(mut p) = PENDING.lock() {
+                p.insert(root.to_string(), unsaid);
             }
         }
         Err(e) => {
             tracing::warn!(root = %root, error = ?e, "remembering this persona's own keys failed")
         }
     }
+}
+
+/// A post sealed to the people its draft mentions whose members this node has no record of: the
+/// memo was written before the draft's text arrived, or its audience, and said nobody.
+async fn members_unsaid(
+    state: &AppState,
+    data: &store::Store,
+    root: &str,
+    draft: &[u8; 16],
+    post: &[u8; 16],
+) -> bool {
+    let mentioned = data
+        .annotations()
+        .field(draft, store::AUDIENCE)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|a| a.trim() == crate::postkeys::MENTIONED_AUDIENCE);
+    mentioned
+        && crate::postkeys::members(&state.node_db, root, &hex::encode(post))
+            .await
+            .is_ok_and(|m| m.is_empty())
 }
 
 /// The persona's own sealing keys, from its own drafts, on a computer that hosts it (2026-10-07:
@@ -4207,12 +4254,20 @@ pub(crate) async fn own_keys_leg(state: &AppState, root: &str) {
 /// shut to the persona on all its others, though the draft carrying the key had synced to them.
 /// Each published draft that holds a key and whose post this node has no key for gets the mint's
 /// memo now. Run by the fold, so it follows the private chains in.
+///
+/// And each whose members are unsaid gets it again (2026-10-31, `chat_siblings` failing a run in
+/// three): the members are the draft text's mentions, and the meta could arrive ahead of the
+/// text. The memo then named nobody, and with the key already noted it was never written again. A chat
+/// opened on the persona's other computer named nobody on the far end: the chats list couldn't say
+/// who it was with, and the room pull never asked after the other person's lines. Returned with
+/// the posts still unsaid, which the leg retries as the text comes in.
 pub(crate) async fn memo_own_keys(
     state: &AppState,
     data: &store::Store,
     root: &str,
-) -> Result<usize, AppError> {
+) -> Result<(usize, Vec<([u8; 16], [u8; 16])>), AppError> {
     let mut noted = 0;
+    let mut unsaid = Vec::new();
     for (draft, key) in data.annotations().docs_with_field(store::TRUSTED_KEY).await? {
         if key.trim().is_empty() {
             continue;
@@ -4230,16 +4285,20 @@ pub(crate) async fn memo_own_keys(
             .await
             .map_err(AppError::Internal)?
             .is_some()
+            && !members_unsaid(state, data, root, &draft, &post).await
         {
             continue;
         }
         memo_post_key(state, data, root, &draft, post).await;
         noted += 1;
+        if members_unsaid(state, data, root, &draft, &post).await {
+            unsaid.push((draft, post));
+        }
     }
     if noted > 0 {
-        tracing::info!(root = %root, posts = noted, "remembered this persona's own sealing keys from its drafts");
+        tracing::info!(root = %root, posts = noted, unsaid = unsaid.len(), "remembered this persona's own sealing keys from its drafts");
     }
-    Ok(noted)
+    Ok((noted, unsaid))
 }
 
 /// Everything a mint owes after the header lands (PUBLISH.md lifted this out of the publish

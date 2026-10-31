@@ -85,6 +85,22 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
             chat = JSON.parse(pubText).post_id;
         });
 
+        it('the second computer knows who the chat is with before anyone speaks', async () => {
+            // Who it is sealed to is written at the mint, on the first computer only; the
+            // second learns it by asking its sibling. No line has been said to name her.
+            let other = null;
+            for (let i = 0; i < 30 && other !== beaRoot; i++) {
+                await pullAndFold(HOST_E, adaRoot);
+                await adaOnE(`api/identity/${adaRoot}/rooms/${adaRoot}/${chat}/sync`, {
+                    method: 'POST',
+                });
+                const door = await adaOnE(`api/identity/${adaRoot}/rooms/${adaRoot}/${chat}`);
+                if (door.status === 200) other = (await door.json()).other;
+                if (other !== beaRoot) await wait(400);
+            }
+            assert.equal(other, beaRoot, 'bea, on the other end');
+        });
+
         it('both halves are said, and heard on the first computer', async () => {
             let entered = false;
             for (let i = 0; i < 40 && !entered; i++) {
