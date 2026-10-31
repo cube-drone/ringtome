@@ -25668,3 +25668,53 @@ offered again, and opening finds the same room.
 `harness/new-im-probe.mjs` walks it on a scratch node: the heading with no IMs,
 the person offered, the click opening the chat, the chat under IMs, and nobody
 left to offer.
+
+## Recents: the dock and the launcher in order of use (2026-10-31)
+
+Curtis: keep track, in the browser, of the apps last opened and the things last
+saved or interacted with; order the launcher and the dock by last use, and give
+the first three slots to the last three interactions, in a different colour. The
+plan is `plans/RECENTS.md`; Curtis ruled the persona tile stays first, the
+phone's three-tile bar stays as it is, and a recent tile shows its picture when
+it has one.
+
+- **Kept per browser, per persona**, in a new mirror table, `recents`, owned by
+  `mirror/recents.js`: one row per app opened (the shell notes `appHere`), and
+  the newest dozen things. The rules are pure (`pure/recents.js`: order by use,
+  the three newest, a thing's name) and tested in `pure/recents.cjs`.
+- **What counts:** a document saved through `doc/session.js` (Writer, a drawing,
+  a feed draft - its app the document's home app, from the mirror's row); a line
+  said in a chat, or a picture sent there; a post or reply published through
+  `publishTo`, which takes the place of its draft's slot and its name. Making a
+  room or opening an IM doesn't count until something is said in it. A deleted
+  document leaves the recents.
+- **The tiles:** `js/recents.js` - a dock heptagon and a launcher hex in
+  `--recent-rim` (the colourway's pink), showing a drawing's kept thumbnail
+  (`thumbcache.js` `latestThumb`) or an IM partner's face, else the app's icon,
+  with the thing's name on hover and on the launcher's nameplate. The dock and
+  the launcher show only things of apps this persona may open.
+
+`harness/recents-probe.mjs` (a line said in a room: the room after the persona
+tile in the dock and the launcher, hrseChat next) and `recents-doc-probe.mjs` (a
+note saved in Writer heads the dock in Writer's name) pass on a scratch node.
+
+Then, the same day (Curtis: "saving a filter, modifying a mixtape, modifying a
+radio station, or playing a song from any of them"): hrseAmp's playlists are
+recent things too. A filter saved, a mixtape changed (made, added to, taken
+from, reordered), a station made or changed, a song played from a saved filter
+or a mixtape (a row, the space bar, or the player bar's play), or a station
+played - each puts that playlist after the persona tile. A playlist gained an
+address to come back to, `/ringtome/amp?mixtape=<id>` (`station=`, `filter=`):
+hrseAmp opens it once it has been read, then sets the address back to its own.
+Forgetting a playlist takes it out of the recents. `recents-amp-probe.mjs` makes
+a station with "+", sees it head the dock, closes it, and reopens it from its
+tile. Playing a song isn't probed, as the scratch node holds no audio; it goes
+through the same noting as the station.
+
+And (Curtis): "In the desktop taskbar, the second item - after the profile image
+
+- should always be a "home" app, which, like the one in our smaller mobile bar,
+  always brings up the app selector home". The desktop dock now has a home tile
+  second, always - the phone bar's home, at the dock's size, lit on the
+  launcher - before the three recents. `recents-probe.mjs` checks it's second
+  and opens the launcher.

@@ -2217,6 +2217,9 @@ export default {
     'qr.persons-code': "{name}'s QR code - press to make it bigger",
     'qr.open-in-the-app': 'open in Horse Drawing Tycoon 2',
 
+    // --- node/js/recents.js ---
+    'recents.untitled': 'untitled',
+
     // --- node/js/rights.js ---
     'rights.this-computer': 'this computer',
     'rights.a-song': 'a song',

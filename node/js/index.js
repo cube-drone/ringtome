@@ -108,6 +108,9 @@ import { useNarrow } from './panes.js';
 import { useOwnColorway } from './colorway.js';
 import { useWornCrt } from './crtpref.js';
 import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
+import { useRecents, noteApp } from './mirror/recents.js';
+import { orderByUse, newestThings } from './pure/recents.js';
+import { RecentDockTile } from './recents.js';
 
 const html = htm.bind(h);
 
@@ -381,6 +384,9 @@ const Inside = ({ session }) => {
     // it on app switch - a filter you set in one app shouldn't silently empty another.
     const [searchKind, setSearchKind] = useState('all');
     const appHereId = appHere ? appHere.id : null;
+    // Opening an app is using it (plans/RECENTS.md): the dock and the launcher order by it.
+    useEffect(() => noteApp(root, appHereId), [root, appHereId]);
+    const recents = useRecents(root);
     // A person's page filters too (2026-09-07), from the same slot; the query is the
     // page's, so walking to another person - or another app - starts it blank.
     const idSeg = inId ? (ref ? ref.seg : loc.path.split('/')[1] || '') : null;
@@ -473,6 +479,24 @@ const Inside = ({ session }) => {
         ${/* The corner cloud, the phone bar's last place (plans/SYNC_STATUS.md, piece 3). */ ''}
         ${open && html`<${SyncCloud} root=${root} narrow=${true} />`}
     </footer>`;
+    // The dock in order of use, persona first, home second, and your three newest things after them in tiles of
+    // their own (plans/RECENTS.md) - only things of apps you may open.
+    const dockApps = orderByUse(appsFor(nodeAdmin, owns), recents.used);
+    const recentThings = newestThings(recents.things, (id) => dockApps.some((a) => a.id === id));
+    // Home, second, always (Curtis, 2026-10-31): the phone bar's home tile, at the dock's size -
+    // the launcher, from wherever you are.
+    const homeTile = html`<span class="quickbar-slot" key="home">
+        <button
+            class=${inApp ? 'quickbar-hex' : 'quickbar-hex active'}
+            title=${t('index.home', 'home')}
+            aria-label=${t('index.home', 'home')}
+            onClick=${() => loc.route(LAUNCHER)}
+        ><span class="quickbar-hex-face"><${Icons.home} /></span></button>
+    </span>`;
+    const recentTiles = recentThings.map(
+        (thing) =>
+            html`<${RecentDockTile} key=${thing.key} root=${root} current=${persona.current} thing=${thing} />`,
+    );
     const bar = narrow
         ? narrowBar
         : html`
@@ -480,7 +504,7 @@ const Inside = ({ session }) => {
             <span class="quickbar-apps">
                 ${
                     open &&
-                    appsFor(nodeAdmin, owns).map((app) => {
+                    dockApps.map((app, i) => {
                         // Your own /id page is the persona app's home now: the lead tile lights there.
                         const isActive =
                             app.id === PERSONA_APP_ID
@@ -529,7 +553,7 @@ const Inside = ({ session }) => {
                             ${siblings.map((r) => html`<${SiblingTile} key=${r} root=${r} current=${persona.current} onPick=${becomeSibling} />`)}
                         </span>`
                         }
-                    </span>`;
+                    </span>${i === 0 && html`${homeTile}${recentTiles}`}`;
                     })
                 }
             </span>
@@ -717,6 +741,7 @@ const Inside = ({ session }) => {
             <${HomeBounce} path="/feed" />
             <${Console}
                 path="/ringtome"
+                current=${persona.current}
                 onLaunch=${(id) => loc.route(appHref(id))}
                 personaName=${personaName}
                 me=${me}

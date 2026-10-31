@@ -18,6 +18,7 @@ import { overCapTargets, replaceTargets, EMBED_CAP } from '../pure/embedcap.js';
 import { t } from '../i18n.js';
 import { askYes } from '../modal.js';
 import { toast } from '../toasts.js';
+import { noteDoc, forgetThing, docThing } from '../mirror/recents.js';
 
 const AUTOSAVE_MS = 10_000;
 
@@ -193,6 +194,8 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
                 b.format === snapshot.format;
             m.dirty = !unchanged;
             setStatus(m.dirty ? 'dirty' : 'clean');
+            // A save is an interaction (plans/RECENTS.md): the document heads the dock.
+            noteDoc(root, docId, snapshot.title, snapshot.body);
         } catch (e) {
             setError(e.message);
             setStatus('error'); // still dirty; the next trigger retries
@@ -262,6 +265,7 @@ export function useDocSession(root, docId, { onDeleted } = {}) {
             () => api(`/api/identity/${root}/docs/${docId}`, { method: 'DELETE' }),
         );
         onDeleted && onDeleted();
+        forgetThing(root, docThing(docId));
         try {
             await going;
         } catch (e) {

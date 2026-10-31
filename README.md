@@ -191,6 +191,10 @@ lightly federated, unapologetically Old Internet.
   address where the node has a public URL, else a `ringtome://` address only the
   Android app opens, and an "open in the app" button on a phone's web page.
   Built 2026-10-12; the app's half awaits a phone.
+- [`RECENTS.md`](plans/RECENTS.md) — the dock and the launcher in order of last
+  use, headed by your last three interactions (a saved note or drawing, a chat,
+  a post or reply) in tiles of their own colour; kept per browser. Built
+  2026-10-31.
 - [`RSS.md`](plans/RSS.md) — Horse's RSS, a feed reader: subscriptions on the
   private chain, items fetched once per node into a shared cache and translated
   to Marquee (never rendered as HTML), images through the node, a merged

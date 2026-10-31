@@ -14,6 +14,8 @@
 // business depending on a rendering library. That is what lets this module join the pure set and be
 // tested without a browser (integration/test/pure/apps.cjs, which also checks every name resolves).
 
+import { orderByUse, LEAD_APP } from './recents.js';
+
 export const DEFAULT_STYLE = 'default';
 
 export const APPS = [
@@ -300,12 +302,23 @@ export const mayOpen = (app, admin, owns = () => true) =>
 /// The launchable apps THIS person sees (`mayOpen`), in registry order. The dock's list.
 export const appsFor = (admin, owns) => liveApps.filter((a) => mayOpen(a, admin, owns));
 
-/// The console's honeycomb for this person: the apps they may open, in registry order, padded with
-/// blank cells to whole rows of `columns` - so the comb stays whole however many apps there are.
-export const consoleCellsFor = (admin, columns = 4, owns) => {
-    const apps = APPS.filter((a) => a.live && mayOpen(a, admin, owns));
-    const blanks = (columns - (apps.length % columns)) % columns;
-    return [...apps, ...Array.from({ length: blanks }, () => ({ blank: true }))];
+/// The console's honeycomb for this person: the apps they may open, padded with blank cells to whole
+/// rows of `columns` - so the comb stays whole however many apps there are. In order of use
+/// (plans/RECENTS.md, pure/recents.js): the persona first, then the recent `things` as `{ thing }`
+/// cells, then the rest, most recently used first; registry order where nothing was used.
+export const consoleCellsFor = (admin, columns = 4, owns, { used, things = [] } = {}) => {
+    const apps = orderByUse(
+        APPS.filter((a) => a.live && mayOpen(a, admin, owns)),
+        used,
+    );
+    const lead = apps.length && apps[0].id === LEAD_APP ? 1 : 0;
+    const cells = [
+        ...apps.slice(0, lead),
+        ...things.map((thing) => ({ thing })),
+        ...apps.slice(lead),
+    ];
+    const blanks = (columns - (cells.length % columns)) % columns;
+    return [...cells, ...Array.from({ length: blanks }, () => ({ blank: true }))];
 };
 
 /// The document apps: live apps that own a document surface (a `style`). System apps like Persona

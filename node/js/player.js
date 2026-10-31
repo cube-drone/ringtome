@@ -862,12 +862,25 @@ export const Thumbs = ({
 
 /// The bar: in hrseAmp, across its foot. `list` is what play starts when nothing is loaded yet - the
 /// table as it stands - and `from` what it is. `source` says where the song playing came from;
-/// `rating` and `onRate` are its thumbs.
-export const PlayerBar = ({ list = [], from = null, source = '', rating = '', onRate = null }) => {
+/// `rating` and `onRate` are its thumbs; `onStarted(from)` hears play start the list from nothing.
+export const PlayerBar = ({
+    list = [],
+    from = null,
+    source = '',
+    rating = '',
+    onRate = null,
+    onStarted = null,
+}) => {
     const p = usePlayer();
     if (!p) return null;
     const { current, playing, shuffle, position, duration, volume, me } = p;
-    const playOrPause = () => (current ? p.toggle() : list.length && p.play(list, null, from));
+    const playOrPause = () => {
+        if (current) p.toggle();
+        else if (list.length) {
+            p.play(list, null, from);
+            if (onStarted && from) onStarted(from);
+        }
+    };
     return html`<div class="player-bar">
         <span class="player-buttons">
             <button class="player-button" title=${t('player.previous', 'previous')} onClick=${p.prev}><${Icons.skipBack} /></button>

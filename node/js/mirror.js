@@ -64,6 +64,9 @@ export function openMirror(root) {
             strangers: 'root, at',
             feedpages: 'key, used',
             floors: 'key, used',
+            // What this browser last used (mirror/recents.js, plans/RECENTS.md): one row per app,
+            // and the newest few things saved, said or published. Local-only, bounded.
+            recents: 'key, at',
         });
         // Every document row written - from the stream, or a write stated ahead of it - is stamped
         // (`_v`), so a list can tell an unchanged row from a changed one without comparing their

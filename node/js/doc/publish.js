@@ -9,6 +9,10 @@ import { t } from '../i18n.js';
 import { Icons } from '../icons.js';
 import { rightsCheck } from '../rights.js';
 import { publishRequest } from '../pure/audience.js';
+import { noteThing, postThing, forgetThing, docThing } from '../mirror/recents.js';
+import { openMirror } from '../mirror.js';
+import { thingTitle } from '../pure/recents.js';
+import { postHref, groupPostHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -83,7 +87,36 @@ export async function publishWithBaking(
  * the rights sign first. Resolves to the door's answer with `post_id` named alike for every door
  * (none when scheduled), and `group`, the group it went to, or null.
  */
-export async function publishTo(
+export async function publishTo(root, docId, what, options = {}) {
+    const made = await publishThrough(root, docId, what, options);
+    // A post or a reply is an interaction (plans/RECENTS.md); a room made, or an IM opened, isn't
+    // until something is said in it.
+    if (!options.room && !options.im && made.post_id) notePost(root, docId, made, what);
+    return made;
+}
+
+/// The post just published, as a recent thing: at its public address, or its group's. It takes
+/// the place of its draft's - named by the draft's title, else by the words the draft's last save
+/// remembered (doc rows carry no words).
+function notePost(root, docId, made, what) {
+    const db = openMirror(root);
+    Promise.all([db.docs.get(docId), db.recents.get(docThing(docId))])
+        .then(([row, draft]) => {
+            forgetThing(root, docThing(docId));
+            noteThing(root, {
+                key: postThing(root, made.post_id),
+                app: 'feed',
+                href: made.group
+                    ? groupPostHref(made.group, made.post_id)
+                    : postHref(root, made.post_id),
+                title: thingTitle((row && row.title) || (draft && draft.title), ''),
+                ...(what.picture ? { drawing: docId } : {}),
+            });
+        })
+        .catch(() => {});
+}
+
+async function publishThrough(
     root,
     docId,
     what,

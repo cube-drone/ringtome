@@ -43,3 +43,15 @@ export async function rememberThumb(root, docId, head, url) {
         /* a cache that fails to write is just a repaint later */
     }
 }
+
+/// The newest kept thumbnail for a drawing at whatever version was painted last, or null: what a
+/// recent drawing's tile shows (mirror/recents.js), which knows the drawing but not its head.
+export async function latestThumb(root, docId) {
+    try {
+        const kept = await openMirror(root).drawthumbs.where('doc_id').equals(docId).toArray();
+        kept.sort((a, b) => (b.used || 0) - (a.used || 0));
+        return kept.length ? kept[0].url : null;
+    } catch {
+        return null;
+    }
+}

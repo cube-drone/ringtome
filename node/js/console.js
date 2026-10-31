@@ -12,6 +12,9 @@ import { isDevice } from './net.js';
 import { t } from './i18n.js';
 import { useNarrow } from './panes.js';
 import { UpdateNotice } from './update.js';
+import { useRecents } from './mirror/recents.js';
+import { newestThings } from './pure/recents.js';
+import { RecentHex } from './recents.js';
 
 const html = htm.bind(h);
 
@@ -123,11 +126,17 @@ function Hex(app, key, onLaunch, personaName, me) {
         : html`<div class=${cls} style=${style} key=${key} title=${tip}>${stack}</div>`;
 }
 
-export const Console = ({ onLaunch, personaName, me, admin }) => {
+export const Console = ({ onLaunch, personaName, me, admin, current }) => {
     const columns = useNarrow() ? NARROW_COLUMNS : COLUMNS;
     // Read here, not handed down: the router keeps a matched route's first props (unlocks.js).
     const owns = useOwnership();
-    const rows = chunk(consoleCellsFor(admin, columns, owns), columns);
+    // In order of use, headed by your three newest things (plans/RECENTS.md) - only things of apps
+    // you may open.
+    const root = current && current.root;
+    const { used, things } = useRecents(root);
+    const mine = consoleCellsFor(admin, columns, owns);
+    const shown = newestThings(things, (id) => mine.some((c) => c.id === id));
+    const rows = chunk(consoleCellsFor(admin, columns, owns, { used, things: shown }), columns);
     return html`
         <div class="console">
             <${UpdateNotice} />
@@ -135,8 +144,10 @@ export const Console = ({ onLaunch, personaName, me, admin }) => {
                 ${rows.map(
                     (row, ri) => html`
                         <div class=${ri % 2 ? 'hex-row shift' : 'hex-row'} key=${ri}>
-                            ${row.map((app, ci) =>
-                                Hex(app, ri * columns + ci, onLaunch, personaName, me),
+                            ${row.map((cell, ci) =>
+                                cell.thing
+                                    ? html`<${RecentHex} key=${cell.thing.key} root=${root} current=${current} thing=${cell.thing} />`
+                                    : Hex(cell, ri * columns + ci, onLaunch, personaName, me),
                             )}
                         </div>
                     `,

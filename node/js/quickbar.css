@@ -252,6 +252,12 @@ a.quickbar-version:focus-visible {
     background: var(--me-ring);
 }
 
+/* A recent thing (plans/RECENTS.md): your newest saved, said or published, after the persona tile -
+   in a rim of its own, so it reads as a thing and not an app. */
+.quickbar-hex-recent {
+    background: var(--recent-rim);
+}
+
 .quickbar-hex-img {
     width: 100%;
     height: 100%;

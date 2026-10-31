@@ -33,7 +33,9 @@ import { BulkPanel } from '../doc/bulk.js';
 import { usePlayer, PlayerBar, Cassette, Thumbs, SHUFFLE, songForPhone } from '../player.js';
 import { spreadOrder } from '../pure/shuffle.js';
 import { AMP_PINS, readPins, pinKey, pinnedLists, pinnedFirst } from '../pure/amppins.js';
-import { postHref } from '../links.js';
+import { postHref, appHref } from '../links.js';
+import { noteThing, forgetThing, playlistThing } from '../mirror/recents.js';
+import { useLocation } from 'preact-iso';
 import { Icons } from '../icons.js';
 import { toast } from '../toasts.js';
 import { t } from '../i18n.js';
@@ -1313,6 +1315,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                 body: JSON.stringify({ value: filterValue(name, settingsNow) }),
             });
             setLoadedId(id);
+            notePlaylist('filter', id, name);
             await loadFilters();
             toast(t('apps.feed.saved-as', 'saved as "{name}"', { name }));
         } catch (e) {
@@ -1343,6 +1346,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             setFilters((have) => have.filter((x) => x.id !== f.id));
             if (loadedId === f.id) setLoadedId(null);
             unpinGone('filter', f.id);
+            forgetThing(root, playlistThing('filter', f.id));
         } catch (e) {
             toast(
                 t('amp.couldnt-forget-it', "couldn't forget it: {message}", {
@@ -1416,6 +1420,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     body: JSON.stringify({ member_root: r.author }),
                 });
             }
+            notePlaylist('mixtape', id, name);
             toast(t('amp.added-to-mixtape', 'added {n} to "{name}"', { n: adding.length, name }));
         } catch (e) {
             failed(e);
@@ -1429,6 +1434,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             for (const r of songs) {
                 await api(`${memberUrl(tape.id, r)}?member_root=${r.author}`, { method: 'DELETE' });
             }
+            notePlaylist('mixtape', tape.id, tape.name);
         } catch (e) {
             failed(e);
         }
@@ -1453,6 +1459,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             if (openTape === x.id) setOpenTape(null);
             setTapes((have) => have.filter((y) => y.id !== x.id));
             unpinGone('mixtape', x.id);
+            forgetThing(root, playlistThing('mixtape', x.id));
         } catch (e) {
             failed(e);
         }
@@ -1469,6 +1476,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                 method: 'PUT',
                 body: JSON.stringify({ index, member_root: r.author }),
             });
+            notePlaylist('mixtape', tape.id, tape.name);
         } catch (e) {
             failed(e);
         }
@@ -1596,6 +1604,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             return;
         }
         player.playStation(st.id, run, st.name);
+        notePlaylist('station', st.id, st.name);
     };
     // The station playing hears when the library, a filter, a mixtape or a station changes; one
     // that came back from a refresh as its history alone is rebuilt here, once the library's in.
@@ -1626,16 +1635,18 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         api(`/api/identity/${root}/private/kv/${AMP_STATIONS}/${st.id}`, {
             method: 'PUT',
             body: JSON.stringify({ value: stationValue(st.name, st.slices) }),
-        }).catch((e) =>
-            toast(
-                t('amp.couldnt-save-station', "couldn't save the station: {message}", {
-                    message: e.message,
-                }),
-                {
-                    kind: 'error',
-                },
-            ),
-        );
+        })
+            .then(() => notePlaylist('station', st.id, st.name))
+            .catch((e) =>
+                toast(
+                    t('amp.couldnt-save-station', "couldn't save the station: {message}", {
+                        message: e.message,
+                    }),
+                    {
+                        kind: 'error',
+                    },
+                ),
+            );
     // A change to a station: on screen at once; kept a moment after a slider settles, or now.
     const changeStation = (st, now = false) => {
         setStations((have) => have.map((x) => (x.id === st.id ? st : x)));
@@ -1677,6 +1688,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             setStations((have) => have.filter((x) => x.id !== st.id));
             if (openStation === st.id) setOpenStation(null);
             unpinGone('station', st.id);
+            forgetThing(root, playlistThing('station', st.id));
         } catch (e) {
             failed(e);
         }
@@ -1686,6 +1698,21 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         setOpenTape(null);
         setOpenStation(st.id);
     }
+    // A playlist's own address (plans/RECENTS.md: its recent tile opens it): `?mixtape=`, `?station=`
+    // or `?filter=` opens that one once it has been read, and the address goes back to hrseAmp's own.
+    const loc = useLocation();
+    const asked = loc.query || {};
+    useEffect(() => {
+        const tapeAsked = asked.mixtape && tapes.find((x) => x.id === asked.mixtape);
+        const stationAsked = asked.station && stations.find((x) => x.id === asked.station);
+        const filterAsked = asked.filter && filters.find((x) => x.id === asked.filter);
+        if (tapeAsked) openMixtape(tapeAsked);
+        else if (stationAsked) openStationView(stationAsked);
+        else if (filterAsked) applyFilter(filterAsked);
+        else return;
+        loc.route(appHref('amp'), true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [asked.mixtape, asked.station, asked.filter, tapes, stations, filters]);
     // What the open station played lately, newest first - while it's the one on the air.
     const liveRun =
         player && player.station && openStation === player.station ? player.stationRun() : null;
@@ -1697,6 +1724,16 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
               .reverse()
         : [];
     // What the table plays from, said as the player keeps it (pure/amp.js `readContext`).
+    // A playlist saved, changed, or played from (plans/RECENTS.md) heads the dock: a filter, a
+    // mixtape or a station, at the address that opens it again (`?mixtape=<id>`, below).
+    const notePlaylist = (kind, id, name) =>
+        id &&
+        noteThing(root, {
+            key: playlistThing(kind, id),
+            app: 'amp',
+            href: `${appHref('amp')}?${kind}=${id}`,
+            title: name || '',
+        });
     const playingFrom = tape
         ? { kind: 'mixtape', id: tape.id, name: tape.name }
         : loaded && sameFilter(loaded, settingsNow)
@@ -1704,6 +1741,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
           : anyAmpPicks(picks) || searchQuery
             ? { kind: 'filtered' }
             : { kind: 'all' };
+    // Played from a saved filter or a mixtape: that playlist is a recent thing ("all" isn't one).
+    const notePlayedFrom = (from) =>
+        (from.kind === 'mixtape' || from.kind === 'filter') &&
+        notePlaylist(from.kind, from.id, from.name);
     const keys = useMemo(() => shown.map((r) => r.key), [shown]);
 
     // The player carries on through the table as it now stands.
@@ -1854,10 +1895,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     // The keys, while hrseAmp is open (Curtis, 2026-10-13 - elsewhere other tools want them): space
     // plays and pauses, the arrows go back and on a song. Not while typing, nor under a modal.
     const keyed = useRef(null);
-    keyed.current = { player, list: playable(shown), from: playingFrom };
+    keyed.current = { player, list: playable(shown), from: playingFrom, noted: notePlayedFrom };
     useEffect(() => {
         const press = (e) => {
-            const { player: p, list, from } = keyed.current;
+            const { player: p, list, from, noted } = keyed.current;
             if (!p || e.defaultPrevented || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
             const el = e.target;
             if (el && el.closest && el.closest('input, textarea, select, [contenteditable]'))
@@ -1866,7 +1907,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             if (e.key === ' ') {
                 e.preventDefault();
                 if (p.current) p.toggle();
-                else if (list.length) p.play(list, null, from);
+                else if (list.length) {
+                    p.play(list, null, from);
+                    noted(from);
+                }
             } else if (e.key === 'ArrowLeft') {
                 e.preventDefault();
                 p.prev();
@@ -1890,8 +1934,11 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const first = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
     const last = Math.min(shown.length, Math.ceil((scrollTop + height) / rowHeight) + OVERSCAN);
     const playingKey = playingKeyOf(player);
-    const playRow = (r) =>
-        player && r.carried !== false && player.play(playable(shown), r, playingFrom);
+    const playRow = (r) => {
+        if (!player || r.carried === false) return;
+        player.play(playable(shown), r, playingFrom);
+        notePlayedFrom(playingFrom);
+    };
     // A long press is a phone's Ctrl-click: that row into the selection, or out of it.
     const held = (r) => () => {
         setPicked((p) => clickSelect(p, r.key, keys, anchor, { toggle: true }));
@@ -2154,6 +2201,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             source=${nowSource}
             rating=${nowRating}
             onRate=${rateNow}
+            onStarted=${notePlayedFrom}
         />
     </div>`;
 };

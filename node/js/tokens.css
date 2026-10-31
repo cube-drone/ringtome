@@ -152,6 +152,7 @@
 
     --hex-border-dark: #bf9152;   /* the outer 2px ring of an application heptagon: caramel */
     --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */
+    --recent-rim: var(--pink);    /* a recent thing's tile (plans/RECENTS.md): not an app, so not an app's rim */
 
     --marker: #f3e08c;                      /* search hits: a warm highlighter pen */
     --scrim: rgba(43, 38, 34, 0.45);        /* behind a modal */

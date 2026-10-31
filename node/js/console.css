@@ -131,6 +131,16 @@
     display: none;
 }
 
+/* A recent thing (plans/RECENTS.md): an app tile's heptagon in the recents' rim, its picture or its
+   app's icon under the thing's name. */
+.app-tile.app-tile-recent {
+    background: var(--recent-rim);
+}
+
+.app-tile.app-tile-recent .hex-mid {
+    background: var(--recent-rim);
+}
+
 .app-tile-face {
     position: absolute;
     inset: 0;

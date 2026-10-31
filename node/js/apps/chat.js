@@ -97,6 +97,7 @@ import { RoomTitle } from '../roomtitle.js';
 import { formatWhen } from '../pure/when.js';
 import { imCandidates, filterContacts, PEOPLE_SHELF_SLICE } from '../pure/people.js';
 import { openIm } from '../ims.js';
+import { noteThing, roomThing } from '../mirror/recents.js';
 
 /// Where a room's uploads file (CHAT.md, ruling 11): the chat app's own bucket, beside the
 /// rooms - so the `!` picker offers what was said here before.
@@ -1463,6 +1464,17 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
     };
     const draftBytes = byteLength(draft);
     const overLong = draftBytes > MAX_MESSAGE_BYTES;
+    // Saying something is an interaction (plans/RECENTS.md): the room heads the dock, named as its
+    // column names it, an IM wearing the other person's face.
+    const noteSaid = () =>
+        room &&
+        noteThing(root, {
+            key: roomThing(author, doc),
+            app: 'chat',
+            href: roomHref(author, doc),
+            title: room.im ? imName(other, room) : roomName(words, room),
+            ...(room.im && room.other ? { person: room.other } : {}),
+        });
     // One line through the queue: said in turn, then marked with what the node answered (so the
     // floor can tell when it has landed), or with why it didn't.
     const sayPending = (line) => {
@@ -1475,6 +1487,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                     body: JSON.stringify({ words: line.words }),
                 });
                 mark({ seq: r.seq, landed_ms: r.said_ms });
+                noteSaid();
                 readHistory();
             } catch (e) {
                 mark({ failed: e.message || String(e) });
@@ -1539,6 +1552,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                 body: JSON.stringify({ words }),
             });
             atEnd.current = true;
+            noteSaid();
             readHistory();
         } catch (e) {
             setSendError(e.message || String(e));
