@@ -31,7 +31,8 @@ One record per thing, the newest touch moving it to the front:
 
 - **A saved document** - every surface that saves through `doc/session.js`
   (Writer's notes, a drawing, a feed draft). The thing is the document; its app
-  is the document's home app.
+  is the document's home app. A feed draft's tile opens the feed itself with its
+  Writer column open (`/ringtome/feed?compose=1`), not the draft as a document.
 - **A line said in a chat** - the room.
 - **A published post or reply** (`doc/publish.js` `publishTo`) - the post, at
   its public (or group) address. Making a room or opening an IM isn't one; the

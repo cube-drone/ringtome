@@ -263,7 +263,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     const editingFor = useOwnPostEditing(current, (r) => overlayPosted(r, postedAs[r.doc_id]));
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
-    const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'feed');
+    const { tucked, toggleTuck, openCol, tab, settle } = useColTucks(root, 'feed');
     // Saved feeds (Curtis, 2026-10-11), read off the persona's private registers: the Feeds column,
     // the feed on screen (to know one of them), and the one asked for.
     const [saved, setSaved] = useState([]);
@@ -446,7 +446,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         setApplied({ settings: feed, at: Date.now() });
         setLoadedId(null);
         setAudienceNext(`group:${askedGroup}`);
-        if (tucked.has('compose')) toggleTuck('compose');
+        openCol('compose');
         loc.route(loc.path, true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [askedGroup, ofGroups]);
@@ -457,10 +457,19 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         if (!askedAsGroup) return;
         if (!ofGroups.some((g) => g.group === askedAsGroup && g.public)) return;
         setAudienceNext(`as-group:${askedAsGroup}`);
-        if (tucked.has('compose')) toggleTuck('compose');
+        openCol('compose');
         loc.route(loc.path, true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [askedAsGroup, ofGroups]);
+    // Sent from a draft's recent tile (plans/RECENTS.md, Curtis 2026-10-31: "take us to the regular
+    // feed window with the Writer column opened"): the feed as it was, the composer open on the draft.
+    const askedCompose = !!(loc.query && loc.query.compose);
+    useEffect(() => {
+        if (!askedCompose) return;
+        openCol('compose');
+        loc.route(loc.path, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [askedCompose]);
     const audienceTags = tagCounts(contactRows || []).map((c) => c.value);
 
     const post = async (docId) => {

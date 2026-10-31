@@ -25730,3 +25730,19 @@ fades in over the end. Since the dock is in order of use, what's cut off is the
 least recently used. Checked in headless Chrome at 1500, 1100 and 950px: the
 fade appears only at 950, where hrseBank and hrseServer fall off the end, and
 the version, clock and cloud keep their places.
+
+And (Curtis): "when I'm dragged back to the feed by a drafted feed item, let's
+just take us to the regular feed window with the Writer column opened". A feed
+draft's recent tile now goes to `/ringtome/feed?compose=1`, and the feed opens
+its composer on that address and sets it back to its own. Opening it found a
+race: the feed's "open the composer" read the column's tuck before this
+browser's tucks had loaded, saw it open, and did nothing. `useColTucks` gained
+`openCol`, which opens a column whatever it was, and the feed's two group
+addresses (`?group=`, `?as_group=`) use it too. `recents-feed-probe.mjs` saves a
+draft, tucks the composer, goes home, and clicks the tile: the feed, the
+composer open, on the draft's words.
+
+And (Curtis): the launcher's recent tiles drop the app tiles' diagonal fill,
+which covered half of a thumbnail or a face - as the persona's own tile already
+did (`console.css`). Their nameplate is inverted too, ink with cream words,
+since without the fill behind it the cream band read faintly over a picture.

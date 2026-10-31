@@ -163,6 +163,7 @@ export function useColTucks(root, appId, startsTucked = [], { lead = null } = {}
                 html`<${Rail} icon=${icon} label=${label} active=${true} onClick=${() => setOpen(null)} />`,
             tucked: { has: (col) => !mine(col) },
             toggleTuck: (col) => setOpen(mine(col) ? null : `${appId}/${col}`),
+            openCol: (col) => setOpen(`${appId}/${col}`),
             settle,
         };
     }
@@ -173,6 +174,10 @@ export function useColTucks(root, appId, startsTucked = [], { lead = null } = {}
         tab: () => null,
         tucked,
         toggleTuck: (col) => setFlag(root, tuckKey(appId, col), !tucked.has(col)),
+        // Open, whatever it was: for an address that asks for a column (the feed's `?compose=1`),
+        // which may land before this browser's tucks have been read - a toggle then reads "open"
+        // and does nothing.
+        openCol: (col) => setFlag(root, tuckKey(appId, col), false),
         settle,
     };
 }

@@ -141,6 +141,12 @@
     background: var(--recent-rim);
 }
 
+/* ...and no diagonal fill (Curtis, 2026-10-31): it's an app's decoration, and it would hide half of a
+   drawing's thumbnail or a face, as it would the persona's. */
+.app-tile.app-tile-recent .hex-face::before {
+    display: none;
+}
+
 .app-tile-face {
     position: absolute;
     inset: 0;
@@ -196,6 +202,13 @@
     font-size: 1rem;
     white-space: nowrap;
     color: var(--ink);
+}
+
+/* A recent thing's nameplate, inverted (Curtis, 2026-10-31): without the diagonal fill behind it, the
+   cream band read faintly over a picture; ink with cream words stands out from it. */
+.app-tile.app-tile-recent .app-tile-name {
+    background: var(--ink);
+    color: var(--surface);
 }
 
 /* The consent page (oauthconsent.js): an AI assistant asking to connect - one card, its answers.

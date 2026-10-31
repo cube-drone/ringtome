@@ -10,7 +10,7 @@ import { useMemo } from 'preact/hooks';
 import { openMirror, useLive } from '../mirror.js';
 import { RECENT_KEPT, thingTitle } from '../pure/recents.js';
 import { homeAppFor } from '../pure/apps.js';
-import { docHref } from '../links.js';
+import { docHref, appHref } from '../links.js';
 
 /// A thing's key: one row per thing, the newest touch moving it to the front.
 export const docThing = (docId) => `thing:doc:${docId}`;
@@ -61,7 +61,8 @@ export function noteDoc(root, docId, title, body) {
             noteThing(root, {
                 key: docThing(docId),
                 app: app.id,
-                href: docHref(root, docId),
+                // A feed draft opens the feed itself, its composer open (apps/feed.js `compose`).
+                href: app.id === 'feed' ? `${appHref('feed')}?compose=1` : docHref(root, docId),
                 // A drawing's body is its strokes, not words.
                 title: thingTitle(title, app.id === 'drawing' ? '' : body),
                 ...(app.id === 'drawing' ? { drawing: docId } : {}),
