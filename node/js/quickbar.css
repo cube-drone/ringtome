@@ -164,6 +164,33 @@ a.quickbar-version:focus-visible {
     display: flex;
     align-items: flex-end;
     gap: 0.4rem;
+    /* Too many to fit before the clock (Curtis, 2026-10-31): the row gives way and what's past its
+       end is cut off. `clip` across only - `hidden` would clip upward too, and the tiles poke above
+       the bar, and the persona switcher stands over it. */
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-right: 1rem;
+    overflow-x: clip;
+    overflow-y: visible;
+    position: relative;
+}
+
+/* ...and the cut end fades into the bar: a strip of the bar's own teal, the height of the bar
+   above its bottom padding (the few pixels a tile pokes above the bar are simply cut). */
+.quickbar-apps-over::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 4rem;
+    height: calc(3rem - 6px);
+    background: linear-gradient(to right, transparent, var(--teal-deep));
+    pointer-events: none;
+}
+
+/* Everything else in the bar keeps its size; the apps are what give. */
+.quickbar > :not(.quickbar-apps) {
+    flex-shrink: 0;
 }
 
 /* Each tile is a two-layer heptagon: the outer layer is a teal-deep rim (a border, since a

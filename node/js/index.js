@@ -213,6 +213,28 @@ const AtRoute = ({ at, fallback: Fallback, ...props }) => {
 // `/ringtome/persona` jumps to your own person page (reached by the dock's persona tile), and
 // `/ringtome/settings` is the Settings app - profile, computers and the rest beneath it, which
 // lived under `/ringtome/persona/` until 2026-10-09 and redirect from there.
+/// Does an element's content run past its right edge? `[ref, over]`, measured after every render
+/// and whenever the element's size changes: its last child's right edge against its own.
+function useOverflowing() {
+    const ref = useRef(null);
+    const [over, setOver] = useState(false);
+    const measure = () => {
+        const el = ref.current;
+        const last = el && el.lastElementChild;
+        if (!last) return setOver(false);
+        setOver(last.getBoundingClientRect().right > el.getBoundingClientRect().right + 1);
+    };
+    useEffect(measure);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const watch = new ResizeObserver(measure);
+        watch.observe(el);
+        return () => watch.disconnect();
+    }, [ref.current]); // eslint-disable-line react-hooks/exhaustive-deps
+    return [ref, over];
+}
+
 /// One of the account's other personas, stacked above the dock's persona tile (Curtis, 2026-09-30:
 /// switching is "something I'm doing a lot of"): their face in their colour, their name on hover,
 /// a click to be them.
@@ -447,6 +469,9 @@ const Inside = ({ session }) => {
     // no way of knowing that we have incoming messages to deal with"). The two keep their badges and
     // their dock behaviour - the app you're in closes to the launcher.
     const narrow = useNarrow();
+    // The dock's apps run out of room before the clock (Curtis, 2026-10-31): what doesn't fit is cut
+    // off under a fade into the bar - the least recently used, since the dock is in order of use.
+    const [dockRef, dockOver] = useOverflowing();
     const narrowSlot = (id, badge) => {
         const app = appById(id);
         const isActive = !!(appHere && appHere.id === id);
@@ -501,7 +526,7 @@ const Inside = ({ session }) => {
         ? narrowBar
         : html`
         <footer class="quickbar">
-            <span class="quickbar-apps">
+            <span class=${dockOver ? 'quickbar-apps quickbar-apps-over' : 'quickbar-apps'} ref=${dockRef}>
                 ${
                     open &&
                     dockApps.map((app, i) => {

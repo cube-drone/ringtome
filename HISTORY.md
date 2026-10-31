@@ -25718,3 +25718,15 @@ And (Curtis): "In the desktop taskbar, the second item - after the profile image
   second, always - the phone bar's home, at the dock's size, lit on the
   launcher - before the three recents. `recents-probe.mjs` checks it's second
   and opens the launcher.
+
+And (Curtis): the dock's apps can run long enough to reach the clock - "instead
+they are hidden, perhaps with a gradient fade". The apps' row now gives way
+before anything else in the bar (`flex: 0 1 auto`, everything else
+`flex-shrink: 0`) and clips what's past its end across only (`overflow-x: clip`,
+so the tiles still poke up and the persona switcher still stands above). While
+anything is cut off (index.js `useOverflowing`: the last tile's right edge
+against the row's, after every render and on resize), a strip of the bar's teal
+fades in over the end. Since the dock is in order of use, what's cut off is the
+least recently used. Checked in headless Chrome at 1500, 1100 and 950px: the
+fade appears only at 950, where hrseBank and hrseServer fall off the end, and
+the version, clock and cloud keep their places.
