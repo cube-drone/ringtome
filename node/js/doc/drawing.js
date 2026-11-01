@@ -110,6 +110,7 @@ import { FILES_BUCKET } from '../pure/apps.js';
 import { FLAT_FROM, FLAT_VERSION, flatVersion, findFlatCopy } from '../pure/flatcopy.js';
 import { openMirror, useLive } from '../mirror.js';
 import { cachedThumb, rememberThumb } from '../mirror/thumbcache.js';
+import { useNear } from '../lookahead.js';
 
 const html = htm.bind(h);
 
@@ -846,7 +847,6 @@ export const DrawingThumb = ({ root, doc, big }) => {
     const [src, setSrc] = useState(thumbCache.get(key) || null);
     // Kept? 'looking' until this browser's table has answered, then 'kept' or 'missing'.
     const [kept, setKept] = useState(thumbCache.has(key) ? 'kept' : 'looking');
-    const [seen, setSeen] = useState(false);
     const holder = useRef(null);
 
     // 1. The kept thumbnail - this page's, else this browser's (mirror/thumbcache.js) - on screen
@@ -873,27 +873,11 @@ export const DrawingThumb = ({ root, doc, big }) => {
         };
     }, [root, key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // 2. Painting waits for the row to come into view (Curtis, 2026-09-27): a list of thousands of
-    //    drawings paints the handful on screen, and the rest as they are scrolled to.
-    useEffect(() => {
-        if (seen || src) return undefined;
-        const el = holder.current;
-        if (!el || typeof IntersectionObserver === 'undefined') {
-            setSeen(true);
-            return undefined;
-        }
-        const watch = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((e) => e.isIntersecting)) {
-                    setSeen(true);
-                    watch.disconnect();
-                }
-            },
-            { rootMargin: '200px' },
-        );
-        watch.observe(el);
-        return () => watch.disconnect();
-    }, [seen, src]);
+    // 2. Painting waits for the row to come near (Curtis, 2026-09-27): a list of thousands of
+    //    drawings paints the handful on screen and the couple of screens around them, and the rest
+    //    as they are scrolled toward (lookahead.js; 2026-11-01, when a 200px margin rooted on the
+    //    window - clipped by the list's own scrolling column - reached nothing ahead at all).
+    const seen = useNear(holder, !!src);
 
     // 3. Paint - on screen, and not kept - from the drawing's body, then keep it.
     useEffect(() => {

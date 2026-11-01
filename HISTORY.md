@@ -25925,3 +25925,29 @@ element itself (a callback ref into state), so every table that appears is.
 Probed in headless Chrome against a scratch node, a 1600px-tall window, 70
 songs: opened on a station, then "all" - before, 12 rows drawn in a 1309px
 table; after, the table drawn to its foot.
+
+## Thumbnails load ahead of the scroll (2026-11-01)
+
+Curtis: flung through hrseFiles, the thumbnails came in as black squares filling
+in behind the scroll. Every tile is in the page, skipped off screen
+(`content-visibility: auto`), and a picture was `loading="lazy"` - which starts
+only as its tile is about to draw, so nothing was fetched ahead. A drawing's
+thumb waited on an observer with a 200px margin, rooted on the window: the list
+scrolls in its own column, which clips that observer, so it reached nothing past
+the column's edge either.
+
+`lookahead.js` watches rows (anything marked `data-lookahead`: a file tile, a
+note row) against their own scroller, one shared observer per scroller, and says
+when one comes within two of the scroller's heights of the view - near, and near
+from then on (nothing is unloaded; a fetched picture is the browser's to keep or
+drop, as lazily loaded ones always were). File tiles' and note rows' pictures
+are a `NearImg`, which takes its src then; a drawing's thumb paints then
+(`useNear`).
+
+Measured in headless Chrome against a scratch node, 300 pictures, cold cache,
+80ms of emulated latency, the share of on-screen tiles still blank while
+scrolling: 200px per 50ms 89% -> 38%; 400px 96% -> 78%; 1200px 100% -> 89%. With
+no latency, 0% before and after. What's left is the round trip: a thumb is some
+5KB, and over plain HTTP a browser fetches six at once from a host - about 75 a
+second at 80ms, where a brisk scroll uncovers 190. HTTP/2 (Bunny, in front of
+horsedrawingtycoon.com) lifts that limit; a home node over plain HTTP keeps it.

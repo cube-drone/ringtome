@@ -59,6 +59,7 @@ import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
 import { BulkPanel } from '../doc/bulk.js';
 import { longPress } from '../longpress.js';
+import { NearImg } from '../lookahead.js';
 import { pruneSelection, selectAll, toggleSelection } from '../pure/bulk.js';
 
 const html = htm.bind(h);
@@ -165,6 +166,7 @@ const NoteRowBody = ({
     bulk,
 }) => html`<button
     class=${(bulk ? picked : doc.doc_id === selected) ? 'note-row jag-line selected' : 'note-row jag-line'}
+    data-lookahead
     style=${`contain-intrinsic-size: auto ${rowGuess(doc, feat, hits)}rem`}
     data-settles
     onMouseDown=${noShiftSelect}
@@ -189,11 +191,10 @@ const NoteRowBody = ({
             doc.format === 'drawing'
                 ? html`<${DrawingThumb} root=${root} doc=${doc} />`
                 : doc.media && doc.media.has_thumb
-                  ? html`<img
+                  ? html`<${NearImg}
                   class="note-row-thumb"
                   src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
                   alt=""
-                  loading="lazy"
                   onError=${(e) => {
                       // has_thumb but the blob hasn't reached this node yet (404): hide
                       // rather than show the browser's broken-image glyph; the next mirror
@@ -282,7 +283,7 @@ const NoteRow = memo(NoteRowBody, sameRow);
 const FileTile = ({ doc, root, bucket, bytes, selected, onSelect, onFollowHome, picked, bulk }) => {
     const picture = doc.format === 'drawing' || (doc.media && doc.media.has_thumb);
     const Kind = formatIcon(doc.format) || Icons.page;
-    return html`<li class="files-tile-slot">
+    return html`<li class="files-tile-slot" data-lookahead>
         <button
             class=${(bulk ? picked : doc.doc_id === selected) ? 'files-tile selected' : 'files-tile'}
             title=${bytes > 0 ? `${doc.title || t('apps.notes.untitled', 'untitled')} — ${sizeLabel(bytes)}` : doc.title || ''}
@@ -298,10 +299,9 @@ const FileTile = ({ doc, root, bucket, bytes, selected, onSelect, onFollowHome, 
                     doc.format === 'drawing'
                         ? html`<${DrawingThumb} root=${root} doc=${doc} big=${true} />`
                         : picture
-                          ? html`<img
+                          ? html`<${NearImg}
                             src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
                             alt=""
-                            loading="lazy"
                             onError=${(e) => {
                                 // has_thumb, but the blob is not on this node yet
                                 e.currentTarget.style.display = 'none';
