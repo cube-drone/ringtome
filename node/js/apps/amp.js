@@ -1768,10 +1768,17 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     // The table's height, watched - and again whenever the table comes back: the cassette takes its
     // place while it shows, and the table it returns to is a new element, scrolled to the top
     // (Curtis, 2026-10-12: songs went missing after the cassette, the rows still drawn for the old
-    // scroll). It goes back to where it was.
-    const expanded = !!(player && player.expanded);
+    // scroll). It goes back to where it was. A station's view takes its place too, and hrseAmp can
+    // open on one (its recents tile): keyed on the cassette alone, a table first drawn after a
+    // station never measured itself, and drew rows for the 600px it started at - the top half of a
+    // tall window (Curtis, 2026-11-01). So it is keyed on the element itself.
+    const [tableEl, setTableEl] = useState(null);
+    const bodyRef = (el) => {
+        body.current = el;
+        if (el) setTableEl(el);
+    };
     useEffect(() => {
-        const el = body.current;
+        const el = tableEl;
         if (!el) return undefined;
         el.scrollTop = scrollTop;
         setScrollTop(el.scrollTop);
@@ -1781,7 +1788,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         watch.observe(el);
         return () => watch.disconnect();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [expanded]);
+    }, [tableEl]);
 
     const save = (next) =>
         setRawSettings(
@@ -2108,7 +2115,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                 </p>
                 <div
                     class="amp-table"
-                    ref=${body}
+                    ref=${bodyRef}
                     onScroll=${(e) => setScrollTop(e.currentTarget.scrollTop)}
                     onDragOver=${(e) => {
                         if (!tape || !dragKey.current) return;

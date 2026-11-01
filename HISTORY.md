@@ -25910,3 +25910,18 @@ Probed in headless Chrome against a scratch node with a 40-song mixtape: a mouse
 drag held at the bottom edge scrolled to the end and filed the song last; an
 emulated finger held still at the bottom edge did the same, the drop line
 following.
+
+## hrseAmp: the song table draws to its foot (2026-11-01)
+
+Curtis: coming back to hrseAmp, the songs' table often drew only its top half -
+scrolling, they were all there. The table draws only the rows in its window, out
+of its measured height, and it measured (and watched) itself once on mount and
+again when the cassette closed. A radio station's view takes the table's place,
+and hrseAmp can open on one (a station's recents tile); the table drawn after it
+was a new element nobody measured, so it drew rows for whatever height it had
+before - the 600px it starts at, or less. It is now measured and watched by the
+element itself (a callback ref into state), so every table that appears is.
+
+Probed in headless Chrome against a scratch node, a 1600px-tall window, 70
+songs: opened on a station, then "all" - before, 12 rows drawn in a 1309px
+table; after, the table drawn to its foot.
