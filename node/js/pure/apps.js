@@ -163,6 +163,9 @@ export const APPS = [
     },
     {
         id: 'lost-found',
+        // Its address (Curtis, 2026-11-01): /ringtome/files, as it's named - the id stays, since
+        // browsers keep its columns and recents under it; /ringtome/lost-found goes on to here.
+        path: 'files',
         name: 'hrseFiles™',
         icon: 'lostFound',
         live: true,
@@ -180,8 +183,8 @@ export const APPS = [
         // No `style` on purpose: it owns no bucket type, mints no implicit bucket, and the
         // bucket switcher never shows. A browsing surface: rows carry their bucket names and
         // a follow-me-home button to each document's own app; creation stays with the real
-        // apps. Its URLs live under /lost-found and never re-dress into cozy bucket addresses -
-        // one document shows in many places, but a /lost-found link means this surface.
+        // apps. Its URLs live under /files and never re-dress into cozy bucket addresses -
+        // one document shows in many places, but a /files link means this surface.
         everything: true,
         bucketNoun: 'hrseFiles™',
         itemNoun: 'file',
@@ -334,6 +337,14 @@ const docApps = liveApps.filter((a) => a.style);
 
 /// An app by its route id (live apps only) - Persona included, so the shell gives it the header.
 export const appById = (id) => liveApps.find((a) => a.id === id) || null;
+
+/// The segment an app's address carries, `/ringtome/<path>`: its id, unless it has a `path` of its
+/// own (hrseFiles: `files`, its id `lost-found` kept as a storage key).
+export const appPath = (app) => (app && (app.path || app.id)) || '';
+
+/// The app an address segment names - by its path, or by its id (an older address: the caller
+/// sends it on to `appPath`'s).
+export const appByPath = (seg) => liveApps.find((a) => a.path === seg) || appById(seg);
 
 /// The label a tile or the app header shows for an app. Persona wears the CURRENT persona's name
 /// (so "Persona" reads as whoever you are); every other app is its registry name. `personaName`

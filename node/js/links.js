@@ -10,6 +10,7 @@ import htm from 'htm';
 import { toBase58 } from './speakable.js';
 import { ringtomePath, withHints, PREFIX, localOfAnswer } from './pure/ringtome.js';
 import { bucketHref, bucketHint } from './pure/naming.js';
+import { appById, appPath } from './pure/apps.js';
 import { api } from './net.js';
 import { Chip } from './doc/chips.js';
 import { Icons } from './icons.js';
@@ -163,7 +164,8 @@ export const docHref = (rootHex, doc, { row = null, bucket = null } = {}) =>
 /// The console (2026-09-28: `/ringtome` where `/home` was), and an app in it. The persona's own
 /// pages moved into the Settings app (2026-10-09, `settingsHref` below).
 export const LAUNCHER = PREFIX;
-export const appHref = (appId) => (appId ? `${PREFIX}/${appId}` : PREFIX);
+export const appHref = (appId) =>
+    appId ? `${PREFIX}/${appPath(appById(appId)) || appId}` : PREFIX;
 
 /// People's Groups tab, and one group's page under it (plans/GROUPS.md, section 7).
 /// An account, as this place's administrator sees it (account.js).

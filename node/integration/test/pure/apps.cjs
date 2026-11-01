@@ -8,6 +8,8 @@ const assert = require('node:assert');
 let APPS,
     DEFAULT_STYLE,
     appById,
+    appByPath,
+    appPath,
     appLabel,
     appForStyle,
     appTypeOf,
@@ -26,6 +28,8 @@ before(async () => {
         APPS,
         DEFAULT_STYLE,
         appById,
+        appByPath,
+        appPath,
         appLabel,
         appForStyle,
         appTypeOf,
@@ -447,5 +451,16 @@ describe('editorModes', () => {
 
     it('an app list that leaves a format nothing falls back rather than trapping the doc', () => {
         assert.deepEqual(editorModes('plaintext', ['interactive']), ['plain', 'read']);
+    });
+
+    it("an app's address is its path where it has one, and its old id still finds it (2026-11-01)", () => {
+        const files = appById('lost-found');
+        assert.equal(appPath(files), 'files', 'hrseFiles lives at /ringtome/files');
+        assert.equal(appByPath('files'), files);
+        assert.equal(appByPath('lost-found'), files, 'the old address still finds it');
+        assert.equal(appPath(appById('notes')), 'notes', 'an app without a path is at its id');
+        assert.equal(appByPath('nothing-here'), null);
+        const paths = APPS.map(appPath);
+        assert.equal(new Set(paths).size, paths.length, 'no two apps share an address');
     });
 });

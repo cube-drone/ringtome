@@ -57,7 +57,7 @@ import { watchUncarried } from './rights.js';
 // A song in a post this server won't carry says why, wherever it's drawn (rights.js).
 watchUncarried();
 import { ChatApp } from './apps/chat.js';
-import { appsFor, appById, appLabel } from './pure/apps.js';
+import { appsFor, appById, appByPath, appLabel, appPath } from './pure/apps.js';
 import { nextSearchKind } from './pure/doclist.js';
 import { BucketShelf, useBucketChoice } from './buckets.js';
 import { Clock } from './clock.js';
@@ -325,7 +325,7 @@ const Inside = ({ session }) => {
     const pathParts = loc.path.split('/'); // ['', 'ringtome', '<app>'|'user', ...]
     const underApps = pathParts[1] === 'ringtome' && pathParts[2] && pathParts[2] !== 'user';
     const appDirect = underApps
-        ? appById(pathParts[2])
+        ? appByPath(pathParts[2])
         : ref && ref.kind === 'room'
           ? appById('chat')
           : null;
@@ -934,8 +934,18 @@ const HomeBounce = () => {
 /// A document app at its `/ringtome/` address (2026-09-28): the app's own list at `/ringtome/<app>`,
 /// one of its notebooks at `…/notebook/<slug>` (the shell reads the notebook off the address), and -
 /// the everything-view alone, which is no notebook's - a document at `/ringtome/<app>/<doc>`.
-const AppRoute = ({ app: appId, doc, current, searchQuery, searchKind, bucket }) => {
-    const app = appById(appId);
+const AppRoute = ({ app: seg, doc, current, searchQuery, searchKind, bucket }) => {
+    const app = appByPath(seg);
+    const loc = useLocation();
+    // An older address - an app by its id where it now has a path of its own (/ringtome/lost-found,
+    // hrseFiles' until 2026-11-01) - goes on to the same place at the new one.
+    const moved = app && appPath(app) !== seg;
+    useEffect(() => {
+        if (!moved) return;
+        const rest = loc.url.slice(`/ringtome/${seg}`.length);
+        loc.route(`${appHref(app.id)}${rest}`, true);
+    }, [moved, seg]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (moved) return null;
     if (!app || !(app.style || app.everything)) return html`<${NotFound} />`;
     return html`<${DocsApp}
         key=${app.id}
@@ -1062,7 +1072,7 @@ const LegacyHome = ({ current }) => {
                 if (HEX_ID64.test(second) && third)
                     return go(roomHref(second, third, fourth || null));
             }
-            const app = appById(first);
+            const app = appByPath(first);
             if (app && !second) return go(appHref(app.id));
             if (app && second && HEX_ID.test(second) && root)
                 return go(`${docHref(root, second)}${third === 'diff' ? '/diff' : ''}`);

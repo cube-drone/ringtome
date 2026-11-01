@@ -25986,3 +25986,20 @@ and 49% when flung again with everything kept. Every blank tile in a fling is
 one whose picture hasn't been handed over yet - not one decoding: a fling
 crosses the two-screen look-ahead in 75ms, inside the few frames from "near" to
 an answer even from IndexedDB.
+
+## hrseFiles lives at /ringtome/files (2026-11-01)
+
+Curtis: hrseFiles' address still said `lost-found`, its name from before. Its
+app id stays `lost-found` - browsers keep its columns (tucks, widths) and its
+recents row under it, and an id is a storage key - so the app gained a `path` of
+its own, `files`, and the address follows that: `appPath(app)` builds every
+app's `/ringtome/<path>` (its id where it has none; `appHref`, `bucketHref`),
+and `appByPath(seg)` reads one back, by path or by id. An address by the old id
+
+- `/ringtome/lost-found`, a document under it, or the older `/home/lost-found` -
+  goes on to the same place under `/ringtome/files`.
+
+A pure claim in `pure/apps.cjs` (the path, the old id still finding it, no two
+apps sharing an address); probed in headless Chrome against a scratch node -
+`/ringtome/files` opens it, the three old addresses arrive there, and the
+launcher's tile goes there.

@@ -25,7 +25,7 @@
 // `matchSlugPath` must return the document you started from, whatever the roster and tree look
 // like - which is why `buildSlugPath` falls back to the honest id whenever a slug would lose its
 // own tie. See integration/test/pure/naming.cjs.
-import { appById, appForStyle, appTypeOf, DEFAULT_STYLE } from './apps.js';
+import { appById, appByPath, appForStyle, appPath, appTypeOf, DEFAULT_STYLE } from './apps.js';
 import { pathToDoc } from './treewalk.js';
 
 export const HEX_ID = /^[0-9a-f]{32}$/;
@@ -75,8 +75,8 @@ export function bucketHref(bucketName, roster) {
     const app = appForStyle(appTypeOf(bucketName, roster));
     if (!app) return '/ringtome';
     return bucketName === app.style
-        ? `/ringtome/${app.id}`
-        : `/ringtome/${app.id}/notebook/${slugify(bucketName)}`;
+        ? `/ringtome/${appPath(app)}`
+        : `/ringtome/${appPath(app)}/notebook/${slugify(bucketName)}`;
 }
 
 /// Where a document opens (2026-09-28): the notebook and the app around it. The notebook the
@@ -101,7 +101,7 @@ export function bucketHint(row, bucket) {
 export function bucketFor(seg, roster, { cozy = false } = {}) {
     // Under `/home/`, an app id names the app's home bucket; under `/in/` only buckets
     // answer, whatever they are called.
-    const app = cozy ? null : appById(seg);
+    const app = cozy ? null : appByPath(seg);
     if (app && app.style) return { name: app.style, app };
     const name = (roster || [])
         .map((b) => b.name)
