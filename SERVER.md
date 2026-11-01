@@ -364,6 +364,13 @@ with what each would cost to move and would free to evict. From there:
 Neither is offered on your own account or another administrator's: take away
 their `node_admin` first.
 
+People can also delete themselves (2026-11-01): **delete me**, at the bottom of
+hrseSettings, deletes a persona or the whole account from this server, after
+asking for the password again. It is an eviction they do to themselves, with one
+difference: each persona's key here is retired, a signed statement its other
+computers hear, and the key file is destroyed. An administrator's own account
+can't be deleted that way, as it can't be evicted.
+
 ## Backups
 
 The node backs itself up without stopping. Ask it from the Server app, from the

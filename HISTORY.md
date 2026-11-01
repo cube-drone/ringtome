@@ -26015,3 +26015,59 @@ GitHub page (`pure/update.js` `releasePage`: `/releases/tag/<tag>`, or every
 release when there's no tag), which the system browser opens like any other link
 and which offers the APK at its top. The desktops keep their direct installer,
 which their shell already hands out. `pure/update.cjs` says so.
+
+## Delete me: a persona or the account, from this server (2026-11-01)
+
+Curtis: "let's start with the middle-most complexity option and add in-app
+account deletion. At the bottom of the hrseSettings, "delete me", which opens up
+"delete persona" and "delete entire account" options. Each of these warn the
+user that deleting themselves from this node cannot remove them from the entire
+network. Deletion in both cases implies voluntary retirement on this node, and
+(we should check this works) still allows the user to spin up this same persona
+on this same node." The first of `plans/STORES.md`'s steps to land (section 4).
+
+`node/src/leaving.rs`, three doors:
+
+- `GET /api/identity/{root}/leaving` - the persona's other computers: active
+  keys that are neither this computer's nor the spare key
+  (`identity::designated_recovery`, now `pub(crate)`).
+- `POST /api/identity/{root}/delete` - this computer leaves the persona: its key
+  self-retires (`identity::revoke_key`, unless already retired), the retirement
+  goes straight to the persona's other computers (`sync_peers`, at most 20s,
+  before the unlink - once the node no longer agents a persona its eager push
+  passes it by), then `identity::detach`, `webpush::forget_persona` (new), and
+  the key file is destroyed (`keystore.remove`). Answers how many computers took
+  the retirement, of how many were tried.
+- `POST /api/auth/delete-account` - that for every persona, then
+  `keys::forget_account`, `adoption::forget_account`, `auth::remove_account`,
+  and the session cookie cleared.
+
+Both deletions ask for the password again (`auth::password_is`, new; rate
+limited as sign-in is), only from a browser session, never an API key; an
+administrator's own account is refused, as accounts.rs refuses evicting one. The
+node holds what it had of the persona as an ordinary mirror, which the mirror
+sweep collects.
+
+`js/deleteme.js`: "delete me" under "log out" in hrseSettings, opening the
+choice, then each step's warning - "Deleting yourself from this server can't
+remove you from the network" on both, and on the persona's either "Your other
+computers keep {name}... It can come back to this server later" or, when this
+server is its only computer, that there's nothing to bring it back from - then
+the password and the button. A deleted persona's live cache stops and its mirror
+goes, and the next of the account's personas opens, or none
+(`usePersona().deleted`); a deleted account forgets every mirror and signs out.
+
+`integration/test/leaving.cjs` (8): a wrong password and an API key delete
+nothing; a lone persona counts no other computers; the administrator's account
+stays; across two nodes - the other computer is counted; deleting the persona
+from the adopted node retires its key and the founding node hears; it comes back
+to the same node by adoption with a fresh key and writes; deleting the account
+there retires its key again, ends the session, frees the name, and a new account
+under that name adopts it back; and deleted from its founding node - the root
+key retiring - it carries on writing from the other, and comes back to the
+founding node by a grant from there. With the recovery, key tree, accounts, auth
+and API keys areas: 34 passing. `cargo test` 716, conventions 15 (a `leaving.rs`
+entry in the user-db call-site count, with its reason), ui-check 1102. Walked in
+headless Chrome against a scratch node: a wrong password says so, a persona
+deleted leaves the account holding the other, an account deleted lands on the
+front door and its sign-in is refused.

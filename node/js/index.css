@@ -25,6 +25,7 @@
 @import "./auth.css";         /* the front door: sign in, register, recover */
 @import "./quickbar.css";     /* the bottom dock: app heptagons and the corner clock */
 @import "./persona.css";      /* onboarding ceremonies, the persona pages, your computers */
+@import "./deleteme.css";     /* "delete me": a persona or the account, from this server */
 @import "./developer.css";    /* developer options: buttons for trying the app's own machinery */
 @import "./tooltip.css";      /* the house tooltip: every title, drawn in the palette */
 @import "./console.css";      /* the launcher honeycomb */

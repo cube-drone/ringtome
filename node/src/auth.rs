@@ -13,7 +13,8 @@ pub mod keys;
 mod routes;
 
 pub use extractor::{
-    renew_cookie, window_offered, ByAgent, NodeAdminSession, Session, WINDOW_HEADER,
+    renew_cookie, session_cookie_name, window_offered, ByAgent, NodeAdminSession, Session,
+    WINDOW_HEADER,
 };
 pub use routes::router;
 
@@ -107,6 +108,23 @@ pub(crate) fn check_password_len(password: &str, min: usize) -> Result<(), AppEr
             min = min,
         )
     }))
+}
+
+/// Whether `password` is the account's - asked again before something that can't be taken back
+/// (leaving.rs: deleting a persona, or the account).
+pub async fn password_is(db: &Db, account_id: &Uuid, password: &str) -> Result<bool, AppError> {
+    let row: Option<(String,)> = db
+        .fetch_optional(
+            "SELECT password_hash FROM accounts WHERE id = ?1",
+            (account_id.to_string(),),
+        )
+        .await
+        .context("reading an account's password")
+        .map_err(AppError::Internal)?;
+    Ok(match row {
+        Some((phc,)) => verify_password(password, &phc).await,
+        None => false,
+    })
 }
 
 pub(crate) async fn verify_password(password: &str, phc: &str) -> bool {

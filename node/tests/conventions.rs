@@ -227,6 +227,7 @@ fn user_db_opens_are_deliberate() {
         // + id_post annotations: one shelf open per permalink read (2026-08-29)
         // + id_post: one open per permalink request (2026-08-25)
         ("ingest.rs", 1),
+        ("leaving.rs", 2), // what deleting a persona would leave, once per request; the leaving itself, once per persona deleted - a person's own act, never a sweep (2026-11-01)
         ("profiles.rs", 2), // refresh: ONE persona per claim-change edge
         ("nodeshelf.rs", 2),
         ("roster.rs", 2), // the fold leg: one persona per move of its GROUP chains (plans/GROUPS.md, slice 1b); `out_since`: the persona whose entry ended a speaker's membership, once per room per fold of an ex-member's room chain (plans/GROUP_ROOMS.md)

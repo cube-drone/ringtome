@@ -27,6 +27,7 @@ import { Icons } from './icons.js';
 import { QrCode } from './qr.js';
 import { t, tNodes } from './i18n.js';
 import { askYes } from './modal.js';
+import { DeleteMe } from './deleteme.js';
 import { Version } from './version.js';
 import { RELEASES_URL } from './pure/releasename.js';
 import {
@@ -331,10 +332,35 @@ export function usePersona(account) {
         setState('none');
     };
 
+    // A persona deleted from this server (deleteme.js): its stream stops and this browser's copy of
+    // it goes; the next of the account's personas this computer is still part of opens, or none.
+    const deleted = async (root) => {
+        if (current && current.root === root && live.current) {
+            live.current.stop();
+            live.current = null;
+        }
+        await forgetMirror(root);
+        let left = [];
+        try {
+            left = await api('/api/identity');
+        } catch {
+            /* nothing to go on to: the empty state, which asks again */
+        }
+        setPersonas(left);
+        const next = left.find((p) => !isDeparted(p.standing));
+        if (next) {
+            await switchTo(next.root_pubkey);
+        } else {
+            setCurrent(null);
+            setState('none');
+        }
+    };
+
     return {
         state,
         current,
         personas,
+        deleted,
         switchTo,
         refreshPersonas,
         ceremony,
@@ -760,6 +786,7 @@ export const SettingsList = ({ persona, session }) => {
                         <small>${t('persona.forget-this-browser-and-head', 'forget this browser and head out')}</small>
                     </span>
                 </button>
+                <${DeleteMe} persona=${persona} session=${session} />
             </nav>
     `;
 };

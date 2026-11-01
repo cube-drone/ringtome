@@ -276,7 +276,7 @@ pub(crate) async fn leaf_agents_root(
 /// leftmost spine - PROJECT_PLAN, Recovery Flows: "Designating 'the' recovery key"). `None`
 /// when no such key exists; fails closed to `None` if the convention is somehow violated and
 /// two Active keys share the spine.
-fn designated_recovery(tree: &ringtome_proto::Crown) -> Option<[u8; 32]> {
+pub(crate) fn designated_recovery(tree: &ringtome_proto::Crown) -> Option<[u8; 32]> {
     use ringtome_proto::crown::KeyStatus;
     let mut found: Option<[u8; 32]> = None;
     for (pk, status) in tree.members() {

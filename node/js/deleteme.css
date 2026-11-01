@@ -1,0 +1,11 @@
+/* "delete me" (deleteme.js): the password asked again before a persona or an account is deleted,
+   laid out as a field over its box, above the go button. The options and the button are the
+   removal ceremony's own (persona.css .removal-*). */
+.deleteme-password {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.8rem;
+    font-size: 0.85rem;
+    color: var(--faint);
+}

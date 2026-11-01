@@ -264,6 +264,18 @@ async fn forget(state: &AppState, root: &str, endpoint: &str) -> Result<()> {
     Ok(())
 }
 
+/// Forget every browser's subscription for a persona this node no longer holds (leaving.rs): its
+/// alerts stop going anywhere.
+pub async fn forget_persona(state: &AppState, root: &str) -> Result<()> {
+    state
+        .node_db
+        .execute("DELETE FROM push_subscriptions WHERE root_pubkey = ?1", (root,))
+        .await
+        .context("forgetting a persona's push subscriptions")?;
+    state.attention.unwatch_for_push(root);
+    Ok(())
+}
+
 /// A persona's subscriptions: `(endpoint, p256dh, auth)`.
 async fn subscriptions(node_db: &Db, root: &str) -> Result<Vec<(String, Vec<u8>, Vec<u8>)>> {
     node_db

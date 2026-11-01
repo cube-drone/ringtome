@@ -927,6 +927,21 @@ export default {
     'apps.feed.stop-medium': 'medium interest only',
     'apps.feed.stop-high': 'high interest only',
 
+    // --- node/js/deleteme.js ---
+    'deleteme.delete-me': 'delete me',
+    'deleteme.a-persona-or-the-whole-account': 'a persona, or your whole account, from this server',
+    'deleteme.cant-remove-you-from-the-network': "Deleting yourself from this server can't remove you from the network: what you published, and what your other computers and the people you know already hold, stays where it is.",
+    'deleteme.your-password': 'your password, to be sure it’s you',
+    'deleteme.delete-name': 'delete {name}',
+    'deleteme.this-persona-leaves-this-server': 'This persona leaves this server: its key here retires, and your account lets go of it. Your other personas stay.',
+    'deleteme.delete-your-entire-account': 'delete your entire account',
+    'deleteme.every-persona-then-the-account': 'Every persona on it leaves this server, then the account itself goes - its name, its password, its sign-in.',
+    'deleteme.name-leaves-this-server': '{name} leaves this server. Its key here retires for good - everything it already wrote stays good - and your account lets go of it.',
+    'deleteme.only-computer': 'This server is the only computer {name} lives on. Once it’s deleted here there is nothing to bring it back from - only the copies other people already hold.',
+    'deleteme.other-computers-keep-it': 'Your other computers keep {name}, and it carries on there. It can come back to this server later: bring it here from one of them, as you would to any new computer.',
+    'deleteme.every-persona-leaves': 'Every persona on your account leaves this server, each one’s key here retired, and then the account goes: you’re signed out, and your sign-in name is free for anyone. A persona that lives on your other computers carries on there.',
+    'deleteme.delete-my-account': 'delete my account',
+
     // --- node/js/developer.js ---
     'developer.gift-given': '{amount} is yours: your balance is {balance}',
     'developer.open-the-bank': 'open the bank',
@@ -2738,6 +2753,10 @@ export default {
     'import.upload-broke': 'the upload broke off: {e}',
     'import.too-large': 'that zip is larger than this server takes ({mb} MB)',
     'import.empty': 'that file is empty',
+
+    // --- node/src/leaving.rs ---
+    'leaving.you-run-this-server': 'you run this server - hand that to someone else before deleting your account',
+    'leaving.thats-not-your-password': "that's not your password",
 
     // --- node/src/lib.rs ---
     'lib.unfurl-needs-a-session-or-a-post': 'sign in, or say which public post the link is in',

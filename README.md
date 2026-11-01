@@ -205,6 +205,12 @@ lightly federated, unapologetically Old Internet.
   computer trades on the same numbers; lots on the private chain like hrseBonds,
   a two-day hold, and exchanges of your own for H$ 100,000,000. Parked
   (2026-10-06): sparse networks, centralisation, a protocol change.
+- [`STORES.md`](plans/STORES.md) — what Google Play and the App Stores ask of
+  us: an age screen and terms at registration on the node, per-node policy
+  templates, a store-build flag on the update notice, account deletion, and
+  reporting as hide + block + send, with moderation lists anyone subscribes to
+  or drops - the official one holding only what we were made to act on. A design
+  draft (2026-11-01); nothing built.
 - [`SYNC_STATUS.md`](plans/SYNC_STATUS.md) — making a sync visible: adoption
   that answers at once and syncs in the background, instalments instead of
   timeouts, a cloud always in the task bar's corner (an arrow down or up for the

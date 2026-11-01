@@ -66,6 +66,7 @@ pub mod ingest;
 pub mod inspect;
 pub mod keyprefetch;
 pub mod keystore;
+pub mod leaving;
 pub mod loops;
 pub mod machines;
 pub mod made_with;
@@ -1105,6 +1106,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .merge(registration::routes::router())
         // An account as a node administrator sees it (accounts.rs): its personas, its sign-in, eviction.
         .merge(accounts::router())
+        .merge(leaving::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))
         .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))
