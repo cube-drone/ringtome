@@ -16,6 +16,7 @@ import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from '../mirror/pr
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
 import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
+import { edgeScrollDuring } from '../edgescroll.js';
 import { rootTitleFor } from '../pure/naming.js';
 import { byPinnedThenClaimed, kindHolds, shownTags } from '../pure/doclist.js';
 import { Snippet } from './snippet.js';
@@ -262,6 +263,8 @@ const PageRow = ({ id, summary, depth, ops, parent }) => {
                 parentId: parent ? parent.taxonomy_id : null,
             };
             setLifting(true);
+            // A long tree scrolls under a drag held near its top or bottom (Curtis, 2026-11-01).
+            edgeScrollDuring(e.currentTarget);
         }}
         onDragEnd=${() => {
             ops.drag.current = null;
@@ -360,6 +363,7 @@ const SectionNode = ({ node, parent, depth, ops }) => {
                     taxIds: sectionIdsUnder(node),
                 };
                 setLifting(true);
+                edgeScrollDuring(e.currentTarget);
             }}
             onDragEnd=${() => {
                 ops.drag.current = null;

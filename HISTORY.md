@@ -25851,3 +25851,20 @@ charged H$ 10,000; a new purchase records its H$ 1,000) and "pinning a note
 completes 'Pin a note or a post', H$ 2,600". The HorseBucks area passes (30).
 Still short of paying back its price: Public post editing (H$ 2,000, no
 contract) and Video upload (H$ 10,000, none).
+
+## hrseWriter's tree scrolls under a drag (2026-11-01)
+
+Curtis: dragging documents through a long tree, a drag held near the top or
+bottom of the tree should scroll it, the way lists do. Native drag and drop
+doesn't scroll a scrolling box inside the page, so `edgescroll.js` does: started
+from a row's or a section's dragstart, it finds the nearest scroller around the
+row (the tree pane, or the column an embedded tree sits in) and, each frame
+until the drag drops or ends, scrolls it while the pointer is within 56px of an
+edge (a fifth of a short list) - faster nearer the edge, full speed at it and
+just past it (over the toolbar above, say), still once the pointer leaves the
+list sideways. A drag that ends unseen stops scrolling within 600ms.
+
+The speed rule is `pure/edgescroll.js`, tested in
+`integration/test/pure/edgescroll.cjs`; the driver was probed in headless Chrome
+against a 200-row scrolling list (still in the middle, down at the bottom edge,
+up at the top, still sideways and after dragend).
