@@ -9,8 +9,7 @@
 // skipped; anything inside it has none), against its own scroller - a scrolling column clips an
 // observer rooted on the window, so a margin given there reaches nothing past the column's edge.
 // One observer per scroller, shared by every row in it.
-import { h } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
 import { scrollerOf } from './edgescroll.js';
 
@@ -83,11 +82,3 @@ export function useNear(ref, skip = false) {
     }, [near, skip]); // eslint-disable-line react-hooks/exhaustive-deps
     return near;
 }
-
-/// A picture that starts loading once its row is near (`useNear`), rather than as it draws - for
-/// rows that carry `data-lookahead`. Its other props are the img's.
-export const NearImg = ({ src, ...rest }) => {
-    const ref = useRef(null);
-    const near = useNear(ref);
-    return h('img', { ref, src: near ? src : undefined, decoding: 'async', ...rest });
-};

@@ -59,7 +59,7 @@ import { formatWhen } from '../pure/when.js';
 import { toast } from '../toasts.js';
 import { BulkPanel } from '../doc/bulk.js';
 import { longPress } from '../longpress.js';
-import { NearImg } from '../lookahead.js';
+import { ThumbImg } from '../thumbs.js';
 import { pruneSelection, selectAll, toggleSelection } from '../pure/bulk.js';
 
 const html = htm.bind(h);
@@ -191,17 +191,7 @@ const NoteRowBody = ({
             doc.format === 'drawing'
                 ? html`<${DrawingThumb} root=${root} doc=${doc} />`
                 : doc.media && doc.media.has_thumb
-                  ? html`<${NearImg}
-                  class="note-row-thumb"
-                  src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
-                  alt=""
-                  onError=${(e) => {
-                      // has_thumb but the blob hasn't reached this node yet (404): hide
-                      // rather than show the browser's broken-image glyph; the next mirror
-                      // refresh re-renders and retries.
-                      e.currentTarget.style.display = 'none';
-                  }}
-              /> `
+                  ? html`<${ThumbImg} class="note-row-thumb" root=${root} docId=${doc.doc_id} head=${doc.head} /> `
                   : formatIcon(doc.format) &&
                     html`<span class="note-row-kind"><${formatIcon(doc.format)} /></span> `
         }
@@ -299,14 +289,7 @@ const FileTile = ({ doc, root, bucket, bytes, selected, onSelect, onFollowHome, 
                     doc.format === 'drawing'
                         ? html`<${DrawingThumb} root=${root} doc=${doc} big=${true} />`
                         : picture
-                          ? html`<${NearImg}
-                            src="/api/identity/${root}/docs/${doc.doc_id}/thumb?v=${doc.head}"
-                            alt=""
-                            onError=${(e) => {
-                                // has_thumb, but the blob is not on this node yet
-                                e.currentTarget.style.display = 'none';
-                            }}
-                        />`
+                          ? html`<${ThumbImg} root=${root} docId=${doc.doc_id} head=${doc.head} />`
                           : html`<span class="files-tile-kind"><${Kind} /></span>`
                 }
                 ${doc.pinned && html`<span class="files-tile-pin" title=${t('apps.notes.pinned', 'pinned')}><${Icons.pin} /></span>`}

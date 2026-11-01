@@ -2676,6 +2676,7 @@ export default {
     'identity.routes.document-has-no-readable-head-2': 'document has no readable head',
     'identity.routes.document-has-no-thumbnail': 'document has no thumbnail',
     'identity.routes.thumbnail-not-on-this-node': 'thumbnail not on this node yet',
+    'identity.routes.too-many-thumbnails': 'at most {max} thumbnails at once',
     'identity.routes.document-not-found-3': 'document not found',
     'identity.routes.document-has-no-readable-head-3': 'document has no readable head',
     'identity.routes.document-has-no-preview-clip': 'document has no preview clip',

@@ -25951,3 +25951,38 @@ no latency, 0% before and after. What's left is the round trip: a thumb is some
 5KB, and over plain HTTP a browser fetches six at once from a host - about 75 a
 second at 80ms, where a brisk scroll uncovers 190. HTTP/2 (Bunny, in front of
 horsedrawingtycoon.com) lifts that limit; a home node over plain HTTP keeps it.
+
+## Thumbnails in batches, kept in the browser (2026-11-01)
+
+Curtis, after the look-ahead: batch the thumbnails. A list of pictures asked the
+node for each tile's thumbnail on its own, and over plain HTTP a browser has six
+requests out to a host at once - a round trip each, some 75 thumbnails a second
+at 80ms, where a brisk scroll uncovers 190.
+
+`POST /api/identity/{root}/docs/thumbs` (`{"ids": [...]}`, at most 100) answers
+with each one's thumbnail - the display head's, the same bytes `/thumb` serves,
+base64 with its type - and names the ids with none (`missing`: no such document,
+words, or a thumb not on this node yet). Same isolation as `/thumb`. Base64
+costs a third over the bytes, and buys a `data:` URL the page shows and keeps as
+it is.
+
+`thumbs.js` is the page's side: a row asks once it comes near (lookahead.js),
+and everything asked in a frame is answered together - first from this browser's
+kept thumbnails in one IndexedDB read, then the rest from the node, a request
+per hundred - and what the node sends is kept, so the next visit asks it for
+nothing. The kept table is drawings' own (`drawthumbs`, mirror/thumbcache.js,
+keyed `doc_id:head`), its bound raised from 3,000 to 5,000 (some 35MB at most);
+the last 600 are also held in memory. hrseFiles' tiles and the notes list's
+picture rows use it (`ThumbImg`); `/thumb` stays for everything else. A tile
+whose thumb isn't on this node yet shows none until the list is drawn afresh.
+
+`integration/test/thumbs.cjs`: the batch matches `/thumb` byte for byte, names
+the words and an unknown id as missing, refuses 101 ids and a malformed one, and
+refuses another account as `/thumb` does. Measured in headless Chrome against a
+scratch node, 300 pictures, 80ms of emulated latency, each pass in a fresh
+browser - on-screen tiles still blank while scrolling, look-ahead alone -> with
+batches: 200px per 50ms 38% -> 0%; 400px 78% -> 0%; a 1200px fling 89% -> 90%,
+and 49% when flung again with everything kept. Every blank tile in a fling is
+one whose picture hasn't been handed over yet - not one decoding: a fling
+crosses the two-screen look-ahead in 75ms, inside the few frames from "near" to
+an answer even from IndexedDB.

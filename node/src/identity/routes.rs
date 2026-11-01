@@ -233,6 +233,9 @@ pub fn router(limits: BodyLimits) -> Router<AppState> {
                 .delete(docs_reset_thumb_handler)
                 .layer(DefaultBodyLimit::max(limits.upload)),
         )
+        // Many thumbnails in one round trip (2026-11-01): what a long list of pictures asks for as it
+        // scrolls, rather than a request per tile.
+        .route("/api/identity/{root}/docs/thumbs", post(docs_thumbs_handler))
         .route("/api/identity/{root}/docs/{doc_id}/preview", get(docs_preview_handler))
         // Media ingest progress: the owner's transcode queue for this identity.
         .route("/api/identity/{root}/ingest", get(docs_ingest_status_handler))
@@ -8502,6 +8505,87 @@ async fn docs_thumb_handler(
         bytes,
     )
         .into_response())
+}
+
+/// The most thumbnails one `/docs/thumbs` asks for: some 5KB each, so a full batch is half a
+/// megabyte.
+const THUMBS_MAX: usize = 100;
+
+#[derive(Deserialize)]
+struct ThumbsRequest {
+    ids: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct ThumbsResponse {
+    thumbs: Vec<ThumbOut>,
+    /// The ids asked for that have no thumbnail here: no such document, a text one, or a thumb not
+    /// on this node yet - the last may arrive, so a reader asks again later rather than keep the
+    /// absence.
+    missing: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct ThumbOut {
+    doc_id: String,
+    /// The bytes' MIME type: AVIF, or PNG for a built-in.
+    #[serde(rename = "type")]
+    mime: &'static str,
+    /// The bytes, base64 - so the page can show them as a `data:` URL, and keep that, as it is.
+    data: String,
+}
+
+/// Serve many documents' thumbnails at once (2026-11-01: a long list of pictures, scrolled briskly,
+/// out-asked a browser's six connections to a host at a request per tile - black squares filling
+/// in behind the scroll). The same thumbnails as `/thumb`, the same isolation, in one round trip:
+/// each the display head's, or a built-in's picture; ids with none are `missing`. Not
+/// HTTP-cacheable (a batch is never asked for twice) - the page keeps what it gets.
+async fn docs_thumbs_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<ThumbsRequest>,
+) -> Result<Json<ThumbsResponse>, AppError> {
+    use base64::Engine;
+    if req.ids.len() > THUMBS_MAX {
+        return Err(AppError::BadRequest(crate::msg!(
+            "identity.routes.too-many-thumbnails",
+            "at most {max} thumbnails at once",
+            max = THUMBS_MAX
+        )));
+    }
+    let mut asked = Vec::with_capacity(req.ids.len());
+    for id in &req.ids {
+        asked.push(hex_fixed::<16>(id, "doc id")?);
+    }
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let stored: std::collections::BTreeSet<[u8; 16]> =
+        asked.iter().filter(|id| crate::builtin::get(id).is_none()).copied().collect();
+    let view = data.documents().some(&stored).await?;
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let mut out = ThumbsResponse { thumbs: Vec::new(), missing: Vec::new() };
+    for id in &asked {
+        let doc_id = hex::encode(id);
+        if let Some(b) = crate::builtin::get(id) {
+            out.thumbs.push(ThumbOut { doc_id, mime: "image/png", data: b64(b.bytes) });
+            continue;
+        }
+        let hash =
+            view.docs.get(id).and_then(|d| d.display_head()).and_then(|h| h.header.thumb_hash);
+        let bytes = match hash {
+            Some(hash) => data.documents().blob(hash).await?,
+            None => None,
+        };
+        match bytes {
+            Some(bytes) => out.thumbs.push(ThumbOut {
+                doc_id,
+                mime: crate::record::documents::Format::Avif.mime(),
+                data: b64(&bytes),
+            }),
+            None => out.missing.push(doc_id),
+        }
+    }
+    Ok(Json(out))
 }
 
 /// Serve a video document's silent hover-preview clip (the display head's small AV1-in-WebM), a
