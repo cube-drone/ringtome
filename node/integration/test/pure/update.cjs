@@ -32,20 +32,29 @@ describe('the update notice', () => {
         assert.equal(isNewer('v0.3.2-x', ''), false, 'a running version it cannot read');
     });
 
-    it('gives each system its own download, and every release to the rest', () => {
+    it("gives each desktop its own download, a phone its release's page, and every release to the rest", () => {
         const found = {
+            tag: 'v0.6.0-gulp-raid',
             mac: 'm.dmg',
             windows: 'w.exe',
             linux: 'l.AppImage',
             android: 'a.apk',
             releases: 'all',
         };
-        assert.equal(downloadFor('android', found), 'a.apk');
+        assert.equal(
+            downloadFor('android', found),
+            `${RELEASES_PAGE}/tag/v0.6.0-gulp-raid`,
+            "a phone goes to the release's page, never the APK itself (2026-11-01)",
+        );
         assert.equal(downloadFor('macos', found), 'm.dmg');
         assert.equal(downloadFor('windows', found), 'w.exe');
         assert.equal(downloadFor('linux', found), 'l.AppImage');
         assert.equal(downloadFor('ios', found), 'all');
-        assert.equal(downloadFor('android', { releases: 'all' }), 'all', 'no APK this release');
+        assert.equal(
+            downloadFor('android', { releases: 'all' }),
+            RELEASES_PAGE,
+            'no tag: every release',
+        );
         assert.equal(downloadFor('android', null), RELEASES_PAGE);
     });
 });

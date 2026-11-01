@@ -21,11 +21,19 @@ export function isNewer(latestTag, running) {
     return false;
 }
 
+/// One release's own page on GitHub, its downloads listed - or every release, for no tag.
+export const releasePage = (tag) =>
+    tag ? `${RELEASES_PAGE}/tag/${encodeURIComponent(tag)}` : RELEASES_PAGE;
+
 /// This system's download out of the node's `/api/node/downloads` answer, by the platform the app
-/// shell names (`window.__ringtome_platform`: Rust's OS names) - else every release.
+/// shell names (`window.__ringtome_platform`: Rust's OS names) - else every release. A phone is
+/// sent to the release's page, not its APK (Curtis, 2026-11-01: "here" did nothing on Android for
+/// 0.6.0, as it hadn't for 0.3.x, while every other link out of the app opened - the one link that
+/// was a file, not a page; links.rs `BLANK_CLICKS` tried it the other way and didn't hold). The
+/// browser it opens in offers the APK at the top of the page.
 export function downloadFor(platform, found) {
+    if (platform === 'android') return found && found.tag ? releasePage(found.tag) : RELEASES_PAGE;
     const own = {
-        android: found && found.android,
         macos: found && found.mac,
         windows: found && found.windows,
         linux: found && found.linux,

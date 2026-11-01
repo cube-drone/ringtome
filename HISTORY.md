@@ -26003,3 +26003,15 @@ A pure claim in `pure/apps.cjs` (the path, the old id still finding it, no two
 apps sharing an address); probed in headless Chrome against a scratch node -
 `/ringtome/files` opens it, the three old addresses arrive there, and the
 launcher's tile goes there.
+
+## The phone's update notice links to the release's page (2026-11-01)
+
+Curtis: on the phone, 0.6.0's "Please download it from here" did nothing again,
+while other links out of the app open - and "here" is the one that points at a
+file (the APK), not a page. `links.rs`'s `BLANK_CLICKS` (2026-10-11) was meant
+to carry that click to the shell, and didn't hold. Rather than chase the
+webview's handling of a download, the phone's "here" is now the release's own
+GitHub page (`pure/update.js` `releasePage`: `/releases/tag/<tag>`, or every
+release when there's no tag), which the system browser opens like any other link
+and which offers the APK at its top. The desktops keep their direct installer,
+which their shell already hands out. `pure/update.cjs` says so.
