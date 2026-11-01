@@ -62,6 +62,7 @@ import {
 import { Chip } from '../doc/chips.js';
 import { useColWidths, useColTucks, useNarrow, PaneHead, Rail } from '../panes.js';
 import { longPress, pressedLong } from '../longpress.js';
+import { edgeScrollDuring } from '../edgescroll.js';
 import { STOP_WORDS } from '../curiosity.js';
 import { SELECTIVITY_STOPS, DEFAULT_STOP } from '../pure/selectivity.js';
 import {
@@ -1965,25 +1966,27 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         handle.setPointerCapture(e.pointerId);
         dragKey.current = r.key;
         const over = (ev) => dropTarget({ clientY: ev.clientY, currentTarget: table });
-        const move = (ev) => {
-            const box = table.getBoundingClientRect();
-            if (ev.clientY < box.top + rowHeight) table.scrollTop -= rowHeight / 3;
-            else if (ev.clientY > box.bottom - rowHeight) table.scrollTop += rowHeight / 3;
-            setDropAt(over(ev));
-        };
+        // Held near the list's top or bottom, it scrolls (edgescroll.js, as the mouse's does), and
+        // the drop line follows the songs moving under a finger held still.
+        edgeScrollDuring(table, { finger: true, onScrolled: (at) => setDropAt(over(at)) });
+        // Heard on the document, not the handle: scrolled far enough, the handle's row leaves the
+        // list's window, and its capture and its listeners go with it.
+        const mine = (ev) => ev.pointerId === e.pointerId;
+        const move = (ev) => mine(ev) && setDropAt(over(ev));
         const end = (ev) => {
-            handle.removeEventListener('pointermove', move);
-            handle.removeEventListener('pointerup', end);
-            handle.removeEventListener('pointercancel', end);
+            if (!mine(ev)) return;
+            document.removeEventListener('pointermove', move, true);
+            document.removeEventListener('pointerup', end, true);
+            document.removeEventListener('pointercancel', end, true);
             const at = ev.type === 'pointerup' ? over(ev) : null;
             dragKey.current = null;
             setDropAt(null);
             const index = at ? dropIndex(tape.members, r.key, at.key, at.after) : null;
             if (index !== null) moveInTape(r.key, index);
         };
-        handle.addEventListener('pointermove', move);
-        handle.addEventListener('pointerup', end);
-        handle.addEventListener('pointercancel', end);
+        document.addEventListener('pointermove', move, true);
+        document.addEventListener('pointerup', end, true);
+        document.addEventListener('pointercancel', end, true);
     };
 
     // The file column (Curtis, 2026-10-12): the house's kind, as Playlists is - tucked to a rail by
@@ -2166,6 +2169,16 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                     dragKey.current = r.key;
                                     e.dataTransfer.effectAllowed = 'move';
                                     e.dataTransfer.setData('text/plain', r.key);
+                                    // A long mixtape scrolls under a drag held near its top or
+                                    // bottom (Curtis, 2026-11-01). Scrolled far enough, this row
+                                    // leaves the window and its dragend never comes: a drag gone
+                                    // quiet lets go of the song itself.
+                                    edgeScrollDuring(e.currentTarget, {
+                                        onLost: () => {
+                                            dragKey.current = null;
+                                            setDropAt(null);
+                                        },
+                                    });
                                 }}
                                 onDragEnd=${() => {
                                     dragKey.current = null;

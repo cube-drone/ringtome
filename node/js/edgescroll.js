@@ -1,4 +1,5 @@
-// Edge scrolling while dragging (pure/edgescroll.js has the rule): started from a dragstart, it
+// Edge scrolling while dragging (pure/edgescroll.js has the rule): started from a dragstart (or a
+// finger's pointerdown), it
 // finds the nearest scrolling box around the dragged element and, every frame until the drag ends,
 // scrolls it when the pointer is held near its top or bottom edge. Native drags don't do this for
 // a scrolling box inside the page, only (sometimes) for the window.
@@ -25,37 +26,53 @@ export function scrollerOf(el, { overflowing = true } = {}) {
     return document.scrollingElement;
 }
 
+/// The events a drag is followed by: a native drag's, and a finger's (a pointer captured by the
+/// thing dragged, which fires nothing while the finger is held still - and needs nothing, since a
+/// captured pointer always ends in pointerup or pointercancel).
+const NATIVE = { move: 'dragover', ends: ['dragend', 'drop'], stale: true };
+const FINGER = { move: 'pointermove', ends: ['pointerup', 'pointercancel'], stale: false };
+
 /// Scroll `from`'s scroller while a drag started on it is held near an edge. Call from the
-/// dragstart handler; it stops itself when the drag ends or drops.
-export function edgeScrollDuring(from) {
+/// dragstart handler (or, `{ finger: true }`, from a pointerdown that captures the pointer); it
+/// stops itself when the drag ends or drops. `onScrolled(point)` hears each frame that scrolled
+/// (the pointer's last `{ clientX, clientY }`),
+/// for a drop line to follow the list moving under a pointer held still; `onLost()`, a native drag
+/// that ended unseen (its row unmounted, so dragend never came), for whatever it left set.
+export function edgeScrollDuring(from, { finger = false, onScrolled, onLost } = {}) {
     const box = scrollerOf(from);
     if (!box) return;
+    const follow = finger ? FINGER : NATIVE;
     let point = null;
     let frame = 0;
     const page = box === document.scrollingElement;
     const tick = () => {
-        const age = point ? performance.now() - point.at : 0;
-        if (age > STALE_MS) return stop();
+        const age = point && follow.stale ? performance.now() - point.at : 0;
+        if (age > STALE_MS) {
+            stop();
+            if (onLost) onLost();
+            return;
+        }
         frame = requestAnimationFrame(tick);
         if (!point || age > FRESH_MS) return;
         const r = page
             ? { top: 0, bottom: innerHeight, left: 0, right: innerWidth }
             : box.getBoundingClientRect();
-        if (point.x < r.left || point.x > r.right) return;
-        const dy = edgeSpeed(point.y, r.top, r.bottom);
-        if (dy) box.scrollTop += dy;
+        if (point.clientX < r.left || point.clientX > r.right) return;
+        const dy = edgeSpeed(point.clientY, r.top, r.bottom);
+        if (!dy) return;
+        const was = box.scrollTop;
+        box.scrollTop += dy;
+        if (onScrolled && box.scrollTop !== was) onScrolled(point);
     };
     const over = (e) => {
-        point = { x: e.clientX, y: e.clientY, at: performance.now() };
+        point = { clientX: e.clientX, clientY: e.clientY, at: performance.now() };
     };
     const stop = () => {
         cancelAnimationFrame(frame);
-        document.removeEventListener('dragover', over, true);
-        document.removeEventListener('dragend', stop, true);
-        document.removeEventListener('drop', stop, true);
+        document.removeEventListener(follow.move, over, true);
+        for (const end of follow.ends) document.removeEventListener(end, stop, true);
     };
-    document.addEventListener('dragover', over, true);
-    document.addEventListener('dragend', stop, true);
-    document.addEventListener('drop', stop, true);
+    document.addEventListener(follow.move, over, true);
+    for (const end of follow.ends) document.addEventListener(end, stop, true);
     frame = requestAnimationFrame(tick);
 }

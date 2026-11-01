@@ -25887,3 +25887,26 @@ Probed in headless Chrome against a scratch node with a 30-note tree in Writer's
 tree tab: the bottom strip and the space far below the column both lit the
 bottom line and filed the page last; the top strip and the header above the
 column filed it first; moving onto a row or off sideways cleared the line.
+
+## hrseAmp's mixtapes scroll under a drag (2026-11-01)
+
+Curtis: the other drag-to-reorder, hrseAmp's mixtapes, should scroll under a
+drag held near the list's edge, as the tree now does. A mouse drag (native)
+starts `edgescroll.js` from the row's dragstart. A finger on the drag handle
+used to scroll a third of a row per pointermove - nothing while the finger was
+held still; it now rides the same edge scrolling, given a finger mode
+(`{ finger: true }`: pointermove and pointerup, no staleness, since a captured
+pointer always ends), and its drop line follows the songs moving under a still
+finger (`onScrolled`).
+
+The list is windowed, which made scrolling under a drag a trap: scrolled far
+enough, the dragged row leaves the DOM. The finger drag's listeners were on its
+handle, so its pointerup never came and the drop was lost - now they are on the
+document, filtered to its pointer. A mouse drag whose row is gone loses its
+dragend; a drag gone quiet tells the mixtape (`onLost`), which lets go of the
+song, so a stale key can't make a later drop move it.
+
+Probed in headless Chrome against a scratch node with a 40-song mixtape: a mouse
+drag held at the bottom edge scrolled to the end and filed the song last; an
+emulated finger held still at the bottom edge did the same, the drop line
+following.
