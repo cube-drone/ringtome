@@ -7,6 +7,7 @@
 /* Inside the list column's tree tab (2026-10-22): the column is the pane - its width, its scroll. */
 .tree-pane.tree-embedded {
     width: auto;
+    flex: 1 0 auto; /* to the column's foot, so the space under the last row is the tree's */
     overflow-y: visible;
     padding-right: 0;
     border-right: 0;
@@ -242,6 +243,29 @@
 
 .tree-row.drop-after::before {
     bottom: 0;
+}
+
+/* The tree's two ends (doc/tree.js, 2026-11-01): a strip above the first row and one below the
+   last, where a drag resolves to the top level's first or last place. The pane fills its column,
+   so everything under the last row (the unfiled bin's own targets aside) is the bottom end; the
+   line is drawn in the strip, at the top level's indent. */
+.tree-end {
+    position: relative;
+    flex-shrink: 0;
+    height: 0.6rem;
+}
+
+.tree-end.drop-at::before {
+    content: '';
+    position: absolute;
+    top: calc(50% - 3px);
+    left: 0.4rem;
+    right: 0.3rem;
+    height: 6px;
+    background:
+        radial-gradient(circle at 3px 50%, var(--teal) 3px, transparent 3.5px),
+        linear-gradient(var(--teal), var(--teal)) 6px 50% / calc(100% - 6px) 2px no-repeat;
+    pointer-events: none;
 }
 
 .tree-row.drop-into {

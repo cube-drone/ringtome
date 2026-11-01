@@ -16,7 +16,7 @@ import { usePrefMap, flagsOf, setFlag, foldKey, FOLD_PREFIX } from '../mirror/pr
 import { cachedTree, rememberTree, rosterFingerprint } from '../mirror/doccache.js';
 import { useSearch } from '../search.js';
 import { startDocDrag, SECTION_DRAG } from './crosslink.js';
-import { edgeScrollDuring } from '../edgescroll.js';
+import { edgeScrollDuring, scrollerOf } from '../edgescroll.js';
 import { rootTitleFor } from '../pure/naming.js';
 import { byPinnedThenClaimed, kindHolds, shownTags } from '../pure/doclist.js';
 import { Snippet } from './snippet.js';
@@ -1110,17 +1110,93 @@ export const WikiTree = ({
     const empty = !tree || !(tree.members || []).length;
     if (toolsRef) toolsRef.current = { newPage, newSection };
 
+    // The tree's two ends (Curtis, 2026-11-01): a drag held above the first row or anywhere below
+    // the last resolves to the first or the last place at the top level, rather than to nowhere -
+    // out past the column's own edge too, so long as it's still over the column's width. Between
+    // rows (the pane's few-pixel gaps) is neither; a row's own drop zone takes it there.
+    const [atEnd, setAtEnd] = useState(null); // 'top' | 'bottom' | null
+    const pane = useRef(null);
+    const topEnd = useRef(null);
+    const bottomEnd = useRef(null);
+    const endOf = (y) => {
+        if (topEnd.current && y < topEnd.current.getBoundingClientRect().bottom) return 'top';
+        // A few pixels early: the pane's gap above the strip is the strip's too.
+        if (bottomEnd.current && y > bottomEnd.current.getBoundingClientRect().top - 4) {
+            return 'bottom';
+        }
+        return null;
+    };
+    /// Past the column the tree scrolls in: 'top' above it, 'bottom' below it, else null.
+    const beyond = (x, y) => {
+        if (!pane.current) return null;
+        const r = scrollerOf(pane.current, { overflowing: false }).getBoundingClientRect();
+        if (x < r.left || x > r.right) return null;
+        return y < r.top ? 'top' : y > r.bottom ? 'bottom' : null;
+    };
+    // Out past the column the pane hears nothing, so the document listens while a tree drag is up.
+    const outside = useRef({});
+    outside.current = { beyond, setAtEnd, drop: (end) => tree && completeDrag(endDrop(end)) };
+    useEffect(() => {
+        const over = (e) => {
+            if (!dragRef.current || !pane.current) return;
+            const end = outside.current.beyond(e.clientX, e.clientY);
+            if (end) {
+                e.preventDefault();
+                outside.current.setAtEnd(end);
+            } else if (!pane.current.contains(e.target)) {
+                outside.current.setAtEnd(null);
+            }
+        };
+        const drop = (e) => {
+            if (!dragRef.current || !pane.current) return;
+            const end = outside.current.beyond(e.clientX, e.clientY);
+            if (!end) return;
+            e.preventDefault();
+            e.stopPropagation();
+            outside.current.setAtEnd(null);
+            outside.current.drop(end);
+        };
+        document.addEventListener('dragover', over, true);
+        document.addEventListener('drop', drop, true);
+        return () => {
+            document.removeEventListener('dragover', over, true);
+            document.removeEventListener('drop', drop, true);
+        };
+    }, []);
+    const endDrop = (end) => {
+        const drag = dragRef.current;
+        const moving =
+            drag && drag.kind === 'pages' ? drag.items.map((m) => m.id) : [drag && drag.id];
+        const staying = tree.members.filter((m) => !moving.includes(m.doc_id));
+        const ref = end === 'top' ? staying[0] : staying[staying.length - 1];
+        return ref
+            ? { parentNode: tree, refId: ref.doc_id, after: end === 'bottom' }
+            : { intoId: tree.taxonomy_id };
+    };
+
     return html`
         <aside
+            ref=${pane}
             class=${embedded ? 'tree-pane tree-embedded' : 'tree-pane'}
+            onDragOverCapture=${() => setAtEnd(null) /* a row that takes the drag stops it below */}
             onDragOver=${(e) => {
                 // The pane background is the root's drop zone (rows stopPropagation, so only
-                // true background drags reach here): drop to file at top level.
-                if (dragRef.current && tree) e.preventDefault();
+                // true background drags reach here): its ends file at the top level's first or
+                // last place.
+                const end = dragRef.current && tree ? endOf(e.clientY) : null;
+                setAtEnd(end);
+                if (end) e.preventDefault();
+            }}
+            onDragLeave=${(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) setAtEnd(null);
             }}
             onDrop=${(e) => {
                 e.preventDefault();
-                if (tree) completeDrag({ intoId: tree.taxonomy_id });
+                // A drop the pane takes is at an end; one that came with no place (a script's)
+                // files at the bottom, as the whole background used to.
+                const end = atEnd || endOf(e.clientY) || 'bottom';
+                setAtEnd(null);
+                if (tree) completeDrag(endDrop(end));
             }}
         >
             ${!embedded && onMinimize && html`<${PaneHead} icon=${Icons.tree} label=${t('doc.tree.tree', 'tree')} onTuck=${onMinimize} />`}
@@ -1139,7 +1215,9 @@ export const WikiTree = ({
                 />
             </div>`
             }
+            <div ref=${topEnd} class=${atEnd === 'top' ? 'tree-end drop-at' : 'tree-end'}></div>
             ${tree && html`<${MemberList} node=${tree} depth=${0} ops=${ops} />`}
+            <div ref=${bottomEnd} class=${atEnd === 'bottom' ? 'tree-end drop-at' : 'tree-end'}></div>
             ${
                 holding &&
                 !holding.has(tree && tree.taxonomy_id) &&

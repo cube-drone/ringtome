@@ -25868,3 +25868,22 @@ The speed rule is `pure/edgescroll.js`, tested in
 `integration/test/pure/edgescroll.cjs`; the driver was probed in headless Chrome
 against a 200-row scrolling list (still in the middle, down at the bottom edge,
 up at the top, still sideways and after dragend).
+
+## hrseWriter's tree: its two ends hold a drag (2026-11-01)
+
+Curtis: a drag held well below the tree's bottom row should resolve to the
+bottom place rather than leave the sort, and the same at the top, with some room
+above the first row to aim at. The tree pane now has a strip above its first row
+and one below its last (`.tree-end`), and fills its column, so everything under
+the last row is the bottom end; a drag there shows the drop line in the strip,
+and drops at the top level's first or last place (beside the first or last
+top-level member that isn't being dragged - picked pages move together, as
+always). Past the column's own edge counts too: held above the column (over the
+header) or below it (over the dock), while still over the column's width, the
+document listens for the tree and resolves it to that end. Off to the side - the
+editor, where a dropped page becomes a link - it doesn't.
+
+Probed in headless Chrome against a scratch node with a 30-note tree in Writer's
+tree tab: the bottom strip and the space far below the column both lit the
+bottom line and filed the page last; the top strip and the header above the
+column filed it first; moving onto a row or off sideways cleared the line.

@@ -10,11 +10,15 @@ import { edgeSpeed } from './pure/edgescroll.js';
 const FRESH_MS = 600;
 const STALE_MS = 1500;
 
-/// The nearest ancestor of `el` that scrolls vertically, or the page's own scroller.
-function scrollerOf(el) {
-    for (let at = el && el.parentElement; at; at = at.parentElement) {
+/// The nearest box around `el` (itself included) that scrolls vertically, or the page's own
+/// scroller. `{ overflowing: false }` takes one that would scroll, though it holds too little to.
+export function scrollerOf(el, { overflowing = true } = {}) {
+    for (let at = el; at; at = at.parentElement) {
         const { overflowY } = getComputedStyle(at);
-        if ((overflowY === 'auto' || overflowY === 'scroll') && at.scrollHeight > at.clientHeight) {
+        if (
+            (overflowY === 'auto' || overflowY === 'scroll') &&
+            (!overflowing || at.scrollHeight > at.clientHeight)
+        ) {
             return at;
         }
     }
