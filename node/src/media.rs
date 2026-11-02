@@ -17,6 +17,7 @@ pub mod audio;
 pub mod image;
 pub mod lane;
 pub mod loudness;
+pub mod pdq;
 pub mod video;
 
 use crate::record::documents::Format;

@@ -81,6 +81,7 @@ import { CopyButton } from './copyinto.js';
 import { warningFor } from './pure/warnings.js';
 import { moderationFor } from './pure/moderation.js';
 import { useModeration } from './moderation.js';
+import { ReportChip } from './report.js';
 import { veilsMedia, withoutMedia } from './pure/chatveil.js';
 
 /// Feed cards' public words, by address and the post's last edit (see the card's body effect).
@@ -1252,11 +1253,13 @@ const PostEntryBody = ({
     // Moderation lists (plans/MODERATION.md): what the reader blocked, and what the people they
     // trust to moderate block or warn about. A block leaves the page as a hidden tag does (its own
     // page shows it veiled - you asked for it by address); a warning veils it with its reason.
-    const taken = useModeration(current && current.root).taken;
+    const { taken, hidden: hiddenHere } = useModeration(current && current.root);
     const moderated = moderationFor(item.author, {
         me: current && current.root,
         taken,
         factsByRoot,
+        doc: item.doc_id,
+        hidden: hiddenHere,
     });
     const [revealed, setRevealed] = useState(false);
     const veiled =
@@ -1674,6 +1677,8 @@ const PostEntryBody = ({
                     ${!open && item.format === 'book' && html`<${DownloadChip} base=${`/ringtome/user/${item.author}/post/${item.doc_id}/download`} />`}
                     ${/* Its QR code, for another phone (plans/QR.md): a public post's only. */ ''}
                     ${!open && !item.private_doc && html`<${QrChip} webPath=${shareHref} appPath=${href} />`}
+                    ${/* A report (plans/MODERATION.md), on anyone else's post: hide it here, then ask. */ ''}
+                    ${!open && !item.mine && !source && !!current && !!current.root && item.author !== current.root && html`<${ReportChip} item=${item} current=${current} />`}
                     ${!open && html`<${CopyLinkChip} path=${shareHref} />`}
                     ${
                         /* Copy into private notes, last on every card (Curtis, 2026-09-08: the

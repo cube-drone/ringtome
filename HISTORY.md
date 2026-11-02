@@ -26307,3 +26307,111 @@ administrator told so; a blocked node undialled until the block lifts), the node
 log showing the clearing and the refused dial, and the starters' unit test (the
 built-in official persona moderates, and only it; the sixth word is `moderates`
 or nothing).
+
+## Quarantine, reports and the refusal list (2026-11-02)
+
+Curtis, 2026-11-02: "Let's try and burn through 1-4" - quarantine, report
+pictures over HTTPS with the advice beside it, reports (MODERATION.md step 4),
+and PDQ with the private refusal list (SCANNING.md steps 1 to 3). Done without
+asking Bunny anything (Curtis: "We're proceeding without my talking to other
+human beings").
+
+**Quarantine** (`quarantine.rs`, node rung 114). An administrator seals a
+picture by its address - body, thumbnail or post - or a file by its hash, with a
+note. The file store keeps a sealed set (`files::FileStore::seal`) that every
+read consults (`get_public`, `get_decrypted`, `has`), that a fetch refuses
+before dialling, that `put_public` refuses, and that the blob protocol's door
+refuses through iroh-blobs' request intercept (`EventMask` with `get` and
+`get_many` intercepted) - so a peer is reset, never served. The public body door
+answers "removed by this server's operator" before any 304 could vouch for a
+kept copy. The reaper keeps every sealed file, whatever points at it and
+whatever the audio fence says. Release unseals; the row stays with who and when.
+hrseServer has a new **Moderation** page (`servermoderation.js`): the seal form,
+the list, and "what to do now" - don't look or copy, report it (Cybertip.ca,
+NCMEC, INHOPE), keep it sealed, purge the CDN.
+
+**Reports** (`reports.rs`, `proto/src/report.rs`, node rung 115). A report is a
+delivery envelope of a new kind, `REPORT`, whose evidence is a `Report`: what to
+list, a 512-byte reason, the child-abuse flag, and - for a post - the author's
+own signed header and authorization path, checked at the door offline
+(`verify_report`, reusing `verify_fragment`). The delivery door hands every
+report envelope to `reports::judge` after the stamp, before any notice logic: a
+report is never transcribed, only kept in `reports` on the node that takes it.
+Bounced (`refusal::NOT_TAKING`, new) unless the operator's **Allow Users to
+Accept Reports** (`report_policy`) and the moderator's **Accept Reports**
+(`report_takers`, per node, since the queue is) are both on. By default a
+moderator takes reports only from people they trust (the `trust` fact);
+optionally from the people those people trust (the trust lane of
+`implicit_edges`); strangers only by a second switch, into a pool bounded per
+moderator, oldest out first. A blocked reporter is told "taken" and kept
+nowhere. Every report keeps the node that knocked; the queue counts by it, and
+"block that node and drop these" is one action.
+
+The door's answer is a new delivery message, `Taken(Option<url>)`: for an open
+post, an address on this node's public URL, good for an hour, that takes only
+files hashing to what the signed header names. The reporter's node sends the
+post's body and thumbnail there over HTTP(S) with a new `unfurl::guarded_post`
+(the address came from someone else's node: no private addresses, no redirects),
+so an upload-scanning layer sees them first. Without a public URL a report
+arrives as words only (a test rig answers on its loopback port). A sealed post's
+words never travel: private evidence is left for later.
+
+The child-abuse choice carries the reference alone; no upload address is ever
+given for it. To an administrator's persona, from someone their trust reaches,
+it seals the post's files at once; from a stranger it waits for a person, since
+sealing on a stranger's word would let anyone take any picture down. The queue
+offers an administrator the quarantine.
+
+The reporter's side: a **report** chip (a flag) on anyone else's post. The form
+hides the post on the reporter's own devices first (a private set,
+`hidden_posts`, folded into the moderation view and `moderationFor`), blocks the
+author if asked (always, for the child-abuse choice), then sends to every
+moderator they trust at once and says what each answered. The child-abuse form
+says don't screenshot or forward it, gives the hotlines and copies the post's
+address. The moderator's side, under the lists in content control
+(`reportqueue.js`): Accept Reports and its reach, and the queue - the reporter
+and how far trust reaches them, the signed words, a stranger's picture covered
+until clicked, "add to my list" with the reason prefilled, "dismiss".
+
+**The assistant** (`mcp/reports.rs`): `read_reports` (grouped by node, every
+reason and word fenced as someone else's, no pictures), `dismiss_report`, and
+`propose_entry`, which lists nobody - the proposal waits in the queue for the
+moderator's tap. The guide says so.
+
+**PDQ and the refusal list** (`media/pdq.rs`, node rung 116). A port of the
+`pdqhash` crate's algorithm (Apache-2.0) onto this tree's `image`, the DCT
+matrix computed by the reference's formula. Against Meta's C++ reference outputs
+for three of its regression pictures (in `node/tests/pdq`, with the expected
+hashes from `pdq/cpp/reg_test/expected/out`), ours are 2 to 8 bits apart of 256,
+because JPEG decoders differ; a match is 31 or fewer. Fingerprinting decodes our
+own crushed AVIF (`media::image::fingerprint`), so an upload and a copy that
+arrived from a peer are fingerprinted from the same bytes. Sealing a picture
+stores its fingerprint beside its row; an upload near one is refused before it's
+kept ("this picture can't be kept on this server"); a public picture that lands
+here near one - a publish's twin, a fetch from a peer, through a new file-store
+arrival hook - is sealed as it lands, by "refusal-list". A node that never
+quarantined anything decodes nothing extra. Never published.
+
+SERVER.md has _Reports_ (both switches, the pool, the public address, and the
+strong advice to put upload scanning in front first) and _Quarantine_.
+
+Left, on purpose: reports about private things (a sealed post, a room line);
+picture targets on the community lists (MODERATION.md step 5); the fingerprint
+cache by blob hash, and fingerprinting what was already held when a picture is
+quarantined; video; the store-build flag; the admission limits.
+
+Proved by: "quarantine" (5 claims: administrators only; sealed by a thumbnail's
+address on any origin, gone for everyone including a 304 and the author; a far
+node gets the post's words but never the picture; released and recorded; bad
+addresses refused), "quarantine: the refusal list" (a picture sealed with its
+print; a scaled, re-saved copy refused at another persona's upload; a mirror
+image kept; the copy published on bravo and fetched on alpha sealed by the
+refusal list; all welcome again on release), "reports" (9 claims, two nodes:
+bounced by either switch and kept nowhere; a stranger bounced at the door; taken
+from a trusted reporter with the signed words arriving over the upload address;
+forged bytes and unknown addresses refused; a proposal lists nobody and the
+moderator's tap does; strangers into a pool of one; a flood dropped by node; the
+child-abuse report carries nothing and seals at an administrator's door;
+self-reports and 513-byte reasons refused), the PDQ unit tests (Meta's
+reference, a re-encode and a resize within the match distance, a rotation and a
+flat picture not), the proto report tests and the pure hidden-post claim.

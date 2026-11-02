@@ -43,6 +43,9 @@ use crate::AppState;
 pub const OVERRULES: &str = "moderation_overrules";
 /// The contact fact: "I trust this person to moderate for me".
 pub const MODERATES: &str = "moderates";
+/// The private set of posts this reader hid - what a report does first, on the reporter's own
+/// devices, before anything is sent (plans/MODERATION.md, _Reports_ 1) - as `<author>:<doc>`.
+pub const HIDDEN: &str = "hidden_posts";
 
 /// What this node refuses, held in memory for the doors that ask on every connection and every
 /// exchange: personas by root and nodes by endpoint id, hex.
@@ -75,8 +78,9 @@ pub async fn recompute(state: &AppState) {
     }
 }
 
-async fn recompute_inner(state: &AppState) -> Result<()> {
-    let _one = RECOMPUTING.lock().await;
+/// The personas of this node's administrators' accounts: what they take, as administrators, the
+/// node refuses (and reports.rs lets a child-abuse report to them seal its pictures here).
+pub async fn administrator_roots(state: &AppState) -> Result<BTreeSet<String>> {
     let mut accounts: BTreeSet<uuid::Uuid> = BTreeSet::new();
     for tag in [crate::auth::TAG_NODE_ADMIN, crate::auth::TAG_ADMIN] {
         let tagged = crate::auth::accounts_tagged(&state.node_db, tag)
@@ -91,6 +95,12 @@ async fn recompute_inner(state: &AppState) -> Result<()> {
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         admins.extend(personas.into_iter().map(|i| i.root_pubkey));
     }
+    Ok(admins)
+}
+
+async fn recompute_inner(state: &AppState) -> Result<()> {
+    let _one = RECOMPUTING.lock().await;
+    let admins = administrator_roots(state).await?;
     let mut next = Refused::default();
     for root in admins {
         let data = match store::open_agented(state, &root).await {
@@ -275,7 +285,7 @@ pub fn fold_taken(
 }
 
 #[derive(Serialize)]
-struct MineRow {
+pub(crate) struct MineRow {
     kind: &'static str,
     target: String,
     level: &'static str,
@@ -293,6 +303,8 @@ struct ModerationView {
     taken: Vec<Taken>,
     /// This persona's account administers the node, so what it blocks the node refuses.
     administers: bool,
+    /// The posts this persona hid, `<author>:<doc>`.
+    hidden: Vec<String>,
 }
 
 /// GET - the persona's own list, whose lists it takes, and what it takes from them.
@@ -307,11 +319,13 @@ async fn moderation_handler(
     for tag in [crate::auth::TAG_NODE_ADMIN, crate::auth::TAG_ADMIN] {
         administers |= crate::auth::has_tag(&state.node_db, &session.account.id, tag).await?;
     }
-    Ok(Json(ModerationView { mine, moderators, taken, administers }))
+    let (hidden, _) = data.private_set(HIDDEN).elements().await?;
+    let hidden = hidden.into_iter().map(|e| e.element).collect();
+    Ok(Json(ModerationView { mine, moderators, taken, administers, hidden }))
 }
 
 /// One persona's own list, whose lists it takes, and what it takes from them.
-async fn view_of(
+pub(crate) async fn view_of(
     state: &AppState,
     data: &store::Store,
     root: &str,

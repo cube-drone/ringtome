@@ -127,6 +127,11 @@ pub mod notice_kind {
     /// which the founding's hash must be) and its `detail` the group's name as founded. The
     /// recipient's node has never heard of the group: this is how it learns.
     pub const GROUP_INVITE: u32 = 7;
+    /// "Please consider this for your list" (plans/MODERATION.md, _Reports_) - evidence is a
+    /// [`crate::report::Report`], not an entry of the sender's: verified by
+    /// [`crate::report::verify_report`], never by [`super::verify_claim`], and never transcribed -
+    /// a report is kept in a table on the node that takes it, off every chain.
+    pub const REPORT: u32 = 8;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -137,6 +142,7 @@ pub mod notice_kind {
             MENTIONED => "mentioned",
             ROOM_MENTION => "room-mention",
             GROUP_INVITE => "group-invite",
+            REPORT => "report",
             _ => "unknown-kind",
         }
     }
@@ -786,12 +792,18 @@ pub mod refusal {
     pub const MALFORMED: u32 = 1;
     /// This node does not serve the recipient. (Not a secret: serving records are public.)
     pub const NOT_SERVED: u32 = 2;
+    /// The recipient doesn't take reports here (plans/MODERATION.md, _Reports_): they haven't
+    /// turned Accept Reports on, this node's operator doesn't let users, or the reporter is
+    /// further from them than they take reports from. Said aloud, and it's the whole answer: the
+    /// report bounces, and the reporter's form says so.
+    pub const NOT_TAKING: u32 = 3;
 
     pub fn name(id: u32) -> &'static str {
         match id {
             GATE => "gate",
             MALFORMED => "malformed",
             NOT_SERVED => "not-served",
+            NOT_TAKING => "not-taking",
             _ => "unknown-refusal",
         }
     }
@@ -837,6 +849,11 @@ pub enum DeliverMessage {
     /// is the observable signal that a node is under load - which is affordable precisely
     /// because it says nothing about what the recipient thinks of the sender.
     NeedsStamp(u32),
+    /// A report was taken (plans/MODERATION.md, _Reports_), and - when the moderator's node
+    /// wants the reported item's pictures and has a public address - where to send them, over
+    /// HTTPS: one address for this report, good for a while, that takes only the pictures the
+    /// report's signed header names.
+    Taken(Option<String>),
 }
 
 const TAG_OFFER: u64 = 0;
@@ -844,6 +861,7 @@ const TAG_ACCEPTED: u64 = 1;
 const TAG_REFUSED: u64 = 2;
 const TAG_BUSY: u64 = 3;
 const TAG_NEEDS_STAMP: u64 = 4;
+const TAG_TAKEN: u64 = 5;
 
 impl DeliverMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -871,6 +889,13 @@ impl DeliverMessage {
                 w.array(2);
                 w.uint(TAG_NEEDS_STAMP);
                 w.uint(u64::from(*bits));
+            }
+            Self::Taken(upload) => {
+                w.array(1 + u64::from(upload.is_some()));
+                w.uint(TAG_TAKEN);
+                if let Some(url) = upload {
+                    w.text(url);
+                }
             }
         }
         w.into_bytes()
@@ -901,6 +926,14 @@ impl DeliverMessage {
                 Self::NeedsStamp(
                     u32::try_from(raw).map_err(|_| ProtoError::BadEntry("price out of range"))?,
                 )
+            }
+            (TAG_TAKEN, 1) => Self::Taken(None),
+            (TAG_TAKEN, 2) => {
+                let url = r.text()?;
+                if url.len() > 2048 {
+                    return Err(ProtoError::BadEntry("upload address too long"));
+                }
+                Self::Taken(Some(url.to_string()))
             }
             _ => return Err(ProtoError::BadEntry("unknown delivery message")),
         };

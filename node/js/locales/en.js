@@ -423,6 +423,8 @@ export default {
     'device.who-may-sign-up-here': 'who may sign up here',
     'device.backups': 'Backups',
     'device.copies-of-everything-to-keep-safe': 'copies of everything here, to keep somewhere safe',
+    'device.moderation': 'Moderation',
+    'device.what-to-do-about-what-shouldnt-be-here': 'what to do when something here is something no one should hold',
     'device.front-matter': 'Front Matter',
     'device.customize-your-terms': 'customize your Terms of Service and Privacy Policy here',
     'device.server-customization': 'Server customization',
@@ -2309,6 +2311,57 @@ export default {
     // --- node/js/recents.js ---
     'recents.untitled': 'untitled',
 
+    // --- node/js/report.js ---
+    'report.sent-to': 'sent to',
+    'report.doesnt-take-reports': "doesn't take reports:",
+    'report.refused-by': 'refused by the server of',
+    'report.couldnt-reach': "couldn't reach, right now:",
+    'report.nobody-to-send-it-to': "You don't trust anyone to moderate for you, so it went nowhere - the post is hidden here, which no one else can undo.",
+    'report.dont-send-it': "Don't screenshot, save or forward it - not even to report it. Sending a picture of a child being abused is distributing it.",
+    'report.where-to-report': "Report it where you live, with the post's address - never the picture:",
+    'report.copy-the-posts-address': "copy the post's address",
+    'report.child-sends-only-the-reference': 'Your moderators get only where the post is, never the picture. It is hidden here and its author blocked.',
+    'report.report-this-post': 'Report this post',
+    'report.done': 'done',
+    'report.what-a-report-does': 'The post is hidden from you at once. Then the people you trust to moderate for you are asked to consider it for their list, with the post exactly as its author signed it:',
+    'report.you-trust-nobody-to-moderate': "You don't trust anyone to moderate for you - it will only be hidden here.",
+    'report.something-else': "it's spam, abuse, or something else that shouldn't be here",
+    'report.a-child-is-being-abused': 'a child is being sexually abused or exploited',
+    'report.block-them-too': 'block them too',
+    'report.sending': 'sending…',
+    'report.report-it': 'report it',
+    'chips.report': 'report',
+
+    // --- node/js/reportqueue.js ---
+    'reports.someone-you-trust': 'someone you trust',
+    'reports.trusted-by-someone-you-trust': 'trusted by someone you trust',
+    'reports.a-stranger': 'a stranger',
+    'reports.accept-reports': 'Accept Reports',
+    'reports.not-allowed-here': "This server's operator doesn't let people take reports here.",
+    'reports.what-taking-means': 'People who trust you to moderate for them can ask you to put someone on your list. Reports come to this server and stay here - never on your chains, never on your other computers.',
+    'reports.from-whom': 'from',
+    'reports.the-people-i-trust': 'the people I trust',
+    'reports.and-the-people-they-trust': 'the people I trust, and the people they trust',
+    'reports.and-from-strangers': 'and from anyone - a stranger waits in a pool of {n}, oldest dropped first',
+    'reports.a-strangers-picture-show': "a stranger's picture - show it",
+    'reports.asks-you-to-list': 'asks you to list',
+    'reports.reported-as-child-abuse': 'Reported as a child being sexually abused or exploited.',
+    'reports.child-only-the-reference': 'Only where it is came with it, never the picture. Report it where you live, with its address:',
+    'reports.quarantined': 'quarantined on this server',
+    'reports.quarantine-its-files': 'quarantine its files on this server',
+    'reports.a-sealed-post': 'a post for the people they trust',
+    'reports.untitled': 'untitled',
+    'reports.signed-by-them': 'signed by them {when}',
+    'reports.your-assistant-proposes': 'Your assistant proposes: {level}',
+    'reports.dismiss': 'dismiss',
+    'reports.a-flood-of-reports': 'a flood of reports',
+    'reports.n-reports-from-m-personas': '{n} reports from {m} personas on node',
+    'reports.since': 'since {when}',
+    'reports.block-that-node-and-drop-these': 'block that node and drop these',
+    'reports.drop-these': 'drop these',
+    'reports.reports': 'Reports',
+    'reports.nothing-to-look-at': 'nothing to look at',
+
     // --- node/js/rights.js ---
     'rights.this-computer': 'this computer',
     'rights.a-song': 'a song',
@@ -2320,6 +2373,32 @@ export default {
     'rights.yes': 'Yes, publish it',
     'rights.no': "No, don't publish this",
     'rights.not-published': 'not published - you chose not to',
+
+    // --- node/js/servermoderation.js ---
+    'quarantine.in-canada': 'In Canada',
+    'quarantine.in-the-us': 'In the United States',
+    'quarantine.elsewhere': 'Elsewhere',
+    'quarantine.what-to-do-now': 'What to do now',
+    'quarantine.dont-look': "Don't look at it again, and don't screenshot, save, download or forward it - not even to report it. Quarantining it here is enough to stop this server showing it to anyone.",
+    'quarantine.report-it': 'If it shows a child being sexually abused or exploited, report it. Where you live, the law may say you must - in Canada, anyone providing an internet service to the public has to. Give them the address of the post, never the picture.',
+    'quarantine.keep-it': "Keep it quarantined. This server keeps the file, sealed, because you may have to preserve it for the authorities; release it only when they say, or when the time the law sets is up. The list below is this server's record of what it held, when, and who acted.",
+    'quarantine.purge-the-cdn': "If a CDN sits in front of this server, purge the picture's address from its cache too - a copy there would outlive the one here.",
+    'quarantine.not-legal-advice': 'This is not legal advice.',
+    'quarantine.sealed-since': 'sealed {when}',
+    'quarantine.released-at': 'released {when}',
+    'quarantine.never-arrived': 'never on this disk',
+    'quarantine.release': 'release',
+    'quarantine.quarantine': 'Quarantine',
+    'quarantine.what-it-does': 'Seal a picture this server holds: nobody here - on the web, in the app, or another server asking - gets it again, and the file is kept, untouched, until you release it.',
+    'quarantine.the-pictures-address': "the picture's address, or its post's - or a file's hash",
+    'quarantine.a-note-for-the-record': 'a note for the record',
+    'quarantine.quarantine-it': 'quarantine it',
+    'quarantine.nothing-quarantined': 'Nothing is quarantined here.',
+    'reports.allow-users-to-accept-reports': 'Allow Users to Accept Reports',
+    'reports.allow-why': "On, people here may turn on Accept Reports and take reports from the people who trust them to moderate. A report's pictures arrive over this server's public address, so put an upload-scanning layer in front of it first - Bunny's Upload Scanning, Cloudflare's CSAM scanning, or another - if you let anyone report to anyone here. Strongly advised; SERVER.md says how.",
+    'reports.no-public-address': 'This server has no public address, so reports arrive without pictures - the moderator sees only the words.',
+    'reports.strangers-pool': "how many strangers' reports each person keeps",
+    'reports.keep-days': 'how many days a report is kept',
 
     // --- node/js/slugpage.js ---
     'slugpage.looking': 'looking…',
@@ -2793,6 +2872,7 @@ export default {
     'rights.not-carried-here': "this song isn't carried on this server - its operator's choice",
     'idface.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'idface.this-document-has-no-thumbnail': 'this document has no thumbnail',
+    'quarantine.removed-here': "removed by this server's operator",
     'idface.the-bytes-havent-arrived-here': 'still on its way',
     'idface.the-key-hasnt-arrived': 'not shared with you',
     'idface.cant-label-words-you-cant-read': "you can't label words you can't read",
@@ -2878,6 +2958,11 @@ export default {
     'publication.as-the-group-is-open': 'a post as the group is an open post - not sealed, not a room',
     'publication.replies-and-rooms-are-now': "a reply or a room can't wait for a date - clear its date, or give it one that has passed",
 
+    // --- node/src/quarantine.rs ---
+    'quarantine.not-a-hash': "that isn't a file's hash - 64 hex characters",
+    'quarantine.not-an-address': "that isn't a picture's address on Horse Drawing Tycoon 2",
+    'quarantine.not-held': "this server doesn't hold that picture",
+
     // --- node/src/rate_limit.rs ---
     'rate_limit.rate-limit-for-action-exceeded': 'hold your horses ({action})',
 
@@ -2943,6 +3028,17 @@ export default {
 
     // --- node/src/registration/routes.rs ---
     'registration.routes.unknown-mode': 'sign-ups are open, password, or closed',
+
+    // --- node/src/reports.rs ---
+    'reports.no-such-upload': 'this address takes no more pictures',
+    'reports.not-what-was-signed': "that isn't a file the reported post names",
+    'reports.not-yourself': "you can't report yourself",
+    'reports.cant-vouch-for-it': "this computer can't vouch for that post - it may have been taken down",
+    'reports.malformed': "this report can't be sent: {why}",
+    'reports.not-here': "this server's operator doesn't let people take reports here",
+    'reports.no-such-report': 'no such report here',
+    'reports.names-no-files': 'this report names no files',
+    'reports.no-such-picture': 'no such picture',
 
     // --- node/src/rights.rs ---
     'rights.this-server-doesnt-publish-tagged': "this server doesn't publish songs that name their artist or album - its operator's choice (\"{title}\"{more})",

@@ -42,6 +42,7 @@ mod bank;
 mod chat;
 mod notebooks;
 mod read;
+mod reports;
 mod upload;
 mod write;
 
@@ -634,6 +635,7 @@ impl Tools {
             + Self::upload_tools()
             + Self::chat_tools()
             + Self::bank_tools()
+            + Self::report_tools()
     }
 }
 

@@ -1,5 +1,5 @@
 // The content control page's moderation sections (plans/MODERATION.md, 2026-11-02): whose lists
-// you take, what you take from them, and your own public list. Its own file because it shows
+// you take, what you take from them, your own public list, and reports (reportqueue.js). Its own file because it shows
 // people, and person.js imports moderation.js for the controls on a person's page.
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
@@ -17,6 +17,7 @@ import {
     useModeration,
 } from './moderation.js';
 import { MAX_REASON_BYTES, reasonBytes } from './pure/moderation.js';
+import { ReportSections } from './reportqueue.js';
 
 const html = htm.bind(h);
 
@@ -154,5 +155,6 @@ export const ModerationSections = ({ current }) => {
                     : html`<p class="null-sub">${t('moderation.list-empty', 'empty')}</p>`
             }
         </section>
+        <${ReportSections} current=${current} />
     </div>`;
 };

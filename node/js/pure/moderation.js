@@ -11,11 +11,17 @@ export const reasonBytes = (text) => new TextEncoder().encode(String(text || '')
 /// The element naming one target in the reader's overrule set.
 export const overruleKey = (kind, target) => `${kind}:${target}`;
 
+/// The element naming one post in the reader's hidden set - what a report does first.
+export const hiddenKey = (author, doc) => `${author}:${doc}`;
+
 /// The verdict for one author: `{ kind: 'block' | 'warn' | null, reason, sources }` - the
-/// strongest level, and the reasons it was given, strongest first. Never about the reader.
-export function moderationFor(author, { me, taken, factsByRoot }) {
+/// strongest level, and the reasons it was given, strongest first. Never about the reader. A post
+/// the reader hid (`doc`, against `hidden`) goes as their own block does.
+export function moderationFor(author, { me, taken, factsByRoot, doc, hidden }) {
     const none = { kind: null, reason: '', sources: [] };
     if (!author || author === me) return none;
+    if (doc && (hidden || []).includes(hiddenKey(author, doc)))
+        return { kind: 'block', reason: '', sources: [], mine: true, hidden: true };
     const facts = factsByRoot && factsByRoot[author];
     if (facts && facts.blocked === 'yes')
         return { kind: 'block', reason: '', sources: [], mine: true };

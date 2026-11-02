@@ -89,6 +89,7 @@ pub mod publication;
 pub mod publinks;
 pub mod publish;
 pub mod publishing;
+pub mod quarantine;
 pub mod random;
 pub mod ranged;
 pub mod rate_limit;
@@ -98,6 +99,7 @@ pub mod rebroadcast;
 pub mod record;
 pub mod registration;
 pub mod replies;
+pub mod reports;
 pub mod request_context;
 pub mod revalidate;
 pub mod rights;
@@ -607,6 +609,17 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     if let Err(e) = machines::load(&state.node_db).await {
         tracing::warn!(error = ?e, "the machine table didn't load; it starts empty");
     }
+    // What the operator quarantined is sealed before any peer can ask for it (quarantine.rs).
+    if let Err(e) = quarantine::load(&state).await {
+        tracing::error!(error = ?e, "could not read the quarantine; nothing new is sealed");
+    }
+    // Every picture that lands is checked against the refusal list (quarantine.rs).
+    state.files.on_arrival({
+        let state = state.clone();
+        std::sync::Arc::new(move |hash| {
+            tokio::spawn(quarantine::arrived(state.clone(), hash));
+        })
+    });
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // What this node's moderation refuses, before the first exchange is answered (moderation.rs).
     tokio::spawn({
@@ -1116,6 +1129,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .merge(leaving::router())
         .merge(frontmatter::router())
         .merge(moderation::router())
+        .merge(quarantine::router())
+        .merge(reports::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))
         .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))

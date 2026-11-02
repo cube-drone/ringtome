@@ -291,6 +291,16 @@ fn fit_within(img: DynamicImage, bound: u32) -> DynamicImage {
     }
 }
 
+/// The PDQ fingerprint of one of our AVIF stills (plans/SCANNING.md) - an upload's crushed body,
+/// or a picture that arrived from another node - through the same decoder as everything else.
+/// `None` for anything that isn't an AVIF picture, or is too small to hash. CPU-bound.
+pub fn fingerprint(input: &[u8]) -> Option<crate::media::pdq::Pdq> {
+    if input.get(4..8)? != b"ftyp" {
+        return None;
+    }
+    crate::media::pdq::of(&decode_avif(input).ok()?)
+}
+
 /// One of our own AVIF stills as a PNG no larger than `bound` on a side - for the places an
 /// AVIF is not understood (2026-09-27: a desktop notification's picture, which Windows
 /// toasts and older macOS read as PNG only). CPU-bound, like [`crush`].

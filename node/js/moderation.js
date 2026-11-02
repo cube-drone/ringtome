@@ -14,7 +14,7 @@ import { MAX_REASON_BYTES, overruleKey, reasonBytes } from './pure/moderation.js
 const html = htm.bind(h);
 
 const OVERRULES = 'moderation_overrules';
-const EMPTY = { mine: [], moderators: [], taken: [] };
+const EMPTY = { mine: [], moderators: [], taken: [], hidden: [] };
 const store = new Map(); // root -> the view
 const listeners = new Set();
 const notify = () => listeners.forEach((fn) => fn());

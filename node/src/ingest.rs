@@ -233,6 +233,14 @@ async fn process_job(state: &crate::AppState, job: &Job) -> anyhow::Result<()> {
             return Ok(());
         }
     };
+    // A picture this node quarantined, come back - cropped, re-encoded, under a new name - is
+    // refused before it is kept (quarantine.rs, the refusal list).
+    if crate::quarantine::refuses_upload(&ingested.body).await {
+        fail_job(&state.node_db, &job.job_id, "this picture can't be kept on this server").await?;
+        let _ = tokio::fs::remove_file(&job.quarantine_path).await;
+        let _ = tokio::fs::remove_file(sidecar_path(&job.quarantine_path)).await;
+        return Ok(());
+    }
     writer
         .save(state, job.doc_id, job.parents.clone(), job.title.clone(), ingested, source_print)
         .await?;

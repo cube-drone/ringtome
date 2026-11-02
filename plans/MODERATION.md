@@ -1,7 +1,7 @@
 # Moderation lists
 
-_A design draft (2026-11-01). Built: steps 1 to 3 of the order, 2026-11-02 (see
-HISTORY)._
+_A design draft (2026-11-01). Built: steps 1 to 4 of the order, 2026-11-02 (see
+HISTORY); private evidence and picture targets wait._
 
 Why this exists: to get Horse Drawing Tycoon 2 into the Google Play and Apple
 stores ([STORES.md](STORES.md), section 5), whose rules for user-generated

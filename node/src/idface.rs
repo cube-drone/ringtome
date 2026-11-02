@@ -2296,6 +2296,14 @@ pub(crate) async fn public_doc_bytes(
     } else {
         (file_hash, crate::record::documents::Format::from_wire(format).mime())
     };
+    // Quarantined by this node's operator (quarantine.rs): gone from here, before any cache's
+    // 304 could vouch for a copy.
+    if state.files.is_sealed(&iroh_blobs::Hash::from_bytes(hash)) {
+        return Err(AppError::NotFound(crate::msg!(
+            "quarantine.removed-here",
+            "removed by this server's operator"
+        )));
+    }
     // The URL names the DOCUMENT (mutable - editing re-publishes new words under the same
     // doc_id); only the blob underneath is content-addressed. This once said `immutable,
     // max-age=1y`, which promised browsers a year of staleness on every edited post - the

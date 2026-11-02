@@ -13,6 +13,8 @@
 //   (node/src/backup.rs). Restoring is not here yet.
 // - Server customization (servers only, 2026-09-30): the front page's name and its marquee's
 //   taglines (node/src/frontdoor.rs). A desktop app has no front page for strangers.
+// - Moderation (2026-11-02): quarantine, and what to do now (servermoderation.js,
+//   node/src/quarantine.rs).
 // - Front Matter (2026-11-01): this place's additions to the Terms of Service and the Privacy
 //   Policy (frontmatter.js, node/src/frontmatter.rs).
 //
@@ -24,6 +26,7 @@ import htm from 'htm';
 import { api, isDevice } from '../net.js';
 import { AccountPage } from '../account.js';
 import { FrontMatterPage } from '../frontmatter.js';
+import { ServerModeration } from '../servermoderation.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
@@ -45,8 +48,8 @@ const pages = (admin) =>
     !admin
         ? ['network']
         : isDevice()
-          ? ['network', 'registration', 'backups', 'frontmatter']
-          : ['network', 'registration', 'backups', 'customization', 'frontmatter'];
+          ? ['network', 'registration', 'backups', 'moderation', 'frontmatter']
+          : ['network', 'registration', 'backups', 'moderation', 'customization', 'frontmatter'];
 
 /// Each page's name and what it's for, as the landing lists them.
 const PAGE_WORDS = () => ({
@@ -66,6 +69,13 @@ const PAGE_WORDS = () => ({
         t(
             'device.copies-of-everything-to-keep-safe',
             'copies of everything here, to keep somewhere safe',
+        ),
+    ],
+    moderation: [
+        t('device.moderation', 'Moderation'),
+        t(
+            'device.what-to-do-about-what-shouldnt-be-here',
+            'what to do when something here is something no one should hold',
         ),
     ],
     frontmatter: [
@@ -97,6 +107,7 @@ export const DeviceApp = ({ page, account, admin, current }) => {
         return html`<${AccountPage} id=${account} current=${current} />`;
     if (page === 'customization' && !isDevice()) return html`<${Customization} />`;
     if (page === 'frontmatter') return html`<${FrontMatterPage} current=${current} />`;
+    if (page === 'moderation') return html`<${ServerModeration} />`;
     return html`<${Landing} admin=${admin} />`;
 };
 

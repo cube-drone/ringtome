@@ -44,6 +44,13 @@ describe('moderation lists, as a post meets them (2026-11-02)', () => {
         );
     });
 
+    it('a post the reader hid goes as their own block does, and only that post', () => {
+        const ctx = { me: 'me', taken: [], factsByRoot: {}, hidden: ['troll:d1'] };
+        assert.equal(moderationFor('troll', { ...ctx, doc: 'd1' }).kind, 'block');
+        assert.equal(moderationFor('troll', { ...ctx, doc: 'd2' }).kind, null);
+        assert.equal(moderationFor('troll', ctx).kind, null, 'no post, no hiding');
+    });
+
     it('counts a reason in bytes, as the node does', () => {
         assert.equal(reasonBytes('horse'), 5);
         assert.equal(reasonBytes('说'), 3);

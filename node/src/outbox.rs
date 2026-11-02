@@ -68,6 +68,20 @@ pub async fn seal_notice(
     kind: u32,
     price_bits: u32,
 ) -> Result<SignedEnvelope> {
+    seal_with(db, signer, root, recipient_root, evidence.bytes().to_vec(), kind, price_bits).await
+}
+
+/// [`seal_notice`]'s machinery for any evidence bytes - a report's (reports.rs), which is not an
+/// entry of the sender's.
+pub async fn seal_with(
+    db: &Db,
+    signer: &SigningKey,
+    root: &[u8; 32],
+    recipient_root: &[u8; 32],
+    evidence: Vec<u8>,
+    kind: u32,
+    price_bits: u32,
+) -> Result<SignedEnvelope> {
     let signer_pub = signer.verifying_key().to_bytes();
     let mut envelope = Envelope {
         sender_root: *root,
@@ -75,7 +89,7 @@ pub async fn seal_notice(
         recipient_root: *recipient_root,
         kind,
         auth_path: auth_path(db, root, &signer_pub).await?,
-        evidence: Some(evidence.bytes().to_vec()),
+        evidence: Some(evidence),
         greeting: None,
         stamp: None,
         // What we call ourselves publicly, so a stranger's door can render a name rather than a
@@ -381,7 +395,7 @@ pub async fn sweep(state: AppState) -> Result<()> {
         }
         dialed += 1;
         match crate::net::deliver::deliver(&state, &recipient, &envelope).await {
-            crate::net::deliver::Outcome::Accepted => {
+            crate::net::deliver::Outcome::Accepted | crate::net::deliver::Outcome::Taken(_) => {
                 retire(&state.node_db, &sender, &recipient, &kind).await?;
             }
             crate::net::deliver::Outcome::Refused(reason) => {

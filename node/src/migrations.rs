@@ -432,6 +432,24 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0113_subscriptions_moderates.sql"),
         refold: &[],
     },
+    Rung {
+        version: 114,
+        name: "0114_quarantine.sql",
+        sql: include_str!("../migrations/node/0114_quarantine.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 115,
+        name: "0115_reports.sql",
+        sql: include_str!("../migrations/node/0115_reports.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 116,
+        name: "0116_quarantine_prints.sql",
+        sql: include_str!("../migrations/node/0116_quarantine_prints.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).

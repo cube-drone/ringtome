@@ -47,7 +47,7 @@ const DELIVER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 const CANDIDATE_CAP: usize = 4;
 
 /// What came of an attempt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// A node of theirs took it (or correctly discarded it). Done - never retry.
     Accepted,
@@ -59,6 +59,8 @@ pub enum Outcome {
     /// A door quoted a price this envelope has not paid. Not a failure: the sender re-stamps at
     /// the quoted difficulty and knocks again (`outbox::sweep`).
     NeedsStamp(u32),
+    /// A report was taken (reports.rs), with where to send its pictures, if anywhere.
+    Taken(Option<String>),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -150,6 +152,12 @@ async fn judge(state: &AppState, bytes: &[u8], from: &str) -> DeliverMessage {
         return DeliverMessage::NeedsStamp(required);
     }
 
+    // A report is no notice: it is kept in a table where its moderator takes reports, never
+    // transcribed (reports.rs).
+    if signed.envelope().kind == ringtome_proto::deliver::notice_kind::REPORT {
+        return crate::reports::judge(state, &signed, from).await;
+    }
+
     // The claim: signature, delegation from the claimed root, and evidence that names this
     // recipient. A few ed25519 verifications over bytes already in hand.
     let claim = match ringtome_proto::deliver::verify_claim(&signed) {
@@ -208,6 +216,7 @@ pub async fn deliver(state: &AppState, recipient_root: &str, envelope: &[u8]) ->
         // From this node itself: the sender's persona is a housemate, so the group is here.
         return match judge(state, envelope, &state.endpoint.id().to_string()).await {
             DeliverMessage::Accepted => Outcome::Accepted,
+            DeliverMessage::Taken(upload) => Outcome::Taken(upload),
             DeliverMessage::Refused(reason) => Outcome::Refused(reason),
             // Our own gate said Busy about our own node. `Offer` is not an answer and cannot
             // arrive here; both mean the notice is still waiting, which is what the outbox
@@ -296,6 +305,7 @@ async fn knock(state: &AppState, endpoint_id: &str, envelope: &[u8]) -> Result<O
     conn.close(0u8.into(), b"done");
     match answer {
         Some(DeliverMessage::Accepted) => Ok(Outcome::Accepted),
+        Some(DeliverMessage::Taken(upload)) => Ok(Outcome::Taken(upload)),
         Some(DeliverMessage::Refused(reason)) => Ok(Outcome::Refused(reason)),
         // A door that admitted its own failure is worth exactly as much as a door that did not
         // open: the notice is undelivered and the attempt is worth making again.

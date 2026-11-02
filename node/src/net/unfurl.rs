@@ -440,6 +440,49 @@ pub async fn guarded_get(
     Err("too many redirects".into())
 }
 
+/// A POST of raw bytes on the open web, under [`guarded_get`]'s address guard (reports.rs: a report's
+/// pictures, to the address a moderator's node handed back - someone else's word, so never a
+/// private address). Redirects are never followed: an upload goes where it was told, or nowhere.
+pub async fn guarded_post(
+    raw_url: &str,
+    body: Vec<u8>,
+    timeout: std::time::Duration,
+    allow_loopback: bool,
+) -> Result<reqwest::StatusCode, String> {
+    let url = url::Url::parse(raw_url).map_err(|_| "that isn't a URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("only http(s) can take an upload".into());
+    }
+    let host = url.host_str().ok_or_else(|| "no host".to_string())?.to_string();
+    let port = url.port_or_known_default().unwrap_or(80);
+    let addr = if allow_loopback {
+        tokio::net::lookup_host((host.as_str(), port))
+            .await
+            .ok()
+            .and_then(|mut a| a.next())
+            .map(|sa| sa.ip())
+            .ok_or_else(|| "host does not resolve".to_string())?
+    } else {
+        vetted_addr(&url).await.map_err(|r| format!("{r:?}"))?
+    };
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .resolve(&host, std::net::SocketAddr::new(addr, port))
+        .timeout(timeout)
+        .build()
+        .map_err(|e| format!("client: {e}"))?;
+    let resp = client
+        .post(url)
+        .header(reqwest::header::USER_AGENT, UA)
+        .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("upload failed: {e}"))?;
+    Ok(resp.status())
+}
+
 /// Public-internet address check: everything a node must refuse to dial on a user's say-so.
 ///
 /// An IPv6 address that carries an IPv4 one is judged by the IPv4 address inside it (security

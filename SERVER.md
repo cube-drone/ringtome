@@ -404,6 +404,43 @@ own users are never refused this way - remove the account instead. Lifting a
 block stops the refusal; anything cleared comes back only by being fetched
 again. Find it all under **content control** in hrseSettings.
 
+### Reports
+
+People can report a post to the people they trust to moderate for them. A report
+reaches a moderator only if both sides opted in: you turn on **Allow Users to
+Accept Reports** (hrseServer, _Moderation_), and the moderator turns on **Accept
+Reports** in their own content control. Everything else bounces, and the
+reporter is told so. By default a moderator hears only from people they trust;
+taking reports from strangers is their own second switch, into a pool you bound
+(500 per person unless you change it, oldest dropped first). Reports stay in
+this server's database, never on anyone's chains, and are kept 90 days unless
+you change it.
+
+A report carries the post as its author signed it. Its words and pictures follow
+over this server's public address (`RINGTOME_PUBLIC_URL`), never peer to peer:
+without a public address, reports arrive as words only. **If you allow reports,
+put an upload-scanning layer in front of your server first** - Bunny's Upload
+Scanning, Cloudflare's CSAM scanning tool, or another that checks uploads for
+known child sexual abuse material before they reach you. It is strongly advised
+for any server that takes strangers' uploads or reports, so nobody can use the
+report form to put such a picture on your disk. A report that says a child is
+being abused carries only where the post is, never the picture.
+
+### Quarantine
+
+If you find a picture on your server that no one should hold, quarantine it:
+hrseServer, _Moderation_, with the picture's address (or a file's hash). The
+server stops serving it at once - on the web, in the app and to other servers -
+and keeps the file, sealed, because preserving it may be your legal duty. The
+page says what to do next: don't look at it again or copy it, report it (in
+Canada, Cybertip.ca; in the US, NCMEC's CyberTipline), keep it sealed until the
+authorities say otherwise, and purge its address from your CDN's cache.
+Quarantining also puts the picture's fingerprint (PDQ) on your server's private
+refusal list: the same picture uploaded again, resized or re-encoded and by
+anyone, is refused, and a copy arriving from another server is sealed as it
+lands. The list is never published. **Release** unseals a file; the record of
+what was held, when and by whom stays.
+
 ## Backups
 
 The node backs itself up without stopping. Ask it from the Server app, from the

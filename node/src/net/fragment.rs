@@ -839,6 +839,20 @@ async fn answer_inner(
     FragmentMessage::Unknown
 }
 
+/// The author's own signed header for a public document and the path from their root to its
+/// signer, from whatever this node holds - their chain, or a fragment - as the fragment door would
+/// hand it out (reports.rs: a report carries it, so the moderator's node can check it offline).
+pub(crate) async fn signed_header(
+    state: &AppState,
+    author_hex: &str,
+    doc_id: &[u8; 16],
+) -> Option<(Vec<u8>, Vec<Vec<u8>>)> {
+    match answer_inner(state, None, author_hex, doc_id).await {
+        FragmentMessage::Have { entry, auth_path, .. } => Some((entry, auth_path)),
+        _ => None,
+    }
+}
+
 /// The answer from our own copy of the author's chain, if we hold one.
 async fn from_held_chain(
     state: &AppState,

@@ -66,6 +66,7 @@ import {
     FloppyDiskBack,
     SpinnerGap,
     WarningCircle,
+    Flag,
     GitPullRequest,
     GitMerge,
     ArticleMedium,
@@ -281,6 +282,8 @@ export const Icons = {
     saved: FloppyDiskBack,
     spinner: SpinnerGap,
     warn: WarningCircle,
+    // A report (plans/MODERATION.md): asking the people you trust to moderate to look at something.
+    report: Flag,
     conflict: GitPullRequest,
     merged: GitMerge,
     formatMarquee: ArticleMedium,

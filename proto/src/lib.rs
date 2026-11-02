@@ -21,6 +21,7 @@ mod error;
 pub mod fragment;
 pub mod pow;
 pub mod registry;
+pub mod report;
 pub mod roster;
 pub mod sync;
 

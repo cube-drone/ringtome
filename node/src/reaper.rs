@@ -116,5 +116,16 @@ async fn live_set(state: &AppState) -> Result<HashSet<Hash>> {
         }
     }
 
+    // What arrived for a report is kept while the report is (reports.rs).
+    for hash in crate::reports::blob_refs(&state.node_db).await? {
+        live.insert(Hash::from_bytes(hash));
+    }
+
+    // What the operator quarantined is kept, whatever points at it or doesn't, and whatever
+    // the fence says (quarantine.rs): preserving it can be their legal duty.
+    for hash in crate::quarantine::preserved(&state.node_db).await? {
+        live.insert(Hash::from_bytes(hash));
+    }
+
     Ok(live)
 }

@@ -54,6 +54,14 @@ type WriteGate = std::sync::Arc<tokio::sync::RwLock<()>>;
 /// bytes share a hash). The mark phase keeps all of them, from our own hand: a held blob
 /// must survive whatever iroh does with temp tags and whenever it does it.
 type Outstanding = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<Hash, u32>>>;
+/// The blobs this node's operator quarantined (quarantine.rs, plans/SCANNING.md): kept, never
+/// read, fetched, stored again or served to a peer. Shared with the blob protocol's request
+/// handler, which refuses them at the door.
+type Sealed = std::sync::Arc<std::sync::RwLock<std::collections::HashSet<Hash>>>;
+/// Told of every blob that lands - a public put, a fetch from a peer - once armed (quarantine.rs's
+/// refusal list checks pictures against it).
+pub type Arrival = std::sync::Arc<dyn Fn(Hash) + Send + Sync>;
+type Arrivals = std::sync::Arc<std::sync::OnceLock<Arrival>>;
 
 /// A blob just stored, and the hold that keeps it out of the reaper's sweep. **Keep this
 /// alive until the row that names `hash` has committed** - the header append, the fragment
@@ -179,6 +187,10 @@ pub struct FileStore {
     outstanding: Outstanding,
     /// See [`WriteGate`].
     gate: WriteGate,
+    /// See [`Sealed`].
+    sealed: Sealed,
+    /// See [`Arrival`].
+    arrivals: Arrivals,
     /// A clone of the node's test transport gate, because this layer opens its OWN connections
     /// (see `fetch`) and would otherwise be the one hole in `/test/unplug`. Default-constructed
     /// here, so a store built without one refuses nothing - see [`crate::net::p2p::Unplugged`].
@@ -209,6 +221,8 @@ impl FileStore {
             rounds,
             outstanding,
             gate,
+            sealed: Sealed::default(),
+            arrivals: Arrivals::default(),
         }
     }
 
@@ -239,6 +253,8 @@ impl FileStore {
             rounds,
             outstanding,
             gate,
+            sealed: Sealed::default(),
+            arrivals: Arrivals::default(),
         })
     }
 
@@ -405,9 +421,72 @@ impl FileStore {
         self.backend.store()
     }
 
-    /// The iroh-blobs protocol handler to register on the blob ALPN in the accept loop.
+    /// The iroh-blobs protocol handler to register on the blob ALPN in the accept loop. Every
+    /// request is asked about first, so a quarantined blob is refused to peers like everywhere
+    /// else; nothing else is ever refused here.
     pub fn protocol(&self) -> BlobsProtocol {
-        BlobsProtocol::new(self.store(), None)
+        use iroh_blobs::provider::events::{
+            AbortReason, EventMask, EventSender, ProviderMessage, RequestMode,
+        };
+        let mask = EventMask {
+            get: RequestMode::Intercept,
+            get_many: RequestMode::Intercept,
+            ..EventMask::DEFAULT
+        };
+        let (events, mut rx) = EventSender::channel(64, mask);
+        let sealed = self.sealed.clone();
+        tokio::spawn(async move {
+            let refused = |hashes: &[Hash]| {
+                let sealed = sealed.read().expect("sealed set poisoned");
+                hashes.iter().any(|h| sealed.contains(h))
+            };
+            while let Some(msg) = rx.recv().await {
+                match msg {
+                    ProviderMessage::GetRequestReceived(msg) => {
+                        let no = refused(std::slice::from_ref(&msg.inner.request.hash));
+                        msg.tx
+                            .send(if no { Err(AbortReason::Permission) } else { Ok(()) })
+                            .await
+                            .ok();
+                    }
+                    ProviderMessage::GetManyRequestReceived(msg) => {
+                        let no = refused(&msg.inner.request.hashes);
+                        msg.tx
+                            .send(if no { Err(AbortReason::Permission) } else { Ok(()) })
+                            .await
+                            .ok();
+                    }
+                    _ => {}
+                }
+            }
+        });
+        BlobsProtocol::new(self.store(), Some(events))
+    }
+
+    /// Quarantine these blobs (quarantine.rs): from now on nothing reads, fetches, stores or
+    /// serves them, and the bytes already here stay, untouched.
+    pub fn seal(&self, hashes: impl IntoIterator<Item = Hash>) {
+        self.sealed.write().expect("sealed set poisoned").extend(hashes);
+    }
+
+    /// Release a quarantine: the blob reads and serves as ever.
+    pub fn unseal(&self, hash: &Hash) {
+        self.sealed.write().expect("sealed set poisoned").remove(hash);
+    }
+
+    /// Arm the arrival hook. The first arm wins.
+    pub fn on_arrival(&self, hook: Arrival) {
+        let _ = self.arrivals.set(hook);
+    }
+
+    fn arrived(&self, hash: Hash) {
+        if let Some(hook) = self.arrivals.get() {
+            hook(hash);
+        }
+    }
+
+    pub fn is_sealed(&self, hash: &Hash) -> bool {
+        self.sealed.read().expect("sealed set poisoned").contains(hash)
     }
 
     /// Encrypt a body under an epoch key and store it. The [`Put`]'s hash is the ciphertext
@@ -440,6 +519,9 @@ impl FileStore {
         if plaintext.len() as u64 > self.max_blob_bytes {
             bail!("blob is {} bytes, over the {}-byte cap", plaintext.len(), self.max_blob_bytes);
         }
+        if self.is_sealed(&Hash::new(plaintext)) {
+            bail!("this file is quarantined on this server");
+        }
         let _writing = self.gate.read().await;
         let tag = self
             .store()
@@ -448,7 +530,9 @@ impl FileStore {
             .await
             .context("storing public blob")?;
         let hash = *tag.as_ref();
-        Ok(Put::new(self, hash, tag))
+        let put = Put::new(self, hash, tag);
+        self.arrived(hash);
+        Ok(put)
     }
 
     /// What hash a public body WILL have, without storing it - the same content address
@@ -460,6 +544,9 @@ impl FileStore {
     /// Read a PUBLIC body: the bytes as stored, no decryption. `Ok(None)` = not held locally
     /// (headers sync ahead of bodies, same as ever).
     pub async fn get_public(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
+        if self.is_sealed(&hash) {
+            return Ok(None);
+        }
         match self.store().get_bytes(hash).await {
             Ok(b) => Ok(Some(b.to_vec())),
             Err(e) => {
@@ -474,6 +561,9 @@ impl FileStore {
     pub async fn get_decrypted(&self, hash: Hash, keys: &EpochKeys) -> Result<Option<Vec<u8>>> {
         // A missing blob is Ok(None), not an error: headers sync ahead of their bodies, and
         // "not fetched yet" renders the same as "no key for its era" - no body to show, yet.
+        if self.is_sealed(&hash) {
+            return Ok(None);
+        }
         let blob = match self.store().get_bytes(hash).await {
             Ok(b) => b,
             Err(e) => {
@@ -498,10 +588,11 @@ impl FileStore {
 
     /// Do we hold this blob, complete, locally?
     pub async fn has(&self, hash: Hash) -> bool {
-        matches!(
-            self.store().blobs().status(hash).await,
-            Ok(iroh_blobs::api::blobs::BlobStatus::Complete { .. })
-        )
+        !self.is_sealed(&hash)
+            && matches!(
+                self.store().blobs().status(hash).await,
+                Ok(iroh_blobs::api::blobs::BlobStatus::Complete { .. })
+            )
     }
 
     /// Fetch a blob from a known provider over iroh-blobs. No discovery: we open the connection
@@ -524,6 +615,9 @@ impl FileStore {
     /// malicious peer can't sneak an over-cap blob past - and we drop the stream, cancelling the
     /// transfer, having pulled at most ~cap bytes rather than the whole thing.
     async fn fetch_on(&self, conn: Connection, hash: Hash) -> Result<()> {
+        if self.is_sealed(&hash) {
+            bail!("blob {hash} is quarantined here");
+        }
         let _writing = self.gate.read().await;
         let mut progress = self.store().remote().fetch(conn, hash).stream();
         while let Some(item) = progress.next().await {
@@ -539,6 +633,7 @@ impl FileStore {
                 }
                 GetProgressItem::Done(_) => {
                     self.note_recent(hash);
+                    self.arrived(hash);
                     return Ok(());
                 }
                 GetProgressItem::Error(e) => bail!("fetching blob {hash}: {e:?}"),

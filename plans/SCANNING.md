@@ -1,6 +1,7 @@
 # Scanning: pictures, CSAM and the operator
 
-_A design draft (2026-11-02); nothing built._
+_A design draft (2026-11-02). Built: steps 1 to 3 of the order, 2026-11-02 (see
+HISTORY)._
 
 What an operator needs so that hosting other people's pictures doesn't become
 their liability, when the operator is one person and not an organization
