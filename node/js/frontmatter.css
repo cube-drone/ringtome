@@ -1,0 +1,67 @@
+/* Front matter (frontmatter.js): the sign-up form's "I agree" line - its box beside the words, the
+   words wrapping under themselves - and, in an app, a document framed in a modal. */
+/* Beside, not under: outranks the form's own column of labels (auth.css .welcome-form label). */
+label.frontmatter-agree {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.frontmatter-agree input {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+}
+
+.frontmatter-frame {
+    display: block;
+    width: 100%;
+    height: min(70vh, 40rem);
+    border: 0;
+}
+
+/* hrseServer's Front Matter (frontmatter.js): each document's additions - when they were last
+   published, advice on what goes in them, and the ways to write them and to see the page. */
+.frontmatter-kind {
+    margin-top: 1.4rem;
+}
+
+.frontmatter-kind h3 {
+    margin: 0 0 0.2rem;
+}
+
+.frontmatter-advice-head {
+    margin: 0.6rem 0 0.2rem;
+    font-size: 0.85rem;
+    color: var(--faint);
+}
+
+.frontmatter-advice {
+    margin: 0 0 0.4rem;
+    padding-left: 1.2rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.frontmatter-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.frontmatter-actions .removal-option {
+    width: auto;
+    flex: 1 1 12rem;
+}
+
+/* hrseWriter's bar for an addition's note: in the publish bar's place, its words then its button. */
+.frontmatter-bar-what {
+    flex: 1 1 18rem;
+    color: var(--muted);
+}
+
+.frontmatter-bar-what a {
+    color: var(--sea);
+}

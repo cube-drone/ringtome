@@ -263,6 +263,13 @@ lightly federated, unapologetically Old Internet.
     on, and the only document here addressed to the operator rather than the
     code: what to enrol in (Apple, Azure Artifact Signing), the eligibility
     traps, where each secret lands, and what proceeds unsigned meanwhile.
+  - [`TERMS_OF_SERVICE.md`](TERMS_OF_SERVICE.md), [`PRIVACY.md`](PRIVACY.md) —
+    the application's Terms of Service and Privacy Policy, and
+    [`NODE_OPERATOR_TERMS_OF_SERVICE.mq`](NODE_OPERATOR_TERMS_OF_SERVICE.mq),
+    [`NODE_OPERATOR_PRIVACY.mq`](NODE_OPERATOR_PRIVACY.mq) the defaults every
+    server adds: built into the node (`frontmatter.rs`) and shown at `/tos` and
+    `/privacy`, with the operator's own additions after them; the License
+    (`LICENSE.md`, the AGPL) at `/eula`. Drafts awaiting review (2026-11-01).
   - [`SERVER.md`](SERVER.md) — running a Ringtome node on a server: which
     release download is which, the container image, the settings, HTTPS (the
     operator's own proxy or CDN, with recipes for Caddy, nginx and a CDN), the

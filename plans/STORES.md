@@ -44,18 +44,18 @@ it.
 
 ## The checklist
 
-| need                          | asked by                    | have                                              | to build                                         |
-| ----------------------------- | --------------------------- | ------------------------------------------------- | ------------------------------------------------ |
-| an age screen                 | COPPA, both stores' forms   | nothing                                           | at registration, on the node (section 1)         |
-| terms agreed before posting   | Google Play UGC             | nothing                                           | at registration, with the age screen             |
-| privacy policy, terms         | both stores                 | nothing                                           | per-node templates and the app's own (section 2) |
-| no updating outside the store | Play, Mac App Store         | the update notice links to GitHub                 | a store-build flag (section 3)                   |
-| account deletion in the app   | both stores (Play: web too) | built 2026-11-01: "delete me" in hrseSettings     | -                                                |
-| block abusive users           | both stores' UGC rules      | blocking (a contact's `blocked` fact), room mutes | reachable from any post or line                  |
-| report objectionable content  | both stores' UGC rules      | nothing                                           | report = hide + block + send (section 5)         |
-| filter objectionable content  | Apple 1.2                   | content warnings by tag, trust-gated posts        | moderation lists (section 5)                     |
-| published contact information | Apple 1.2                   | nothing                                           | in the terms, per node                           |
-| store paperwork               | both                        | -                                                 | Data Safety, age rating, encryption export       |
+| need                          | asked by                    | have                                              | to build                                   |
+| ----------------------------- | --------------------------- | ------------------------------------------------- | ------------------------------------------ |
+| an age screen                 | COPPA, both stores' forms   | nothing                                           | at registration, on the node (section 1)   |
+| terms agreed before posting   | Google Play UGC             | built 2026-11-01: agreed at sign-up               | asking again when the terms change         |
+| privacy policy, terms         | both stores                 | built 2026-11-01: `/tos`, `/privacy`, `/eula`     | legal review                               |
+| no updating outside the store | Play, Mac App Store         | the update notice links to GitHub                 | a store-build flag (section 3)             |
+| account deletion in the app   | both stores (Play: web too) | built 2026-11-01: "delete me" in hrseSettings     | -                                          |
+| block abusive users           | both stores' UGC rules      | blocking (a contact's `blocked` fact), room mutes | reachable from any post or line            |
+| report objectionable content  | both stores' UGC rules      | nothing                                           | report = hide + block + send (section 5)   |
+| filter objectionable content  | Apple 1.2                   | content warnings by tag, trust-gated posts        | moderation lists (section 5)               |
+| published contact information | Apple 1.2                   | nothing                                           | in the terms, per node                     |
+| store paperwork               | both                        | -                                                 | Data Safety, age rating, encryption export |
 
 ## 1. The registration gate: age and terms
 
@@ -82,6 +82,17 @@ a neutral age screen is the standard way not to know.
   person.
 
 ## 2. Terms and privacy
+
+**Built 2026-11-01**, as first drafts awaiting legal review: the application's
+`TERMS_OF_SERVICE.md` and `PRIVACY.md`, and every server's defaults
+`NODE_OPERATOR_TERMS_OF_SERVICE.mq` and `NODE_OPERATOR_PRIVACY.mq`, at the
+repository's root and built into the node (`node/src/frontmatter.rs`), shown at
+`/tos`, `/privacy` and `/eula` (the AGPL). An account is made only with
+`agreed: true`, and records the version it agreed to (a hash of everything the
+pages show). An operator's additions are a note in hrseWriter, published from
+hrseServer's _Front Matter_; they follow the defaults, never replace them, and
+every version is listed on the page, dated, as a diff. Not yet: asking again at
+sign-in when the version moves, and the age screen (section 1).
 
 Both stores want a privacy policy at a URL in the listing and a way to it inside
 the app; Google's Data Safety form asks the same questions in detail. The

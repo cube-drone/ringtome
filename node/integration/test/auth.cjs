@@ -12,7 +12,7 @@ function uniqueUsername() {
 async function register(fetch, username, password) {
     return fetch('api/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, agreed: true }),
     });
 }
 

@@ -26071,3 +26071,97 @@ entry in the user-db call-site count, with its reason), ui-check 1102. Walked in
 headless Chrome against a scratch node: a wrong password says so, a persona
 deleted leaves the account holding the other, an account deleted lands on the
 front door and its sign-in is refused.
+
+## Front matter: terms, privacy, license, and operators' additions (2026-11-01)
+
+Curtis: a min-spec ToS and Privacy Policy, built into the app; account creation
+agreeing to them and the license, linked to `/tos`, `/privacy` and `/eula` on
+the node; default node-operator versions; and hrseServer's "Front Matter", where
+an operator's additions - written in hrseWriter, in a private `front-matter`
+notebook, "publication" meaning made public on the server - are appended, never
+in place of the defaults, with every change listed at the end of the page,
+dated, as a diff. The second of `plans/STORES.md`'s steps (section 2).
+
+- **The documents**, at the repository's root: `TERMS_OF_SERVICE.md` and
+  `PRIVACY.md` (the application's - first drafts, blanks left for the contact
+  address and the governing law), `NODE_OPERATOR_TERMS_OF_SERVICE.mq` and
+  `NODE_OPERATOR_PRIVACY.mq` (every server's defaults). The license is the
+  **AGPL v3** (`LICENSE.md`), not the GPL: `/eula` says so, shows it as written,
+  and links the source, which the AGPL asks a network server to offer.
+- **`node/src/frontmatter.rs`** embeds all five (`include_str!`) and serves the
+  three pages - the application's Markdown through the Marquee crate's Markdown
+  bridge (`marquee_markdown::to_marquee`), Marquee through the renderer the
+  reading copies use, no new dependency - then the operator's addition and the
+  change list (`diffy`, already a dependency, as a reader's diff). New node rung
+  `0111_front_matter.sql`: `front_matter` (every published version) and
+  `terms_agreed` (account, version, when). The version is a hash of everything
+  the pages show.
+- **Sign-up** requires `agreed: true` (`/api/auth/register` refuses otherwise)
+  and records the version. The form's required "I agree to the Terms of Service,
+  the Privacy Policy and the License" (`js/frontmatter.js`): new tabs in a
+  browser, a modal framing the page in the installed apps - an app has one
+  window, and a page opened in it would strand the form. Every test and harness
+  caller of the register endpoint now sends `agreed`.
+- **hrseServer → Front Matter** (every administrator, desktop included): each
+  document's additions, when last published, advice on what to put there, "write
+  it in hrseWriter" (finds the note by its `front_matter` field, or makes it in
+  the `front-matter` notebook holding what's published) and "see the page". In
+  hrseWriter that note wears its own bar in the publish bar's place: **publish
+  to this server** saves, then `POST /api/admin/front-matter/{tos|privacy}`
+  reads the note's words on the node and keeps them as a new version - the same
+  words again change nothing. Administrators only.
+- Deleting an account (yours or an administrator's eviction) drops its
+  agreements.
+
+`integration/test/frontmatter.cjs` (4): no agreement, no account, and the
+version recorded; the three pages, linked, the AGPL and its source; the
+operator's note after the application's words and the default, as a diff from
+nothing, the same words changing nothing, an edit listed as a second dated diff,
+the privacy page untouched, and a later sign-up agreeing to a new version; only
+an administrator publishes, and a deleted account's agreement goes. Walked in
+headless Chrome against a scratch node: the form won't submit until the box is
+ticked; Front Matter's "write it" lands on the note in hrseWriter with its bar
+and no publish bar; publishing says "published to /tos" and the page shows the
+words, then the change. Not yet: asking again at sign-in when the version moves,
+and the age screen.
+
+## Front matter on your own computer leaves out the operator (2026-11-01)
+
+Curtis: in the desktop and Android apps a person is "their own single-node
+operator", so `/tos` and `/privacy` there shouldn't read them the operator's
+terms. The node now knows when an app is around it (`Shell::present`: the app
+takes the request channel for its whole life; a server has nobody listening),
+and the pages leave out every server's default and the operator's additions -
+saying instead that this server is the app on your own computer, and you are its
+operator - while nobody else is hosted there: before the first account (its
+owner's), or with one account and its owner signed in. Someone not signed in
+where an account already exists is about to be hosted by that owner, and reads
+the full terms; so does everyone once a second account exists. A server is
+unchanged. `frontmatter.rs` `own_server`, unit-tested; the front-matter
+acceptance area still passes (4). Not run inside the desktop app itself - the
+shared test nodes hold many accounts and no app.
+
+## A rare flake in "one document, many sharers", made to say what it saw (2026-11-01)
+
+CI's run of "in-app deletion" failed once on "when the introducer withdraws, the
+line is led by whoever still stands behind it" (sharedby.cjs) and passed 0 of 5
+reruns - its only failure in the last 60 failed runs. Node C's log in the run's
+rig-logs shows the withdrawal pulled and folded inside the beat (the journal's
+retract leg ran, `retract_ms=4`), the second round finding nothing more, and the
+feed read after still not led by sid: not a missed sync or a skipped fold, but
+the lead's reassignment not landing - which of no row, no byline or the wrong
+sharer the assertion couldn't say. It now says
+(`saw via …, count …, others […]`), so the next occurrence names its case.
+Unrelated to the deletion work it fired under.
+
+## Front matter: a new note says what it's for (2026-11-01)
+
+Curtis opened his Terms of Service note and found a blank page, expecting the
+server default to edit - the note is additions only, after the default. A new
+note now opens with one Marquee comment line saying so ("Your additions go here.
+The application's terms and the server default already show above them on
+/tos."), and publishing drops whole-line `%%` comments before keeping a version
+(`frontmatter.rs` `uncommented`, unit-tested), so the hint never reaches the
+page or its change list, and publishing the hint alone adds nothing. Checked
+against a scratch node: the fresh note holds the hint; published with it, `/tos`
+shows the words and not the hint.

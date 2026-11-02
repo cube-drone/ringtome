@@ -6995,7 +6995,7 @@ async fn private_set_remove_handler(
 // ---------------------------------------------------------------------------------------------
 // Versioned documents (the notes app).
 
-fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
+pub(crate) fn hex_fixed<const N: usize>(s: &str, what: &str) -> Result<[u8; N], AppError> {
     hex::decode(s).ok().and_then(|b| <[u8; N]>::try_from(b).ok()).ok_or_else(|| {
         AppError::BadRequest(crate::msg!(
             "identity.routes.bad-what-expected-hex-chars",

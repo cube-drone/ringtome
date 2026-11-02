@@ -43,7 +43,12 @@ async function nodeAdmin(prefix, host = HOST) {
 
 /// Sign up at `host` as a stranger would: a fresh cookie jar, no session.
 const signUp = (username, password, registration_password, host = HOST) =>
-    j(makeFetch(host), 'api/auth/register', { username, password, registration_password });
+    j(makeFetch(host), 'api/auth/register', {
+        username,
+        password,
+        registration_password,
+        agreed: true,
+    });
 
 describe('the Server app: registration and backups, for administrators', function () {
     this.timeout(600000);

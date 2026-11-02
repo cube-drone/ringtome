@@ -423,6 +423,8 @@ export default {
     'device.who-may-sign-up-here': 'who may sign up here',
     'device.backups': 'Backups',
     'device.copies-of-everything-to-keep-safe': 'copies of everything here, to keep somewhere safe',
+    'device.front-matter': 'Front Matter',
+    'device.customize-your-terms': 'customize your Terms of Service and Privacy Policy here',
     'device.server-customization': 'Server customization',
     'device.the-front-pages-name-and-taglines': "the front page's name, and the taglines scrolling under it",
     'device.only-for-the-people-who-look-after-this': 'These settings are only for the people who look after this place.',
@@ -1623,6 +1625,37 @@ export default {
     'chips.unfeature': 'unfeature',
     'chips.feature': 'feature',
 
+    // --- node/js/frontmatter.js ---
+    'frontmatter.terms-of-service': 'Terms of Service',
+    'frontmatter.privacy-policy': 'Privacy Policy',
+    'frontmatter.license': 'License',
+    'frontmatter.i-agree': 'I agree to the {tos}, the {privacy} and the {eula}.',
+    'frontmatter.tos-note-title': "Terms of Service: this server's additions",
+    'frontmatter.advice-who': 'who runs this server, and how to reach you',
+    'frontmatter.advice-house-rules': "your house rules, beyond the application's: what this server is for, and what doesn't belong here",
+    'frontmatter.advice-age': 'a minimum age, if it is higher than 13',
+    'frontmatter.advice-law': 'where you are, and whose law governs this server',
+    'frontmatter.advice-reports': 'how you handle reports, and when you remove an account',
+    'frontmatter.privacy-note-title': "Privacy Policy: this server's additions",
+    'frontmatter.advice-logs': 'whether you keep logs, how long, and whether they hold the addresses people connect from',
+    'frontmatter.advice-in-front': 'what sits in front of this server - a content delivery network or a proxy - by name',
+    'frontmatter.advice-where': 'where the server is, and who hosts it',
+    'frontmatter.advice-backups': 'your backups: where they are kept, and for how long',
+    'frontmatter.advice-requests': 'who to contact with a question, or a request the law gives people',
+    'frontmatter.additions-hint': 'Your additions go here. The application’s terms and the server default already show above them on {href}.',
+    'frontmatter.front-matter': 'Front Matter',
+    'frontmatter.page-intro': "Customize your Terms of Service and Privacy Policy here. Every server shows the application's own, then the terms every server starts with; what you write here is added after them - it can add rules, never take any away. Each version you publish is listed at the end of the page, dated.",
+    'frontmatter.last-published': 'your additions, last published {when}',
+    'frontmatter.nothing-added': 'nothing added yet: the page shows the defaults alone',
+    'frontmatter.what-you-might-add': 'what you might add:',
+    'frontmatter.write-it': 'write it in hrseWriter',
+    'frontmatter.see-the-page': 'see the page',
+    'frontmatter.published-to': 'published to {href}',
+    'frontmatter.already-published': 'already published - nothing changed',
+    'frontmatter.couldnt-publish': "couldn't publish it: {message}",
+    'frontmatter.this-note-is': "This note is this server's additions to its {page}. Publishing adds it after the application's words, and lists the change, dated, at the end of the page.",
+    'frontmatter.publish-to-this-server': 'publish to this server',
+
     // --- node/js/groupface.js ---
     'publicgroup.a-public-group': "a public group: anybody can see who's in it",
     'publicgroup.a-private-group': "a private group: only its members can see who's in it",
@@ -2480,6 +2513,7 @@ export default {
     'auth.keys.hour-too-many': "this key has {n} hour's keys working already - use one of them",
 
     // --- node/src/auth/routes.rs ---
+    'auth.routes.agree-to-the-terms-first': 'agree to the terms of service, the privacy policy and the license first',
     'auth.routes.no-account': 'no account "{username}"',
     'auth.routes.only-on-a-development-build': 'only a development build makes anyone a node administrator for asking',
     'auth.routes.no-account-2': 'no account "{username}"',
@@ -2583,6 +2617,12 @@ export default {
     'frontdoor.too-many-taglines': 'at most a hundred taglines, each under 500 characters',
     'frontdoor.only-a-server': 'only a server has a front page to pin to',
     'frontdoor.only-public-posts-here': 'only a public post hosted here can go on the front page',
+
+    // --- node/src/frontmatter.rs ---
+    'frontmatter.no-such-document': 'no such document',
+    'frontmatter.note-not-found': "that note isn't here",
+    'frontmatter.words-not-here-yet': "that note's words haven't reached this server yet",
+    'frontmatter.too-long': "that's too long for an addition - keep it under {max} KB",
 
     // --- node/src/groups.rs ---
     'groups.choose-a-group-you-own': 'choose a group one of your personas here owns',

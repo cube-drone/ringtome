@@ -371,6 +371,22 @@ difference: each persona's key here is retired, a signed statement its other
 computers hear, and the key file is destroyed. An administrator's own account
 can't be deleted that way, as it can't be evicted.
 
+### Front Matter: your terms and privacy policy
+
+Everyone who signs up here agrees to the Terms of Service, the Privacy Policy
+and the License, at `/tos`, `/privacy` and `/eula` on this server. Each page
+shows the application's own words, then the terms every server starts with -
+both built into the release - and then your additions, if you've made any.
+
+**Front Matter** in the Server app is where you make them. Its "write it in
+hrseWriter" opens a private note of yours, in a notebook called `front-matter`;
+the page lists what you might put there - who runs the server and how to reach
+you, your house rules, your logs and how long you keep them, whatever sits in
+front of the server (a CDN, a proxy). The note's **publish to this server** adds
+it to the page as it stands. Your additions come after everything else and can't
+take anything away from it, and every version you publish stays listed at the
+end of the page, dated, as a diff of the one before.
+
 ## Backups
 
 The node backs itself up without stopping. Ask it from the Server app, from the

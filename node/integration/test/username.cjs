@@ -8,7 +8,7 @@ const { makeUserFetch, uniqueUsername } = require('./helpers.cjs');
 async function register(fetch, username, password = 'test-password-123') {
     return fetch('api/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, agreed: true }),
     });
 }
 

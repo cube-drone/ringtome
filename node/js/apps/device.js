@@ -13,6 +13,8 @@
 //   (node/src/backup.rs). Restoring is not here yet.
 // - Server customization (servers only, 2026-09-30): the front page's name and its marquee's
 //   taglines (node/src/frontdoor.rs). A desktop app has no front page for strangers.
+// - Front Matter (2026-11-01): this place's additions to the Terms of Service and the Privacy
+//   Policy (frontmatter.js, node/src/frontmatter.rs).
 //
 // The word "node" never appears on these pages: it is the protocol's word, not the person's.
 import { h } from 'preact';
@@ -21,6 +23,7 @@ import htm from 'htm';
 
 import { api, isDevice } from '../net.js';
 import { AccountPage } from '../account.js';
+import { FrontMatterPage } from '../frontmatter.js';
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
@@ -42,8 +45,8 @@ const pages = (admin) =>
     !admin
         ? ['network']
         : isDevice()
-          ? ['network', 'registration', 'backups']
-          : ['network', 'registration', 'backups', 'customization'];
+          ? ['network', 'registration', 'backups', 'frontmatter']
+          : ['network', 'registration', 'backups', 'customization', 'frontmatter'];
 
 /// Each page's name and what it's for, as the landing lists them.
 const PAGE_WORDS = () => ({
@@ -64,6 +67,10 @@ const PAGE_WORDS = () => ({
             'device.copies-of-everything-to-keep-safe',
             'copies of everything here, to keep somewhere safe',
         ),
+    ],
+    frontmatter: [
+        t('device.front-matter', 'Front Matter'),
+        t('device.customize-your-terms', 'customize your Terms of Service and Privacy Policy here'),
     ],
     customization: [
         t('device.server-customization', 'Server customization'),
@@ -89,6 +96,7 @@ export const DeviceApp = ({ page, account, admin, current }) => {
     if (page === 'account' && account)
         return html`<${AccountPage} id=${account} current=${current} />`;
     if (page === 'customization' && !isDevice()) return html`<${Customization} />`;
+    if (page === 'frontmatter') return html`<${FrontMatterPage} current=${current} />`;
     return html`<${Landing} admin=${admin} />`;
 };
 

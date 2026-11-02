@@ -149,6 +149,7 @@ async fn delete_account_handler(
     let id = account.to_string();
     crate::auth::keys::forget_account(&state.node_db, &id).await?;
     crate::identity::adoption::forget_account(&state, &id).await?;
+    crate::frontmatter::forget_account(&state.node_db, &id).await?;
     crate::auth::remove_account(&state.node_db, &id).await?;
     tracing::info!(account = %id, personas = personas.len(), "an account deleted itself");
     let name = crate::auth::session_cookie_name(state.config.port);

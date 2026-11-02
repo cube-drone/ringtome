@@ -56,6 +56,10 @@ struct Credentials {
     /// The sign-up password, when the node asks for one (registration.rs). Ignored by login.
     #[serde(default)]
     registration_password: Option<String>,
+    /// That the person agreed to the terms of service, the privacy policy and the license
+    /// (frontmatter.rs) - required to make an account. Ignored by login.
+    #[serde(default)]
+    agreed: bool,
 }
 
 #[derive(Serialize)]
@@ -104,6 +108,12 @@ async fn register_handler(
     state.rate_limiter.check_ctx("register", &ctx, REGISTER_LIMIT, HOUR_MS).await?;
     // Who may sign up here at all (registration.rs): open, a shared password, or nobody new.
     crate::registration::admit(&state, creds.registration_password.as_deref()).await?;
+    if !creds.agreed {
+        return Err(AppError::BadRequest(crate::msg!(
+            "auth.routes.agree-to-the-terms-first",
+            "agree to the terms of service, the privacy policy and the license first"
+        )));
+    }
 
     let account = register(
         &state.node_db,
@@ -114,6 +124,7 @@ async fn register_handler(
         state.config.admin_persona.is_none(),
     )
     .await?;
+    crate::frontmatter::agree(&state.node_db, &account.id).await?;
     Ok(Json(AccountInfo {
         id: account.id.to_string(),
         username: account.username,

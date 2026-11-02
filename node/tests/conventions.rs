@@ -37,6 +37,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("boot_timestamps", vec!["db.rs"]),
         ("schema_ladder", vec!["migrations.rs"]),
         ("push_subscriptions", vec!["webpush.rs"]),
+        ("front_matter", vec!["frontmatter.rs"]),
+        ("terms_agreed", vec!["frontmatter.rs"]),
         ("registration_policy", vec!["registration.rs"]),
         ("ingest_job", vec!["ingest.rs"]),
         ("foreign_fetches", vec!["idface.rs"]),

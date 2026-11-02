@@ -61,6 +61,12 @@ impl Shell {
         self.sender.subscribe()
     }
 
+    /// Whether an app is around this node - the desktop or Android app, which takes the request
+    /// channel for its whole life. A server has nobody listening.
+    pub fn present(&self) -> bool {
+        self.sender.receiver_count() > 0
+    }
+
     /// Ask. True when somebody was there to hear it - a shell, or the test recorder.
     pub fn ask(&self, request: ShellRequest) -> bool {
         let recorded = match &self.recorded {

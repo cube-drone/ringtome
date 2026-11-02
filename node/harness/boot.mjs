@@ -113,7 +113,7 @@ export function session(base) {
 export async function signUp(s, prefix, password = `${prefix}-password-123`) {
     const username = `${prefix}${Date.now() % 100000}`;
     const J = { 'Content-Type': 'application/json' };
-    const creds = JSON.stringify({ username, password });
+    const creds = JSON.stringify({ username, password, agreed: true });
     await s.fetch('/api/auth/register', { method: 'POST', headers: J, body: creds });
     await s.fetch('/api/auth/login', { method: 'POST', headers: J, body: creds });
     return { username, password };

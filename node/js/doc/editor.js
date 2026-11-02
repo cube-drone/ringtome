@@ -25,6 +25,7 @@ import { readPref, setPref, viewModeKey, usePrefValue, VIM_KEY } from '../mirror
 import { Chip, NavChips, PublishChip, useChipMenu } from './chips.js';
 import { t } from '../i18n.js';
 import { PublishBar } from './publishbar.js';
+import { FrontMatterBar, frontMatterOf } from '../frontmatter.js';
 import { docStatus, publishedState } from '../pure/feed.js';
 import { api, apiText } from '../net.js';
 import { useNarrow } from '../panes.js';
@@ -562,7 +563,10 @@ export const Editor = ({
 
     // Whether there is a publish bar at all (see PublishBar: nothing for a private document without
     // Social), so a narrow window offers its chip only when it summons something.
-    const hasPublishBar = feat.publish && (!!book || standing !== 'private' || social);
+    // A note that is this server's additions to its terms (frontmatter.js) has its own bar instead.
+    const frontKind = frontMatterOf(row);
+    const hasPublishBar =
+        feat.publish && (!!book || !!frontKind || standing !== 'private' || social);
 
     // The text helpers (doc/texthelpers.js, plans/TEXT_HELPERS.md): a rule of pure/markuphelp.js
     // applied to the words and the selection, the answer written back to whichever surface shows
@@ -863,6 +867,14 @@ export const Editor = ({
             ${
                 feat.publish &&
                 !book &&
+                frontKind &&
+                (!narrow || publishOpen) &&
+                html`<${FrontMatterBar} root=${root} docId=${docId} kind=${frontKind} prepare=${prepare} />`
+            }
+            ${
+                feat.publish &&
+                !book &&
+                !frontKind &&
                 (!narrow || publishOpen) &&
                 html`<${PublishBar}
                 root=${root}

@@ -184,6 +184,7 @@ async fn evict_handler(
     }
     crate::auth::keys::forget_account(&state.node_db, &id).await?;
     crate::identity::adoption::forget_account(&state, &id).await?;
+    crate::frontmatter::forget_account(&state.node_db, &id).await?;
     crate::auth::remove_account(&state.node_db, &id).await?;
     tracing::info!(account = %id, personas = personas.len(), by = %admin.account.id, "an administrator evicted an account");
     Ok(Json(Evicted { personas }))

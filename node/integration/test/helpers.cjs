@@ -39,7 +39,7 @@ async function makeUserFetch(opts = {}) {
 
     const regResp = await fetch('api/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, agreed: true }),
     });
     if (regResp.status !== 200) {
         const body = await regResp.text();

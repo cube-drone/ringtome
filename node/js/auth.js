@@ -14,6 +14,7 @@ import { Icons } from './icons.js';
 import { readQr } from './qrread.js';
 import { DownloadPanel } from './downloads.js';
 import { Marquee } from './frontdoor.js';
+import { AgreeToTerms } from './frontmatter.js';
 
 const html = htm.bind(h);
 
@@ -75,13 +76,14 @@ export function useSession() {
 
     // Register does not set the session cookie (it just makes the account), so
     // signing up is register-then-login in one motion.
-    const register = async (username, password, registrationPassword) => {
+    const register = async (username, password, registrationPassword, agreed) => {
         await api('/api/auth/register', {
             method: 'POST',
             body: JSON.stringify({
                 username,
                 password,
                 registration_password: registrationPassword || null,
+                agreed: !!agreed,
             }),
         });
         await login(username, password);
@@ -202,6 +204,7 @@ export const Welcome = ({ session }) => {
     const [needsNewName, setNeedsNewName] = useState(false);
     const [newUsername, setNewUsername] = useState('');
     const [signupPassword, setSignupPassword] = useState('');
+    const [agreed, setAgreed] = useState(false);
     const [registration, signupGroup] = useRegistrationMode();
     const signupsClosed = registration === 'closed';
     const askSignupPassword = registration === 'password';
@@ -258,7 +261,7 @@ export const Welcome = ({ session }) => {
             } else if (registering) {
                 importIntent = importing;
                 try {
-                    await session.register(username, password, signupPassword);
+                    await session.register(username, password, signupPassword, agreed);
                 } catch (err) {
                     importIntent = false;
                     throw err;
@@ -502,6 +505,8 @@ export const Welcome = ({ session }) => {
                 </label>
                 <p class="field-note">${t('auth.whoever-invited-you-has-it', 'whoever invited you has it')}</p>`
                 }
+
+                ${registering && html`<${AgreeToTerms} agreed=${agreed} onAgreed=${setAgreed} />`}
 
                 ${error && html`<p class="form-error">${error}</p>`}
 

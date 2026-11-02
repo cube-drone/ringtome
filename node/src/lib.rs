@@ -56,6 +56,7 @@ pub mod files;
 pub mod fold;
 pub mod fragments;
 pub mod frontdoor;
+pub mod frontmatter;
 pub mod groups;
 pub mod heartbeat;
 pub mod identity;
@@ -1107,6 +1108,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         // An account as a node administrator sees it (accounts.rs): its personas, its sign-in, eviction.
         .merge(accounts::router())
         .merge(leaving::router())
+        .merge(frontmatter::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))
         .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))

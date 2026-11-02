@@ -37,6 +37,7 @@ async function joiner(tag, offered) {
         username,
         password: 'password-123',
         registration_password: offered || null,
+        agreed: true,
     });
     if (r.status !== 200) return { status: r.status };
     await j(who, 'api/auth/login', { username, password: 'password-123' });

@@ -741,7 +741,7 @@ const ACTIONS = [
             // The same login on the other node: hammer-lantern signs in wherever their
             // persona lives. The pair is usually free there; a rare clash gets a suffix.
             let username = p.username;
-            let creds = JSON.stringify({ username, password: PASSWORD });
+            let creds = JSON.stringify({ username, password: PASSWORD, agreed: true });
             let reg = await s.fetch('/api/auth/register', {
                 method: 'POST',
                 headers: J,
@@ -749,7 +749,7 @@ const ACTIONS = [
             });
             if (reg.status >= 400) {
                 username = `${p.username}-${1 + Math.floor(rng() * 98)}`;
-                creds = JSON.stringify({ username, password: PASSWORD });
+                creds = JSON.stringify({ username, password: PASSWORD, agreed: true });
                 reg = await s.fetch('/api/auth/register', {
                     method: 'POST',
                     headers: J,
@@ -1550,7 +1550,11 @@ for (const base of nodes) {
         let who = null;
         for (let tries = 0; tries < 8 && !who; tries++) {
             const pair = namePair(rng);
-            const creds = JSON.stringify({ username: pair.username, password: PASSWORD });
+            const creds = JSON.stringify({
+                username: pair.username,
+                password: PASSWORD,
+                agreed: true,
+            });
             const reg = await s.fetch('/api/auth/register', {
                 method: 'POST',
                 headers: J,

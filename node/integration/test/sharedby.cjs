@@ -195,9 +195,18 @@ const unshare = (fetcher, mine, author, docId) =>
 
         await arriveOnC(samRoot, avaRoot); // sam's chain moved: the retraction
         const row = await feedRow(rex, rexRoot, post);
+        // What it saw, said (2026-11-01: this failed once in CI, the withdrawal pulled and folded,
+        // and "false" couldn't tell no row from no byline from the wrong sharer leading).
+        const who = (r) =>
+            ({ [samRoot]: 'sam', [sidRoot]: 'sid', [skyRoot]: 'sky' })[r] ||
+            (r ? r.slice(0, 8) : r);
         assert.ok(
             row && row.via === sidRoot,
-            'the lead moved to the earliest sharer still standing behind it',
+            `the lead moved to the earliest sharer still standing behind it - saw ${
+                row
+                    ? `via ${who(row.via)}, count ${row.via_count}, others [${(row.via_others || []).map((o) => who(o.root))}]`
+                    : 'no row'
+            }`,
         );
         assert.equal(row.via_count, 2, 'and the crowd is the two who remain');
         assert.deepEqual(
