@@ -87,8 +87,9 @@ continue after your account ends.
 
 ## 11. Changes
 
-We may change these terms. We'll date every change here, and a server will ask
-you to agree again when you next sign in.
+We may change these terms. We'll date every change here. If you keep using Horse
+Drawing Tycoon 2 after a change, you accept the new terms; if a change is
+important enough, a server will ask you to agree again.
 
 ## 12. The law
 

@@ -26199,3 +26199,13 @@ Curtis filled the blanks the drafts left: `TERMS_OF_SERVICE.md` and `PRIVACY.md`
 are reached at horsedrawingtycoon@gooble.email (a `mailto:` link on `/tos` and
 `/privacy`), and the terms are governed by the laws of the Province of British
 Columbia, Canada, and the federal laws of Canada that apply there.
+
+## The terms stop promising a re-agree prompt (2026-11-01)
+
+Section 11 of `TERMS_OF_SERVICE.md` said a server would ask everyone to agree
+again at their next sign-in after a change, which nothing does: the version an
+account agreed to is recorded at sign-up (`terms_agreed`) and read by nothing
+but the acceptance claims. Curtis's ruling: the prompt waits for a change
+important enough to need it. The section now says that using the app after a
+change accepts it, and that a server will ask again if a change is important
+enough.
