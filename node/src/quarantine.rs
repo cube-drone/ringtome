@@ -83,14 +83,7 @@ pub async fn arrived(state: AppState, hash: iroh_blobs::Hash) {
     if !refusing_anything() || state.files.is_sealed(&hash) {
         return;
     }
-    let Ok(Some(bytes)) = state.files.get_public(hash).await else { return };
-    if bytes.get(4..8) != Some(b"ftyp") {
-        return;
-    }
-    let print = crate::media::lane::background(move || crate::media::image::fingerprint(&bytes))
-        .await
-        .ok()
-        .flatten();
+    let print = crate::prints::of(&state, hash.as_bytes()).await;
     if print.as_ref().is_some_and(refuses_print) {
         if let Err(e) = seal(
             &state,

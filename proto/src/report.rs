@@ -54,6 +54,11 @@ impl Report {
         if self.reason.len() > MAX_REPORT_REASON_BYTES {
             return Err(ProtoError::BadEntry("report reason length"));
         }
+        // Pictures are listed from what a moderator holds, not reported by hash: nothing asks a
+        // reporter to name one yet.
+        if self.kind == ModerationTarget::Picture {
+            return Err(ProtoError::BadEntry("report target kind"));
+        }
         if let Some(item) = &self.item {
             if item.auth_path.len() > MAX_AUTH_PATH {
                 return Err(ProtoError::BadEntry("report item path too deep"));

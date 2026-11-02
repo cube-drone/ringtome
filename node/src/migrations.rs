@@ -450,6 +450,12 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0116_quarantine_prints.sql"),
         refold: &[],
     },
+    Rung {
+        version: 117,
+        name: "0117_picture_prints.sql",
+        sql: include_str!("../migrations/node/0117_picture_prints.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).
@@ -507,6 +513,12 @@ pub const USER: &[Rung] = &[
         name: "0034_moderation.sql",
         sql: include_str!("../migrations/user/0034_moderation.sql"),
         refold: &[],
+    },
+    Rung {
+        version: 35,
+        name: "0035_moderation_pictures.sql",
+        sql: include_str!("../migrations/user/0035_moderation_pictures.sql"),
+        refold: &[ringtome_proto::registry::service::MODERATION_PUBLIC],
     },
 ];
 

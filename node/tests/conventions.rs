@@ -49,6 +49,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("doc_annotations", vec!["annotations.rs"]),
         ("moderation_said", vec!["moderation.rs"]),
         ("quarantine", vec!["quarantine.rs"]),
+        ("picture_prints", vec!["prints.rs"]),
         ("report_policy", vec!["reports.rs"]),
         ("report_takers", vec!["reports.rs"]),
         ("reports", vec!["reports.rs"]),

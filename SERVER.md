@@ -441,6 +441,14 @@ anyone, is refused, and a copy arriving from another server is sealed as it
 lands. The list is never published. **Release** unseals a file; the record of
 what was held, when and by whom stays.
 
+For a picture that is merely unwelcome, block it instead: Content control, _Your
+public list_, with the picture's address. Blocking is public, like every entry
+on your list. Everyone who trusts you to moderate gets the picture covered
+wherever it's posted. As an administrator, your server also stops serving it and
+lets it go, rather than keeping it as a quarantine does. A different file that
+only looks like it, by its fingerprint, gets a warning, never a block: a
+fingerprint can be faked on purpose, to get an innocent picture blocked.
+
 ## Backups
 
 The node backs itself up without stopping. Ask it from the Server app, from the

@@ -2296,9 +2296,12 @@ pub(crate) async fn public_doc_bytes(
     } else {
         (file_hash, crate::record::documents::Format::from_wire(format).mime())
     };
-    // Quarantined by this node's operator (quarantine.rs): gone from here, before any cache's
-    // 304 could vouch for a copy.
-    if state.files.is_sealed(&iroh_blobs::Hash::from_bytes(hash)) {
+    // Quarantined by this node's operator (quarantine.rs), or a picture its moderation blocks
+    // (moderation.rs) - whose thumbnail goes with it: gone from here, before any cache's 304
+    // could vouch for a copy.
+    if state.files.is_refused(&iroh_blobs::Hash::from_bytes(hash))
+        || state.files.is_refused(&iroh_blobs::Hash::from_bytes(file_hash))
+    {
         return Err(AppError::NotFound(crate::msg!(
             "quarantine.removed-here",
             "removed by this server's operator"

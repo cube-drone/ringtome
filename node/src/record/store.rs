@@ -522,6 +522,7 @@ impl Moderation<'_> {
         level: ringtome_proto::ModerationLevel,
         reason: &str,
         present: bool,
+        pdq: Option<[u8; 32]>,
     ) -> Result<SignedEntry, AppError> {
         imaol::publish_moderation(
             &self.store.db,
@@ -532,6 +533,7 @@ impl Moderation<'_> {
                 level,
                 reason: reason.to_string(),
                 present,
+                pdq,
             },
         )
         .await

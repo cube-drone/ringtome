@@ -189,6 +189,9 @@ pub struct FileStore {
     gate: WriteGate,
     /// See [`Sealed`].
     sealed: Sealed,
+    /// The pictures this node's moderation blocks (moderation.rs): refused at the same doors as
+    /// a sealed blob, but not kept - the reaper lets them go (a block is retroactive).
+    withheld: Sealed,
     /// See [`Arrival`].
     arrivals: Arrivals,
     /// A clone of the node's test transport gate, because this layer opens its OWN connections
@@ -222,6 +225,7 @@ impl FileStore {
             outstanding,
             gate,
             sealed: Sealed::default(),
+            withheld: Sealed::default(),
             arrivals: Arrivals::default(),
         }
     }
@@ -254,6 +258,7 @@ impl FileStore {
             outstanding,
             gate,
             sealed: Sealed::default(),
+            withheld: Sealed::default(),
             arrivals: Arrivals::default(),
         })
     }
@@ -435,10 +440,12 @@ impl FileStore {
         };
         let (events, mut rx) = EventSender::channel(64, mask);
         let sealed = self.sealed.clone();
+        let withheld = self.withheld.clone();
         tokio::spawn(async move {
             let refused = |hashes: &[Hash]| {
                 let sealed = sealed.read().expect("sealed set poisoned");
-                hashes.iter().any(|h| sealed.contains(h))
+                let withheld = withheld.read().expect("withheld set poisoned");
+                hashes.iter().any(|h| sealed.contains(h) || withheld.contains(h))
             };
             while let Some(msg) = rx.recv().await {
                 match msg {
@@ -489,6 +496,20 @@ impl FileStore {
         self.sealed.read().expect("sealed set poisoned").contains(hash)
     }
 
+    /// The pictures this node's moderation blocks, whole - replacing the last set.
+    pub fn withhold(&self, hashes: std::collections::HashSet<Hash>) {
+        *self.withheld.write().expect("withheld set poisoned") = hashes;
+    }
+
+    pub fn withheld(&self) -> Vec<Hash> {
+        self.withheld.read().expect("withheld set poisoned").iter().copied().collect()
+    }
+
+    /// Quarantined or blocked: nothing reads, fetches, stores or serves it.
+    pub fn is_refused(&self, hash: &Hash) -> bool {
+        self.is_sealed(hash) || self.withheld.read().expect("withheld set poisoned").contains(hash)
+    }
+
     /// Encrypt a body under an epoch key and store it. The [`Put`]'s hash is the ciphertext
     /// content hash a note header points at via `file_hash`; the `Put` itself is held until
     /// that header has been appended.
@@ -519,7 +540,7 @@ impl FileStore {
         if plaintext.len() as u64 > self.max_blob_bytes {
             bail!("blob is {} bytes, over the {}-byte cap", plaintext.len(), self.max_blob_bytes);
         }
-        if self.is_sealed(&Hash::new(plaintext)) {
+        if self.is_refused(&Hash::new(plaintext)) {
             bail!("this file is quarantined on this server");
         }
         let _writing = self.gate.read().await;
@@ -544,7 +565,7 @@ impl FileStore {
     /// Read a PUBLIC body: the bytes as stored, no decryption. `Ok(None)` = not held locally
     /// (headers sync ahead of bodies, same as ever).
     pub async fn get_public(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
-        if self.is_sealed(&hash) {
+        if self.is_refused(&hash) {
             return Ok(None);
         }
         match self.store().get_bytes(hash).await {
@@ -561,7 +582,7 @@ impl FileStore {
     pub async fn get_decrypted(&self, hash: Hash, keys: &EpochKeys) -> Result<Option<Vec<u8>>> {
         // A missing blob is Ok(None), not an error: headers sync ahead of their bodies, and
         // "not fetched yet" renders the same as "no key for its era" - no body to show, yet.
-        if self.is_sealed(&hash) {
+        if self.is_refused(&hash) {
             return Ok(None);
         }
         let blob = match self.store().get_bytes(hash).await {
@@ -588,7 +609,7 @@ impl FileStore {
 
     /// Do we hold this blob, complete, locally?
     pub async fn has(&self, hash: Hash) -> bool {
-        !self.is_sealed(&hash)
+        !self.is_refused(&hash)
             && matches!(
                 self.store().blobs().status(hash).await,
                 Ok(iroh_blobs::api::blobs::BlobStatus::Complete { .. })
@@ -615,7 +636,7 @@ impl FileStore {
     /// malicious peer can't sneak an over-cap blob past - and we drop the stream, cancelling the
     /// transfer, having pulled at most ~cap bytes rather than the whole thing.
     async fn fetch_on(&self, conn: Connection, hash: Hash) -> Result<()> {
-        if self.is_sealed(&hash) {
+        if self.is_refused(&hash) {
             bail!("blob {hash} is quarantined here");
         }
         let _writing = self.gate.read().await;

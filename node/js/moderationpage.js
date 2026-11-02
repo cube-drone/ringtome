@@ -10,6 +10,7 @@ import { personHref } from './links.js';
 import { PersonInline } from './person.js';
 import {
     levelWord,
+    listPicture,
     listTarget,
     overrule,
     ReasonInput,
@@ -24,6 +25,61 @@ const html = htm.bind(h);
 /// Someone named in a list: face and name, opening their page - where the box and the form are.
 const Who = ({ root, current }) =>
     html`<a class="moderation-who" href=${personHref(root)}><${PersonInline} root=${root} current=${current} /></a>`;
+
+/// What an entry names: a person, a node by its id, or a picture by its hash - never shown here,
+/// since it may be one nobody should see.
+const Target = ({ kind, target, current }) =>
+    kind === 'persona'
+        ? html`<${Who} root=${target} current=${current} />`
+        : html`<span class="moderation-who">
+              ${kind === 'picture' ? t('moderation.a-picture', 'a picture') : t('moderation.a-node', 'a server')}
+              <code class="report-node" title=${target}>${target.slice(0, 12)}…</code>
+          </span>`;
+
+/// Put a picture on your public list by its address, as anyone copies it.
+const PictureForm = ({ root }) => {
+    const [address, setAddress] = useState('');
+    const [level, setLevel] = useState('block');
+    const [reason, setReason] = useState('');
+    const [error, setError] = useState(null);
+    const add = async () => {
+        setError(null);
+        try {
+            await listPicture(root, address.trim(), level, reason.trim());
+            setAddress('');
+            setReason('');
+        } catch (e) {
+            setError(e.message || String(e));
+        }
+    };
+    return html`<div class="moderation-picture-form">
+        <p class="null-sub">
+            ${t(
+                'moderation.list-a-picture-hint',
+                'A picture, by its address: copies of the same file are blocked or warned about as you say, wherever they are posted. One that only looks like it gets a warning, never more.',
+            )}
+        </p>
+        <div class="moderation-add">
+            <input
+                class="profile-input"
+                value=${address}
+                placeholder=${t('moderation.picture-address-placeholder', "the picture's address")}
+                onInput=${(e) => setAddress(e.currentTarget.value)}
+            />
+            <select class="profile-input" value=${level} onChange=${(e) => setLevel(e.currentTarget.value)}>
+                <option value="warn">${levelWord('warn')}</option>
+                <option value="block">${levelWord('block')}</option>
+            </select>
+            <${ReasonInput} value=${reason} onInput=${setReason} />
+            <button
+                class="removal-option"
+                disabled=${!address.trim() || reasonBytes(reason) > MAX_REASON_BYTES}
+                onClick=${add}
+            >${t('moderation.add-to-public-list', 'add to my public list')}</button>
+        </div>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </div>`;
+};
 
 /// One row of the reader's own list: change its level or reason, or take it off.
 const MineRow = ({ root, current, row }) => {
@@ -40,7 +96,7 @@ const MineRow = ({ root, current, row }) => {
         }
     };
     return html`<li class="moderation-row">
-        <${Who} root=${row.target} current=${current} />
+        <${Target} kind=${row.kind} target=${row.target} current=${current} />
         <select class="profile-input" value=${level} onChange=${(e) => setLevel(e.currentTarget.value)}>
             <option value="warn">${levelWord('warn')}</option>
             <option value="block">${levelWord('block')}</option>
@@ -62,7 +118,7 @@ const MineRow = ({ root, current, row }) => {
 const TakenRow = ({ root, current, entry }) => html`<li
     class=${entry.overruled ? 'moderation-row moderation-overruled' : 'moderation-row'}
 >
-    <${Who} root=${entry.target} current=${current} />
+    <${Target} kind=${entry.kind} target=${entry.target} current=${current} />
     <span class="moderation-level">${levelWord(entry.level)}</span>
     <ul class="moderation-sources">
         ${entry.sources.map(
@@ -154,6 +210,7 @@ export const ModerationSections = ({ current }) => {
                       </ul>`
                     : html`<p class="null-sub">${t('moderation.list-empty', 'empty')}</p>`
             }
+            <${PictureForm} root=${root} />
         </section>
         <${ReportSections} current=${current} />
     </div>`;

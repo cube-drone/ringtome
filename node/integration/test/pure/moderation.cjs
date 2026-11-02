@@ -1,8 +1,9 @@
 const assert = require('node:assert');
 
-let moderationFor, reasonBytes, overruleKey;
+let moderationFor, reasonBytes, overruleKey, pictureAddresses, pictureVerdictFor, stronger;
 before(async () => {
-    ({ moderationFor, reasonBytes, overruleKey } = await import('../../../js/pure/moderation.js'));
+    ({ moderationFor, reasonBytes, overruleKey, pictureAddresses, pictureVerdictFor, stronger } =
+        await import('../../../js/pure/moderation.js'));
 });
 
 describe('moderation lists, as a post meets them (2026-11-02)', () => {
@@ -56,5 +57,34 @@ describe('moderation lists, as a post meets them (2026-11-02)', () => {
         assert.equal(reasonBytes('说'), 3);
         assert.equal(reasonBytes('🐴'), 4);
         assert.equal(overruleKey('persona', 'aa'), 'persona:aa');
+    });
+
+    it("asks about a post's own pictures, and takes the strongest verdict among them", () => {
+        const root = 'z6MkpTHR8VNsBxYAAWHut2Geadd9jSwuBV8xRoAnwWsdvktH';
+        const a = `/ringtome/user/${root}/doc/${'a'.repeat(32)}/body`;
+        const b = `https://elsewhere.example/ringtome/user/${root}/doc/${'b'.repeat(32)}/body/x.avif`;
+        const song = `/ringtome/user/${root}/doc/${'c'.repeat(32)}/body/song.m4a`;
+        const body = `![one](${a}) words ![two](${b}) ![again](${a}) ![s](${song}) ![web](https://x.example/p.png)`;
+        assert.deepEqual(
+            pictureAddresses(body),
+            [a, b],
+            'our own pictures, once each - no songs, no web',
+        );
+
+        const verdicts = {
+            [a]: { level: 'warn', reason: 'looks like it', near: true, sources: [] },
+            [b]: { level: 'block', reason: 'not here', near: false, sources: [] },
+        };
+        const v = pictureVerdictFor([a, b], verdicts);
+        assert.deepEqual([v.kind, v.reason, v.near], ['block', 'not here', false]);
+        assert.equal(pictureVerdictFor([a], verdicts).near, true);
+        assert.equal(pictureVerdictFor([], verdicts).kind, null);
+        const author = { kind: 'warn', reason: 'grumpy', sources: [] };
+        assert.equal(stronger(author, v), v, 'a blocked picture outranks a warned author');
+        assert.equal(
+            stronger(author, pictureVerdictFor([a], verdicts)),
+            author,
+            'a tie keeps the first',
+        );
     });
 });

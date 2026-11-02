@@ -83,6 +83,7 @@ pub mod notifications;
 pub mod oauth;
 pub mod outbox;
 pub mod postkeys;
+pub mod prints;
 pub mod profiles;
 pub mod pubkey;
 pub mod publication;

@@ -12,14 +12,23 @@
 //!   overrules (`moderation_overrules`, a private set: ruling 6). Where sources disagree, block
 //!   beats warn; every source and reason is kept for the settings view.
 //!
+//! - **Pictures** (plans/SCANNING.md, _Community picture entries_): an entry names a public
+//!   picture by its blob's hash and carries its PDQ fingerprint (prints.rs). The same file - the
+//!   hash, or the document whose body or thumbnail it is - acts at the entry's level; a picture
+//!   that only fingerprints near it is warned about and never more, because a perceptual hash can
+//!   be collided on purpose (someone makes pornography that prints like a popular drawing,
+//!   reports it, and the drawing is blocked everywhere in good faith). Worked out for the cards on
+//!   a reader's screen ([`verdicts_handler`]), never stamped onto posts.
+//!
 //! - **What the node refuses** (plans/MODERATION.md, _What the levels do_): the block-level
 //!   entries its administrators' personas take, as administrators. A refused node is never
 //!   dialled or answered (net/p2p.rs); a refused persona is never synced, fetched, shelved or
 //!   answered for, and what this node already held of them goes (`eviction::evict_one`, the
 //!   feed journal) - a block is retroactive (Curtis, 2026-11-01: "clear this person off my
 //!   network"). The node's own users are never refused: their accounts are the operator's to
-//!   remove, not to starve. On a device node the person and the operator are the same, so
-//!   their lists decide both.
+//!   remove, not to starve. A blocked picture - by exact hash only - is refused at every door a
+//!   quarantined one is, and not kept (`files::FileStore::withhold`, the reaper). On a device
+//!   node the person and the operator are the same, so their lists decide both.
 //!
 //! Owns the `moderation_said` SQL (tests/conventions.rs).
 
@@ -27,7 +36,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Context, Result};
 use axum::extract::{Path, State};
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use ringtome_proto::{ModerationLevel, ModerationTarget};
 use serde::{Deserialize, Serialize};
@@ -53,6 +62,7 @@ pub const HIDDEN: &str = "hidden_posts";
 struct Refused {
     personas: BTreeSet<String>,
     nodes: BTreeSet<String>,
+    pictures: BTreeSet<String>,
 }
 
 static REFUSED: std::sync::LazyLock<std::sync::RwLock<Refused>> =
@@ -115,6 +125,7 @@ async fn recompute_inner(state: &AppState) -> Result<()> {
         for t in taken.into_iter().filter(|t| t.level == "block" && !t.overruled) {
             match t.kind {
                 "persona" => next.personas.insert(t.target),
+                "picture" => next.pictures.insert(t.target),
                 _ => next.nodes.insert(t.target),
             };
         }
@@ -135,8 +146,16 @@ async fn recompute_inner(state: &AppState) -> Result<()> {
     tracing::info!(
         personas = next.personas.len(),
         nodes = next.nodes.len(),
+        pictures = next.pictures.len(),
         newly = newly.len(),
         "this node's moderation refusals moved"
+    );
+    state.files.withhold(
+        next.pictures
+            .iter()
+            .filter_map(|h| hex::decode(h).ok()?.try_into().ok())
+            .map(iroh_blobs::Hash::from_bytes)
+            .collect(),
     );
     if let Ok(mut r) = REFUSED.write() {
         *r = next;
@@ -162,10 +181,14 @@ async fn clear_out(state: &AppState, root: &str) {
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/identity/{root}/moderation", get(moderation_handler)).route(
-        "/api/identity/{root}/moderation/{kind}/{target}",
-        put(entry_put_handler).delete(entry_delete_handler),
-    )
+    Router::new()
+        .route("/api/identity/{root}/moderation", get(moderation_handler))
+        .route(
+            "/api/identity/{root}/moderation/{kind}/{target}",
+            put(entry_put_handler).delete(entry_delete_handler),
+        )
+        .route("/api/identity/{root}/moderation/by-address", post(by_address_handler))
+        .route("/api/identity/{root}/moderation/verdicts", post(verdicts_handler))
 }
 
 /// The fold-lane hook: copy one persona's present entries into the memo.
@@ -194,10 +217,11 @@ async fn refresh_inner(state: &AppState, author: &str) -> Result<()> {
         state
             .node_db
             .execute(
-                "INSERT INTO moderation_said (author, target_kind, target, level, reason, said_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO moderation_said (author, target_kind, target, level, reason, said_ms, pdq)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                  ON CONFLICT (author, target_kind, target) DO UPDATE SET
-                   level = excluded.level, reason = excluded.reason, said_ms = excluded.said_ms",
+                   level = excluded.level, reason = excluded.reason, said_ms = excluded.said_ms,
+                   pdq = excluded.pdq",
                 (
                     author,
                     r.kind.code() as i64,
@@ -205,6 +229,7 @@ async fn refresh_inner(state: &AppState, author: &str) -> Result<()> {
                     r.level.code() as i64,
                     r.reason.as_str(),
                     r.timestamp_ms,
+                    r.pdq.as_deref(),
                 ),
             )
             .await
@@ -249,27 +274,31 @@ pub struct Taken {
     /// The reader overruled it: shown in settings, ignored everywhere else.
     pub overruled: bool,
     pub sources: Vec<Said>,
+    /// A picture's fingerprint, hex: the same picture prints the same for every source.
+    pub pdq: Option<String>,
 }
+
+/// One row of what someone said: author, kind, target, level, reason, when, fingerprint.
+pub type SaidRow = (String, i64, String, i64, String, i64, Option<String>);
 
 /// Fold what the reader takes (pure: the test lives below). `said` is every row from the
 /// reader and their moderators; `overrules` the `<kind>:<target>` set.
-pub fn fold_taken(
-    said: Vec<(String, i64, String, i64, String, i64)>,
-    overrules: &BTreeSet<String>,
-) -> Vec<Taken> {
-    let mut by_target: BTreeMap<(i64, String), Vec<(ModerationLevel, Said)>> = BTreeMap::new();
-    for (author, kind, target, level, reason, said_ms) in said {
+pub fn fold_taken(said: Vec<SaidRow>, overrules: &BTreeSet<String>) -> Vec<Taken> {
+    type Sources = (Vec<(ModerationLevel, Said)>, Option<String>);
+    let mut by_target: BTreeMap<(i64, String), Sources> = BTreeMap::new();
+    for (author, kind, target, level, reason, said_ms, pdq) in said {
         let Some(level) = ModerationLevel::from_code(level as u64) else {
             continue;
         };
-        by_target
-            .entry((kind, target))
-            .or_default()
-            .push((level, Said { author, level: level.word(), reason, said_ms }));
+        let (sources, print) = by_target.entry((kind, target)).or_default();
+        sources.push((level, Said { author, level: level.word(), reason, said_ms }));
+        if print.is_none() {
+            *print = pdq;
+        }
     }
     by_target
         .into_iter()
-        .filter_map(|((kind, target), mut sources)| {
+        .filter_map(|((kind, target), (mut sources, pdq))| {
             let kind = ModerationTarget::from_code(kind as u64)?;
             let level = sources.iter().map(|(l, _)| *l).max()?;
             sources.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.said_ms.cmp(&a.1.said_ms)));
@@ -279,6 +308,7 @@ pub fn fold_taken(
                 target,
                 level: level.word(),
                 sources: sources.into_iter().map(|(_, s)| s).collect(),
+                pdq,
             })
         })
         .collect()
@@ -291,6 +321,8 @@ pub(crate) struct MineRow {
     level: &'static str,
     reason: String,
     said_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pdq: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -342,6 +374,7 @@ pub(crate) async fn view_of(
             level: r.level.word(),
             reason: r.reason,
             said_ms: r.timestamp_ms,
+            pdq: r.pdq,
         })
         .collect();
     let moderators: Vec<String> = data
@@ -357,19 +390,20 @@ pub(crate) async fn view_of(
     let (elements, _) = data.private_set(OVERRULES).elements().await?;
     let overrules: BTreeSet<String> = elements.into_iter().map(|e| e.element).collect();
 
-    let mut said: Vec<(String, i64, String, i64, String, i64)> = mine
+    let mut said: Vec<SaidRow> = mine
         .iter()
         .map(|m| {
             let kind = ModerationTarget::from_word(m.kind).map(|k| k.code() as i64).unwrap_or(0);
             let level = ModerationLevel::from_word(m.level).map(|l| l.code() as i64).unwrap_or(0);
-            (root.to_string(), kind, m.target.clone(), level, m.reason.clone(), m.said_ms)
+            let (target, reason) = (m.target.clone(), m.reason.clone());
+            (root.to_string(), kind, target, level, reason, m.said_ms, m.pdq.clone())
         })
         .collect();
     for moderator in &moderators {
-        let rows: Vec<(String, i64, String, i64, String, i64)> = state
+        let rows: Vec<SaidRow> = state
             .node_db
             .fetch_all(
-                "SELECT author, target_kind, target, level, reason, said_ms
+                "SELECT author, target_kind, target, level, reason, said_ms, pdq
                  FROM moderation_said WHERE author = ?1",
                 (moderator.as_str(),),
             )
@@ -415,9 +449,172 @@ async fn entry_put_handler(
             "you can't put yourself on your own list"
         )));
     }
-    data.moderation().say(kind, &key, level, req.reason.trim(), true).await?;
+    let pdq =
+        if kind == ModerationTarget::Picture { picture_print(&state, &key).await? } else { None };
+    data.moderation().say(kind, &key, level, req.reason.trim(), true, pdq).await?;
     crate::fold::fold_now(&state, &root).await;
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// What a picture entry carries beside the hash: its fingerprint, when it has a usable one. The
+/// picture has to be here: an entry is written about something its author has seen.
+pub(crate) async fn picture_print(
+    state: &AppState,
+    hash: &[u8; 32],
+) -> Result<Option<[u8; 32]>, AppError> {
+    if let Some(print) = crate::prints::of(state, hash).await {
+        return Ok(print.usable().then_some(print.hash));
+    }
+    if state.files.has(iroh_blobs::Hash::from_bytes(*hash)).await {
+        return Ok(None); // here, but not a picture we can print: listed by its hash alone
+    }
+    Err(AppError::NotFound(crate::msg!(
+        "moderation.picture-not-here",
+        "this server doesn't hold that picture"
+    )))
+}
+
+#[derive(Deserialize)]
+struct ByAddress {
+    address: String,
+    level: String,
+    #[serde(default)]
+    reason: String,
+}
+
+/// POST `/api/identity/{root}/moderation/by-address` - put a picture on this persona's public
+/// list by its address as anyone copies it (the body, the thumbnail, the post): the entry names
+/// the document's body.
+async fn by_address_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<ByAddress>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let level = ModerationLevel::from_word(&req.level).ok_or_else(|| {
+        AppError::BadRequest(crate::msg!("moderation.unknown-level", "block or warn"))
+    })?;
+    let not_a_picture = || {
+        AppError::BadRequest(crate::msg!(
+            "moderation.not-a-picture-address",
+            "that isn't the address of a picture this server holds"
+        ))
+    };
+    let (author, doc) =
+        crate::quarantine::picture_address(&req.address).ok_or_else(not_a_picture)?;
+    let blobs =
+        crate::quarantine::blobs_of(&state, &author, &doc).await.map_err(AppError::Internal)?;
+    let body = *blobs.first().ok_or_else(not_a_picture)?;
+    let pdq = picture_print(&state, &body).await?;
+    data.moderation()
+        .say(ModerationTarget::Picture, &body, level, req.reason.trim(), true, pdq)
+        .await?;
+    crate::fold::fold_now(&state, &root).await;
+    Ok(Json(serde_json::json!({ "ok": true, "hash": hex::encode(body) })))
+}
+
+/// The most addresses one verdicts call answers: a page of cards.
+const MAX_VERDICTS: usize = 64;
+
+#[derive(Deserialize)]
+struct VerdictsReq {
+    pictures: Vec<String>,
+}
+
+/// One picture's verdict, as its card meets it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Verdict {
+    pub level: &'static str,
+    pub reason: String,
+    /// Only like a listed picture, by fingerprint: always `warn`, whatever the entry says.
+    pub near: bool,
+    pub sources: Vec<Said>,
+}
+
+/// The verdict for one picture (pure: the test lives below) - its blobs' hashes, the body's
+/// fingerprint, and the picture entries the reader takes. An exact match acts at its level and
+/// beats any near one; a near match only warns.
+pub fn verdict_for(
+    blobs: &[String],
+    print: Option<&[u8; 32]>,
+    entries: &[&Taken],
+) -> Option<Verdict> {
+    let reason_of = |t: &Taken| {
+        t.sources
+            .iter()
+            .find(|s| s.level == t.level && !s.reason.is_empty())
+            .map(|s| s.reason.clone())
+    };
+    let exact = entries
+        .iter()
+        .filter(|t| blobs.contains(&t.target))
+        .max_by_key(|t| ModerationLevel::from_word(t.level));
+    if let Some(t) = exact {
+        return Some(Verdict {
+            level: t.level,
+            reason: reason_of(t).unwrap_or_default(),
+            near: false,
+            sources: t.sources.clone(),
+        });
+    }
+    let print = print?;
+    let near = entries.iter().find(|t| {
+        t.pdq.as_deref().and_then(|h| hex::decode(h).ok()?.try_into().ok()).is_some_and(
+            |p: [u8; 32]| {
+                crate::media::pdq::distance(print, &p) <= crate::media::pdq::MATCH_DISTANCE
+            },
+        )
+    })?;
+    Some(Verdict {
+        level: ModerationLevel::Warn.word(),
+        reason: reason_of(near).unwrap_or_default(),
+        near: true,
+        sources: near.sources.clone(),
+    })
+}
+
+/// POST `/api/identity/{root}/moderation/verdicts` - for the pictures on a reader's screen, by
+/// address: which the picture entries they take reach, and how. Nothing at all while they take
+/// none, so a reader without picture entries costs no decoding.
+async fn verdicts_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path(root): Path<String>,
+    Json(req): Json<VerdictsReq>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let data = store::open(&state, &session.account.id, &root).await?;
+    let (_, _, taken) = view_of(&state, &data, &root).await?;
+    drop(data);
+    let entries: Vec<&Taken> =
+        taken.iter().filter(|t| t.kind == "picture" && !t.overruled).collect();
+    let mut verdicts = serde_json::Map::new();
+    if entries.is_empty() {
+        return Ok(Json(serde_json::json!({ "verdicts": verdicts })));
+    }
+    let wants_print = entries.iter().any(|t| t.pdq.is_some());
+    let addresses: BTreeSet<String> = req.pictures.into_iter().take(MAX_VERDICTS).collect();
+    for address in addresses {
+        let Some((author, doc)) = crate::quarantine::picture_address(&address) else {
+            continue;
+        };
+        let blobs =
+            crate::quarantine::blobs_of(&state, &author, &doc).await.map_err(AppError::Internal)?;
+        let Some(body) = blobs.first().copied() else { continue };
+        let hexes: Vec<String> = blobs.iter().map(hex::encode).collect();
+        let print = if wants_print && !entries.iter().any(|t| hexes.contains(&t.target)) {
+            crate::prints::of(&state, &body).await.filter(|p| p.usable()).map(|p| p.hash)
+        } else {
+            None
+        };
+        if let Some(v) = verdict_for(&hexes, print.as_ref(), &entries) {
+            verdicts.insert(
+                address,
+                serde_json::to_value(v).map_err(|e| AppError::Internal(e.into()))?,
+            );
+        }
+    }
+    Ok(Json(serde_json::json!({ "verdicts": verdicts })))
 }
 
 /// DELETE - take a target off this persona's public list.
@@ -428,7 +625,7 @@ async fn entry_delete_handler(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let (kind, key) = parse_target(&kind, &target)?;
-    data.moderation().say(kind, &key, ModerationLevel::Warn, "", false).await?;
+    data.moderation().say(kind, &key, ModerationLevel::Warn, "", false, None).await?;
     crate::fold::fold_now(&state, &root).await;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -437,14 +634,8 @@ async fn entry_delete_handler(
 mod tests {
     use super::*;
 
-    fn row(
-        author: &str,
-        target: &str,
-        level: i64,
-        reason: &str,
-        at: i64,
-    ) -> (String, i64, String, i64, String, i64) {
-        (author.into(), 0, target.into(), level, reason.into(), at)
+    fn row(author: &str, target: &str, level: i64, reason: &str, at: i64) -> SaidRow {
+        (author.into(), 0, target.into(), level, reason.into(), at, None)
     }
 
     #[test]
@@ -471,5 +662,45 @@ mod tests {
         let bb = taken.iter().find(|t| t.target == "bb").unwrap();
         assert!(aa.overruled, "the reader's word is the last word");
         assert!(!bb.overruled);
+    }
+
+    fn picture(target: &str, level: &'static str, pdq: Option<[u8; 32]>) -> Taken {
+        Taken {
+            kind: "picture",
+            target: target.into(),
+            level,
+            overruled: false,
+            sources: vec![Said {
+                author: "rache".into(),
+                level,
+                reason: "not on my network".into(),
+                said_ms: 1,
+            }],
+            pdq: pdq.map(hex::encode),
+        }
+    }
+
+    #[test]
+    fn the_same_file_acts_at_its_level_and_a_lookalike_only_warns() {
+        let print = [0b1010_1010u8; 32];
+        let blocked = picture("aa", "block", Some(print));
+        let entries = vec![&blocked];
+        let same = verdict_for(&["aa".into(), "th".into()], None, &entries).unwrap();
+        assert_eq!((same.level, same.near), ("block", false), "the hash itself: the entry's level");
+        let thumb = verdict_for(&["zz".into(), "aa".into()], None, &entries).unwrap();
+        assert_eq!(thumb.level, "block", "a document whose thumbnail is listed");
+
+        let mut close = print;
+        close[0] ^= 0xFF; // 8 bits off: a re-encode
+        let alike = verdict_for(&["bb".into()], Some(&close), &entries).unwrap();
+        assert_eq!((alike.level, alike.near), ("warn", true), "a block, near: only ever warned");
+        assert_eq!(alike.reason, "not on my network");
+
+        let mut far = print;
+        for b in far.iter_mut().take(5) {
+            *b ^= 0xFF; // 40 bits off: another picture
+        }
+        assert!(verdict_for(&["bb".into()], Some(&far), &entries).is_none());
+        assert!(verdict_for(&["bb".into()], None, &entries).is_none(), "no print, no near match");
     }
 }

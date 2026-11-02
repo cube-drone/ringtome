@@ -210,6 +210,12 @@ label.moderation-overrule {
     display: block;
     margin: 0.25rem 0;
 }
+.report-picture-row {
+    margin: 0.25rem 0;
+}
+.moderation-picture-form {
+    margin-top: 0.75rem;
+}
 .report-covered {
     margin: 0.25rem 0;
 }

@@ -1,6 +1,6 @@
 # Scanning: pictures, CSAM and the operator
 
-_A design draft (2026-11-02). Built: steps 1 to 3 of the order, 2026-11-02 (see
+_A design draft (2026-11-02). Built: steps 1 to 4 of the order, 2026-11-02 (see
 HISTORY)._
 
 What an operator needs so that hosting other people's pictures doesn't become
@@ -104,7 +104,10 @@ re-encodes, resizes and crops of the same picture land close together.
 - **Every picture is fingerprinted once.** Uploads at crush (`src/media.rs`),
   where the picture is already decoded, so no new decoder of hostile bytes;
   pictures arriving by sync on the same decode lane, after the fact; drawings
-  from their rendered image. The result is cached by blob hash.
+  from their rendered image. The result is cached by blob hash. As built
+  (`src/prints.rs`): on demand, not swept - the first time a picture entry, a
+  reader's card or the refusal list needs a picture's print - from our own
+  crushed AVIF, so an upload and a peer's copy hash from the same bytes.
 - **A Rust crate, checked first.** `pdqhash` (Apache-2.0) and `yume-pdq` exist;
   whichever is used must reproduce Meta's reference outputs before anything
   trusts it.

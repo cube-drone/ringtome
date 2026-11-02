@@ -1806,6 +1806,10 @@ export default {
     'moderation.add-to-public-list': 'add to my public list',
 
     // --- node/js/moderationpage.js ---
+    'moderation.a-picture': 'a picture',
+    'moderation.a-node': 'a server',
+    'moderation.list-a-picture-hint': 'A picture, by its address: copies of the same file are blocked or warned about as you say, wherever they are posted. One that only looks like it gets a warning, never more.',
+    'moderation.picture-address-placeholder': "the picture's address",
     'moderation.save': 'save',
     'moderation.take-off': 'take off',
     'moderation.ill-judge-this-myself': "I'll judge this myself",
@@ -2211,6 +2215,7 @@ export default {
     'postentry.tagged-show-anyway': 'tagged {tags} - show anyway',
     'postentry.blocked-why-show-anyway': 'blocked: {reason} - show anyway',
     'postentry.blocked-show-anyway': 'blocked - show anyway',
+    'postentry.looks-like-a-listed-picture-show-anyway': 'a picture here looks like one on a list you take{reason} - show anyway',
     'postentry.auto-warn-why-show-anyway': 'auto-warn: {reason} - show anyway',
     'postentry.auto-warn-show-anyway': 'auto-warn - show anyway',
     'postentry.see-more': 'see more…',
@@ -2344,6 +2349,8 @@ export default {
     'reports.and-the-people-they-trust': 'the people I trust, and the people they trust',
     'reports.and-from-strangers': 'and from anyone - a stranger waits in a pool of {n}, oldest dropped first',
     'reports.a-strangers-picture-show': "a stranger's picture - show it",
+    'reports.picture-blocked': 'on your public list',
+    'reports.block-this-picture': 'block this picture',
     'reports.asks-you-to-list': 'asks you to list',
     'reports.reported-as-child-abuse': 'Reported as a child being sexually abused or exploited.',
     'reports.child-only-the-reference': 'Only where it is came with it, never the picture. Report it where you live, with its address:',
@@ -2928,6 +2935,8 @@ export default {
     'moderation.unknown-kind': 'a list names a persona or a node',
     'moderation.unknown-level': 'block or warn',
     'moderation.not-yourself': "you can't put yourself on your own list",
+    'moderation.picture-not-here': "this server doesn't hold that picture",
+    'moderation.not-a-picture-address': "that isn't the address of a picture this server holds",
 
     // --- node/src/net/unfurl.rs ---
     'net.unfurl.not-a-url': 'not a URL: {reason}',

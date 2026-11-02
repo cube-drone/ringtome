@@ -311,6 +311,14 @@ mod tests {
             "{}",
             bridge.distance(&resized.hash)
         );
+        // Its mirror, scaled and re-saved the same way (the picture entries' claims).
+        let mirror = of(&picture("bridge-5-flipx.jpg")).unwrap();
+        let mirror_resized = of(&picture("bridge-5-flipx-resized-900.jpg")).unwrap();
+        assert!(
+            mirror.distance(&mirror_resized.hash) <= MATCH_DISTANCE,
+            "{}",
+            mirror.distance(&mirror_resized.hash)
+        );
     }
 
     #[test]

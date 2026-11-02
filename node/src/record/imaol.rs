@@ -629,15 +629,17 @@ pub struct ModerationRow {
     pub present: bool,
     /// The winning statement's claimed time: signed, so the same on every computer.
     pub timestamp_ms: i64,
+    /// A picture entry's PDQ fingerprint, hex.
+    pub pdq: Option<String>,
 }
 
 /// This persona's moderation list, retractions as tombstones, newest first.
 pub async fn moderation_entries(db: &Db) -> Result<Vec<ModerationRow>, AppError> {
     catch_up_moderation(db).await?;
-    type Row = (i64, String, i64, String, i64, i64);
+    type Row = (i64, String, i64, String, i64, i64, Option<String>);
     let rows: Vec<Row> = db
         .fetch_all(
-            "SELECT target_kind, target, level, reason, present, timestamp_ms
+            "SELECT target_kind, target, level, reason, present, timestamp_ms, pdq
              FROM moderation_entries ORDER BY timestamp_ms DESC, target",
             (),
         )
@@ -646,7 +648,7 @@ pub async fn moderation_entries(db: &Db) -> Result<Vec<ModerationRow>, AppError>
         .map_err(AppError::Internal)?;
     Ok(rows
         .into_iter()
-        .filter_map(|(kind, target, level, reason, present, timestamp_ms)| {
+        .filter_map(|(kind, target, level, reason, present, timestamp_ms, pdq)| {
             Some(ModerationRow {
                 kind: ringtome_proto::ModerationTarget::from_code(kind as u64)?,
                 target,
@@ -654,6 +656,7 @@ pub async fn moderation_entries(db: &Db) -> Result<Vec<ModerationRow>, AppError>
                 reason,
                 present: present != 0,
                 timestamp_ms,
+                pdq,
             })
         })
         .collect())
@@ -683,10 +686,11 @@ async fn catch_up_moderation(db: &Db) -> Result<(), AppError> {
         };
         db.execute(
             "INSERT INTO moderation_entries
-               (target_kind, target, level, reason, present, timestamp_ms, seq, entry_hash, received_at_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+               (target_kind, target, level, reason, present, timestamp_ms, seq, entry_hash, received_at_ms, pdq)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(target_kind, target) DO UPDATE SET
                level = excluded.level,
+               pdq = excluded.pdq,
                reason = excluded.reason,
                present = excluded.present,
                timestamp_ms = excluded.timestamp_ms,
@@ -705,6 +709,7 @@ async fn catch_up_moderation(db: &Db) -> Result<(), AppError> {
                 signed.entry().seq as i64,
                 signed.hash().as_slice(),
                 received_at_ms,
+                m.pdq.map(hex::encode),
             ),
         )
         .await

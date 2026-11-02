@@ -25,7 +25,68 @@ async function load(root) {
     } catch {
         if (!store.has(root)) store.set(root, EMPTY);
     }
+    verdicts.delete(root); // what the pictures meet moved with it
     notify();
+}
+
+// Pictures' verdicts (moderation.rs, `verdicts`), per reader: address -> verdict, or null for
+// none. Cards ask for theirs; the asks of one render go to the node together.
+const verdicts = new Map(); // root -> Map(address -> verdict | null)
+const asked = new Map(); // root -> Set(address), waiting for the next flight
+let flight = null;
+
+function flush() {
+    flight = null;
+    for (const [root, pending] of asked) {
+        asked.delete(root);
+        const pictures = [...pending];
+        const known = verdicts.get(root) || new Map();
+        verdicts.set(root, known);
+        for (const p of pictures) known.set(p, null);
+        api(`/api/identity/${root}/moderation/verdicts`, {
+            method: 'POST',
+            body: JSON.stringify({ pictures }),
+        })
+            .then((res) => {
+                for (const [address, v] of Object.entries(res.verdicts || {}))
+                    known.set(address, v);
+                notify();
+            })
+            .catch(() => {});
+    }
+}
+
+/// What the picture entries `root` takes say about these addresses, as `{ address: verdict }`.
+/// Nothing is asked while they take no picture entries.
+export function usePictureVerdicts(root, addresses) {
+    const view = useModeration(root);
+    const takes = !!root && (view.taken || []).some((e) => e.kind === 'picture' && !e.overruled);
+    const key = (addresses || []).join(' ');
+    useEffect(() => {
+        if (!takes || !key) return;
+        const known = verdicts.get(root);
+        const missing = key.split(' ').filter((a) => !(known && known.has(a)));
+        if (!missing.length) return;
+        const pending = asked.get(root) || new Set();
+        missing.forEach((a) => pending.add(a));
+        asked.set(root, pending);
+        if (!flight) flight = setTimeout(flush, 30);
+    }, [root, takes, key]);
+    if (!takes) return {};
+    const known = verdicts.get(root);
+    if (!known) return {};
+    const out = {};
+    for (const a of addresses || []) if (known.get(a)) out[a] = known.get(a);
+    return out;
+}
+
+/// Put a picture on `root`'s public list by its address - the body, the thumbnail or the post.
+export async function listPicture(root, address, level, reason) {
+    await api(`/api/identity/${root}/moderation/by-address`, {
+        method: 'POST',
+        body: JSON.stringify({ address, level, reason }),
+    });
+    await load(root);
 }
 
 /// What `root` takes: nothing until the node answers, then the folded view.

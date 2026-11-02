@@ -26415,3 +26415,57 @@ child-abuse report carries nothing and seals at an administrator's door;
 self-reports and 513-byte reasons refused), the PDQ unit tests (Meta's
 reference, a re-encode and a resize within the match distance, a rotation and a
 flat picture not), the proto report tests and the pure hidden-post claim.
+
+## Picture entries on moderation lists (2026-11-02)
+
+MODERATION.md step 5, SCANNING.md step 4: a list can name a picture, not its
+poster - "excise this image from my network".
+
+**The entry** (`ModerationTarget::Picture`, code 2): the target is the public
+picture's blob hash, and the entry carries its PDQ fingerprint at key 5
+(pictures only; refused on any other kind). An older build skips a picture entry
+it can't read, so the user rung that adds the column (35) refolds
+`MODERATION_PUBLIC`; the node memo `moderation_said` takes the column too (node
+rung 117). Reports can't name a picture yet - the proto refuses one.
+
+**What it does.** The same file - the hash itself, or a document whose body or
+thumbnail it is - acts at the entry's level. A picture that only fingerprints
+near it (31 bits or fewer) is warned about and never more, whatever the entry
+says: perceptual hashes can be collided on purpose. A reader's cards ask their
+node about the pictures in a post's words (`POST .../moderation/verdicts`,
+batched per render, nothing asked while the reader takes no picture entries),
+and the post meets the strongest of its author's verdict and its pictures' - a
+block leaves the feed, a warning veils it, a lookalike's veil says "a picture
+here looks like one on a list you take". Overrules work as for people. What the
+node's administrators block, by exact hash, is refused at every door a
+quarantined blob is - serve, sync, upload, the blob protocol, and its thumbnail
+with it - and not kept: the reaper drops it from the live set
+(`FileStore::withhold`). Lookalikes are never refused by the node.
+
+**Fingerprints, kept** (`src/prints.rs`, `picture_prints`): the cache last
+session skipped. On demand, by blob hash, from our own AVIF; anything over 16 MB
+isn't read. The refusal list's arrival check goes through it too.
+
+**Listing one**: by address on the content control page (_Your public list_; the
+entry names the document's body), or "block this picture" on a report's picture
+in the queue, with the report's reason. A picture must be on this server to be
+listed. Entries show as "a picture" and a short hash, never the picture.
+
+`node/tests/pdq/bridge-5-flipx-resized-900.jpg` is new: Meta's mirrored bridge,
+scaled and re-saved, because the quarantine claims seal bridge-1 on the rig for
+good. Meta's "flipx" is a flip about the x axis - top to bottom; a left-right
+flip of the same picture is 114 bits away, another picture to PDQ.
+
+Left: a picture named in a report; a "list this picture" on the picture viewer;
+fingerprinting the pictures already held when an entry arrives (they're done as
+cards ask); video.
+
+Proved by: "picture entries" (5 claims: nothing asked while a reader takes no
+picture entries; listed by a thumbnail's address on any origin, with its
+fingerprint, and a foreign address refused; through a moderator, the same file
+blocked and the re-saved copy only warned, another picture untouched, the file
+still served; the reader's overrule clears both; an administrator's block
+refuses the file and its thumbnail and never the lookalike), the proto round
+trip (a fingerprint only on a picture), `verdict_for`'s unit test, the PDQ
+test's mirror pair, and the pure claim for picture addresses and the strongest
+verdict.

@@ -79,8 +79,8 @@ import { t } from './i18n.js';
 import { useWarnings } from './warnings.js';
 import { CopyButton } from './copyinto.js';
 import { warningFor } from './pure/warnings.js';
-import { moderationFor } from './pure/moderation.js';
-import { useModeration } from './moderation.js';
+import { moderationFor, pictureAddresses, pictureVerdictFor, stronger } from './pure/moderation.js';
+import { useModeration, usePictureVerdicts } from './moderation.js';
 import { ReportChip } from './report.js';
 import { veilsMedia, withoutMedia } from './pure/chatveil.js';
 
@@ -1253,14 +1253,25 @@ const PostEntryBody = ({
     // Moderation lists (plans/MODERATION.md): what the reader blocked, and what the people they
     // trust to moderate block or warn about. A block leaves the page as a hidden tag does (its own
     // page shows it veiled - you asked for it by address); a warning veils it with its reason.
+    // Its pictures meet the picture entries the reader takes too (the node judges them): the same
+    // file at its entry's level, a lookalike only warned about.
     const { taken, hidden: hiddenHere } = useModeration(current && current.root);
-    const moderated = moderationFor(item.author, {
-        me: current && current.root,
-        taken,
-        factsByRoot,
-        doc: item.doc_id,
-        hidden: hiddenHere,
-    });
+    const ownPost = !!current && item.author === current.root;
+    const pictures = useMemo(
+        () => (ownPost ? [] : pictureAddresses(shownBody)),
+        [ownPost, shownBody],
+    );
+    const pictureVerdicts = usePictureVerdicts(current && current.root, pictures);
+    const moderated = stronger(
+        moderationFor(item.author, {
+            me: current && current.root,
+            taken,
+            factsByRoot,
+            doc: item.doc_id,
+            hidden: hiddenHere,
+        }),
+        pictureVerdictFor(pictures, pictureVerdicts),
+    );
     const [revealed, setRevealed] = useState(false);
     const veiled =
         !revealed &&
@@ -2208,16 +2219,26 @@ const PostEntryBody = ({
                                                   'postentry.blocked-show-anyway',
                                                   'blocked - show anyway',
                                               )
-                                        : moderated.reason
+                                        : moderated.near
                                           ? t(
-                                                'postentry.auto-warn-why-show-anyway',
-                                                'auto-warn: {reason} - show anyway',
-                                                { reason: moderated.reason },
+                                                'postentry.looks-like-a-listed-picture-show-anyway',
+                                                'a picture here looks like one on a list you take{reason} - show anyway',
+                                                {
+                                                    reason: moderated.reason
+                                                        ? `: ${moderated.reason}`
+                                                        : '',
+                                                },
                                             )
-                                          : t(
-                                                'postentry.auto-warn-show-anyway',
-                                                'auto-warn - show anyway',
-                                            )
+                                          : moderated.reason
+                                            ? t(
+                                                  'postentry.auto-warn-why-show-anyway',
+                                                  'auto-warn: {reason} - show anyway',
+                                                  { reason: moderated.reason },
+                                              )
+                                            : t(
+                                                  'postentry.auto-warn-show-anyway',
+                                                  'auto-warn - show anyway',
+                                              )
                               }
                           </button>
                       </div>`

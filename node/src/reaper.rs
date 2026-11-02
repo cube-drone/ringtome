@@ -116,6 +116,11 @@ async fn live_set(state: &AppState) -> Result<HashSet<Hash>> {
         }
     }
 
+    // Nor is a picture this node's moderation blocks (moderation.rs): a block is retroactive.
+    for hash in state.files.withheld() {
+        live.remove(&hash);
+    }
+
     // What arrived for a report is kept while the report is (reports.rs).
     for hash in crate::reports::blob_refs(&state.node_db).await? {
         live.insert(Hash::from_bytes(hash));

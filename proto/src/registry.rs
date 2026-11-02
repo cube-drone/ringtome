@@ -1409,12 +1409,14 @@ impl Rebroadcast {
     }
 }
 
-/// What a moderation entry is about (plans/MODERATION.md, _A list_): a persona by its root, or
-/// a node by its endpoint id. Both are 32-byte public keys; the kind keeps them apart.
+/// What a moderation entry is about (plans/MODERATION.md, _A list_): a persona by its root, a
+/// node by its endpoint id, or a picture by its public blob's hash (plans/SCANNING.md, _Community
+/// picture entries_). All three are 32 bytes; the kind keeps them apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ModerationTarget {
     Persona,
     Node,
+    Picture,
 }
 
 impl ModerationTarget {
@@ -1422,6 +1424,7 @@ impl ModerationTarget {
         match self {
             Self::Persona => 0,
             Self::Node => 1,
+            Self::Picture => 2,
         }
     }
 
@@ -1429,6 +1432,7 @@ impl ModerationTarget {
         match code {
             0 => Some(Self::Persona),
             1 => Some(Self::Node),
+            2 => Some(Self::Picture),
             _ => None,
         }
     }
@@ -1437,6 +1441,7 @@ impl ModerationTarget {
         match self {
             Self::Persona => "persona",
             Self::Node => "node",
+            Self::Picture => "picture",
         }
     }
 
@@ -1444,6 +1449,7 @@ impl ModerationTarget {
         match word {
             "persona" => Some(Self::Persona),
             "node" => Some(Self::Node),
+            "picture" => Some(Self::Picture),
             _ => None,
         }
     }
@@ -1499,6 +1505,10 @@ pub struct ModerationEntry {
     pub level: ModerationLevel,
     pub reason: String,
     pub present: bool,
+    /// A picture's PDQ fingerprint (key 5, pictures only), so a re-encoded or resized copy -
+    /// another hash - is still recognised. A near match only ever warns: perceptual hashes can be
+    /// collided (plans/SCANNING.md). `None` for a picture too flat to fingerprint.
+    pub pdq: Option<[u8; 32]>,
 }
 
 impl ModerationEntry {
@@ -1507,6 +1517,9 @@ impl ModerationEntry {
     fn well_formed(&self) -> Result<(), ProtoError> {
         if self.reason.len() > Self::MAX_REASON_BYTES {
             return Err(ProtoError::BadEntry("moderation reason length"));
+        }
+        if self.pdq.is_some() && self.kind != ModerationTarget::Picture {
+            return Err(ProtoError::BadEntry("a fingerprint on something not a picture"));
         }
         Ok(())
     }
@@ -1518,7 +1531,7 @@ impl ModerationEntry {
     pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
         self.well_formed()?;
         let mut w = Writer::new();
-        w.map(5);
+        w.map(5 + u64::from(self.pdq.is_some()));
         w.uint(0);
         w.uint(self.kind.code());
         w.uint(1);
@@ -1529,6 +1542,10 @@ impl ModerationEntry {
         w.text(&self.reason);
         w.uint(4);
         w.uint(u64::from(self.present));
+        if let Some(pdq) = &self.pdq {
+            w.uint(5);
+            w.bytes(pdq);
+        }
         Ok(w.into_bytes())
     }
 
@@ -1540,6 +1557,7 @@ impl ModerationEntry {
         let mut level: Option<ModerationLevel> = None;
         let mut reason: Option<String> = None;
         let mut present: Option<bool> = None;
+        let mut pdq: Option<[u8; 32]> = None;
         while let Some(k) = map.next_key()? {
             match k {
                 0 => {
@@ -1557,6 +1575,7 @@ impl ModerationEntry {
                 }
                 3 => reason = Some(map.text()?.to_string()),
                 4 => present = Some(map.uint()? != 0),
+                5 => pdq = Some(map.bytes_fixed::<32>()?),
                 _ => map.skip_value()?,
             }
         }
@@ -1567,6 +1586,7 @@ impl ModerationEntry {
             level: level.ok_or(ProtoError::BadEntry("moderation missing level"))?,
             reason: reason.ok_or(ProtoError::BadEntry("moderation missing reason"))?,
             present: present.ok_or(ProtoError::BadEntry("moderation missing presence"))?,
+            pdq,
         };
         out.well_formed()?;
         Ok(out)
@@ -2290,8 +2310,14 @@ mod tests {
             level: ModerationLevel::Block,
             reason: "spam, all of it".into(),
             present: true,
+            pdq: None,
         };
         assert_eq!(ModerationEntry::decode(&e.encode().unwrap()).unwrap(), e);
+        let picture =
+            ModerationEntry { kind: ModerationTarget::Picture, pdq: Some([9u8; 32]), ..e.clone() };
+        assert_eq!(ModerationEntry::decode(&picture.encode().unwrap()).unwrap(), picture);
+        let stray = ModerationEntry { pdq: Some([9u8; 32]), ..e.clone() };
+        assert!(stray.encode().is_err(), "only a picture carries a fingerprint");
         let warned = ModerationEntry {
             kind: ModerationTarget::Node,
             level: ModerationLevel::Warn,

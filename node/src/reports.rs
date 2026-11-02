@@ -980,7 +980,7 @@ async fn list_handler(
             "you can't put yourself on your own list"
         )));
     }
-    data.moderation().say(kind, &target, level, req.reason.trim(), true).await?;
+    data.moderation().say(kind, &target, level, req.reason.trim(), true, None).await?;
     crate::fold::fold_now(&state, &root).await;
     decide(&state, &id, "listed", None).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "ok": true })))
@@ -1124,7 +1124,14 @@ async fn drop_node_handler(
     if req.block {
         let endpoint = hex_fixed::<32>(&node, "node")?;
         data.moderation()
-            .say(ModerationTarget::Node, &endpoint, ModerationLevel::Block, req.reason.trim(), true)
+            .say(
+                ModerationTarget::Node,
+                &endpoint,
+                ModerationLevel::Block,
+                req.reason.trim(),
+                true,
+                None,
+            )
             .await?;
         crate::fold::fold_now(&state, &root).await;
     }

@@ -14,7 +14,13 @@ import { t } from './i18n.js';
 import { formatWhen } from './pure/when.js';
 import { personHref } from './links.js';
 import { PersonInline } from './person.js';
-import { levelWord, moderationMoved, ReasonInput, useModeration } from './moderation.js';
+import {
+    levelWord,
+    listTarget,
+    moderationMoved,
+    ReasonInput,
+    useModeration,
+} from './moderation.js';
 import { Hotlines } from './servermoderation.js';
 import { MAX_REASON_BYTES, reasonBytes } from './pure/moderation.js';
 
@@ -88,13 +94,34 @@ const Settings = ({ root, settings, onSaved }) => {
     </div>`;
 };
 
-const Picture = ({ src, covered }) => {
+/// A picture that came with a report, and "block this picture" - an entry on the moderator's own
+/// list for the file itself, with the report's reason, wherever else it is posted.
+const Picture = ({ root, hash, src, covered, reason }) => {
     const [shown, setShown] = useState(!covered);
-    return shown
-        ? html`<img class="report-picture" src=${src} alt="" />`
-        : html`<button class="removal-option report-covered" onClick=${() => setShown(true)}>
-              ${t('reports.a-strangers-picture-show', "a stranger's picture - show it")}
-          </button>`;
+    const [listed, setListed] = useState(false);
+    const [error, setError] = useState('');
+    const list = async () => {
+        setError('');
+        try {
+            await listTarget(root, 'picture', hash, 'block', reason);
+            setListed(true);
+        } catch (e) {
+            setError(e.message);
+        }
+    };
+    return html`<div class="report-picture-row">
+        ${
+            shown
+                ? html`<img class="report-picture" src=${src} alt="" />`
+                : html`<button class="removal-option report-covered" onClick=${() => setShown(true)}>
+                      ${t('reports.a-strangers-picture-show', "a stranger's picture - show it")}
+                  </button>`
+        }
+        <button class="removal-option" disabled=${listed} onClick=${list}>
+            ${listed ? t('reports.picture-blocked', 'on your public list') : t('reports.block-this-picture', 'block this picture')}
+        </button>
+        ${error && html`<p class="form-error">${error}</p>`}
+    </div>`;
 };
 
 const ReportRow = ({ root, current, report, administers, onMoved }) => {
@@ -161,7 +188,14 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
                 ${report.words && html`<pre class="report-words">${report.words}</pre>`}
                 ${(report.pictures || []).map(
                     (hash) =>
-                        html`<${Picture} key=${hash} src=${`${base}/picture/${hash}`} covered=${report.standing === 'stranger'} />`,
+                        html`<${Picture}
+                            key=${hash}
+                            root=${root}
+                            hash=${hash}
+                            src=${`${base}/picture/${hash}`}
+                            covered=${report.standing === 'stranger'}
+                            reason=${report.reason}
+                        />`,
                 )}
             </div>`
         }
