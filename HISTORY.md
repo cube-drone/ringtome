@@ -26209,3 +26209,13 @@ but the acceptance claims. Curtis's ruling: the prompt waits for a change
 important enough to need it. The section now says that using the app after a
 change accepts it, and that a server will ask again if a change is important
 enough.
+
+## Marquee Markup 0.10.2 (2026-11-01)
+
+The five `cube-drone-marquee-*` crates and the six `@cube-drone/marquee-*`
+packages move to 0.10.2: the editor's section handling (an inner scheme replaces
+the outer one, inner knobs layer over outer ones) and new section schemes -
+newsprint, typewriter, bluescreen, the pear and robot message bubbles, windows
+and windows-xp. The faces they use (VT323, Special Elite, UnifrakturMaguntia)
+were already served. `cargo test -p ringtome-node` 718 + 15, `just ui-check`
+1102, both bundles build.
