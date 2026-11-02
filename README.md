@@ -165,6 +165,13 @@ lightly federated, unapologetically Old Internet.
   provenance tags, OAuth for claude.ai and its kind, a page in settings saying
   how to connect one, and (2026-10-11) notebooks, their trees, and an hour's API
   key for what the tools don't reach.
+- [`MODERATION.md`](plans/MODERATION.md) — moderation lists for the stores'
+  rules, without making anyone an authority: anyone publishes a list of
+  personas, nodes and pictures to block or warn about, with reasons, on a public
+  chain; trusting someone to moderate for you is a private checkbox on the
+  contact, one hop only, and every build starts out trusting @official. Reports
+  go to the moderators you trust, kept off the chains, opted into on both sides,
+  with signed evidence only. A design draft (2026-11-01); nothing built.
 - [`NETWORK.md`](plans/NETWORK.md) — the machine table: every machine this node
   talks to, by the name it announces, with how reliably it answers, kept across
   restarts and shared by every kind of sync; hrseServer™'s Network page, open to
@@ -200,6 +207,11 @@ lightly federated, unapologetically Old Internet.
   to Marquee (never rendered as HTML), images through the node, a merged
   newest-first view, and a rebroadcast that carries its source. A design draft
   (2026-09-30); nothing built.
+- [`SCANNING.md`](plans/SCANNING.md) — pictures, CSAM and the operator, for an
+  operator who is one person and not an organization: an upload-scanning CDN in
+  front of the node (Bunny's, on hdt.com), quarantine and a "what to do now"
+  page for when an operator finds out, PDQ fingerprints of the operator's own
+  decisions, and admission limits. A design draft (2026-11-02); nothing built.
 - [`STOCK.md`](plans/STOCK.md) — hrseStock, a stock market in tags: a tag's
   price is its posts over 30 days, published daily by an exchange so every
   computer trades on the same numbers; lots on the private chain like hrseBonds,

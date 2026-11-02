@@ -179,6 +179,9 @@ store build needs of it first.
 
 ### A report
 
+_[MODERATION.md](MODERATION.md) is the design now (2026-11-02): reports go to
+the moderators the reporter trusts, not the target's home operator._
+
 One action on any post, reply, chat line, profile or picture:
 
 1. **Hide and block, at once**, on the reporter's own device. The person
@@ -204,10 +207,11 @@ wire: _Denunciations_ already defines the statement.
     touching nobody's data;
   - _the operator's_ lists decide what their node serves and admits - where
     legal pressure actually lands, and where it stays.
-- **Store builds come subscribed to the official list**, because a reviewer must
-  find something working; it's shown in settings beside the report button, with
-  what it's for, and dropped in one tap. Builds outside the stores ask nothing
-  of it.
+- **Every build comes subscribed to the official list** (Curtis, 2026-11-01,
+  replacing "store builds only"): a reviewer must find something working, and
+  the official persona is already every new persona's starter contact. It's
+  shown in settings beside the report button, with what it's for, and dropped in
+  one tap. [MODERATION.md](MODERATION.md) is the design.
 - **Weight by choice, not by graph**: a list counts because you subscribed,
   whether or not the trust graph reaches its author (the topic-scoped
   Credibility of _Denunciations_ stays the road for lists you didn't pick).

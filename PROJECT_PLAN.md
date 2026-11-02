@@ -5883,6 +5883,12 @@ oracle and (for perceptual hashes) a dictionary-attack risk - "shared along
 trust edges" is the operationally correct model, not just the philosophically
 tidy one.
 
+_(Amended 2026-11-02: most operators are one person, not an organization, and
+can't or shouldn't hold a clearinghouse key, so nothing depends on one - an
+upload-scanning layer in front of the node, quarantine, and fingerprints of the
+operator's own decisions do. [plans/SCANNING.md](plans/SCANNING.md) is the
+design; what follows stands for an operator who has a key.)_
+
 **CSAM lists are never distributable and never local.** The clearinghouse
 ecosystem (NCMEC, IWF, the Canadian Centre for Child Protection) keeps hashes
 server-side and exposes vetted access or query APIs. The shipped default backend
