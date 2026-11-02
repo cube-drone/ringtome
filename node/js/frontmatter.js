@@ -84,13 +84,11 @@ const KINDS = () => ({
         name: t('frontmatter.terms-of-service', 'Terms of Service'),
         title: t('frontmatter.tos-note-title', "Terms of Service: this server's additions"),
         advice: [
-            t('frontmatter.advice-who', 'who runs this server, and how to reach you'),
             t(
                 'frontmatter.advice-house-rules',
                 "your house rules, beyond the application's: what this server is for, and what doesn't belong here",
             ),
             t('frontmatter.advice-age', 'a minimum age, if it is higher than 13'),
-            t('frontmatter.advice-law', 'where you are, and whose law governs this server'),
             t(
                 'frontmatter.advice-reports',
                 'how you handle reports, and when you remove an account',
@@ -112,10 +110,6 @@ const KINDS = () => ({
             ),
             t('frontmatter.advice-where', 'where the server is, and who hosts it'),
             t('frontmatter.advice-backups', 'your backups: where they are kept, and for how long'),
-            t(
-                'frontmatter.advice-requests',
-                'who to contact with a question, or a request the law gives people',
-            ),
         ],
     },
 });
@@ -183,6 +177,7 @@ export const FrontMatterPage = ({ current }) => {
             ${t('frontmatter.page-intro', "Customize your Terms of Service and Privacy Policy here. Every server shows the application's own, then the terms every server starts with; what you write here is added after them - it can add rules, never take any away. Each version you publish is listed at the end of the page, dated.")}
         </p>
         ${error && html`<p class="form-error">${error}</p>`}
+        ${view && html`<${OperatorFacts} view=${view} />`}
         ${['tos', 'privacy'].map((kind) => {
             const k = kinds[kind];
             const added = view && view[kind];
@@ -217,6 +212,70 @@ export const FrontMatterPage = ({ current }) => {
             </section>`;
         })}
     </div>`;
+};
+
+/// Who runs this server, as both pages say it: a way to reach the operator, and whose law it runs
+/// under (Curtis, 2026-11-01: not a name or a home address - "operator@gooble.email" and "BC,
+/// Canada" suffice).
+const OperatorFacts = ({ view }) => {
+    const [contact, setContact] = useState(view.contact || '');
+    const [jurisdiction, setJurisdiction] = useState(view.jurisdiction || '');
+    const [saved, setSaved] = useState({
+        contact: view.contact || '',
+        jurisdiction: view.jurisdiction || '',
+    });
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const changed = contact.trim() !== saved.contact || jurisdiction.trim() !== saved.jurisdiction;
+    const save = async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+            await api('/api/admin/front-matter/facts', {
+                method: 'PUT',
+                body: JSON.stringify({ contact, jurisdiction }),
+            });
+            setSaved({ contact: contact.trim(), jurisdiction: jurisdiction.trim() });
+            toast(t('frontmatter.facts-saved', 'saved - both pages say so now'));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<form class="frontmatter-kind frontmatter-facts" onSubmit=${save}>
+        <h3>${t('frontmatter.you-as-operator', 'You, as this server’s operator')}</h3>
+        <p class="field-note">
+            ${t('frontmatter.facts-note', 'Both pages show these under the server default. Neither needs your name or your home address.')}
+        </p>
+        <label>
+            ${t('frontmatter.contact', 'how to reach you')}
+            <input
+                class="jag-field"
+                type="text"
+                maxlength="200"
+                placeholder=${t('frontmatter.contact-placeholder', 'operator@example.com')}
+                value=${contact}
+                onInput=${(e) => setContact(e.currentTarget.value)}
+            />
+        </label>
+        <label>
+            ${t('frontmatter.jurisdiction', 'whose laws this server runs under')}
+            <input
+                class="jag-field"
+                type="text"
+                maxlength="200"
+                placeholder=${t('frontmatter.jurisdiction-placeholder', 'BC, Canada')}
+                value=${jurisdiction}
+                onInput=${(e) => setJurisdiction(e.currentTarget.value)}
+            />
+        </label>
+        ${error && html`<p class="form-error">${error}</p>`}
+        <button class="removal-option" type="submit" disabled=${busy || !changed}>
+            <span class="removal-option-title">${busy ? '…' : t('frontmatter.save', 'save')}</span>
+        </button>
+    </form>`;
 };
 
 // ---------------------------------------------------------------------------------------------

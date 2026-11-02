@@ -92,8 +92,9 @@ you to agree again when you next sign in.
 
 ## 12. The law
 
-These terms are governed by the laws of [jurisdiction - to be filled in].
+These terms are governed by the laws of the Province of British Columbia,
+Canada, and the federal laws of Canada that apply there.
 
 ## 13. Contact
 
-[contact address - to be filled in]
+[horsedrawingtycoon@gooble.email](mailto:horsedrawingtycoon@gooble.email)

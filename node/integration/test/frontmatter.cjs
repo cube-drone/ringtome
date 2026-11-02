@@ -119,6 +119,51 @@ describe('front matter: terms, privacy, license', function () {
         assert.notEqual((await agreedVersions(later.account.id))[0].version, before);
     });
 
+    it("shows the operator's contact and jurisdiction on both pages, a line each", async function () {
+        const facts = (who, body) => j(who, 'api/admin/front-matter/facts', body, 'PUT');
+        const before = (
+            await agreedVersions((await makeUserFetch({ prefix: 'frontpre' })).account.id)
+        )[0].version;
+
+        const two = await facts(admin, { contact: 'a\nb', jurisdiction: 'BC, Canada' });
+        assert.equal(two.status, 400, 'one line each');
+        const long = await facts(admin, { contact: 'x'.repeat(201), jurisdiction: '' });
+        assert.equal(long.status, 400, 'and short');
+        assert.doesNotMatch(await page('tos'), /BC, Canada/, 'a refusal saves neither');
+
+        const set = await facts(admin, {
+            contact: ' operator@gooble.email ',
+            jurisdiction: 'BC, Canada',
+        });
+        assert.equal(set.status, 200, await set.clone().text());
+        assert.equal((await set.json()).changed, true);
+        for (const path of ['tos', 'privacy']) {
+            const html = await page(path);
+            assert.match(
+                html,
+                /<a href="mailto:operator@gooble\.email">operator@gooble\.email<\/a>/,
+                path,
+            );
+            assert.match(html, /BC, Canada/, path);
+        }
+        const view = await (await admin('api/admin/front-matter')).json();
+        assert.equal(view.contact, 'operator@gooble.email', 'kept trimmed');
+        assert.equal(view.jurisdiction, 'BC, Canada');
+        assert.equal(
+            (await (await facts(admin, view)).json()).changed,
+            false,
+            'the same again changes nothing',
+        );
+
+        const after = (
+            await agreedVersions((await makeUserFetch({ prefix: 'frontpost' })).account.id)
+        )[0].version;
+        assert.notEqual(after, before, 'they are part of what a person agrees to');
+
+        const someone = await makeUserFetch({ prefix: 'frontfacts' });
+        assert.equal((await facts(someone, { contact: 'me', jurisdiction: 'here' })).status, 403);
+    });
+
     it('lets only an administrator publish, and forgets an account with its agreement', async function () {
         const someone = await makeUserFetch({ prefix: 'frontnot' });
         const theirs = (await (await someone('api/identity', { method: 'POST' })).json())

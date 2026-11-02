@@ -29,7 +29,8 @@ label.frontmatter-agree {
 }
 
 .frontmatter-kind h3 {
-    margin: 0 0 0.2rem;
+    margin: 0 0 0.5rem;
+    line-height: 1.3;
 }
 
 .frontmatter-advice-head {
@@ -54,6 +55,9 @@ label.frontmatter-agree {
 .frontmatter-actions .removal-option {
     width: auto;
     flex: 1 1 12rem;
+    /* A link and a button, dressed alike: the button's font is the browser's own otherwise. */
+    font: inherit;
+    text-decoration: none;
 }
 
 /* hrseWriter's bar for an addition's note: in the publish bar's place, its words then its button. */
@@ -64,4 +68,19 @@ label.frontmatter-agree {
 
 .frontmatter-bar-what a {
     color: var(--sea);
+}
+
+/* The operator's contact and jurisdiction (frontmatter.js OperatorFacts): a field over each box. */
+.frontmatter-facts label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.6rem;
+    font-size: 0.85rem;
+    color: var(--faint);
+}
+
+.frontmatter-facts .removal-option {
+    width: auto;
+    font: inherit;
 }

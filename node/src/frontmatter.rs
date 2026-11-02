@@ -82,6 +82,7 @@ pub fn router() -> Router<AppState> {
         .route("/privacy", get(privacy_page))
         .route("/eula", get(license_page))
         .route("/api/admin/front-matter", get(admin_view))
+        .route("/api/admin/front-matter/facts", axum::routing::put(facts_handler))
         .route("/api/admin/front-matter/{kind}", post(publish_handler))
 }
 
@@ -113,14 +114,85 @@ async fn current(db: &Db, kind: Kind) -> Result<(String, Option<i64>), AppError>
     })
 }
 
+/// The operator's facts (Curtis, 2026-11-01: "configurable contact information and jurisdiction for
+/// the node operator ... "operator@gooble.email" and "BC, Canada" would have to suffice"): kept in
+/// `front_matter` beside the additions, under kinds of their own, every change dated.
+const CONTACT: &str = "contact";
+const JURISDICTION: &str = "jurisdiction";
+/// The longest a fact may be: a line, not a paragraph.
+const FACT_MAX: usize = 200;
+
+/// A fact as it stands ("" for unset).
+async fn fact(db: &Db, key: &str) -> Result<String, AppError> {
+    let row: Option<(String,)> = db
+        .fetch_optional(
+            "SELECT body FROM front_matter WHERE kind = ?1 ORDER BY at_ms DESC LIMIT 1",
+            (key,),
+        )
+        .await
+        .map_err(AppError::Internal)?;
+    Ok(row.map(|(v,)| v).unwrap_or_default())
+}
+
+/// Set a fact, when it changed.
+async fn set_fact(db: &Db, key: &str, value: &str) -> Result<bool, AppError> {
+    if fact(db, key).await? == value {
+        return Ok(false);
+    }
+    db.execute(
+        "INSERT INTO front_matter (kind, at_ms, body) VALUES (?1, ?2, ?3)",
+        (key, now_ms(), value),
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    Ok(true)
+}
+
+/// The facts as the pages show them, under the server's default: who to contact, and whose law.
+async fn facts_html(db: &Db) -> Result<String, AppError> {
+    let contact = fact(db, CONTACT).await?;
+    let jurisdiction = fact(db, JURISDICTION).await?;
+    let mut lines = Vec::new();
+    if !contact.is_empty() {
+        // An address that looks like email is a link to write to; anything else, as written.
+        let shown = if contact.contains('@') && !contact.contains(char::is_whitespace) {
+            format!("<a href=\"mailto:{0}\">{0}</a>", esc(&contact))
+        } else {
+            esc(&contact)
+        };
+        lines.push(format!("<strong>Contact this server's operator:</strong> {shown}"));
+    }
+    if !jurisdiction.is_empty() {
+        lines.push(format!(
+            "<strong>This server is run under the laws of:</strong> {}",
+            esc(&jurisdiction)
+        ));
+    }
+    Ok(if lines.is_empty() {
+        String::new()
+    } else {
+        format!("<p class=\"facts\">{}</p>", lines.join("<br>"))
+    })
+}
+
 /// The version of the terms a person agrees to now: everything `/tos` and `/privacy` show, hashed.
 pub async fn version(db: &Db) -> Result<String, AppError> {
     let (terms, _) = current(db, Kind::Terms).await?;
     let (privacy, _) = current(db, Kind::Privacy).await?;
+    let contact = fact(db, CONTACT).await?;
+    let jurisdiction = fact(db, JURISDICTION).await?;
     let mut hasher = blake3::Hasher::new();
-    for part in
-        [APP_TERMS, APP_PRIVACY, OPERATOR_TERMS, OPERATOR_PRIVACY, &terms, &privacy, LICENSE]
-    {
+    for part in [
+        APP_TERMS,
+        APP_PRIVACY,
+        OPERATOR_TERMS,
+        OPERATOR_PRIVACY,
+        &terms,
+        &privacy,
+        &contact,
+        &jurisdiction,
+        LICENSE,
+    ] {
         hasher.update(&(part.len() as u64).to_le_bytes());
         hasher.update(part.as_bytes());
     }
@@ -239,9 +311,10 @@ async fn terms_page(
     } else {
         let history = history(&state.node_db, Kind::Terms).await?;
         format!(
-            "{}<hr>{}{}",
+            "{}<hr>{}{}{}",
             markdown(APP_TERMS),
             marquee(OPERATOR_TERMS),
+            facts_html(&state.node_db).await?,
             addition("This server's own terms", &history)
         )
     };
@@ -257,9 +330,10 @@ async fn privacy_page(
     } else {
         let history = history(&state.node_db, Kind::Privacy).await?;
         format!(
-            "{}<hr>{}{}",
+            "{}<hr>{}{}{}",
             markdown(APP_PRIVACY),
             marquee(OPERATOR_PRIVACY),
+            facts_html(&state.node_db).await?,
             addition("This server's own privacy policy", &history)
         )
     };
@@ -302,6 +376,7 @@ fn page(title: &str, body: &str) -> Response {
   .diff .hunk {{ color: #8a7f6e; }}
   .addition {{ border-left: 3px solid #2a7f78; padding-left: 1rem; }}
   .own {{ color: #8a7f6e; }}
+  .facts {{ background: #fffdf8; border: 1px solid #e0d8c8; border-radius: 8px; padding: 0.7rem 0.9rem; }}
   nav {{ display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: 0.9rem;
         border-top: 1px solid #e0d8c8; margin-top: 3rem; padding-top: 1rem; }}
 </style>
@@ -331,6 +406,8 @@ struct Addition {
 struct AdminView {
     tos: Addition,
     privacy: Addition,
+    contact: String,
+    jurisdiction: String,
 }
 
 /// An addition as published: its whole-line Marquee comments (`%%`) dropped - they never show on
@@ -352,7 +429,40 @@ async fn admin_view(
     Ok(Json(AdminView {
         tos: Addition { body: tos, at_ms: tos_at },
         privacy: Addition { body: privacy, at_ms: privacy_at },
+        contact: fact(&state.node_db, CONTACT).await?,
+        jurisdiction: fact(&state.node_db, JURISDICTION).await?,
     }))
+}
+
+#[derive(Deserialize)]
+struct FactsRequest {
+    contact: String,
+    jurisdiction: String,
+}
+
+/// PUT `/api/admin/front-matter/facts`: the operator's contact and jurisdiction, each one line.
+async fn facts_handler(
+    State(state): State<AppState>,
+    admin: NodeAdminSession,
+    Json(req): Json<FactsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let mut changed = false;
+    for value in [&req.contact, &req.jurisdiction] {
+        if value.trim().chars().count() > FACT_MAX || value.contains(['\n', '\r']) {
+            return Err(AppError::BadRequest(crate::msg!(
+                "frontmatter.one-line",
+                "keep each to one line, under {max} characters",
+                max = FACT_MAX
+            )));
+        }
+    }
+    for (key, value) in [(CONTACT, &req.contact), (JURISDICTION, &req.jurisdiction)] {
+        changed |= set_fact(&state.node_db, key, value.trim()).await?;
+    }
+    if changed {
+        tracing::info!(by = %admin.account.id, "a server operator changed their contact or jurisdiction");
+    }
+    Ok(Json(serde_json::json!({ "changed": changed })))
 }
 
 #[derive(Deserialize)]

@@ -69,4 +69,4 @@ We'll date every change to this policy here.
 
 ## Contact
 
-[contact address - to be filled in]
+[horsedrawingtycoon@gooble.email](mailto:horsedrawingtycoon@gooble.email)

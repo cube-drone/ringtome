@@ -26165,3 +26165,37 @@ The application's terms and the server default already show above them on
 page or its change list, and publishing the hint alone adds nothing. Checked
 against a scratch node: the fresh note holds the hint; published with it, `/tos`
 shows the words and not the hint.
+
+## Front Matter: the operator's contact and jurisdiction (2026-11-01)
+
+Curtis: configurable contact information and jurisdiction for a server's
+operator - "I wouldn't provide my name or personal address here, but
+"operator@gooble.email" and "BC, Canada" would have to suffice". hrseServer's
+Front Matter opens with "You, as this server's operator": how to reach you, and
+whose laws this server runs under, one line each (200 characters at most;
+`PUT /api/admin/front-matter/facts`, administrators only, both refused together
+if either is wrong). Kept in `front_matter` under kinds of their own (`contact`,
+`jurisdiction`), every change dated, and part of the agreed version's hash. Both
+`/tos` and `/privacy` show them in a box under the server default - a contact
+that looks like an email address as a `mailto:` link - and neither in the app on
+your own computer, with the rest of the operator's layers. The advice lists lost
+the three items the fields now cover.
+
+Seen in passing and fixed: the server defaults' italic first line showed its
+underscores - in Marquee `_` is always literal, emphasis is `*…*`; and the Front
+Matter page's headings crowded their notes, and its link and buttons wore
+different fonts.
+
+`frontmatter.cjs` gained "shows the operator's contact and jurisdiction on both
+pages, a line each" (two lines and 201 characters refused and nothing saved;
+saved trimmed, a mailto link on both pages; the same again changes nothing; a
+new version agreed to; a non-administrator refused): 5 passing. Walked in
+headless Chrome against a scratch node: save waits for a change, says "saved -
+both pages say so now", and `/privacy` shows the box.
+
+## The application's terms name their contact and law (2026-11-01)
+
+Curtis filled the blanks the drafts left: `TERMS_OF_SERVICE.md` and `PRIVACY.md`
+are reached at horsedrawingtycoon@gooble.email (a `mailto:` link on `/tos` and
+`/privacy`), and the terms are governed by the laws of the Province of British
+Columbia, Canada, and the federal laws of Canada that apply there.
