@@ -75,6 +75,7 @@ pub mod mcp;
 pub mod media;
 pub mod message;
 pub mod migrations;
+pub mod moderation;
 pub mod net;
 pub mod nodeface;
 pub mod nodeshelf;
@@ -607,6 +608,11 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         tracing::warn!(error = ?e, "the machine table didn't load; it starts empty");
     }
     net::p2p::spawn_accept_loop(endpoint, state.clone());
+    // What this node's moderation refuses, before the first exchange is answered (moderation.rs).
+    tokio::spawn({
+        let state = state.clone();
+        async move { moderation::recompute(&state).await }
+    });
     // Arm the blob reaper: until this line, the store's GC aborts every run. From here, each
     // round marks from the node's own reference ledgers (reaper::live_set) and sweeps the rest.
     reaper::arm(&state);
@@ -1109,6 +1115,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .merge(accounts::router())
         .merge(leaving::router())
         .merge(frontmatter::router())
+        .merge(moderation::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))
         .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))

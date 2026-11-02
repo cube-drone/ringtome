@@ -568,6 +568,9 @@ fn chain_label(service: u32, author_hex: &str, instance: Option<[u8; 16]>) -> St
         11 => "inbox-murmurs",
         12 => "annotations",
         13 => "chat",
+        14 => "group",
+        15 => "group-public",
+        16 => "moderation",
         _ => "service",
     };
     let room = instance.map(|i| format!(" room {}", &hex::encode(i)[..8])).unwrap_or_default();

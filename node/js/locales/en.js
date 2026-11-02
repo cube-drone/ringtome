@@ -1795,6 +1795,28 @@ export default {
     'modal.ok': 'ok',
     'modal.cancel': 'cancel',
 
+    // --- node/js/moderation.js ---
+    'moderation.level-block': 'block',
+    'moderation.level-warn': 'warn',
+    'moderation.reason-placeholder': 'why - everyone who reads your list sees this',
+    'moderation.trust-to-moderate': 'trust them to moderate for me',
+    'moderation.on-your-list': 'on your public list: {level}',
+    'moderation.add-to-public-list': 'add to my public list',
+
+    // --- node/js/moderationpage.js ---
+    'moderation.save': 'save',
+    'moderation.take-off': 'take off',
+    'moderation.ill-judge-this-myself': "I'll judge this myself",
+    'moderation.whose-lists': 'Whose lists you take',
+    'moderation.whose-lists-hint': 'People you trust to moderate for you: what they block or warn about, you do too. Tick or untick anyone on their own page. Only their own word counts - never what they take from others.',
+    'moderation.administers-hint': 'You run this server, so what you block - on your own list or from the lists you take - it refuses to carry for everyone here, and clears off. Warnings stay yours. Its own users are never refused: remove an account instead.',
+    'moderation.nobody-yet': "nobody - you're judging everything yourself",
+    'moderation.what-you-take': 'What you take',
+    'moderation.nothing-taken': 'nothing yet',
+    'moderation.your-public-list': 'Your public list',
+    'moderation.your-public-list-hint': "Public: anyone can read it, including the people on it. Add someone from their own page. Blocking someone privately doesn't put them here.",
+    'moderation.list-empty': 'empty',
+
     // --- node/js/net.js ---
     'net.upload-too-large': 'that file is {size} - more than this place takes ({max})',
     'net.upload-too-large-plain': 'that file is larger than this place takes',
@@ -2185,6 +2207,10 @@ export default {
     'postentry.for-trusted-readers-only': 'the author shares these words only with people they trust',
     'postentry.these-words-havent-reached-this': "these words haven't reached this computer.",
     'postentry.tagged-show-anyway': 'tagged {tags} - show anyway',
+    'postentry.blocked-why-show-anyway': 'blocked: {reason} - show anyway',
+    'postentry.blocked-show-anyway': 'blocked - show anyway',
+    'postentry.auto-warn-why-show-anyway': 'auto-warn: {reason} - show anyway',
+    'postentry.auto-warn-show-anyway': 'auto-warn - show anyway',
     'postentry.see-more': 'see more…',
     'postentry.enter-the-room': 'enter the room',
 
@@ -2818,6 +2844,11 @@ export default {
     // --- node/src/mcp.rs ---
     'mcp.needs-an-api-key': 'connect with an API key: Authorization: Bearer rtk_...',
 
+    // --- node/src/moderation.rs ---
+    'moderation.unknown-kind': 'a list names a persona or a node',
+    'moderation.unknown-level': 'block or warn',
+    'moderation.not-yourself': "you can't put yourself on your own list",
+
     // --- node/src/net/unfurl.rs ---
     'net.unfurl.not-a-url': 'not a URL: {reason}',
     'net.unfurl.only-http-and-https-unfurl': 'only http and https unfurl',
@@ -2866,6 +2897,7 @@ export default {
     'record.imaol.this-computers-key-is-no': "this computer's key is no longer part of the persona",
     'record.imaol.invalid-profile-field-e': 'invalid profile field: {e}',
     'record.imaol.annotation-too-long': 'that label is too long',
+    'record.imaol.moderation-reason-too-long': 'that reason is too long - 512 bytes at most',
 
     // --- node/src/record/private.rs ---
     'record.private.invalid-private-record-e': 'invalid private record: {e}',

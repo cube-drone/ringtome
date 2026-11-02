@@ -79,6 +79,10 @@ pub async fn remember(
     entry: &[u8],
     auth_path: &[Vec<u8>],
 ) -> Result<()> {
+    // A persona this node's moderation refuses is never shelved (moderation.rs).
+    if crate::moderation::refuses_persona(author_root) {
+        return Ok(());
+    }
     // Final for the document id, exactly as the author's own shelf treats it
     // (`documents::retracted_doc_ids`): re-publishing after a delete mints a NEW id, so there is
     // no legitimate arrival a tombstone could wrongly refuse.
@@ -1087,6 +1091,16 @@ pub async fn forget_peek(node_db: &Db, author_root: &str) -> Result<u64> {
         )
         .await
         .context("forgetting a peek's fragments")?;
+    Ok(n)
+}
+
+/// Forget every fragment of an author, whoever shared it - a persona this node's moderation
+/// refuses (moderation.rs): their posts go from the shelf as well as from the mirror.
+pub async fn forget_author(node_db: &Db, author_root: &str) -> Result<u64> {
+    let n = node_db
+        .execute("DELETE FROM fragments WHERE author_root = ?1", (author_root,))
+        .await
+        .context("forgetting a refused author's fragments")?;
     Ok(n)
 }
 

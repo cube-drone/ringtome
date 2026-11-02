@@ -317,13 +317,14 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
     // ledger legs ride the `ledger` flag below, fragment arrivals note their own memos at
     // intake.
     use ringtome_proto::registry::service;
-    const EVERYTHING: [u32; 9] = [
+    const EVERYTHING: [u32; 10] = [
         service::IDENTITY_PUBLIC,
         service::PROFILE_PUBLIC,
         service::POSTS,
         service::FOLLOWS_PUBLIC,
         service::REBROADCASTS,
         service::ANNOTATIONS_PUBLIC,
+        service::MODERATION_PUBLIC,
         service::CHAT,
         service::GROUP,
         service::GROUP_PUBLIC,
@@ -370,6 +371,9 @@ async fn run_chain(state: &AppState, root: &str, ledger: bool, force: bool) {
     }
     if has(service::ANNOTATIONS_PUBLIC) {
         crate::annotations::refresh_from(state, root, force).await;
+    }
+    if has(service::MODERATION_PUBLIC) {
+        crate::moderation::refresh_from(state, root, force).await;
     }
     if has(service::POSTS) || has(service::REBROADCASTS) {
         crate::nodeshelf::refresh_from(state, root, force).await;

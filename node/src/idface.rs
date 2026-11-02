@@ -976,6 +976,10 @@ pub struct IdQuery {
 /// leaves first; a key that resolves no serving record falls back to being dialed as an
 /// endpoint. The resolve-a-bare-root announce backstop remains NEXT_STEPS.
 pub(crate) async fn fetch_foreign(state: &AppState, root_hex: &str, via: &[String]) -> bool {
+    // A persona this node's moderation refuses is never fetched (moderation.rs).
+    if crate::moderation::refuses_persona(root_hex) {
+        return false;
+    }
     fetch_foreign_passes(state, root_hex, via, crate::net::sync::CONTINUATIONS_PER_WAKE).await
 }
 

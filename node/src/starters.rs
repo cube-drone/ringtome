@@ -25,23 +25,37 @@ pub struct Starter {
     pub trust: String,
     pub interest: String,
     pub rebroadcasts: String,
+    /// The new persona begins trusting them to moderate for it (plans/MODERATION.md, ruling 3:
+    /// every build starts out taking @official's list, and anyone can untick it).
+    pub moderates: bool,
 }
 
-/// The three, as their addresses give them: `root via trust interest rebroadcast-interest`. Tom is
-/// always there and never loud: low on every dial.
+/// The three, as their addresses give them: `root via trust interest rebroadcast-interest`, and
+/// `moderates` after the official persona. Tom is always there and never loud: low on every dial.
 const BUILT_IN: &str = "\
-EBnZy7HqP8X9Vd1CL3XL128xfV32v4xEgXehivgAG97w:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:medium:medium:medium;\
+EBnZy7HqP8X9Vd1CL3XL128xfV32v4xEgXehivgAG97w:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:medium:medium:medium:moderates;\
 HVnmWLq8YSnyiUCupmHM6wP91yrwC6PpcynabWGVHRkL:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:medium:low:low;\
 J4Rkao4TfvtmVnVyiRu3SgGaN3DcLnEts7xhffjk2q2F:9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX:low:low:low";
 
-/// A list in the environment's spelling: `root:via[,via]:trust:interest:rebroadcasts`, `;` between
-/// starters; `root` in any spelling an address takes, the bands the dials' own words.
+/// A list in the environment's spelling: `root:via[,via]:trust:interest:rebroadcasts[:moderates]`,
+/// `;` between starters; `root` in any spelling an address takes, the bands the dials' own words,
+/// and `moderates` when the new persona should begin trusting them to moderate for it.
 pub fn parse(list: &str) -> Result<Vec<Starter>> {
     let mut out = Vec::new();
     for item in list.split(';').map(str::trim).filter(|s| !s.is_empty()) {
         let parts: Vec<&str> = item.split(':').collect();
-        let [root, via, trust, interest, rebroadcasts] = parts.as_slice() else {
-            return Err(anyhow!("a starter is root:via:trust:interest:rebroadcasts - {item:?}"));
+        let (root, via, trust, interest, rebroadcasts, moderates) = match parts.as_slice() {
+            [root, via, trust, interest, rebroadcasts] => {
+                (root, via, trust, interest, rebroadcasts, false)
+            }
+            [root, via, trust, interest, rebroadcasts, "moderates"] => {
+                (root, via, trust, interest, rebroadcasts, true)
+            }
+            _ => {
+                return Err(anyhow!(
+                    "a starter is root:via:trust:interest:rebroadcasts[:moderates] - {item:?}"
+                ))
+            }
         };
         let Some(crate::speakable::Parsed::Ok(root)) = crate::speakable::parse(root) else {
             return Err(anyhow!("not an address: {root:?}"));
@@ -62,6 +76,7 @@ pub fn parse(list: &str) -> Result<Vec<Starter>> {
             trust: trust.to_string(),
             interest: interest.to_string(),
             rebroadcasts: rebroadcasts.to_string(),
+            moderates,
         });
     }
     Ok(out)
@@ -93,6 +108,9 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
         Ok(list) => {
             for a in list {
                 let Some(root) = crate::pubkey::decode(&a.root) else { continue };
+                // The operator's dials win; whether the newcomer takes their list stays the
+                // built-in's word.
+                let moderates = starters.iter().any(|s| s.root == root && s.moderates);
                 starters.retain(|s| s.root != root);
                 starters.push(Starter {
                     root,
@@ -100,6 +118,7 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
                     trust: a.trust,
                     interest: a.interest,
                     rebroadcasts: a.rebroadcasts,
+                    moderates,
                 });
             }
         }
@@ -127,6 +146,11 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
         ] {
             if let Err(e) = register.set(key, value).await {
                 tracing::warn!(error = ?e, starter = %them, key, "a starter's dial did not take");
+            }
+        }
+        if s.moderates {
+            if let Err(e) = register.set(crate::moderation::MODERATES, "yes").await {
+                tracing::warn!(error = ?e, starter = %them, "a starter's moderation did not take");
             }
         }
         fetch.push((them, s.via.clone()));
@@ -318,6 +342,20 @@ mod tests {
             ("medium", "low", "low")
         );
         assert_eq!(two[0].via, vec!["9rZH3e1NMMVvnaM8BCtwXM4CMAaC2oYgwXD3ZCp1XVGX".to_string()]);
+        assert_eq!(
+            two.iter().map(|s| s.moderates).collect::<Vec<_>>(),
+            vec![true, false, false],
+            "everyone starts out taking the official list, and only that one (plans/MODERATION.md)"
+        );
+        assert!(
+            parse("EBnZy7HqP8X9Vd1CL3XL128xfV32v4xEgXehivgAG97w:v:low:low:low:moderates").unwrap()
+                [0]
+            .moderates
+        );
+        assert!(
+            parse("EBnZy7HqP8X9Vd1CL3XL128xfV32v4xEgXehivgAG97w:v:low:low:low:smites").is_err(),
+            "the sixth word is moderates or nothing"
+        );
         assert_eq!(configured(None, true, false).unwrap().len(), 3, "a prod node");
         assert!(configured(None, false, false).unwrap().is_empty(), "a dev node");
         assert!(configured(None, true, true).unwrap().is_empty(), "the test rig");

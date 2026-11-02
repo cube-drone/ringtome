@@ -584,6 +584,25 @@ pub async fn excise_suggested(node_db: &crate::db::Db, author_root: &str) -> Res
     Ok(())
 }
 
+/// Excise every public row an author has in every reader's feed - a persona this node's
+/// moderation refuses (moderation.rs), whose posts leave the node, retroactively. A group's
+/// rows stay: they are its members' space, and travel through the group's own door.
+pub async fn excise_author(node_db: &crate::db::Db, author_root: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM feed_journal WHERE author_root = ?1 AND group_id = x''",
+            (author_root,),
+        )
+        .await
+        .context("excising a refused author's rows")?;
+    node_db
+        .execute("DELETE FROM journal_fill WHERE author_root = ?1", (author_root,))
+        .await
+        .context("resetting a refused author's history digs")?;
+    crate::search::journal_or_labels_moved(); // the tag cloud's cache (search.rs)
+    Ok(())
+}
+
 async fn journal_rows_suggested(
     node_db: &crate::db::Db,
     author_root: &str,

@@ -90,6 +90,11 @@ pub mod service {
     /// per-instance chain, it travels on any exchange, so a follower of a member learns the
     /// groups they're in.
     pub const GROUP_PUBLIC: u32 = 15;
+    /// A moderation list (plans/MODERATION.md, 2026-11-02): what this persona says about
+    /// sources - block or warn, with a reason - LWW per target on the speaker's chain, a
+    /// retraction restating the target absent. Public and whole, like annotations: a reader
+    /// holding only the tail would mis-fold a retraction whose statement fell off the front.
+    pub const MODERATION_PUBLIC: u32 = 16;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -109,6 +114,7 @@ pub mod service {
             CHAT => "chat",
             GROUP => "group",
             GROUP_PUBLIC => "group-public",
+            MODERATION_PUBLIC => "moderation-public",
             _ => "unknown-service",
         }
     }
@@ -156,6 +162,8 @@ pub mod entry_type {
     pub const CHAT_MESSAGE: u32 = 13;
     /// One group entry (`roster::GroupEntry`), on a `GROUP` chain whose instance is the group.
     pub const GROUP_ENTRY: u32 = 14;
+    /// One moderation list entry (`ModerationEntry`), on `MODERATION_PUBLIC`.
+    pub const MODERATION_ENTRY: u32 = 15;
 
     pub fn name(id: u32) -> &'static str {
         match id {
@@ -173,6 +181,7 @@ pub mod entry_type {
             INBOX_NOTICE => "inbox-notice",
             CHAT_MESSAGE => "chat-message",
             GROUP_ENTRY => "group-entry",
+            MODERATION_ENTRY => "moderation-entry",
             _ => "unknown-type",
         }
     }
@@ -1400,6 +1409,170 @@ impl Rebroadcast {
     }
 }
 
+/// What a moderation entry is about (plans/MODERATION.md, _A list_): a persona by its root, or
+/// a node by its endpoint id. Both are 32-byte public keys; the kind keeps them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ModerationTarget {
+    Persona,
+    Node,
+}
+
+impl ModerationTarget {
+    pub fn code(self) -> u64 {
+        match self {
+            Self::Persona => 0,
+            Self::Node => 1,
+        }
+    }
+
+    pub fn from_code(code: u64) -> Option<Self> {
+        match code {
+            0 => Some(Self::Persona),
+            1 => Some(Self::Node),
+            _ => None,
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Persona => "persona",
+            Self::Node => "node",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<Self> {
+        match word {
+            "persona" => Some(Self::Persona),
+            "node" => Some(Self::Node),
+            _ => None,
+        }
+    }
+}
+
+/// How hard an entry acts: `block` refuses the source, `warn` puts it behind a click-through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ModerationLevel {
+    Warn,
+    Block,
+}
+
+impl ModerationLevel {
+    pub fn code(self) -> u64 {
+        match self {
+            Self::Warn => 0,
+            Self::Block => 1,
+        }
+    }
+
+    pub fn from_code(code: u64) -> Option<Self> {
+        match code {
+            0 => Some(Self::Warn),
+            1 => Some(Self::Block),
+            _ => None,
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Warn => "warn",
+            Self::Block => "block",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<Self> {
+        match word {
+            "warn" => Some(Self::Warn),
+            "block" => Some(Self::Block),
+            _ => None,
+        }
+    }
+}
+
+/// One moderation list entry: the speaker says `target` should be blocked or warned about,
+/// and why - or, `present` false, takes that back. LWW per (kind, target) on the speaker's
+/// chain. The reason is capped in bytes, not characters (Curtis, 2026-11-02): bytes are what
+/// the chain holds and what every node checks alike.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModerationEntry {
+    pub kind: ModerationTarget,
+    pub target: [u8; 32],
+    pub level: ModerationLevel,
+    pub reason: String,
+    pub present: bool,
+}
+
+impl ModerationEntry {
+    pub const MAX_REASON_BYTES: usize = 512;
+
+    fn well_formed(&self) -> Result<(), ProtoError> {
+        if self.reason.len() > Self::MAX_REASON_BYTES {
+            return Err(ProtoError::BadEntry("moderation reason length"));
+        }
+        Ok(())
+    }
+
+    pub fn is_retraction(&self) -> bool {
+        !self.present
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        self.well_formed()?;
+        let mut w = Writer::new();
+        w.map(5);
+        w.uint(0);
+        w.uint(self.kind.code());
+        w.uint(1);
+        w.bytes(&self.target);
+        w.uint(2);
+        w.uint(self.level.code());
+        w.uint(3);
+        w.text(&self.reason);
+        w.uint(4);
+        w.uint(u64::from(self.present));
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let mut map = r.int_map()?;
+        let mut kind: Option<ModerationTarget> = None;
+        let mut target: Option<[u8; 32]> = None;
+        let mut level: Option<ModerationLevel> = None;
+        let mut reason: Option<String> = None;
+        let mut present: Option<bool> = None;
+        while let Some(k) = map.next_key()? {
+            match k {
+                0 => {
+                    kind = Some(
+                        ModerationTarget::from_code(map.uint()?)
+                            .ok_or(ProtoError::BadEntry("moderation target kind"))?,
+                    )
+                }
+                1 => target = Some(map.bytes_fixed::<32>()?),
+                2 => {
+                    level = Some(
+                        ModerationLevel::from_code(map.uint()?)
+                            .ok_or(ProtoError::BadEntry("moderation level"))?,
+                    )
+                }
+                3 => reason = Some(map.text()?.to_string()),
+                4 => present = Some(map.uint()? != 0),
+                _ => map.skip_value()?,
+            }
+        }
+        r.finish()?;
+        let out = Self {
+            kind: kind.ok_or(ProtoError::BadEntry("moderation missing kind"))?,
+            target: target.ok_or(ProtoError::BadEntry("moderation missing target"))?,
+            level: level.ok_or(ProtoError::BadEntry("moderation missing level"))?,
+            reason: reason.ok_or(ProtoError::BadEntry("moderation missing reason"))?,
+            present: present.ok_or(ProtoError::BadEntry("moderation missing presence"))?,
+        };
+        out.well_formed()?;
+        Ok(out)
+    }
+}
+
 /// One public annotation: a statement that `target` carries `key = value`, or - `present`
 /// false - that it no longer does. LWW per (target, key, value) on the speaker's chain, so a
 /// tag is its own statement (`tag=saucy`), retracted by restating it absent; single-valued
@@ -2110,7 +2283,34 @@ mod tests {
     }
 
     #[test]
+    fn a_moderation_entry_round_trips_and_caps_its_reason_in_bytes() {
+        let e = ModerationEntry {
+            kind: ModerationTarget::Persona,
+            target: [3u8; 32],
+            level: ModerationLevel::Block,
+            reason: "spam, all of it".into(),
+            present: true,
+        };
+        assert_eq!(ModerationEntry::decode(&e.encode().unwrap()).unwrap(), e);
+        let warned = ModerationEntry {
+            kind: ModerationTarget::Node,
+            level: ModerationLevel::Warn,
+            ..e.clone()
+        };
+        assert_eq!(ModerationEntry::decode(&warned.encode().unwrap()).unwrap(), warned);
+        let gone = ModerationEntry { present: false, ..e.clone() };
+        assert!(ModerationEntry::decode(&gone.encode().unwrap()).unwrap().is_retraction());
+        let full = ModerationEntry { reason: "x".repeat(512), ..e.clone() };
+        assert!(full.encode().is_ok(), "512 bytes is the cap, not past it");
+        // 171 three-byte characters are 513 bytes: refused, though only 171 characters long.
+        let wide = ModerationEntry { reason: "\u{8bf4}".repeat(171), ..e };
+        assert!(wide.encode().is_err(), "the cap is bytes, not characters");
+    }
+
+    #[test]
     fn registry_names_cover_known_ids() {
+        assert_eq!(service::name(service::MODERATION_PUBLIC), "moderation-public");
+        assert_eq!(entry_type::name(entry_type::MODERATION_ENTRY), "moderation-entry");
         assert_eq!(service::name(service::PROFILE_PUBLIC), "profile-public");
         assert_eq!(service::name(service::DOC_META_PRIVATE), "doc-meta-private");
         assert_eq!(entry_type::name(entry_type::PROFILE_SET), "profile-set");

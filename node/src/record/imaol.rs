@@ -595,6 +595,128 @@ pub async fn publish_annotation(
     .await
 }
 
+/// State one moderation list entry (plans/MODERATION.md): `target` is to be blocked or warned
+/// about, or with `present` false no longer is. LWW per target - restating overwrites.
+pub async fn publish_moderation(
+    db: &Db,
+    key: &SigningKey,
+    entry: &ringtome_proto::ModerationEntry,
+) -> Result<SignedEntry, AppError> {
+    let payload = entry.encode().map_err(|_| {
+        AppError::BadRequest(crate::msg!(
+            "record.imaol.moderation-reason-too-long",
+            "that reason is too long - 512 bytes at most"
+        ))
+    })?;
+    append(
+        db,
+        key,
+        service::MODERATION_PUBLIC,
+        entry_type::MODERATION_ENTRY,
+        Payload::Inline(payload),
+    )
+    .await
+}
+
+/// One folded moderation entry, as a reader sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModerationRow {
+    pub kind: ringtome_proto::ModerationTarget,
+    /// The target's key, hex.
+    pub target: String,
+    pub level: ringtome_proto::ModerationLevel,
+    pub reason: String,
+    pub present: bool,
+    /// The winning statement's claimed time: signed, so the same on every computer.
+    pub timestamp_ms: i64,
+}
+
+/// This persona's moderation list, retractions as tombstones, newest first.
+pub async fn moderation_entries(db: &Db) -> Result<Vec<ModerationRow>, AppError> {
+    catch_up_moderation(db).await?;
+    type Row = (i64, String, i64, String, i64, i64);
+    let rows: Vec<Row> = db
+        .fetch_all(
+            "SELECT target_kind, target, level, reason, present, timestamp_ms
+             FROM moderation_entries ORDER BY timestamp_ms DESC, target",
+            (),
+        )
+        .await
+        .context("reading the moderation view")
+        .map_err(AppError::Internal)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(kind, target, level, reason, present, timestamp_ms)| {
+            Some(ModerationRow {
+                kind: ringtome_proto::ModerationTarget::from_code(kind as u64)?,
+                target,
+                level: ringtome_proto::ModerationLevel::from_code(level as u64)?,
+                reason,
+                present: present != 0,
+                timestamp_ms,
+            })
+        })
+        .collect())
+}
+
+/// Fold moderation statements past the watermark - `catch_up_annotations`' twin, keyed by
+/// target alone.
+async fn catch_up_moderation(db: &Db) -> Result<(), AppError> {
+    let rows =
+        rows_past_watermarks(db, service::MODERATION_PUBLIC, entry_type::MODERATION_ENTRY).await?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut advance: BTreeMap<String, u64> = BTreeMap::new();
+    for PastWatermark { author: author_hex, bytes, received_at_ms, seq } in
+        std::sync::Arc::unwrap_or_clone(rows)
+    {
+        advance.insert(author_hex, seq as u64);
+        let Ok(signed) = SignedEntry::decode(&bytes) else {
+            continue;
+        };
+        let Payload::Inline(payload) = &signed.entry().payload else {
+            continue;
+        };
+        let Ok(m) = ringtome_proto::ModerationEntry::decode(payload) else {
+            continue;
+        };
+        db.execute(
+            "INSERT INTO moderation_entries
+               (target_kind, target, level, reason, present, timestamp_ms, seq, entry_hash, received_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(target_kind, target) DO UPDATE SET
+               level = excluded.level,
+               reason = excluded.reason,
+               present = excluded.present,
+               timestamp_ms = excluded.timestamp_ms,
+               seq = excluded.seq,
+               entry_hash = excluded.entry_hash,
+               received_at_ms = excluded.received_at_ms
+             WHERE (excluded.timestamp_ms, excluded.seq, excluded.entry_hash)
+                 > (moderation_entries.timestamp_ms, moderation_entries.seq, moderation_entries.entry_hash)",
+            (
+                m.kind.code() as i64,
+                hex::encode(m.target),
+                m.level.code() as i64,
+                m.reason.as_str(),
+                i64::from(m.present),
+                signed.entry().timestamp_ms,
+                signed.entry().seq as i64,
+                signed.hash().as_slice(),
+                received_at_ms,
+            ),
+        )
+        .await
+        .context("folding a moderation entry")
+        .map_err(AppError::Internal)?;
+    }
+    for (author_hex, seq) in advance {
+        advance_watermark(db, &author_hex, service::MODERATION_PUBLIC, seq).await?;
+    }
+    Ok(())
+}
+
 /// One folded annotation statement, as a reader sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnotationRow {
@@ -990,6 +1112,7 @@ pub(crate) fn every_service() -> std::collections::BTreeSet<u32> {
         service::INBOX_TRUSTED,
         service::INBOX_STRANGER,
         service::REBROADCASTS,
+        service::MODERATION_PUBLIC,
     ]
     .into_iter()
     .collect()
@@ -1066,6 +1189,13 @@ async fn drop_views_fed_by(
             .context("clearing the rebroadcasts view")
             .map_err(AppError::Internal)?;
         dropped.insert(service::REBROADCASTS);
+    }
+    if touches(service::MODERATION_PUBLIC) {
+        db.execute("DELETE FROM moderation_entries", ())
+            .await
+            .context("clearing the moderation view")
+            .map_err(AppError::Internal)?;
+        dropped.insert(service::MODERATION_PUBLIC);
     }
 
     // Exactly the lanes whose rows were just destroyed - so each refolds, and lanes nobody

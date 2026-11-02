@@ -56,18 +56,25 @@ pub struct Edge {
     /// dial - a row is never kept for this alone - but the crowd's door reads it (crowd.rs:
     /// a stranger is answered about a persona somebody here follows where all can see).
     pub public: bool,
+    /// Trusted to moderate for the reader (plans/MODERATION.md): their list must be kept
+    /// current, as a follow's posts are. A routing fact like interest, so never gated on
+    /// consent - the node routing by its own personas' wants is not a disclosure.
+    pub moderates: bool,
 }
 
 impl Edge {
     /// Nothing recorded: no row should exist, and an existing one should go.
     fn is_empty(&self) -> bool {
-        self.eagerness.is_none() && self.rebroadcast.is_none() && self.trust.is_none()
+        self.eagerness.is_none()
+            && self.rebroadcast.is_none()
+            && self.trust.is_none()
+            && !self.moderates
     }
 }
 
-/// Rows per multi-row subscription upsert: 7 binds each, under SQLite's classic 999-variable
+/// Rows per multi-row subscription upsert: 8 binds each, under SQLite's classic 999-variable
 /// floor (the `fanout::JOURNAL_CHUNK_ROWS` discipline).
-const SUBSCRIPTION_CHUNK_ROWS: usize = 140;
+const SUBSCRIPTION_CHUNK_ROWS: usize = 120;
 
 /// The ledger's keys, spelled once (they mirror `js/pure/contact.js`'s collection).
 const INTEREST: &str = "interest";
@@ -108,6 +115,8 @@ fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
         rebroadcast: band(REBROADCAST),
         trust: if consented { band(TRUST) } else { None },
         public: consented,
+        moderates: facts.get(crate::moderation::MODERATES).map(String::as_str) == Some("yes")
+            && facts.get("blocked").map(String::as_str) != Some("yes"),
     }
 }
 
@@ -211,28 +220,30 @@ pub async fn refresh(
     for chunk in edges.chunks(SUBSCRIPTION_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 7;
+                let b = i * 8;
                 format!(
-                    "(?{},?{},?{},?{},?{},?{},?{})",
+                    "(?{},?{},?{},?{},?{},?{},?{},?{})",
                     b + 1,
                     b + 2,
                     b + 3,
                     b + 4,
                     b + 5,
                     b + 6,
-                    b + 7
+                    b + 7,
+                    b + 8
                 )
             })
             .collect();
         let sql = format!(
             "INSERT INTO subscriptions
-               (local_root, foreign_root, eagerness, rebroadcast, trust, public, updated_at_ms)
+               (local_root, foreign_root, eagerness, rebroadcast, trust, public, moderates, updated_at_ms)
              VALUES {}
              ON CONFLICT (local_root, foreign_root) DO UPDATE SET
                  eagerness = excluded.eagerness,
                  rebroadcast = excluded.rebroadcast,
                  trust = excluded.trust,
                  public = excluded.public,
+                 moderates = excluded.moderates,
                  updated_at_ms = excluded.updated_at_ms",
             placeholders.join(",")
         );
@@ -247,6 +258,7 @@ pub async fn refresh(
                     dial(edge.rebroadcast),
                     dial(edge.trust),
                     turso::Value::Integer(edge.public as i64),
+                    turso::Value::Integer(edge.moderates as i64),
                     turso::Value::Integer(now),
                 ]
             })
@@ -635,6 +647,14 @@ mod tests {
         assert!(edge_of(&facts(&[])).is_empty());
         assert!(edge_of(&facts(&[("nickname", "Bee")])).is_empty(), "a name is not an edge");
         assert!(edge_of(&facts(&[("blocked", "yes")])).is_empty(), "a block stays home");
+        assert!(
+            !edge_of(&facts(&[("moderates", "yes")])).is_empty(),
+            "a moderator's list is wanted here, as a follow's posts are"
+        );
+        assert!(
+            edge_of(&facts(&[("moderates", "yes"), ("blocked", "yes")])).is_empty(),
+            "and a block still stays home"
+        );
         assert!(
             !edge_of(&facts(&[("interest", "none")])).is_empty(),
             "the bottom band is a choice, not absence"

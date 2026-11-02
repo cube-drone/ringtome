@@ -763,6 +763,10 @@ async fn answer_for(
     doc_id: &[u8; 16],
 ) -> FragmentMessage {
     let author_hex = hex::encode(author);
+    // A persona this node's moderation refuses is never passed on (moderation.rs).
+    if crate::moderation::refuses_persona(&author_hex) {
+        return FragmentMessage::Unknown;
+    }
     let mut answer = answer_inner(state, asker, &author_hex, doc_id).await;
     // The labels ride the words (PROJECT_PLAN's Public annotations, slice 3): every proof this node can attach,
     // in one place for every Have - the mirror's, the fragment ledger's, whichever shelf

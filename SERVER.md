@@ -387,6 +387,23 @@ it to the page as it stands. Your additions come after everything else and can't
 take anything away from it, and every version you publish stays listed at the
 end of the page, dated, as a diff of the one before.
 
+### Moderation: what your server refuses
+
+Anyone can keep a public moderation list - people and servers to block or warn
+about, each with a reason - and anyone can tick someone else as trusted to
+moderate for them, taking that person's list as their own. Every persona made on
+a server starts out trusting the official Horse Drawing Tycoon 2 persona's list,
+and can untick it.
+
+On your server, your lists are the server's. Whatever an administrator's
+personas block - on their own list, or from the lists they take - the server
+refuses: it won't sync, fetch or pass on that persona, it clears off what it
+already held of them (their mirror, their posts in everyone's feeds), and it
+won't connect to a blocked server at all. Warnings stay personal. The server's
+own users are never refused this way - remove the account instead. Lifting a
+block stops the refusal; anything cleared comes back only by being fetched
+again. Find it all under **content control** in hrseSettings.
+
 ## Backups
 
 The node backs itself up without stopping. Ask it from the Server app, from the

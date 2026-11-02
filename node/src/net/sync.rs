@@ -852,6 +852,10 @@ pub(crate) async fn ingest_batch_in(
     // bidirectional syncs routine) would race between head-read and insert and die on the
     // entry_hash UNIQUE constraint instead of duplicate-skipping. See Db::lock_ingest.
     let _gate = db.lock_ingest().await;
+    // A persona this node's moderation refuses is never stored, whichever door it came by.
+    if crate::moderation::refuses_persona(&hex::encode(root)) {
+        return Ok(IngestOutcome::default());
+    }
 
     let mut rejected = 0u64;
     let mut received = 0u64;
@@ -2043,6 +2047,10 @@ pub(crate) async fn sync_with_peer_on(
     ask: Ask,
 ) -> Result<ExchangeStats> {
     let root = pubkey::decode(root_hex).ok_or_else(|| anyhow!("bad root pubkey"))?;
+    // A persona this node's moderation refuses is never pulled (moderation.rs).
+    if crate::moderation::refuses_persona(root_hex) {
+        return Ok(ExchangeStats::default());
+    }
     // On the sync ledger (crate::syncstatus) for as long as it runs: the persona's own when this
     // node hosts it and the peer is one of its computers, the network's otherwise.
     let peer = addr.id.to_string();
@@ -2606,10 +2614,13 @@ async fn serve_on(
     let followers = crate::net::subscriptions::followers_of(&state.node_db, &root_hex).await?;
     let held =
         !followers.is_empty() || crate::idface::has_fetched(&state.node_db, &root_hex).await?;
-    let wanted = agented
-        || room_ok
-        || group_ok
-        || (held && answers_for_held(&state, root, &peer_proof, &peer_id, &our_id).await);
+    // A persona this node's moderation refuses gets the polite empty exchange, like anyone
+    // not held here (moderation.rs).
+    let wanted = !crate::moderation::refuses_persona(&root_hex)
+        && (agented
+            || room_ok
+            || group_ok
+            || (held && answers_for_held(&state, root, &peer_proof, &peer_id, &our_id).await));
     if !wanted {
         write_frame(
             &mut send,
@@ -3430,14 +3441,16 @@ pub struct PeerSyncResult {
 const PEER_PASS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// A peek's scope (PROJECT_PLAN's Peeks, ruling 4): the chains a persona nobody here follows is held at -
 /// identity (authority), profile, the published follow and trust edges (small, and what
-/// "trust reveals" reads: a peeking node must learn it was trusted), and the annotations
-/// lane (small, and wrong as a suffix). The posts never come off the posts chain; they
-/// come through the fragment door.
+/// "trust reveals" reads: a peeking node must learn it was trusted), the annotations lane
+/// (small, and wrong as a suffix), and the moderation list (small, whole, and what a reader
+/// who trusts this persona to moderate takes - plans/MODERATION.md). The posts never come off
+/// the posts chain; they come through the fragment door.
 pub const PEEK_SCOPE: &[u32] = &[
     service::IDENTITY_PUBLIC,
     service::PROFILE_PUBLIC,
     service::FOLLOWS_PUBLIC,
     service::ANNOTATIONS_PUBLIC,
+    service::MODERATION_PUBLIC,
 ];
 
 /// How many budgeted exchanges one wake may chain while still behind (PROJECT_PLAN's Peeks, ruling 2).

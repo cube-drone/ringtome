@@ -1,0 +1,111 @@
+/* Moderation lists (moderation.js, moderationpage.js): on the content control page, whose lists
+   you take, what you take from them and your own public list; on a person's page, the "trust
+   them to moderate" box and the form that puts them on your list. */
+.moderation-section {
+    margin-top: 1.6rem;
+}
+
+.moderation-people,
+.moderation-rows,
+.moderation-sources {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+}
+
+.moderation-who {
+    color: inherit;
+    text-decoration: none;
+}
+
+.moderation-people li {
+    padding: 0.2rem 0;
+}
+
+.moderation-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.6rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Overruled: kept listed, so the reader can see what they set aside, and quieter for it. */
+.moderation-overruled {
+    color: var(--faint);
+}
+
+.moderation-level {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.moderation-sources {
+    flex: 1 1 100%;
+    margin: 0;
+    padding-left: 1rem;
+    font-size: 0.85rem;
+}
+
+.moderation-sources li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.moderation-said {
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+label.moderation-overrule {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+}
+
+.moderation-reason {
+    display: inline-flex;
+    flex: 1 1 14rem;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.moderation-reason input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.moderation-count {
+    color: var(--faint);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.moderation-over {
+    color: var(--coral);
+}
+
+.moderation-controls {
+    margin: 0.6rem 0;
+}
+
+.moderation-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.moderation-row .removal-option,
+.moderation-add .removal-option {
+    width: auto;
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.7rem;
+}

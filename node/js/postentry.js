@@ -79,6 +79,8 @@ import { t } from './i18n.js';
 import { useWarnings } from './warnings.js';
 import { CopyButton } from './copyinto.js';
 import { warningFor } from './pure/warnings.js';
+import { moderationFor } from './pure/moderation.js';
+import { useModeration } from './moderation.js';
 import { veilsMedia, withoutMedia } from './pure/chatveil.js';
 
 /// Feed cards' public words, by address and the post's last edit (see the card's body effect).
@@ -1247,9 +1249,22 @@ const PostEntryBody = ({
         blur: warnLists.blur,
         hide: warnLists.hide,
     });
+    // Moderation lists (plans/MODERATION.md): what the reader blocked, and what the people they
+    // trust to moderate block or warn about. A block leaves the page as a hidden tag does (its own
+    // page shows it veiled - you asked for it by address); a warning veils it with its reason.
+    const taken = useModeration(current && current.root).taken;
+    const moderated = moderationFor(item.author, {
+        me: current && current.root,
+        taken,
+        factsByRoot,
+    });
     const [revealed, setRevealed] = useState(false);
     const veiled =
-        !revealed && (warning.kind === 'blur' || (warning.kind === 'hide' && standalone));
+        !revealed &&
+        (warning.kind === 'blur' ||
+            (warning.kind === 'hide' && standalone) ||
+            moderated.kind === 'warn' ||
+            (moderated.kind === 'block' && standalone));
     // The foot's parts (see the foot, below): each only where the words are on screen to act on.
     const bodyShown = !!shownBody && !veiled;
     const seeMore = bodyShown && cut && !wholeThing;
@@ -1507,7 +1522,7 @@ const PostEntryBody = ({
     // After every hook has run (useTurbolinks above is one), never before - a card that
     // skipped hooks while retiring would trip preact's ordering on the re-render.
     if (gone) return null;
-    if (warning.kind === 'hide' && !standalone) return null;
+    if ((warning.kind === 'hide' || moderated.kind === 'block') && !standalone) return null;
 
     // The card's chips, the whole deck: in its banner's row, or in a narrow window behind one menu
     // chip, opening on a line of the head below the byline (doc/chips.js `useChipMenu`; Curtis,
@@ -2170,7 +2185,35 @@ const PostEntryBody = ({
                               }
                           </div>
                           <button class="feed-entry-unveil" onClick=${() => setRevealed(true)}>
-                              ${t('postentry.tagged-show-anyway', 'tagged {tags} - show anyway', { tags: warning.tags.join(', ') })}
+                              ${
+                                  warning.kind
+                                      ? t(
+                                            'postentry.tagged-show-anyway',
+                                            'tagged {tags} - show anyway',
+                                            { tags: warning.tags.join(', ') },
+                                        )
+                                      : moderated.kind === 'block'
+                                        ? moderated.reason
+                                            ? t(
+                                                  'postentry.blocked-why-show-anyway',
+                                                  'blocked: {reason} - show anyway',
+                                                  { reason: moderated.reason },
+                                              )
+                                            : t(
+                                                  'postentry.blocked-show-anyway',
+                                                  'blocked - show anyway',
+                                              )
+                                        : moderated.reason
+                                          ? t(
+                                                'postentry.auto-warn-why-show-anyway',
+                                                'auto-warn: {reason} - show anyway',
+                                                { reason: moderated.reason },
+                                            )
+                                          : t(
+                                                'postentry.auto-warn-show-anyway',
+                                                'auto-warn - show anyway',
+                                            )
+                              }
                           </button>
                       </div>`
                       }

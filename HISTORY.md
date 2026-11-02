@@ -26219,3 +26219,91 @@ newsprint, typewriter, bluescreen, the pear and robot message bubbles, windows
 and windows-xp. The faces they use (VT323, Special Elite, UnifrakturMaguntia)
 were already served. `cargo test -p ringtome-node` 718 + 15, `just ui-check`
 1102, both bundles build.
+
+## Moderation lists, slice 1 (2026-11-02)
+
+plans/MODERATION.md's first step. A persona publishes a moderation list on a new
+public chain, `MODERATION_PUBLIC` (service 16, entry type 15, `ModerationEntry`:
+a persona or node target, `block` or `warn`, a reason capped at 512 bytes,
+newest statement per target wins, a retraction restating it absent). Each
+persona's user database folds it (`moderation_entries`, user rung 34); the fold
+lane copies every held persona's present entries into a node memo
+(`moderation_said`, node rung 112, `moderation.rs`), and the peek scope carries
+the chain, so a moderator nobody here follows still arrives.
+
+A reader ticks "trust them to moderate for me" on a person's page (the private
+contact fact `moderates`) and takes their entries - one hop, never what they
+take in turn - plus their own, minus what they overrule (`moderation_overrules`,
+a private set). Block beats warn, and every source and reason is kept.
+`GET /api/identity/{root}/moderation` answers all three; `PUT` and
+`DELETE /api/identity/{root}/moderation/{kind}/{target}` keep the list.
+
+On a post card (`js/pure/moderation.js`): a blocked source leaves the feed the
+way a hidden tag does, and its own page shows it veiled; a warned one is veiled
+with "auto-warn: <reason> - show anyway". The reader's own private block now
+hides posts too - before, it only silenced labels and notices. hrseSettings'
+content control page gains whose lists you take, what you take (with "I'll judge
+this myself"), and your own public list (level and reason editable,
+byte-counted); a person's page gains the box and an "add to my public list"
+form.
+
+Not yet: @official seeded as everyone's moderator (step 2), node targets acting
+on sync and the operator-level block (step 3), clearing what is already held
+when a block lands (the plan's retroactive rule - this slice hides at display),
+reports.
+
+Proved by: "moderation lists" (5 claims: a list kept, changed and taken off; a
+513-byte reason and listing yourself refused; one hop and block over warn;
+overrule and untick; a moderator's list reaching a reader on another node by
+peek), the codec's round trip and byte cap, the fold's two unit tests, and the
+pure verdict's three. Walked in headless Chrome on a scratch node: the veil
+reads "auto-warn: rude about horses - show anyway", a block takes the post off
+the feed, and the settings page and the person page show their sections.
+
+## Moderation lists, slices 2 and 3: everyone's default, and what a server refuses (2026-11-02)
+
+plans/MODERATION.md's steps 2 and 3.
+
+**@official, everyone's moderator.** A starter may now carry a sixth word,
+`moderates` (`root:via:trust:interest:rebroadcasts[:moderates]`, in
+`RINGTOME_STARTER_CONTACTS` too), and the built-in official persona does: every
+persona created on a prod node begins with the private `moderates` fact on it,
+under the starters' rules - created, never joined or recovered, and an untick
+stays unticked. An operator's own auto-follow of the same person keeps it.
+
+**Holding a moderator's list.** Trusting someone to moderate is a routing fact,
+like interest: the reader needs their list kept current, as a follow needs their
+posts. The subscription memo carries it (`subscriptions.moderates`, node rung
+113; `edge_of` reads the fact, never gated on consent - the node routing by its
+own personas' wants is not a disclosure, which private follows already settled),
+so a moderator is someone this node wants: held whole, synced, kept through
+eviction. Ticking the box fetches them at once, as any dial on a peek does. (A
+first cut held an unfollowed moderator as a peek kept alive by looks, on a
+misreading of the consent gate - which covers trust as a fact, not routing;
+Curtis caught it the same day.)
+
+**What a server refuses** (`moderation.rs`). The block-level entries its
+administrators' personas take - their own lists and their moderators', minus
+their overrules - worked out at boot, when any list moves, and when an
+administrator ticks a moderator or overrules an entry. A refused persona is
+never synced either way (the serve gate, the outbound exchange,
+`ingest_batch_in`), fetched, shelved or answered for at the fragment door; what
+the server held of them goes - the mirror and its traces
+(`eviction::evict_one`), their public feed rows for every reader
+(`fanout::excise_author`), their fragments (`fragments::forget_author`). A
+refused node is never dialled (`p2p::dial`) or answered (the accept loop). The
+server's own users are never refused: their accounts are the operator's to
+remove, not to starve. A group's rows stay with the group. Lifting a block stops
+the refusal; what was cleared returns only by being fetched again.
+
+The moderation GET says `administers`, and content control tells an
+administrator that their blocks are the server's. SERVER.md has a section on it.
+
+Proved by: "moderation lists: what a node refuses" (4 claims, two nodes: a
+followed persona on another node cleared from the follower's feed and
+unfetchable once an administrator blocks them; fetched again once the
+administrator overrules it; the node's own user never refused, and the
+administrator told so; a blocked node undialled until the block lifts), the node
+log showing the clearing and the refused dial, and the starters' unit test (the
+built-in official persona moderates, and only it; the sixth word is `moderates`
+or nothing).

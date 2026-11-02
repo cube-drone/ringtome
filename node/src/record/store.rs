@@ -353,6 +353,11 @@ impl Store {
         PublicAnnotations { store: self }
     }
 
+    /// This persona's public moderation list (plans/MODERATION.md).
+    pub fn moderation(&self) -> Moderation<'_> {
+        Moderation { store: self }
+    }
+
     /// Outbound notices: sealing an envelope that tells someone what this persona did about
     /// them (`outbox`). Kind-agnostic - a follow and a share differ only in their evidence.
     pub fn notices(&self) -> Notices<'_> {
@@ -500,6 +505,41 @@ impl Rebroadcasts<'_> {
     /// included as tombstones - callers that render must skip `is_retracted`.
     pub async fn all(&self) -> Result<Vec<imaol::RebroadcastRow>, AppError> {
         imaol::rebroadcasts(&self.store.db).await
+    }
+}
+
+pub struct Moderation<'s> {
+    store: &'s Store,
+}
+
+impl Moderation<'_> {
+    /// Say that `target` is to be blocked or warned about, and why (or, `present` false, take
+    /// it back). LWW per target: restating overwrites, never stacks.
+    pub async fn say(
+        &self,
+        kind: ringtome_proto::ModerationTarget,
+        target: &[u8; 32],
+        level: ringtome_proto::ModerationLevel,
+        reason: &str,
+        present: bool,
+    ) -> Result<SignedEntry, AppError> {
+        imaol::publish_moderation(
+            &self.store.db,
+            &self.store.authorship.signer,
+            &ringtome_proto::ModerationEntry {
+                kind,
+                target: *target,
+                level,
+                reason: reason.to_string(),
+                present,
+            },
+        )
+        .await
+    }
+
+    /// The whole list, retractions as tombstones, newest first.
+    pub async fn all(&self) -> Result<Vec<imaol::ModerationRow>, AppError> {
+        imaol::moderation_entries(&self.store.db).await
     }
 }
 

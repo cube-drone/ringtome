@@ -56,6 +56,7 @@ import {
 } from './links.js';
 import { OpenInApp, QrBadge } from './qr.js';
 import { useUnlocked } from './unlocks.js';
+import { ModerationControls } from './moderation.js';
 
 const html = htm.bind(h);
 
@@ -947,6 +948,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 }),
             ),
         );
+        return writeQueue.current;
     };
 
     const blocked = facts.blocked === 'yes';
@@ -1044,6 +1046,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 /* The block lives INSIDE: a button in the summary would toggle the disclosure
                 instead of blocking anyone, and blocking is an edit like the rest. */ ''
             }
+            <${ModerationControls} myRoot=${myRoot} theirRoot=${theirRoot} facts=${facts} put=${put} />
             <button
                 class=${blocked ? 'ledger-block ledger-blocked' : 'ledger-block'}
                 onClick=${() => put('blocked', blocked ? 'no' : 'yes')}

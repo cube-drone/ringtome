@@ -6860,12 +6860,20 @@ async fn private_kv_put_handler(
     if collection.starts_with("contact:") || collection == "comments" {
         crate::fold::fold_now(&state, &root).await;
     }
+    // Trusting someone to moderate (plans/MODERATION.md): what the node refuses is worked out
+    // again - an administrator's lists are the node's.
+    if collection.starts_with("contact:") && key == crate::moderation::MODERATES {
+        let state = state.clone();
+        tokio::spawn(async move { crate::moderation::recompute(&state).await });
+    }
     // Promotion (PROJECT_PLAN's Peeks, ruling 7): a dial on a persona this node holds only as a PEEK is
     // the demand signal for the whole mirror - fetched now, bounded by the page's patience,
     // so "follow, then open their page" finds their history rather than the next beat.
     if let Some(foreign) = collection.strip_prefix("contact:") {
-        let dialed = matches!(key.as_str(), "interest" | "trust" | "interest_rebroadcasts")
-            && !req.value.trim().is_empty();
+        // Trusting someone to moderate is a dial too (plans/MODERATION.md): their list must arrive.
+        let dialed = (matches!(key.as_str(), "interest" | "trust" | "interest_rebroadcasts")
+            && !req.value.trim().is_empty())
+            || (key == crate::moderation::MODERATES && req.value == "yes");
         // A never-fetched persona too (Curtis, 2026-09-05): a trust dial turned from a
         // notification's chip is a relationship, and the identity behind it must be held.
         // A full mirror that simply holds no posts is neither, and is left alone (the
@@ -6972,6 +6980,10 @@ async fn private_set_add_handler(
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let signed = data.private_set(&collection).add(&req.element, req.value).await?;
+    if collection == crate::moderation::OVERRULES {
+        let state = state.clone();
+        tokio::spawn(async move { crate::moderation::recompute(&state).await });
+    }
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -6986,6 +6998,10 @@ async fn private_set_remove_handler(
 ) -> Result<Json<PrivateWriteResponse>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
     let signed = data.private_set(&collection).remove(&element).await?;
+    if collection == crate::moderation::OVERRULES {
+        let state = state.clone();
+        tokio::spawn(async move { crate::moderation::recompute(&state).await });
+    }
     Ok(Json(PrivateWriteResponse {
         seq: signed.entry().seq,
         entry_hash: hex::encode(signed.hash()),
@@ -10052,6 +10068,9 @@ async fn stream_stamp(
             // reads them. Named explicitly so they do not fall to the catch-all below and
             // spuriously invalidate documents and the profile on every delivery.
             service::INBOX_TRUSTED | service::INBOX_STRANGER => &[],
+            // A moderation list is read through its own endpoint (moderation.rs); no streamed
+            // view is derived from it.
+            service::MODERATION_PUBLIC => &[],
             _ => &[0, 1, 2, 3],
         };
         for &i in touched {

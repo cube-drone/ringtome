@@ -420,6 +420,18 @@ pub const NODE: &[Rung] = &[
         sql: include_str!("../migrations/node/0111_front_matter.sql"),
         refold: &[],
     },
+    Rung {
+        version: 112,
+        name: "0112_moderation.sql",
+        sql: include_str!("../migrations/node/0112_moderation.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 113,
+        name: "0113_subscriptions_moderates.sql",
+        sql: include_str!("../migrations/node/0113_subscriptions_moderates.sql"),
+        refold: &[],
+    },
 ];
 
 /// The ladder for the per-user databases (`data/users/<root>.db`).
@@ -470,6 +482,12 @@ pub const USER: &[Rung] = &[
         version: 33,
         name: "0033_bank_marks.sql",
         sql: include_str!("../migrations/user/0033_bank_marks.sql"),
+        refold: &[],
+    },
+    Rung {
+        version: 34,
+        name: "0034_moderation.sql",
+        sql: include_str!("../migrations/user/0034_moderation.sql"),
         refold: &[],
     },
 ];

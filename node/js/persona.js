@@ -40,6 +40,7 @@ import {
 import { useLedger, unlockedIn } from './unlocks.js';
 import { CrtToggle } from './crtpref.js';
 import { WarningLists } from './warnings.js';
+import { ModerationSections } from './moderationpage.js';
 import { usePref, TOOLTIPS_KEY, VIM_KEY } from './mirror/prefs.js';
 import {
     appHref,
@@ -806,6 +807,7 @@ export const ContentControl = ({ current }) => {
                 <h1 class="persona-page-title">${t('persona.content-control-2', 'content control')}</h1>
             </div>
             <${WarningLists} root=${current.root} />
+            <${ModerationSections} current=${current} />
         </div>
     `;
 };

@@ -163,6 +163,10 @@ pub async fn dial(
         addr
     };
     let id = addr.id;
+    // A node this node's moderation refuses is never dialled (moderation.rs).
+    if crate::moderation::refuses_node(id.as_bytes()) {
+        return Err(anyhow!("{} is refused by this node's moderation lists", id.fmt_short()));
+    }
     if let Some(left) = dark_for(&id) {
         return Err(anyhow!(
             "{} didn't answer a moment ago; not asking again for {}s",
@@ -471,6 +475,12 @@ pub fn spawn_accept_loop(endpoint: Endpoint, state: crate::AppState) {
                 match incoming.await {
                     Ok(conn) => {
                         let remote = conn.remote_id();
+                        // A node this node's moderation refuses is never answered
+                        // (moderation.rs), before admission or any dispatch.
+                        if crate::moderation::refuses_node(remote.as_bytes()) {
+                            conn.close(2u8.into(), b"refused");
+                            return;
+                        }
                         // Admission (PROJECT_PLAN's Peeks, ruling 14), before any dispatch so it covers every
                         // ALPN: over a ceiling the connection is closed now, never parked. The
                         // blob ALPN is proven at birth - hash-capability over public bytes; the
