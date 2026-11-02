@@ -211,7 +211,8 @@ lightly federated, unapologetically Old Internet.
   operator who is one person and not an organization: an upload-scanning CDN in
   front of the node (Bunny's, on hdt.com), quarantine and a "what to do now"
   page for when an operator finds out, PDQ fingerprints of the operator's own
-  decisions, and admission limits. A design draft (2026-11-02); nothing built.
+  decisions, and picture entries on moderation lists. A design draft
+  (2026-11-02); steps 1 to 4 built.
 - [`STOCK.md`](plans/STOCK.md) — hrseStock, a stock market in tags: a tag's
   price is its posts over 30 days, published daily by an exchange so every
   computer trades on the same numbers; lots on the private chain like hrseBonds,

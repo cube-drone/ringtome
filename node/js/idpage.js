@@ -6,7 +6,7 @@
 // through the address's own ?via= hints (idface.rs does the reaching; the page just passes
 // the hints through). Only when nothing answers does the warm tombstone show.
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { useLocation } from 'preact-iso';
 
@@ -23,6 +23,9 @@ import { PersonaMenu, bannerStyle } from './persona.js';
 import { PublicPosts } from './posts.js';
 import { AccountLink } from './account.js';
 import { t, tNodes } from './i18n.js';
+import { useModeration } from './moderation.js';
+import { BlockedCard } from './blockmodal.js';
+import { blockState } from './pure/moderation.js';
 
 const html = htm.bind(h);
 
@@ -147,6 +150,8 @@ export const IdPage = ({
     const parsed = parseSpeakable(decodeURIComponent(seg || ''));
     // profile: undefined = loading, null = unreachable, object = served (local or fetched)
     const [profile, setProfile] = useState(undefined);
+    // Bumped to look again: when a block that kept them unreachable is lifted (below).
+    const [retry, setRetry] = useState(0);
     const root = parsed && parsed.ok ? parsed.root : null;
     // The address's own reachability hints ride through to the node, which uses them to
     // fetch an off-shelf persona at request time (idface.rs) - the URL carries exactly the
@@ -190,7 +195,7 @@ export const IdPage = ({
             live = false;
             if (timer) clearTimeout(timer);
         };
-    }, [root, via, viewer]);
+    }, [root, via, viewer, retry]);
 
     // Their page wears their colourway (Curtis, 2026-09-30), a public field of their profile - and
     // until it arrives, whatever their page's head already put on (colorway.js).
@@ -204,6 +209,22 @@ export const IdPage = ({
         [current && current.root, root],
     );
     const nickname = (ledgerRow && ledgerRow.facts && ledgerRow.facts.nickname) || '';
+    // Whether you blocked them, privately or on your public list: a blocked person's page that
+    // can't be reached says so, with the way to unblock (blockmodal.js).
+    const myList = useModeration(current && current.root).mine || [];
+    const facts = (ledgerRow && ledgerRow.facts) || {};
+    const listed = myList.find((m) => m.kind === 'persona' && m.target === root);
+    const standing = blockState(facts, listed);
+    const blocked = standing === 'private' || standing === 'public-block';
+    // Unblocked from the blocked card: look for them again, now that they may be fetched.
+    const wasBlocked = useRef(blocked);
+    useEffect(() => {
+        if (wasBlocked.current && !blocked) {
+            setProfile(undefined);
+            setRetry((n) => n + 1);
+        }
+        wasBlocked.current = blocked;
+    }, [blocked]);
 
     // The shell's header band shows whose page this is: the words immediately (always
     // derivable), the better names the moment the mirror and shelf answer. Cleared on the
@@ -272,22 +293,35 @@ export const IdPage = ({
         return html`<${Card}><p class="id-quiet id-sync-now"><span class="status-spin"><${Icons.spinner} /></span> ${t('idpage.looking-around', 'looking around…')}</p><//>`;
     }
 
+    if (profile === null && current && blocked) {
+        return html`<${Card}>
+            <${BlockedCard}
+                myRoot=${current.root}
+                theirRoot=${root}
+                facts=${facts}
+                listed=${listed}
+                name=${nickname || words}
+            />
+        <//>`;
+    }
+
     if (profile === null) {
         return html`<${Card}>
             <h1 class="persona-page-title">
                 <span class="persona-chip" style="background: hsl(${personaHue(root)}, 60%, 55%)"></span>
                 ${words}
             </h1>
-            <p>${t('idpage.couldnt-reach-this-persona-just', "Couldn't reach this persona just now - it isn't carried on your node, and")}
-            ${
+            <p>${
+                // Whole sentences, never two halves joined: the markup drops the space between
+                // them ("andits"), and a translation can't reorder halves.
                 via
                     ? t(
-                          'idpage.none-of-the-computers-its',
-                          'none of the computers its address points at answered.',
+                          'idpage.couldnt-reach-none-answered',
+                          "Couldn't reach this persona just now - it isn't carried on your node, and none of the computers its address points at answered.",
                       )
                     : t(
-                          'idpage.its-address-carries-no-hints',
-                          'its address carries no hints about where to find it.',
+                          'idpage.couldnt-reach-no-hints',
+                          "Couldn't reach this persona just now - it isn't carried on your node, and its address carries no hints about where to find it.",
                       )
             }</p>
             <p class="id-address"><code>/ringtome/user/${speak}</code></p>

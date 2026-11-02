@@ -84,3 +84,13 @@ export function pictureVerdictFor(addresses, verdicts) {
     }
     return out;
 }
+
+/// What the reader has said about someone (blockmodal.js): 'private', 'public-block',
+/// 'public-warn' or null, from their contact facts and their own public list's entry for them. A
+/// public block outranks the private one it carries.
+export function blockState(facts, listed) {
+    if (listed && listed.level === 'block') return 'public-block';
+    if ((facts || {}).blocked === 'yes') return 'private';
+    if (listed && listed.level === 'warn') return 'public-warn';
+    return null;
+}

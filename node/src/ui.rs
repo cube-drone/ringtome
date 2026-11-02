@@ -216,6 +216,8 @@ pub fn app_page_with(state: &AppState, head: &str, body: &str) -> String {
     } else {
         String::new()
     };
+    // And a store build says which store (store.rs), so the app sends nobody around it.
+    let branch = branch + &crate::store::meta();
     let body = if body.is_empty() {
         String::new()
     } else {

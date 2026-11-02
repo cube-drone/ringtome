@@ -1,9 +1,22 @@
 const assert = require('node:assert');
 
-let moderationFor, reasonBytes, overruleKey, pictureAddresses, pictureVerdictFor, stronger;
+let moderationFor,
+    reasonBytes,
+    overruleKey,
+    pictureAddresses,
+    pictureVerdictFor,
+    stronger,
+    blockState;
 before(async () => {
-    ({ moderationFor, reasonBytes, overruleKey, pictureAddresses, pictureVerdictFor, stronger } =
-        await import('../../../js/pure/moderation.js'));
+    ({
+        moderationFor,
+        reasonBytes,
+        overruleKey,
+        pictureAddresses,
+        pictureVerdictFor,
+        stronger,
+        blockState,
+    } = await import('../../../js/pure/moderation.js'));
 });
 
 describe('moderation lists, as a post meets them (2026-11-02)', () => {
@@ -86,5 +99,13 @@ describe('moderation lists, as a post meets them (2026-11-02)', () => {
             author,
             'a tie keeps the first',
         );
+    });
+
+    it('says how the reader stands on blocking someone, a public block over the private one', () => {
+        assert.equal(blockState({}, undefined), null);
+        assert.equal(blockState({ blocked: 'yes' }, undefined), 'private');
+        assert.equal(blockState({ blocked: 'yes' }, { level: 'block' }), 'public-block');
+        assert.equal(blockState({}, { level: 'warn' }), 'public-warn');
+        assert.equal(blockState({ blocked: 'no' }, undefined), null);
     });
 });

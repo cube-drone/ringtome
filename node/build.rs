@@ -2,10 +2,15 @@
 // `default_media/` is compiled into the node, file after file, and every persona sees them in
 // their files, tagged by the folders they sit in. Add a file and rebuild: everyone has it.
 // Remove one and rebuild: it's gone. `src/builtin.rs` reads the table this writes.
+//
+// And the store a build is for (plans/STORES.md, section 3): `RINGTOME_STORE=play` or
+// `RINGTOME_STORE=app-store` at build time, checked here so a misspelling fails the build instead
+// of shipping a store build that behaves like a download. `src/store.rs` reads it.
 
 use std::path::{Path, PathBuf};
 
 fn main() {
+    store_build();
     let manifest =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
     let root = manifest.join("../default_media");
@@ -54,4 +59,21 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
         let abs = path.canonicalize().unwrap_or(path);
         out.push((rel, abs));
     }
+}
+
+/// The stores a build can be for. Anything else set is a mistake worth stopping for.
+const STORES: &[&str] = &["play", "app-store"];
+
+fn store_build() {
+    println!("cargo:rerun-if-env-changed=RINGTOME_STORE");
+    let store = std::env::var("RINGTOME_STORE").unwrap_or_default();
+    let store = store.trim();
+    if store.is_empty() {
+        return;
+    }
+    assert!(
+        STORES.contains(&store),
+        "RINGTOME_STORE={store:?}: a store build is for one of {STORES:?}, or unset for a download"
+    );
+    println!("cargo:rustc-env=RINGTOME_STORE_BUILD={store}");
 }

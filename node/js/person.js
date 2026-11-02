@@ -56,7 +56,9 @@ import {
 } from './links.js';
 import { OpenInApp, QrBadge } from './qr.js';
 import { useUnlocked } from './unlocks.js';
-import { ModerationControls } from './moderation.js';
+import { ModerationControls, useModeration } from './moderation.js';
+import { BlockModal } from './blockmodal.js';
+import { blockState } from './pure/moderation.js';
 
 const html = htm.bind(h);
 
@@ -833,6 +835,14 @@ const Dial = ({ label, hint, stops, value, onPick }) => html`
     </label>
 `;
 
+/// The block button's words, for how the reader stands now.
+const BLOCK_WORDS = () => ({
+    none: t('person.block-this-user', 'block this user'),
+    private: t('person.blocked-privately', 'blocked privately - change'),
+    'public-block': t('person.blocked-publicly', 'blocked publicly - change'),
+    'public-warn': t('person.warned-publicly', 'publicly warned about - change'),
+});
+
 // Trust (edge inputs to the trust layer, never the flow math itself), interest, rebroadcast
 // interest, a nickname, a block. Every fact is a private-chain LWW register on YOUR identity
 // (`contact:<their-root>`), synced to your own computers and nobody else's; the one
@@ -952,6 +962,13 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
     };
 
     const blocked = facts.blocked === 'yes';
+    // How you stand on blocking them - privately, on your public list, or not at all - and the
+    // modal that changes it (blockmodal.js).
+    const listed = (useModeration(myRoot).mine || []).find(
+        (m) => m.kind === 'persona' && m.target === theirRoot,
+    );
+    const standing = blockState(facts, listed);
+    const [blocking, setBlocking] = useState(false);
     // PUBLIC is the resting state (settled 2026-08-09): only an explicit "no" keeps a
     // relationship quiet, so an unset register publishes. See PROJECT_PLAN, Edge-Endpoint
     // Visibility - the trust graph the features will read cannot grow out of a default
@@ -1046,11 +1063,21 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 /* The block lives INSIDE: a button in the summary would toggle the disclosure
                 instead of blocking anyone, and blocking is an edit like the rest. */ ''
             }
-            <${ModerationControls} myRoot=${myRoot} theirRoot=${theirRoot} facts=${facts} put=${put} />
+            <${ModerationControls} myRoot=${myRoot} facts=${facts} put=${put} />
             <button
-                class=${blocked ? 'ledger-block ledger-blocked' : 'ledger-block'}
-                onClick=${() => put('blocked', blocked ? 'no' : 'yes')}
-            >${blocked ? t('person.unblock-this-persona', 'unblock this persona') : t('person.block-this-persona', 'block this persona')}</button>
+                class=${standing ? 'ledger-block ledger-blocked' : 'ledger-block'}
+                onClick=${() => setBlocking(true)}
+            >${BLOCK_WORDS()[standing || 'none']}</button>
+            ${
+                blocking &&
+                html`<${BlockModal}
+                    myRoot=${myRoot}
+                    theirRoot=${theirRoot}
+                    facts=${facts}
+                    put=${put}
+                    onClose=${() => setBlocking(false)}
+                />`
+            }
         </details>
     `;
 };

@@ -120,7 +120,16 @@ architecture makes ours unusual in content, not in kind:
   people to update it, by any road but Play's; the Mac App Store forbids the
   same. A store build carries a flag, read beside the dev-build check in
   `js/update.js`, that turns the notice off - or points it at the store's own
-  listing, if that proves allowed.
+  listing, if that proves allowed. **Built (2026-11-02)**: `RINGTOME_STORE=play`
+  or `app-store` when the node is compiled (checked by `node/build.rs`; anything
+  else fails the build), `src/store.rs`, an `app-store` meta on the page. The
+  notice is off, not pointed at the listing: the store updates the app itself.
+  The "get the app" panel leaves out the store's own system, and its "every
+  release" fallback; the version label still opens the running version's release
+  notes. A Play build is the Android one with the flag set and an app bundle
+  instead of an APK -
+  `RINGTOME_STORE=play npm run tauri -- android build --aab` - not yet a job in
+  `android.yml`.
 - **The Mac App Store is optional.** Notarized downloads (what ships now) need
   no review. A store build must be sandboxed: network client and server
   entitlements for the node's loopback server and iroh, and the data directory

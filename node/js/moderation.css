@@ -80,6 +80,25 @@ label.moderation-overrule {
     min-width: 0;
 }
 
+.moderation-reason-wide {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.2rem;
+    width: 100%;
+}
+
+.moderation-reason-wide input {
+    flex: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.moderation-reason-wide .moderation-count {
+    align-self: flex-end;
+}
+
 .moderation-count {
     color: var(--faint);
     font-size: 0.75rem;
@@ -229,4 +248,54 @@ label.moderation-overrule {
     gap: 0.25rem 0.5rem;
     padding: 0.5rem 0;
     border-bottom: 1px solid var(--border);
+}
+
+/* "Block this user" (blockmodal.js): three choices, each with its reason, then the buttons. */
+.block-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.block-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    cursor: pointer;
+}
+.block-choice input {
+    margin-top: 0.2rem;
+}
+.block-choice-words {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.block-choice-hint {
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-style: italic;
+}
+.block-chosen {
+    border-color: var(--coral);
+}
+.block-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    align-items: center;
+}
+/* Every button in the row the same size, on one line: removal-option is otherwise a full-width
+   tile and removal-go a full-width bar. */
+.block-actions button {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    margin: 0;
+    padding: 0.45rem 1rem;
+    font-size: 0.9rem;
+    line-height: 1.2;
 }

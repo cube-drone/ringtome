@@ -11,7 +11,7 @@
 // - Backups: make one and watch it go, and see the ones already made - downloaded from a server,
 //   shown in the file manager on a desktop, where they are already on this disk
 //   (node/src/backup.rs). Restoring is not here yet.
-// - Server customization (servers only, 2026-09-30): the front page's name and its marquee's
+// - Server Customization (servers only, 2026-09-30): the front page's name and its marquee's
 //   taglines (node/src/frontdoor.rs). A desktop app has no front page for strangers.
 // - Moderation (2026-11-02): quarantine, and what to do now (servermoderation.js,
 //   node/src/quarantine.rs).
@@ -75,7 +75,7 @@ const PAGE_WORDS = () => ({
         t('device.moderation', 'Moderation'),
         t(
             'device.what-to-do-about-what-shouldnt-be-here',
-            'what to do when something here is something no one should hold',
+            'Managing reports and quarantined content',
         ),
     ],
     frontmatter: [
@@ -83,7 +83,7 @@ const PAGE_WORDS = () => ({
         t('device.customize-your-terms', 'customize your Terms of Service and Privacy Policy here'),
     ],
     customization: [
-        t('device.server-customization', 'Server customization'),
+        t('device.server-customization', 'Server Customization'),
         t(
             'device.the-front-pages-name-and-taglines',
             "the front page's name, and the taglines scrolling under it",
@@ -677,7 +677,7 @@ const Backups = () => {
 };
 
 // ---------------------------------------------------------------------------------------------
-// Server customization
+// Server Customization
 
 /// The front page's name and taglines (Curtis, 2026-09-30). Left as the app's own, they stay the
 /// app's own - saved as nothing, so they read in each stranger's language and follow later
@@ -720,7 +720,7 @@ const Customization = () => {
     }
     return html`
         <div class="device">
-            <h2 class="computers-title">${t('device.server-customization', 'Server customization')}</h2>
+            <h2 class="computers-title">${t('device.server-customization', 'Server Customization')}</h2>
             <label class="device-field">
                 <span>${t('device.front-page-name', "the front page's name")}</span>
                 <input type="text" maxlength="80" value=${name} placeholder=${defaultName()} onInput=${(e) => setName(e.currentTarget.value)} />

@@ -136,14 +136,15 @@ export async function overrule(root, kind, target, on) {
 export const levelWord = (level) =>
     level === 'block' ? t('moderation.level-block', 'block') : t('moderation.level-warn', 'warn');
 
-/// A reason box that counts what the node counts: bytes.
-export const ReasonInput = ({ value, onInput }) => {
+/// A reason box that counts what the node counts: bytes. Public by default, as a list's reasons are.
+/// `wide`: the whole width, the count under it on the right.
+export const ReasonInput = ({ value, onInput, placeholder = null, wide = false }) => {
     const used = reasonBytes(value);
-    return html`<span class="moderation-reason">
+    return html`<span class=${wide ? 'moderation-reason moderation-reason-wide' : 'moderation-reason'}>
         <input
             class="profile-input"
             value=${value}
-            placeholder=${t('moderation.reason-placeholder', 'why - everyone who reads your list sees this')}
+            placeholder=${placeholder || t('moderation.reason-placeholder', 'why - everyone who reads your list sees this')}
             onInput=${(e) => onInput(e.currentTarget.value)}
         />
         <small class=${used > MAX_REASON_BYTES ? 'moderation-count moderation-over' : 'moderation-count'}>
@@ -152,54 +153,18 @@ export const ReasonInput = ({ value, onInput }) => {
     </span>`;
 };
 
-/// On a person's page: trust them to moderate for you, and put them on your public list.
-export const ModerationControls = ({ myRoot, theirRoot, facts, put }) => {
-    const view = useModeration(myRoot);
-    const listed = (view.mine || []).find((m) => m.kind === 'persona' && m.target === theirRoot);
-    const [level, setLevel] = useState('warn');
-    const [reason, setReason] = useState('');
-    const [error, setError] = useState(null);
-    const moderates = facts.moderates === 'yes';
-    const add = async () => {
-        setError(null);
-        try {
-            await listTarget(myRoot, 'persona', theirRoot, level, reason.trim());
-            setReason('');
-        } catch (e) {
-            setError(e.message || String(e));
-        }
-    };
-    return html`<div class="moderation-controls">
-        <label class="moderation-overrule">
-            <input
-                type="checkbox"
-                checked=${moderates}
-                onChange=${async (e) => {
-                    await put('moderates', e.currentTarget.checked ? 'yes' : 'no');
-                    moderationMoved(myRoot);
-                }}
-            />
-            ${t('moderation.trust-to-moderate', 'trust them to moderate for me')}
-        </label>
-        ${
-            listed
-                ? html`<p class="null-sub">
-                      ${t('moderation.on-your-list', 'on your public list: {level}', { level: levelWord(listed.level) })}
-                      ${listed.reason ? html` - ${listed.reason}` : ''}
-                  </p>`
-                : html`<div class="moderation-add">
-                      <select class="profile-input" value=${level} onChange=${(e) => setLevel(e.currentTarget.value)}>
-                          <option value="warn">${levelWord('warn')}</option>
-                          <option value="block">${levelWord('block')}</option>
-                      </select>
-                      <${ReasonInput} value=${reason} onInput=${setReason} />
-                      <button
-                          class="removal-option"
-                          disabled=${reasonBytes(reason) > MAX_REASON_BYTES}
-                          onClick=${add}
-                      >${t('moderation.add-to-public-list', 'add to my public list')}</button>
-                  </div>`
-        }
-        ${error && html`<p class="form-error">${error}</p>`}
-    </div>`;
-};
+/// On a person's page: trust them to moderate for you. Blocking and listing them is the block
+/// modal's (blockmodal.js).
+export const ModerationControls = ({ myRoot, facts, put }) => html`<div class="moderation-controls">
+    <label class="moderation-overrule">
+        <input
+            type="checkbox"
+            checked=${facts.moderates === 'yes'}
+            onChange=${async (e) => {
+                await put('moderates', e.currentTarget.checked ? 'yes' : 'no');
+                moderationMoved(myRoot);
+            }}
+        />
+        ${t('moderation.trust-to-moderate', 'trust them to moderate for me')}
+    </label>
+</div>`;

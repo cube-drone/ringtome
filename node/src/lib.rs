@@ -119,6 +119,7 @@ pub mod speculative;
 pub mod stack;
 pub mod starters;
 pub mod storage;
+pub mod store;
 pub mod syncstatus;
 pub mod test_endpoints;
 pub mod ui;

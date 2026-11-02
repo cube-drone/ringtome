@@ -3,6 +3,9 @@
 // app-selector, a prompt" - and it can't be hidden or skipped: "HDT2 is so new that ALL UPDATES ARE
 // IMPORTANT". Only in an installed app (the desktop app, the Android app), where the person is the
 // one who installs; a browser is always as new as its server, and a dev build is no release.
+// Never in a store build (plans/STORES.md, section 3; the node's `app-store` meta, src/store.rs):
+// Google Play and the App Store forbid an app to send people to update it anywhere but the
+// store, which updates it by itself.
 import { h } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
@@ -24,7 +27,13 @@ const meta = (name) =>
 function useUpdate() {
     const [update, setUpdate] = useState(null);
     useEffect(() => {
-        if (typeof document === 'undefined' || !isDevice() || meta('app-branch')) return undefined;
+        if (
+            typeof document === 'undefined' ||
+            !isDevice() ||
+            meta('app-branch') ||
+            meta('app-store')
+        )
+            return undefined;
         const running = meta('app-version');
         let live = true;
         const check = () =>

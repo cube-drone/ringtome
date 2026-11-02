@@ -26469,3 +26469,74 @@ refuses the file and its thumbnail and never the lookalike), the proto round
 trip (a fingerprint only on a picture), `verdict_for`'s unit test, the PDQ
 test's mirror pair, and the pure claim for picture addresses and the strongest
 verdict.
+
+## Store builds, and admission limits pulled (2026-11-02)
+
+**The store-build flag** (STORES.md section 3, MODERATION.md step 6).
+`RINGTOME_STORE=play` or `RINGTOME_STORE=app-store` when the node is compiled;
+`node/build.rs` checks the value and fails the build on anything else, so a
+misspelling can't ship a store build that acts like a download. `src/store.rs`
+holds it (`STORE`), and the page carries `<meta name="app-store">` beside the
+dev build's `app-branch`. With it: no update notice at all (`js/update.js`), and
+the "get the app" panel (`js/downloads.js`, the front page's Download tab and
+Your Computers) leaves out its own store's system - Android for Play, macOS for
+the App Store - and the every-release fallback link. Unset, nothing changes. The
+version label still opens the running version's release notes. Not done: a job
+that builds the Play app bundle (`--aab`) with the flag; the Mac App Store's
+sandbox, which STORES.md calls optional.
+
+Proved by: the build refusing `RINGTOME_STORE=nope` with the allowed values,
+`store::tests` (a download's page says nothing), and that test compiled with
+`RINGTOME_STORE=play` carrying `Some("play")`; `just ui-check`.
+
+**Admission limits pulled.** SCANNING.md's _Admission: limiting exposure_ (new
+or unvouched accounts' pictures held back from the public) was my draft, never
+ruled on, and carried forward in three lists as if it were planned. Curtis: "We
+should pull admission lists, yeah. There are already a lot of ways for node
+operators to restrict users' access." Out of the plan and its order; a short
+note says why, so it isn't proposed again.
+
+## Block this user: one modal (2026-11-02)
+
+On someone's page, the private block button and the public-list form (person
+page's `ModerationControls`) were two controls for one decision. Now "block this
+user" opens a modal (`js/blockmodal.js`) of three choices, each a title over its
+description in small italics: **Private Block** ("Only you know you've blocked
+this user."), **Public Block** ("People who trust you to moderate will block
+this user, too.") and **Public Warning** ("People who trust you to moderate will
+see this user's content behind a warning."), then one reason box for whichever
+is chosen (full width, its byte count under it on the right), then Cancel and
+Save. Nothing is written before Save; the choices exclude each other, so saving
+one undoes the others. A public block carries the private block with it; a
+public warning blocks nobody. The private block's reason is a new contact fact,
+`blocked_reason`, private like the rest (only trust and interest ever publish).
+A standing block or warning opens selected, with its reason, and the modal
+offers "unblock" or "lift the warning". The button says where you stand
+("blocked privately - change", ...). The "trust them to moderate for me"
+checkbox stays on the page.
+
+Proved by: `harness/block-probe.mjs` against a scratch node (cancel writes
+nothing; a warning, then a private block, then a public block, each reading back
+the list entry and the facts it wrote; unblock lifts both), the pure claim for
+`blockState`, `just ui-check`.
+
+## A blocked person's page, and "andits" (2026-11-02)
+
+A block clears the person off your computers, so their page usually can't be
+reached afterwards - and the page was then only an error, hiding the
+relationship panel where you'd unblock them (Curtis: "there's no way to unblock
+them"). Now, when the page can't reach someone you've blocked (privately or on
+your public list), it shows `BlockedCard` (`js/blockmodal.js`) instead: "This
+user is blocked.", how (privately, or publicly with what that means), your
+reason, and "change or unblock", which opens the block modal. Lifting the block
+makes the page look for them again.
+
+The unreachable message was two halves joined in markup, which dropped the space
+between them ("...on your node, andits address carries no hints..."). Each case
+is now one whole sentence in the catalog (`idpage.couldnt-reach-no-hints`,
+`idpage.couldnt-reach-none-answered`), which a translation can reorder too.
+
+Proved by: `harness/blocked-page-probe.mjs` against a scratch node (an
+unreachable person blocked with a reason: the card says so, with the reason and
+how; unblocked from the card, the page looks again and the message reads as one
+sentence), `harness/block-probe.mjs` again, `just ui-check`.

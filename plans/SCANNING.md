@@ -67,8 +67,7 @@ What it doesn't:
 
 - **Anything arriving peer to peer.** Blobs synced from other nodes over iroh,
   and outside pictures a publish downloads (`record/bake.rs`, an outbound
-  fetch), never cross the CDN. Ruling 4's refusal list and the admission limits
-  below are for those.
+  fetch), never cross the CDN. Ruling 4's refusal list is for those.
 - **Video, probably.** PDQ is a still-picture hash.
 - **Device nodes**, which have no CDN. They don't take strangers' uploads or
   strangers' reports, so they don't need one.
@@ -132,16 +131,13 @@ everywhere in good faith. Warn-only means a collision can put a click-through
 over an innocent picture, never take it away, and a reader can overrule it like
 any entry.
 
-## Admission: limiting exposure
+## Not admission limits
 
-Hosting strangers' uploads to the public is what creates the risk. On a node
-that hosts other people's accounts:
-
-- New or unvouched accounts can't serve pictures publicly until they've been
-  around a while or a trusted account vouches for them.
-- Pictures from accounts the node doesn't host aren't served to anonymous web
-  visitors, only to signed-in members (the gateway's fail-closed rule, from
-  PROJECT_PLAN, for a node with no scanner of its own).
+An earlier draft of this plan (mine, never ruled on) held new or unvouched
+accounts' pictures back from the public until they had been around a while.
+Pulled (Curtis, 2026-11-02: "There are already a lot of ways for node operators
+to restrict users' access"): registration policy, sign-up groups, the trust
+gates and account removal already let an operator decide who posts here.
 
 ## The order
 
@@ -150,8 +146,7 @@ that hosts other people's accounts:
    settings.
 3. PDQ at crush and on the decode lane, with the refusal list.
 4. Picture entries on the community lists (MODERATION.md).
-5. The admission limits.
-6. The scanner interface, for operators with a clearinghouse key.
+5. The scanner interface, for operators with a clearinghouse key.
 
 Tests use a fake matcher that "matches" a picture the test chose. Real material
 is never used.
@@ -175,4 +170,3 @@ is never used.
   is a still-picture hash. Assume video isn't checked until Bunny says
   otherwise.
 - How long "preserve" is, and what an operator must keep.
-- Whether admission's "a while" is a time, a vouch, or both.
