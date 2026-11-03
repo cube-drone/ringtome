@@ -786,6 +786,7 @@ const Inside = ({ session }) => {
             <${Computers} path="/ringtome/settings/computers/:tab" current=${persona.current} />
             <${Computers} path="/ringtome/settings/computers/all/report" tab="report" current=${persona.current} />
             <${ContentControl} path="/ringtome/settings/content" current=${persona.current} />
+            <${ContentControl} path="/ringtome/settings/content/:tab" current=${persona.current} />
             <${ExportPage} path="/ringtome/settings/import-export" current=${persona.current} />
             <${ExportPage} path="/ringtome/settings/import-export/:tab" current=${persona.current} />
             <${AppSettings} path="/ringtome/settings/app" current=${persona.current} />

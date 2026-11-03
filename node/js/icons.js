@@ -388,6 +388,8 @@ export const Icons = {
     scheduled: ClockCountdown,
     // A post with rebroadcast and comment turned off (PROJECT_PLAN's Post visibility).
     settled: Prohibit,
+    // Your own public list, content control's blocklist tab (2026-11-03).
+    blocklist: Prohibit,
     // A document's standing in public (PUBLISH.md ruling 6): private, public - and
     // `scheduled` above is the third.
     docPrivate: Detective,

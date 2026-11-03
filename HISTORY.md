@@ -26540,3 +26540,24 @@ Proved by: `harness/blocked-page-probe.mjs` against a scratch node (an
 unreachable person blocked with a reason: the card says so, with the reason and
 how; unblocked from the card, the page looks again and the message reads as one
 sentence), `harness/block-probe.mjs` again, `just ui-check`.
+
+## Content control, in tabs (2026-11-03)
+
+Content control had grown into one long page: the tag lists, then whose lists
+you take, what you take, your public list and reports. Curtis asked for Your
+computers' layout instead, so it now has four tabs, each at its own address
+(`contentHref` in links.js, `/ringtome/settings/content/:tab`):
+
+- **tags**, the blur and hide lists (the default, where a bare or unknown tab
+  lands)
+- **moderators**, whose lists you take and what you take from them
+- **blocklist**, your own public list and the picture form
+- **reports**, Accept Reports and the queue
+
+`ModerationSections` became `ModeratorsTab` and `BlocklistTab`. The tab names
+the blocklist and reports, so those two lost their own headings
+(`moderation.your-public-list` retired).
+
+Proved by: a harness probe against a scratch node (each address shows its tab
+active with that tab's content, and the bare address lands on tags),
+`just strings`, `just ui-check`.

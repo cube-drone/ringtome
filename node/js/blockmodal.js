@@ -22,7 +22,9 @@ import { MAX_REASON_BYTES, blockState, reasonBytes } from './pure/moderation.js'
 
 const html = htm.bind(h);
 
-const CHOICES = () => [
+/// `administers`: the reader runs this node, so their public blocks are the node's too
+/// (moderation.rs) - the Public Block says so.
+const CHOICES = (administers) => [
     [
         'private',
         t('block.private-block', 'Private Block'),
@@ -31,7 +33,15 @@ const CHOICES = () => [
     [
         'public-block',
         t('block.public-block', 'Public Block'),
-        t('block.public-block-hint', 'People who trust you to moderate will block this user, too.'),
+        administers
+            ? t(
+                  'block.public-block-hint-admin',
+                  'People who trust you to moderate, and this entire node, will block this user, too.',
+              )
+            : t(
+                  'block.public-block-hint',
+                  'People who trust you to moderate will block this user, too.',
+              ),
     ],
     [
         'public-warn',
@@ -90,7 +100,7 @@ export const BlockModal = ({ myRoot, theirRoot, facts, put, onClose }) => {
 
     return html`<${Modal} title=${t('block.block-this-user', 'Block this user')} onClose=${onClose}>
         <div class="block-form">
-            ${CHOICES().map(
+            ${CHOICES(view.administers).map(
                 ([key, name, hint]) => html`<label
                     key=${key}
                     class=${choice === key ? 'block-choice block-chosen' : 'block-choice'}

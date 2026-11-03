@@ -40,11 +40,13 @@ import {
 import { useLedger, unlockedIn } from './unlocks.js';
 import { CrtToggle } from './crtpref.js';
 import { WarningLists } from './warnings.js';
-import { ModerationSections } from './moderationpage.js';
+import { BlocklistTab, ModeratorsTab } from './moderationpage.js';
+import { ReportSections } from './reportqueue.js';
 import { usePref, TOOLTIPS_KEY, VIM_KEY } from './mirror/prefs.js';
 import {
     appHref,
     personHref,
+    contentHref,
     settingsHref,
     computersHref,
     importExportHref,
@@ -756,7 +758,7 @@ export const SettingsList = ({ persona, session }) => {
                         <small>${t('persona.the-machines-that-carry-this', "the computers you're signed in on")}</small>
                     </span>
                 </a>
-                <a class="persona-menu-item" href=${settingsHref('content')}>
+                <a class="persona-menu-item" href=${contentHref()}>
                     <span class="persona-menu-icon"><${Icons.biohazard} /></span>
                     <span class="persona-menu-label">
                         <strong>${t('persona.content-control', 'content control')}</strong>
@@ -797,17 +799,36 @@ export const SettingsList = ({ persona, session }) => {
 // your typing; `commit` writes it; a mirror echo (a rename on another computer) is adopted
 // only while your draft is clean, exactly the shadow contract minus the autosave.
 /// Content control (Curtis, 2026-09-07): its own page under your settings, the biohazard
-/// on the door - the blur and hide tag lists (warnings.js), which lived on the profile page
-/// for an afternoon.
-export const ContentControl = ({ current }) => {
-    if (!current) return null;
+/// on the door. Tabbed as Your computers is (Curtis, 2026-11-03), each tab its own address: the blur
+/// and hide tag lists (warnings.js, the default), your moderators, your blocklist, and reports.
+const CONTENT_TABS = ['tags', 'moderators', 'blocklist', 'reports'];
+
+/// `/ringtome/settings/content` and `/ringtome/settings/content/:tab` - a bare or unknown tab lands
+/// on `tags`.
+export const ContentControl = ({ current, tab }) => {
+    const loc = useLocation();
+    const known = CONTENT_TABS.includes(tab);
+    useEffect(() => {
+        if (!known) loc.route(contentHref('tags'), true);
+    }, [known, loc]);
+    if (!current || !known) return null;
+    const tabLink = (to, icon, words) =>
+        html`<a class=${tab === to ? 'tab active' : 'tab'} href=${contentHref(to)}>
+            <${icon} /> ${words}
+        </a>`;
     return html`
-        <div class="persona-page">
-            <div class="persona-page-head">
-                <h1 class="persona-page-title">${t('persona.content-control-2', 'content control')}</h1>
-            </div>
-            <${WarningLists} root=${current.root} />
-            <${ModerationSections} current=${current} />
+        <div class="computers">
+            <h2 class="computers-title">${t('persona.content-control-2', 'content control')}</h2>
+            <nav class="welcome-tabs">
+                ${tabLink('tags', Icons.tag, t('persona.content-tab-tags', 'tags'))}
+                ${tabLink('moderators', Icons.people, t('persona.content-tab-moderators', 'moderators'))}
+                ${tabLink('blocklist', Icons.blocklist, t('persona.content-tab-blocklist', 'blocklist'))}
+                ${tabLink('reports', Icons.report, t('persona.content-tab-reports', 'reports'))}
+            </nav>
+            ${tab === 'tags' && html`<${WarningLists} root=${current.root} />`}
+            ${tab === 'moderators' && html`<${ModeratorsTab} current=${current} />`}
+            ${tab === 'blocklist' && html`<${BlocklistTab} current=${current} />`}
+            ${tab === 'reports' && html`<${ReportSections} current=${current} />`}
         </div>
     `;
 };

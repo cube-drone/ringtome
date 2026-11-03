@@ -1,6 +1,7 @@
-// The content control page's moderation sections (plans/MODERATION.md, 2026-11-02): whose lists
-// you take, what you take from them, your own public list, and reports (reportqueue.js). Its own file because it shows
-// people, and person.js imports moderation.js for the controls on a person's page.
+// Content control's moderation tabs (plans/MODERATION.md, 2026-11-02; tabs 2026-11-03): your
+// moderators - whose lists you take, and what you take from them - and your blocklist, your own
+// public list. Reports are their own tab (reportqueue.js). Its own file because it shows people,
+// and person.js imports moderation.js for the controls on a person's page.
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 import htm from 'htm';
@@ -18,7 +19,6 @@ import {
     useModeration,
 } from './moderation.js';
 import { MAX_REASON_BYTES, reasonBytes } from './pure/moderation.js';
-import { ReportSections } from './reportqueue.js';
 
 const html = htm.bind(h);
 
@@ -138,31 +138,18 @@ const TakenRow = ({ root, current, entry }) => html`<li
     </label>
 </li>`;
 
-/// The content control page's sections: whose lists you take, what you take, and your own.
-export const ModerationSections = ({ current }) => {
+/// The moderators tab: whose lists you take, and what you take from them.
+export const ModeratorsTab = ({ current }) => {
     const root = current && current.root;
     const view = useModeration(root);
     if (!root) return null;
-    const mine = view.mine || [];
     const taken = (view.taken || []).filter((e) => !e.sources.every((s) => s.author === root));
     return html`<div class="moderation">
         <section class="moderation-section">
-            <h2 class="settings-section-title">${t('moderation.whose-lists', 'Whose lists you take')}</h2>
+            <h2 class="settings-section-title">${t('moderation.whose-lists', 'Your Community Moderators')}</h2>
             <p class="null-sub">
-                ${t(
-                    'moderation.whose-lists-hint',
-                    'People you trust to moderate for you: what they block or warn about, you do too. Tick or untick anyone on their own page. Only their own word counts - never what they take from others.',
-                )}
+                ${t('moderation.whose-lists-hint', 'People you trust to moderate for you.')}
             </p>
-            ${
-                view.administers &&
-                html`<p class="null-sub">
-                    ${t(
-                        'moderation.administers-hint',
-                        'You run this server, so what you block - on your own list or from the lists you take - it refuses to carry for everyone here, and clears off. Warnings stay yours. Its own users are never refused: remove an account instead.',
-                    )}
-                </p>`
-            }
             ${
                 view.moderators.length
                     ? html`<ul class="moderation-people">
@@ -187,8 +174,17 @@ export const ModerationSections = ({ current }) => {
                     : html`<p class="null-sub">${t('moderation.nothing-taken', 'nothing yet')}</p>`
             }
         </section>
+    </div>`;
+};
+
+/// The blocklist tab: your own public list, and a picture to add to it.
+export const BlocklistTab = ({ current }) => {
+    const root = current && current.root;
+    const view = useModeration(root);
+    if (!root) return null;
+    const mine = view.mine || [];
+    return html`<div class="moderation">
         <section class="moderation-section">
-            <h2 class="settings-section-title">${t('moderation.your-public-list', 'Your public list')}</h2>
             <p class="null-sub">
                 ${t(
                     'moderation.your-public-list-hint',
@@ -212,6 +208,5 @@ export const ModerationSections = ({ current }) => {
             }
             <${PictureForm} root=${root} />
         </section>
-        <${ReportSections} current=${current} />
     </div>`;
 };

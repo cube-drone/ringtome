@@ -1,5 +1,5 @@
 // The moderator's side of reports (plans/MODERATION.md, _Reports_; node/src/reports.rs), on the
-// content control page under the lists: Accept Reports and how far it reaches, and the queue.
+// content control page's reports tab: Accept Reports and how far it reaches, and the queue.
 //
 // The queue shows each report's evidence as its author signed it, with "add to my list" and
 // "dismiss". It counts reports by the node they came from, so a flood is one line with one action.
@@ -274,7 +274,6 @@ export const ReportSections = ({ current }) => {
     const reports = (queue && queue.reports) || [];
     const floods = ((queue && queue.groups) || []).filter((g) => g.reports >= FLOOD_AT);
     return html`<section class="moderation-section">
-        <h2 class="settings-section-title">${t('reports.reports', 'Reports')}</h2>
         <${Settings} root=${root} settings=${settings} onSaved=${setSettings} />
         ${floods.length > 0 && html`<ul class="report-floods">${floods.map((g) => html`<${Flood} key=${g.node} root=${root} group=${g} onMoved=${load} />`)}</ul>`}
         ${

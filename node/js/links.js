@@ -204,6 +204,11 @@ export const settingsHref = (page) => {
 /// report. Anything about syncing goes to `all`.
 export const computersHref = (tab = 'new') => settingsHref(`computers/${tab}`);
 
+/// Content control's tabs (Curtis, 2026-11-03): `tags` (the blur and hide lists, the page's
+/// default), `moderators` (whose lists you take, and what you take from them), `blocklist` (your
+/// own public list) and `reports`.
+export const contentHref = (tab = 'tags') => settingsHref(`content/${tab}`);
+
 /// Import/export's two tabs (plans/EXPORT.md): `export` (the default) and `import`.
 export const importExportHref = (tab = 'export') => settingsHref(`import-export/${tab}`);
 
