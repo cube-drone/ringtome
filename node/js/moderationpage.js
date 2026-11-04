@@ -56,7 +56,7 @@ const PictureForm = ({ root }) => {
         <p class="null-sub">
             ${t(
                 'moderation.list-a-picture-hint',
-                'A picture, by its address: copies of the same file are blocked or warned about as you say, wherever they are posted. One that only looks like it gets a warning, never more.',
+                'A picture, by its address: copies of the same file are blocked or warned about as you say, wherever they are posted. Similar images get warned.',
             )}
         </p>
         <div class="moderation-add">

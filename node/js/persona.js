@@ -569,7 +569,7 @@ export const SpareKeyCeremony = ({ persona }) => {
                     "If you ever lose every computer that knows you, this - and only this - brings you back. We don't keep a copy. {warning}",
                     {
                         warning: html`<strong
-                            >${t('persona.we-can-never-show-it', 'We can never show it again.')}</strong
+                            >${t('persona.we-can-never-show-it', "We can't show it again.")}</strong
                         >`,
                     },
                 )}

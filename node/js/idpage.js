@@ -87,7 +87,7 @@ const ReachPill = ({ root }) => {
             class="person-reach-n"
             title=${t(
                 'idpage.reach-follows-title',
-                '{n} public follows: {exact} from people this computer keeps up with ({known} of them people you know), and about {told} more who told you they follow you - an unfollow from those never reaches you',
+                "{n} public follows: {exact} from people this computer keeps up with ({known} of them people you know), and about {told} more who told you they follow you. If one of them unfollows you, you won't hear about it.",
                 {
                     n: follows,
                     exact: n.follow_you,

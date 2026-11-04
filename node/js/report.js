@@ -72,7 +72,7 @@ const ChildAbuse = ({ item }) => {
     const path = `/ringtome/user/${item.author}/post/${item.doc_id}`;
     return html`<div class="report-child">
         <p><strong>${t('report.dont-send-it', "Don't screenshot, save or forward it - not even to report it. Sending a picture of a child being abused is distributing it.")}</strong></p>
-        <p>${t('report.where-to-report', "Report it where you live, with the post's address - never the picture:")}</p>
+        <p>${t('report.where-to-report', "Report it where you live. Send the post's address, not the picture:")}</p>
         <${Hotlines} />
         <button
             class="removal-option"

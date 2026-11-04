@@ -1616,7 +1616,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                         setSendError(
                             t(
                                 'apps.chat.upload-never-finished',
-                                'that upload never finished processing - try it again',
+                                "that upload didn't finish processing - try it again",
                             ),
                         );
                     }
@@ -1627,7 +1627,7 @@ const Room = ({ current, author, doc, onSeen, onChanged, admin, at }) => {
                         setSendError(
                             t(
                                 'apps.chat.upload-never-finished',
-                                'that upload never finished processing - try it again',
+                                "that upload didn't finish processing - try it again",
                             ),
                         );
                     }

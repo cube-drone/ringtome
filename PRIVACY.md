@@ -11,15 +11,14 @@ operator.
 ## What we, the developers, collect
 
 Nothing. The application sends us no analytics, no telemetry, no crash reports
-and no data about you. We never see your account, your password or what you
+and no data about you. We don't see your account, your password or what you
 make, unless you share it with us on the network yourself.
 
 ## What your server keeps
 
 The server that holds your account keeps what it needs to run it:
 
-- your username, and a one-way hash of your password (never the password
-  itself);
+- your username, and a one-way hash of your password (not the password itself);
 - your sign-in sessions;
 - your personas and what they make: notes, drawings, chats, posts, files and
   settings - your private ones encrypted;

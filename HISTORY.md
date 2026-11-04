@@ -26644,3 +26644,25 @@ until a listing shows nothing of the picture's left sealed, which also clears a
 seal an earlier run left behind.
 
 Proved by: the rig logs, `RINGTOME_TEST_GREP=quarantine just integration`.
+
+## A "never" audit (2026-11-04)
+
+Curtis: "A telltale sign of generated copy is the word 'never', particularly
+after a dash." Every place it reached a reader was read, and the ones in that
+pattern were rewritten, mostly with "not":
+
+- eleven catalog strings, among them the report form ("Send the post's address,
+  not the picture"), Accept Reports ("Reports come to this server and stay
+  here.", which also dropped "your chains", a word people never meet), the
+  picture-entry hint ("Similar images get warned."), Front Matter's intro, the
+  follows tooltip and hidden book pages;
+- the MCP refusal for a group post in public, and the import log's line for a
+  chat room;
+- PRIVACY.md's two ("We don't see your account…", "not the password itself").
+  That changes the terms version hash, so new agreements record the new version;
+  nobody is asked to agree again.
+
+Idiom stays: "never mind", "never used", "never tried", "Never heard of them",
+"it was never me". SERVER.md's twelve weren't audited.
+
+Proved by: `just strings-check`, `just ui-check`, `cargo build`.

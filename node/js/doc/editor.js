@@ -853,7 +853,7 @@ export const Editor = ({
                         }
                     </span>
                     <span class="publish-bar-acts">
-                        <label class="publish-bar-wish" title=${t('doc.editor.a-hidden-page-never-publishes', 'a hidden page never publishes with the book')}>
+                        <label class="publish-bar-wish" title=${t('doc.editor.a-hidden-page-never-publishes', "hidden pages aren't published with the book")}>
                             <input type="checkbox" checked=${hiddenHere} onChange=${(e) => book.mark(`doc:${docId}`, e.currentTarget.checked)} />
                             ${t('doc.editor.hide-from-the-book', 'hide from the book')}
                         </label>

@@ -1789,7 +1789,7 @@ impl<'a> Ctx<'a> {
         }
         if details.get("format").map(|d| d.one()).as_deref() == Some("room") {
             self.say(format!(
-                "Post {title} not republished: a chat room starts fresh, never again."
+                "Post {title} not republished: chat rooms can't be imported, so it starts fresh."
             ));
             return Ok(());
         }

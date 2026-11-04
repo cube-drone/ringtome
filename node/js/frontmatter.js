@@ -174,7 +174,7 @@ export const FrontMatterPage = ({ current }) => {
     return html`<div class="device frontmatter-page">
         <h2>${t('frontmatter.front-matter', 'Front Matter')}</h2>
         <p class="null-sub">
-            ${t('frontmatter.page-intro', "Customize your Terms of Service and Privacy Policy here. Every server shows the application's own, then the terms every server starts with; what you write here is added after them - it can add rules, never take any away. Each version you publish is listed at the end of the page, dated.")}
+            ${t('frontmatter.page-intro', "Customize your Terms of Service and Privacy Policy here. Every server shows the application's own, then the terms every server starts with; what you write here is added after them. It can add rules, but not remove any. Each version you publish is listed at the end of the page, dated.")}
         </p>
         ${error && html`<p class="form-error">${error}</p>`}
         ${view && html`<${OperatorFacts} view=${view} />`}

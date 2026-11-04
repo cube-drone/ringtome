@@ -49,7 +49,7 @@ const WhatToDoNow = () => html`<div class="quarantine-now">
             ${t('quarantine.dont-look', "Don't look at it again, and don't screenshot, save, download or forward it - not even to report it. Quarantining it here is enough to stop this server showing it to anyone.")}
         </li>
         <li>
-            ${t('quarantine.report-it', 'If it shows a child being sexually abused or exploited, report it. Where you live, the law may say you must - in Canada, anyone providing an internet service to the public has to. Give them the address of the post, never the picture.')}
+            ${t('quarantine.report-it', 'If it shows a child being sexually abused or exploited, report it. Where you live, the law may say you must - in Canada, anyone providing an internet service to the public has to. Give them the address of the post, not the picture.')}
             <${Hotlines} />
         </li>
         <li>
@@ -78,7 +78,7 @@ const QuarantineRow = ({ row, onRelease, onReleaseReporter }) => {
                           when: formatWhen(row.released_ms),
                       })
             }
-            ${row.held ? '' : html` - ${t('quarantine.never-arrived', 'never on this disk')}`}
+            ${row.held ? '' : html` - ${t('quarantine.never-arrived', 'not on this disk')}`}
         </span>
         ${row.why && html`<span class="quarantine-why">${row.why}</span>`}
         ${

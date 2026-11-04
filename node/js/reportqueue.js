@@ -66,7 +66,7 @@ const Settings = ({ root, settings, onSaved }) => {
         ${
             locked
                 ? html`<p class="null-sub">${t('reports.not-allowed-here', "This server's operator doesn't let people take reports here.")}</p>`
-                : html`<p class="null-sub">${t('reports.what-taking-means', 'People who trust you to moderate for them can ask you to put someone on your list. Reports come to this server and stay here - never on your chains, never on your other computers.')}</p>`
+                : html`<p class="null-sub">${t('reports.what-taking-means', 'People who trust you to moderate for them can ask you to put someone on your list. Reports come to this server and stay here.')}</p>`
         }
         ${
             settings.takes &&
@@ -165,7 +165,7 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
             report.child_abuse &&
             html`<div class="report-child">
                 <p><strong>${t('reports.reported-as-child-abuse', 'Reported as a child being sexually abused or exploited.')}</strong></p>
-                <p>${t('reports.child-only-the-reference', 'Only where it is came with it, never the picture. Report it where you live, with its address:')}</p>
+                <p>${t('reports.child-only-the-reference', "Only the post's location was sent, not the picture. Report it where you live, with its address:")}</p>
                 <${Hotlines} />
                 ${
                     administers &&

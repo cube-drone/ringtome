@@ -632,7 +632,7 @@ impl Tools {
         }
         if in_public && found.get("public").and_then(Value::as_bool) != Some(true) {
             return Err(stop(
-                "that group is private: its posts are for its members, never in public",
+                "that group is private: its posts are for its members only, not the public",
             ));
         }
         let id = found.get("group").and_then(Value::as_str).unwrap_or_default().to_string();
