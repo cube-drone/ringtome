@@ -85,7 +85,7 @@ const ChildAbuse = ({ item }) => {
                 }
             }}
         >${copied ? t('chips.copied', 'copied') : t('report.copy-the-posts-address', "copy the post's address")}</button>
-        <p class="null-sub">${t('report.child-sends-only-the-reference', 'Your moderators get only where the post is, never the picture. It is hidden here and its author blocked.')}</p>
+        <p class="null-sub">${t('report.child-sends-only-the-reference', 'Moderators only get the location of the post, not the picture content. It will be hidden here and the author blocked.')}</p>
     </div>`;
 };
 

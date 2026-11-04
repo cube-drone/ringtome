@@ -164,6 +164,18 @@ label.moderation-overrule {
 .quarantine-why {
     flex-basis: 100%;
 }
+/* Whose child-abuse report sealed it, and the way to undo all of theirs (2026-11-03). */
+.quarantine-reporter {
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.quarantine-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
 
 /* Reports (report.js, reportqueue.js). */
 .report-form,

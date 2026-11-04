@@ -287,12 +287,15 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
 
     // A child-abuse report to an administrator here, from someone their trust reaches, seals what
     // it names at once - the operator's quarantine, started (plans/SCANNING.md). From a stranger it
-    // waits for a person: sealing on a stranger's word would let anyone take any picture down.
+    // waits for a person: sealing on a stranger's word would let anyone take any picture down. The
+    // seal names its reporter, so the operator can see whose word it was, and undo all of it at
+    // once (Curtis, 2026-11-03: auditable and reversible).
     if report.child_abuse && standing != Standing::Stranger && !item_hashes.is_empty() {
         let admins = crate::moderation::administrator_roots(state).await?;
         if admins.contains(&moderator) {
             let picture = report.item.as_ref().map(|i| (i.author, i.doc_id));
-            crate::quarantine::seal(state, &item_hashes, picture, "a child-abuse report", "report")
+            let by = crate::quarantine::reported_by(&reporter);
+            crate::quarantine::seal(state, &item_hashes, picture, "a child-abuse report", &by)
                 .await?;
         }
     }

@@ -26561,3 +26561,42 @@ the blocklist and reports, so those two lost their own headings
 Proved by: a harness probe against a scratch node (each address shows its tab
 active with that tab's content, and the bare address lands on tags),
 `just strings`, `just ui-check`.
+
+## A seal names its reporter, and undoes all at once (2026-11-03)
+
+A child-abuse report from someone an administrator's trust reaches seals what it
+names at once (reports.rs). Curtis ruled that this stays as it is, with no cap
+per reporter, as long as it is auditable and reversible. Before this change it
+was only half of each. Every such seal said `by_account = "report"`, so who
+caused it lived only on the report row, which is trimmed after the keep days.
+Releasing was one file at a time.
+
+- A report's seal now records `report:<reporter's root>` (no schema change; the
+  column was free text), and the quarantine list serves it as `reporter`.
+  hrseServer's Moderation page shows "reported by" with their face and name.
+- `POST /api/admin/quarantine/reported-by/{root}/release` releases every seal
+  that reporter's reports made, and the row's "release everything they reported"
+  button calls it after a confirmation. The rows stay, released, as the record.
+- A file sealed again after a release now takes the new reason and who; it used
+  to keep the first.
+
+Proved by: `reports.cjs`'s child-abuse claim (each seal names its reporter; the
+release by reporter frees every one and keeps the rows), `just ci`.
+
+## A refused picture no longer slips out as it lands (2026-11-03)
+
+CI was red on "pitcha work" and "block UI boops": the quarantine claim "refuses
+the same picture uploaded again" got a 200 for a picture that should have been
+sealed as it arrived from another node, and failed all five reruns. The arrival
+check ran beside the fetch (`tokio::spawn` in lib.rs), so the fetch that brought
+a picture could return, and the picture be served once, before the check sealed
+it. Picture entries had made the check slower by one database lookup
+(`prints::of`), which made the server lose that race on CI. Once it lost, the
+picture sat on the rig unsealed, so every rerun failed the same way: 5 of 5, and
+not chance.
+
+The arrival hook (`files::Arrival`) now returns a future that `put_public` and
+the fetch await, after letting go of the write gate, before they return. With
+nothing quarantined the check returns at once.
+
+Proved by: `just ci`.

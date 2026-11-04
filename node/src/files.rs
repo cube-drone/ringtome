@@ -59,8 +59,12 @@ type Outstanding = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<Has
 /// handler, which refuses them at the door.
 type Sealed = std::sync::Arc<std::sync::RwLock<std::collections::HashSet<Hash>>>;
 /// Told of every blob that lands - a public put, a fetch from a peer - once armed (quarantine.rs's
-/// refusal list checks pictures against it).
-pub type Arrival = std::sync::Arc<dyn Fn(Hash) + Send + Sync>;
+/// refusal list checks pictures against it). Awaited before the put or fetch returns, so nothing
+/// serves a blob the check is about to seal: run beside the fetch, it lost that race on CI and a
+/// refused picture went out once as it landed (2026-11-03).
+pub type Arrival = std::sync::Arc<
+    dyn Fn(Hash) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync,
+>;
 type Arrivals = std::sync::Arc<std::sync::OnceLock<Arrival>>;
 
 /// A blob just stored, and the hold that keeps it out of the reaper's sweep. **Keep this
@@ -486,9 +490,9 @@ impl FileStore {
         let _ = self.arrivals.set(hook);
     }
 
-    fn arrived(&self, hash: Hash) {
+    async fn arrived(&self, hash: Hash) {
         if let Some(hook) = self.arrivals.get() {
-            hook(hash);
+            hook(hash).await;
         }
     }
 
@@ -552,7 +556,8 @@ impl FileStore {
             .context("storing public blob")?;
         let hash = *tag.as_ref();
         let put = Put::new(self, hash, tag);
-        self.arrived(hash);
+        drop(_writing);
+        self.arrived(hash).await;
         Ok(put)
     }
 
@@ -654,7 +659,9 @@ impl FileStore {
                 }
                 GetProgressItem::Done(_) => {
                     self.note_recent(hash);
-                    self.arrived(hash);
+                    drop(progress);
+                    drop(_writing);
+                    self.arrived(hash).await;
                     return Ok(());
                 }
                 GetProgressItem::Error(e) => bail!("fetching blob {hash}: {e:?}"),

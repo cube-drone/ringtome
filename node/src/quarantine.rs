@@ -103,6 +103,15 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/admin/quarantine", get(list_handler).post(seal_handler))
         .route("/api/admin/quarantine/{hash}/release", post(release_handler))
+        .route("/api/admin/quarantine/reported-by/{root}/release", post(release_reporter_handler))
+}
+
+/// A seal a child-abuse report made (reports.rs) names its reporter in `by_account`, where an
+/// operator's own seal names their account: `report:<root>`.
+const REPORTED_BY: &str = "report:";
+
+pub fn reported_by(reporter_root: &str) -> String {
+    format!("{REPORTED_BY}{reporter_root}")
 }
 
 /// Seal every blob this node quarantined and hasn't released. At boot, before the accept loop.
@@ -170,7 +179,8 @@ pub async fn blobs_of(
     Ok(out)
 }
 
-/// Seal these blobs, now, and record why. A blob already sealed keeps its first row.
+/// Seal these blobs, now, and record why. A blob already sealed keeps its first row; one sealed
+/// again after a release takes the new why and who.
 pub async fn seal(
     state: &AppState,
     hashes: &[[u8; 32]],
@@ -191,7 +201,11 @@ pub async fn seal(
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT (hash) DO UPDATE SET released_ms = NULL, released_by = NULL,
                      quarantined_ms = CASE WHEN quarantine.released_ms IS NULL
-                         THEN quarantine.quarantined_ms ELSE excluded.quarantined_ms END",
+                         THEN quarantine.quarantined_ms ELSE excluded.quarantined_ms END,
+                     why = CASE WHEN quarantine.released_ms IS NULL
+                         THEN quarantine.why ELSE excluded.why END,
+                     by_account = CASE WHEN quarantine.released_ms IS NULL
+                         THEN quarantine.by_account ELSE excluded.by_account END",
                 (hex::encode(hash), author.clone(), doc.clone(), why, by_account, now),
             )
             .await
@@ -231,6 +245,8 @@ struct Row {
     doc_id: Option<String>,
     why: String,
     by_account: String,
+    /// The reporter whose child-abuse report sealed it, when one did: their persona's root.
+    reporter: Option<String>,
     quarantined_ms: i64,
     released_ms: Option<i64>,
     released_by: Option<String>,
@@ -272,12 +288,14 @@ async fn rows(state: &AppState) -> Result<Vec<Row>, AppError> {
             Some(h) => state.files.size_of(iroh_blobs::Hash::from_bytes(h)).await.is_some(),
             None => false,
         };
+        let reporter = by_account.strip_prefix(REPORTED_BY).map(str::to_string);
         out.push(Row {
             hash,
             author,
             doc_id,
             why,
             by_account,
+            reporter,
             quarantined_ms,
             released_ms,
             released_by,
@@ -359,19 +377,54 @@ async fn release_handler(
             "that isn't a file's hash - 64 hex characters"
         )));
     };
-    state
+    release(&state, &[bytes], &admin.account.id.to_string()).await.map_err(AppError::Internal)?;
+    Ok(Json(serde_json::json!({ "rows": rows(&state).await? })))
+}
+
+/// POST `/api/admin/quarantine/reported-by/{root}/release` - unseal everything one reporter's
+/// child-abuse reports sealed: their word was no good (Curtis, 2026-11-03).
+async fn release_reporter_handler(
+    State(state): State<AppState>,
+    admin: crate::auth::NodeAdminSession,
+    Path(root): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let root = root.to_ascii_lowercase();
+    if parse_hash(&root).is_none() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "quarantine.not-a-persona",
+            "that isn't a persona - 64 hex characters"
+        )));
+    }
+    let sealed: Vec<(String,)> = state
         .node_db
-        .execute(
-            "UPDATE quarantine SET released_ms = ?2, released_by = ?3
-             WHERE hash = ?1 AND released_ms IS NULL",
-            (hex::encode(bytes), crate::clock::now_ms(), admin.account.id.to_string()),
+        .fetch_all(
+            "SELECT hash FROM quarantine WHERE by_account = ?1 AND released_ms IS NULL",
+            (reported_by(&root),),
         )
         .await
-        .context("releasing a quarantine")
+        .context("reading a reporter's seals")
         .map_err(AppError::Internal)?;
-    state.files.unseal(&iroh_blobs::Hash::from_bytes(bytes));
-    reload_refusal(&state).await.map_err(AppError::Internal)?;
+    let hashes: Vec<[u8; 32]> = sealed.iter().filter_map(|(h,)| parse_hash(h)).collect();
+    release(&state, &hashes, &admin.account.id.to_string()).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "rows": rows(&state).await? })))
+}
+
+/// Unseal these blobs, recording who did and when; the rows stay as the record.
+async fn release(state: &AppState, hashes: &[[u8; 32]], by_account: &str) -> anyhow::Result<()> {
+    let now = crate::clock::now_ms();
+    for hash in hashes {
+        state
+            .node_db
+            .execute(
+                "UPDATE quarantine SET released_ms = ?2, released_by = ?3
+                 WHERE hash = ?1 AND released_ms IS NULL",
+                (hex::encode(hash), now, by_account),
+            )
+            .await
+            .context("releasing a quarantine")?;
+        state.files.unseal(&iroh_blobs::Hash::from_bytes(*hash));
+    }
+    reload_refusal(state).await
 }
 
 #[cfg(test)]

@@ -615,12 +615,11 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     if let Err(e) = quarantine::load(&state).await {
         tracing::error!(error = ?e, "could not read the quarantine; nothing new is sealed");
     }
-    // Every picture that lands is checked against the refusal list (quarantine.rs).
+    // Every picture that lands is checked against the refusal list (quarantine.rs), before the
+    // put or fetch that brought it returns.
     state.files.on_arrival({
         let state = state.clone();
-        std::sync::Arc::new(move |hash| {
-            tokio::spawn(quarantine::arrived(state.clone(), hash));
-        })
+        std::sync::Arc::new(move |hash| Box::pin(quarantine::arrived(state.clone(), hash)))
     });
     net::p2p::spawn_accept_loop(endpoint, state.clone());
     // What this node's moderation refuses, before the first exchange is answered (moderation.rs).

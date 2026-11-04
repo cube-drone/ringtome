@@ -13,6 +13,9 @@ import htm from 'htm';
 import { api } from './net.js';
 import { formatWhen } from './pure/when.js';
 import { t } from './i18n.js';
+import { askYes } from './modal.js';
+import { personHref } from './links.js';
+import { PersonInline } from './person.js';
 
 const html = htm.bind(h);
 
@@ -59,7 +62,9 @@ const WhatToDoNow = () => html`<div class="quarantine-now">
     <p class="null-sub">${t('quarantine.not-legal-advice', 'This is not legal advice.')}</p>
 </div>`;
 
-const QuarantineRow = ({ row, onRelease }) => {
+/// One quarantined file. A seal a child-abuse report made names its reporter (Curtis, 2026-11-03),
+/// and offers to undo everything their reports sealed at once.
+const QuarantineRow = ({ row, onRelease, onReleaseReporter }) => {
     const sealed = !row.released_ms;
     return html`<li class=${sealed ? 'quarantine-row' : 'quarantine-row quarantine-released'}>
         <code class="quarantine-hash">${row.hash}</code>
@@ -77,10 +82,25 @@ const QuarantineRow = ({ row, onRelease }) => {
         </span>
         ${row.why && html`<span class="quarantine-why">${row.why}</span>`}
         ${
+            row.reporter &&
+            html`<span class="quarantine-reporter">
+                ${t('quarantine.reported-by', 'reported by')}
+                <a class="moderation-who" href=${personHref(row.reporter)}><${PersonInline} root=${row.reporter} /></a>
+            </span>`
+        }
+        ${
             sealed &&
-            html`<button class="removal-option" onClick=${() => onRelease(row.hash)}>
-            ${t('quarantine.release', 'release')}
-        </button>`
+            html`<span class="quarantine-actions">
+                <button class="removal-option" onClick=${() => onRelease(row.hash)}>
+                    ${t('quarantine.release', 'release')}
+                </button>
+                ${
+                    row.reporter &&
+                    html`<button class="removal-option" onClick=${() => onReleaseReporter(row.reporter)}>
+                        ${t('quarantine.release-all-they-reported', 'release everything they reported')}
+                    </button>`
+                }
+            </span>`
         }
     </li>`;
 };
@@ -123,6 +143,31 @@ const Quarantine = () => {
             setError(e.message);
         }
     };
+    const releaseReporter = async (root) => {
+        const count = (rows || []).filter((r) => r.reporter === root && !r.released_ms).length;
+        if (
+            !(await askYes({
+                title: t('quarantine.release-all-title', 'release everything they reported'),
+                body: t(
+                    'quarantine.release-all-body',
+                    "Every file still sealed by this person's reports - {n} of them - is served here again. Each row stays on the list, released, as the record.",
+                    { n: count },
+                ),
+                yes: t('quarantine.release-all-yes', 'release them'),
+                danger: true,
+            }))
+        )
+            return;
+        setError('');
+        try {
+            setRows(
+                (await api(`/api/admin/quarantine/reported-by/${root}/release`, { method: 'POST' }))
+                    .rows,
+            );
+        } catch (e) {
+            setError(e.message);
+        }
+    };
     return html`<section class="quarantine">
         <h3>${t('quarantine.quarantine', 'Quarantine')}</h3>
         <p class="null-sub">
@@ -145,7 +190,7 @@ const Quarantine = () => {
             rows &&
             (rows.length
                 ? html`<ul class="quarantine-list">
-                      ${rows.map((row) => html`<${QuarantineRow} key=${row.hash} row=${row} onRelease=${release} />`)}
+                      ${rows.map((row) => html`<${QuarantineRow} key=${row.hash} row=${row} onRelease=${release} onReleaseReporter=${releaseReporter} />`)}
                   </ul>`
                 : html`<p class="null-sub">${t('quarantine.nothing-quarantined', 'Nothing is quarantined here.')}</p>`)
         }

@@ -162,7 +162,7 @@ export const ModeratorsTab = ({ current }) => {
             }
         </section>
         <section class="moderation-section">
-            <h2 class="settings-section-title">${t('moderation.what-you-take', 'What you take')}</h2>
+            <h2 class="settings-section-title">${t('moderation.what-you-take', 'From Your Moderators')}</h2>
             ${
                 taken.length
                     ? html`<ul class="moderation-rows">

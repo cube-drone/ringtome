@@ -239,8 +239,21 @@ const fact = (who, root, about, key, value) =>
         );
         assert.ok(rows.length >= 1, 'its files are sealed here');
         assert.ok(rows.every((x) => !x.released_ms));
-        for (const x of rows)
-            await admin(`api/admin/quarantine/${x.hash}/release`, { method: 'POST' });
+        assert.ok(
+            rows.every((x) => x.reporter === repRoot),
+            'each seal names whose report it was',
+        );
+        // Undone all at once, by reporter: every seal of theirs released, its row kept.
+        const freed = await admin(`api/admin/quarantine/reported-by/${repRoot}/release`, {
+            method: 'POST',
+        });
+        assert.equal(freed.status, 200, await freed.clone().text());
+        const after = (await freed.json()).rows.filter((x) => x.doc_id === post);
+        assert.equal(after.length, rows.length, 'the record stays');
+        assert.ok(
+            after.every((x) => x.released_ms),
+            'and every one is released',
+        );
         await j(admin, `api/identity/${mod}/reports/${r.id}/dismiss`, {});
     });
 
