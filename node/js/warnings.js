@@ -83,7 +83,7 @@ const TagList = ({ root, which, label, hint }) => {
         commit([...list, ...tags.filter((g) => !list.includes(g))]);
     };
     return html`<div class="warn-list">
-        <span class="profile-label">${label}</span>
+        <h2 class="settings-section-title">${label}</h2>
         <p class="null-sub">${hint}</p>
         <div class="warn-chips">
             ${list.map(
@@ -120,13 +120,13 @@ export const WarningLists = ({ root }) => html`<div class="warn-lists">
     <${TagList}
         root=${root}
         which="blur"
-        label=${t('warnings.blurred-tags', 'blurred')}
+        label=${t('warnings.blurred-tags', 'Blurred')}
         hint=${t('warnings.blurred-hint', 'posts tagged with these are partially hidden but still accessible')}
     />
     <${TagList}
         root=${root}
         which="hide"
-        label=${t('warnings.hidden-tags', 'hidden')}
+        label=${t('warnings.hidden-tags', 'Hidden')}
         hint=${t('warnings.hidden-hint', 'posts tagged with these will not be displayed on your feed at all')}
     />
 </div>`;

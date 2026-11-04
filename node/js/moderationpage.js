@@ -59,20 +59,22 @@ const PictureForm = ({ root }) => {
                 'A picture, by its address: copies of the same file are blocked or warned about as you say, wherever they are posted. Similar images get warned.',
             )}
         </p>
+        <input
+            class="profile-input moderation-address"
+            value=${address}
+            placeholder=${t('moderation.picture-address-placeholder', "the picture's address")}
+            onInput=${(e) => setAddress(e.currentTarget.value)}
+        />
         <div class="moderation-add">
-            <input
-                class="profile-input"
-                value=${address}
-                placeholder=${t('moderation.picture-address-placeholder', "the picture's address")}
-                onInput=${(e) => setAddress(e.currentTarget.value)}
-            />
             <select class="profile-input" value=${level} onChange=${(e) => setLevel(e.currentTarget.value)}>
                 <option value="warn">${levelWord('warn')}</option>
                 <option value="block">${levelWord('block')}</option>
             </select>
             <${ReasonInput} value=${reason} onInput=${setReason} />
+        </div>
+        <div class="report-buttons">
             <button
-                class="removal-option"
+                class="removal-go"
                 disabled=${!address.trim() || reasonBytes(reason) > MAX_REASON_BYTES}
                 onClick=${add}
             >${t('moderation.add-to-public-list', 'add to my public list')}</button>

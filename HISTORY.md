@@ -26666,3 +26666,28 @@ Idiom stays: "never mind", "never used", "never tried", "Never heard of them",
 "it was never me". SERVER.md's twelve weren't audited.
 
 Proved by: `just strings-check`, `just ui-check`, `cargo build`.
+
+## Content control and the report form, tidied (2026-11-04)
+
+Curtis: content control and the report form "feel like they were essentially
+left unstyled". Screenshots of a test-data network showed why. Every moderation
+input and select wore the class `profile-input`, which had no CSS anywhere, so
+each was the browser's own black-bordered box. The report form's reason box had
+`flex: 1 1 14rem` in a column, so 14rem of blank height opened above and below
+it.
+
+- `.profile-input` takes the house field (apps/device.css's): the field
+  background, the border, the teal focus glow.
+- **Report form:** a full-width reason box, with a reporter's placeholder ("why
+  - your moderators see this", not the moderator's list wording).
+- **Reports tab:** each report is a card. The reported post sits in a short
+  inset box. "untitled" is gone. Level and reason sit on one row, with "dismiss"
+  and "add to my public list" (now the primary button) on the next. A flood's
+  two buttons share that compact row, so they are no longer full-width tiles.
+- **Blocklist tab:** the picture form is set apart by a rule, with the address
+  on a line of its own.
+- **Tags tab:** "Blurred" and "Hidden" are headings like the other tabs'.
+- No extra gap between the tabs and the first section.
+
+Proved by: before and after screenshots of each tab and the report form, at
+1200px and 400px, `just strings-check`, `just ui-check`.

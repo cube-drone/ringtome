@@ -180,7 +180,7 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
             report.item_doc &&
             html`<div class="report-item">
                 <p class="report-item-head">
-                    ${report.item_sealed ? t('reports.a-sealed-post', 'a post for the people they trust') : report.item_title || t('reports.untitled', 'untitled')}
+                    ${report.item_sealed ? t('reports.a-sealed-post', 'a post for the people they trust') : report.item_title}
                     <span class="null-sub">
                         ${t('reports.signed-by-them', 'signed by them {when}', { when: formatWhen(report.item_signed_ms) })}
                     </span>
@@ -212,12 +212,14 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
                 <option value="block">${levelWord('block')}</option>
             </select>
             <${ReasonInput} value=${reason} onInput=${setReason} />
+        </div>
+        <div class="report-buttons">
+            <button class="removal-option" onClick=${() => act('dismiss')}>${t('reports.dismiss', 'dismiss')}</button>
             <button
-                class="removal-option"
+                class="removal-go"
                 disabled=${reasonBytes(reason) > MAX_REASON_BYTES}
                 onClick=${() => act('list', { level, reason: reason.trim() })}
             >${t('moderation.add-to-public-list', 'add to my public list')}</button>
-            <button class="removal-option" onClick=${() => act('dismiss')}>${t('reports.dismiss', 'dismiss')}</button>
         </div>
         ${error && html`<p class="form-error">${error}</p>`}
     </li>`;
@@ -246,8 +248,10 @@ const Flood = ({ root, group, onMoved }) => {
         ${t('reports.n-reports-from-m-personas', '{n} reports from {m} personas on node', { n: group.reports, m: group.reporters })}
         <${NodeName} id=${group.node} />
         <span class="null-sub">${t('reports.since', 'since {when}', { when: formatWhen(group.since_ms) })}</span>
-        <button class="removal-option" onClick=${() => drop(true)}>${t('reports.block-that-node-and-drop-these', 'block that node and drop these')}</button>
-        <button class="removal-option" onClick=${() => drop(false)}>${t('reports.drop-these', 'drop these')}</button>
+        <span class="report-buttons">
+            <button class="removal-option" onClick=${() => drop(false)}>${t('reports.drop-these', 'drop these')}</button>
+            <button class="removal-go" onClick=${() => drop(true)}>${t('reports.block-that-node-and-drop-these', 'block that node and drop these')}</button>
+        </span>
         ${error && html`<p class="form-error">${error}</p>`}
     </li>`;
 };

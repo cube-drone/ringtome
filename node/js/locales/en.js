@@ -2355,6 +2355,7 @@ export default {
     'report.you-trust-nobody-to-moderate': "You don't trust anyone to moderate for you - it will only be hidden here.",
     'report.something-else': "it's spam, abuse, or something else that shouldn't be here",
     'report.a-child-is-being-abused': 'a child is being sexually abused or exploited',
+    'report.reason-placeholder': 'why - your moderators see this',
     'report.block-them-too': 'block them too',
     'report.sending': 'sending…',
     'report.report-it': 'report it',
@@ -2380,15 +2381,14 @@ export default {
     'reports.quarantined': 'quarantined on this server',
     'reports.quarantine-its-files': 'quarantine its files on this server',
     'reports.a-sealed-post': 'a post for the people they trust',
-    'reports.untitled': 'untitled',
     'reports.signed-by-them': 'signed by them {when}',
     'reports.your-assistant-proposes': 'Your assistant proposes: {level}',
     'reports.dismiss': 'dismiss',
     'reports.a-flood-of-reports': 'a flood of reports',
     'reports.n-reports-from-m-personas': '{n} reports from {m} personas on node',
     'reports.since': 'since {when}',
-    'reports.block-that-node-and-drop-these': 'block that node and drop these',
     'reports.drop-these': 'drop these',
+    'reports.block-that-node-and-drop-these': 'block that node and drop these',
     'reports.nothing-to-look-at': 'nothing to look at',
 
     // --- node/js/rights.js ---
@@ -2570,9 +2570,9 @@ export default {
     // --- node/js/warnings.js ---
     'warnings.remove': 'remove',
     'warnings.add-a-tag': 'add a tag…',
-    'warnings.blurred-tags': 'blurred',
+    'warnings.blurred-tags': 'Blurred',
     'warnings.blurred-hint': 'posts tagged with these are partially hidden but still accessible',
-    'warnings.hidden-tags': 'hidden',
+    'warnings.hidden-tags': 'Hidden',
     'warnings.hidden-hint': 'posts tagged with these will not be displayed on your feed at all',
 
     // --- node/js/zoomview.js ---

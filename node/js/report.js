@@ -148,7 +148,12 @@ export const ReportModal = ({ item, current, onClose }) => {
                       ${
                           child
                               ? html`<${ChildAbuse} item=${item} />`
-                              : html`<${ReasonInput} value=${reason} onInput=${setReason} />
+                              : html`<${ReasonInput}
+                                        wide
+                                        value=${reason}
+                                        placeholder=${t('report.reason-placeholder', 'why - your moderators see this')}
+                                        onInput=${setReason}
+                                    />
                                     <label class="profile-setting">
                                         <input type="checkbox" checked=${block} onChange=${(e) => setBlock(e.currentTarget.checked)} />
                                         ${t('report.block-them-too', 'block them too')}
