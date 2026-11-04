@@ -26600,3 +26600,47 @@ the fetch await, after letting go of the write gate, before they return. With
 nothing quarantined the check returns at once.
 
 Proved by: `just ci`.
+
+## Test data with moderators, reports and blocks (2026-11-04)
+
+To give the content control tabs and hrseServer's Moderation page something to
+show, `just test-data` now seeds moderation (Curtis asked for it):
+
+- **Reports are on for a local server.** A development build's node allows
+  reports until its operator sets otherwise (`reports::policy`). A production
+  node still defaults off.
+- **The run's first persona is always a moderator.** It is made an administrator
+  of its node through the development build's door (`/api/auth/dev/node-admin`),
+  turns on Accept Reports, reaching two hops and taking strangers' reports, and
+  goes public. The roster marks every moderator.
+- **Four new actions:** `become-a-moderator`, `follow-a-moderator` (trust them
+  to moderate, fetching their page from their node first), `report-content` (a
+  post from the feed or the reporter's own node, sent to their moderators; a
+  persona with no moderator picks one first) and `block-content` (a public warn,
+  sometimes a block, on someone the feed brought).
+
+Two things are left out on purpose. There are no child-abuse reports and no
+picture entries, because every generated picture is the same file, and one seal
+or picture block would take every picture on the node down.
+
+Proved by: `just test-data 8 25 42` on two scratch nodes (400 actions, none
+failed; nine reports in the first moderator's queue, public list entries on both
+nodes), `RINGTOME_TEST_GREP=reports just integration`.
+
+## The refusal list's claim cleans up after the thumbnail too (2026-11-04)
+
+" more audits" went red on the quarantine claim "refuses the same picture
+uploaded again". This time the failure was in its last step: after releasing
+everything, the picture was still refused. The rig logs (`gh run download`)
+showed what happened. A far copy's body and its thumbnail are each sealed on
+their own arrival, 50ms apart, and the claim read the quarantine list between
+the two. It released three seals of four, and the one it missed kept the
+picture's fingerprint refused. The kept rig carried that seal into every rerun.
+The awaited arrival check (above) moved the timing: "removed here" now answers
+as soon as the body is sealed, while the thumbnail's check is still running.
+
+The node was right and the claim's cleanup was racy. The claim now releases
+until a listing shows nothing of the picture's left sealed, which also clears a
+seal an earlier run left behind.
+
+Proved by: the rig logs, `RINGTOME_TEST_GREP=quarantine just integration`.

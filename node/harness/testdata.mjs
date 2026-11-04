@@ -532,6 +532,86 @@ const ACTIONS = [
             p.books.push({ ...book, as_group: g.group });
         },
     },
+    // Moderation (plans/MODERATION.md; Curtis, 2026-11-04): moderators to trust, reports to fill
+    // their queues, and public lists to take - so the content control tabs and hrseServer's
+    // Moderation page have something to show. A development build's node allows reports
+    // unless its operator says otherwise (reports.rs), and the run's first persona is always a
+    // moderator (`moderate`, below the births).
+    {
+        name: 'become-a-moderator',
+        weight: 2,
+        run: async (ctx, p, rng) => {
+            await moderate(p, { reach: rng() < 0.5 ? 2 : 1, strangers: rng() < 0.6 });
+        },
+    },
+    {
+        // Trust a moderator to moderate for you: their public lists apply to you, and your
+        // reports go to them.
+        name: 'follow-a-moderator',
+        weight: 6,
+        run: async (ctx, p, rng) => {
+            const them = ctx.pick(
+                rng,
+                ctx.personas.filter(
+                    (o) => o.moderator && o.root !== p.root && !p.moderators.includes(o.root),
+                ),
+            );
+            if (them) await trustToModerate(ctx, p, them);
+        },
+    },
+    {
+        // Report a post to the moderators you trust - the report form's road (report.js): the
+        // post, its author, and why. Anything the feed brought, or anything posted on this
+        // persona's own node, which is already here to sign over. Someone with no moderator yet
+        // picks one first, as a person would. Never a child-abuse report: every generated
+        // picture is the same file, and an administrator's seal on it would take every picture
+        // on the node down.
+        name: 'report-content',
+        weight: 10,
+        run: async (ctx, p, rng) => {
+            if (!p.moderators.length) {
+                const them = ctx.pick(
+                    rng,
+                    ctx.personas.filter((o) => o.moderator && o.root !== p.root),
+                );
+                if (!them) return;
+                await trustToModerate(ctx, p, them);
+            }
+            const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
+            const seen = (feed.items || [])
+                .filter((i) => i.author !== p.root && !i.group && !i.feed)
+                .map((i) => ({ author: i.author, doc_id: i.doc_id }));
+            const here = ctx.personas
+                .filter((o) => o.base === p.base && o.root !== p.root)
+                .flatMap((o) => o.posts.map((x) => ({ author: o.root, doc_id: x.post_id })));
+            const item = ctx.pick(rng, [...seen, ...here]);
+            if (!item) return;
+            await api(p, 'POST', `/api/identity/${p.root}/reports`, {
+                kind: 'persona',
+                target: item.author,
+                reason: ctx.pick(rng, REPORT_REASONS),
+                item,
+            });
+        },
+    },
+    {
+        // Put someone the feed brought on your public list - mostly a warning, sometimes a
+        // block - as the block modal's Public Warning and Public Block do (blockmodal.js);
+        // whoever trusts you to moderate takes it. Never a picture entry, for the reason above:
+        // one picture is every picture here.
+        name: 'block-content',
+        weight: 3,
+        run: async (ctx, p, rng) => {
+            const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
+            const theirs = (feed.items || []).filter((i) => i.author !== p.root && !i.feed);
+            const item = ctx.pick(rng, theirs);
+            if (!item) return;
+            await api(p, 'PUT', `/api/identity/${p.root}/moderation/persona/${item.author}`, {
+                level: rng() < 0.7 ? 'warn' : 'block',
+                reason: ctx.pick(rng, REPORT_REASONS),
+            });
+        },
+    },
     {
         name: 'go-public',
         weight: 4,
@@ -1262,6 +1342,45 @@ const ACTIONS = [
 
 /// POST raw bytes (the binary-upload door: query-string metadata, body is the file). Its own
 /// helper because `api` JSON-encodes everything it is handed, and an image is not JSON.
+/// Why someone reports a post or lists a person - short, so a queue reads at a glance.
+const REPORT_REASONS = [
+    'spam, all of it',
+    'this is not a horse',
+    'rude in the replies',
+    'posting the same thing over and over',
+    'stolen art',
+    'mean about ponies',
+    '',
+];
+
+/// Trust `them` to moderate for `p`, from their page first when they live on another node - the
+/// fetch that tells this node where to send reports.
+async function trustToModerate(ctx, p, them) {
+    if (them.base !== p.base) {
+        const via = await ctx.endpointOf(them.base);
+        await api(p, 'GET', `/api/id/${them.root}/profile?via=${via}`);
+    }
+    await api(p, 'PUT', `/api/identity/${p.root}/private/kv/contact:${them.root}/moderates`, {
+        value: 'yes',
+    });
+    p.moderators.push(them.root);
+}
+
+/// Make a persona a moderator: Accept Reports on, reaching as far as asked, and served, so the
+/// people on other nodes who'd trust them can find their page. Idempotent.
+async function moderate(p, { reach, strangers }) {
+    await api(p, 'PUT', `/api/identity/${p.root}/reports/settings`, {
+        takes: true,
+        reach,
+        strangers,
+    });
+    if (!p.served) {
+        await api(p, 'POST', `/api/identity/${p.root}/serve`);
+        p.served = true;
+    }
+    p.moderator = true;
+}
+
 async function upload(p, path, bytes) {
     const resp = await p.fetch(path, {
         method: 'POST',
@@ -1612,11 +1731,31 @@ for (const base of nodes) {
             posts: [],
             books: [],
             drawings: [],
+            // Whom this persona trusts to moderate for it (`follow-a-moderator`), and whether it
+            // moderates itself (`become-a-moderator`).
+            moderators: [],
+            moderator: false,
         };
         await api(p, 'POST', `/api/identity/${p.root}/profile`, { field: 'name', value: p.name });
         personas.push(p);
     }
     console.log(`  ${base}: ${PERSONAS} personas born (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+}
+
+// The run's first persona is always a moderator (Curtis, 2026-11-04): an administrator of
+// their node where a development build allows asking (Developer Options' door), taking
+// everyone's reports, strangers' included - so `report-content` has somewhere to go from the
+// first round.
+{
+    const first = personas[0];
+    const made = await first.fetch('/api/auth/dev/node-admin', { method: 'POST' });
+    if (made.status >= 400) {
+        console.log(
+            `  ${first.username} isn't an administrator: ${made.status} (not a development build?)`,
+        );
+    }
+    await moderate(first, { reach: 2, strangers: true });
+    console.log(`  ${first.username} moderates, and takes everyone's reports`);
 }
 
 // The chat rooms opened this run (CHAT.md), for anyone to wander into later.
@@ -1694,7 +1833,9 @@ console.log(`\nlog in as any of these (password for everyone: ${PASSWORD}):`);
 const shown = personas.slice(0, 24);
 for (const p of shown) {
     const ports = p.bases.map((b) => ':' + new URL(b).port).join(',');
-    console.log(`  ${p.username.padEnd(22)} ${ports.padEnd(14)} "${p.name}"`);
+    console.log(
+        `  ${p.username.padEnd(22)} ${ports.padEnd(14)} "${p.name}"${p.moderator ? ' (moderator)' : ''}`,
+    );
 }
 if (personas.length > shown.length) {
     console.log(`  ...and ${personas.length - shown.length} more in testdata-state.json`);

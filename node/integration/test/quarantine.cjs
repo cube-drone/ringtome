@@ -276,8 +276,21 @@ describe('quarantine: the refusal list', function () {
             rows.push(...sealed);
         }
 
+        // Released, every one - and again, until a listing shows none left: the far copy's
+        // thumbnail is checked on its own arrival and can be sealed a moment after its body (CI,
+        // 2026-11-04: the list was read between the two, and the seal it missed kept the print
+        // refused). Also clears a seal an earlier run left on a kept rig.
         for (const x of rows)
             await admin(`api/admin/quarantine/${x.hash}/release`, { method: 'POST' });
+        for (let i = 0; i < 20; i++) {
+            const left = (await (await admin('api/admin/quarantine')).json()).rows.filter(
+                (x) => !x.released_ms && (x.doc_id === twin || x.by_account === 'refusal-list'),
+            );
+            if (!left.length) break;
+            for (const x of left)
+                await admin(`api/admin/quarantine/${x.hash}/release`, { method: 'POST' });
+            await wait(250);
+        }
         const freed = await upload(
             bridge('bridge-1-original.jpg'),
             'a bridge, released',

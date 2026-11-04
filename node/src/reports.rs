@@ -3,7 +3,9 @@
 //!
 //! **Both sides opt in, or the report bounces.** A persona takes reports only with _Accept
 //! Reports_ on (`report_takers`), on a node whose operator turned on _Allow Users to Accept
-//! Reports_ (`report_policy`); both default off. Anything else is refused aloud
+//! Reports_ (`report_policy`); both default off - except that a development build's node allows
+//! them until its operator says otherwise, so a local network can fill with reports to look at
+//! (`just test-data`; Curtis, 2026-11-04). Anything else is refused aloud
 //! ([`refusal::NOT_TAKING`]), and the bounce is the whole answer: nothing advertises who takes
 //! reports.
 //!
@@ -109,8 +111,9 @@ pub async fn policy(state: &AppState) -> Policy {
         Some((on, pool, days)) => {
             Policy { users_may: on != 0, stranger_pool: pool, keep_days: days }
         }
+        // Never set: off, but on a development build, on (the header says why).
         None => Policy {
-            users_may: false,
+            users_may: state.config.is_dev(),
             stranger_pool: DEFAULT_STRANGER_POOL,
             keep_days: DEFAULT_KEEP_DAYS,
         },
