@@ -36,9 +36,12 @@
 //! out of reach: it can't be shown to the moderator, or sealed before it arrives.
 //!
 //! **A child being abused** is a separate choice that carries the reference and nothing else: no
-//! upload address is ever handed back for it. When the moderator administers this node and the
-//! reporter is someone their trust reaches, the reference seals the item's files here at once
-//! (quarantine.rs); otherwise the queue offers an administrator the quarantine.
+//! upload address is ever handed back for it. It is taken only from someone the moderator's trust
+//! reaches, whose word they already count; when the moderator administers this node it seals the
+//! item's files here at once (quarantine.rs). From a stranger it bounces, whatever the moderator
+//! takes otherwise (Curtis, 2026-11-05): nobody here can look at what it names, so a stranger's
+//! claim can't be checked, only obeyed or ignored, and a flood of them would be an attack on the
+//! operator's attention. The hotlines can look, so the form sends the reporter there.
 //!
 //! **The queue, and an assistant.** The moderator lists or dismisses; an assistant behind their
 //! API key (mcp/) reads the queue and can only *propose* an entry - the person approves. Report
@@ -229,7 +232,7 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
             .any(|r| r.lane == "trust" && r.target_root == reporter)
     {
         Standing::Reach
-    } else if taking.strangers {
+    } else if taking.strangers && !v.report.child_abuse {
         Standing::Stranger
     } else {
         return Ok(DeliverMessage::Refused(refusal::NOT_TAKING));
@@ -297,12 +300,11 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
         .context("keeping a report")?;
     trim(state, &moderator, &policy).await?;
 
-    // A child-abuse report to an administrator here, from someone their trust reaches, seals what
-    // it names at once - the operator's quarantine, started (plans/SCANNING.md). From a stranger it
-    // waits for a person: sealing on a stranger's word would let anyone take any picture down. The
-    // seal names its reporter, so the operator can see whose word it was, and undo all of it at
-    // once (Curtis, 2026-11-03: auditable and reversible).
-    if report.child_abuse && standing != Standing::Stranger && !item_hashes.is_empty() {
+    // A child-abuse report to an administrator here - only ever from someone their trust reaches,
+    // above - seals what it names at once: the operator's quarantine, started (plans/SCANNING.md).
+    // The seal names its reporter, so the operator can see whose word it was, and undo all of it
+    // at once (Curtis, 2026-11-03: auditable and reversible).
+    if report.child_abuse && !item_hashes.is_empty() {
         let admins = crate::moderation::administrator_roots(state).await?;
         if admins.contains(&moderator) {
             let picture = report.item.as_ref().map(|i| (i.author, i.doc_id));
@@ -386,13 +388,21 @@ fn new_token() -> String {
     hex::encode(b)
 }
 
-/// Where strangers reach this node over HTTPS: its public address. A test rig has none, so it
-/// answers on its own loopback port, which only a rig's reporters may dial (`send`).
+/// Where strangers reach this node over HTTPS: its public address. A test rig or a development
+/// network has none, so it answers on its own loopback port, which only reporters on such a node
+/// may dial (`send`) - a development network's reports showed no pictures until it did (`just
+/// test-data`; Curtis, 2026-11-05).
 fn public_base(state: &AppState) -> Option<String> {
     if crate::webpath::has_public_url(state) {
         return Some(crate::webpath::public_url(state));
     }
-    state.config.local_test.then(|| format!("http://127.0.0.1:{}", state.config.port))
+    on_loopback(state).then(|| format!("http://127.0.0.1:{}", state.config.port))
+}
+
+/// A test rig's or a development build's nodes all live on this machine, and reach each other's
+/// upload addresses there. Nowhere else does a report's picture go to a private address.
+fn on_loopback(state: &AppState) -> bool {
+    state.config.local_test || state.config.is_dev()
 }
 
 fn upload_address(state: &AppState, token: &str) -> Option<String> {
@@ -717,7 +727,7 @@ async fn send_pictures(state: &AppState, url: &str, files: &[[u8; 32]]) -> usize
             url,
             bytes,
             std::time::Duration::from_secs(30),
-            state.config.local_test,
+            on_loopback(state),
         )
         .await
         {

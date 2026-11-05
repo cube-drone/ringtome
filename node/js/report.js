@@ -10,7 +10,9 @@
 //    reached. A bounce is the whole answer.
 //
 // "A child is being sexually abused or exploited" is its own choice, because sending the picture
-// would be distributing it: it sends only where the post is, and says where to report it.
+// would be distributing it: it sends only where the post is, and says where to report it. Only
+// moderators who trust the reporter take it (reports.rs): to everyone else it bounces, so the
+// hotlines come first.
 import { h } from 'preact';
 import { useState } from 'preact/hooks';
 import htm from 'htm';
@@ -38,6 +40,16 @@ const OUTCOME_WORDS = () => ({
     unreachable: t('report.couldnt-reach', "couldn't reach, right now:"),
 });
 
+/// A child-abuse report bounces from anyone who doesn't trust the reporter (reports.rs), so a
+/// bounce there says that, not that they take no reports.
+const CHILD_OUTCOME_WORDS = () => ({
+    ...OUTCOME_WORDS(),
+    'not-taking': t(
+        'report.takes-this-only-from-people-they-trust',
+        'takes this only from people they trust:',
+    ),
+});
+
 /// Hide the post here, and block its author if asked: never waits on anyone else.
 async function protect(root, item, block) {
     await api(`/api/identity/${root}/private/set/${HIDDEN}`, {
@@ -53,12 +65,12 @@ async function protect(root, item, block) {
     moderationMoved(root);
 }
 
-const Results = ({ sent, current }) =>
+const Results = ({ sent, current, child }) =>
     sent.length
         ? html`<ul class="report-results">
               ${sent.map(
                   (s) => html`<li key=${s.moderator}>
-                      ${OUTCOME_WORDS()[s.outcome] || s.outcome}
+                      ${(child ? CHILD_OUTCOME_WORDS() : OUTCOME_WORDS())[s.outcome] || s.outcome}
                       <${PersonInline} root=${s.moderator} current=${current} />
                   </li>`,
               )}
@@ -85,7 +97,7 @@ const ChildAbuse = ({ item }) => {
                 }
             }}
         >${copied ? t('chips.copied', 'copied') : t('report.copy-the-posts-address', "copy the post's address")}</button>
-        <p class="null-sub">${t('report.child-sends-only-the-reference', 'Moderators only get the location of the post, not the picture content. It will be hidden here and the author blocked.')}</p>
+        <p class="null-sub">${t('report.child-sends-only-the-reference', 'A hotline can look at it, and nobody here can. It will be hidden here and the author blocked. Moderators who trust you get the location of the post, not the picture, and take it down on their own servers.')}</p>
     </div>`;
 };
 
@@ -123,8 +135,8 @@ export const ReportModal = ({ item, current, onClose }) => {
     return html`<${Modal} title=${t('report.report-this-post', 'Report this post')} onClose=${onClose}>
         ${
             sent
-                ? html`<${Results} sent=${sent} current=${current} />
-                      ${child && html`<${ChildAbuse} item=${item} />`}
+                ? html`${child && html`<${ChildAbuse} item=${item} />`}
+                      <${Results} sent=${sent} current=${current} child=${child} />
                       <button class="removal-go" onClick=${onClose}>${t('report.done', 'done')}</button>`
                 : html`<div class="report-form">
                       <p class="null-sub">

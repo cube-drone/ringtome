@@ -67,6 +67,37 @@ pub type Arrival = std::sync::Arc<
 >;
 type Arrivals = std::sync::Arc<std::sync::OnceLock<Arrival>>;
 
+/// Blobs between landing and the end of their arrival check, each with how many fetches are
+/// landing it. Read as absent meanwhile - "still on its way" - by this node and by a peer asking.
+/// Awaiting the check orders only the fetch that ran it: a page reading the same picture at that
+/// moment was served it in the ~13ms before the refusal list sealed it (CI, 2026-11-05).
+type Arriving = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<Hash, usize>>>;
+
+/// One fetch's hold on [`Arriving`], let go however the fetch ends.
+struct Landing {
+    arriving: Arriving,
+    hash: Hash,
+}
+
+impl Landing {
+    fn new(arriving: &Arriving, hash: Hash) -> Self {
+        *arriving.lock().expect("arriving set poisoned").entry(hash).or_insert(0) += 1;
+        Self { arriving: arriving.clone(), hash }
+    }
+}
+
+impl Drop for Landing {
+    fn drop(&mut self) {
+        let mut arriving = self.arriving.lock().expect("arriving set poisoned");
+        if let Some(n) = arriving.get_mut(&self.hash) {
+            *n -= 1;
+            if *n == 0 {
+                arriving.remove(&self.hash);
+            }
+        }
+    }
+}
+
 /// A blob just stored, and the hold that keeps it out of the reaper's sweep. **Keep this
 /// alive until the row that names `hash` has committed** - the header append, the fragment
 /// row, whatever makes the blob reachable from the ledgers the mark phase walks. Dropping it
@@ -198,6 +229,8 @@ pub struct FileStore {
     withheld: Sealed,
     /// See [`Arrival`].
     arrivals: Arrivals,
+    /// See [`Arriving`].
+    arriving: Arriving,
     /// A clone of the node's test transport gate, because this layer opens its OWN connections
     /// (see `fetch`) and would otherwise be the one hole in `/test/unplug`. Default-constructed
     /// here, so a store built without one refuses nothing - see [`crate::net::p2p::Unplugged`].
@@ -231,6 +264,7 @@ impl FileStore {
             sealed: Sealed::default(),
             withheld: Sealed::default(),
             arrivals: Arrivals::default(),
+            arriving: Arriving::default(),
         }
     }
 
@@ -264,6 +298,7 @@ impl FileStore {
             sealed: Sealed::default(),
             withheld: Sealed::default(),
             arrivals: Arrivals::default(),
+            arriving: Arriving::default(),
         })
     }
 
@@ -445,11 +480,15 @@ impl FileStore {
         let (events, mut rx) = EventSender::channel(64, mask);
         let sealed = self.sealed.clone();
         let withheld = self.withheld.clone();
+        let arriving = self.arriving.clone();
         tokio::spawn(async move {
             let refused = |hashes: &[Hash]| {
                 let sealed = sealed.read().expect("sealed set poisoned");
                 let withheld = withheld.read().expect("withheld set poisoned");
-                hashes.iter().any(|h| sealed.contains(h) || withheld.contains(h))
+                let arriving = arriving.lock().expect("arriving set poisoned");
+                hashes
+                    .iter()
+                    .any(|h| sealed.contains(h) || withheld.contains(h) || arriving.contains_key(h))
             };
             while let Some(msg) = rx.recv().await {
                 match msg {
@@ -485,6 +524,15 @@ impl FileStore {
         self.sealed.write().expect("sealed set poisoned").remove(hash);
     }
 
+    /// Hold a blob back while it lands and is checked, unless it's already here whole: a fetch
+    /// of what this node already serves mustn't blink it out. Nothing to hold with no hook armed.
+    async fn landing(&self, hash: Hash) -> Option<Landing> {
+        if self.arrivals.get().is_none() || self.size_of(hash).await.is_some() {
+            return None;
+        }
+        Some(Landing::new(&self.arriving, hash))
+    }
+
     /// Arm the arrival hook. The first arm wins.
     pub fn on_arrival(&self, hook: Arrival) {
         let _ = self.arrivals.set(hook);
@@ -512,6 +560,12 @@ impl FileStore {
     /// Quarantined or blocked: nothing reads, fetches, stores or serves it.
     pub fn is_refused(&self, hash: &Hash) -> bool {
         self.is_sealed(hash) || self.withheld.read().expect("withheld set poisoned").contains(hash)
+    }
+
+    /// Refused, or still being checked on its way in: not read or served yet.
+    fn held_back(&self, hash: &Hash) -> bool {
+        self.is_refused(hash)
+            || self.arriving.lock().expect("arriving set poisoned").contains_key(hash)
     }
 
     /// Encrypt a body under an epoch key and store it. The [`Put`]'s hash is the ciphertext
@@ -548,6 +602,7 @@ impl FileStore {
             bail!("this file is quarantined on this server");
         }
         let _writing = self.gate.read().await;
+        let landing = self.landing(Hash::new(plaintext)).await;
         let tag = self
             .store()
             .add_bytes(plaintext.to_vec())
@@ -558,6 +613,7 @@ impl FileStore {
         let put = Put::new(self, hash, tag);
         drop(_writing);
         self.arrived(hash).await;
+        drop(landing);
         Ok(put)
     }
 
@@ -570,9 +626,23 @@ impl FileStore {
     /// Read a PUBLIC body: the bytes as stored, no decryption. `Ok(None)` = not held locally
     /// (headers sync ahead of bodies, same as ever).
     pub async fn get_public(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
+        if self.held_back(&hash) {
+            return Ok(None);
+        }
+        self.read_public(hash).await
+    }
+
+    /// [`Self::get_public`] for the arrival check itself (prints.rs), which has to read what it's
+    /// holding back: refused is still refused. Holding the check out too left it nothing to
+    /// fingerprint, and the refusal list sealed nothing at all (2026-11-05).
+    pub async fn get_public_arriving(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
         if self.is_refused(&hash) {
             return Ok(None);
         }
+        self.read_public(hash).await
+    }
+
+    async fn read_public(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
         match self.store().get_bytes(hash).await {
             Ok(b) => Ok(Some(b.to_vec())),
             Err(e) => {
@@ -587,7 +657,7 @@ impl FileStore {
     pub async fn get_decrypted(&self, hash: Hash, keys: &EpochKeys) -> Result<Option<Vec<u8>>> {
         // A missing blob is Ok(None), not an error: headers sync ahead of their bodies, and
         // "not fetched yet" renders the same as "no key for its era" - no body to show, yet.
-        if self.is_refused(&hash) {
+        if self.held_back(&hash) {
             return Ok(None);
         }
         let blob = match self.store().get_bytes(hash).await {
@@ -614,7 +684,7 @@ impl FileStore {
 
     /// Do we hold this blob, complete, locally?
     pub async fn has(&self, hash: Hash) -> bool {
-        !self.is_refused(&hash)
+        !self.held_back(&hash)
             && matches!(
                 self.store().blobs().status(hash).await,
                 Ok(iroh_blobs::api::blobs::BlobStatus::Complete { .. })
@@ -645,6 +715,7 @@ impl FileStore {
             bail!("blob {hash} is quarantined here");
         }
         let _writing = self.gate.read().await;
+        let landing = self.landing(hash).await;
         let mut progress = self.store().remote().fetch(conn, hash).stream();
         while let Some(item) = progress.next().await {
             match item {
@@ -662,6 +733,7 @@ impl FileStore {
                     drop(progress);
                     drop(_writing);
                     self.arrived(hash).await;
+                    drop(landing);
                     return Ok(());
                 }
                 GetProgressItem::Error(e) => bail!("fetching blob {hash}: {e:?}"),
@@ -958,5 +1030,52 @@ mod tests {
             }
         }
         assert!(gone, "the released blob with no row was collected");
+    }
+
+    /// A blob being checked on its way in reads as absent until the check is done: the check
+    /// below holds until it's told to finish, and a reader meanwhile finds nothing.
+    #[tokio::test]
+    async fn nothing_reads_a_blob_until_its_arrival_check_is_done() {
+        let files = std::sync::Arc::new(FileStore::memory());
+        let (go, wait) = tokio::sync::oneshot::channel::<()>();
+        let wait = std::sync::Arc::new(tokio::sync::Mutex::new(Some(wait)));
+        let (saw, seen) = tokio::sync::oneshot::channel::<bool>();
+        let saw = std::sync::Arc::new(std::sync::Mutex::new(Some(saw)));
+        let checker = std::sync::Arc::downgrade(&files);
+        files.on_arrival(std::sync::Arc::new(move |hash| {
+            let (wait, saw, checker) = (wait.clone(), saw.clone(), checker.clone());
+            Box::pin(async move {
+                // The check itself reads what it holds back: it has to, to fingerprint it.
+                let read = match checker.upgrade() {
+                    Some(f) => f.get_public_arriving(hash).await.ok().flatten().is_some(),
+                    None => false,
+                };
+                if let Some(s) = saw.lock().unwrap().take() {
+                    let _ = s.send(read);
+                }
+                if let Some(w) = wait.lock().await.take() {
+                    let _ = w.await;
+                }
+            })
+        }));
+        let bytes = b"a picture, landing".to_vec();
+        let hash = Hash::new(&bytes);
+        let putting = {
+            let files = files.clone();
+            tokio::spawn(async move { files.put_public(&bytes).await.map(|_| ()) })
+        };
+        for _ in 0..200 {
+            if files.size_of(hash).await.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(files.size_of(hash).await.is_some(), "the bytes are in the store");
+        assert_eq!(files.get_public(hash).await.unwrap(), None, "but nothing reads them yet");
+        assert!(!files.has(hash).await);
+        assert!(seen.await.unwrap(), "the check itself read them");
+        go.send(()).unwrap();
+        putting.await.unwrap().unwrap();
+        assert!(files.get_public(hash).await.unwrap().is_some(), "checked, they read");
     }
 }

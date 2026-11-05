@@ -26771,3 +26771,65 @@ under it. Copy unmoved; the catalog regrouped two keys for the new order.
 
 Proved by: `just strings-check`, `just ui-check` (1111). Not looked at in a
 browser.
+
+## Reports on a development network carry their pictures (2026-11-05)
+
+Curtis ran test data on his `just start` network and saw no pictures in the
+queue. A report's pictures go to an upload address the moderator's node hands
+back, and a node hands one out only with a public address, or on the test rig
+(`RINGTOME_LOCAL_TEST`, which scratch nodes and integration set and `just start`
+doesn't). The development network had neither, so every report there came with
+no pictures and no words. A development build now answers on its loopback port
+too, and its reporters may dial one: the same rule the rig had, for nodes that
+all live on one machine. A release build is unchanged.
+
+Proved by: `RINGTOME_TEST_GREP='reports' just integration`. Not yet seen on the
+development network itself, which needs a restart onto the new build.
+
+## A stranger's child-abuse report bounces (2026-11-05)
+
+A child-abuse report carries only the post's address, because sending the
+picture would be distributing it. So nobody here can check it: only a hotline
+may look. From someone a moderator trusts that's fine, since they already count
+that person's word, and the report seals at once on a server they administer.
+From a stranger it could only be obeyed or ignored, and a flood of them from
+fresh nodes would be an attack on the operator's attention. Curtis: "since
+untrusted CSAM reports are (legally) unverifiable, we simply should not accept
+them - instead, provide the user with their own management instructions."
+
+- **The door** refuses a child-abuse report from anyone outside the moderator's
+  trust and its reach, even when the moderator takes strangers' other reports.
+  It is not stored. Strangers' ordinary reports, which bring the post's words
+  and pictures to judge, come in as before.
+- **The form** leads with the hotlines after sending, and says of a moderator
+  who bounced it that they take this only from people they trust. The note under
+  the choice now reads "A hotline can look at it, and nobody here can. It will
+  be hidden here and the author blocked. Moderators who trust you get the
+  location of the post, not the picture, and take it down on their own servers."
+- plans/MODERATION.md's _A child being abused_ says so.
+
+Proved by: a new claim in reports.cjs (a stranger's child-abuse report bounces
+and keeps nothing, while their ordinary report still arrives),
+`RINGTOME_TEST_GREP='reports|quarantine' just integration` (25 passing),
+`just strings-check`, `just ui-check` (1111).
+
+## A landing picture isn't served before the refusal list sees it (2026-11-05)
+
+CI went red on "drive-by groups feed CSS fix", a JS-only push, so the change
+didn't cause it: `quarantine: the refusal list` failed five of five, at "never
+served here". The rig logs showed the race. A picture fetched from a peer is in
+the store before its arrival check runs, and the check awaits only for the fetch
+that ran it: a page reading the same picture was served it at 21:53:13.623, and
+the refusal list sealed it at .636.
+
+A blob now reads as absent ("still on its way") from the moment it starts
+landing until its check is done, to this node and to any peer asking
+(`files.rs`'s `Arriving`, counted per fetch and let go however the fetch ends).
+A blob already held whole is never held back. The first version held back the
+check's own read too, so the check had nothing to fingerprint and sealed nothing
+at all, five of five locally. The check now reads through `get_public_arriving`,
+which still honours a seal.
+
+Proved by: a unit test that holds the check open and finds nothing readable
+meanwhile, while the check itself reads the blob (failing without the hold), and
+`RINGTOME_TEST_GREP='reports|quarantine' just integration` (25 passing).

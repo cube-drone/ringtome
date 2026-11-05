@@ -31,7 +31,7 @@ pub async fn of(state: &AppState, hash: &[u8; 32]) -> Option<Pdq> {
     if state.files.size_of(blob).await? > MAX_PICTURE_BYTES {
         return None;
     }
-    let bytes = state.files.get_public(blob).await.ok()??;
+    let bytes = state.files.get_public_arriving(blob).await.ok()??;
     let print = if bytes.get(4..8) == Some(b"ftyp") {
         crate::media::lane::background(move || crate::media::image::fingerprint(&bytes))
             .await

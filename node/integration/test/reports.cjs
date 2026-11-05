@@ -438,6 +438,24 @@ const fact = (who, root, about, key, value) =>
         });
     });
 
+    it("refuses a child-abuse report from a stranger, even from a moderator who takes strangers' reports", async function () {
+        await taking({ strangers: true });
+        const before = (await kept(strangerRoot)).length;
+        const sent = await report(stranger, strangerRoot, { child_abuse: true, reason: '' });
+        assert.deepEqual(
+            sent.map((s) => s.outcome),
+            ['not-taking'],
+        );
+        assert.equal((await kept(strangerRoot)).length, before, 'and keeps nothing of it');
+        const ordinary = await report(stranger, strangerRoot, { reason: 'just spam' });
+        assert.deepEqual(
+            ordinary.map((s) => s.outcome),
+            ['sent'],
+            'their other reports still come in',
+        );
+        await taking({});
+    });
+
     it('a report about yourself, or past 512 bytes, is never sent', async function () {
         const self = await j(rep, `api/identity/${repRoot}/reports`, {
             kind: 'persona',

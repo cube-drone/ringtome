@@ -217,8 +217,16 @@ distributing it:
   don't screenshot, save or forward it.
 - On the reporter's devices: hide the post, block the author, and remove any
   copy their devices hold.
-- On the node that receives it, the reference starts the operator's quarantine
-  (SCANNING.md) for that blob, if the node holds it.
+- It is taken only from someone the moderator trusts, or someone their trust
+  reaches. There, if the moderator administers the node, the reference seals the
+  item's files at once (SCANNING.md's quarantine); every seal names its
+  reporter, and one action releases all of a reporter's seals.
+- **From a stranger it bounces**, even for a moderator who takes strangers'
+  other reports (Curtis, 2026-11-05: "since untrusted CSAM reports are (legally)
+  unverifiable, we simply should not accept them"). Nobody but a hotline may
+  look at what it names, so a stranger's claim can only be obeyed or ignored,
+  and a flood of them would be an attack on the operator's attention. The
+  reporter is sent to the hotlines instead, which can look.
 
 An ordinary report with CSAM slipped into it, as an attack or by accident, is
 what the scanning layer in front of the node catches.
