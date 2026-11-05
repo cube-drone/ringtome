@@ -26691,3 +26691,73 @@ it.
 
 Proved by: before and after screenshots of each tab and the report form, at
 1200px and 400px, `just strings-check`, `just ui-check`.
+
+## Test data paints its own pictures (2026-11-04)
+
+Every generated picture post used one file, so one seal or picture block would
+have taken them all down, and test data left pictures out of moderation. Each
+run now paints its own pool (`harness/pictures.mjs`, PNGs written by hand, no
+new dependency): twelve pictures of stripes, checks, rings, waves and blobs,
+plus a tinted, speckled lookalike of every third. Broad light and shade went in
+after the first attempt, whose fine patterns gave two pictures no usable
+fingerprint. Measured on a scratch node: lookalikes 0 to 16 bits from their
+originals (the match line is 31), different pictures at least 110 apart.
+
+- All sixteen are posted, by the personas in turn and in public, before anyone's
+  first turn. `post-a-picture` draws from the pool.
+- `report-content` reports a picture half the time. `block-content` lists one
+  half the time, through the Blocklist tab's by-address door. A block that would
+  be the server's own retires that picture and its lookalike from later posts,
+  and stops at half the pool.
+- The first moderator trusts three people, who trust them back. A last act has
+  each report a picture, the first two as a child being abused, so the queue
+  always shows trusted reports and the quarantine list always has seals and
+  reporters.
+
+- `report-content` also sends what no form does yet, a fifth of the time each: a
+  report on a person with no post named, and a report on a node, with one of its
+  posts when the reporter's own node can vouch for it. The last act sends one of
+  each, so the queue always shows them.
+
+Drawings and private uploads keep the one sample picture: nothing moderates
+them.
+
+Proved by: `just test-data 10 30 42` on two scratch nodes (600 actions, none
+failed; 16 of 16 pictures posted), the measurements above, `just ui-check`.
+
+## A report on a post reaches its pictures (2026-11-04)
+
+Found by the painted pictures above: a report on a post with an embedded picture
+acted on the post's own text and left the picture up. After a trusted
+child-abuse report, the post's body answered 404 and its picture's body and
+thumbnail both answered 200, while the quarantine list said sealed. No report in
+the queue carried a picture either. A post's picture is a document of its own,
+and `item_hashes` and `send_pictures` read only the named document's header.
+
+- **The report carries the pictures' signed headers** (`Report.parts`, key 6,
+  which older nodes skip), as many as the 4 KB envelope has room for after
+  measuring this reporter's own envelope. Each must be signed by the post's
+  author and named in the post's signed `refs`, or the report is malformed: a
+  reporter can't name a file the post doesn't embed. A child-abuse report still
+  carries references and no bytes.
+- **The door reads the rest from its own copy**, so whatever this node holds and
+  serves can be sealed, however many pictures the post has.
+- **Moderators get the pictures**, images only, over the same upload address.
+- **The same gap closed elsewhere.** Quarantining by a post's address now seals
+  its pictures. Listing by a post's address names each picture, where it used to
+  list the hash of the post's words.
+
+The limit: a picture past the envelope's room, on a node that doesn't hold it,
+isn't known there. It can't be shown to the moderator, and it can't be sealed
+ahead of arriving. Measured with the longest reason (512 bytes), a post of
+twenty pictures sent 14 files, about seven pictures. Headers' size varies with
+titles and the reporter's path, so that's an indication and not a constant.
+
+Proved by: `proto` report tests (including a signed document the post doesn't
+embed, refused),
+`RINGTOME_TEST_GREP='reports|quarantine|moderat' just integration` (42 passing;
+the one failure was the grep catching a group rooms claim without its setup, and
+that file's 10 pass whole), `cargo test -p ringtome-node --lib` (726) and the
+conventions test, and test data on a scratch node: after each child-abuse report
+the post, picture and thumbnail all answered 404, and three of six reports
+carried pictures.

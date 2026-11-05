@@ -484,7 +484,8 @@ struct ByAddress {
 
 /// POST `/api/identity/{root}/moderation/by-address` - put a picture on this persona's public
 /// list by its address as anyone copies it (the body, the thumbnail, the post): the entry names
-/// the document's body.
+/// the document's body, or for a post with pictures in it, each picture's. A post's words are no
+/// picture.
 async fn by_address_handler(
     session: Session,
     State(state): State<AppState>,
@@ -503,15 +504,25 @@ async fn by_address_handler(
     };
     let (author, doc) =
         crate::quarantine::picture_address(&req.address).ok_or_else(not_a_picture)?;
-    let blobs =
-        crate::quarantine::blobs_of(&state, &author, &doc).await.map_err(AppError::Internal)?;
-    let body = *blobs.first().ok_or_else(not_a_picture)?;
-    let pdq = picture_print(&state, &body).await?;
-    data.moderation()
-        .say(ModerationTarget::Picture, &body, level, req.reason.trim(), true, pdq)
-        .await?;
+    let embedded =
+        crate::quarantine::embeds(&state, &author, &doc).await.map_err(AppError::Internal)?;
+    let documents = if embedded.is_empty() { vec![doc] } else { embedded };
+    let mut bodies = Vec::new();
+    for document in &documents {
+        let blobs = crate::quarantine::own_blobs(&state, &author, document)
+            .await
+            .map_err(AppError::Internal)?;
+        bodies.extend(blobs.first().copied());
+    }
+    let first = *bodies.first().ok_or_else(not_a_picture)?;
+    for body in &bodies {
+        let pdq = picture_print(&state, body).await?;
+        data.moderation()
+            .say(ModerationTarget::Picture, body, level, req.reason.trim(), true, pdq)
+            .await?;
+    }
     crate::fold::fold_now(&state, &root).await;
-    Ok(Json(serde_json::json!({ "ok": true, "hash": hex::encode(body) })))
+    Ok(Json(serde_json::json!({ "ok": true, "hash": hex::encode(first) })))
 }
 
 /// The most addresses one verdicts call answers: a page of cards.

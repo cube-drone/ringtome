@@ -150,9 +150,44 @@ pub fn picture_address(address: &str) -> Option<([u8; 32], [u8; 16])> {
     crate::record::bake::twin_address(&with_body)
 }
 
-/// The blobs a public document names as this node holds it - its body and its thumbnail - from
-/// the author's chain if it's here, else the fragment shelf. Never fetched for the asking.
+/// The blobs a public document names and the blobs of everything it embeds: a post with a picture
+/// is its words, and the picture is a document of its own.
 pub async fn blobs_of(
+    state: &AppState,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> anyhow::Result<Vec<[u8; 32]>> {
+    let mut out = own_blobs(state, author, doc_id).await?;
+    for embedded in embeds(state, author, doc_id).await? {
+        out.extend(own_blobs(state, author, &embedded).await?);
+    }
+    Ok(out)
+}
+
+/// The documents a public document embeds, as this node holds it.
+pub async fn embeds(
+    state: &AppState,
+    author: &[u8; 32],
+    doc_id: &[u8; 16],
+) -> anyhow::Result<Vec<[u8; 16]>> {
+    let author_hex = hex::encode(author);
+    if let Some(db) = state.user_dbs.get(&author_hex).await? {
+        if let Some(media) = crate::record::documents::public_media(&db, doc_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+        {
+            return Ok(media.refs);
+        }
+    }
+    Ok(crate::fragments::serving_header(&state.node_db, &author_hex, doc_id)
+        .await?
+        .map(|h| h.refs)
+        .unwrap_or_default())
+}
+
+/// The blobs a public document itself names as this node holds it - its body and its thumbnail -
+/// from the author's chain if it's here, else the fragment shelf. Never fetched for the asking.
+pub async fn own_blobs(
     state: &AppState,
     author: &[u8; 32],
     doc_id: &[u8; 16],

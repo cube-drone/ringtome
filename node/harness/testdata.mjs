@@ -17,14 +17,16 @@
 //   - `weight` is its share of the hat - relative, not a percentage.
 //   - `p` is the acting persona: { base, root, fetch, bases } (fetch carries their session).
 //   - `ctx` is the world: { personas, nodes, rooms, groups, endpointOf(base), lorem(rng),
-//     pick(rng, arr), picture, sound } (`rooms` is every chat room opened this run, as
-//     { author, doc, base, trusted_only }; `groups` every group founded, as this run knows it).
+//     pick(rng, arr), picture, pictures, picturePosts, first, sound } (`rooms` is every chat
+//     room opened this run, as { author, doc, base, trusted_only }; `groups` every group founded,
+//     as this run knows it; `pictures` the pool post-a-picture draws from (pictures.mjs), and
+//     `picturePosts` what it posted; `first` the run's first persona, always a moderator).
 //   - Throwing is fine - a failed action is logged and the run continues, because one refused
 //     dial must not cost the other twenty thousand actions.
 //
 // TODO, deliberately left on the surface: richer Marquee (headers, effects - the user span
 // arrived with `mention-someone`). Posts with pictures arrived with `post-a-picture`
-// (2026-09-08), on the harness's one picture; a small checked-in corpus would vary them.
+// (2026-09-08), and draw on a pool each run paints for itself (pictures.mjs, 2026-11-04).
 //
 // Reproducible: same seed, same network (modulo wall-clock timestamps). The seed prints at
 // start; pass it back to replay. Credentials land in testdata-state.json beside this script,
@@ -33,6 +35,7 @@ import fs from 'node:fs';
 import { httpSession as session } from './http.mjs';
 import { WORDS } from '../js/pure/words.js';
 import { writeBody } from '../js/pure/drawing.js';
+import { makePictures } from './pictures.mjs';
 
 const J = { 'Content-Type': 'application/json' };
 // Every generated account's password. Four characters is legal here because the dev nodes
@@ -425,49 +428,11 @@ const ACTIONS = [
         name: 'post-a-picture',
         weight: 6,
         run: async (ctx, p, rng) => {
-            const title = ctx.lorem(rng, 1).slice(0, 32).replace(/\.$/, '');
-            const made = await upload(
-                p,
-                `/api/identity/${p.root}/docs/binary` +
-                    `?title=${encodeURIComponent(title)}&parents=`,
-                ctx.picture,
+            const pic = ctx.pick(
+                rng,
+                ctx.pictures.filter((x) => !x.retired),
             );
-            if (!made.doc_id)
-                throw new Error(`upload gave no doc_id: ${JSON.stringify(made).slice(0, 120)}`);
-            // File it at once, as the picker does: an unfiled, unreferenced media document
-            // is the reaper's, and on a test node the reaper is quick (the bake found it
-            // missing before the post that embeds it existed - 2026-09-08).
-            await api(p, 'PUT', `/api/identity/${p.root}/docs/${made.doc_id}/buckets/feed`);
-            // The body door answers 202 while the ingest is pending - only a 200 is the
-            // picture (the `api` helper takes any 2xx as done, which embedded pictures that
-            // had not landed and failed their bakes - found 2026-09-08).
-            let landed = false;
-            for (let i = 0; i < 60 && !landed; i++) {
-                landed =
-                    (await p.fetch(`/api/identity/${p.root}/docs/${made.doc_id}/body`)).status ===
-                    200;
-                if (!landed) await new Promise((r) => setTimeout(r, 500));
-            }
-            if (!landed) throw new Error('the picture never finished ingesting');
-            const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
-                title: rng() < 0.6 ? title : '',
-                body: `${ctx.lorem(rng, 1)}\n\n![${title}](/api/identity/${p.root}/docs/${made.doc_id}/body/picture.avif)\n\n${ctx.lorem(rng, 1)}`,
-                format: 'marquee',
-            });
-            await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
-            for (let i = 0; i < 40; i++) {
-                const r = await api(
-                    p,
-                    'POST',
-                    `/api/identity/${p.root}/docs/${d.doc_id}/publish`,
-                    {},
-                );
-                if (r && r.post_id) return;
-                if (r && (r.baking || []).some((b) => b.status === 'failed'))
-                    throw new Error(`bake failed: ${JSON.stringify(r.baking).slice(0, 300)}`);
-                await new Promise((res) => setTimeout(res, 500));
-            }
-            throw new Error('the publish never came to rest');
+            if (pic) await postPicture(ctx, p, rng, pic);
         },
     },
     {
@@ -560,12 +525,13 @@ const ACTIONS = [
         },
     },
     {
-        // Report a post to the moderators you trust - the report form's road (report.js): the
-        // post, its author, and why. Anything the feed brought, or anything posted on this
-        // persona's own node, which is already here to sign over. Someone with no moderator yet
-        // picks one first, as a person would. Never a child-abuse report: every generated
-        // picture is the same file, and an administrator's seal on it would take every picture
-        // on the node down.
+        // Report to the moderators you trust. Mostly a post, the report form's road (report.js):
+        // the post, its author, and why. Half of those are a picture posted on this persona's node;
+        // else anything the feed brought, or any post from this node, which is already here to sign
+        // over. The rest are what the server takes and no form sends yet, so the queue shows them
+        // too: a person with no post named, and a node, with one of its posts when this persona's
+        // own node can vouch for it. Someone with no moderator yet picks one first, as a person
+        // would. Child-abuse reports are the run's last act (`The last act`, below).
         name: 'report-content',
         weight: 10,
         run: async (ctx, p, rng) => {
@@ -576,6 +542,30 @@ const ACTIONS = [
                 );
                 if (!them) return;
                 await trustToModerate(ctx, p, them);
+            }
+            const shape = rng();
+            if (shape < 0.2) {
+                const them = ctx.pick(
+                    rng,
+                    ctx.personas.filter((o) => o.root !== p.root),
+                );
+                if (them) await reportPerson(p, them.root, ctx.pick(rng, REPORT_REASONS));
+                return;
+            }
+            if (shape < 0.4) {
+                const base = ctx.pick(rng, nodes);
+                const posts = ctx.personas
+                    .filter((o) => base === p.base && o.base === base && o.root !== p.root)
+                    .flatMap((o) => o.posts.map((x) => ({ author: o.root, doc_id: x.post_id })));
+                const item = rng() < 0.5 ? ctx.pick(rng, posts) : undefined;
+                await reportNode(p, base, ctx.pick(rng, REPORT_REASONS), item);
+                return;
+            }
+            const pictures = picturesHere(ctx, p);
+            if (pictures.length && rng() < 0.5) {
+                const pic = ctx.pick(rng, pictures);
+                await reportPicture(ctx, p, pic, ctx.pick(rng, REPORT_REASONS));
+                return;
             }
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
             const seen = (feed.items || [])
@@ -595,19 +585,37 @@ const ACTIONS = [
         },
     },
     {
-        // Put someone the feed brought on your public list - mostly a warning, sometimes a
-        // block - as the block modal's Public Warning and Public Block do (blockmodal.js);
-        // whoever trusts you to moderate takes it. Never a picture entry, for the reason above:
-        // one picture is every picture here.
+        // Put something on your public list, as the block modal's Public Warning and Public Block
+        // do (blockmodal.js), and the Blocklist tab's picture form: whoever trusts you to moderate
+        // takes it. Half the time a picture posted on this node, else someone the feed brought -
+        // mostly a warning, sometimes a block. A block from whoever the server's administrator
+        // takes lists from is the server's too, so that picture's family is retired - and once
+        // half the pool has gone that way they warn instead, so a run keeps pictures to look at.
         name: 'block-content',
         weight: 3,
         run: async (ctx, p, rng) => {
+            const pictures = picturesHere(ctx, p);
+            const asked = rng() < 0.7 ? 'warn' : 'block';
+            if (pictures.length && rng() < 0.5) {
+                const pic = ctx.pick(rng, pictures);
+                const forServer = p === ctx.first || ctx.first.moderators.includes(p.root);
+                const families = new Set(ctx.pictures.map((x) => x.family)).size;
+                const gone = new Set(ctx.pictures.filter((x) => x.retired).map((x) => x.family));
+                const level = forServer && gone.size * 2 >= families ? 'warn' : asked;
+                if (forServer && level === 'block') retire(ctx, pic.family);
+                await api(p, 'POST', `/api/identity/${p.root}/moderation/by-address`, {
+                    address: `/ringtome/user/${pic.author}/doc/${pic.twin}/body`,
+                    level,
+                    reason: ctx.pick(rng, REPORT_REASONS),
+                });
+                return;
+            }
             const feed = await api(p, 'GET', `/api/identity/${p.root}/feed`);
             const theirs = (feed.items || []).filter((i) => i.author !== p.root && !i.feed);
             const item = ctx.pick(rng, theirs);
             if (!item) return;
             await api(p, 'PUT', `/api/identity/${p.root}/moderation/persona/${item.author}`, {
-                level: rng() < 0.7 ? 'warn' : 'block',
+                level: asked,
                 reason: ctx.pick(rng, REPORT_REASONS),
             });
         },
@@ -1353,6 +1361,97 @@ const REPORT_REASONS = [
     '',
 ];
 
+/// Post one of the pool's pictures, the whole road: see `post-a-picture`.
+async function postPicture(ctx, p, rng, pic) {
+    const title = ctx.lorem(rng, 1).slice(0, 32).replace(/\.$/, '');
+    const made = await upload(
+        p,
+        `/api/identity/${p.root}/docs/binary` + `?title=${encodeURIComponent(title)}&parents=`,
+        pic.bytes,
+    );
+    if (!made.doc_id)
+        throw new Error(`upload gave no doc_id: ${JSON.stringify(made).slice(0, 120)}`);
+    // File it at once, as the picker does: an unfiled, unreferenced media document
+    // is the reaper's, and on a test node the reaper is quick (the bake found it
+    // missing before the post that embeds it existed - 2026-09-08).
+    await api(p, 'PUT', `/api/identity/${p.root}/docs/${made.doc_id}/buckets/feed`);
+    // The body door answers 202 while the ingest is pending - only a 200 is the
+    // picture (the `api` helper takes any 2xx as done, which embedded pictures that
+    // had not landed and failed their bakes - found 2026-09-08).
+    let landed = false;
+    for (let i = 0; i < 60 && !landed; i++) {
+        landed = (await p.fetch(`/api/identity/${p.root}/docs/${made.doc_id}/body`)).status === 200;
+        if (!landed) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!landed) throw new Error('the picture never finished ingesting');
+    const d = await api(p, 'POST', `/api/identity/${p.root}/docs`, {
+        title: rng() < 0.6 ? title : '',
+        body: `${ctx.lorem(rng, 1)}\n\n![${title}](/api/identity/${p.root}/docs/${made.doc_id}/body/picture.avif)\n\n${ctx.lorem(rng, 1)}`,
+        format: 'marquee',
+    });
+    await api(p, 'PUT', `/api/identity/${p.root}/docs/${d.doc_id}/buckets/feed`);
+    for (let i = 0; i < 40; i++) {
+        const r = await api(p, 'POST', `/api/identity/${p.root}/docs/${d.doc_id}/publish`, {});
+        if (r && r.post_id) {
+            // Remembered with its public picture: what moderation acts on.
+            const post = await api(p, 'GET', `/api/id/${p.root}/posts/${r.post_id}`);
+            const twin = (post.refs || [])[0];
+            if (twin) {
+                ctx.picturePosts.push({
+                    author: p.root,
+                    base: p.base,
+                    post_id: r.post_id,
+                    twin,
+                    family: pic.family,
+                });
+            }
+            return;
+        }
+        if (r && (r.baking || []).some((b) => b.status === 'failed'))
+            throw new Error(`bake failed: ${JSON.stringify(r.baking).slice(0, 300)}`);
+        await new Promise((res) => setTimeout(res, 500));
+    }
+    throw new Error('the publish never came to rest');
+}
+
+/// Report a picture's post to this persona's moderators.
+async function reportPicture(ctx, p, pic, reason, child = false) {
+    return api(p, 'POST', `/api/identity/${p.root}/reports`, {
+        kind: 'persona',
+        target: pic.author,
+        reason,
+        child_abuse: child,
+        item: { author: pic.author, doc_id: pic.post_id },
+    });
+}
+
+/// A report on a person, with no post named.
+async function reportPerson(p, target, reason) {
+    return api(p, 'POST', `/api/identity/${p.root}/reports`, { kind: 'persona', target, reason });
+}
+
+/// A report on a node, by its endpoint id, with one of its posts if there's one to name.
+async function reportNode(p, base, reason, item) {
+    const resident = personas.find((q) => q.base === base);
+    const node = await (await resident.fetch('/api/node')).json();
+    return api(p, 'POST', `/api/identity/${p.root}/reports`, {
+        kind: 'node',
+        target: node.endpoint_id,
+        reason,
+        item,
+    });
+}
+
+/// The pictures someone else posted on this persona's own node, which it can vouch for and whose
+/// addresses its node can read.
+const picturesHere = (ctx, p) =>
+    ctx.picturePosts.filter((x) => x.base === p.base && x.author !== p.root);
+
+/// No more posts of this picture, or of its lookalike: the node would refuse them.
+function retire(ctx, family) {
+    for (const x of ctx.pictures) if (x.family === family) x.retired = true;
+}
+
 /// Trust `them` to moderate for `p`, from their page first when they live on another node - the
 /// fetch that tells this node where to send reports.
 async function trustToModerate(ctx, p, them) {
@@ -1624,6 +1723,7 @@ const PERSONAS = Number(process.argv[2]) || 15;
 const PER = Number(process.argv[3]) || 15;
 const SEED = Number(process.argv[4]) || Math.floor(Math.random() * 2 ** 31);
 const rng = mulberry32(SEED);
+const pictures = makePictures(rng);
 
 const candidatePorts = (process.env.RINGTOME_TESTDATA_PORTS || '5281,5282,5283').split(',');
 const nodes = [];
@@ -1735,6 +1835,7 @@ for (const base of nodes) {
             // moderates itself (`become-a-moderator`).
             moderators: [],
             moderator: false,
+            trusts: [],
         };
         await api(p, 'POST', `/api/identity/${p.root}/profile`, { field: 'name', value: p.name });
         personas.push(p);
@@ -1745,9 +1846,10 @@ for (const base of nodes) {
 // The run's first persona is always a moderator (Curtis, 2026-11-04): an administrator of
 // their node where a development build allows asking (Developer Options' door), taking
 // everyone's reports, strangers' included - so `report-content` has somewhere to go from the
-// first round.
+// first round. They trust a few people, who trust them back to moderate, so a queue shows every
+// standing, and a child-abuse report can seal at the door (the last act, below the lives).
+const first = personas[0];
 {
-    const first = personas[0];
     const made = await first.fetch('/api/auth/dev/node-admin', { method: 'POST' });
     if (made.status >= 400) {
         console.log(
@@ -1755,13 +1857,61 @@ for (const base of nodes) {
         );
     }
     await moderate(first, { reach: 2, strangers: true });
-    console.log(`  ${first.username} moderates, and takes everyone's reports`);
+    for (const them of personas.filter((o) => o !== first).slice(0, 3)) {
+        await api(
+            first,
+            'PUT',
+            `/api/identity/${first.root}/private/kv/contact:${them.root}/trust`,
+            {
+                value: 'high',
+            },
+        );
+        first.trusts.push(them.root);
+        await trustToModerate({ endpointOf }, them, first);
+    }
+    console.log(
+        `  ${first.username} moderates, and takes everyone's reports; ${pictures.length} pictures painted`,
+    );
 }
 
 // The chat rooms opened this run (CHAT.md), for anyone to wander into later.
 const rooms = [];
 // The groups founded this run (plans/GROUPS.md), as far as it knows them.
 const groups = [];
+// The pictures posted this run, as { author, base, post_id, twin, family }, for moderation.
+const picturePosts = [];
+const world = {
+    personas,
+    nodes,
+    rooms,
+    groups,
+    endpointOf,
+    lorem,
+    pick,
+    picture,
+    pictures,
+    picturePosts,
+    first,
+    sound,
+};
+
+// Before anyone's first turn, the whole pool goes up, by the personas in turn and in public (Curtis,
+// 2026-11-04), so every run has every picture to report and block, however short it is.
+for (const [i, pic] of pictures.entries()) {
+    const p = personas[(i + 1) % personas.length];
+    try {
+        if (!p.served) {
+            await api(p, 'POST', `/api/identity/${p.root}/serve`);
+            p.served = true;
+        }
+        await postPicture(world, p, rng, pic);
+    } catch (e) {
+        console.error(`  [posting ${pic.name}] ${e.message}`);
+    }
+}
+console.log(
+    `  ${picturePosts.length} of ${pictures.length} pictures posted (${((Date.now() - t0) / 1000).toFixed(0)}s)`,
+);
 
 // Lives: interleaved rounds, one action per persona per round, order shuffled per round -
 // the network grows the way a real one does, everyone at once, rather than one biography
@@ -1775,11 +1925,7 @@ for (let round = 0; round < PER; round++) {
     for (const p of order) {
         const action = drawAction(rng);
         try {
-            await action.run(
-                { personas, nodes, rooms, groups, endpointOf, lorem, pick, picture, sound },
-                p,
-                rng,
-            );
+            await action.run(world, p, rng);
         } catch (e) {
             failed++;
             failures.set(action.name, (failures.get(action.name) || 0) + 1);
@@ -1802,6 +1948,38 @@ for (let round = 0; round < PER; round++) {
         );
     }
 }
+
+// The last act: the people the first moderator trusts each report a picture, so the queue always
+// has a trusted report with a picture in it - and the first two as a child being abused, which from
+// someone trusted seals at the door, so hrseServer's quarantine list has seals and reporters to
+// show. Last, because a seal refuses that picture and anything like it from then on. Then one
+// report on a person and one on a node, so the queue always has those as well.
+let lastAct = 0;
+for (const [i, root] of first.trusts.entries()) {
+    const p = personas.find((o) => o.root === root);
+    const pic = picturesHere(world, p).filter((x) => x.author !== first.root)[i];
+    if (!pic) continue;
+    try {
+        await reportPicture(world, p, pic, i < 2 ? '' : pick(rng, REPORT_REASONS), i < 2);
+        lastAct++;
+    } catch (e) {
+        console.error(`  [the last act] ${e.message}`);
+    }
+}
+const reporter = personas.find((o) => o.root === first.trusts[0]);
+if (reporter) {
+    const them = personas.find((o) => o.root !== reporter.root && o.root !== first.root);
+    const node = nodes.find((base) => base !== reporter.base) ?? reporter.base;
+    try {
+        await reportPerson(reporter, them.root, pick(rng, REPORT_REASONS));
+        lastAct++;
+        await reportNode(reporter, node, pick(rng, REPORT_REASONS));
+        lastAct++;
+    } catch (e) {
+        console.error(`  [the last act] ${e.message}`);
+    }
+}
+console.log(`  ${lastAct} reports from people ${first.username} trusts`);
 
 const statePath = new URL('./testdata-state.json', import.meta.url).pathname;
 fs.writeFileSync(

@@ -416,7 +416,8 @@ integration-install:
 # node (default 15), each performing N actions (default 15) drawn from a weighted hat -
 # public posts, follows and trust across nodes, rebroadcasts of each other's posts, private
 # notebooks, spreading onto other nodes, moderators taking reports and keeping public lists
-# (the first persona always moderates). Same seed, same network; credentials land in
+# (the first persona always moderates), and a pool of painted pictures posted before anyone's
+# first turn. Same seed, same network; credentials land in
 # harness/testdata-state.json. Extend it
 # by adding an entry to ACTIONS in harness/testdata.mjs.
 #

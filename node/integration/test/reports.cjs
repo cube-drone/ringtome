@@ -11,7 +11,7 @@ const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
 const { HOST, HOST_B, sql, makeFetch } = require('./fetch.cjs');
-const { makeUserFetch, settleWith } = require('./helpers.cjs');
+const { makeUserFetch, makePng, settleWith } = require('./helpers.cjs');
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const settle = settleWith(40);
@@ -255,6 +255,187 @@ const fact = (who, root, about, key, value) =>
             'and every one is released',
         );
         await j(admin, `api/identity/${mod}/reports/${r.id}/dismiss`, {});
+    });
+
+    // A post's picture is a document of its own: a report on the post has to reach it, on a node
+    // that holds it and on one that has never seen it.
+    describe('a post with a picture in it', function () {
+        const anon = makeFetch();
+
+        const picturePost = async (who, root, width) => {
+            const pic = (
+                await (
+                    await who(`api/identity/${root}/docs/binary?title=a horse`, {
+                        method: 'POST',
+                        body: makePng(width, 41),
+                        file: true,
+                    })
+                ).json()
+            ).doc_id;
+            for (let i = 0; i < 60; i++) {
+                if ((await who(`api/identity/${root}/docs/${pic}/body`)).status === 200) break;
+                await new Promise((r) => setTimeout(r, 250));
+            }
+            const d = await (
+                await j(who, `api/identity/${root}/docs`, {
+                    title: 'a picture',
+                    body: `look\n\n![a horse](/api/identity/${root}/docs/${pic}/body/a-horse.png)\n`,
+                    format: 'marquee',
+                })
+            ).json();
+            const pub = await j(who, `api/identity/${root}/docs/${d.doc_id}/publish`, {});
+            assert.equal(pub.status, 200, await pub.clone().text());
+            const post_id = (await pub.json()).post_id;
+            const head = await (await who(`api/id/${root}/posts/${post_id}`)).json();
+            const twin = (head.refs || [])[0];
+            assert.ok(twin, 'the post minted a public picture');
+            const file = (await who(`id/${root}/docs/${twin}/body`)).headers.get('etag');
+            return { post_id, twin, file: file.replaceAll('"', '') };
+        };
+
+        it('sends the picture to a moderator whose node has never seen it', async function () {
+            const { post_id, twin, file } = await picturePost(author, authorRoot, 61);
+            assert.equal(
+                (await anon(`id/${authorRoot}/docs/${twin}/body`)).status,
+                404,
+                'the moderator node holds nothing of it',
+            );
+            const sent = await report(rep, repRoot, {
+                reason: 'look at this',
+                item: { author: authorRoot, doc_id: post_id },
+            });
+            assert.deepEqual(
+                sent.map((s) => s.outcome),
+                ['sent'],
+            );
+            assert.ok(sent[0].pictures >= 2, 'its words, and its picture');
+            const r = (await queue()).reports.find((x) => x.item_doc === post_id);
+            assert.ok(r.pictures.includes(file), 'the queue shows the picture');
+            const shown = await admin(`api/identity/${mod}/reports/${r.id}/picture/${file}`);
+            assert.equal(shown.status, 200);
+            await j(admin, `api/identity/${mod}/reports/${r.id}/dismiss`, {});
+        });
+
+        it('a child-abuse report seals the picture too, with nothing uploaded', async function () {
+            const { post_id, file } = await picturePost(author, authorRoot, 67);
+            const sent = await report(rep, repRoot, {
+                child_abuse: true,
+                reason: '',
+                item: { author: authorRoot, doc_id: post_id },
+            });
+            assert.deepEqual(
+                sent.map((s) => [s.outcome, s.pictures]),
+                [['sent', 0]],
+                'no picture travels',
+            );
+            const rows = (await (await admin('api/admin/quarantine')).json()).rows.filter(
+                (x) => x.doc_id === post_id,
+            );
+            assert.ok(
+                rows.some((x) => x.hash === file && !x.released_ms),
+                'sealed here before it ever arrives',
+            );
+            await admin(`api/admin/quarantine/reported-by/${repRoot}/release`, { method: 'POST' });
+        });
+
+        it('still goes when the post has more pictures than an envelope holds', async function () {
+            const docs = [];
+            for (let i = 0; i < 20; i++) {
+                docs.push(
+                    (
+                        await (
+                            await author(
+                                `api/identity/${authorRoot}/docs/binary?title=horse ${i}`,
+                                {
+                                    method: 'POST',
+                                    body: makePng(81 + i, 43),
+                                    file: true,
+                                },
+                            )
+                        ).json()
+                    ).doc_id,
+                );
+            }
+            for (const doc of docs) {
+                for (let i = 0; i < 60; i++) {
+                    const at = `api/identity/${authorRoot}/docs/${doc}/body`;
+                    if ((await author(at)).status === 200) break;
+                    await new Promise((r) => setTimeout(r, 250));
+                }
+            }
+            const d = await (
+                await j(author, `api/identity/${authorRoot}/docs`, {
+                    title: 'an album',
+                    body: docs
+                        .map(
+                            (doc) =>
+                                `![a horse](/api/identity/${authorRoot}/docs/${doc}/body/a.png)`,
+                        )
+                        .join('\n\n'),
+                    format: 'marquee',
+                })
+            ).json();
+            const pub = await j(author, `api/identity/${authorRoot}/docs/${d.doc_id}/publish`, {});
+            assert.equal(pub.status, 200, await pub.clone().text());
+            const post_id = (await pub.json()).post_id;
+            const sent = await report(rep, repRoot, {
+                reason: 'x'.repeat(512),
+                item: { author: authorRoot, doc_id: post_id },
+            });
+            assert.deepEqual(
+                sent.map((s) => s.outcome),
+                ['sent'],
+            );
+            const r = (await queue()).reports.find((x) => x.item_doc === post_id);
+            assert.ok(r.pictures.length >= 3, 'the first few arrive, at the longest reason');
+            await j(admin, `api/identity/${mod}/reports/${r.id}/dismiss`, {});
+        });
+
+        it('takes the picture down on the node that serves it', async function () {
+            const neighbour = await makeUserFetch({ prefix: 'repneighbour' });
+            const neighbourRoot = await persona(neighbour);
+            await neighbour(`api/identity/${neighbourRoot}/serve`, { method: 'POST' });
+            const { post_id, twin } = await picturePost(neighbour, neighbourRoot, 71);
+            const near = await makeUserFetch({ prefix: 'repnear' });
+            const nearRoot = await persona(near);
+            await fact(near, nearRoot, mod, 'moderates', 'yes');
+            await fact(admin, mod, nearRoot, 'trust', 'high');
+            const picture = `id/${neighbourRoot}/docs/${twin}/body`;
+            assert.equal((await anon(picture)).status, 200);
+            await report(near, nearRoot, {
+                target: neighbourRoot,
+                child_abuse: true,
+                reason: '',
+                item: { author: neighbourRoot, doc_id: post_id },
+            });
+            assert.equal((await anon(`id/${neighbourRoot}/docs/${post_id}/body`)).status, 404);
+            assert.equal((await anon(picture)).status, 404, 'the picture');
+            assert.equal(
+                (await anon(`id/${neighbourRoot}/docs/${twin}/thumb`)).status,
+                404,
+                'and its thumbnail',
+            );
+            await admin(`api/admin/quarantine/reported-by/${nearRoot}/release`, { method: 'POST' });
+            assert.equal((await anon(picture)).status, 200, 'and all of it comes back');
+
+            // A post's address reaches its picture as well, for an operator's seal and for a list.
+            const address = `/ringtome/user/${neighbourRoot}/doc/${post_id}/body`;
+            const listed = await j(admin, `api/identity/${mod}/moderation/by-address`, {
+                address,
+                level: 'warn',
+                reason: 'the picture, not the words',
+            });
+            assert.equal(listed.status, 200, await listed.clone().text());
+            const file = (await anon(picture)).headers.get('etag').replaceAll('"', '');
+            assert.equal((await listed.json()).hash, file, 'the list names the picture');
+            const sealed = await j(admin, 'api/admin/quarantine', { address, why: 'by its post' });
+            assert.equal(sealed.status, 200, await sealed.clone().text());
+            assert.equal((await anon(picture)).status, 404, 'sealed by its post');
+            assert.equal(
+                (await admin(`api/admin/quarantine/${file}/release`, { method: 'POST' })).status,
+                200,
+            );
+        });
     });
 
     it('a report about yourself, or past 512 bytes, is never sent', async function () {

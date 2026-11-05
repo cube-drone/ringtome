@@ -29,6 +29,12 @@
 //! author signed are kept. A sealed post's words never travel: reporting private things is left
 //! for later.
 //!
+//! **A post's pictures are documents of their own**, which its signed header names, so a report
+//! on a post has to reach them or it acts on the words and leaves the picture up. The envelope
+//! carries their signed headers while it has room ([`ReportedPart`]), and the door reads the rest
+//! from its own copy ([`files_named`]). A picture past the room that this node doesn't hold is
+//! out of reach: it can't be shown to the moderator, or sealed before it arrives.
+//!
 //! **A child being abused** is a separate choice that carries the reference and nothing else: no
 //! upload address is ever handed back for it. When the moderator administers this node and the
 //! reporter is someone their trust reaches, the reference seals the item's files here at once
@@ -50,8 +56,11 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use ringtome_proto::deliver::{notice_kind, refusal, DeliverMessage, SignedEnvelope};
-use ringtome_proto::report::{Report, ReportedItem, VerifiedReport};
+use ringtome_proto::deliver::{
+    notice_kind, refusal, DeliverMessage, SignedEnvelope, MAX_ENVELOPE_BYTES,
+};
+use ringtome_proto::registry::DocHeaderPlain;
+use ringtome_proto::report::{Report, ReportedItem, ReportedPart, VerifiedReport};
 use ringtome_proto::{ModerationLevel, ModerationTarget};
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +77,8 @@ const DEFAULT_STRANGER_POOL: i64 = 500;
 const DEFAULT_KEEP_DAYS: i64 = 90;
 /// How much of a reported post's words the queue shows.
 const WORDS_SHOWN: usize = 4000;
+/// What a knock's proof of work may add to an envelope sized without one.
+const STAMP_ROOM: usize = 64;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -238,9 +249,7 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
 
     let report = &v.report;
     let item = v.item.as_ref();
-    let item_hashes: Vec<[u8; 32]> = item
-        .map(|f| std::iter::once(f.header.file_hash).chain(f.header.thumb_hash).collect())
-        .unwrap_or_default();
+    let item_hashes = files_named(state, v).await?;
     // Pictures are asked for only over HTTPS, only for an open post, never for a child-abuse
     // report, and only where this node can be reached by address.
     let wants_upload = !report.child_abuse
@@ -304,6 +313,30 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
     }
     tracing::info!(moderator = %moderator, standing = standing.word(), "took a report");
     Ok(DeliverMessage::Taken(token.and_then(|t| upload_address(state, &t))))
+}
+
+/// The files a report's item names, the post's own first: the signed headers it carries, then
+/// whatever else the post embeds, from this node's copy.
+async fn files_named(state: &AppState, v: &VerifiedReport) -> Result<Vec<[u8; 32]>> {
+    let (Some(named), Some(item)) = (&v.report.item, &v.item) else {
+        return Ok(Vec::new());
+    };
+    let mut files = own_files(&item.header);
+    for part in &v.parts {
+        files.extend(own_files(&part.header));
+    }
+    for embedded in &item.header.refs {
+        if !v.parts.iter().any(|p| p.doc_id == *embedded) {
+            files.extend(crate::quarantine::own_blobs(state, &named.author, embedded).await?);
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    files.retain(|f| seen.insert(*f));
+    Ok(files)
+}
+
+fn own_files(header: &DocHeaderPlain) -> Vec<[u8; 32]> {
+    std::iter::once(header.file_hash).chain(header.thumb_hash).collect()
 }
 
 /// The knocking node, as a node entry names it: its endpoint id, hex.
@@ -489,6 +522,7 @@ async fn send_handler(
             "that reason is too long - 512 bytes at most"
         )));
     }
+    let mut embedded = Vec::new();
     let item = match &req.item {
         Some(i) => {
             let author = hex_fixed::<32>(&i.author, "author")?;
@@ -502,23 +536,64 @@ async fn send_handler(
                         ))
                     },
                 )?;
-            Some(ReportedItem { author, doc_id, entry, auth_path })
+            let item = ReportedItem { author, doc_id, entry, auth_path };
+            embedded = embedded_in(&state, &item).await;
+            Some(item)
         }
         None => None,
     };
-    let report = Report { kind, target, reason, child_abuse: req.child_abuse, item };
-    let bytes = report.encode().map_err(|e| {
+    let mut report =
+        Report { kind, target, reason, child_abuse: req.child_abuse, item, parts: Vec::new() };
+    let malformed = |e: ringtome_proto::ProtoError| {
         AppError::BadRequest(crate::msg!(
             "reports.malformed",
             "this report can't be sent: {why}",
             why = e.to_string()
         ))
-    })?;
-    let (_, moderators, _) = crate::moderation::view_of(&state, &data, &root).await?;
+    };
     let root_bytes = hex_fixed::<32>(&root, "root")?;
+    // As many of its pictures as fit: an envelope's whole size is a door's to refuse, so measure
+    // this one's own weight - the reporter's path and name - instead of guessing it.
+    let empty = crate::outbox::seal_with(
+        data.db(),
+        data.signer(),
+        &root_bytes,
+        &root_bytes,
+        Vec::new(),
+        notice_kind::REPORT,
+        0,
+    )
+    .await
+    .map_err(AppError::Internal)?;
+    let room = MAX_ENVELOPE_BYTES.saturating_sub(empty.bytes().len() + STAMP_ROOM);
+    for (part, _) in &embedded {
+        report.parts.push(part.clone());
+        if report.encode().map_err(malformed)?.len() > room {
+            report.parts.pop();
+            break;
+        }
+    }
+    let bytes = report.encode().map_err(malformed)?;
+    // What the moderator is sent to look at: the post's files and its pictures, not its sounds or
+    // films, however many fit in the envelope - their node may hold the rest, and so know them.
+    let mut files = Vec::new();
+    if let Some(item) = &report.item {
+        if let Ok(signed) = ringtome_proto::fragment::verify_fragment(
+            item.author,
+            item.doc_id,
+            &item.entry,
+            &item.auth_path,
+        ) {
+            files = own_files(&signed.header);
+        }
+    }
+    for (_, header) in embedded.iter().filter(|(_, h)| is_picture(h)) {
+        files.extend(own_files(header));
+    }
+    let (_, moderators, _) = crate::moderation::view_of(&state, &data, &root).await?;
     // Every moderator hears, at once: a person waits on the form.
     let report = &report;
-    let (state, data, root_bytes, bytes) = (&state, &data, &root_bytes, &bytes);
+    let (state, data, root_bytes, bytes, files) = (&state, &data, &root_bytes, &bytes, &files);
     let sent: Vec<Sent> = n0_future::join_all(moderators.into_iter().map(|moderator| async move {
         let Ok(recipient) = hex_fixed::<32>(&moderator, "moderator") else {
             return Sent { moderator, outcome: "refused", pictures: 0 };
@@ -526,10 +601,8 @@ async fn send_handler(
         let outcome = deliver_one(state, data, root_bytes, &recipient, bytes).await;
         let (word, pictures) = match outcome {
             Ok(Delivered::Taken(upload)) => {
-                let pictures = match (&upload, &report.item) {
-                    (Some(url), Some(item)) if !report.child_abuse => {
-                        send_pictures(state, url, item).await
-                    }
+                let pictures = match &upload {
+                    Some(url) if !report.child_abuse => send_pictures(state, url, files).await,
                     _ => 0,
                 };
                 ("sent", pictures)
@@ -592,21 +665,51 @@ async fn deliver_one(
     Ok(Delivered::Unreachable)
 }
 
-/// The reported item's files, from this node's own copy, to the moderator's upload address -
-/// over HTTPS, so whatever scans uploads in front of their node sees them first. Never through a
-/// private address: the address came from someone else's node.
-async fn send_pictures(state: &AppState, url: &str, item: &ReportedItem) -> usize {
-    let Ok(verified) = ringtome_proto::fragment::verify_fragment(
+/// What the reported item embeds, by this node's copy, with the signed header that says so. Only
+/// for something public: a sealed post's parts stay with it.
+async fn embedded_in(state: &AppState, item: &ReportedItem) -> Vec<(ReportedPart, DocHeaderPlain)> {
+    let Ok(signed) = ringtome_proto::fragment::verify_fragment(
         item.author,
         item.doc_id,
         &item.entry,
         &item.auth_path,
     ) else {
-        return 0;
+        return Vec::new();
     };
+    if signed.header.trusted_only {
+        return Vec::new();
+    }
+    let author = hex::encode(item.author);
+    let mut out = Vec::new();
+    for doc_id in signed.header.refs {
+        let Some((entry, auth_path)) =
+            crate::net::fragment::signed_header(state, &author, &doc_id).await
+        else {
+            continue;
+        };
+        let Ok(part) =
+            ringtome_proto::fragment::verify_fragment(item.author, doc_id, &entry, &auth_path)
+        else {
+            continue;
+        };
+        let auth_path = if auth_path == item.auth_path { Vec::new() } else { auth_path };
+        out.push((ReportedPart { doc_id, entry, auth_path }, part.header));
+    }
+    out
+}
+
+fn is_picture(header: &DocHeaderPlain) -> bool {
+    crate::record::documents::Format::from_wire(header.format).mime().starts_with("image/")
+}
+
+/// These files, from this node's own copy, to the moderator's upload address - over HTTPS, so
+/// whatever scans uploads in front of their node sees them first. Never through a private address:
+/// the address came from someone else's node. One the moderator's node can't check against a
+/// signed header is refused there, and uncounted here.
+async fn send_pictures(state: &AppState, url: &str, files: &[[u8; 32]]) -> usize {
     let mut sent = 0;
-    for hash in std::iter::once(verified.header.file_hash).chain(verified.header.thumb_hash) {
-        let Ok(Some(bytes)) = state.files.get_public(iroh_blobs::Hash::from_bytes(hash)).await
+    for hash in files {
+        let Ok(Some(bytes)) = state.files.get_public(iroh_blobs::Hash::from_bytes(*hash)).await
         else {
             continue;
         };

@@ -143,6 +143,11 @@ moderator turned Accept Reports on. Report pictures travel over HTTPS to that
 node's public address, never peer to peer, so an upload-scanning layer in front
 of the node checks them (SCANNING.md).
 
+A post's pictures are documents of their own, so a report on a post carries
+their signed headers as far as the envelope has room, and the receiving node
+reads the rest from its own copy. A picture past that room, on a node that
+doesn't hold it, stays out of reach of that report (2026-11-04).
+
 ### Floods
 
 Ten thousand fresh personas filling a moderator's queue with aggressive

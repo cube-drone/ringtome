@@ -238,7 +238,7 @@ fn user_db_opens_are_deliberate() {
         ("ingest.rs", 1),
         ("leaving.rs", 2), // what deleting a persona would leave, once per request; the leaving itself, once per persona deleted - a person's own act, never a sweep (2026-11-01)
         ("moderation.rs", 1), // one moderator's list into the memo, on the fold lane when their chain moves - once per chain move, never a sweep (2026-11-02)
-        ("quarantine.rs", 1), // the picture an administrator names, once per quarantine - never a sweep (2026-11-02)
+        ("quarantine.rs", 2), // 2: what the named post embeds, the same author, once per request (2026-11-04); 1: the picture an administrator names, once per quarantine - never a sweep (2026-11-02)
         ("profiles.rs", 2),   // refresh: ONE persona per claim-change edge
         ("nodeshelf.rs", 2),
         ("roster.rs", 2), // the fold leg: one persona per move of its GROUP chains (plans/GROUPS.md, slice 1b); `out_since`: the persona whose entry ended a speaker's membership, once per room per fold of an ex-member's room chain (plans/GROUP_ROOMS.md)
