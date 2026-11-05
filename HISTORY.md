@@ -26833,3 +26833,21 @@ which still honours a seal.
 Proved by: a unit test that holds the check open and finds nothing readable
 meanwhile, while the check itself reads the blob (failing without the hold), and
 `RINGTOME_TEST_GREP='reports|quarantine' just integration` (25 passing).
+
+## Each report card says what it's about (2026-11-05)
+
+A report about a whole server showed only "asks you to list 5d0699eaa625…", and
+Curtis couldn't tell what he was being asked. Reporting a server is valuable, so
+every card in the queue now opens with a strip naming what the report is about,
+with an icon: **Image**, **Node**, **Post** or **User**.
+
+The server decides (`reports.rs`'s `report_kind`, sent as the queue's `kind`): a
+report on a server is Node, post or not; one naming no post is User; a picture,
+or a post of words that names any file besides its own body (a words post has no
+thumbnail, so those are what it embeds), is Image; anything else is Post. It
+reads what the report named, not what arrived, so a child-abuse report, which
+brings nothing, still says Image.
+
+Proved by: a unit test of `report_kind`, `just strings-check`, `just ui-check`
+(1111), and screenshots of test data's queue on a scratch node, wide and at
+420px.

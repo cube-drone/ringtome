@@ -851,6 +851,10 @@ pub struct Queued {
     pub from_node: String,
     pub target_kind: String,
     pub target: String,
+    /// What the report is about, for its card's header: `node` (a whole server, with or without a
+    /// post), `user` (a person, with no post), `image` (a picture, or a post with pictures in it)
+    /// or `post` (Curtis, 2026-11-05).
+    pub kind: &'static str,
     pub reason: String,
     pub child_abuse: bool,
     pub item_author: Option<String>,
@@ -967,11 +971,14 @@ pub async fn queue_of(state: &AppState, moderator: &str, all: bool) -> Result<Ve
                 pictures.push(hash.clone());
             }
         }
+        let kind =
+            report_kind(&target_kind, item_doc.is_some(), is_words, named.len(), &item_format);
         out.push(Queued {
             id,
             reporter,
             standing,
             from_node,
+            kind,
             target_kind,
             target,
             reason,
@@ -990,6 +997,32 @@ pub async fn queue_of(state: &AppState, moderator: &str, all: bool) -> Result<Ve
         });
     }
     Ok(out)
+}
+
+/// What a report is about (`Queued::kind`). A post of words names its own body and nothing else
+/// (it has no thumbnail), so any more files are what it embeds: its pictures. Known from what the
+/// report named, not from what arrived, so a child-abuse report, which brings nothing, still says.
+fn report_kind(
+    target_kind: &str,
+    has_item: bool,
+    is_words: bool,
+    named: usize,
+    format: &Option<i64>,
+) -> &'static str {
+    if target_kind == "node" {
+        "node"
+    } else if !has_item {
+        "user"
+    } else if (is_words && named > 1)
+        || (!is_words
+            && crate::record::documents::Format::from_wire(format.map(|f| f as u64))
+                .mime()
+                .starts_with("image/"))
+    {
+        "image"
+    } else {
+        "post"
+    }
 }
 
 /// GET `/api/identity/{root}/reports` - the queue, and how it groups by the node that knocked.
@@ -1255,4 +1288,19 @@ async fn drop_node_handler(
         crate::fold::fold_now(&state, &root).await;
     }
     Ok(Json(serde_json::json!({ "ok": true, "dropped": dropped })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_report_says_what_it_is_about() {
+        let avif = Some(ringtome_proto::registry::doc_format::AVIF as i64);
+        assert_eq!(report_kind("node", true, true, 1, &None), "node", "a server, post or not");
+        assert_eq!(report_kind("persona", false, false, 0, &None), "user");
+        assert_eq!(report_kind("persona", true, true, 1, &None), "post", "words alone");
+        assert_eq!(report_kind("persona", true, true, 3, &None), "image", "words with a picture");
+        assert_eq!(report_kind("persona", true, false, 2, &avif), "image", "a picture itself");
+    }
 }

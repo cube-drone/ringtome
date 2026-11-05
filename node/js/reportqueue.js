@@ -21,6 +21,7 @@ import {
     ReasonInput,
     useModeration,
 } from './moderation.js';
+import { Icons } from './icons.js';
 import { Hotlines } from './servermoderation.js';
 import { MAX_REASON_BYTES, reasonBytes } from './pure/moderation.js';
 
@@ -34,6 +35,19 @@ const STANDING_WORDS = () => ({
 
 const Who = ({ root, current }) =>
     html`<a class="moderation-who" href=${personHref(root)}><${PersonInline} root=${root} current=${current} /></a>`;
+
+/// The four things a report can be about, as its card's header says (Curtis, 2026-11-05).
+const KINDS = () => ({
+    image: [Icons.mediaImage, t('reports.kind-image', 'Image')],
+    node: [Icons.server, t('reports.kind-node', 'Node')],
+    post: [Icons.kindPost, t('reports.kind-post', 'Post')],
+    user: [Icons.persona, t('reports.kind-user', 'User')],
+});
+
+const KindHead = ({ kind }) => {
+    const [Icon, word] = KINDS()[kind] || KINDS().post;
+    return html`<p class="report-kind"><${Icon} /> ${word}</p>`;
+};
 
 const NodeName = ({ id }) => html`<code class="report-node" title=${id}>${id.slice(0, 12)}…</code>`;
 
@@ -151,6 +165,7 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
         }
     };
     return html`<li class=${report.child_abuse ? 'report-row report-row-child' : 'report-row'}>
+        <${KindHead} kind=${report.kind} />
         <p class="report-from">
             <${Who} root=${report.reporter} current=${current} />
             <span class="report-standing">${STANDING_WORDS()[report.standing] || report.standing}</span>
