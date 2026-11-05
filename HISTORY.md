@@ -26761,3 +26761,13 @@ that file's 10 pass whole), `cargo test -p ringtome-node --lib` (726) and the
 conventions test, and test data on a scratch node: after each child-abuse report
 the post, picture and thumbnail all answered 404, and three of six reports
 carried pictures.
+
+## A group post's band stays at the card's top (2026-11-05)
+
+A rebroadcast group post drew its "passed this along" line above the group's
+band, so the band, made to sit flush with the card's top edge, slid down below
+it, with the backdrop behind. The band now comes first in the card and the line
+under it. Copy unmoved; the catalog regrouped two keys for the new order.
+
+Proved by: `just strings-check`, `just ui-check` (1111). Not looked at in a
+browser.

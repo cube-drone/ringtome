@@ -1723,6 +1723,40 @@ const PostEntryBody = ({
             <div class="feed-entry-frame">
             ${editing && html`<${BakeModal} items=${editing.baking} />`}
             ${
+                /* A group post says which group (plans/GROUPS.md, slice 4b): it is here because
+                you're in it. A band across the card's top in the frame's colour, with the group's
+                triangle (Curtis, 2026-10-16: the line was small). First in the card, above even a
+                share's line: the band is the card's edge, and anything over it pushed it and its
+                backdrop down off the top (Curtis, 2026-11-05). */ ''
+            }
+            ${
+                /* Posted in public as a public group (plans/PUBLIC_GROUPS.md) wears the same band,
+                bigger, its triangle too, and says "(public)"; posted within a group, "(group-private)"
+                (Curtis, 2026-10-17). */ ''
+            }
+            ${
+                bandGroup &&
+                html`<div class=${item.group ? 'feed-entry-group' : 'feed-entry-group feed-entry-group-public'}>
+                    <${GroupMark}
+                        group=${bandGroup.id}
+                        picture=${groupFace && groupFace.picture && `${groupFace.picture}/thumb`}
+                        size=${item.group ? 'mini' : 'band'}
+                    />
+                    <a class="feed-entry-group-name" href=${item.group ? groupHref(bandGroup.id) : publicGroupHref(bandGroup.id)}>${bandGroup.name}</a>
+                    ${
+                        item.group
+                            ? html`<span class="feed-entry-group-kind">${t('postentry.group-private', '(group-private)')}</span>`
+                            : html`<span class="feed-entry-group-kind">${t('postentry.group-public', '(public)')}</span>`
+                    }
+                    ${
+                        hidden &&
+                        html`<span class="feed-entry-group-note">
+                            ${t('postentry.hidden-from-the-group-by-an-owner', 'hidden from the group by an owner')}
+                        </span>`
+                    }
+                </div>`
+            }
+            ${
                 /* Who passed this along, when it arrived by rebroadcast. ABOVE the banner and
                 quieter than it, because the card is still the AUTHOR speaking - a share is how
                 it reached you, not whose words these are. Getting that hierarchy backwards is
@@ -1764,38 +1798,6 @@ const PostEntryBody = ({
                         : source.name
                 }
             </p>`
-            }
-            ${
-                /* A group post says which group, in the seat a share's line takes (plans/GROUPS.md,
-                slice 4b): it is here because you're in it. A band across the card's top in the
-                frame's colour, with the group's triangle (Curtis, 2026-10-16: the line was small). */ ''
-            }
-            ${
-                /* Posted in public as a public group (plans/PUBLIC_GROUPS.md) wears the same band,
-                bigger, its triangle too, and says "(public)"; posted within a group, "(group-private)"
-                (Curtis, 2026-10-17). */ ''
-            }
-            ${
-                bandGroup &&
-                html`<div class=${item.group ? 'feed-entry-group' : 'feed-entry-group feed-entry-group-public'}>
-                    <${GroupMark}
-                        group=${bandGroup.id}
-                        picture=${groupFace && groupFace.picture && `${groupFace.picture}/thumb`}
-                        size=${item.group ? 'mini' : 'band'}
-                    />
-                    <a class="feed-entry-group-name" href=${item.group ? groupHref(bandGroup.id) : publicGroupHref(bandGroup.id)}>${bandGroup.name}</a>
-                    ${
-                        item.group
-                            ? html`<span class="feed-entry-group-kind">${t('postentry.group-private', '(group-private)')}</span>`
-                            : html`<span class="feed-entry-group-kind">${t('postentry.group-public', '(public)')}</span>`
-                    }
-                    ${
-                        hidden &&
-                        html`<span class="feed-entry-group-note">
-                            ${t('postentry.hidden-from-the-group-by-an-owner', 'hidden from the group by an owner')}
-                        </span>`
-                    }
-                </div>`
             }
             ${
                 /* The speculative sibling: nobody you follow brought this - your trust graph
