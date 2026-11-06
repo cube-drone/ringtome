@@ -249,7 +249,13 @@ reach the node over plain HTTP. Then:
   and count 2, or leave it at 1 and accept the shared limits;
 - keep the origin from being reached except through the CDN where you can (a
   firewall allowing only the CDN's addresses), since anyone reaching it directly
-  does so over plain HTTP.
+  does so over plain HTTP;
+- **turn on its child sexual abuse material scanning** (Bunny's Upload Scanning,
+  Cloudflare's CSAM scanning tool, or your CDN's equivalent) if you take reports
+  from strangers yourself, let your users take reports from strangers, or let
+  people you don't know make accounts. Each of those lets someone you can't
+  vouch for put a picture on your disk. The scan checks it against known
+  material before it reaches you (_Reports_, below).
 
 ### People's own domains
 
@@ -422,9 +428,10 @@ without a public address, reports arrive as words only. **If you allow reports,
 put an upload-scanning layer in front of your server first** - Bunny's Upload
 Scanning, Cloudflare's CSAM scanning tool, or another that checks uploads for
 known child sexual abuse material before they reach you. It is strongly advised
-for any server that takes strangers' uploads or reports, so nobody can use the
-report form to put such a picture on your disk. A report that says a child is
-being abused carries only where the post is, never the picture.
+for any server that takes strangers' reports, lets its users take them, or is
+open to people you don't know, so nobody can use the report form or an account
+to put such a picture on your disk. A report that says a child is being abused
+carries only where the post is, never the picture.
 
 ### Quarantine
 

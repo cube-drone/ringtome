@@ -45,14 +45,27 @@ const KINDS = () => ({
     user: [Icons.persona, t('reports.kind-user', 'User')],
 });
 
-const KindHead = ({ kind }) => {
+/// The strip across a report's top: what it is about, and on the right, when it arrived.
+const KindHead = ({ kind, when }) => {
     const [Icon, word] = KINDS()[kind] || KINDS().post;
-    return html`<p class="report-kind"><${Icon} /> ${word}</p>`;
+    return html`<p class="report-kind">
+        <${Icon} /> ${word}
+        <span class="report-kind-when">${formatWhen(when)}</span>
+    </p>`;
 };
 
 /// A server, by its id: opening its page (plans/NODE_PAGE.md), where it can be looked at.
 const NodeName = ({ id }) =>
     html`<a class="report-node" href=${nodeHref(id)} title=${id}><${NodeMark} endpoint=${id} /><code>${id.slice(0, 12)}…</code></a>`;
+
+/// Whom reports are taken from, as one choice (Curtis, 2026-11-05: "everyone" is the select's third
+/// option, not a checkbox beside it). Everyone takes the people the trusted trust as well; a
+/// stranger's report still waits in the server's pool, oldest dropped first.
+const FROM_WHOM = {
+    1: { reach: 1, strangers: false },
+    2: { reach: 2, strangers: false },
+    everyone: { reach: 2, strangers: true },
+};
 
 const Settings = ({ root, settings, onSaved }) => {
     const [error, setError] = useState('');
@@ -80,32 +93,21 @@ const Settings = ({ root, settings, onSaved }) => {
             />
             ${t('reports.accept-reports', 'Accept Reports')}
         </label>
-        ${
-            locked
-                ? html`<p class="null-sub">${t('reports.not-allowed-here', "This server's operator doesn't let people take reports here.")}</p>`
-                : html`<p class="null-sub">${t('reports.what-taking-means', 'People who trust you to moderate for them can ask you to put someone on your list. Reports come to this server and stay here.')}</p>`
-        }
+        ${locked && html`<p class="null-sub">${t('reports.not-allowed-here', "This server's operator doesn't let people take reports here.")}</p>`}
         ${
             settings.takes &&
             html`<label class="device-field">
-                    <span>${t('reports.from-whom', 'from')}</span>
-                    <select
-                        class="profile-input"
-                        value=${String(settings.reach)}
-                        onChange=${(e) => save({ reach: Number(e.currentTarget.value) })}
-                    >
-                        <option value="1">${t('reports.the-people-i-trust', 'the people I trust')}</option>
-                        <option value="2">${t('reports.and-the-people-they-trust', 'the people I trust, and the people they trust')}</option>
-                    </select>
-                </label>
-                <label class="profile-setting">
-                    <input
-                        type="checkbox"
-                        checked=${settings.strangers}
-                        onChange=${(e) => save({ strangers: e.currentTarget.checked })}
-                    />
-                    ${t('reports.and-from-strangers', 'and from anyone - a stranger waits in a pool of {n}, oldest dropped first', { n: settings.stranger_pool })}
-                </label>`
+                <span>${t('reports.from-whom', 'from')}</span>
+                <select
+                    class="profile-input"
+                    value=${settings.strangers ? 'everyone' : String(settings.reach)}
+                    onChange=${(e) => save(FROM_WHOM[e.currentTarget.value])}
+                >
+                    <option value="1">${t('reports.the-people-i-trust', 'the people I trust')}</option>
+                    <option value="2">${t('reports.and-the-people-they-trust', 'the people I trust, and the people they trust')}</option>
+                    <option value="everyone">${t('reports.from-everyone', 'everyone')}</option>
+                </select>
+            </label>`
         }
         ${error && html`<p class="form-error">${error}</p>`}
     </div>`;
@@ -168,14 +170,13 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
         }
     };
     return html`<li class=${report.child_abuse ? 'report-row report-row-child' : 'report-row'}>
-        <${KindHead} kind=${report.kind} />
+        <${KindHead} kind=${report.kind} when=${report.received_ms} />
         <p class="report-from">
             <${Who} root=${report.reporter} current=${current} />
             <span class="report-standing">${STANDING_WORDS()[report.standing] || report.standing}</span>
-            <span class="null-sub">${formatWhen(report.received_ms)}</span>
         </p>
         <p class="report-asks">
-            ${t('reports.asks-you-to-list', 'asks you to list')}
+            ${t('reports.reported', 'reported')}
             ${report.target_kind === 'node' ? html`<${NodeName} id=${report.target} />` : html`<${Who} root=${report.target} current=${current} />`}
         </p>
         ${report.reason && html`<blockquote class="report-reason">${report.reason}</blockquote>`}

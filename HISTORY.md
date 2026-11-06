@@ -27002,3 +27002,30 @@ same face everywhere.
 It is generated only, not replaceable. Proved by: `just ui-check`,
 `just strings-check`, and screenshots of the node page, the Network page and a
 person page on scratch nodes.
+
+### A report says "reported", and its time sits in its strip (2026-11-05)
+
+Curtis: "'asks you to list' is a bit harder to grok than 'reported'. Also, let's
+move the time/date to the top-right of the 'type' banner." A report card now
+reads "twirl-bulge someone you trust / reported pasta-trait". When it arrived
+moved out of the reporter's line into the right end of the Image/Node/Post/User
+strip. Proved by: `just ui-check`, `just strings-check`, and a screenshot of the
+reports tab on a scratch node with a user report and a node report.
+
+### "Everyone" is the third choice of whom reports come from (2026-11-05)
+
+Curtis: "I think it makes more sense just to have that select have 'everyone' as
+its third option, and do away with the checkbox and its elaborate explanation."
+The "from" select reads: the people I trust; the people I trust, and the people
+they trust; everyone. Everyone saves as two hops plus strangers, so the server's
+settings are unchanged. A stranger's report still waits in the pool, and a
+stranger's child-abuse report is still refused at the door. The paragraph under
+"Accept Reports" went too (Curtis: "let's get rid of" it). Proved by:
+`just ui-check`, `just strings-check`.
+
+### SERVER.md: scan uploads at the CDN for an open server (2026-11-05)
+
+Curtis asked that SERVER.md tell operators to turn on the CDN's child sexual
+abuse material scanning before taking strangers' reports, letting users take
+them, or running an open server for people they don't know. _Behind a CDN_ gains
+that bullet, and _Reports_ names the same three cases.

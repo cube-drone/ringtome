@@ -253,6 +253,12 @@ label.moderation-overrule {
     font-weight: 600;
     font-size: 0.9em;
 }
+/* When it arrived, in the strip's top right corner. */
+.report-kind-when {
+    margin-left: auto;
+    font-weight: normal;
+    color: var(--muted);
+}
 .report-row-child.report-row .report-kind {
     margin-left: -0.75rem;
     padding-left: 0.75rem;
