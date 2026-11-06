@@ -26879,3 +26879,126 @@ the integration suite's slowest claims (the top 30 are 3.6 of its 12 minutes).
 
 Proved by: `cargo test` (743 in the node, the 15 conventions tests among them),
 `cargo clippy --all-targets -- -D warnings`.
+
+## A node's page, and how a node introduces itself (2026-11-05)
+
+plans/NODE_PAGE.md, all four slices. A report about a node showed only "asks you
+to list 5d0699eaa625…", and nothing in the app could show a server. Curtis:
+"what do you think of a node introduction exchange? 'Here's who I host, here's
+some basic information about me and the software I'm running'?"
+
+- **The exchange**: `WantIntro`, answered by `Intro` and a run of `IntroListed`
+  frames, on the fragment ALPN (`proto/src/fragment.rs`, tags 22-24). The answer
+  is the node's name, version and about facts, its web address, its operator's
+  description and rules link, and the people it lists on its own front page,
+  nobody else. A device lists nobody unless its owner ticks a box. An `Intro`
+  grows by appending slots, skipped by older readers. An older node can't read
+  the question, and the asker records "no-answer".
+- **The address is checked**: the asker fetches `<address>/api/node/id` (new,
+  anonymous) and believes the address only if that names the same endpoint.
+  Otherwise the page says "It says it's at …".
+- **`intro.rs`** answers, asks (a person's button only, never a sweep), and
+  keeps the answer in `machine_intros` / `machine_intro_listed` (node rung 118,
+  which also holds the operator's `node_introduction`).
+- **The page**, `/ringtome/node/<endpoint>`: who it says it is, the Network
+  page's row for it, who it hosts (marked "it says so, and this server has seen
+  it", "it says so" or "seen serving them"), your and your moderators' list
+  entries with Block and Warn on your own, and "report this server to my
+  moderators" (`NodeReportModal`). Server ids link to it from the report queue,
+  its flood rows, the Blocklist tab and the Network page.
+- **hrseServer's Network page**: the operator writes the description and rules
+  link, ticks whether a device lists its people, and can see how other machines
+  see it.
+
+Still open, in the plan: what a node block means to people who take a list,
+which today is nothing; a server-wide listing switch; whether the page ever asks
+on its own (built: it doesn't). The page has no app window around it, unlike the
+Network page's hrseServer frame.
+
+Proved by: a proto test (round trip at the caps, refused past them, a later
+version's extra slots skipped), unit tests in `intro.rs`, `nodepage.cjs` on the
+rig (an introduction with listed and unlisted people; its own address checked,
+another node's refused; a node never met, one unreachable, and itself),
+`just ui-check`, `just strings-check`, and screenshots on scratch nodes with
+test data, wide and at 420px.
+
+## Servers learn introductions by themselves (2026-11-05)
+
+Curtis: "Background collection seems like a good idea. Let's add it." A server
+asks every machine it has exchanged something with in the last three weeks to
+introduce itself: when first seen, and again after a day (`intro.rs` `pass`,
+every five minutes, sixteen a pass, a few at once). A machine that answered but
+didn't introduce itself, an older version, is asked weekly. It never asks one
+blocked here, one the Network page shows as not answering, or one it has only
+heard of. Devices leave it to the button, since a pass would cost a phone its
+battery. A checked address that hasn't changed isn't fetched again.
+
+Each Network row now also links to its node page ("who it is and who it hosts"),
+beside the name, which already did.
+
+The kinds of conversation a machine row lists are words now, not protocol names
+(Curtis: "the descriptions are clearer"): syncs people, shares files, asks about
+posts, delivers notices, moves personas, chats live.
+
+Proved by: a unit test of when a machine is due, a rig claim in `nodepage.cjs`
+(its introduction forgotten, one pass, and it's back with who it lists),
+`just ui-check`, `just strings-check`, and the full `just ci`.
+
+## A person's page says which servers they live on (2026-11-05)
+
+Curtis asked whether looking at a user should show "which nodes we've seen them
+on". Under "active today", a person's page now says where they live: "on
+horsedrawingtycoon.com (synced 2 hours ago), …". Each name opens its node page.
+The list comes from the person's own signed serving records, which name the
+machines they've authorized, so it's a fact rather than anyone's claim. Each
+machine is named by its introduction, else the machine table, else its words.
+The time is when this server last synced with that one, never "active there",
+which stays the heartbeat's to say.
+
+- **Their own computers are a count for everyone else** (Curtis: "Collapse
+  devices for other viewers"): "and 2 of their own computers". A machine this
+  server never met counts as one of those. The person themselves sees every
+  computer by name.
+- **This server leads when it hosts them**: peer rows leave a node out of its
+  own list, so `intro.rs` adds it.
+- **Someone only looked up** has no peer rows, since only followed and hosted
+  people are derived. Their serving records are resolved live from the
+  directory, at most eight computers, five seconds each, and kept nowhere:
+  writing them down would make this server start syncing whoever it looks at.
+- Servers that only keep a copy of someone (the crowd's holders) aren't listed.
+  They say nothing about where the person lives.
+
+Proved by: a rig claim in `nodepage.cjs` (a person on bravo, looked up from
+alpha, is on bravo by the name it introduced, with no one's computers named),
+the conventions test (one more user-database open in `intro.rs`, once per
+person-page view), `just ui-check`, `just strings-check`, and a screenshot of a
+scratch person page.
+
+### A person's banner starts at the top of the page (2026-11-05)
+
+Curtis: "there's currently a big space between the user's banner hero and the
+top of the page". The `/id` page borrowed `.persona-page`'s `4vh` drop, made for
+the settings pages' titles; it now has none, so the banner sits under the
+frame's own padding like every other page's first row. Proved by:
+`just ui-check`, `just strings-check`.
+
+### A server has a face (2026-11-05)
+
+Curtis: "can nodes use their unique node ID to generate a border color and a
+generated icon, in a square box, displayed with the node?" A person wears the
+heptagon and a group the triangle. A node now wears a square, `NodeMark` in
+`js/nodemark.js`. It holds the identicon its endpoint id draws, ringed in the
+hue that id derives. An endpoint id is a public key, uniformly random bytes like
+a persona root, so the same pure functions read it, and the same server is the
+same face everywhere.
+
+- **Large** at the head of its node page, beside its name and id.
+- **Row-sized** in the Network page's machine rows, in place of the generic
+  machine icon.
+- **Inline** wherever a server is named: this machine's name on the Network
+  page, a person's "on …" line, server reports in the queue, and server entries
+  on moderation lists.
+
+It is generated only, not replaceable. Proved by: `just ui-check`,
+`just strings-check`, and screenshots of the node page, the Network page and a
+person page on scratch nodes.

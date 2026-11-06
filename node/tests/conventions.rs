@@ -96,6 +96,9 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("machines", vec!["machines.rs"]),
         ("machine_lanes", vec!["machines.rs"]),
         ("node_name", vec!["machines.rs"]),
+        ("machine_intros", vec!["intro.rs"]),
+        ("machine_intro_listed", vec!["intro.rs"]),
+        ("node_introduction", vec!["intro.rs"]),
         ("front_door", vec!["frontdoor.rs"]),
         ("import_policy", vec!["import.rs"]),
         ("super_pins", vec!["frontdoor.rs"]),
@@ -232,6 +235,7 @@ fn user_db_opens_are_deliberate() {
         ("fanout.rs", 3), // journal_page + retract_vanished: ONE author per public-move edge
         // + shelf_updated_since: the journal delta, one open per POSTS move (2026-08-28)
         ("identity.rs", 4),
+        ("intro.rs", 1), // 1: a looked-up person's key tree, to resolve the servers they live on - once per person-page view, only for someone no sweep follows (plans/NODE_PAGE.md, 2026-11-05)
         ("idface.rs", 22), // 22: `deep_page` asks a named post's author whether it was taken down or is sealed, once per page load; 21: `persona_page_with` reads a hosted person's shelf for their page's reading copy, once per page load (plans/CRAWLING.md, 2026-10-11); 20: `id_post_versions` reads the author's chain for a post's history, once per page load (2026-10-02); 19: `post_page` reads a hosted post for its head, once per page load (2026-09-28); 18: `onward_sharer_admits` reads the sharer's mirrored chains for the onward hop (Contact tags, ruling 7, 2026-09-18) - once per (holder, key doc, sharer) per request, memoised by the loops; 17: `seal_admits` away from the holder's node reads the holder's edges as the fallback for a persona the lane has not judged - once per (holder, key doc) per request, memoised by the loops (2026-09-14); 16: `seal_admits` is the one gate - one open per (holder, key doc) per request, memoised by every caller that loops (2026-09-10 pm); 18: `seal_key_for` reads a sealed subject's header for whose seal it wears, once per label written (2026-09-10); 17: the body door's "held at all?" probe before a fetch (2026-09-08), once per request; 13: the whole-shelf read behind a search or the facets (2026-09-07); 14: the shares count for the kind row (2026-09-08); 15-16: the seal's holder (`sealed_here`, `trusted_viewer`) - once per request, and once per sealed REPLY on a shelf page (a page, never a persona loop)          // + stored_tree_leaves: ONE mirror per revalidation;
         // + id_post annotations: one shelf open per permalink read (2026-08-29)
         // + id_post: one open per permalink request (2026-08-25)

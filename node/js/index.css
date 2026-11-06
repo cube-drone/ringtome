@@ -28,6 +28,7 @@
 @import "./deleteme.css";     /* "delete me": a persona or the account, from this server */
 @import "./frontmatter.css";  /* the sign-up form's "I agree", and hrseServer's Front Matter */
 @import "./moderation.css";   /* moderation lists: content control's sections, a person's page's controls */
+@import "./nodepage.css";     /* a node's page: a server by its id, what it says, who it hosts */
 @import "./developer.css";    /* developer options: buttons for trying the app's own machinery */
 @import "./tooltip.css";      /* the house tooltip: every title, drawn in the palette */
 @import "./console.css";      /* the launcher honeycomb */

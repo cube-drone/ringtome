@@ -65,6 +65,7 @@ pub mod import;
 pub mod inbox;
 pub mod ingest;
 pub mod inspect;
+pub mod intro;
 pub mod keyprefetch;
 pub mod keystore;
 pub mod leaving;
@@ -675,6 +676,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         state.clone(),
         crate::census::pass,
     );
+    // Who the machines this node talks to are, as they introduce themselves (intro.rs,
+    // plans/NODE_PAGE.md): asked when first seen and about daily after, on a server.
+    loops::periodic("introductions", crate::intro::PASS_EVERY, state.clone(), crate::intro::pass);
     // Sealed posts' keys, asked for while their authors' nodes are up rather than when somebody
     // reads them later (keyprefetch.rs, 2026-09-29).
     loops::periodic(
@@ -1138,6 +1142,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .merge(moderation::router())
         .merge(quarantine::router())
         .merge(reports::router())
+        .merge(intro::router())
         // Backups (backup.rs): the machine itself or a node administrator; tickets, not waits.
         .route("/api/admin/backup", axum::routing::post(backup::start_handler))
         .route("/api/admin/backup/{ticket}", axum::routing::get(backup::ticket_handler))
@@ -1182,6 +1187,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         app = app
             .route("/test/sql", axum::routing::post(test_endpoints::raw_sql))
             .route("/test/mark", axum::routing::post(test_endpoints::mark))
+            .route("/test/intro-address", axum::routing::post(test_endpoints::intro_address))
             .route("/test/beat", axum::routing::post(test_endpoints::beat))
             .route("/test/heartbeat", axum::routing::post(test_endpoints::heartbeat))
             .route("/test/credit", axum::routing::post(test_endpoints::credit))

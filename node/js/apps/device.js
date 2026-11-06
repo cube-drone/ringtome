@@ -27,16 +27,16 @@ import { api, isDevice } from '../net.js';
 import { AccountPage } from '../account.js';
 import { FrontMatterPage } from '../frontmatter.js';
 import { ServerModeration } from '../servermoderation.js';
-import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { backupTime, sizeLabel } from '../pure/backups.js';
-import { appHref, groupHref, personHref } from '../links.js';
+import { appHref, groupHref, nodeHref, personHref } from '../links.js';
 import { defaultName, defaultTaglines, refreshFront } from '../frontdoor.js';
 import { formatWhen } from '../pure/when.js';
 import { BANDS } from '../pure/contact.js';
 import { speakable, wordsFor } from '../speakable.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { machineLabel, machineStatus, machinesShown, reliabilityPct } from '../pure/machines.js';
+import { NodeMark } from '../nodemark.js';
 
 const html = htm.bind(h);
 
@@ -761,6 +761,27 @@ const since = (ms, now) => {
     return unit ? agoWords(unit.value, unit.unit) : t('device.just-now', 'just now');
 };
 
+/// The kinds of conversation a machine has had with this one (net/p2p.rs `ALPNS`), in words and in
+/// a fixed order (Curtis, 2026-11-05: the protocol names read as jargon). A lane this list doesn't
+/// know shows its own name.
+const LANE_WORDS = () => ({
+    sync: t('device.lane-sync', 'syncs people'),
+    blob: t('device.lane-blob', 'shares files'),
+    fragment: t('device.lane-fragment', 'asks about posts'),
+    deliver: t('device.lane-deliver', 'delivers notices'),
+    adopt: t('device.lane-adopt', 'moves personas'),
+    gossip: t('device.lane-gossip', 'chats live'),
+});
+
+const lanesLine = (lanes) => {
+    const words = LANE_WORDS();
+    const order = Object.keys(words);
+    return Object.keys(lanes || {})
+        .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99))
+        .map((lane) => words[lane] || lane)
+        .join(' · ');
+};
+
 /// A machine's standing, in words.
 const STATUS_WORDS = () => ({
     dark: t('device.machine-dark', 'not answering'),
@@ -797,7 +818,7 @@ const LinkChip = ({ link }) => {
 
 /// What a machine says of itself, in one line: its client and version, its kind of device, and
 /// how many accounts and personas it carries (the Hello's about slot).
-const aboutLine = (m) =>
+export const aboutLine = (m) =>
     [
         m.version && (m.client ? `${m.client} ${m.version}` : m.version),
         m.device,
@@ -807,7 +828,9 @@ const aboutLine = (m) =>
         .filter(Boolean)
         .join(' · ');
 
-const MachineRow = ({ m, now }) => {
+/// One machine: the Network page's rows, and the node page's (plans/NODE_PAGE.md), whose name
+/// links to that page unless it is that page.
+export const MachineRow = ({ m, now, linked = true }) => {
     const status = machineStatus(m, now);
     const pct = reliabilityPct(m);
     const facts = [
@@ -826,10 +849,14 @@ const MachineRow = ({ m, now }) => {
     // Not answering, or didn't last time: the card fades, so the answering ones read first.
     const quiet = status === 'dark' || status === 'unanswered';
     return html`<li class=${quiet ? 'machine-row machine-row-quiet' : 'machine-row'}>
-        <span class="machine-icon"><${Icons.machine} /></span>
+        <${NodeMark} endpoint=${m.endpoint} size="row" />
         <div class="machine-body">
         <div class="machine-head">
-            <span class="machine-name" title=${m.endpoint}>${machineLabel(m)}</span>
+            ${
+                linked
+                    ? html`<a class="machine-name" href=${nodeHref(m.endpoint)} title=${m.endpoint}>${machineLabel(m)}</a>`
+                    : html`<span class="machine-name" title=${m.endpoint}>${machineLabel(m)}</span>`
+            }
             <span class=${STATUS_CLASS[status]}>${STATUS_WORDS()[status]}</span>
         </div>
         ${m.name && m.words && html`<span class="machine-words">${m.words}</span>`}
@@ -843,13 +870,71 @@ const MachineRow = ({ m, now }) => {
             </div>`
         }
         ${aboutLine(m) && html`<span class="machine-facts">${aboutLine(m)}</span>`}
-        <span class="machine-facts">${Object.keys(m.lanes || {}).join(', ')}</span>
-        ${
-            (m.links || []).length > 0 &&
-            html`<div class="machine-links">${m.links.map((link, i) => html`<${LinkChip} key=${i} link=${link} />`)}</div>`
-        }
+        <span class="machine-facts">${lanesLine(m.lanes)}</span>
+        <div class="machine-links">
+            ${(m.links || []).map((link, i) => html`<${LinkChip} key=${i} link=${link} />`)}
+            ${linked && html`<a class="machine-link" href=${nodeHref(m.endpoint)}>${t('device.what-it-says-of-itself', 'who it is and who it hosts')}</a>`}
+        </div>
         </div>
     </li>`;
+};
+
+/// What this machine says of itself when another asks it to introduce itself (plans/NODE_PAGE.md):
+/// its operator's description, a link to its rules, and - on a device - whether it lists its
+/// people. A server lists everyone who hasn't turned listing off.
+const Introduction = ({ device }) => {
+    const [said, setSaid] = useState(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const [saved, setSaved] = useState(false);
+    useEffect(() => {
+        api('/api/admin/introduction')
+            .then(setSaid)
+            .catch((e) => setError(e.message));
+    }, []);
+    if (!said) return error ? html`<p class="form-error">${error}</p>` : null;
+    const set = (field, value) => {
+        setSaved(false);
+        setSaid({ ...said, [field]: value });
+    };
+    const save = async () => {
+        setBusy(true);
+        setError('');
+        try {
+            setSaid(
+                await api('/api/admin/introduction', { method: 'PUT', body: JSON.stringify(said) }),
+            );
+            setSaved(true);
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<div class="device-introduction">
+        <p class="null-sub">
+            ${t('device.introduction-explained', 'What this machine tells another that asks who it is. It also gives its name, its software, how many accounts and personas it has, and its web address.')}
+        </p>
+        <label class="device-field">
+            <span>${t('device.description', 'what it is')}</span>
+            <textarea maxlength="600" rows="3" value=${said.description} onInput=${(e) => set('description', e.currentTarget.value)}></textarea>
+        </label>
+        <label class="device-field">
+            <span>${t('device.rules-link', 'a link to its rules')}</span>
+            <input type="url" maxlength="300" value=${said.rules} placeholder=${t('device.rules-placeholder', 'https://')} onInput=${(e) => set('rules', e.currentTarget.value)} />
+        </label>
+        ${
+            device !== 'server' &&
+            html`<label class="profile-setting">
+                <input type="checkbox" checked=${said.device_lists} onChange=${(e) => set('device_lists', e.currentTarget.checked)} />
+                ${t('device.list-people-on-a-device', 'say who lives here, too - a device keeps that to itself unless you tick this')}
+            </label>`
+        }
+        ${error && html`<p class="form-error">${error}</p>`}
+        <div class="device-actions">
+            <button class="removal-go" disabled=${busy} onClick=${save}>${busy ? '…' : saved ? t('device.saved', 'saved') : t('device.save', 'save')}</button>
+        </div>
+    </div>`;
 };
 
 /// This machine's name, renamed by an administrator: the next Hello says it.
@@ -876,7 +961,7 @@ const ThisMachine = ({ me, admin, onSaved }) => {
     return html`<section class="machine-this">
         <h3 class="computers-subtitle">${t('device.this-machine', 'this machine')}</h3>
         <div class="machine-head">
-            <span class="machine-name" title=${me.endpoint}>${me.name}</span>
+            <span class="machine-name" title=${me.endpoint}><${NodeMark} endpoint=${me.endpoint} />${me.name}</span>
             <span class="machine-facts">${aboutLine(me)}</span>
         </div>
         <span class="machine-words">${me.words}</span>
@@ -895,8 +980,10 @@ const ThisMachine = ({ me, admin, onSaved }) => {
                         ${t('device.back-to-its-own-name', 'back to its own name')}
                     </button>`
                 }
-            </div>`
+            </div>
+            <${Introduction} device=${me.device} />`
         }
+        <p><a class="machine-link" href=${nodeHref(me.endpoint)}>${t('device.how-others-see-it', 'how other machines see it')}</a></p>
     </section>`;
 };
 

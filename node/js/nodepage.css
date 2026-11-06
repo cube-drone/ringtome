@@ -1,0 +1,90 @@
+/* A node's page (plans/NODE_PAGE.md): a server, by its id - what it said of itself, who it hosts,
+   and the lists. The rest is the computers page's layout and the Network page's machine row. */
+.node-page-id {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.6rem;
+    margin: 0;
+}
+.node-page-id code {
+    font-size: 0.8em;
+    overflow-wrap: anywhere;
+    color: var(--muted);
+}
+.node-page-address,
+.node-page-description {
+    margin: 0.4rem 0;
+}
+.node-page-description {
+    white-space: pre-wrap;
+}
+.node-page-ask {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0.6rem 0;
+}
+.node-page-section {
+    margin-top: 1.2rem;
+}
+.node-page-hosts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.node-page-host {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.2rem 0.6rem;
+}
+/* Seen serving them, and saying so: the ones to trust first. */
+.node-page-host-confirmed .null-sub {
+    color: var(--ink-soft);
+    font-weight: 600;
+}
+
+/* A server's face (nodemark.js): its identicon in a square, ringed in the colour its id derives -
+   the ring is the span's background showing past its padding, as the heptagon's is. */
+.node-mark {
+    display: inline-flex;
+    flex: none;
+    box-sizing: border-box;
+    padding: 2px;
+    vertical-align: middle;
+}
+.node-mark-img {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+/* Inline, the height of the words around it, with air on both sides. */
+.node-mark-mini {
+    width: 1.05em;
+    height: 1.05em;
+    padding: 1.5px;
+    margin: 0 0.25em 0.12em 0;
+}
+.node-mark-row {
+    width: 2.4rem;
+    height: 2.4rem;
+}
+.node-mark-hero {
+    width: 6rem;
+    height: 6rem;
+    padding: 4px;
+}
+/* Its page's head: the face, and its name and id beside it. */
+.node-page-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.4rem;
+}
+.node-page-head-names {
+    min-width: 0;
+}

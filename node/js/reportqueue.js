@@ -12,7 +12,8 @@ import htm from 'htm';
 import { api } from './net.js';
 import { t } from './i18n.js';
 import { formatWhen } from './pure/when.js';
-import { personHref } from './links.js';
+import { nodeHref, personHref } from './links.js';
+import { NodeMark } from './nodemark.js';
 import { PersonInline } from './person.js';
 import {
     levelWord,
@@ -49,7 +50,9 @@ const KindHead = ({ kind }) => {
     return html`<p class="report-kind"><${Icon} /> ${word}</p>`;
 };
 
-const NodeName = ({ id }) => html`<code class="report-node" title=${id}>${id.slice(0, 12)}…</code>`;
+/// A server, by its id: opening its page (plans/NODE_PAGE.md), where it can be looked at.
+const NodeName = ({ id }) =>
+    html`<a class="report-node" href=${nodeHref(id)} title=${id}><${NodeMark} endpoint=${id} /><code>${id.slice(0, 12)}…</code></a>`;
 
 const Settings = ({ root, settings, onSaved }) => {
     const [error, setError] = useState('');

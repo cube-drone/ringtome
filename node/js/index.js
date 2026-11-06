@@ -99,6 +99,7 @@ import { SuperPinner, useFront, frontName } from './frontdoor.js';
 import { setTurbolinkReader } from './doc/turbolinks.js';
 import { NodePeople, RecentPeople } from './nodepeople.js';
 import { SlugPage } from './slugpage.js';
+import { NodePage } from './nodepage.js';
 import { PersonOrPath } from './pathpage.js';
 import { DomainSite } from './domainsite.js';
 import { installTooltips, setTooltipsEnabled } from './tooltip.js';
@@ -794,6 +795,7 @@ const Inside = ({ session }) => {
             <${Personas} path="/ringtome/settings/personas" persona=${persona} current=${persona.current} />
             <${SettingsMoved} path="/ringtome/persona/:page" />
             <${SettingsMoved} path="/ringtome/persona/:page/*" />
+            <${NodePage} path="/ringtome/node/:endpoint" current=${persona.current} />
             <${PeopleApp} path="/ringtome/people" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} />
             <${PeopleApp} path="/ringtome/people/groups" tab="groups" current=${persona.current} searchQuery=${query} />
             <${GroupPage} path="/ringtome/people/groups/:group" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />

@@ -182,6 +182,64 @@ export const ReportModal = ({ item, current, onClose }) => {
     </${Modal}>`;
 };
 
+/// Report a whole server to the moderators you trust (plans/NODE_PAGE.md): from its page, with a
+/// reason. Nothing to hide here first - a server isn't a post - and no child-abuse choice: that's
+/// about a post, from the post.
+export const NodeReportModal = ({ endpoint, name, current, onClose }) => {
+    const root = current && current.root;
+    const moderators = useModeration(root).moderators || [];
+    const [reason, setReason] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [sent, setSent] = useState(null);
+    const [error, setError] = useState('');
+    const send = async () => {
+        setError('');
+        setBusy(true);
+        try {
+            const r = await api(`/api/identity/${root}/reports`, {
+                method: 'POST',
+                body: JSON.stringify({ kind: 'node', target: endpoint, reason: reason.trim() }),
+            });
+            setSent(r.sent || []);
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<${Modal} title=${t('report.report-this-server', 'Report {name}', { name })} onClose=${onClose}>
+        ${
+            sent
+                ? html`<${Results} sent=${sent} current=${current} />
+                      <button class="removal-go" onClick=${onClose}>${t('report.done', 'done')}</button>`
+                : html`<div class="report-form">
+                      <p class="null-sub">
+                          ${t('report.what-a-server-report-does', 'The people you trust to moderate for you are asked to consider this whole server for their list:')}
+                      </p>
+                      ${
+                          moderators.length
+                              ? html`<ul class="report-moderators">
+                                    ${moderators.map((m) => html`<li key=${m}><${PersonInline} root=${m} current=${current} /></li>`)}
+                                </ul>`
+                              : html`<p class="null-sub">${t('report.you-trust-nobody-so-nowhere', "You don't trust anyone to moderate for you, so this has nowhere to go.")}</p>`
+                      }
+                      <${ReasonInput}
+                          wide
+                          value=${reason}
+                          placeholder=${t('report.reason-placeholder', 'why - your moderators see this')}
+                          onInput=${setReason}
+                      />
+                      ${error && html`<p class="form-error">${error}</p>`}
+                      <button
+                          class="removal-go"
+                          disabled=${busy || !moderators.length || reasonBytes(reason) > MAX_REASON_BYTES}
+                          onClick=${send}
+                      >${busy ? t('report.sending', 'sending…') : t('report.report-it', 'report it')}</button>
+                  </div>`
+        }
+    </${Modal}>`;
+};
+
 /// The chip on someone else's post.
 export const ReportChip = ({ item, current }) => {
     const [open, setOpen] = useState(false);

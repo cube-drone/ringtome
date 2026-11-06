@@ -277,6 +277,12 @@ label.moderation-overrule {
 }
 .report-node {
     font-size: 0.85em;
+    color: var(--teal);
+    text-decoration: none;
+}
+/* A server's id opens its page (plans/NODE_PAGE.md). */
+.report-node:hover {
+    text-decoration: underline;
 }
 .report-reason {
     margin: 0;

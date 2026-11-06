@@ -178,6 +178,11 @@ lightly federated, unapologetically Old Internet.
   every user, showing it with their own links; and group sync by gossip, three
   partners a pass, two by reliability and one check-in slot. Rulings settled
   2026-10-17.
+- [`NODE_PAGE.md`](plans/NODE_PAGE.md) — a page for any node, to look at a
+  server before reporting or blocking it, and the exchange under it in which a
+  node introduces itself: its name, software and size, a web address checked
+  against it, and the people it lists publicly. Built 2026-11-05; what a node
+  block means to readers is still open.
 - [`ONE_FEED.md`](plans/ONE_FEED.md) — group posts in the one feed journal,
   filtered like any post, and a group's fold cached by a stamp rather than
   rebuilt on every read (built 2026-10-16; replaced GROUPS.md slice 4b's

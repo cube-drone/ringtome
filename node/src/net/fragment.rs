@@ -101,6 +101,20 @@ pub async fn serve(conn: Connection, state: AppState) -> Result<()> {
         Some(FragmentMessage::WantCensus { sketches }) => {
             crate::census::answer(&state, sketches).await
         }
+        Some(FragmentMessage::WantIntro) => {
+            // Who this node is (plans/NODE_PAGE.md): the introduction, then its listed people a
+            // frame's worth at a time, ended by an empty frame.
+            let (intro, listed) = crate::intro::answer(&state).await;
+            write_frame(&mut send, &FragmentMessage::Intro(intro)).await?;
+            for chunk in listed.chunks(ringtome_proto::fragment::MAX_INTRO_LISTED_PER_FRAME) {
+                write_frame(&mut send, &FragmentMessage::IntroListed { roots: chunk.to_vec() })
+                    .await?;
+            }
+            write_frame(&mut send, &FragmentMessage::IntroListed { roots: Vec::new() }).await?;
+            send.finish().ok();
+            crate::net::p2p::linger(&conn).await;
+            return Ok(());
+        }
         Some(FragmentMessage::WantGroupHeads { group, members, fingerprint }) => {
             // The group digest (plans/NETWORK.md): its lane heads, through the group's door, a
             // run of frames ended by an empty one - or `same`, in one.
@@ -300,6 +314,49 @@ pub async fn fetch_census(
         Some(FragmentMessage::Census { sketches }) => Ok(sketches),
         other => Err(anyhow!("unexpected answer to a census ask: {other:?}")),
     }
+}
+
+/// Ask the node at `endpoint_id` who it is (plans/NODE_PAGE.md): its introduction and the people
+/// it lists, at most `MAX_INTRO_LISTED`. An `Err` that mentions dialing is "couldn't reach it";
+/// any other, from a node that predates the question among them, is "it didn't say".
+pub async fn fetch_intro(
+    state: &AppState,
+    endpoint_id: &str,
+) -> Result<(ringtome_proto::fragment::Intro, Vec<[u8; 32]>)> {
+    let addr = crate::net::sync::dial_addr(state, endpoint_id)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for its introduction: {e}"))?;
+    let conn = crate::net::p2p::dial(&state.unplugged, &state.endpoint, addr, FRAGMENT_ALPN)
+        .await
+        .map_err(|e| anyhow!("dialing {endpoint_id} for its introduction: {e}"))?;
+    let (mut send, mut recv) = conn.open_bi().await.context("opening fragment stream")?;
+    write_frame(&mut send, &FragmentMessage::WantIntro).await?;
+    send.finish().ok();
+    let read = async {
+        let intro = match read_frame(&mut recv).await? {
+            Some(FragmentMessage::Intro(intro)) => intro,
+            other => return Err(anyhow!("unexpected answer to an introduction: {other:?}")),
+        };
+        let mut listed = Vec::new();
+        loop {
+            match read_frame(&mut recv).await? {
+                Some(FragmentMessage::IntroListed { roots }) if !roots.is_empty() => {
+                    listed.extend(roots);
+                    if listed.len() >= ringtome_proto::fragment::MAX_INTRO_LISTED {
+                        listed.truncate(ringtome_proto::fragment::MAX_INTRO_LISTED);
+                        break;
+                    }
+                }
+                // The empty frame, or the stream ending early: what came is what it said.
+                _ => break,
+            }
+        }
+        Ok((intro, listed))
+    };
+    let answer =
+        tokio::time::timeout(FETCH_TIMEOUT, read).await.context("introduction timed out")?;
+    conn.close(0u8.into(), b"done");
+    answer
 }
 
 /// A group's lane heads, as the node at `endpoint_id` holds them (plans/NETWORK.md, the group

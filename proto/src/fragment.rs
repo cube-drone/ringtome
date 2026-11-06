@@ -202,6 +202,18 @@ pub enum FragmentMessage {
     Census {
         sketches: Vec<(u32, Vec<u8>)>,
     },
+    /// "Who are you?" (plans/NODE_PAGE.md, 2026-11-05): a node introduces itself. No fields: the
+    /// answer is the same for every asker.
+    WantIntro,
+    /// The introduction: what the node says it is, in one frame, followed by [`Self::IntroListed`]
+    /// frames ended by an empty one. Every field is the node's own word; only `address` can be
+    /// checked, by fetching it.
+    Intro(Intro),
+    /// The people a node lists publicly, a frame's worth at a time: at most
+    /// [`MAX_INTRO_LISTED_PER_FRAME`]. Empty ends the run.
+    IntroListed {
+        roots: Vec<[u8; 32]>,
+    },
     /// A group's lane heads (plans/NETWORK.md, the group digest): the asker's fingerprint over
     /// the heads it holds of the group's lanes - its public lanes, or both kinds when `members`
     /// and it speaks for a member - so an answerer holding the same can say only that. The door
@@ -364,6 +376,33 @@ const TAG_WANT_CENSUS: u64 = 18;
 const TAG_CENSUS: u64 = 19;
 const TAG_WANT_GROUP_HEADS: u64 = 20;
 const TAG_GROUP_HEADS: u64 = 21;
+const TAG_WANT_INTRO: u64 = 22;
+const TAG_INTRO: u64 = 23;
+const TAG_INTRO_LISTED: u64 = 24;
+
+/// A node's introduction (plans/NODE_PAGE.md): its name and software as its sync Hello says them,
+/// the about facts, and what its operator says of it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Intro {
+    pub name: String,
+    pub version: String,
+    pub about: crate::sync::About,
+    /// Its public web address, or empty. The asker checks it before believing it.
+    pub address: String,
+    /// What its operator says it is, or empty.
+    pub description: String,
+    /// A link to its rules, or empty.
+    pub rules: String,
+}
+
+/// Caps on an introduction's words, in bytes.
+pub const MAX_INTRO_ADDRESS: usize = 300;
+pub const MAX_INTRO_DESCRIPTION: usize = 600;
+pub const MAX_INTRO_RULES: usize = 300;
+/// Listed people per `IntroListed` frame: 34 bytes each on the wire, about 9 KB a frame.
+pub const MAX_INTRO_LISTED_PER_FRAME: usize = 256;
+/// The most listed people an asker reads before it stops: a page, not a directory dump.
+pub const MAX_INTRO_LISTED: usize = 4096;
 
 impl FragmentMessage {
     pub fn encode(&self) -> Vec<u8> {
@@ -505,6 +544,31 @@ impl FragmentMessage {
                     w.array(2);
                     w.uint(u64::from(*day));
                     w.bytes(registers);
+                }
+            }
+            Self::WantIntro => {
+                w.array(1);
+                w.uint(TAG_WANT_INTRO);
+            }
+            Self::Intro(intro) => {
+                w.array(10);
+                w.uint(TAG_INTRO);
+                w.text(&intro.name);
+                w.text(&intro.version);
+                w.text(&intro.about.client);
+                w.text(&intro.about.device);
+                w.uint(intro.about.users);
+                w.uint(intro.about.personas);
+                w.text(&intro.address);
+                w.text(&intro.description);
+                w.text(&intro.rules);
+            }
+            Self::IntroListed { roots } => {
+                w.array(2);
+                w.uint(TAG_INTRO_LISTED);
+                w.array(roots.len() as u64);
+                for root in roots {
+                    w.bytes(root);
                 }
             }
             Self::WantGroupHeads { group, members, fingerprint } => {
@@ -744,6 +808,57 @@ impl FragmentMessage {
                     });
                 }
                 Self::GroupHeads { same, members, heads }
+            }
+            (TAG_WANT_INTRO, _) => {
+                // Anything after the tag is a later version's, and skipped.
+                for _ in 1..len {
+                    r.skip_value()?;
+                }
+                Self::WantIntro
+            }
+            (TAG_INTRO, arity) if arity >= 10 => {
+                let capped = |text: &str, cap: usize, what: &'static str| {
+                    if text.len() > cap {
+                        Err(ProtoError::BadEntry(what))
+                    } else {
+                        Ok(text.to_string())
+                    }
+                };
+                let name = capped(r.text()?, crate::sync::MAX_NAME_LEN, "intro name too long")?;
+                let version =
+                    capped(r.text()?, crate::sync::MAX_VERSION_LEN, "intro version too long")?;
+                let client =
+                    capped(r.text()?, crate::sync::MAX_CLIENT_LEN, "intro client too long")?;
+                let device =
+                    capped(r.text()?, crate::sync::MAX_DEVICE_LEN, "intro device too long")?;
+                let users = r.uint()?;
+                let personas = r.uint()?;
+                let address = capped(r.text()?, MAX_INTRO_ADDRESS, "intro address too long")?;
+                let description =
+                    capped(r.text()?, MAX_INTRO_DESCRIPTION, "intro description too long")?;
+                let rules = capped(r.text()?, MAX_INTRO_RULES, "intro rules link too long")?;
+                for _ in 10..arity {
+                    r.skip_value()?;
+                }
+                Self::Intro(Intro {
+                    name,
+                    version,
+                    about: crate::sync::About { client, device, users, personas },
+                    address,
+                    description,
+                    rules,
+                })
+            }
+            (TAG_INTRO_LISTED, 2) => {
+                let count = r.array()?;
+                if count > MAX_INTRO_LISTED_PER_FRAME as u64 {
+                    return Err(ProtoError::BadEntry("too many listed in one frame"));
+                }
+                let mut roots = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    roots.push(r.bytes_fixed::<32>()?);
+                }
+                Self::IntroListed { roots }
             }
             (tag @ (TAG_WANT_CENSUS | TAG_CENSUS), 2) => {
                 let count = r.array()?;
@@ -1016,6 +1131,67 @@ pub fn verify_retraction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The introduction (plans/NODE_PAGE.md): round-trips at its caps inside a frame, refuses
+    /// past them, and reads a later version's extra slots by skipping them.
+    #[test]
+    fn an_introduction_round_trips_fits_a_frame_and_grows() {
+        let full = Intro {
+            name: "n".repeat(crate::sync::MAX_NAME_LEN),
+            version: "v".repeat(crate::sync::MAX_VERSION_LEN),
+            about: crate::sync::About {
+                client: "c".repeat(crate::sync::MAX_CLIENT_LEN),
+                device: "d".repeat(crate::sync::MAX_DEVICE_LEN),
+                users: u64::MAX,
+                personas: 3,
+            },
+            address: "a".repeat(MAX_INTRO_ADDRESS),
+            description: "w".repeat(MAX_INTRO_DESCRIPTION),
+            rules: "r".repeat(MAX_INTRO_RULES),
+        };
+        for message in [
+            FragmentMessage::WantIntro,
+            FragmentMessage::Intro(full.clone()),
+            FragmentMessage::Intro(Intro::default()),
+            FragmentMessage::IntroListed { roots: vec![[9u8; 32]; MAX_INTRO_LISTED_PER_FRAME] },
+            FragmentMessage::IntroListed { roots: Vec::new() },
+        ] {
+            let bytes = message.encode();
+            assert!(bytes.len() <= MAX_FRAGMENT_FRAME_BYTES);
+            assert_eq!(FragmentMessage::decode(&bytes).unwrap(), message);
+        }
+        let over =
+            FragmentMessage::IntroListed { roots: vec![[9u8; 32]; MAX_INTRO_LISTED_PER_FRAME + 1] };
+        assert!(FragmentMessage::decode(&over.encode()).is_err());
+        let long = FragmentMessage::Intro(Intro {
+            description: "w".repeat(MAX_INTRO_DESCRIPTION + 1),
+            ..Intro::default()
+        });
+        assert!(FragmentMessage::decode(&long.encode()).is_err());
+        // A later version's extra slot is skipped, on the ask and on the answer.
+        let mut w = Writer::new();
+        w.array(11);
+        w.uint(TAG_INTRO);
+        for _ in 0..4 {
+            w.text("x");
+        }
+        w.uint(1);
+        w.uint(2);
+        for _ in 0..3 {
+            w.text("");
+        }
+        w.text("from the future");
+        let FragmentMessage::Intro(grown) = FragmentMessage::decode(&w.into_bytes()).unwrap()
+        else {
+            panic!("an introduction");
+        };
+        assert_eq!((grown.name.as_str(), grown.about.personas), ("x", 2));
+        let mut w = Writer::new();
+        w.array(2);
+        w.uint(TAG_WANT_INTRO);
+        w.uint(7);
+        assert_eq!(FragmentMessage::decode(&w.into_bytes()).unwrap(), FragmentMessage::WantIntro);
+    }
 
     /// The census pair (2026-09-29): round-trips, three days fit a frame, and anything past the
     /// day cap or not exactly a sketch's registers is refused.

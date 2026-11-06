@@ -172,6 +172,9 @@ export const appHref = (appId) =>
 export const accountHref = (id) => `${appHref('device')}/account/${id}`;
 export const groupsHref = () => `${appHref('people')}/groups`;
 export const groupHref = (group) => `${groupsHref()}/${group}`;
+
+/// A node's page (plans/NODE_PAGE.md): any server, by its endpoint id.
+export const nodeHref = (endpoint) => `${PREFIX}/node/${endpoint}`;
 /// A public group's open page (plans/PUBLIC_GROUPS.md): its address in People, the same as its
 /// members' page - anyone's, signed in or out, inside the People app's frame. `/ringtome/groups/`
 /// sends here.

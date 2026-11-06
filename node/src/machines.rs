@@ -558,7 +558,7 @@ pub async fn set_node_name(db: &Db, name: Option<&str>) -> Result<Option<String>
 /// One of the viewer's own ties to a machine (ruling 3): their own computer, a machine serving
 /// someone they follow, one holding them in the crowd, or one their group was heard at.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct Link {
+pub(crate) struct Link {
     kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<String>,
@@ -615,13 +615,54 @@ async fn links(
 
 /// A machine's speakable words, from its endpoint key: how the page names one that has never
 /// said its name.
-fn words_of(endpoint: &str) -> Option<String> {
+pub(crate) fn words_of(endpoint: &str) -> Option<String> {
     let key = endpoint.parse::<iroh::PublicKey>().ok()?;
     let full = crate::speakable::speakable(key.as_bytes());
     // The two words and the key's first four characters: enough to tell machines apart.
     let mut parts = full.splitn(3, '-');
     let (a, b, key) = (parts.next()?, parts.next()?, parts.next()?);
     Some(format!("{a}-{b}-{}", key.chars().take(4).collect::<String>()))
+}
+
+/// One machine as the Network page and the node page show it.
+fn row_json(m: &Machine, now: i64, links: Vec<Link>) -> serde_json::Value {
+    let dark_until = crate::net::p2p::dark_left(&m.endpoint)
+        .map(|left| now + i64::try_from(left.as_millis()).unwrap_or(i64::MAX / 2));
+    serde_json::json!({
+        "endpoint": m.endpoint,
+        "words": words_of(&m.endpoint),
+        "name": m.name,
+        "version": m.version,
+        "first_seen_ms": m.first_seen_ms,
+        "last_ok_ms": m.last_ok_ms,
+        "last_fail_ms": m.last_fail_ms,
+        "last_error": m.last_error,
+        "last_inbound_ms": m.last_inbound_ms,
+        "reliability": m.reliability(),
+        "tries": m.oks + m.fails,
+        "connect_ms": m.connect_ms.map(|c| c.round() as i64),
+        "lanes": m.lanes,
+        "client": m.client,
+        "device": m.device,
+        "users": m.users,
+        "personas": m.personas,
+        "dark_until_ms": dark_until,
+        "links": links,
+    })
+}
+
+/// One machine for the node page (plans/NODE_PAGE.md), with `root`'s own links to it: `null` for
+/// a machine this node has never met.
+pub(crate) async fn machine_view(
+    state: &crate::AppState,
+    root: &str,
+    endpoint: &str,
+) -> Result<serde_json::Value, crate::error::AppError> {
+    let Some(m) = machine(endpoint) else {
+        return Ok(serde_json::Value::Null);
+    };
+    let links = links(state, root).await?.remove(endpoint).unwrap_or_default();
+    Ok(row_json(&m, now_ms(), links))
 }
 
 /// GET `/api/identity/{root}/machines` - the Network page: this machine, every machine this node
@@ -639,29 +680,8 @@ pub async fn machines_handler(
         .into_iter()
         .filter(|m| m.endpoint != ours)
         .map(|m| {
-            let dark_until = crate::net::p2p::dark_left(&m.endpoint)
-                .map(|left| now + i64::try_from(left.as_millis()).unwrap_or(i64::MAX / 2));
-            serde_json::json!({
-                "endpoint": m.endpoint,
-                "words": words_of(&m.endpoint),
-                "name": m.name,
-                "version": m.version,
-                "first_seen_ms": m.first_seen_ms,
-                "last_ok_ms": m.last_ok_ms,
-                "last_fail_ms": m.last_fail_ms,
-                "last_error": m.last_error,
-                "last_inbound_ms": m.last_inbound_ms,
-                "reliability": m.reliability(),
-                "tries": m.oks + m.fails,
-                "connect_ms": m.connect_ms.map(|c| c.round() as i64),
-                "lanes": m.lanes,
-                "client": m.client,
-                "device": m.device,
-                "users": m.users,
-                "personas": m.personas,
-                "dark_until_ms": dark_until,
-                "links": mine.get(&m.endpoint).cloned().unwrap_or_default(),
-            })
+            let links = mine.get(&m.endpoint).cloned().unwrap_or_default();
+            row_json(&m, now, links)
         })
         .collect();
     let about = about_us(&state).await;

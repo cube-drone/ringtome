@@ -161,13 +161,6 @@
     opacity: 0.7;
 }
 
-.machine-icon {
-    flex: none;
-    font-size: 2.4rem;
-    line-height: 1;
-    color: var(--teal);
-}
-
 .machine-body {
     flex: 1;
     min-width: 0;
@@ -188,6 +181,12 @@
     color: var(--ink);
     font-weight: 600;
     overflow-wrap: anywhere;
+    text-decoration: none;
+}
+
+/* A machine's name opens its node page (plans/NODE_PAGE.md). */
+.machine-name:hover {
+    text-decoration: underline;
 }
 
 .machine-words {
@@ -252,4 +251,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+}
+
+/* What this machine says when another asks it to introduce itself (plans/NODE_PAGE.md). */
+.device-introduction {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 1rem;
 }

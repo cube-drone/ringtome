@@ -352,6 +352,27 @@
     font-size: 0.8rem;
 }
 
+/* The servers they live on (plans/NODE_PAGE.md), under when they were last active: each opens its
+   node page. */
+.person-card-where {
+    margin: 0.2rem 0 0;
+    color: var(--faint);
+    font-size: 0.8rem;
+}
+
+.person-card-where a {
+    color: var(--teal);
+    text-decoration: none;
+}
+
+.person-card-where a:hover {
+    text-decoration: underline;
+}
+
+.person-card-where-when {
+    white-space: nowrap;
+}
+
 .person-card-bio {
     white-space: pre-wrap;
     color: var(--ink-soft);

@@ -858,9 +858,12 @@
 }
 
 /* The /id lens page (idpage.js): the persona-page look with a few quiet extras. */
-/* A person's public page - their posts run on the post measure too (Curtis, 2026-09-04). */
+/* A person's public page - their posts run on the post measure too (Curtis, 2026-09-04). Their
+   banner starts at the top of the window, the frame's own padding above it and nothing more
+   (Curtis, 2026-11-05: the settings pages' drop left a gap over the hero). */
 .persona-page.id-page {
     max-width: var(--post-measure);
+    margin-top: 0;
 }
 
 .id-page .id-words {

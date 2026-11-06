@@ -113,6 +113,9 @@ fn beat_pass<'a>(
             Box::pin(async move { crate::keyprefetch::prefetch_pass(state.clone()).await })
         }
         ("census", _) => Box::pin(async move { crate::census::pass_now(state.clone()).await }),
+        ("introductions", _) => {
+            Box::pin(async move { crate::intro::pass_now(state.clone()).await })
+        }
         // The group-sync beat (roster.rs `sync_pass`): every group held here, synced and refolded.
         ("group-sync", _) => Box::pin(async move { crate::roster::sync_pass(state.clone()).await }),
         ("room-sync", Some(r)) => Box::pin(async move {
@@ -370,6 +373,22 @@ pub struct MarkRequest {
 /// next's began. LOCAL_TEST only, like every door in this module.
 pub async fn mark(Json(req): Json<MarkRequest>) -> Json<serde_json::Value> {
     tracing::info!(note = %req.note, "TEST MARK");
+    Json(serde_json::json!({ "ok": true }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct IntroAddressRequest {
+    /// The address this node's introduction gives; absent goes back to its real one (none, in
+    /// the rig).
+    #[serde(default)]
+    address: Option<String>,
+}
+
+/// Give this node a public address for its introduction (plans/NODE_PAGE.md): a rig node has
+/// none, and the asker's check against `<address>/api/node/id` is what needs proving - the
+/// node's own address checks out, another node's doesn't. LOCAL_TEST only.
+pub async fn intro_address(Json(req): Json<IntroAddressRequest>) -> Json<serde_json::Value> {
+    crate::intro::set_test_address(req.address.filter(|a| !a.trim().is_empty()));
     Json(serde_json::json!({ "ok": true }))
 }
 

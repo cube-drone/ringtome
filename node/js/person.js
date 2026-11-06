@@ -33,6 +33,7 @@ import { identityAddress, viaHints } from './pure/portable.js';
 import { personaHue, displayNames, signalLevel } from './pure/person.js';
 import { identiconUri } from './pure/identicon.js';
 import { daysSince } from './pure/heartbeat.js';
+import { agoUnit, agoWords } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import { sizeLabel } from './pure/backups.js';
@@ -46,6 +47,7 @@ import {
     TAG_MAX,
 } from './pure/contacttags.js';
 import {
+    nodeHref,
     personHref,
     personLink,
     publicGroupHref,
@@ -58,6 +60,7 @@ import { OpenInApp, QrBadge } from './qr.js';
 import { useUnlocked } from './unlocks.js';
 import { ModerationControls, useModeration } from './moderation.js';
 import { BlockModal } from './blockmodal.js';
+import { NodeMark } from './nodemark.js';
 import { blockState } from './pure/moderation.js';
 
 const html = htm.bind(h);
@@ -602,8 +605,57 @@ export const PersonCard = ({
             ${person.bio && html`<p class="person-card-bio">${person.bio}</p>`}
             <${PublicGroups} root=${root} />
             <${ActiveLine} date=${person.lastActive} />
+            ${current && current.root && html`<${WhereLine} viewer=${current.root} root=${root} />`}
         </div>
     `;
+};
+
+/// How long ago, in the reader's words: "2 hours ago", "yesterday", "just now".
+const agoOf = (ms, now) => {
+    const unit = agoUnit(ms, now);
+    return unit ? agoWords(unit.value, unit.unit) : t('person.just-now', 'just now');
+};
+
+/// The servers a person lives on, as their own serving records name them (plans/NODE_PAGE.md;
+/// Curtis, 2026-11-05), each opening its node page, with when this node last synced with it -
+/// never "active there", which is the heartbeat's to say. Their own computers are a count, unless
+/// they're yours.
+const WhereLine = ({ viewer, root }) => {
+    const [where, setWhere] = useState(null);
+    useEffect(() => {
+        let live = true;
+        api(`/api/identity/${viewer}/where/${root}`)
+            .then((w) => live && setWhere(w))
+            .catch(() => live && setWhere(null));
+        return () => {
+            live = false;
+        };
+    }, [viewer, root]);
+    if (!where) return null;
+    const now = Date.now();
+    const machine = (m) =>
+        html`<a key=${m.endpoint} href=${nodeHref(m.endpoint)} title=${m.endpoint}><${NodeMark} endpoint=${m.endpoint} />${m.name}</a>${
+            m.synced_ms
+                ? html` <span class="person-card-where-when">(${t('person.synced-when', 'synced {when}', { when: agoOf(m.synced_ms, now) })})</span>`
+                : ''
+        }`;
+    const named = [...where.servers, ...where.computers];
+    const unnamed = where.computers_count - where.computers.length;
+    if (!named.length && !unnamed) return null;
+    return html`<p class="person-card-where">
+        ${named.length > 0 && html`${t('person.lives-on', 'on')} `}
+        ${named.map((m, i) => html`${i > 0 ? ', ' : ''}${machine(m)}`)}
+        ${
+            unnamed > 0 &&
+            html`${named.length > 0 ? ' ' : ''}${
+                named.length > 0
+                    ? t('person.and-own-computers', 'and {n} of their own computers', {
+                          n: unnamed,
+                      })
+                    : t('person.on-own-computers', 'on {n} of their own computers', { n: unnamed })
+            }`
+        }
+    </p>`;
 };
 
 /// The public groups they're in, as this node knows (plans/PUBLIC_GROUPS.md, ruling 4: a public

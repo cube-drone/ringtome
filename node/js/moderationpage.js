@@ -7,7 +7,8 @@ import { useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { t } from './i18n.js';
-import { personHref } from './links.js';
+import { nodeHref, personHref } from './links.js';
+import { NodeMark } from './nodemark.js';
 import { PersonInline } from './person.js';
 import {
     levelWord,
@@ -33,7 +34,11 @@ const Target = ({ kind, target, current }) =>
         ? html`<${Who} root=${target} current=${current} />`
         : html`<span class="moderation-who">
               ${kind === 'picture' ? t('moderation.a-picture', 'a picture') : t('moderation.a-node', 'a server')}
-              <code class="report-node" title=${target}>${target.slice(0, 12)}…</code>
+              ${
+                  kind === 'picture'
+                      ? html`<code class="report-node" title=${target}>${target.slice(0, 12)}…</code>`
+                      : html`<a class="report-node" href=${nodeHref(target)} title=${target}><${NodeMark} endpoint=${target} /><code>${target.slice(0, 12)}…</code></a>`
+              }
           </span>`;
 
 /// Put a picture on your public list by its address, as anyone copies it.
