@@ -127,6 +127,12 @@ pub mod uploadlink;
 pub mod webpath;
 pub mod webpush;
 
+/// The architecture cop (tests/conventions.rs, kept outside `src/` so it doesn't read itself),
+/// built into these unit tests: see Cargo.toml's `autotests`.
+#[cfg(test)]
+#[path = "../tests/conventions.rs"]
+mod conventions;
+
 use config::{Config, PublicConfig};
 use error::AppError;
 

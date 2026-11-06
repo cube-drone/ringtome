@@ -987,9 +987,10 @@ release-dry part="minor":
 
 # --- everything ------------------------------------------------------------
 
-# Full local check: UI bundles + UI pure tests, then cargo check, clippy, Rust unit tests, and
-# the integration suite. `ui-check` runs FIRST because the Rust build embeds its output.
+# Full local check: UI bundles + UI pure tests, then clippy, Rust unit tests, and the
+# integration suite. No separate `cargo check`: clippy over all targets does all of its work
+# (2026-11-05, development speed: a minute of every CI run). `ui-check` runs FIRST because the Rust build embeds its output.
 # `strings-check` sits after it: a broken build is more urgent than an un-catalogued sentence.
 #
-# The whole gate: UI, strings, cargo check, clippy, Rust tests, integration. What CI runs.
-ci: ui-check strings-check check lint test-unit integration
+# The whole gate: UI, strings, clippy, Rust tests, integration. What CI runs.
+ci: ui-check strings-check lint test-unit integration

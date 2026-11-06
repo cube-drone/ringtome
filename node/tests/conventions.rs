@@ -565,7 +565,7 @@ fn the_client_and_the_node_keep_as_many_tags_a_person() {
         .nth(1)
         .and_then(|v| v.trim().trim_end_matches(';').parse().ok())
         .expect("MAX_TAGS_PER_LABELLER is a plain number");
-    assert_eq!(said, ringtome_node::annotations::MAX_TAGS_PER_LABELLER);
+    assert_eq!(said, crate::annotations::MAX_TAGS_PER_LABELLER);
 }
 
 /// The score's lexicon, spelled twice (2026-09-27): the picker's positive and negative rows colour a
@@ -602,14 +602,10 @@ fn the_picker_and_the_score_lean_the_same_way() {
     let rust = |list: &[&str]| list.iter().map(|g| g.to_string()).collect::<Vec<_>>();
     assert_eq!(
         row("good"),
-        rust(&ringtome_node::score::POSITIVE),
+        rust(&crate::score::POSITIVE),
         "the positive row and score.rs POSITIVE"
     );
-    assert_eq!(
-        row("bad"),
-        rust(&ringtome_node::score::NEGATIVE),
-        "the negative row and score.rs NEGATIVE"
-    );
+    assert_eq!(row("bad"), rust(&crate::score::NEGATIVE), "the negative row and score.rs NEGATIVE");
 }
 
 /// The binary stays thin (DESKTOP.md, Stage 1). There is one node, assembled in one place: the

@@ -4,6 +4,11 @@ version = "0.6.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+# The architecture cop, tests/conventions.rs, is compiled into the library's own unit tests
+# (lib.rs) rather than as a test binary of its own (2026-11-05, development speed): a test binary
+# links a second, ordinary build of this whole library beside the test build, and on CI the two
+# compiled side by side were the ~7.5 GB each behind the runner's extra swap.
+autotests = false
 
 # The node is a LIBRARY with a thin binary over it (DESKTOP.md, Stage 1): the desktop shell
 # links this crate and runs the node in its own process, and `tests/*.rs` can only `use` a
@@ -11,10 +16,16 @@ license.workspace = true
 [lib]
 name = "ringtome_node"
 path = "src/lib.rs"
+# No doctests: they too link an ordinary build of the library, for the one example there was,
+# which was ignored.
+doctest = false
 
 [[bin]]
 name = "ringtome"
 path = "src/main.rs"
+# The binary is a call into the library and holds no tests; testing it built and linked a 300 MB
+# binary to run none.
+test = false
 
 [dependencies]
 # The Marquee reference parser (our own, ~/code/marqueemarkup): publication's media pre-pass

@@ -26851,3 +26851,31 @@ brings nothing, still says Image.
 Proved by: a unit test of `report_kind`, `just strings-check`, `just ui-check`
 (1111), and screenshots of test data's queue on a scratch node, wide and at
 420px.
+
+## Two quick wins for build time (2026-11-05)
+
+Curtis: development "feels like it's getting slower and slower". From the last
+full CI run: `cargo check` 1m, clippy 1m05s, compiling `cargo test` 7m39s,
+`cargo build` for the integration suite 4m05s, the integration suite 12m.
+
+- **`cargo test` compiles the node once, not twice.** Besides the unit-test
+  build, it built an ordinary copy of the whole library for three things: the
+  binary's own test target (no tests in it, a 300 MB link), the conventions test
+  binary (which used two constants from the library), and doctests (one, and it
+  was ignored). The binary is `test = false`, the library `doctest = false`, and
+  `tests/conventions.rs` is compiled into the library's unit tests through a
+  `#[path]` module in lib.rs, with `autotests = false`. It stays outside `src/`,
+  where it would grep itself. On CI those two compiles ran side by side at ~7.5
+  GB each, behind the extra swap step.
+- **`just ci` drops `cargo check`**: clippy over all targets does all of its
+  work. The `check` recipe stays for running by hand.
+
+Measured on Curtis's Mac, after touching one file: `cargo test --no-run` 1m54s
+before, 1m11s after (2.7 GB peak). CI's number comes with the next push.
+
+Not done, on the list: no debug info for dependencies (the binary is 307 MB, and
+linking it alone takes 12s here), a faster linker on CI's aarch64 runner, and
+the integration suite's slowest claims (the top 30 are 3.6 of its 12 minutes).
+
+Proved by: `cargo test` (743 in the node, the 15 conventions tests among them),
+`cargo clippy --all-targets -- -D warnings`.
