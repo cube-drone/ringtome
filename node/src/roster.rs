@@ -5938,11 +5938,14 @@ fn cursor_of(q: &crate::idface::PostsQuery) -> Result<Option<(i64, [u8; 16])>, A
 /// anyone: its public posts as full cards, newest first, a page at a time, narrowed by the words
 /// and the picks as a persona's shelf is.
 async fn public_feed_handler(
+    session: Option<Session>,
     State(state): State<AppState>,
     Path(group): Path<String>,
-    axum::extract::Query(q): axum::extract::Query<crate::idface::PostsQuery>,
+    axum::extract::Query(mut q): axum::extract::Query<crate::idface::PostsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Answer {
+    // The viewer is a persona the session owns, or nobody (`idface::said_viewer`).
+    q.as_root = crate::idface::said_viewer(&state, &session, q.as_root.take()).await;
     let group = group_of(&group)?;
     let claims = public_claims(&state, &group).await?;
     let after = cursor_of(&q)?;
@@ -5996,11 +5999,14 @@ async fn public_feed_handler(
 
 /// GET `/api/groups/{group}/labels` - its feed's facets, as a persona's page counts theirs.
 async fn public_labels_handler(
+    session: Option<Session>,
     State(state): State<AppState>,
     Path(group): Path<String>,
-    axum::extract::Query(q): axum::extract::Query<crate::idface::PostsQuery>,
+    axum::extract::Query(mut q): axum::extract::Query<crate::idface::PostsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Answer {
+    // The viewer is a persona the session owns, or nobody (`idface::said_viewer`).
+    q.as_root = crate::idface::said_viewer(&state, &session, q.as_root.take()).await;
     let group = group_of(&group)?;
     let claims = public_claims(&state, &group).await?;
     Ok(Json(

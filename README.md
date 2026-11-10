@@ -172,6 +172,9 @@ lightly federated, unapologetically Old Internet.
   contact, one hop only, and every build starts out trusting @official. Reports
   go to the moderators you trust, kept off the chains, opted into on both sides,
   with signed evidence only. A design draft (2026-11-01); nothing built.
+- [`SEAL_AUDIT.md`](plans/SEAL_AUDIT.md) — the 2026-11-10 audit of what a third
+  party can learn about a sealed chat or post: what was fixed, and the open
+  list.
 - [`NETWORK.md`](plans/NETWORK.md) — the machine table: every machine this node
   talks to, by the name it announces, with how reliably it answers, kept across
   restarts and shared by every kind of sync; hrseServer™'s Network page, open to

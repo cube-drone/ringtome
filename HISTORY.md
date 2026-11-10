@@ -27176,3 +27176,37 @@ and the third at "not for dan". The chat, audience, sealed-post, key-prefetch,
 sibling-chat and room areas pass beside it (227), and the five files a loose
 filter had cut into pass whole (36). 748 unit tests and clippy pass.
 `test/door-probe` gained a "key" door for the third claim.
+
+## The seal audit, and its first two fixes (2026-11-10)
+
+Curtis asked for an audit of any way a chat's key could reach a third party. No
+further way to the key was found beyond the key door closed above. The audit did
+find a way to sealed posts' words, several ways to learn who is in a chat, and
+weaknesses around the key. The whole list, fixed and open, is
+`plans/SEAL_AUDIT.md`. Two were fixed here.
+
+**`?as=` was taken on its word.** The public shelf's doors
+(`/api/id/{root}/posts`, `/posts/{doc}`, `/labels`, `/profile`, and a public
+group's feed) take the viewing persona as a query parameter and never checked it
+against the session. On a scratch node an anonymous `?as=<author>` listed the
+author's private chat and named its other half, and `&q=zebra` matched a sealed
+post's words where `&q=walrus` didn't. A second branch of `hide_sealed` showed
+any signed-in session with no `as` a hosted author's sealed rows unhidden,
+search included. `idface::said_viewer` now keeps a named viewer only when the
+session owns it. A persona named and not owned is nobody, whom no seal admits.
+With no `as` at all, a session sees its own account's sealed rows and no sealed
+labels, as before; no other session does.
+
+**A chat for two with no audience on record admits nobody but its author.** The
+memo's key, audience and members are three writes. Between the first and second,
+or for good if one failed, the author's node judged the chat by the trust list.
+`seal_admits` and `answer_key` now refuse a chat for two there.
+
+Proved by: `shelf_viewer.cjs`, four claims (the author's own view; a stranger
+naming the author; another account naming the author or nobody; a chat with its
+audience memo emptied refusing a trusted third person). The last fails with the
+hardening removed: the trusted third person is let in. The first version of the
+`as` rule made an owner with no `as` view as themself, which `sealedlabels.cjs`
+caught, and a second treated a named-but-unowned viewer as absent, which
+`audience.cjs` caught; both are as they were. The full acceptance suite passes
+(2103), with 748 unit tests and clippy.

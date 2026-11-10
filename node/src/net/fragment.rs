@@ -233,6 +233,9 @@ async fn answer_key(
         {
             Some(tag) => allowed_roots
                 .extend(crate::idface::audience_members(state, &author_hex, &doc_hex, &tag).await),
+            // A chat for two with no audience on record is nobody's but its author's
+            // (`idface::seal_admits`): the trust list never stands in for the one it names.
+            None if crate::idface::im_by_hex(state, &author_hex, &doc_hex).await => {}
             None => {
                 if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
                     if let Ok(edges) = crate::record::imaol::published_edges(&db).await {

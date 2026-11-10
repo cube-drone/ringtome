@@ -2704,12 +2704,8 @@ pub(crate) async fn seal_admits(
         // 2026-10-01: a third person he trusted, on their own node, saw his chat with someone
         // else listed and could open it). Away from the author's node, only the grant the lane
         // gives the one it names admits anybody; the signed header says what kind of room it is.
-        if let Some(doc) =
-            hex::decode(key_doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok())
-        {
-            if crate::chat::is_im(state, holder_hex, &doc).await {
-                return false;
-            }
+        if im_by_hex(state, holder_hex, key_doc_hex).await {
+            return false;
         }
         return match state.user_dbs.get(holder_hex).await {
             Ok(Some(db)) => crate::record::imaol::published_edges(&db)
@@ -2723,6 +2719,11 @@ pub(crate) async fn seal_admits(
         Some(tag) => {
             audience_members(state, holder_hex, key_doc_hex, &tag).await.contains(subject_hex)
         }
+        // A chat for two with no audience on record admits nobody but its author (audit,
+        // 2026-11-10): the memo's key, audience and members are three writes, and between the
+        // first and the second - or for good, if one fails - the trust list would stand in for
+        // the one person it was sealed to.
+        None if im_by_hex(state, holder_hex, key_doc_hex).await => false,
         None => match state.user_dbs.get(holder_hex).await {
             Ok(Some(db)) => crate::record::imaol::published_edges(&db)
                 .await
@@ -2730,6 +2731,14 @@ pub(crate) async fn seal_admits(
                 .unwrap_or(false),
             _ => false,
         },
+    }
+}
+
+/// Is `(holder, key_doc)` a chat for two, by its signed header as this node holds it?
+pub(crate) async fn im_by_hex(state: &AppState, holder_hex: &str, key_doc_hex: &str) -> bool {
+    match hex::decode(key_doc_hex).ok().and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok()) {
+        Some(doc) => crate::chat::is_im(state, holder_hex, &doc).await,
+        None => false,
     }
 }
 
@@ -2907,6 +2916,42 @@ pub(crate) async fn audience_members(
     out
 }
 
+/// The viewing persona a request names with `?as=`, kept only when the session owns it (Curtis's
+/// audit, 2026-11-10). It was taken on its word: an anonymous `?as=<author>` was the author to the
+/// shelf - their sealed posts listed, a private chat's other half named by its opened labels, and
+/// the shelf's search matching the sealed words - and any signed-in session with no `as` at all
+/// was shown a hosted author's sealed rows unhidden. With no `as` there is no viewer; the shelf
+/// still shows a session its own account's sealed rows (`hide_sealed`), and no sealed labels.
+pub(crate) async fn said_viewer(
+    state: &AppState,
+    session: &Option<Session>,
+    said: Option<String>,
+) -> Option<String> {
+    let root = said?;
+    let mine: Vec<String> = match session {
+        Some(sess) => crate::identity::list_for_account(&state.node_db, &sess.account.id)
+            .await
+            .map(|ids| ids.into_iter().map(|i| i.root_pubkey).collect())
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+    // A persona named and not the session's is NOBODY - a viewer no seal admits - rather than no
+    // viewer at all: the shelf shows a session its own sealed rows only when it named no one
+    // (audience.cjs has the author ask as someone else, to see what they would).
+    Some(if mine.contains(&root) { root } else { NOBODY.to_string() })
+}
+
+/// The viewer a request named without owning: no persona's root, so no seal admits it.
+const NOBODY: &str = "";
+
+/// Does this session's account own `root_hex`?
+async fn session_owns(state: &AppState, session: &Option<Session>, root_hex: &str) -> bool {
+    let Some(sess) = session else { return false };
+    crate::identity::list_for_account(&state.node_db, &sess.account.id)
+        .await
+        .is_ok_and(|mine| mine.iter().any(|i| i.root_pubkey == root_hex))
+}
+
 /// The viewer's standing with a seal: the first of the session's personas the holder
 /// admits, by root - `for_listing` honours a remembered refusal (`seal_lists`), the body
 /// door does not.
@@ -2981,13 +3026,13 @@ async fn hide_sealed(
     viewer: Option<&str>,
     posts: &mut Vec<crate::record::documents::PublicDoc>,
 ) {
+    // `viewer` is a persona the session OWNS, or nobody (`said_viewer`).
     if !posts.iter().any(|p| p.trusted_only) || viewer == Some(author_hex) {
         return;
     }
-    if viewer.is_none()
-        && session.is_some()
-        && hosted_here(state, author_hex).await.unwrap_or(false)
-    {
+    // With no viewer said, a session sees its own account's sealed rows. Any session saw every
+    // hosted author's until the audit of 2026-11-10.
+    if viewer.is_none() && session_owns(state, session, author_hex).await {
         return;
     }
     let Ok(author) = hex_fixed_root(author_hex) else {
@@ -3075,7 +3120,7 @@ pub async fn id_labels(
     session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
-    axum::extract::Query(query): axum::extract::Query<PostsQuery>,
+    axum::extract::Query(mut query): axum::extract::Query<PostsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
@@ -3085,6 +3130,7 @@ pub async fn id_labels(
         )));
     };
     let root_hex = hex::encode(root);
+    query.as_root = said_viewer(&state, &session, query.as_root.take()).await;
     if !shelf_readable(&state, &session, &root_hex).await? {
         return Err(AppError::NotFound(crate::msg!(
             "idface.no-such-persona-here-5",
@@ -3305,7 +3351,7 @@ pub async fn id_posts(
     session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
-    axum::extract::Query(query): axum::extract::Query<PostsQuery>,
+    axum::extract::Query(mut query): axum::extract::Query<PostsQuery>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
@@ -3315,6 +3361,7 @@ pub async fn id_posts(
         )));
     };
     let root_hex = hex::encode(root);
+    query.as_root = said_viewer(&state, &session, query.as_root.take()).await;
     let missing =
         || AppError::NotFound(crate::msg!("idface.no-such-persona-here-3", "no such persona here"));
     if !shelf_readable(&state, &session, &root_hex).await? {
@@ -3885,7 +3932,7 @@ pub async fn id_post(
     session: Option<Session>,
     State(state): State<AppState>,
     Path((seg, doc)): Path<(String, String)>,
-    axum::extract::Query(query): axum::extract::Query<IdQuery>,
+    axum::extract::Query(mut query): axum::extract::Query<IdQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(AppError::NotFound(crate::msg!(
@@ -3894,6 +3941,7 @@ pub async fn id_post(
         )));
     };
     let root_hex = hex::encode(root);
+    query.as_root = said_viewer(&state, &session, query.as_root.take()).await;
     if !shelf_readable(&state, &session, &root_hex).await? {
         return Err(AppError::NotFound(crate::msg!(
             "idface.no-such-persona-here-9",
@@ -4338,7 +4386,7 @@ pub async fn id_profile(
     session: Option<Session>,
     State(state): State<AppState>,
     Path(seg): Path<String>,
-    axum::extract::Query(query): axum::extract::Query<IdQuery>,
+    axum::extract::Query(mut query): axum::extract::Query<IdQuery>,
 ) -> Result<Response, AppError> {
     let Some(Parsed::Ok(root)) = speakable::parse(&seg) else {
         return Err(AppError::NotFound(crate::msg!(
@@ -4347,6 +4395,7 @@ pub async fn id_profile(
         )));
     };
     let root_hex = hex::encode(root);
+    query.as_root = said_viewer(&state, &session, query.as_root.take()).await;
     let hosted = hosted_here(&state, &root_hex).await?;
 
     // Whether a refresh is running behind this response, so the caller knows to look again, and
