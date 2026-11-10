@@ -27,6 +27,40 @@ pub async fn remember(
     Ok(())
 }
 
+/// The memo written from the author's own draft, on a node hosting the author (`memo_post_key`,
+/// and a mint that has no draft): the key, marked this node's own word - what `own` asks. The
+/// audience and its members are written beside it by the same hand.
+pub async fn remember_own(
+    node_db: &Db,
+    author_root: &str,
+    doc_hex: &str,
+    key: &[u8; 32],
+) -> Result<()> {
+    node_db
+        .execute(
+            "INSERT INTO post_keys (author_root, doc_id, key, noted_ms, own) VALUES (?1, ?2, ?3, ?4, 1)
+             ON CONFLICT (author_root, doc_id) DO UPDATE SET key = excluded.key, own = 1",
+            (author_root, doc_hex, key.as_slice(), crate::clock::now_ms()),
+        )
+        .await
+        .context("remembering a post key from its draft")?;
+    Ok(())
+}
+
+/// Is this node's memo of the key its own word - written from the author's draft, audience and
+/// all - rather than a key the lane handed over (2026-11-10)? Only an own memo may judge who
+/// else reads the post: a key from the lane says nothing of the audience it was sealed to.
+pub async fn own(node_db: &Db, author_root: &str, doc_hex: &str) -> Result<bool> {
+    let row: Option<(i64,)> = node_db
+        .fetch_optional(
+            "SELECT own FROM post_keys WHERE author_root = ?1 AND doc_id = ?2",
+            (author_root, doc_hex),
+        )
+        .await
+        .context("reading whose word a post key is")?;
+    Ok(row.is_some_and(|(own,)| own != 0))
+}
+
 pub async fn lookup(node_db: &Db, author_root: &str, doc_hex: &str) -> Result<Option<[u8; 32]>> {
     let row: Option<(Vec<u8>,)> = node_db
         .fetch_optional(

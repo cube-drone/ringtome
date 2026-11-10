@@ -4075,7 +4075,8 @@ pub(crate) async fn memo_post_key(
             hex::decode(&k).ok().and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok())
         {
             if let Err(e) =
-                crate::postkeys::remember(&state.node_db, &root, &hex::encode(post_id), &key).await
+                crate::postkeys::remember_own(&state.node_db, &root, &hex::encode(post_id), &key)
+                    .await
             {
                 tracing::warn!(error = ?e, "post key memo write failed");
             }
@@ -4131,7 +4132,7 @@ pub(crate) async fn memo_post_key(
                 if let ringtome_proto::Payload::Inline(payload) = &entry.entry().payload {
                     if let Ok(h) = ringtome_proto::registry::DocHeaderPlain::decode(payload) {
                         for r in &h.refs {
-                            if let Err(e) = crate::postkeys::remember(
+                            if let Err(e) = crate::postkeys::remember_own(
                                 &state.node_db,
                                 &root,
                                 &hex::encode(r),
@@ -4284,10 +4285,11 @@ pub(crate) async fn memo_own_keys(
         else {
             continue;
         };
-        if crate::postkeys::lookup(&state.node_db, root, &hex::encode(post))
+        // Its own memo, not a key the lane handed this node while the draft was on its way
+        // (2026-11-10): that one says nothing of the audience, and the draft's word replaces it.
+        if crate::postkeys::own(&state.node_db, root, &hex::encode(post))
             .await
             .map_err(AppError::Internal)?
-            .is_some()
             && !members_unsaid(state, data, root, &draft, &post).await
         {
             continue;

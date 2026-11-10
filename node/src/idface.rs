@@ -2689,7 +2689,10 @@ pub(crate) async fn seal_admits(
     // Away from the holder's node (2026-09-14) the audience is unknown, and the word is
     // the holder's own: a grant the lane gave this persona says yes; nothing yet falls back
     // to published trust, and the door's fetch for the persona settles it either way.
-    if !hosted_here(state, holder_hex).await.unwrap_or(false) {
+    // A node HOSTING the holder that has no memo of its own for this post stands in the same
+    // place (2026-11-10): the post was sealed on the persona's other computer and its draft has
+    // not come over, so this node knows the audience no better than a stranger's does.
+    if !judges(state, holder_hex, key_doc_hex).await {
         if crate::postkeys::granted(&state.node_db, holder_hex, key_doc_hex, subject_hex)
             .await
             .unwrap_or(false)
@@ -2728,6 +2731,30 @@ pub(crate) async fn seal_admits(
             _ => false,
         },
     }
+}
+
+/// May this node judge who reads `(holder, key_doc)` (2026-11-10)? Only with the holder hosted
+/// here AND the memo its own word (`postkeys::own`): written from the holder's draft, with the
+/// audience it was sealed to. A post sealed to the people it mentions whose memo names nobody yet
+/// (the draft's text still on its way, `memo_own_keys`) is not judged either. Curtis, 2026-11-10:
+/// a chat for two between two personas on one server, opened on the author's other computer, was
+/// "sealed" to its other half there - the server judged by a memo it didn't have, and never asked
+/// the computer that did.
+pub(crate) async fn judges(state: &AppState, holder_hex: &str, key_doc_hex: &str) -> bool {
+    if !hosted_here(state, holder_hex).await.unwrap_or(false)
+        || !crate::postkeys::own(&state.node_db, holder_hex, key_doc_hex).await.unwrap_or(false)
+    {
+        return false;
+    }
+    let mentioned = crate::postkeys::audience(&state.node_db, holder_hex, key_doc_hex)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|a| a == crate::postkeys::MENTIONED_AUDIENCE);
+    !mentioned
+        || crate::postkeys::members(&state.node_db, holder_hex, key_doc_hex)
+            .await
+            .is_ok_and(|m| !m.is_empty())
 }
 
 /// The LISTING's question: `seal_admits`, minus what the holder's node has refused. Away
@@ -2774,10 +2801,16 @@ pub(crate) async fn key_for(
     let key_doc_hex = hex::encode(key_doc);
     let held =
         crate::postkeys::lookup(&state.node_db, holder_hex, &key_doc_hex).await.ok().flatten();
+    let hosted = hosted_here(state, holder_hex).await.unwrap_or(false);
     if viewer_hex == holder_hex {
-        return held;
+        // The holder's own key, sealed on their other computer and not here yet (2026-11-10):
+        // the draft that carries it is on its way, and the computer that has it can be asked.
+        if held.is_some() || !hosted {
+            return held;
+        }
+        return ask_siblings(state, holder_hex, key_doc, viewer_hex, via).await;
     }
-    if hosted_here(state, holder_hex).await.unwrap_or(false) {
+    if judges(state, holder_hex, &key_doc_hex).await {
         return match seal_admits(state, holder_hex, &key_doc_hex, viewer_hex, via).await {
             true => held,
             false => None,
@@ -2790,9 +2823,53 @@ pub(crate) async fn key_for(
     {
         return held;
     }
+    if hosted {
+        return ask_siblings(state, holder_hex, key_doc, viewer_hex, via).await;
+    }
     let holder = hex::decode(holder_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
     let viewer = hex::decode(viewer_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
     crate::net::fragment::fetch_key(state, &holder, key_doc, &viewer, via).await
+}
+
+/// How long an ask of the holder's other computers rests after nobody gave the key.
+const SIBLING_ASK_REST: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// On a node hosting the holder with no memo of its own for the post: ask the holder's other
+/// computers for the key, for `viewer` - the lane's ordinary question, which the computer that
+/// sealed the post answers by the audience it holds. The answer is a grant like any other. A
+/// "no" is not remembered as a refusal: a sibling that has no memo either says the same "no",
+/// and the chats list must not hide a chat on its word. Rested for a minute once unanswered, since
+/// lists ask this of every room they show.
+async fn ask_siblings(
+    state: &AppState,
+    holder_hex: &str,
+    key_doc: &[u8; 16],
+    viewer_hex: &str,
+    via: Option<&str>,
+) -> Option<[u8; 32]> {
+    type Slot = (String, [u8; 16], String);
+    static TRIED: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<Slot, std::time::Instant>>,
+    > = std::sync::LazyLock::new(Default::default);
+    let slot = (holder_hex.to_string(), *key_doc, viewer_hex.to_string());
+    if let Ok(mut tried) = TRIED.lock() {
+        if tried.get(&slot).is_some_and(|at| at.elapsed() < SIBLING_ASK_REST) {
+            return None;
+        }
+        if tried.len() > 10_000 {
+            tried.clear();
+        }
+        tried.insert(slot.clone(), std::time::Instant::now());
+    }
+    let holder = hex::decode(holder_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
+    let viewer = hex::decode(viewer_hex).ok().and_then(|b| <[u8; 32]>::try_from(b).ok())?;
+    let key = crate::net::fragment::fetch_key(state, &holder, key_doc, &viewer, via).await;
+    if key.is_some() {
+        if let Ok(mut tried) = TRIED.lock() {
+            tried.remove(&slot);
+        }
+    }
+    key
 }
 
 /// Everyone the holder has put `tag` on, from the holder's private contact bag - readable

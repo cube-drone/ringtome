@@ -217,27 +217,41 @@ async fn answer_key(
     // Who may ask: the seal's audience when it has one (PROJECT_PLAN's Contact tags, ruling
     // 4 - "family", judged from the author's private contact bag, here and only here), else
     // everyone the author publishes trust for.
-    let mut allowed_roots = vec![author_hex.clone()];
-    match crate::postkeys::audience(&state.node_db, &author_hex, &doc_hex).await.ok().flatten() {
-        Some(tag) => allowed_roots
-            .extend(crate::idface::audience_members(state, &author_hex, &doc_hex, &tag).await),
-        None => {
-            if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
-                if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
-                    allowed_roots.extend(
-                        edges
-                            .into_iter()
-                            .filter(|(_, r)| r.edge.trust.is_some())
-                            .map(|(subject, _)| subject),
-                    );
+    // Only a node that may JUDGE the post does (2026-11-10, `idface::judges`): the author hosted
+    // here, and the memo written from their draft with its audience. Any other holder of the key -
+    // a reader's node the lane gave it to, or the author's other computer still waiting on the
+    // draft - knows nothing of the audience, and used to answer by the author's published trust:
+    // a chat for two's key went to anyone the author trusted who asked the other half's node.
+    // Such a node gives the key to the author's own computers, and to the persona it was GRANTED
+    // to, asking from another of that persona's computers - a persona's keys are its own on every
+    // computer it lives on. Nobody else.
+    let for_hex = hex::encode(for_root);
+    let mut admitted = for_hex == author_hex;
+    if !admitted && crate::idface::judges(state, &author_hex, &doc_hex).await {
+        let mut allowed_roots: Vec<String> = Vec::new();
+        match crate::postkeys::audience(&state.node_db, &author_hex, &doc_hex).await.ok().flatten()
+        {
+            Some(tag) => allowed_roots
+                .extend(crate::idface::audience_members(state, &author_hex, &doc_hex, &tag).await),
+            None => {
+                if let Ok(Some(db)) = state.user_dbs.get(&author_hex).await {
+                    if let Ok(edges) = crate::record::imaol::published_edges(&db).await {
+                        allowed_roots.extend(
+                            edges
+                                .into_iter()
+                                .filter(|(_, r)| r.edge.trust.is_some())
+                                .map(|(subject, _)| subject),
+                        );
+                    }
                 }
             }
         }
+        admitted = allowed_roots.contains(&for_hex);
+    } else if !admitted {
+        admitted = crate::postkeys::granted(&state.node_db, &author_hex, &doc_hex, &for_hex)
+            .await
+            .unwrap_or(false);
     }
-    // The persona asking must be admitted, AND the dialing endpoint must serve that
-    // persona (2026-09-14): a node hosts many, and the seal admits people, not machines.
-    let for_hex = hex::encode(for_root);
-    let mut admitted = allowed_roots.contains(&for_hex);
     // The onward hop (Contact tags, ruling 7): a persona hosted HERE holds the key, passed
     // the post along, and publishes trust for the asker - this is the sharer's node, and
     // the author asked that the sharer's trust open the seal one hop further.
@@ -265,6 +279,8 @@ async fn answer_key(
         tracing::debug!(author = %author_hex, %dialer, asking = %for_hex, "key release refused: the persona asking is not admitted");
         return refused;
     }
+    // The persona asking is admitted; the dialing endpoint must also serve that persona
+    // (2026-09-14): a node hosts many, and the seal admits people, not machines.
     let allowed_roots = vec![for_hex];
     let mut ok = crate::net::sync::endpoint_serves_any(&state.node_db, &allowed_roots, &dialer)
         .await
@@ -532,7 +548,7 @@ pub async fn fetch_room_history(
 }
 
 /// Ask one endpoint for a post key.
-async fn ask_key(
+pub(crate) async fn ask_key(
     state: &AppState,
     endpoint_id: &str,
     author: &[u8; 32],
@@ -651,6 +667,34 @@ async fn fetch_key_from_anyone(
             endpoints.push(ep);
         }
     }
+    // Then the reader's OWN other computers (2026-11-10): a key one of them was given is the
+    // persona's to use on all of them, and the author's nodes may be dark. They answer only on a
+    // grant to this persona (`answer_key`), and their "no" means "I haven't it either", so it is
+    // never counted a refusal.
+    let authors_end = endpoints.len();
+    if for_hex != author_hex {
+        for leaf in crate::idface::stored_tree_leaves(state, &for_hex).await {
+            let ep = crate::idface::leaf_via_to_endpoint(state, &for_hex, &leaf).await;
+            if ep != leaf && !endpoints.contains(&ep) {
+                endpoints.push(ep);
+            }
+        }
+        for ep in crate::net::sync::peers_for(&state.node_db, &for_hex).await.unwrap_or_default() {
+            if !endpoints.contains(&ep) {
+                endpoints.push(ep);
+            }
+        }
+    }
+    // Never this node itself: hosting the author or the reader puts it on both lists.
+    let ours = state.endpoint.id().to_string();
+    let asked: Vec<(String, bool)> = endpoints
+        .into_iter()
+        .enumerate()
+        .filter(|(_, ep)| *ep != ours)
+        .map(|(i, ep)| (ep, i < authors_end))
+        .collect();
+    let judged_here: std::collections::HashMap<String, bool> = asked.iter().cloned().collect();
+    let endpoints: Vec<String> = asked.into_iter().map(|(ep, _)| ep).collect();
     tracing::trace!(author = %author_hex, candidates = ?endpoints, "key lane candidate list");
     // Raced, staggered (net::race, 2026-10-30): a silent endpoint used to cost the next its whole
     // FETCH_TIMEOUT, one after another. A key is one round trip, so the asks race whole; a "no"
@@ -660,6 +704,7 @@ async fn fetch_key_from_anyone(
     let won = crate::net::race::first(endpoints, crate::net::race::STAGGER, |endpoint_id| {
         let refused = refused.clone();
         let state = state.clone();
+        let authors = judged_here.get(&endpoint_id).copied().unwrap_or(false);
         async move {
             match tokio::time::timeout(
                 FETCH_TIMEOUT,
@@ -669,7 +714,9 @@ async fn fetch_key_from_anyone(
             {
                 Ok(Ok(Some(key))) => Some(key),
                 Ok(Ok(None)) => {
-                    refused.store(true, std::sync::atomic::Ordering::Relaxed);
+                    if authors {
+                        refused.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
                     None
                 }
                 Ok(Err(e)) => {
@@ -701,7 +748,11 @@ async fn fetch_key_from_anyone(
     // Every endpoint that answered said no (Contact tags, ruling 4): the author's node holds
     // the key and would not give it to this one - remember that, so the feed and the shelf
     // stop showing a card the door would refuse. A transport failure remembers nothing.
-    if refused_by_someone {
+    // Not on a node hosting the author (2026-11-10): it asked the author's other computers
+    // because it has no memo of its own, and one of them with none either says the same "no".
+    if refused_by_someone
+        && !crate::identity::is_hosted(&state.node_db, &author_hex).await.unwrap_or(false)
+    {
         let _ =
             crate::postkeys::refuse(&state.node_db, &author_hex, &hex::encode(doc_id), &for_hex)
                 .await;

@@ -27130,3 +27130,49 @@ and pictures tabs on a scratch node.
 The button that takes an entry off, here and on a server's page, now says what
 it undoes: "unblock" on a block, "unwarn" on a warning (moderation.js
 `unlistWord`).
+
+## A sealing key among a persona's own computers (2026-11-10)
+
+Curtis, as @official, had a chat with @cube_drone - both on one server - that
+said "this room is sealed". @cube_drone lives on several computers and the chat
+was opened on another of them.
+
+A key's memo (`post_keys`, with the audience and its members) is written where a
+post is sealed. The author's other computers write their own from the draft when
+it comes over (`memo_own_keys`). Until it does, a node hosting the author knows
+the audience no better than a stranger's node, but it judged anyway, by a memo
+it didn't have, and never asked the computer that did. Three changes:
+
+- **Whose word a memo is.** Rung 0120 adds `post_keys.own`: 1 for a memo written
+  from the author's draft (`postkeys::remember_own`), 0 for a key the lane
+  handed over. `idface::judges` is the one question: the author hosted here, the
+  memo its own, and - for a post sealed to the people it mentions - its members
+  said. `seal_admits` and `key_for` judge the audience only then.
+- **A node hosting the author with no memo of its own asks the author's other
+  computers** (`idface::ask_siblings`), for the reader, as any node would. The
+  answer is a grant. A "no" isn't remembered as a refusal, since a sibling with
+  no memo says the same "no"; an unanswered ask rests a minute. The author's own
+  key is asked for the same way.
+- **A persona's computers hand each other the keys it was given.** The key lane
+  (`fetch_key`) asks the reader's own other computers after the author's, and
+  never itself; their "no" isn't a refusal either.
+
+The key door (`answer_key`) had a hole this closes. Any node holding a key
+answered by the author's published trust when it had no audience on record, and
+a reader's node never has one: a chat for two's key went to a third person the
+author trusted who asked the other half's node. Now only a node that `judges`
+answers by the audience. Any other holder gives the key to the author's own
+computers and to the persona it was granted to, and nobody else.
+
+Not changed: two chats already opened for one pair stay two, and "open IM" on a
+computer the draft hasn't reached can still open a second.
+
+Proved by: `key_siblings.cjs`, three claims (the server asks the author's first
+computer for the reader, and refuses a trusted third person there; a second
+computer gets the key from the first with the author dark; a reader's node
+refuses a trusted third person and another server's persona). With the old
+judging switched back on all three fail, the first with "this room is sealed"
+and the third at "not for dan". The chat, audience, sealed-post, key-prefetch,
+sibling-chat and room areas pass beside it (227), and the five files a loose
+filter had cut into pass whole (36). 748 unit tests and clippy pass.
+`test/door-probe` gained a "key" door for the third claim.

@@ -746,8 +746,15 @@ pub struct DoorProbeRequest {
     pub root: String,
     /// The endpoint to ask, as `api/node` gives it.
     pub endpoint: String,
-    /// "sync" (one exchange: what arrived) or "shelf" (the fragment door's shelf question).
+    /// "sync" (one exchange: what arrived), "shelf" (the fragment door's shelf question), or
+    /// "key" (the key lane's question, for `doc` on behalf of `reader`: was a key given).
     pub door: String,
+    /// The sealed post whose key the "key" door asks for, hex.
+    #[serde(default)]
+    pub doc: Option<String>,
+    /// The persona the "key" door asks for, hex.
+    #[serde(default)]
+    pub reader: Option<String>,
 }
 
 /// Ask ONE named endpoint about a persona, at one door, and say what came back - a stranger's
@@ -777,6 +784,28 @@ pub async fn door_probe(
                     .await
                     .map_err(AppError::Internal)?;
             Ok(Json(serde_json::json!({ "posts": posts.len(), "pinned": pinned.len() })))
+        }
+        "key" => {
+            let doc: Option<[u8; 16]> = req
+                .doc
+                .as_deref()
+                .and_then(|d| hex::decode(d).ok())
+                .and_then(|b| b.try_into().ok());
+            let reader: Option<[u8; 32]> = req
+                .reader
+                .as_deref()
+                .and_then(|r| hex::decode(r).ok())
+                .and_then(|b| b.try_into().ok());
+            let (Some(doc), Some(reader)) = (doc, reader) else {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "test_endpoints.not-a-root",
+                    "not a root"
+                )));
+            };
+            let key = crate::net::fragment::ask_key(&state, &req.endpoint, &author, &doc, &reader)
+                .await
+                .map_err(AppError::Internal)?;
+            Ok(Json(serde_json::json!({ "given": key.is_some() })))
         }
         other => Err(AppError::BadRequest(crate::msg!(
             "test_endpoints.no-such-door",

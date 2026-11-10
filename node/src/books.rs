@@ -645,7 +645,7 @@ async fn rollout(
     .await?;
     if let Some(key) = book_key {
         if let Err(e) =
-            crate::postkeys::remember(&state.node_db, root, &hex::encode(minted), &key).await
+            crate::postkeys::remember_own(&state.node_db, root, &hex::encode(minted), &key).await
         {
             tracing::warn!(error = ?e, "book key memo write failed");
         }
@@ -727,7 +727,8 @@ async fn rollout(
         .await?;
         if let Some(key) = book_key {
             if let Err(e) =
-                crate::postkeys::remember(&state.node_db, root, &hex::encode(update), &key).await
+                crate::postkeys::remember_own(&state.node_db, root, &hex::encode(update), &key)
+                    .await
             {
                 tracing::warn!(error = ?e, "update key memo write failed");
             }
