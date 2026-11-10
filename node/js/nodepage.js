@@ -17,7 +17,14 @@ import { PersonInline } from './person.js';
 import { MachineRow, aboutLine } from './apps/device.js';
 import { NodeReportModal } from './report.js';
 import { NodeMark } from './nodemark.js';
-import { ReasonInput, levelWord, listTarget, unlistTarget, useModeration } from './moderation.js';
+import {
+    ReasonInput,
+    levelWord,
+    listTarget,
+    unlistTarget,
+    unlistWord,
+    useModeration,
+} from './moderation.js';
 import { MAX_REASON_BYTES, reasonBytes } from './pure/moderation.js';
 
 const html = htm.bind(h);
@@ -97,7 +104,7 @@ const Lists = ({ root, endpoint, current }) => {
             ${
                 mine &&
                 html`<button class="removal-option" onClick=${() => run(() => unlistTarget(root, 'node', endpoint))}>
-                    ${t('moderation.take-off', 'take off')}
+                    ${unlistWord(mine.level)}
                 </button>`
             }
             <button

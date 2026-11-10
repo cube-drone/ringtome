@@ -7,9 +7,12 @@ import { useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { t } from './i18n.js';
+import { Icons } from './icons.js';
 import { nodeHref, personHref } from './links.js';
 import { NodeMark } from './nodemark.js';
+import { HostedHereNote, useHostedAccount } from './hostedhere.js';
 import { PersonInline } from './person.js';
+import { KindHead } from './reportqueue.js';
 import {
     levelWord,
     listPicture,
@@ -17,6 +20,7 @@ import {
     overrule,
     ReasonInput,
     unlistTarget,
+    unlistWord,
     useModeration,
 } from './moderation.js';
 import { MAX_REASON_BYTES, reasonBytes } from './pure/moderation.js';
@@ -27,16 +31,24 @@ const html = htm.bind(h);
 const Who = ({ root, current }) =>
     html`<a class="moderation-who" href=${personHref(root)}><${PersonInline} root=${root} current=${current} /></a>`;
 
+/// The words for an entry that isn't a person, where no card's strip says it.
+const kindWords = (kind) =>
+    kind === 'picture'
+        ? t('moderation.a-picture', 'a picture')
+        : t('moderation.a-node', 'a server');
+
 /// What an entry names: a person, a node by its id, or a picture by its hash - never shown here,
-/// since it may be one nobody should see.
-const Target = ({ kind, target, current }) =>
+/// since it may be one nobody should see. On the reader's own list a picture they listed carries
+/// its sketch (sketches.rs, Curtis 2026-11-05): 48 pixels of black and white, enough to remember
+/// which picture it was. `titled` is a card whose strip already says the kind, so the words go.
+const Target = ({ kind, target, current, sketch, titled }) =>
     kind === 'persona'
         ? html`<${Who} root=${target} current=${current} />`
         : html`<span class="moderation-who">
-              ${kind === 'picture' ? t('moderation.a-picture', 'a picture') : t('moderation.a-node', 'a server')}
+              ${!titled && kindWords(kind)}
               ${
                   kind === 'picture'
-                      ? html`<code class="report-node" title=${target}>${target.slice(0, 12)}…</code>`
+                      ? html`${sketch && html`<img class="moderation-sketch" src=${sketch} alt=${t('moderation.sketch-alt', 'a black-and-white sketch of the picture you listed')} />`}<code class="report-node" title=${target}>${target.slice(0, 12)}…</code>`
                       : html`<a class="report-node" href=${nodeHref(target)} title=${target}><${NodeMark} endpoint=${target} /><code>${target.slice(0, 12)}…</code></a>`
               }
           </span>`;
@@ -88,8 +100,14 @@ const PictureForm = ({ root }) => {
     </div>`;
 };
 
-/// One row of the reader's own list: change its level or reason, or take it off.
+/// A list entry's kind, as a report card's strip names it (reportqueue.js `KindHead`).
+const LIST_KINDS = { persona: 'user', node: 'node', picture: 'image' };
+
+/// One entry of the reader's own list, as a card like a report's (Curtis, 2026-11-09): what it is
+/// and when it was listed across the top, then its level and reason to change, or take it off.
 const MineRow = ({ root, current, row }) => {
+    // A block on someone this server hosts: the way to their account (account.js).
+    const hosted = useHostedAccount(row.target, !!row.hosted_here && row.level === 'block');
     const [level, setLevel] = useState(row.level);
     const [reason, setReason] = useState(row.reason);
     const [error, setError] = useState(null);
@@ -102,21 +120,27 @@ const MineRow = ({ root, current, row }) => {
             setError(e.message || String(e));
         }
     };
-    return html`<li class="moderation-row">
-        <${Target} kind=${row.kind} target=${row.target} current=${current} />
-        <select class="profile-input" value=${level} onChange=${(e) => setLevel(e.currentTarget.value)}>
-            <option value="warn">${levelWord('warn')}</option>
-            <option value="block">${levelWord('block')}</option>
-        </select>
-        <${ReasonInput} value=${reason} onInput=${setReason} />
-        <button
-            class="removal-option"
-            disabled=${!changed || reasonBytes(reason) > MAX_REASON_BYTES}
-            onClick=${() => run(() => listTarget(root, row.kind, row.target, level, reason.trim()))}
-        >${t('moderation.save', 'save')}</button>
-        <button class="removal-option" onClick=${() => run(() => unlistTarget(root, row.kind, row.target))}>
-            ${t('moderation.take-off', 'take off')}
-        </button>
+    return html`<li class="report-row">
+        <${KindHead} kind=${LIST_KINDS[row.kind]} when=${row.said_ms} />
+        <${Target} kind=${row.kind} target=${row.target} current=${current} sketch=${row.sketch} titled />
+        <div class="moderation-add">
+            <select class="profile-input" value=${level} onChange=${(e) => setLevel(e.currentTarget.value)}>
+                <option value="warn">${levelWord('warn')}</option>
+                <option value="block">${levelWord('block')}</option>
+            </select>
+            <${ReasonInput} value=${reason} onInput=${setReason} />
+        </div>
+        <div class="report-buttons">
+            <button class="removal-option" onClick=${() => run(() => unlistTarget(root, row.kind, row.target))}>
+                ${unlistWord(row.level)}
+            </button>
+            <button
+                class="removal-go"
+                disabled=${!changed || reasonBytes(reason) > MAX_REASON_BYTES}
+                onClick=${() => run(() => listTarget(root, row.kind, row.target, level, reason.trim()))}
+            >${t('moderation.save', 'save')}</button>
+        </div>
+        <${HostedHereNote} account=${hosted} />
         ${error && html`<p class="form-error">${error}</p>`}
     </li>`;
 };
@@ -184,24 +208,42 @@ export const ModeratorsTab = ({ current }) => {
     </div>`;
 };
 
-/// The blocklist tab: your own public list, and a picture to add to it.
+/// The blocklist's own tabs (Curtis, 2026-11-10): one kind of entry at a time.
+const LIST_TABS = () => [
+    ['persona', Icons.persona, t('moderation.tab-users', 'users')],
+    ['node', Icons.server, t('moderation.tab-nodes', 'nodes')],
+    ['picture', Icons.mediaImage, t('moderation.tab-pictures', 'pictures')],
+];
+
+/// The blocklist tab: your own public list a kind at a time, and on pictures, one to add.
 export const BlocklistTab = ({ current }) => {
     const root = current && current.root;
     const view = useModeration(root);
+    const [kind, setKind] = useState('persona');
     if (!root) return null;
     const mine = view.mine || [];
+    const shown = mine.filter((row) => row.kind === kind);
     return html`<div class="moderation">
         <section class="moderation-section">
-            <p class="null-sub">
-                ${t(
-                    'moderation.your-public-list-hint',
-                    "Public: anyone can read it, including the people on it. Add someone from their own page. Blocking someone privately doesn't put them here.",
+            <h2 class="settings-section-title">${t('moderation.public-list-title', 'Public')}</h2>
+            <nav class="welcome-tabs moderation-list-tabs">
+                ${LIST_TABS().map(
+                    ([to, Icon, words]) =>
+                        html`<button
+                            key=${to}
+                            class=${kind === to ? 'tab active' : 'tab'}
+                            aria-pressed=${kind === to}
+                            onClick=${() => setKind(to)}
+                        >
+                            <${Icon} /> ${words}
+                            <span class="moderation-tab-count">${mine.filter((row) => row.kind === to).length}</span>
+                        </button>`,
                 )}
-            </p>
+            </nav>
             ${
-                mine.length
-                    ? html`<ul class="moderation-rows">
-                          ${mine.map(
+                shown.length
+                    ? html`<ul class="report-queue">
+                          ${shown.map(
                               (row) =>
                                   html`<${MineRow}
                                       key=${row.kind + row.target + row.said_ms}
@@ -213,7 +255,7 @@ export const BlocklistTab = ({ current }) => {
                       </ul>`
                     : html`<p class="null-sub">${t('moderation.list-empty', 'empty')}</p>`
             }
-            <${PictureForm} root=${root} />
+            ${kind === 'picture' && html`<${PictureForm} root=${root} />`}
         </section>
     </div>`;
 };

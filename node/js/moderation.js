@@ -136,6 +136,10 @@ export async function overrule(root, kind, target, on) {
 export const levelWord = (level) =>
     level === 'block' ? t('moderation.level-block', 'block') : t('moderation.level-warn', 'warn');
 
+/// The button that takes an entry off your list, named for what it undoes (Curtis, 2026-11-10).
+export const unlistWord = (level) =>
+    level === 'block' ? t('moderation.unblock', 'unblock') : t('moderation.unwarn', 'unwarn');
+
 /// A reason box that counts what the node counts: bytes. Public by default, as a list's reasons are.
 /// `wide`: the whole width, the count under it on the right.
 export const ReasonInput = ({ value, onInput, placeholder = null, wide = false }) => {

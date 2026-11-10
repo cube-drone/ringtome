@@ -19,12 +19,14 @@ import { t } from './i18n.js';
 import { Modal } from './modal.js';
 import { listTarget, ReasonInput, unlistTarget, useModeration } from './moderation.js';
 import { MAX_REASON_BYTES, blockState, reasonBytes } from './pure/moderation.js';
+import { HostedHereNote, useHostedAccount } from './hostedhere.js';
 
 const html = htm.bind(h);
 
 /// `administers`: the reader runs this node, so their public blocks are the node's too
-/// (moderation.rs) - the Public Block says so.
-const CHOICES = (administers) => [
+/// (moderation.rs) - the Public Block says so, unless this node hosts them (`hosted`): its own
+/// users are never refused, so the hint stays the plain one and the note below says why.
+const CHOICES = (administers, hosted) => [
     [
         'private',
         t('block.private-block', 'Private Block'),
@@ -33,7 +35,7 @@ const CHOICES = (administers) => [
     [
         'public-block',
         t('block.public-block', 'Public Block'),
-        administers
+        administers && !hosted
             ? t(
                   'block.public-block-hint-admin',
                   'People who trust you to moderate, and this entire node, will block this user, too.',
@@ -58,6 +60,7 @@ export const BlockModal = ({ myRoot, theirRoot, facts, put, onClose }) => {
     const listed = (view.mine || []).find((m) => m.kind === 'persona' && m.target === theirRoot);
     const was = blockState(facts, listed);
     const [choice, setChoice] = useState(was);
+    const hosted = useHostedAccount(theirRoot, !!view.administers);
     // One reason, whichever way: the one standing now, to start from.
     const [draft, setDraft] = useState(() =>
         was === 'private' ? facts.blocked_reason || '' : (listed && listed.reason) || '',
@@ -100,7 +103,7 @@ export const BlockModal = ({ myRoot, theirRoot, facts, put, onClose }) => {
 
     return html`<${Modal} title=${t('block.block-this-user', 'Block this user')} onClose=${onClose}>
         <div class="block-form">
-            ${CHOICES(view.administers).map(
+            ${CHOICES(view.administers, !!hosted).map(
                 ([key, name, hint]) => html`<label
                     key=${key}
                     class=${choice === key ? 'block-choice block-chosen' : 'block-choice'}
@@ -123,6 +126,7 @@ export const BlockModal = ({ myRoot, theirRoot, facts, put, onClose }) => {
                 placeholder=${choice === 'private' ? t('block.private-reason-placeholder', 'why - only you ever see this') : null}
                 onInput=${setDraft}
             />
+            ${(choice === 'private' || choice === 'public-block') && html`<${HostedHereNote} account=${hosted} />`}
             ${error && html`<p class="form-error">${error}</p>`}
             <div class="block-actions">
                 ${

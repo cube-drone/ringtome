@@ -14,6 +14,7 @@ import { formatWhen } from './pure/when.js';
 import { sizeLabel } from './pure/backups.js';
 import { PersonRow } from './person.js';
 import { Icons } from './icons.js';
+import { useHostedAccount } from './hostedhere.js';
 
 const html = htm.bind(h);
 
@@ -161,17 +162,7 @@ export const AccountPage = ({ id, current }) => {
 /// On a persona's page, for this place's administrator: a button to the account that manages the
 /// persona - when one here does. Asks once per persona; says nothing for anyone not hosted here.
 export const AccountLink = ({ root }) => {
-    const [account, setAccount] = useState(null);
-    useEffect(() => {
-        let live = true;
-        setAccount(null);
-        api(`/api/admin/accounts/of/${root}`)
-            .then((a) => live && setAccount(a))
-            .catch(() => {});
-        return () => {
-            live = false;
-        };
-    }, [root]);
+    const account = useHostedAccount(root);
     if (!account) return null;
     // A button in their card's top right corner, beside the RSS one (Curtis, 2026-10-20).
     const label = t('account.their-account-here', 'their account here: {name}', {

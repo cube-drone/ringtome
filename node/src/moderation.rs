@@ -323,6 +323,13 @@ pub(crate) struct MineRow {
     said_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pdq: Option<String>,
+    /// A picture entry's sketch, as a `data:` URL - only in the keeper's own view (sketches.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sketch: Option<String>,
+    /// A persona entry this server hosts - said only to its administrator, whose block doesn't
+    /// touch the server's own users (Curtis, 2026-11-06: the way to their account instead).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    hosted_here: bool,
 }
 
 #[derive(Serialize)]
@@ -346,10 +353,30 @@ async fn moderation_handler(
     Path(root): Path<String>,
 ) -> Result<Json<ModerationView>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
-    let (mine, moderators, taken) = view_of(&state, &data, &root).await?;
+    let (mut mine, moderators, taken) = view_of(&state, &data, &root).await?;
+    let mut sketches = crate::sketches::of(&state, &root).await.map_err(AppError::Internal)?;
+    for row in mine.iter_mut().filter(|r| r.kind == ModerationTarget::Picture.word()) {
+        row.sketch = sketches.remove(&row.target).map(|png| {
+            use base64::Engine as _;
+            format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(png)
+            )
+        });
+    }
     let mut administers = false;
     for tag in [crate::auth::TAG_NODE_ADMIN, crate::auth::TAG_ADMIN] {
         administers |= crate::auth::has_tag(&state.node_db, &session.account.id, tag).await?;
+    }
+    if administers {
+        let hosted: BTreeSet<String> = crate::identity::hosted_roots_with_accounts(&state.node_db)
+            .await?
+            .into_iter()
+            .map(|(root, _)| root)
+            .collect();
+        for row in mine.iter_mut().filter(|r| r.kind == ModerationTarget::Persona.word()) {
+            row.hosted_here = hosted.contains(&row.target);
+        }
     }
     let (hidden, _) = data.private_set(HIDDEN).elements().await?;
     let hidden = hidden.into_iter().map(|e| e.element).collect();
@@ -375,6 +402,8 @@ pub(crate) async fn view_of(
             reason: r.reason,
             said_ms: r.timestamp_ms,
             pdq: r.pdq,
+            sketch: None,
+            hosted_here: false,
         })
         .collect();
     let moderators: Vec<String> = data
@@ -451,6 +480,9 @@ async fn entry_put_handler(
     }
     let pdq =
         if kind == ModerationTarget::Picture { picture_print(&state, &key).await? } else { None };
+    if kind == ModerationTarget::Picture {
+        crate::sketches::keep(&state, &root, &key).await;
+    }
     data.moderation().say(kind, &key, level, req.reason.trim(), true, pdq).await?;
     crate::fold::fold_now(&state, &root).await;
     Ok(Json(serde_json::json!({ "ok": true })))
@@ -517,6 +549,7 @@ async fn by_address_handler(
     let first = *bodies.first().ok_or_else(not_a_picture)?;
     for body in &bodies {
         let pdq = picture_print(&state, body).await?;
+        crate::sketches::keep(&state, &root, body).await;
         data.moderation()
             .say(ModerationTarget::Picture, body, level, req.reason.trim(), true, pdq)
             .await?;
@@ -637,6 +670,9 @@ async fn entry_delete_handler(
     let data = store::open(&state, &session.account.id, &root).await?;
     let (kind, key) = parse_target(&kind, &target)?;
     data.moderation().say(kind, &key, ModerationLevel::Warn, "", false, None).await?;
+    if kind == ModerationTarget::Picture {
+        crate::sketches::forget(&state, &root, &key).await.map_err(AppError::Internal)?;
+    }
     crate::fold::fold_now(&state, &root).await;
     Ok(Json(serde_json::json!({ "ok": true })))
 }

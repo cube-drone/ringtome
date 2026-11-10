@@ -301,6 +301,54 @@ pub fn fingerprint(input: &[u8]) -> Option<crate::media::pdq::Pdq> {
     crate::media::pdq::of(&decode_avif(input).ok()?)
 }
 
+/// The side a picture's sketch fits within (sketches.rs).
+pub const SKETCH_SIDE: u32 = 48;
+
+/// A picture's sketch (Curtis, 2026-11-05): fitted within [`SKETCH_SIDE`] on a side and dithered
+/// to pure black and white (Atkinson's dither, which keeps outlines and large shapes and lets fine
+/// texture go), as a PNG - enough for the person who listed a picture to remember which it was,
+/// not enough to go on showing it. Our AVIF, or any other still's first frame; see-through parts
+/// read as white. `None` when it can't be decoded. CPU-bound, like [`crush`].
+pub fn sketch(input: &[u8]) -> Option<Vec<u8>> {
+    let decoded = match decode_avif(input) {
+        Ok(img) => img,
+        Err(_) => image::load_from_memory(input).ok()?,
+    };
+    if decoded.width() == 0 || decoded.height() == 0 {
+        return None;
+    }
+    let small = decoded.resize(SKETCH_SIDE, SKETCH_SIDE, FilterType::Triangle).to_luma_alpha8();
+    let (w, h) = (small.width() as usize, small.height() as usize);
+    // Grey on white, as it would look on the page.
+    let mut grey: Vec<f32> = small
+        .pixels()
+        .map(|p| {
+            let a = f32::from(p[1]) / 255.0;
+            f32::from(p[0]) * a + 255.0 * (1.0 - a)
+        })
+        .collect();
+    let mut out = vec![0u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let old = grey[y * w + x];
+            let new = if old >= 128.0 { 255.0 } else { 0.0 };
+            out[y * w + x] = new as u8;
+            // Atkinson: six neighbours take an eighth of the error each; a quarter is let go.
+            let spread = (old - new) / 8.0;
+            for (dx, dy) in [(1i64, 0i64), (2, 0), (-1, 1), (0, 1), (1, 1), (0, 2)] {
+                let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                if nx >= 0 && (nx as usize) < w && (ny as usize) < h {
+                    grey[ny as usize * w + nx as usize] += spread;
+                }
+            }
+        }
+    }
+    let img = image::GrayImage::from_raw(w as u32, h as u32, out)?;
+    let mut buf = Cursor::new(Vec::new());
+    img.write_to(&mut buf, ImageFormat::Png).ok()?;
+    Some(buf.into_inner())
+}
+
 /// One of our own AVIF stills as a PNG no larger than `bound` on a side - for the places an
 /// AVIF is not understood (2026-09-27: a desktop notification's picture, which Windows
 /// toasts and older macOS read as PNG only). CPU-bound, like [`crush`].
@@ -1032,6 +1080,32 @@ mod tests {
         let mut buf = Cursor::new(Vec::new());
         img.write_to(&mut buf, ImageFormat::Png).expect("encode png");
         buf.into_inner()
+    }
+
+    #[test]
+    fn a_sketch_is_small_black_and_white_and_keeps_its_shape() {
+        // A wide picture: a dark disc on the left half, light on the right.
+        let img = DynamicImage::ImageRgb8(RgbImage::from_fn(400, 200, |x, y| {
+            let (dx, dy) = (x as i64 - 100, y as i64 - 100);
+            if dx * dx + dy * dy < 80 * 80 {
+                Rgb([20, 30, 40])
+            } else {
+                Rgb([230, 220, 210])
+            }
+        }));
+        let png = sketch(&png_bytes(&img)).expect("a sketch");
+        let back = image::load_from_memory(&png).unwrap().to_luma8();
+        assert_eq!((back.width(), back.height()), (SKETCH_SIDE, SKETCH_SIDE / 2), "fits, in shape");
+        assert!(back.pixels().all(|p| p[0] == 0 || p[0] == 255), "only black and white");
+        let dark = |x0: u32, x1: u32| {
+            (x0..x1)
+                .flat_map(|x| (0..back.height()).map(move |y| (x, y)))
+                .filter(|&(x, y)| back.get_pixel(x, y)[0] == 0)
+                .count()
+        };
+        assert!(dark(0, 24) > 4 * dark(24, 48).max(1), "the disc is still where it was");
+        assert!(png.len() < 1024, "{} bytes", png.len());
+        assert_eq!(sketch(b"not a picture"), None);
     }
 
     /// A simple RGB gradient of the given size, as a `DynamicImage`.

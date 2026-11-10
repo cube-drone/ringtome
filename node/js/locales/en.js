@@ -1773,6 +1773,11 @@ export default {
     'apps.groups.post-not-here': "this post isn't here - it may have been taken down or hidden, or you may not be in its group.",
     'apps.groups.fetching-the-post': 'fetching the post…',
 
+    // --- node/js/hostedhere.js ---
+    'account.blocked-but-hosted': "They have an account on this server ({name}), and a block doesn't stop this server hosting them.",
+    'account.sign-in-already-off': 'Their sign-in is already switched off.',
+    'account.switch-off-or-evict': 'switch off their sign-in, or evict them',
+
     // --- node/js/idpage.js ---
     'idpage.synced': 'synced {when}',
     'idpage.fetching-their-newest-posts': 'fetching their newest posts…',
@@ -1833,24 +1838,29 @@ export default {
     // --- node/js/moderation.js ---
     'moderation.level-block': 'block',
     'moderation.level-warn': 'warn',
+    'moderation.unblock': 'unblock',
+    'moderation.unwarn': 'unwarn',
     'moderation.reason-placeholder': 'why - everyone who reads your list sees this',
     'moderation.trust-to-moderate': 'trust them to moderate for me',
 
     // --- node/js/moderationpage.js ---
     'moderation.a-picture': 'a picture',
     'moderation.a-node': 'a server',
+    'moderation.sketch-alt': 'a black-and-white sketch of the picture you listed',
     'moderation.list-a-picture-hint': 'A picture, by its address: copies of the same file are blocked or warned about as you say, wherever they are posted. Similar images get warned.',
     'moderation.picture-address-placeholder': "the picture's address",
     'moderation.add-to-public-list': 'add to my public list',
     'moderation.save': 'save',
-    'moderation.take-off': 'take off',
     'moderation.ill-judge-this-myself': "I'll judge this myself",
     'moderation.whose-lists': 'Your Community Moderators',
     'moderation.whose-lists-hint': 'People you trust to moderate for you.',
     'moderation.nobody-yet': "nobody - you're judging everything yourself",
     'moderation.what-you-take': 'From Your Moderators',
     'moderation.nothing-taken': 'nothing yet',
-    'moderation.your-public-list-hint': "Public: anyone can read it, including the people on it. Add someone from their own page. Blocking someone privately doesn't put them here.",
+    'moderation.tab-users': 'users',
+    'moderation.tab-nodes': 'nodes',
+    'moderation.tab-pictures': 'pictures',
+    'moderation.public-list-title': 'Public',
     'moderation.list-empty': 'empty',
 
     // --- node/js/net.js ---
@@ -2438,6 +2448,7 @@ export default {
     'reports.since': 'since {when}',
     'reports.drop-these': 'drop these',
     'reports.block-that-node-and-drop-these': 'block that node and drop these',
+    'reports.floods-summary': 'Servers sending lots of reports ({m})',
     'reports.nothing-to-look-at': 'nothing to look at',
 
     // --- node/js/rights.js ---

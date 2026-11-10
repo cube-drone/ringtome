@@ -40,6 +40,18 @@
     text-decoration: none;
 }
 
+/* A listed picture's sketch (sketches.rs): its 48 pixels at twice their size, kept square-edged so
+   it reads as the black-and-white sketch it is. */
+.moderation-sketch {
+    display: block;
+    width: 96px;
+    height: 96px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    margin-bottom: 0.3rem;
+    border: 1px solid var(--border);
+}
+
 .moderation-people li {
     padding: 0.2rem 0;
 }
@@ -344,6 +356,40 @@ label.moderation-overrule {
 .report-proposal {
     font-style: italic;
 }
+/* The busy servers, folded: a caret on the summary like the contact ledger's (persona.css). */
+.report-floods-box {
+    margin: 0.6rem 0 0;
+    padding: 0.5rem 0.9rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+.report-floods-box .report-floods {
+    margin: 0.4rem 0 0;
+    border-top: 1px solid var(--border);
+}
+.report-floods-box .report-flood:last-child {
+    border-bottom: 0;
+    padding-bottom: 0.2rem;
+}
+.report-floods-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    list-style: none;
+    color: var(--muted);
+}
+.report-floods-head::-webkit-details-marker {
+    display: none;
+}
+.report-floods-head::after {
+    content: '▸';
+    color: var(--faint);
+    transition: transform 0.12s ease;
+}
+.report-floods-box[open] > .report-floods-head::after {
+    transform: rotate(90deg);
+}
 .report-flood {
     display: flex;
     flex-wrap: wrap;
@@ -407,4 +453,28 @@ label.moderation-overrule {
     padding: 0.45rem 1rem;
     font-size: 0.9rem;
     line-height: 1.2;
+}
+
+/* Blocking someone this server hosts (account.js): a block doesn't touch the server's own users,
+   so the note points at their account - sign-in, or eviction. */
+.hosted-here-note {
+    margin: 0.4rem 0 0;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--teal);
+    font-size: 0.9em;
+    color: var(--ink-soft);
+}
+.hosted-here-note a {
+    color: var(--teal);
+}
+
+/* The blocklist's tabs by kind (moderationpage.js): the page's tabs again, a row down and from the
+   left, each with how many it holds. */
+.moderation-list-tabs {
+    justify-content: flex-start;
+    margin: 0.5rem 0 0.4rem;
+}
+.moderation-tab-count {
+    color: var(--faint);
+    font-size: 0.85em;
 }

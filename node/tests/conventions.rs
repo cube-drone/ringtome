@@ -99,6 +99,7 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("machine_intros", vec!["intro.rs"]),
         ("machine_intro_listed", vec!["intro.rs"]),
         ("node_introduction", vec!["intro.rs"]),
+        ("picture_sketches", vec!["sketches.rs"]),
         ("front_door", vec!["frontdoor.rs"]),
         ("import_policy", vec!["import.rs"]),
         ("super_pins", vec!["frontdoor.rs"]),

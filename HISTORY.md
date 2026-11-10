@@ -27029,3 +27029,104 @@ Curtis asked that SERVER.md tell operators to turn on the CDN's child sexual
 abuse material scanning before taking strangers' reports, letting users take
 them, or running an open server for people they don't know. _Behind a CDN_ gains
 that bullet, and _Reports_ names the same three cases.
+
+### A listed picture keeps a sketch for its list's keeper (2026-11-05)
+
+Curtis: "because we're blocking based on hash, we don't have (and probably don't
+even WANT) the original image - but... then MANAGING the block list ... becomes
+functionally impossible." His pitch was a 48x48 black-and-white thumbnail,
+"enough to jog our memory ... without being enough to continue to offend".
+
+- **The sketch** (`media/image.rs`, `sketch`): the picture fitted within 48x48,
+  see-through parts on white, dithered to pure black and white with Atkinson's
+  dither, as a PNG of a few hundred bytes. It is made when a picture entry is
+  written, by the PUT or the by-address form, from the bytes the server already
+  had to hold to fingerprint it.
+- **The keeper's alone** (`sketches.rs`, rung 119 `picture_sketches`): kept per
+  persona on this server, and shown only in that persona's own list view as a
+  `data:` URL. Never on the public list, never sent to another node. Taking the
+  entry off deletes it.
+- **Never for quarantined material**, as Curtis ruled. `quarantine::seal`
+  deletes every sketch of a sealed picture, whoever's. A sealed blob is never
+  read to draw one (`files::get_for_sketch` refuses only sealed blobs, since a
+  just-blocked picture is withheld but still the one to sketch). One is never
+  shown while its picture is sealed.
+- Content control's blocklist shows the sketch at twice its size, with square
+  pixel edges, above the hash.
+
+Entries listed before this have no sketch. Nothing was live yet, so nothing was
+backfilled. Proved by: a unit test of the sketch (fits, keeps its shape, only
+black and white, under a kilobyte), three rig claims in `sketches.cjs` (shown to
+the keeper and nobody else; gone on take-off; gone for everyone at quarantine
+and not redrawn after), the picture entries, quarantine and reports areas (31
+passing), every node unit test (748), `just ui-check`, `just strings-check`, and
+a screenshot of a scratch blocklist with three sketched pictures.
+
+### Blocking someone this server hosts points at their account (2026-11-06)
+
+Curtis: "if they're hosted here, we can follow that to a page where we can block
+them from logging in here or evict them entirely." A block never touches the
+server's own users, which are the operator's to remove, never to starve. Nothing
+on screen said so: an administrator blocking "jerf" would reasonably think the
+server had stopped carrying them.
+
+- **A note, for administrators only**: "They have an account on this server
+  (jerf), and a block doesn't stop this server hosting them. _switch off their
+  sign-in, or evict them_". The link opens the existing account page, which
+  lists every persona that account manages and holds the sign-in switch and the
+  eviction, each with its own confirmation. There's no new eviction path.
+- **Where**: the block modal, while a private or public block is chosen; a
+  report's row while "block" is chosen; and each block on the blocklist. A
+  warning gets no note. Neither does an administrator's account or the reader's
+  own, since that page can't act on them.
+- The block modal's Public Block hint drops "and this entire node" for someone
+  hosted here, because for them it isn't true.
+- The administrator's list view marks `hosted_here` on persona entries, so the
+  blocklist asks for an account only where there is one. Nobody else's view says
+  who this server hosts. The hook and note live in `js/hostedhere.js`, because
+  the block modal importing `account.js` made an import cycle.
+
+Proved by: a rig claim in `accounts.cjs` (the administrator's block of a hosted
+persona is marked, its account is still there to act on, and another user's
+block of the same persona isn't told), the accounts area (5 passing), every node
+unit test, `just ui-check`, `just strings-check`, and screenshots of the
+blocklist and the block modal on a scratch node.
+
+## The busy servers fold away (2026-11-09)
+
+The reports tab's lines for servers that sent three or more reports
+(reportqueue.js `Flood`) used to stand open above the queue, so a crowd of
+servers could push the reports themselves off the screen. They now sit in a
+closed disclosure with the report cards' border, "Servers sending lots of
+reports (5)", which opens to the same lines, biggest first, as `groups` in
+reports.rs already sorts them.
+
+Proved by: `just ui-check`, `just strings-check`, and screenshots of five busy
+servers, closed and open, on a scratch node.
+
+## The blocklist's entries are cards (2026-11-09)
+
+An entry on your own public list (moderationpage.js `MineRow`) is now a card
+like a report's: the strip across the top says what it is - User, Node or Image,
+from reportqueue.js's `KindHead` - with when it was listed on the right, then
+who or what it names, its level and reason, and "take off" and "save" in the
+report cards' button row. The strip names the kind, so the card drops the words
+"a picture" and "a server"; the moderators tab keeps them.
+
+Proved by: `just ui-check`, `just strings-check`, and a screenshot of a person,
+a server and a picture on a scratch node's blocklist.
+
+## The blocklist in three tabs (2026-11-10)
+
+Your blocklist (moderationpage.js `BlocklistTab`) shows one kind of entry at a
+time: tabs for users, nodes and pictures under a "Public" heading, each with how
+many it holds. The heading replaces the paragraph that explained the list, and
+the form that adds a picture by its address sits on the pictures tab alone. The
+tabs are the page's own, held in the component rather than the address.
+
+Proved by: `just ui-check`, `just strings-check`, and screenshots of the users
+and pictures tabs on a scratch node.
+
+The button that takes an entry off, here and on a server's page, now says what
+it undoes: "unblock" on a block, "unwarn" on a warning (moderation.js
+`unlistWord`).

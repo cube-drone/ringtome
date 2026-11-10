@@ -65,6 +65,44 @@ describe('an account, as a node administrator sees it', function () {
         );
     });
 
+    it("is pointed at when its administrator blocks one of its personas: a block doesn't evict", async function () {
+        const listed = async (who, root, target) =>
+            ((await (await who(`api/identity/${root}/moderation`)).json()).mine || []).find(
+                (r) => r.target === target,
+            );
+        const adminRoot = (await (await admin('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        const put = await j(
+            admin,
+            `api/identity/${adminRoot}/moderation/persona/${first.root_pubkey}`,
+            { level: 'block', reason: 'rude' },
+            'PUT',
+        );
+        assert.equal(put.status, 200, await put.clone().text());
+        assert.equal((await listed(admin, adminRoot, first.root_pubkey)).hosted_here, true);
+        assert.equal(
+            (await admin(`api/admin/accounts/of/${first.root_pubkey}`)).status,
+            200,
+            'still hosted, and its account still here to act on',
+        );
+
+        // Nobody else is told who this server hosts.
+        const other = await makeUserFetch({ prefix: 'acctother' });
+        const otherRoot = (await (await other('api/identity', { method: 'POST' })).json())
+            .root_pubkey;
+        await j(
+            other,
+            `api/identity/${otherRoot}/moderation/persona/${first.root_pubkey}`,
+            { level: 'block', reason: 'rude' },
+            'PUT',
+        );
+        assert.equal((await listed(other, otherRoot, first.root_pubkey)).hosted_here, undefined);
+
+        await admin(`api/identity/${adminRoot}/moderation/persona/${first.root_pubkey}`, {
+            method: 'DELETE',
+        });
+    });
+
     it('switched off, shuts every door in and keeps its personas; switched on, opens them again', async function () {
         const key = (await (await j(person, 'api/auth/keys', { name: 'a script' })).json()).key;
         assert.equal((await keyed(key)('api/auth/whoami')).status, 200);

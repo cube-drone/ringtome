@@ -642,6 +642,16 @@ impl FileStore {
         self.read_public(hash).await
     }
 
+    /// A public blob's bytes for its sketch (sketches.rs) - read here, never served: a picture
+    /// someone just blocked is withheld by then, and still the one to sketch. A sealed blob is not
+    /// read, by anyone.
+    pub async fn get_for_sketch(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
+        if self.is_sealed(&hash) {
+            return Ok(None);
+        }
+        self.read_public(hash).await
+    }
+
     async fn read_public(&self, hash: Hash) -> Result<Option<Vec<u8>>> {
         match self.store().get_bytes(hash).await {
             Ok(b) => Ok(Some(b.to_vec())),

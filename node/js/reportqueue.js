@@ -14,6 +14,7 @@ import { t } from './i18n.js';
 import { formatWhen } from './pure/when.js';
 import { nodeHref, personHref } from './links.js';
 import { NodeMark } from './nodemark.js';
+import { HostedHereNote, useHostedAccount } from './hostedhere.js';
 import { PersonInline } from './person.js';
 import {
     levelWord,
@@ -45,8 +46,9 @@ const KINDS = () => ({
     user: [Icons.persona, t('reports.kind-user', 'User')],
 });
 
-/// The strip across a report's top: what it is about, and on the right, when it arrived.
-const KindHead = ({ kind, when }) => {
+/// The strip across a report's top: what it is about, and on the right, when it arrived. A
+/// blocklist entry wears the same strip (moderationpage.js).
+export const KindHead = ({ kind, when }) => {
     const [Icon, word] = KINDS()[kind] || KINDS().post;
     return html`<p class="report-kind">
         <${Icon} /> ${word}
@@ -149,6 +151,8 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
     const [reason, setReason] = useState((proposal && proposal.reason) || report.reason);
     const [error, setError] = useState('');
     const [sealed, setSealed] = useState(false);
+    // Reported, and hosted here: a block won't stop this server hosting them (account.js).
+    const hosted = useHostedAccount(report.target, !!administers && report.target_kind !== 'node');
     const base = `/api/identity/${root}/reports/${report.id}`;
     const act = async (path, body) => {
         setError('');
@@ -240,6 +244,7 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
                 onClick=${() => act('list', { level, reason: reason.trim() })}
             >${t('moderation.add-to-public-list', 'add to my public list')}</button>
         </div>
+        ${level === 'block' && html`<${HostedHereNote} account=${hosted} />`}
         ${error && html`<p class="form-error">${error}</p>`}
     </li>`;
 };
@@ -275,7 +280,9 @@ const Flood = ({ root, group, onMoved }) => {
     </li>`;
 };
 
-/// How many reports from one node make it worth a line of its own.
+/// How many reports from one node make it worth a line of its own. The lines come biggest first
+/// (reports.rs `groups`), folded shut so a crowd of servers can't push the reports themselves
+/// off the screen.
 const FLOOD_AT = 3;
 
 export const ReportSections = ({ current }) => {
@@ -298,7 +305,15 @@ export const ReportSections = ({ current }) => {
     const floods = ((queue && queue.groups) || []).filter((g) => g.reports >= FLOOD_AT);
     return html`<section class="moderation-section">
         <${Settings} root=${root} settings=${settings} onSaved=${setSettings} />
-        ${floods.length > 0 && html`<ul class="report-floods">${floods.map((g) => html`<${Flood} key=${g.node} root=${root} group=${g} onMoved=${load} />`)}</ul>`}
+        ${
+            floods.length > 0 &&
+            html`<details class="report-floods-box">
+                <summary class="report-floods-head">
+                    ${t('reports.floods-summary', 'Servers sending lots of reports ({m})', { m: floods.length })}
+                </summary>
+                <ul class="report-floods">${floods.map((g) => html`<${Flood} key=${g.node} root=${root} group=${g} onMoved=${load} />`)}</ul>
+            </details>`
+        }
         ${
             reports.length
                 ? html`<ul class="report-queue">

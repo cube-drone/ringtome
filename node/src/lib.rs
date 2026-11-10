@@ -114,6 +114,7 @@ pub mod search;
 pub mod selectivity;
 pub mod semver;
 pub mod shell;
+pub mod sketches;
 pub mod slugs;
 pub mod speakable;
 pub mod speculative;

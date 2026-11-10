@@ -246,6 +246,10 @@ pub async fn seal(
             .await
             .context("recording a quarantine")?;
     }
+    // Nobody keeps a sketch of a quarantined picture (sketches.rs) - not its lister, not anyone.
+    for hash in hashes {
+        crate::sketches::forget_picture(state, hash).await?;
+    }
     // The fingerprints, read before the seal closes the store to every reader.
     let mut prints = Vec::new();
     for hash in hashes {
