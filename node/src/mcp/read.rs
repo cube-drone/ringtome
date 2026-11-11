@@ -901,7 +901,8 @@ impl Tools {
 /// different (notifications.rs, the `KIND_` docs): for a reply, a label or a share it is the
 /// READER's own post; for a mention, the author's post - and the group kinds' the same, in the
 /// group named beside it, so as `group_post`; for a room mention, the room, whose author
-/// rides in `detail`; for a contract, the contract's id, its name and reward in `detail`. So the
+/// rides in `detail`; for a contract, the contract's id, its name and reward in `detail`; for a
+/// report, the report's id in the moderation queue. So the
 /// post address is built per kind, and a kind this doesn't know keeps only who and when.
 fn notification(item: &Value, reader: &str) -> Value {
     let kind = item.get("kind").and_then(Value::as_str).unwrap_or_default();
@@ -952,6 +953,12 @@ fn notification(item: &Value, reader: &str) -> Value {
             if let Some(room_author) = detail {
                 line["room"] = json!(format!("{room_author}/{doc}"));
             }
+        }
+        // A report for the moderation queue: its id there, and what it is about. Its words are in
+        // the queue, which says whose they are.
+        (notifications::KIND_REPORT, Some(report)) => {
+            line["report"] = json!(report);
+            line["about"] = json!(detail);
         }
         (notifications::KIND_CONTRACT, Some(_)) => {
             let contract: Value =

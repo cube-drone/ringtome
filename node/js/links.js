@@ -218,6 +218,10 @@ export const computersHref = (tab = 'new') => settingsHref(`computers/${tab}`);
 /// own public list) and `reports`.
 export const contentHref = (tab = 'tags') => settingsHref(`content/${tab}`);
 
+/// One report's place in the moderation queue (reportqueue.js scrolls to it): what a report's row
+/// in the bell, and its alert (attention.rs `REPORTS_ROUTE`), lead to.
+export const reportHref = (id) => `${contentHref('reports')}?report=${encodeURIComponent(id)}`;
+
 /// Import/export's two tabs (plans/EXPORT.md): `export` (the default) and `import`.
 export const importExportHref = (tab = 'export') => settingsHref(`import-export/${tab}`);
 

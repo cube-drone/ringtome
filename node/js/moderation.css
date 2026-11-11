@@ -252,6 +252,11 @@ label.moderation-overrule {
     border-left: 3px solid var(--coral);
     padding-left: 0.75rem;
 }
+/* The report a row in the bell, or an alert, led here for (reportqueue.js). */
+.report-row-sought {
+    outline: 2px solid var(--glow);
+    outline-offset: 2px;
+}
 /* What the report is about: a strip across the card's top, its icon and one word. The negative
    margins undo the card's padding, the child-abuse card's narrower left one too. */
 .report-row .report-kind {

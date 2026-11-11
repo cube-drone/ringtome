@@ -298,6 +298,18 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
         )
         .await
         .context("keeping a report")?;
+    // The moderator hears of it (notifications.rs `KIND_REPORT`): a row in their bell, which
+    // alerts like any other. What it is about, never what it says.
+    let about = match (report.kind.word(), item.is_some()) {
+        ("node", _) => "node",
+        (_, true) => "post",
+        _ => "user",
+    };
+    if let Err(e) =
+        crate::notifications::note_report(state, &moderator, &reporter, &id, about).await
+    {
+        tracing::warn!(error = ?e, "a report's notification wasn't stored");
+    }
     trim(state, &moderator, &policy).await?;
 
     // A child-abuse report to an administrator here - only ever from someone their trust reaches,
@@ -362,12 +374,13 @@ async fn trim(state: &AppState, moderator: &str, policy: &Policy) -> Result<()> 
         .await
         .context("finding reports past keeping")?;
     for (id,) in gone {
-        forget(state, &id).await?;
+        forget(state, moderator, &id).await?;
     }
     Ok(())
 }
 
-async fn forget(state: &AppState, id: &str) -> Result<()> {
+async fn forget(state: &AppState, moderator: &str, id: &str) -> Result<()> {
+    crate::notifications::forget_report(&state.node_db, moderator, id).await?;
     state
         .node_db
         .execute("DELETE FROM report_pictures WHERE report_id = ?1", (id,))
@@ -1075,7 +1088,18 @@ async fn report_of(state: &AppState, moderator: &str, id: &str) -> Result<Queued
         })
 }
 
-async fn decide(state: &AppState, id: &str, status: &str, proposal: Option<String>) -> Result<()> {
+/// A report decided. One an assistant only proposed on is still the moderator's to look at;
+/// dismissed or listed, its row in the bell goes (notifications.rs `KIND_REPORT`).
+async fn decide(
+    state: &AppState,
+    moderator: &str,
+    id: &str,
+    status: &str,
+    proposal: Option<String>,
+) -> Result<()> {
+    if status != "proposed" {
+        crate::notifications::forget_report(&state.node_db, moderator, id).await?;
+    }
     state
         .node_db
         .execute(
@@ -1090,7 +1114,7 @@ async fn decide(state: &AppState, id: &str, status: &str, proposal: Option<Strin
 /// Dismiss one report. Shared with the assistant's tools: dismissing harms nobody.
 pub async fn dismiss(state: &AppState, moderator: &str, id: &str) -> Result<(), AppError> {
     report_of(state, moderator, id).await?;
-    decide(state, id, "dismissed", None).await.map_err(AppError::Internal)
+    decide(state, moderator, id, "dismissed", None).await.map_err(AppError::Internal)
 }
 
 async fn dismiss_handler(
@@ -1134,7 +1158,7 @@ async fn list_handler(
     }
     data.moderation().say(kind, &target, level, req.reason.trim(), true, None).await?;
     crate::fold::fold_now(&state, &root).await;
-    decide(&state, &id, "listed", None).await.map_err(AppError::Internal)?;
+    decide(&state, &root, &id, "listed", None).await.map_err(AppError::Internal)?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -1159,7 +1183,7 @@ pub async fn propose(
         )));
     }
     let proposal = serde_json::json!({ "level": level, "reason": reason }).to_string();
-    decide(state, id, "proposed", Some(proposal)).await.map_err(AppError::Internal)
+    decide(state, moderator, id, "proposed", Some(proposal)).await.map_err(AppError::Internal)
 }
 
 async fn propose_handler(
@@ -1263,6 +1287,21 @@ async fn drop_node_handler(
     Json(req): Json<DropReq>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let data = store::open(&state, &session.account.id, &root).await?;
+    let going: Vec<(String,)> = state
+        .node_db
+        .fetch_all(
+            "SELECT id FROM reports
+             WHERE moderator = ?1 AND from_node = ?2 AND status IN ('open', 'proposed')",
+            (root.as_str(), node.as_str()),
+        )
+        .await
+        .context("finding a node's reports")
+        .map_err(AppError::Internal)?;
+    for (id,) in &going {
+        crate::notifications::forget_report(&state.node_db, &root, id)
+            .await
+            .map_err(AppError::Internal)?;
+    }
     let dropped = state
         .node_db
         .execute(

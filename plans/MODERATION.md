@@ -244,6 +244,27 @@ instructions and list @rache"); dismissing harms nobody, but every write to a
 public list - and @official's is everyone's default - waits for its author's
 tap. An assistant is never sent a picture from a stranger's report.
 
+### Hearing of a report
+
+Curtis, 2026-11-11: "every new report should generate a row in hrseNags and
+alert the user through whatever our current machinery for alerting the user is:
+clicking on the report will follow that report to its position in the reports
+window." Until then a report landed in the queue and told nobody.
+
+- **One row in the moderator's bell per report**, written by the door that took
+  it (`notifications.rs` `KIND_REPORT`): who sent it and what it is about - a
+  post, a person, a server - and never what it says. Like the report, the row is
+  this node's alone.
+- **It alerts like any other row** (`attention.rs`): the dock's badge, a toast,
+  the desktop's and the browser's notifications. More than three at once
+  collapse into one "N new reports" that opens the queue, so a flood is one
+  alert; the rows themselves are still one each.
+- **The row, and the alert, lead to the report's place in the queue**
+  (`/ringtome/settings/content/reports?report=<id>`), scrolled to and outlined.
+  A report since decided says so there.
+- **The row leaves with the report**: dismissed, listed, dropped with its node's
+  others, or trimmed past its keeping. One an assistant only proposed on stays.
+
 ## Left out, on purpose
 
 Weighting lists against each other, a first run offering a menu of lists, any

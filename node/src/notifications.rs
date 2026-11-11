@@ -71,6 +71,51 @@ pub const KIND_GROUP_COMMENT: &str = "group-comment";
 /// and reward as JSON for the client to word. The primary key makes it one row per contract, ever.
 pub const KIND_CONTRACT: &str = "contract";
 
+/// "Someone sent you a report." The moderation queue's news (reports.rs; Curtis, 2026-11-11: a
+/// report used to land in the queue and tell nobody): one row per report, written by the door that
+/// took it, its author the reporter, its doc the report's id and its `detail` what it is about -
+/// `post`, `user` or `node`. Never the report's words, which are whoever is attacking you's. Like
+/// the report it is this node's alone, and it leaves when the report is decided or dropped.
+pub const KIND_REPORT: &str = "report";
+
+/// Tell a moderator a report came in, and wake their open pages.
+pub async fn note_report(
+    state: &AppState,
+    moderator: &str,
+    reporter: &str,
+    report: &str,
+    about: &str,
+) -> Result<()> {
+    let now = crate::clock::now_ms();
+    upsert_row(
+        &state.node_db,
+        moderator,
+        reporter,
+        KIND_REPORT,
+        report,
+        None,
+        None,
+        Some(about),
+        now,
+        now,
+    )
+    .await?;
+    nudge_streams(state, &std::collections::BTreeSet::from([moderator.to_string()]));
+    Ok(())
+}
+
+/// A report was decided, or dropped: its news goes with it.
+pub async fn forget_report(node_db: &Db, moderator: &str, report: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM notifications WHERE reader_root = ?1 AND kind = ?2 AND doc_id = ?3",
+            (moderator, KIND_REPORT, report),
+        )
+        .await
+        .context("dropping a report's notification")?;
+    Ok(())
+}
+
 /// Tell a persona they completed a contract (bank.rs decides when, and only once).
 pub async fn note_contract(node_db: &Db, root: &str, contract: &str, detail: &str) -> Result<()> {
     let now = crate::clock::now_ms();

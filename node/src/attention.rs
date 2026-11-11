@@ -488,7 +488,8 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
 }
 
 /// Too many at once reads as noise: past [`BURST`], each room's lines become one "N new
-/// messages", and the bell's rows one "N new notifications".
+/// messages", the bell's rows one "N new notifications", and the moderation queue's one "N new
+/// reports" - a flood of reports is one alert, not one each.
 fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
     if alerts.len() <= BURST {
         return alerts;
@@ -496,9 +497,14 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
     let mut out: Vec<Alert> = Vec::new();
     let mut by_route: Vec<(String, Vec<Alert>)> = Vec::new();
     for a in alerts {
-        match by_route.iter_mut().find(|(r, _)| *r == a.route) {
+        // Each report's alert leads to its own place in the queue; together they are the queue's.
+        let place = match a.route.split_once('?') {
+            Some((REPORTS_ROUTE, _)) => REPORTS_ROUTE.to_string(),
+            _ => a.route.clone(),
+        };
+        match by_route.iter_mut().find(|(r, _)| *r == place) {
             Some((_, v)) => v.push(a),
-            None => by_route.push((a.route.clone(), vec![a])),
+            None => by_route.push((place, vec![a])),
         }
     }
     for (route, group) in by_route {
@@ -506,6 +512,15 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
         let last = group.into_iter().last().expect("a group has a member");
         if n == 1 {
             out.push(last);
+        } else if route == REPORTS_ROUTE {
+            out.push(Alert {
+                root: root.to_string(),
+                title: crate::msg!("attention.reports", "Reports").english,
+                body: crate::msg!("attention.n-new-reports", "{n} new reports", n = n).english,
+                route,
+                picture: None,
+                picture_png: None,
+            });
         } else if route == BELL_ROUTE {
             out.push(Alert {
                 root: root.to_string(),
@@ -537,6 +552,9 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
 }
 
 const BELL_ROUTE: &str = "/ringtome/notifications";
+/// The moderation queue, in Settings' content control (js/links.js `reportHref`). One report's
+/// place in it is this with `?report=<id>`.
+const REPORTS_ROUTE: &str = "/ringtome/settings/content/reports";
 
 /// A room's address in the app (PROJECT_PLAN's "`/ringtome/` replaces `/home`, `/in` and `/id`",
 /// 2026-09-28): `/ringtome/user/<author, short form>/room/<doc>`. An author that is not a hex root
@@ -573,6 +591,7 @@ async fn bell_alert(
     let title = if item.doc_id.is_empty()
         || item.kind == crate::notifications::KIND_MENTIONED
         || item.kind == crate::notifications::KIND_GROUP_INVITE
+        || item.kind == crate::notifications::KIND_REPORT
         || item.group.is_some()
     {
         None
@@ -713,6 +732,23 @@ async fn bell_alert(
                 .english
             }
         },
+        // A report for the moderation queue (notifications.rs `KIND_REPORT`): what it is about,
+        // never what it says.
+        (k::KIND_REPORT, _) => match item.detail.as_deref() {
+            Some("post") => {
+                crate::msg!("attention.sent-you-a-report-post", "sent you a report about a post")
+                    .english
+            }
+            Some("node") => {
+                crate::msg!("attention.sent-you-a-report-node", "sent you a report about a server")
+                    .english
+            }
+            Some("user") => {
+                crate::msg!("attention.sent-you-a-report-user", "sent you a report about a person")
+                    .english
+            }
+            _ => crate::msg!("attention.sent-you-a-report", "sent you a report").english,
+        },
         (k::KIND_GROUP_INVITE, _) => match &item.detail {
             Some(group) => {
                 crate::msg!(
@@ -761,6 +797,8 @@ async fn bell_alert(
             Some(author) => room_route(author, &item.doc_id),
             None => BELL_ROUTE.to_string(),
         }
+    } else if item.kind == crate::notifications::KIND_REPORT {
+        format!("{REPORTS_ROUTE}?report={}", item.doc_id)
     } else if item.kind == crate::notifications::KIND_GROUP_INVITE {
         crate::roster::group_route(&item.doc_id)
     } else if let Some(group) = &item.group {
@@ -1055,6 +1093,19 @@ mod tests {
             out.iter().any(|a| a.route == "/ringtome/user/z/room/w" && a.body == "lone"),
             "a lone line stays itself"
         );
+    }
+
+    /// A flood of reports is one alert that opens the queue, where each alone opens its own place.
+    #[test]
+    fn a_burst_of_reports_collapses_to_the_queue() {
+        let one = |id: &str| alert(&format!("{REPORTS_ROUTE}?report={id}"), "sent you a report");
+        let few = collapse("me", vec![one("a"), one("b")]);
+        assert_eq!(few.len(), 2, "a couple pass through, each to its own report");
+        assert!(few[0].route.ends_with("?report=a"));
+        let many = collapse("me", (0..BURST + 3).map(|i| one(&i.to_string())).collect());
+        assert_eq!(many.len(), 1);
+        assert_eq!(many[0].route, REPORTS_ROUTE);
+        assert!(many[0].body.contains(&format!("{} new reports", BURST + 3)), "{}", many[0].body);
     }
 
     /// A completed contract alerts as the bank's news, in the bell's words - never as the

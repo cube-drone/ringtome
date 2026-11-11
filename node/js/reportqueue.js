@@ -6,7 +6,8 @@
 // A stranger's picture stays covered until clicked; a proposal from an assistant waits for the
 // moderator's own tap. Nothing goes back to the reporter, and no response time is promised.
 import { h } from 'preact';
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useLocation } from 'preact-iso';
 import htm from 'htm';
 
 import { api } from './net.js';
@@ -145,7 +146,7 @@ const Picture = ({ root, hash, src, covered, reason }) => {
     </div>`;
 };
 
-const ReportRow = ({ root, current, report, administers, onMoved }) => {
+const ReportRow = ({ root, current, report, administers, onMoved, sought }) => {
     const proposal = report.proposal;
     const [level, setLevel] = useState((proposal && proposal.level) || 'block');
     const [reason, setReason] = useState((proposal && proposal.reason) || report.reason);
@@ -173,7 +174,12 @@ const ReportRow = ({ root, current, report, administers, onMoved }) => {
             setError(e.message);
         }
     };
-    return html`<li class=${report.child_abuse ? 'report-row report-row-child' : 'report-row'}>
+    const classes = [
+        'report-row',
+        report.child_abuse && 'report-row-child',
+        sought && 'report-row-sought',
+    ];
+    return html`<li class=${classes.filter(Boolean).join(' ')} data-report=${report.id}>
         <${KindHead} kind=${report.kind} when=${report.received_ms} />
         <p class="report-from">
             <${Who} root=${report.reporter} current=${current} />
@@ -290,6 +296,7 @@ export const ReportSections = ({ current }) => {
     const administers = useModeration(root).administers;
     const [settings, setSettings] = useState(null);
     const [queue, setQueue] = useState(null);
+    const loc = useLocation();
     const load = useCallback(() => {
         if (!root) return;
         api(`/api/identity/${root}/reports/settings`)
@@ -300,6 +307,18 @@ export const ReportSections = ({ current }) => {
             .catch(() => setQueue(null));
     }, [root]);
     useEffect(load, [load]);
+    // Come from a report's row in the bell, or its alert (links.js `reportHref`): once the queue
+    // is drawn, its place is scrolled to and marked. Once per report named, so a reload of the
+    // queue after acting on another doesn't drag the page back.
+    const sought = new URLSearchParams(loc.url.split('?')[1] || '').get('report');
+    const wentTo = useRef(null);
+    useEffect(() => {
+        if (!sought || !queue || wentTo.current === sought) return;
+        const row = document.querySelector(`[data-report="${CSS.escape(sought)}"]`);
+        if (!row) return;
+        wentTo.current = sought;
+        row.scrollIntoView({ block: 'center' });
+    }, [sought, queue]);
     if (!root || !settings) return null;
     const reports = (queue && queue.reports) || [];
     const floods = ((queue && queue.groups) || []).filter((g) => g.reports >= FLOOD_AT);
@@ -319,11 +338,17 @@ export const ReportSections = ({ current }) => {
                 ? html`<ul class="report-queue">
                       ${reports.map(
                           (r) =>
-                              html`<${ReportRow} key=${r.id} root=${root} current=${current} report=${r} administers=${administers} onMoved=${load} />`,
+                              html`<${ReportRow} key=${r.id} root=${root} current=${current} report=${r} administers=${administers} onMoved=${load} sought=${r.id === sought} />`,
                       )}
                   </ul>`
                 : settings.takes &&
                   html`<p class="null-sub">${t('reports.nothing-to-look-at', 'nothing to look at')}</p>`
+        }
+        ${
+            sought &&
+            queue &&
+            !reports.some((r) => r.id === sought) &&
+            html`<p class="null-sub">${t('reports.that-report-is-gone', 'That report is no longer in your queue: it was dismissed, acted on, or dropped.')}</p>`
         }
     </section>`;
 };

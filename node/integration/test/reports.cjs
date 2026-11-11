@@ -54,6 +54,11 @@ const fact = (who, root, about, key, value) =>
         return (await r.json()).sent;
     };
     const queue = async () => await (await admin(`api/identity/${mod}/reports`)).json();
+    // The moderator's bell, as hrseNags reads it: its rows about reports.
+    const bell = async () =>
+        (await (await admin(`api/identity/${mod}/notifications`)).json()).items.filter(
+            (n) => n.kind === 'report',
+        );
     const kept = async (reporter) =>
         (await sql(`SELECT id, standing FROM reports WHERE reporter = '${reporter}'`, HOST)).rows;
 
@@ -145,6 +150,18 @@ const fact = (who, root, about, key, value) =>
             HOST,
         );
         assert.equal(Number(chains.rows[0].n), 1, 'kept once, in a table');
+
+        // And the moderator hears of it (Curtis, 2026-11-11): a row in their bell, unseen, naming
+        // the reporter, the report and what it is about - and none of what it says.
+        const rung = (await bell()).filter((n) => n.doc_id === mine[0].id);
+        assert.equal(rung.length, 1, 'one row for the report');
+        assert.equal(rung[0].author, repRoot);
+        assert.equal(rung[0].detail, 'post');
+        assert.equal(rung[0].seen, false);
+        assert.ok(
+            !JSON.stringify(rung[0]).includes('spam'),
+            "the report's words stay in the queue",
+        );
     });
 
     it('takes no bytes the author did not sign, and no address it did not hand out', async function () {
@@ -175,6 +192,10 @@ const fact = (who, root, about, key, value) =>
         const proposed = (await queue()).reports.find((x) => x.id === r.id);
         assert.equal(proposed.status, 'proposed');
         assert.deepEqual(proposed.proposal, { level: 'block', reason: 'selling horses' });
+        assert.ok(
+            (await bell()).some((n) => n.doc_id === r.id),
+            "a proposal leaves the bell's row: the report is still theirs to look at",
+        );
         const listed = (await (await admin(`api/identity/${mod}/moderation`)).json()).mine;
         assert.ok(!listed.some((m) => m.target === authorRoot), 'a proposal lists nobody');
 
@@ -186,6 +207,7 @@ const fact = (who, root, about, key, value) =>
         const mine = (await (await admin(`api/identity/${mod}/moderation`)).json()).mine;
         assert.ok(mine.some((m) => m.target === authorRoot && m.level === 'warn'));
         assert.ok(!(await queue()).reports.some((x) => x.id === r.id), 'done, off the queue');
+        assert.ok(!(await bell()).some((n) => n.doc_id === r.id), 'and off the bell');
         await admin(`api/identity/${mod}/moderation/persona/${authorRoot}`, { method: 'DELETE' });
     });
 
@@ -217,11 +239,19 @@ const fact = (who, root, about, key, value) =>
         const bravo = q.reports.find((r) => r.reporter === strangerRoot).from_node;
         const group = q.groups.find((g) => g.node === bravo);
         assert.ok(group && group.reports >= 1);
+        assert.ok(
+            (await bell()).some((n) => n.author === strangerRoot),
+            "a stranger's report rings too",
+        );
         const d = await j(admin, `api/identity/${mod}/reports/from/${bravo}/drop`, {
             block: false,
         });
         assert.equal(d.status, 200);
         assert.ok(!(await queue()).reports.some((r) => r.from_node === bravo), 'all dropped');
+        assert.ok(
+            !(await bell()).some((n) => n.author === strangerRoot),
+            'and their rows with them',
+        );
     });
 
     it("carries only the reference for a child being abused, and seals it at an administrator's door", async function () {

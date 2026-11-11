@@ -114,6 +114,11 @@
     color: var(--teal);
 }
 
+/* A report's link to its place in the moderation queue. */
+.notif-report {
+    color: var(--teal);
+}
+
 .notif-stranger {
     margin-left: 0.4em;
     padding: 0.05em 0.4em;

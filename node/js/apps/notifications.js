@@ -23,7 +23,7 @@ import { MiniPost } from '../postentry.js';
 import { PushToggle } from '../push.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
-import { groupHref, groupPostHref, roomHref } from '../links.js';
+import { groupHref, groupPostHref, reportHref, roomHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -88,7 +88,24 @@ const contractWords = (r) => {
     );
 };
 
+/// A report for the moderation queue (reports.rs, notifications.rs `KIND_REPORT`): what it is
+/// about - never what it says - as a link to its place in the queue.
+const reportWords = (r) => {
+    const about =
+        r.detail === 'post'
+            ? t('apps.notifications.a-report-about-a-post', 'a report about a post')
+            : r.detail === 'node'
+              ? t('apps.notifications.a-report-about-a-server', 'a report about a server')
+              : r.detail === 'user'
+                ? t('apps.notifications.a-report-about-a-person', 'a report about a person')
+                : t('apps.notifications.a-report', 'a report');
+    return tNodes('apps.notifications.sent-you-report', 'sent you {report}', {
+        report: html`<a class="notif-report" href=${reportHref(r.doc_id)}>${about}</a>`,
+    });
+};
+
 const sentence = (r) => {
+    if (r.kind === 'report') return reportWords(r);
     // The share kind first: it carries no bands, and the public-edge ladder below would
     // otherwise dress it as "publishes their trust in you" - the exact miscopy that hid
     // share notifications in plain sight (2026-08-25: the row rendered, wearing the wrong
@@ -256,7 +273,7 @@ export const NotificationsApp = ({ current }) => {
                           (r) => html`
                               <div
                                   class=${r.seen ? 'notif-row' : 'notif-row notif-unseen'}
-                                  key=${`${r.stranger ? 'x' : 'd'}:${r.author}:${r.kind}`}
+                                  key=${`${r.stranger ? 'x' : 'd'}:${r.author}:${r.kind}:${r.doc_id || ''}`}
                               >
                                   ${
                                       /* Passing a profile - even an EMPTY one, which is what a

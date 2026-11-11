@@ -27293,3 +27293,36 @@ Seen in Chrome on a scratch node: a regular account's Settings ends in Network
 alone, an administrator's in all six, `/ringtome/device/backups` lands on the
 Backups page under hrseSettings, and the dock has no server tile.
 `just ui-check` 1110, `just strings-check`, `cargo check`.
+
+## A report rings the bell (2026-11-11)
+
+Curtis asked how a moderator knows they have reports. They didn't: a report
+landed in the queue and nothing said so. His ruling: "every new report should
+generate a row in hrseNags and alert the user through whatever our current
+machinery for alerting the user is: clicking on the report will follow that
+report to its position in the reports window."
+
+- `reports.rs` `take` writes a bell row for the moderator as it keeps the report
+  (`notifications.rs` `KIND_REPORT`, `note_report`): the reporter as its author,
+  the report's id as its doc, and `post`, `user` or `node` as what it is about.
+  Never the report's words. The moderator's open pages are woken.
+- The row goes when the report does (`forget_report`): dismissed, listed,
+  dropped with its node's others, or trimmed. A proposal leaves it.
+- `attention.rs` words the alert ("sent you a report about a post") and routes
+  it to the report's place in the queue. Past the burst of three, reports'
+  alerts collapse into one "N new reports" that opens the queue.
+- hrseNags shows the row as "<who> sent you a report about a post", the report a
+  link (`links.js` `reportHref`). The reports tab reads `?report=<id>`, scrolls
+  to that report and outlines it, and says so when it is no longer in the queue.
+- The assistant's `read_notifications` names the report's id and what it is
+  about.
+- plans/MODERATION.md gains _Hearing of a report_.
+
+Not done: nothing holds back a flood's rows in the bell - each report from a
+stranger is a row, up to the stranger pool; only the alerts collapse.
+
+`cargo test -p ringtome-node`; `RINGTOME_TEST_GREP='reports' just integration`
+19 passing, with new claims in `reports.cjs` (a row on arrival that carries none
+of the report's words, kept through a proposal, gone when listed or dropped);
+`just ui-check`. Seen in Chrome on a scratch node: two reports, two rows and a
+badge of 2 on Nags, and the link landing on the outlined report.
