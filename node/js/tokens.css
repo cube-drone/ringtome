@@ -152,6 +152,10 @@
 
     --hex-border-dark: #bf9152;   /* the outer 2px ring of an application heptagon: caramel */
     --hex-border-light: #fdf7ec;  /* the inner 2px ring: pale cream */
+    /* The cap on the dock tile of the app you are in, a colour of each colourway's own that stands
+       off its dock band (Curtis, 2026-11-11). Peach here and in doors-xp, where the accent is all
+       but the band's own colour. */
+    --dock-active: var(--peach);
     --recent-rim: var(--pink);    /* a recent thing's tile (plans/RECENTS.md): not an app, so not an app's rim */
 
     --marker: #f3e08c;                      /* search hits: a warm highlighter pen */
@@ -248,6 +252,7 @@
 
     --teal: #f2c14e;          /* the accent: witchlight yellow */
     --teal-deep: #3b2654;     /* the bottom dock band: plum */
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #b48cf2;           /* good / friendly: lavender */
     --pink: #e489d8;          /* tags */
@@ -338,6 +343,7 @@
 
     --teal: #0a7aff;
     --teal-deep: #3a3a3c;
+    --dock-active: var(--teal); /* the active dock tile's cap: the blue accent, on the grey band */
     --sea: #28a745;
     --pink: #ff2d55;
     --peach: #ff9f0a;
@@ -388,6 +394,7 @@
 
     --teal: #d2042d;
     --teal-deep: #2342c9;
+    --dock-active: var(--marker); /* the active dock tile's cap: the highlighter's yellow: the red accent has no light against the blue band */
     --sea: #1d3fbb;
     --pink: #e0457b;
     --peach: #f28c28;
@@ -435,6 +442,7 @@
 
     --teal: #39ff14;
     --teal-deep: #0d3a0d;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #39ff14;
     /* A chosen chip in inverse video (Curtis, 2026-10-11: "a little more distinct"): the phosphor
@@ -486,6 +494,7 @@
 
     --teal: #ffffff;
     --teal-deep: #333333;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ffffff;
     --chip-on: var(--sea); /* inverse video, as terminal's */
@@ -535,6 +544,7 @@
 
     --teal: #14e1ff;
     --teal-deep: #0a333a;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #14e1ff;
     --chip-on: var(--sea); /* inverse video, as terminal's */
@@ -584,6 +594,7 @@
 
     --teal: #ff8c1a;
     --teal-deep: #3a2008;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ff8c1a;
     --chip-on: var(--sea); /* inverse video, as terminal's */
@@ -633,6 +644,7 @@
 
     --teal: #ffd700;
     --teal-deep: #3a3008;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #ffd700;
     --chip-on: var(--sea); /* inverse video, as terminal's */
@@ -695,6 +707,7 @@
 
     --teal: #3da5ff;
     --teal-deep: #1a0f33;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #2ee66b;
     --pink: #ff6ec7;
@@ -751,6 +764,7 @@
 
     --teal: #5bcefa;
     --teal-deep: #0b2230;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #4fe0b0;
     --pink: #f5a9b8;
@@ -804,6 +818,7 @@
 
     --teal: #4d8bff;
     --teal-deep: #120a2a;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #3fdc7a;
     --pink: #ff5fae;
@@ -859,6 +874,7 @@
 
     --teal: #c060e0;
     --teal-deep: #1a0a1f;
+    --dock-active: var(--teal); /* the active dock tile's cap: the accent itself, on a dark band */
     --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
     --sea: #3fdc7a;
     --pink: #d9a3ec;

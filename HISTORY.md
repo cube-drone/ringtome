@@ -27245,3 +27245,20 @@ home, in the dock). Opening an app records nothing now: `noteApp` and the
 rows are left in place, read by nothing. What the dock cuts off when it runs out
 of room is the registry's last apps, where it was the least recently used.
 plans/RECENTS.md carries the revision. `just ui-check` green.
+
+## The app you are in wears a cap (2026-11-11)
+
+Curtis: the active dock tile was "a little hard to tell" in some colourways - it
+was only full where the others are dimmed. The tile of the app you are in now
+has its top two edges thicker and in a colour of their own: the face sits 3px
+lower in the heptagon and the rim above it is painted `--dock-active`, a new
+token, down to the shoulders. The rim's own colour moved to `--qh-rim`, so the
+persona's and a recent thing's tiles keep theirs below the cap.
+
+The cap's colour is each colourway's own (Curtis: "let's use a colorway-specific
+color"): the accent (`--teal`) wherever the dock band is dark or grey -
+witchlight's yellow, bosc's blue, each terminal's phosphor, and the accents of
+pride, trans, bi and ace; peach in the default and doors-xp, whose accent is all
+but the band's colour; the highlighter's yellow in micross, whose red accent has
+no light against its blue band. Seen in Chrome in all fourteen.
+`just ui-check` 1110.

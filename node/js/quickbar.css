@@ -203,7 +203,8 @@ a.quickbar-version:focus-visible {
     height: calc(var(--qh-w) * 0.9749); /* regular pointy-top heptagon */
     padding: 4px; /* the rim thickness */
     border: 0;
-    background: var(--teal-deep);
+    --qh-rim: var(--teal-deep);
+    background: var(--qh-rim);
     clip-path: var(--face-clip);
     cursor: pointer;
     transition: opacity 0.12s ease, transform 0.12s ease;
@@ -276,13 +277,13 @@ a.quickbar-version:focus-visible {
 /* The persona's own tile wears them (Curtis, 2026-09-27): the rim in their colour, their picture
    (or the identicon their key draws) filling the face. */
 .quickbar-hex-me {
-    background: var(--me-ring);
+    --qh-rim: var(--me-ring);
 }
 
 /* A recent thing (plans/RECENTS.md): your newest saved, said or published, after the persona tile -
    in a rim of its own, so it reads as a thing and not an app. */
 .quickbar-hex-recent {
-    background: var(--recent-rim);
+    --qh-rim: var(--recent-rim);
 }
 
 .quickbar-hex-img {
@@ -298,6 +299,19 @@ a.quickbar-version:focus-visible {
 
 .quickbar-hex:not(.active) {
     opacity: 0.72;
+}
+
+/* The app you are in (Curtis, 2026-11-11: full against dimmed was "a little hard to tell" in some
+   colourways): the heptagon's top two edges, thicker and in a colour of their own. The face sits
+   lower in the tile, which thickens the rim above it, and the rim is painted `--dock-active` down
+   to the shoulders (19.8% is the shoulder of `--face-clip`) and its own colour below. */
+.quickbar-hex.active {
+    padding: 7px 4px 1px;
+    background: linear-gradient(
+        to bottom,
+        var(--dock-active) calc(19.8% + 5px),
+        var(--qh-rim) calc(19.8% + 5px)
+    );
 }
 
 .quickbar-hex:hover {
