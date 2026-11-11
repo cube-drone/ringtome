@@ -27210,3 +27210,15 @@ hardening removed: the trusted third person is let in. The first version of the
 caught, and a second treated a named-but-unowned viewer as absent, which
 `audience.cjs` caught; both are as they were. The full acceptance suite passes
 (2103), with 748 unit tests and clippy.
+
+## Marquee Markup 0.10.4 (2026-11-10)
+
+The five `cube-drone-marquee-*` crates and the six `@cube-drone/marquee-*`
+packages move from 0.10.2 to 0.10.4. 0.10.3 is renderer performance; 0.10.4 adds
+`:::expand`, a region folded behind its title (the first paragraph or heading),
+rendered as the browser's own `<details>`/`<summary>` with no script. Nothing in
+the app needed changing: a post with two folds, one titled by a paragraph and
+one by a heading, renders and opens on a scratch node, with Marquee's own
+`.mq-expand` styles from the bundle. The editor's toolbar has no button for it
+yet. `cargo test -p ringtome-node` 748, `just ui-check` 1111, both bundles
+build.
