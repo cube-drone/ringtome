@@ -27222,3 +27222,26 @@ one by a heading, renders and opens on a scratch node, with Marquee's own
 `.mq-expand` styles from the bundle. The editor's toolbar has no button for it
 yet. `cargo test -p ringtome-node` 748, `just ui-check` 1111, both bundles
 build.
+
+## The side-by-side preview keeps its border (2026-11-11)
+
+Curtis: in side by side, a note longer than a screen ran on far past the border
+of the rendered pane. The pane both scrolled and wore `jag-line`, whose line is
+an `::after` over the padding box - so the line scrolled away with the first
+screen of words. The pane is now the frame, and a box inside it
+(`.editor-side-scroll`) does the scrolling. Seen in Chrome on a scratch node: an
+80-paragraph note, the preview scrolled to its middle, the frame still 750px
+around it. `just ui-check` 1111.
+
+## Apps in a fixed order again (2026-11-11)
+
+Curtis: the quickbar re-ordering every time an app is selected was "more
+confusing than I'd expected it would be"; back to a fixed order in the quickbar
+and the launcher. Both now show the apps in the registry's order, always
+(`pure/recents.js` loses `orderByUse`; `consoleCellsFor` and the dock stop
+taking `used`). The three recent things still head both, after the persona (and
+home, in the dock). Opening an app records nothing now: `noteApp` and the
+`app:<id>` rows of the mirror's `recents` table are gone from the code, and old
+rows are left in place, read by nothing. What the dock cuts off when it runs out
+of room is the registry's last apps, where it was the least recently used.
+plans/RECENTS.md carries the revision. `just ui-check` green.

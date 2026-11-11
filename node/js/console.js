@@ -132,16 +132,13 @@ export const Console = ({ onLaunch, personaName, me, admin, current }) => {
     const owns = useOwnership();
     // The bank destroyed (Automated Luxury Horse Communism): hrseBank is no app of theirs any more.
     const hidden = useAbolished() ? ['bank'] : [];
-    // In order of use, headed by your three newest things (plans/RECENTS.md) - only things of apps
-    // you may open.
+    // In registry order, your three newest things after the persona (plans/RECENTS.md) - only
+    // things of apps you may open.
     const root = current && current.root;
-    const { used, things } = useRecents(root);
+    const { things } = useRecents(root);
     const mine = consoleCellsFor(admin, columns, owns);
     const shown = newestThings(things, (id) => mine.some((c) => c.id === id));
-    const rows = chunk(
-        consoleCellsFor(admin, columns, owns, { used, things: shown, hidden }),
-        columns,
-    );
+    const rows = chunk(consoleCellsFor(admin, columns, owns, { things: shown, hidden }), columns);
     return html`
         <div class="console">
             <${UpdateNotice} />

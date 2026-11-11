@@ -109,8 +109,8 @@ import { useNarrow } from './panes.js';
 import { useOwnColorway } from './colorway.js';
 import { useWornCrt } from './crtpref.js';
 import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
-import { useRecents, noteApp } from './mirror/recents.js';
-import { orderByUse, newestThings } from './pure/recents.js';
+import { useRecents } from './mirror/recents.js';
+import { newestThings } from './pure/recents.js';
 import { RecentDockTile } from './recents.js';
 
 const html = htm.bind(h);
@@ -409,8 +409,6 @@ const Inside = ({ session }) => {
     // it on app switch - a filter you set in one app shouldn't silently empty another.
     const [searchKind, setSearchKind] = useState('all');
     const appHereId = appHere ? appHere.id : null;
-    // Opening an app is using it (plans/RECENTS.md): the dock and the launcher order by it.
-    useEffect(() => noteApp(root, appHereId), [root, appHereId]);
     const recents = useRecents(root);
     // The bank destroyed (Automated Luxury Horse Communism): hrseBank leaves the dock.
     const abolished = useAbolished();
@@ -475,7 +473,7 @@ const Inside = ({ session }) => {
     // their dock behaviour - the app you're in closes to the launcher.
     const narrow = useNarrow();
     // The dock's apps run out of room before the clock (Curtis, 2026-10-31): what doesn't fit is cut
-    // off under a fade into the bar - the least recently used, since the dock is in order of use.
+    // off under a fade into the bar - the registry's last, since the dock is in its order.
     const [dockRef, dockOver] = useOverflowing();
     const narrowSlot = (id, badge) => {
         const app = appById(id);
@@ -509,12 +507,10 @@ const Inside = ({ session }) => {
         ${/* The corner cloud, the phone bar's last place (plans/SYNC_STATUS.md, piece 3). */ ''}
         ${open && html`<${SyncCloud} root=${root} narrow=${true} />`}
     </footer>`;
-    // The dock in order of use, persona first, home second, and your three newest things after them in tiles of
-    // their own (plans/RECENTS.md) - only things of apps you may open.
-    const dockApps = orderByUse(
-        appsFor(nodeAdmin, owns).filter((a) => !(abolished && a.id === BANK_APP_ID)),
-        recents.used,
-    );
+    // The dock in registry order, always (Curtis, 2026-11-11): persona first, home second, and your
+    // three newest things after them in tiles of their own (plans/RECENTS.md) - only things of apps
+    // you may open.
+    const dockApps = appsFor(nodeAdmin, owns).filter((a) => !(abolished && a.id === BANK_APP_ID));
     const recentThings = newestThings(recents.things, (id) => dockApps.some((a) => a.id === id));
     // Home, second, always (Curtis, 2026-10-31): the phone bar's home tile, at the dock's size -
     // the launcher, from wherever you are.

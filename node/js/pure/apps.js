@@ -14,7 +14,7 @@
 // business depending on a rendering library. That is what lets this module join the pure set and be
 // tested without a browser (integration/test/pure/apps.cjs, which also checks every name resolves).
 
-import { orderByUse, LEAD_APP } from './recents.js';
+import { LEAD_APP } from './recents.js';
 
 export const DEFAULT_STYLE = 'default';
 
@@ -306,20 +306,12 @@ export const mayOpen = (app, admin, owns = () => true) =>
 export const appsFor = (admin, owns) => liveApps.filter((a) => mayOpen(a, admin, owns));
 
 /// The console's honeycomb for this person: the apps they may open, padded with blank cells to whole
-/// rows of `columns` - so the comb stays whole however many apps there are. In order of use
-/// (plans/RECENTS.md, pure/recents.js): the persona first, then the recent `things` as `{ thing }`
-/// cells, then the rest, most recently used first; registry order where nothing was used. `hidden`
+/// rows of `columns` - so the comb stays whole however many apps there are. In registry order, always
+/// (Curtis, 2026-11-11), with the recent `things` as `{ thing }` cells after the persona
+/// (plans/RECENTS.md). `hidden`
 /// names apps left out whatever is owned (hrseBank, once Automated Luxury Horse Communism destroys it).
-export const consoleCellsFor = (
-    admin,
-    columns = 4,
-    owns,
-    { used, things = [], hidden = [] } = {},
-) => {
-    const apps = orderByUse(
-        APPS.filter((a) => a.live && mayOpen(a, admin, owns) && !hidden.includes(a.id)),
-        used,
-    );
+export const consoleCellsFor = (admin, columns = 4, owns, { things = [], hidden = [] } = {}) => {
+    const apps = APPS.filter((a) => a.live && mayOpen(a, admin, owns) && !hidden.includes(a.id));
     const lead = apps.length && apps[0].id === LEAD_APP ? 1 : 0;
     const cells = [
         ...apps.slice(0, lead),

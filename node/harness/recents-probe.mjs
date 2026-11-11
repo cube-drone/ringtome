@@ -1,6 +1,6 @@
 // Recents (plans/RECENTS.md): say a line in a room, and the room heads the dock - after the persona
-// tile and home, in a recents tile - and the launcher; and chat moves up to be the first app after
-// them. Home, second, opens the launcher.
+// tile and home, in a recents tile - and the launcher; and the apps stay exactly where they were
+// (2026-11-11: a fixed order, whatever was used). Home, second, opens the launcher.
 //
 //   just scratch 1   (prints the port)
 //   PROBE_PORT=<port> node recents-probe.mjs
@@ -37,7 +37,8 @@ await waitFor(
     () => doc.querySelectorAll('.quickbar-apps .quickbar-hex').length > 3,
     'the dock',
 );
-console.log('dock before:', JSON.stringify(dockOrder()));
+const before = dockOrder();
+console.log('dock before:', JSON.stringify(before));
 let view = null;
 for (let t = 0; t < 60 && !view; t++) {
     await sleep(250);
@@ -54,7 +55,11 @@ const after = dockOrder();
 console.log('dock after:', JSON.stringify(after));
 console.log('RESULT home is second, always:', after[1] === 'home');
 console.log('RESULT the room comes after persona and home:', after[2] === 'recent:the stable');
-console.log('RESULT chat is the first app after the recents:', /chat/i.test(after[3] || ''));
+// The first look may come before the bought apps are known: what it showed keeps its order, and
+// chat, just used, hasn't moved up to head the apps.
+let at = -1;
+const kept = before.every((x) => (at = after.indexOf(x, at + 1)) !== -1);
+console.log('RESULT the apps are where they were:', kept && !/chat/i.test(after[3] || ''));
 // The launcher, by the dock's home tile.
 click(window, doc.querySelectorAll('.quickbar-apps .quickbar-hex')[1]);
 await waitFor(doc, () => doc.querySelector('.hex-comb'), 'the launcher, from home');

@@ -176,12 +176,22 @@
     min-height: 50vh;
 }
 
+/* The pane is the frame and the box inside it scrolls (Curtis, 2026-11-11): the jagged line is an
+   `::after` over the padding box, so on a box that scrolls it rode away with the first screen of
+   words and the rest ran on past it. */
 .editor-side-preview {
     max-height: 75vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     background: var(--paper);
     --line: var(--border);
     --j: 3px;
+}
+
+.editor-side-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     padding: 0.8rem;
     /* scrollToSource centers the cursor's node; smooth keeps the tracking legible. */
     scroll-behavior: smooth;

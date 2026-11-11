@@ -555,7 +555,7 @@ export const Editor = ({
         if (mode === 'side' && format === 'marquee') {
             return html`<div class="editor-side">
                 <div class="editor-side-source">${sourcePane}</div>
-                <div class="editor-side-preview jag-line">${rendered}</div>
+                <div class="editor-side-preview jag-line"><div class="editor-side-scroll">${rendered}</div></div>
             </div>`;
         }
         return sourcePane;

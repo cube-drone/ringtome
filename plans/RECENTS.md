@@ -1,4 +1,12 @@
-# Recents: the dock and the launcher in order of use
+# Recents: the dock and the launcher, headed by what you last touched
+
+**Revised 2026-11-11** (Curtis: "I'm starting to not enjoy the quickbar at the
+bottom of the page re-ordering every time I select an app: I think that
+behavior's more confusing than I'd expected it would be"). The apps are back in
+a fixed order, the registry's, in both the dock and the launcher. The three
+recent things still head them. Where the text below says apps are ordered by
+use, it describes what was built on 2026-10-31 and no longer holds; app opens
+are no longer recorded at all.
 
 Curtis, 2026-10-31: "at the browser level, we keep track of the last apps you
 had open and which documents you saved or interacted with in those apps. Using
@@ -16,10 +24,10 @@ interactions."
 2. **The persona tile stays first.** It wears your face and holds the persona
    switcher; it doesn't move. In the desktop dock a home tile comes second,
    always (Curtis, 2026-10-31), as on the phone's bar. Then the three recent
-   things, then every other app, most recently used first. Apps never used here
-   keep the registry's order, after the used ones.
+   things, then every other app, in the registry's order (2026-11-11; until
+   then, most recently used first).
 3. **The phone's bar is unchanged.** Its three tiles (bell, home, chat) stay.
-   The launcher grid gets the recents and the ordering at every width.
+   The launcher grid gets the recents at every width.
 4. **A recent thing's face is its picture when it has one**: a drawing's kept
    thumbnail, the other person's face for an IM; otherwise its app's icon. Its
    rim is its own colour (`--recent-rim`), so it reads as a thing, not an app.
@@ -44,10 +52,9 @@ One record per thing, the newest touch moving it to the front:
   station played. Its address is `/ringtome/amp?mixtape=<id>` (or `station=`,
   `filter=`), which hrseAmp opens and then sets back to its own.
 
-A document deleted, or a playlist forgotten, leaves the recents. Opening an app
-counts as using it; only the interactions above make a recent thing.
+A document deleted, or a playlist forgotten, leaves the recents. Only the
+interactions above make a recent thing; opening an app records nothing.
 
 ## Bounds
 
-The table keeps the newest dozen things and one row per app; the dock and the
-launcher show three.
+The table keeps the newest dozen things; the dock and the launcher show three.
