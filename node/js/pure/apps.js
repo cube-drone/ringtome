@@ -227,23 +227,9 @@ export const APPS = [
         // earning has paid, and the ledger that shows its working. Not a documents app.
         itemNoun: 'line',
     },
-    {
-        id: 'device',
-        // The place's own settings (apps/device.js): its Network page for everyone, and for its
-        // administrators who may sign up, backups and the front page (Curtis, 2026-09-25). Named
-        // for what the person is holding - "Device" in the desktop app, where it is their own
-        // computer, and "Server" in a browser reaching one - and never "node", a word people
-        // using this should not need. Not a documents app.
-        name: 'hrseServer™',
-        deviceName: 'hrseDevice™',
-        icon: 'server',
-        deviceIcon: 'device',
-        live: true,
-        // Everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5): a regular user sees only its
-        // Network page, an administrator every page (apps/device.js), and the node refuses
-        // everyone else at every admin door regardless.
-        itemNoun: 'setting',
-    },
+    // The place's own settings were an app here (`device`: hrseServer™, hrseDevice™ in the desktop
+    // app) until 2026-11-11, when a second settings app had confused people once too often
+    // (Curtis). They are the Settings app's last section now (serversettings.js).
     { blank: true },
 ];
 
@@ -342,8 +328,8 @@ export const appByPath = (seg) => liveApps.find((a) => a.path === seg) || appByI
 /// (so "Persona" reads as whoever you are); every other app is its registry name. `personaName`
 /// is the live name, '' when unset - then the persona app falls back to its own registry name.
 ///
-/// `device` is true in the desktop app, where an app with a `deviceName` wears it instead
-/// (the Server app reads "Device" there).
+/// `device` is true in the desktop app, where an app with a `deviceName` wears it instead (none
+/// has one since the Server app, "Device" there, became a section of Settings).
 export const appLabel = (app, personaName, device = false) =>
     app && app.id === 'persona' && personaName
         ? personaName

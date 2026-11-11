@@ -18,7 +18,8 @@ _Rulings_. Everything after that is Claude's proposal for him to correct.
 1. **New items in the Bank's Market column, above hrseBonds,** each with an
    explanation of the app or feature it unlocks.
 2. **A new player starts with just their persona, hrseDrawing and hrseBank** -
-   and hrseServer, if they're a node administrator. Everything else is bought.
+   and hrseServer, if they're a node administrator (a section of hrseSettings
+   since 2026-11-11). Everything else is bought.
 3. **The unlocks:**
 
    | Unlock                      | Price        | Opens                                                                                |

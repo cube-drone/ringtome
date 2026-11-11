@@ -1,4 +1,4 @@
-// hrseServer's Moderation page (plans/SCANNING.md, plans/MODERATION.md): what the people who look
+// The server settings' Moderation page (plans/SCANNING.md, plans/MODERATION.md): what the people who look
 // after this place do when something on it is something no one should hold.
 //
 // - Reports (node/src/reports.rs): Allow Users to Accept Reports, the strangers' pool and how long

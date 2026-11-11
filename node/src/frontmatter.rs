@@ -9,7 +9,7 @@
 //! - **every server's default** - `NODE_OPERATOR_TERMS_OF_SERVICE.mq` and `NODE_OPERATOR_PRIVACY.mq`,
 //!   embedded the same way;
 //! - **this server's additions** - what its operator wrote in a private note in hrseWriter and
-//!   published here (hrseServer's _Front Matter_), appended after the default, with every version
+//!   published here (the server settings' _Front Matter_), appended after the default, with every version
 //!   they ever published listed at the end of the page, dated, as a diff of the one before.
 //!
 //! The license (`/eula`) is the software's own: `LICENSE.md`, the GNU AGPL, shown as written.
@@ -392,7 +392,7 @@ fn page(title: &str, body: &str) -> Response {
 }
 
 // ---------------------------------------------------------------------------------------------
-// hrseServer's Front Matter.
+// The server settings' Front Matter.
 
 #[derive(Serialize)]
 struct Addition {

@@ -253,7 +253,7 @@ pub struct SetPolicy {
     pub tagged: bool,
 }
 
-/// GET `/api/admin/audio-policy` - the Server app: whether tagged audio is published here.
+/// GET `/api/admin/audio-policy` - the server settings: whether tagged audio is published here.
 pub async fn policy_handler(
     State(state): State<AppState>,
     _admin: crate::auth::NodeAdminSession,

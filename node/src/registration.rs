@@ -1,7 +1,7 @@
 //! Who may make an account here.
 //!
 //! **The policy** (Curtis, 2026-09-25) is one of three, chosen by a node administrator in the
-//! Server app:
+//! server settings:
 //!
 //! - `open` - anyone who can reach the node may sign up (rate-limited per address, as before);
 //! - `password` - sign-up asks for a password the administrator chose and shares by hand;
@@ -11,7 +11,7 @@
 //! when it was its owner's alone and signed them in by its launch token; now it is a localhost
 //! multi-user server with the ordinary sign-in (Curtis), so its first person must be able to sign
 //! up - and since it binds loopback, `open` there means open to whoever uses this computer. Its
-//! owner has the same three choices in the Device app that a server's has in the Server app. This
+//! owner has the same three choices in the device settings that a server's has in the server settings. This
 //! is the simple, shippable form of PROJECT_PLAN's *Registration Modes*: `password` stands in for
 //! invite tokens until those exist, and `trusted` waits for the trust layer.
 //!
@@ -146,7 +146,7 @@ pub async fn policy(state: &AppState) -> Result<Policy, AppError> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The limits (2026-10-02): beside the mode, set in the same Server app page.
+// The limits (2026-10-02): beside the mode, set in the same server settings page.
 
 /// The operator's limits on sign-ups - each `None` for "no limit". (The group a sign-up joins is
 /// groups.rs's, since 2026-10-20.)

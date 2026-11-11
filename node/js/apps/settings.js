@@ -3,21 +3,24 @@
 // "They're getting so expansive that I'm thinking they deserve an app all to themselves"). Its
 // pages are the ones that disclosure led to, moved under it: `/ringtome/settings/<page>`. The
 // old addresses under `/ringtome/persona/` redirect (index.js `SettingsMoved`), and the gear on
-// your own page leads here.
+// your own page leads here. Its last section is the place's own settings (serversettings.js), an app
+// of their own until 2026-11-11.
 import { h } from 'preact';
 import htm from 'htm';
 
 import { SettingsList } from '../persona.js';
+import { ServerSettingsList } from '../serversettings.js';
 import { t } from '../i18n.js';
 
 const html = htm.bind(h);
 
-export const SettingsApp = ({ persona, session }) => {
+export const SettingsApp = ({ persona, session, admin }) => {
     if (!persona || !persona.current) return null;
     return html`<div class="persona-page settings-app">
         <div class="persona-page-head">
             <h1 class="persona-page-title">${t('settings.title', 'your settings')}</h1>
         </div>
         <${SettingsList} persona=${persona} session=${session} />
+        <${ServerSettingsList} admin=${admin} />
     </div>`;
 };

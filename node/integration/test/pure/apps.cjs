@@ -299,17 +299,10 @@ describe('app registry', () => {
             assert.equal(appLabel(null, 'Curtis'), '');
         });
 
-        it("names the settings app for what the person holds - never 'node'", () => {
-            assert.equal(
-                appLabel(appById('device'), 'Curtis'),
-                'hrseServer™',
-                'a browser reaching a server',
-            );
-            assert.equal(
-                appLabel(appById('device'), 'Curtis', true),
-                'hrseDevice™',
-                'the desktop app',
-            );
+        it('wears a device name in the desktop app, where an app has one', () => {
+            const two = { id: 'x', name: 'hrseServer™', deviceName: 'hrseDevice™' };
+            assert.equal(appLabel(two, 'Curtis'), 'hrseServer™', 'a browser reaching a server');
+            assert.equal(appLabel(two, 'Curtis', true), 'hrseDevice™', 'the desktop app');
             assert.equal(
                 appLabel(appById('notes'), 'Curtis', true),
                 'hrseWriter™',
@@ -318,8 +311,6 @@ describe('app registry', () => {
         });
     });
 
-    // The settings app is for the people who look after the place (apps/device.js); the node
-    // refuses everyone else at every door, and these keep the tile out of their way.
     // The Market's apps (plans/UNLOCKS.md, 2026-10-05): a new player starts with their persona,
     // hrseDrawing, Nags and hrseBank, and every other app shows once its unlock is bought.
     describe('apps the Market sells', () => {
@@ -327,8 +318,8 @@ describe('app registry', () => {
             const none = () => false;
             assert.deepEqual(
                 appsFor(false, none).map((a) => a.id),
-                ['persona', 'settings', 'notifications', 'drawing', 'bank', 'device'],
-                "Settings is everyone's, second, and never sold (2026-10-09); so is the server's Network page (2026-10-17)",
+                ['persona', 'settings', 'notifications', 'drawing', 'bank'],
+                "Settings is everyone's, second, and never sold (2026-10-09)",
             );
             const friends = (id) => id === 'friends';
             assert.ok(appsFor(false, friends).some((a) => a.id === 'people'));
@@ -343,12 +334,11 @@ describe('app registry', () => {
         });
     });
 
-    // hrseServer is everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5): the admin barrier
-    // is per page inside it, not on the tile.
+    // The place's settings were an app, hrseServer, until 2026-11-11; they are a section of Settings
+    // now (serversettings.js), where the admin barrier is per page. No app is an administrator's alone.
     describe('the server app', () => {
-        it('is on every console, administrator or not', () => {
-            assert.ok(appsFor(true).some((a) => a.id === 'device'));
-            assert.ok(appsFor(false).some((a) => a.id === 'device'));
+        it('is gone, and every console has the same apps, administrator or not', () => {
+            assert.equal(appById('device'), null);
             assert.deepEqual(
                 appsFor(false).map((a) => a.id),
                 appsFor(true).map((a) => a.id),

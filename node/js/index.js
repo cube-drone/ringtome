@@ -46,7 +46,7 @@ import { PublicGroupPage } from './publicgroup.js';
 import { PostHistory } from './posthistory.js';
 import { FeedApp } from './apps/feed.js';
 import { NotificationsApp } from './apps/notifications.js';
-import { DeviceApp } from './apps/device.js';
+import { ServerSettings } from './serversettings.js';
 import { SettingsApp } from './apps/settings.js';
 import { BankApp } from './apps/bank.js';
 import { AmpApp } from './apps/amp.js';
@@ -77,6 +77,7 @@ import {
     roomHref,
     appHref,
     settingsHref,
+    serverHref,
     LAUNCHER,
     webAddress,
     webAddressKnown,
@@ -777,7 +778,7 @@ const Inside = ({ session }) => {
                 admin=${nodeAdmin}
             />
             <${PersonaHome} path="/ringtome/persona" persona=${persona} />
-            <${SettingsApp} path="/ringtome/settings" persona=${persona} session=${session} />
+            <${SettingsApp} path="/ringtome/settings" persona=${persona} session=${session} admin=${nodeAdmin} />
             <${Profile} path="/ringtome/settings/profile" current=${persona.current} />
             <${Computers} path="/ringtome/settings/computers" current=${persona.current} />
             <${Computers} path="/ringtome/settings/computers/:tab" current=${persona.current} />
@@ -803,9 +804,11 @@ const Inside = ({ session }) => {
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
             <${RssApp} path="/ringtome/rss" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
             <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
-            <${DeviceApp} path="/ringtome/device" admin=${nodeAdmin} current=${persona.current} />
-            <${DeviceApp} path="/ringtome/device/:page" admin=${nodeAdmin} current=${persona.current} />
-            <${DeviceApp} path="/ringtome/device/account/:account" page="account" admin=${nodeAdmin} current=${persona.current} />
+            <${ServerSettings} path="/ringtome/settings/server" admin=${nodeAdmin} current=${persona.current} />
+            <${ServerSettings} path="/ringtome/settings/server/:page" admin=${nodeAdmin} current=${persona.current} />
+            <${ServerSettings} path="/ringtome/settings/server/account/:account" page="account" admin=${nodeAdmin} current=${persona.current} />
+            <${ServerMoved} path="/ringtome/device" />
+            <${ServerMoved} path="/ringtome/device/*" />
             <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${ChatApp} path="/ringtome/chat/new" mode="new" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
             <${ChatApp} path="/ringtome/chat/new-im" mode="new-im" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />
@@ -1045,6 +1048,18 @@ const RoomRoute = ({ seg, doc, line, ...props }) => {
     return html`<${ChatApp} author=${parsed.root} doc=${doc} line=${line || null} ...${props} />`;
 };
 
+/// The place's settings' old addresses (2026-11-11): `/ringtome/device/<page>`, when they were an app
+/// of their own, is `/ringtome/settings/server/<page>` now (links.js `serverHref`).
+const ServerMoved = () => {
+    const loc = useLocation();
+    useEffect(() => {
+        const rest = loc.path.replace(/^\/ringtome\/device\/?/, '');
+        const query = loc.url.includes('?') ? loc.url.slice(loc.url.indexOf('?')) : '';
+        loc.route(serverHref(rest) + query, true);
+    }, [loc]);
+    return null;
+};
+
 /// The addresses before `/ringtome/` (2026-09-08's cozy floors: `/home/<app>/…`, `/in/<bucket>/…`),
 /// which documents written before 2026-09-28 still hold in their bodies (a crosslink dragged in,
 /// signed and synced - never rewritten in place). Read once, with the old resolver, and sent on to
@@ -1063,8 +1078,7 @@ const LegacyHome = ({ current }) => {
             const [first, second, third, fourth] = segs;
             if (!first) return go(LAUNCHER);
             if (first === 'persona') return go(second ? settingsHref(second) : appHref('persona'));
-            if (first === 'device')
-                return go(second ? `${appHref('device')}/${second}` : appHref('device'));
+            if (first === 'device') return go(serverHref(second));
             if (first === 'chat') {
                 if (!second || second === 'new')
                     return go(second ? `${appHref('chat')}/new` : appHref('chat'));

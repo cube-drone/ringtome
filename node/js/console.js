@@ -37,7 +37,7 @@ function chunk(arr, n) {
 /// tooltip that only restated the name on the tile said nothing). Chosen here rather than kept in
 /// the registry, which is pure and speaks no language; a switch, so every phrase is a literal the
 /// strings tool can see.
-function appBlurb(app, device) {
+function appBlurb(app) {
     switch (app.id) {
         case 'persona':
             return t(
@@ -75,16 +75,6 @@ function appBlurb(app, device) {
                 'console.blurb-lost-found',
                 'every private file from every notebook, where nothing gets lost',
             );
-        case 'device':
-            return device
-                ? t(
-                      'console.blurb-device',
-                      "this computer's settings: who may sign up, and its backups",
-                  )
-                : t(
-                      'console.blurb-server',
-                      "this server's settings: who may sign up, and its backups",
-                  );
         default:
             return '';
     }
@@ -97,7 +87,7 @@ function Hex(app, key, onLaunch, personaName, me) {
     // pure/tilelabel.js. The full name still lives in the header and the tooltip either way.
     const label = appLabel(app, personaName, isDevice()) || '';
     const { text, scale } = tileLabel(label);
-    const blurb = app.blank ? '' : appBlurb(app, isDevice());
+    const blurb = app.blank ? '' : appBlurb(app);
     // The persona's own tile wears their face (Curtis, 2026-09-27): the picture fills it, under
     // the nameplate, and the rings take their colour. A picture of their own needs no name over it
     // (2026-09-30) - the nameplate is for the identicon, which says nothing about who - and the

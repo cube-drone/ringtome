@@ -295,7 +295,7 @@ async fn grant_handler(
 }
 
 /// Make the caller a node administrator - Developer Options on a development build (Curtis,
-/// 2026-10-20), where everyone may try the Server app. Refused on any other build, whoever asks,
+/// 2026-10-20), where everyone may try the server settings. Refused on any other build, whoever asks,
 /// and from an API key, which never administers (extractor.rs).
 async fn dev_node_admin_handler(
     session: Session,

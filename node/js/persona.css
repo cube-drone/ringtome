@@ -369,6 +369,12 @@
     gap: 0.6rem;
 }
 
+/* The place's own settings, the Settings app's last section (2026-11-11): room above its heading,
+   so it reads as a second list and not more of the first. */
+.settings-section-title.settings-server-title {
+    margin: 2rem 0 0.6rem;
+}
+
 /* The administrator's line on the settings hub (2026-09-16). */
 .persona-menu-note {
     margin: 0.2rem 0 0.4rem;

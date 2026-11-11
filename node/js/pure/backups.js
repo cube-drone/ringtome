@@ -1,4 +1,4 @@
-// The Backups page's arithmetic (apps/device.js): when an archive was made, read off its name, and
+// The Backups page's arithmetic (serversettings.js): when an archive was made, read off its name, and
 // how big it is in words a person reads. The node names every archive `backup_<UTC stamp>.tar.gz`
 // (node/src/backup.rs), so the name IS the date and nothing else needs asking.
 

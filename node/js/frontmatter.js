@@ -5,7 +5,7 @@
 // - The sign-up form's "I agree" line and its three links - a new tab in a browser; in the
 //   installed apps, a modal framing the page, since an app has one window and a page opened in it
 //   would leave the half-filled form behind with no way back.
-// - hrseServer's _Front Matter_ page: what this server adds to each document, with advice on what
+// - The server settings' _Front Matter_ page: what this server adds to each document, with advice on what
 //   an operator might put there. Its "write it" opens the addition as a private note in hrseWriter -
 //   in a notebook of its own, `front-matter`, the note marked by its `front_matter` field.
 // - That note's bar in hrseWriter, in place of the publish bar: publishing it adds it to this
@@ -75,7 +75,7 @@ export const AgreeToTerms = ({ agreed, onAgreed }) => {
 };
 
 // ---------------------------------------------------------------------------------------------
-// hrseServer's Front Matter.
+// The server settings' Front Matter.
 
 /// Each addition: its address on the node, its name, the note's title, and advice on what goes in it.
 const KINDS = () => ({

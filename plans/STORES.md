@@ -90,9 +90,9 @@ repository's root and built into the node (`node/src/frontmatter.rs`), shown at
 `/tos`, `/privacy` and `/eula` (the AGPL). An account is made only with
 `agreed: true`, and records the version it agreed to (a hash of everything the
 pages show). An operator's additions are a note in hrseWriter, published from
-hrseServer's _Front Matter_; they follow the defaults, never replace them, and
-every version is listed on the page, dated, as a diff. Not yet: asking again at
-sign-in when the version moves, and the age screen (section 1).
+the server settings' _Front Matter_; they follow the defaults, never replace
+them, and every version is listed on the page, dated, as a diff. Not yet: asking
+again at sign-in when the version moves, and the age screen (section 1).
 
 Both stores want a privacy policy at a URL in the listing and a way to it inside
 the app; Google's Data Safety form asks the same questions in detail. The

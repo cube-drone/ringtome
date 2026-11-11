@@ -27262,3 +27262,34 @@ pride, trans, bi and ace; peach in the default and doors-xp, whose accent is all
 but the band's colour; the highlighter's yellow in micross, whose red accent has
 no light against its blue band. Seen in Chrome in all fourteen.
 `just ui-check` 1110.
+
+## The server's settings move into hrseSettings (2026-11-11)
+
+Curtis: a second settings app for the server or device "might feel redundant:
+folks have been confused about that in the past". hrseServer™ (hrseDevice™ in
+the desktop app) is no longer an app: its tile is gone from the dock and the
+launcher, and its pages are the last section of hrseSettings, under a heading
+that reads "server settings" in a browser and "device settings" in the desktop
+app. Everyone sees Network there; an administrator also Registration, Backups,
+Moderation, Server Customization (servers only) and Front Matter, each with an
+icon like the settings above them.
+
+- The pages live at `/ringtome/settings/server/<page>` (`links.js` `serverHref`;
+  an account's page at `.../server/account/<id>`). The old
+  `/ringtome/device/...` addresses redirect (`index.js` `ServerMoved`), as do
+  the `/home/device` ones before them.
+- `js/apps/device.js` and its stylesheet became `js/serversettings.js` and
+  `js/serversettings.css`: the module is no app now, and the convention that no
+  app imports another caught the Settings app importing it where it was.
+  `ServerSettings` is the page router, `ServerSettingsList` the section. The
+  landing menu and its `.device-menu` rule are gone.
+- The registry (`pure/apps.js`) loses the `device` entry; `appLabel` and
+  `iconFor` keep their device-name mechanism, which no app uses now.
+- SERVER.md, the glossary, the plans that name the app and the comments that did
+  say "server settings" now. The line "you administer this node" at the top of
+  Settings is where it was.
+
+Seen in Chrome on a scratch node: a regular account's Settings ends in Network
+alone, an administrator's in all six, `/ringtome/device/backups` lands on the
+Backups page under hrseSettings, and the dock has no server tile.
+`just ui-check` 1110, `just strings-check`, `cargo check`.

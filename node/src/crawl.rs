@@ -167,7 +167,7 @@ pub struct SetPolicy {
     pub indexed: bool,
 }
 
-/// GET `/api/admin/search-policy` - the Server app: whether search engines are welcome, and
+/// GET `/api/admin/search-policy` - the server settings: whether search engines are welcome, and
 /// whether the question means anything here (a node with no public URL is never indexed).
 pub async fn policy_handler(
     State(state): State<AppState>,

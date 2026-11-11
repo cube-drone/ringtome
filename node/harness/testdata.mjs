@@ -498,7 +498,7 @@ const ACTIONS = [
         },
     },
     // Moderation (plans/MODERATION.md; Curtis, 2026-11-04): moderators to trust, reports to fill
-    // their queues, and public lists to take - so the content control tabs and hrseServer's
+    // their queues, and public lists to take - so the content control tabs and the server settings'
     // Moderation page have something to show. A development build's node allows reports
     // unless its operator says otherwise (reports.rs), and the run's first persona is always a
     // moderator (`moderate`, below the births).
@@ -1951,7 +1951,7 @@ for (let round = 0; round < PER; round++) {
 
 // The last act: the people the first moderator trusts each report a picture, so the queue always
 // has a trusted report with a picture in it - and the first two as a child being abused, which from
-// someone trusted seals at the door, so hrseServer's quarantine list has seals and reporters to
+// someone trusted seals at the door, so the server settings' quarantine list has seals and reporters to
 // show. Last, because a seal refuses that picture and anything like it from then on. Then one
 // report on a person and one on a node, so the queue always has those as well.
 let lastAct = 0;

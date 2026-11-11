@@ -116,8 +116,10 @@ it carries.
 
 ## The Network page
 
-A page of hrseServer™ / hrseDevice™ (`js/apps/device.js`), the only one a
-regular user sees there (ruling 5).
+A page of the server (or device) settings (`js/serversettings.js`), the only one
+a regular user sees there (ruling 5). hrseServer™ / hrseDevice™ was an app of
+its own until 2026-11-11; it is the last section of hrseSettings now, and where
+this plan says the app or its tile, read that section.
 
 - **This machine** at the top: its name, its endpoint id in speakable form, its
   version. An administrator renames it here.

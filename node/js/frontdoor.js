@@ -41,7 +41,7 @@ let front = null;
 let asking = null;
 const listeners = new Set();
 
-/// Ask again - after a pin, an unpin, or a save in the Server app - and tell everyone listening.
+/// Ask again - after a pin, an unpin, or a save in the server settings - and tell everyone listening.
 export const refreshFront = () => {
     asking = api('/api/node/front')
         .then((f) => {

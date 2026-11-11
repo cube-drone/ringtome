@@ -26,7 +26,7 @@
 @import "./quickbar.css";     /* the bottom dock: app heptagons and the corner clock */
 @import "./persona.css";      /* onboarding ceremonies, the persona pages, your computers */
 @import "./deleteme.css";     /* "delete me": a persona or the account, from this server */
-@import "./frontmatter.css";  /* the sign-up form's "I agree", and hrseServer's Front Matter */
+@import "./frontmatter.css";  /* the sign-up form's "I agree", and the server settings' Front Matter */
 @import "./moderation.css";   /* moderation lists: content control's sections, a person's page's controls */
 @import "./nodepage.css";     /* a node's page: a server by its id, what it says, who it hosts */
 @import "./developer.css";    /* developer options: buttons for trying the app's own machinery */
@@ -46,7 +46,7 @@
 @import "./apps/chat.css";    /* rooms: the list, the new-room form, one room's view */
 @import "./groups.css";       /* groups: People's Groups tab and a group's own page */
 @import "./doc/drawing.css";  /* the drawing surface: tools column and canvas (DRAWING.md) */
-@import "./apps/device.css";  /* Device / Server: registration and backups, for administrators */
+@import "./serversettings.css";  /* the server's (or device's) own settings: registration and backups, for administrators */
 @import "./apps/bank.css";    /* hrseBank: horse capital, and the ledger that shows its working */
 @import "./apps/amp.css";     /* hrseAmp: the music table, the file panel and the player */
 @import "./apps/rss.css";     /* Horse's RSS: the feeds, and what they say */

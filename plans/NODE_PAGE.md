@@ -51,7 +51,7 @@ The answer (_proposed_):
   device, and how many accounts and personas it carries.
 - **Its web address**, when it has one (`webpath::public_url`).
 - **A short description and a link to its rules**, written by its operator, both
-  optional. These are new settings in hrseServer.
+  optional. These are new server settings.
 - **Who it hosts publicly**: the hosted personas listed on its front page
   (`nodeshelf::listed_roots`), the same people its public people page shows, and
   nobody else. That rules out quiet follows, copies it keeps for the crowd, and

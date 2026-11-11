@@ -3,7 +3,7 @@
 // generous H$ 1,000,000 - offered to a node's administrators, and to everyone on a development
 // build. Its entry sits above "log out" in the settings list (persona.js `SettingsList`). On a
 // development build, someone not yet a node administrator is also offered "make me a node_admin"
-// (2026-10-20), so the Server app is anyone's to try there.
+// (2026-10-20), so the server settings is anyone's to try there.
 //
 // The page's gate only decides what is offered. The gift, the one button with consequences, is
 // gated again by the node (bank.rs `gift_handler`), on the same two conditions.
@@ -16,7 +16,7 @@ import { toast } from './toasts.js';
 import { PushToggle } from './push.js';
 import { isDevice } from './net.js';
 import { formatHorseBucks } from './pure/horsebucks.js';
-import { appHref } from './links.js';
+import { appHref, serverHref } from './links.js';
 import { t } from './i18n.js';
 
 const html = htm.bind(h);
@@ -65,7 +65,7 @@ export const DeveloperOptions = ({ current, session }) => {
         setBusy(false);
     };
     // A development build makes anyone a node administrator for asking (auth/routes.rs), so the
-    // Server app can be tried by whoever is trying things. The answer carries the new tags, and
+    // server settings can be tried by whoever is trying things. The answer carries the new tags, and
     // the session takes them at once.
     const becomeAdmin = async () => {
         setBusy(true);
@@ -74,8 +74,8 @@ export const DeveloperOptions = ({ current, session }) => {
             if (session.setAccount) session.setAccount(account);
             toast(t('developer.youre-a-node-admin', 'you are a node administrator now'), {
                 action: {
-                    label: t('developer.open-the-server-app', 'open the Server app'),
-                    href: appHref('device'),
+                    label: t('developer.open-the-server-settings', 'open the server settings'),
+                    href: serverHref(),
                 },
             });
         } catch (e) {

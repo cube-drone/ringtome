@@ -153,8 +153,8 @@ are driving towards.
 - From 1b:
   - **A send-side door.** A node dialing for a group sends its lanes to whatever
     node it dialed, unchecked.
-  - **The Network page wants a look in a browser**, hrseServer™ opened to
-    everyone with it.
+  - **The Network page wants a look in a browser**, the server settings (in
+    hrseSettings) opened to everyone with it.
 
 ### Notifications
 
@@ -312,9 +312,9 @@ Two tasks, split on purpose (Curtis, 2026-09-25): packaging for the widest range
 of deployments, and then an easy path for people who want one.
 
 - **Sample compose files** - documented, with and without a bundled HTTPS proxy.
-- **Restore from a backup in the Server/Device app** - the Backups page makes,
-  lists and downloads them (2026-09-25); putting one back still means stopping
-  the node and unpacking by hand.
+- **Restore from a backup in the server/device settings** - the Backups page
+  makes, lists and downloads them (2026-09-25); putting one back still means
+  stopping the node and unpacking by hand.
 - **A wedged node** - the supervisor restarts a node that exits, not one that
   stays up and stops answering `/health`; a liveness watchdog is the missing
   half, if a wedge is ever seen.

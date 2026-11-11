@@ -14,9 +14,11 @@ costume.
   desktop app and the UI, at horsedrawingtycoon.com. What a person installs and
   opens. (2026-09-25; see PROJECT_PLAN's _Two names_.)
 - **Server / Device** — what a person calls the node when they administer it:
-  the settings app is **Server** in a browser and **Device** in the desktop app
-  (`node/js/apps/device.js`). "Node" is the protocol's word and stays off those
-  screens. (2026-09-25)
+  its settings are **server settings** in a browser and **device settings** in
+  the desktop app, the last section of hrseSettings
+  (`node/js/serversettings.js`; an app of their own, hrseServer / hrseDevice,
+  until 2026-11-11). "Node" is the protocol's word and stays off those screens.
+  (2026-09-25)
 
 ## Identity
 

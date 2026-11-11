@@ -177,10 +177,10 @@ lightly federated, unapologetically Old Internet.
   list.
 - [`NETWORK.md`](plans/NETWORK.md) — the machine table: every machine this node
   talks to, by the name it announces, with how reliably it answers, kept across
-  restarts and shared by every kind of sync; hrseServer™'s Network page, open to
-  every user, showing it with their own links; and group sync by gossip, three
-  partners a pass, two by reliability and one check-in slot. Rulings settled
-  2026-10-17.
+  restarts and shared by every kind of sync; the server settings' Network page,
+  open to every user, showing it with their own links; and group sync by gossip,
+  three partners a pass, two by reliability and one check-in slot. Rulings
+  settled 2026-10-17.
 - [`NODE_PAGE.md`](plans/NODE_PAGE.md) — a page for any node, to look at a
   server before reporting or blocking it, and the exchange under it in which a
   node introduces itself: its name, software and size, a web address checked

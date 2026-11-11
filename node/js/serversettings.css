@@ -1,4 +1,4 @@
-/* The Device / Server app (apps/device.js): the place's own settings. Built from the persona pages'
+/* The place's own settings (serversettings.js), a section of the Settings app: Built from the persona pages'
    parts - the computers list, the removal-option buttons - with a little of its own. */
 
 .device {
@@ -9,15 +9,10 @@
     gap: 0.9rem;
 }
 
-.device-menu,
 .device-modes {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-}
-
-.device-menu a.removal-option {
-    text-decoration: none;
 }
 
 .device-field {

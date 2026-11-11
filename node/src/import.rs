@@ -983,7 +983,7 @@ pub struct SetPolicy {
     pub allowed: bool,
 }
 
-/// GET `/api/admin/import-policy` - the Server app's Backups page: whether users may import.
+/// GET `/api/admin/import-policy` - the server settings' Backups page: whether users may import.
 pub async fn policy_handler(
     State(state): State<AppState>,
     _admin: crate::auth::NodeAdminSession,

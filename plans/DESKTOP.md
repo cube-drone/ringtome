@@ -623,15 +623,16 @@ carry:
 
 The app's owner is its `node_admin` - the first account to sign up, as on any
 server - so they see a **Device** app, the same app a server's administrator
-sees as **Server** (`node/js/apps/device.js`). Since 2026-09-28 it has both of
-the Server app's pages. **Registration**: open, a shared sign-up password, or
-closed, exactly as a server's - defaulting to open, because the first person
-must be able to sign up, and since the node binds loopback, open means open to
-whoever uses this computer. **Backups**: an archive is shown in the file manager
-rather than downloaded, since it is already on this disk (the node asks through
-`node/src/shell.rs`; `desktop/src/requests.rs` does the showing). Files the page
-makes itself - the spare key, a drawing's PNG - are saved through the app the
-same way, with the system's save dialog.
+sees as **Server** (`node/js/serversettings.js`; since 2026-11-11 a section of
+hrseSettings, _device settings_, and no longer an app). Since 2026-09-28 it has
+both of the Server app's pages. **Registration**: open, a shared sign-up
+password, or closed, exactly as a server's - defaulting to open, because the
+first person must be able to sign up, and since the node binds loopback, open
+means open to whoever uses this computer. **Backups**: an archive is shown in
+the file manager rather than downloaded, since it is already on this disk (the
+node asks through `node/src/shell.rs`; `desktop/src/requests.rs` does the
+showing). Files the page makes itself - the spare key, a drawing's PNG - are
+saved through the app the same way, with the system's save dialog.
 
 **On Linux**, the sign-in carries a notice above it: the app works best from
 Chrome or Firefox, with a link that asks the app to open this node in the system

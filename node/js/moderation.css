@@ -11,7 +11,7 @@
     margin-top: 0;
 }
 
-/* The moderation pages' fields and selects, in the house field (apps/device.css's). */
+/* The moderation pages' fields and selects, in the house field (serversettings.css's). */
 .profile-input {
     font: inherit;
     font-size: 0.9rem;
@@ -163,7 +163,7 @@ label.moderation-overrule {
     padding: 0.3rem 0.7rem;
 }
 
-/* hrseServer's Moderation page: quarantine (servermoderation.js). */
+/* The server settings' Moderation page: quarantine (servermoderation.js). */
 .quarantine-now {
     margin: 1rem 0;
 }

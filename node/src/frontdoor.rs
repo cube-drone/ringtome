@@ -2,7 +2,7 @@
 //!
 //! **The name and the taglines.** A server's front page calls itself Horse Drawing Tycoon 2 and
 //! scrolls a marquee of taglines beneath it; its administrator may rename it and rewrite the lines
-//! in the Server app's *server customization*. Nothing chosen is stored as NULL, and the page
+//! in the server settings' *server customization*. Nothing chosen is stored as NULL, and the page
 //! supplies the app's own words - so the defaults read in the stranger's language, and a later
 //! release's defaults reach every server that never chose.
 //!
@@ -93,7 +93,7 @@ pub struct SetFront {
     taglines: Option<Vec<String>>,
 }
 
-/// PUT `/api/admin/front`: the Server app's *server customization*.
+/// PUT `/api/admin/front`: the server settings' *server customization*.
 pub async fn set_handler(
     State(state): State<AppState>,
     _admin: NodeAdminSession,

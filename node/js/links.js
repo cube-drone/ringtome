@@ -169,7 +169,7 @@ export const appHref = (appId) =>
 
 /// People's Groups tab, and one group's page under it (plans/GROUPS.md, section 7).
 /// An account, as this place's administrator sees it (account.js).
-export const accountHref = (id) => `${appHref('device')}/account/${id}`;
+export const accountHref = (id) => `${serverHref('account')}/${id}`;
 export const groupsHref = () => `${appHref('people')}/groups`;
 export const groupHref = (group) => `${groupsHref()}/${group}`;
 
@@ -201,6 +201,12 @@ export const settingsHref = (page) => {
     if (!page) return `${PREFIX}/settings`;
     return `${PREFIX}/settings/${page === 'settings' ? 'app' : page}`;
 };
+
+/// The place's own settings - the server's, or in the desktop app the device's - which were an app
+/// of their own (`/ringtome/device/<page>`, which still redirects) until 2026-11-11, and are the
+/// Settings app's last section now: `network`, `registration`, `backups`, `moderation`,
+/// `customization`, `frontmatter`, and `account/<id>`. With no page, the Settings app itself.
+export const serverHref = (page) => settingsHref(page ? `server/${page}` : null);
 
 /// Your computers' tabs (2026-10-09): `new` adds a computer (the page's default), `all` is every
 /// computer with how each is syncing, `mine` is what this one holds; `all/report` is the sync

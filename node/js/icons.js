@@ -412,7 +412,7 @@ export const Icons = {
     chat: ChatsCircle,
     // A room, beside its title (2026-09-28): the hash, as a channel is marked.
     room: Hash,
-    // The place's own settings (apps/device.js): a rack of drives for a server, a laptop for
+    // The place's own settings (serversettings.js): a rack of drives for a server, a laptop for
     // the desktop app - the app wears whichever the person is holding.
     server: HardDrives,
     device: Laptop,

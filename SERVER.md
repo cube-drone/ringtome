@@ -321,10 +321,12 @@ keys that decrypt them and identify the node**. Lose it and the node, and
 everyone's accounts on it, are gone; copy it and you have copied the node. Back
 it up, and keep the backup as private as you keep the server.
 
-## The Server app
+## Server settings
 
-An account holding `node_admin` - the first account made on a server - sees a
-**Server** app among its apps. It has two pages:
+An account holding `node_admin` - the first account made on a server - sees
+every page under **server settings**, the last section of hrseSettings (an app
+of its own, hrseServer, until 2026-11-11; everyone else sees only its Network
+page). Among them:
 
 - **Registration**: who may make an account here. `open` (anyone who reaches the
   node, rate-limited per address - a fresh server's default), `password`
@@ -354,8 +356,8 @@ An account holding `node_admin` - the first account made on a server - sees a
 
 An administrator also sees a police-car button ("their account here") in the top
 right corner of the page of any persona this server hosts. It leads to that
-account's page in the Server app, which lists every persona the account manages,
-with what each would cost to move and would free to evict. From there:
+account's page in the server settings, which lists every persona the account
+manages, with what each would cost to move and would free to evict. From there:
 
 - **Switch off signing in** signs the account out everywhere and shuts every way
   back in: its password, its API keys and its spare keys. Its personas stay
@@ -384,7 +386,7 @@ and the License, at `/tos`, `/privacy` and `/eula` on this server. Each page
 shows the application's own words, then the terms every server starts with -
 both built into the release - and then your additions, if you've made any.
 
-**Front Matter** in the Server app is where you make them. Its "write it in
+**Front Matter** in the server settings is where you make them. Its "write it in
 hrseWriter" opens a private note of yours, in a notebook called `front-matter`;
 the page lists what you might put there - who runs the server and how to reach
 you, your house rules, your logs and how long you keep them, whatever sits in
@@ -414,13 +416,13 @@ again. Find it all under **content control** in hrseSettings.
 
 People can report a post to the people they trust to moderate for them. A report
 reaches a moderator only if both sides opted in: you turn on **Allow Users to
-Accept Reports** (hrseServer, _Moderation_), and the moderator turns on **Accept
-Reports** in their own content control. Everything else bounces, and the
-reporter is told so. By default a moderator hears only from people they trust;
-taking reports from strangers is their own second switch, into a pool you bound
-(500 per person unless you change it, oldest dropped first). Reports stay in
-this server's database, never on anyone's chains, and are kept 90 days unless
-you change it.
+Accept Reports** (hrseSettings, _server settings_, _Moderation_), and the
+moderator turns on **Accept Reports** in their own content control. Everything
+else bounces, and the reporter is told so. By default a moderator hears only
+from people they trust; taking reports from strangers is their own second
+switch, into a pool you bound (500 per person unless you change it, oldest
+dropped first). Reports stay in this server's database, never on anyone's
+chains, and are kept 90 days unless you change it.
 
 A report carries the post as its author signed it. Its words and pictures follow
 over this server's public address (`RINGTOME_PUBLIC_URL`), never peer to peer:
@@ -436,17 +438,17 @@ carries only where the post is, never the picture.
 ### Quarantine
 
 If you find a picture on your server that no one should hold, quarantine it:
-hrseServer, _Moderation_, with the picture's address (or a file's hash). The
-server stops serving it at once - on the web, in the app and to other servers -
-and keeps the file, sealed, because preserving it may be your legal duty. The
-page says what to do next: don't look at it again or copy it, report it (in
-Canada, Cybertip.ca; in the US, NCMEC's CyberTipline), keep it sealed until the
-authorities say otherwise, and purge its address from your CDN's cache.
-Quarantining also puts the picture's fingerprint (PDQ) on your server's private
-refusal list: the same picture uploaded again, resized or re-encoded and by
-anyone, is refused, and a copy arriving from another server is sealed as it
-lands. The list is never published. **Release** unseals a file; the record of
-what was held, when and by whom stays.
+hrseSettings, _server settings_, _Moderation_, with the picture's address (or a
+file's hash). The server stops serving it at once - on the web, in the app and
+to other servers - and keeps the file, sealed, because preserving it may be your
+legal duty. The page says what to do next: don't look at it again or copy it,
+report it (in Canada, Cybertip.ca; in the US, NCMEC's CyberTipline), keep it
+sealed until the authorities say otherwise, and purge its address from your
+CDN's cache. Quarantining also puts the picture's fingerprint (PDQ) on your
+server's private refusal list: the same picture uploaded again, resized or
+re-encoded and by anyone, is refused, and a copy arriving from another server is
+sealed as it lands. The list is never published. **Release** unseals a file; the
+record of what was held, when and by whom stays.
 
 For a picture that is merely unwelcome, block it instead: Content control, _Your
 public list_, with the picture's address. Blocking is public, like every entry
@@ -458,8 +460,8 @@ fingerprint can be faked on purpose, to get an innocent picture blocked.
 
 ## Backups
 
-The node backs itself up without stopping. Ask it from the Server app, from the
-machine itself, or as a node administrator:
+The node backs itself up without stopping. Ask it from the server settings, from
+the machine itself, or as a node administrator:
 
 ```sh
 curl -X POST http://127.0.0.1:5281/api/admin/backup           # -> 202 {"id": "20260925T183012Z", ...}
@@ -479,7 +481,7 @@ unless it carries a node administrator's session. A proxy on the same machine
 that adds no such header would look like the machine itself - but the endpoint
 only ever writes the archive to disk and reports its path, so the most such a
 request can do is start a backup, never read one. Reading one back - the list,
-and the download in the Server app (`GET /api/admin/backups`,
+and the download in the server settings (`GET /api/admin/backups`,
 `GET /api/admin/backups/<name>`) - takes a node administrator's session, never
 the machine alone.
 

@@ -188,7 +188,7 @@ skipped: It already exists!'"
 - **Servers don't take imports** unless their administrator allows them (Curtis,
   2026-10-09: "by and large the direction we want is for users to export their
   personas from servers to personal devices and not the other way around"):
-  _allow users to import_ on hrseServer's Backups page, off by default
+  _allow users to import_ on the server settings' Backups page, off by default
   (`import_policy`, node rung 76). The desktop app always takes them.
 - **A zip made elsewhere: best-effort, not supported** (Curtis, 2026-10-10:
   import "is only intended for use on our own exports"; an agent building an

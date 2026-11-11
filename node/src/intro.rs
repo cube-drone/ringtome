@@ -59,7 +59,7 @@ pub fn router() -> Router<AppState> {
 // ---------------------------------------------------------------------------------------------
 // What this node says of itself
 
-/// What the operator says of this node (hrseServer).
+/// What the operator says of this node (the server settings).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Said {
     #[serde(default)]

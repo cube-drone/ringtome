@@ -22,7 +22,7 @@ label.frontmatter-agree {
     border: 0;
 }
 
-/* hrseServer's Front Matter (frontmatter.js): each document's additions - when they were last
+/* The server settings' Front Matter (frontmatter.js): each document's additions - when they were last
    published, advice on what goes in them, and the ways to write them and to see the page. */
 .frontmatter-kind {
     margin-top: 1.4rem;

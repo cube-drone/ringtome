@@ -1,13 +1,16 @@
-// The place's own settings: "Device" in the desktop app, "Server" in a browser (Curtis,
-// 2026-09-25). Everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5), page by page: a regular
-// user sees the Network page alone; administrators every page, and the node refuses anyone else at
-// every admin door regardless.
+// The place's own settings: "device settings" in the desktop app, "server settings" in a browser
+// (Curtis, 2026-09-25). An app of their own, hrseServer™ / hrseDevice™, until 2026-11-11 (Curtis:
+// a second settings app "might feel redundant: folks have been confused about that in the past");
+// now the last section of the Settings app (`ServerSettingsList`), their pages under
+// `/ringtome/settings/server/<page>`. Everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5), page
+// by page: a regular user sees the Network page alone; administrators every page, and the node
+// refuses anyone else at every admin door regardless.
 //
 // - Network (everyone): every machine this place talks to, by name, how reliably each answers,
 //   and the viewer's own links to them. An administrator renames this machine there.
 // - Registration (servers only): who may sign up - open, a shared sign-up password, or closed
 //   (node/src/registration.rs). A desktop app is its owner's alone, and what it would mean for one
-//   to host other people is not settled yet, so the Device app does not offer the page.
+//   to host other people is not settled yet, so the device settings do not offer the page.
 // - Backups: make one and watch it go, and see the ones already made - downloaded from a server,
 //   shown in the file manager on a desktop, where they are already on this disk
 //   (node/src/backup.rs). Restoring is not here yet.
@@ -23,24 +26,25 @@ import { h } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
-import { api, isDevice } from '../net.js';
-import { AccountPage } from '../account.js';
-import { FrontMatterPage } from '../frontmatter.js';
-import { ServerModeration } from '../servermoderation.js';
-import { t } from '../i18n.js';
-import { backupTime, sizeLabel } from '../pure/backups.js';
-import { appHref, groupHref, nodeHref, personHref } from '../links.js';
-import { defaultName, defaultTaglines, refreshFront } from '../frontdoor.js';
-import { formatWhen } from '../pure/when.js';
-import { BANDS } from '../pure/contact.js';
-import { speakable, wordsFor } from '../speakable.js';
-import { agoUnit, agoWords } from '../pure/ago.js';
-import { machineLabel, machineStatus, machinesShown, reliabilityPct } from '../pure/machines.js';
-import { NodeMark } from '../nodemark.js';
+import { api, isDevice } from './net.js';
+import { AccountPage } from './account.js';
+import { FrontMatterPage } from './frontmatter.js';
+import { ServerModeration } from './servermoderation.js';
+import { t } from './i18n.js';
+import { backupTime, sizeLabel } from './pure/backups.js';
+import { groupHref, nodeHref, personHref, serverHref } from './links.js';
+import { Icons } from './icons.js';
+import { defaultName, defaultTaglines, refreshFront } from './frontdoor.js';
+import { formatWhen } from './pure/when.js';
+import { BANDS } from './pure/contact.js';
+import { speakable, wordsFor } from './speakable.js';
+import { agoUnit, agoWords } from './pure/ago.js';
+import { machineLabel, machineStatus, machinesShown, reliabilityPct } from './pure/machines.js';
+import { NodeMark } from './nodemark.js';
 
 const html = htm.bind(h);
 
-/// The pages this app offers this person: the Network page to everyone, and the rest to an
+/// The pages this section offers this person: the Network page to everyone, and the rest to an
 /// administrator. A desktop app has no front page for strangers, so no Customization there. (A
 /// desktop app's owner has the same sign-up choices a server's has - Curtis, 2026-09-28: every
 /// desktop app is a localhost multi-user server now.)
@@ -51,7 +55,7 @@ const pages = (admin) =>
           ? ['network', 'registration', 'backups', 'moderation', 'frontmatter']
           : ['network', 'registration', 'backups', 'moderation', 'customization', 'frontmatter'];
 
-/// Each page's name and what it's for, as the landing lists them.
+/// Each page's name and what it's for, as the Settings app lists them.
 const PAGE_WORDS = () => ({
     network: [
         t('device.network', 'Network'),
@@ -91,14 +95,24 @@ const PAGE_WORDS = () => ({
     ],
 });
 
-export const DeviceApp = ({ page, account, admin, current }) => {
-    // Someone who isn't an administrator has one page, so they land on it.
-    if (page === 'network' || (!admin && !page)) {
-        return html`<${Network} current=${current} admin=${admin} />`;
-    }
+/// Each page's mark in the list.
+const PAGE_ICONS = {
+    network: Icons.computerNode,
+    registration: Icons.newHere,
+    backups: Icons.saved,
+    moderation: Icons.deputy,
+    frontmatter: Icons.contract,
+    customization: Icons.titlePage,
+};
+
+/// One of the place's settings pages, by its address. A page that isn't this person's, or isn't
+/// one at all, is the list of those that are.
+export const ServerSettings = ({ page, account, admin, current }) => {
+    if (page === 'network') return html`<${Network} current=${current} admin=${admin} />`;
     if (!admin) {
         return html`<div class="device">
             <p class="null-sub">${t('device.only-for-the-people-who-look-after-this', 'These settings are only for the people who look after this place.')}</p>
+            <${ServerSettingsList} admin=${admin} />
         </div>`;
     }
     if (page === 'registration') return html`<${Registration} />`;
@@ -108,22 +122,27 @@ export const DeviceApp = ({ page, account, admin, current }) => {
     if (page === 'customization' && !isDevice()) return html`<${Customization} />`;
     if (page === 'frontmatter') return html`<${FrontMatterPage} current=${current} />`;
     if (page === 'moderation') return html`<${ServerModeration} />`;
-    return html`<${Landing} admin=${admin} />`;
+    return html`<div class="device"><${ServerSettingsList} admin=${admin} /></div>`;
 };
 
-const Landing = ({ admin }) => html`
-    <div class="device">
-        <nav class="device-menu">
-            ${pages(admin).map(
-                (
-                    page,
-                ) => html`<a class="removal-option" href=${`${appHref('device')}/${page}`} key=${page}>
-                    <span class="removal-option-title">${PAGE_WORDS()[page][0]}</span>
-                    <span class="removal-option-sub">${PAGE_WORDS()[page][1]}</span>
-                </a>`,
-            )}
-        </nav>
-    </div>
+/// The Settings app's last section: the place's own settings, under a heading that names what the
+/// person is holding. Everyone gets the Network page; an administrator the rest.
+export const ServerSettingsList = ({ admin }) => html`
+    <h2 class="settings-section-title settings-server-title">
+        ${isDevice() ? t('device.device-settings', 'device settings') : t('device.server-settings', 'server settings')}
+    </h2>
+    <nav class="persona-menu">
+        ${pages(admin).map((page) => {
+            const Icon = PAGE_ICONS[page];
+            return html`<a class="persona-menu-item" href=${serverHref(page)} key=${page}>
+                <span class="persona-menu-icon"><${Icon} /></span>
+                <span class="persona-menu-label">
+                    <strong>${PAGE_WORDS()[page][0]}</strong>
+                    <small>${PAGE_WORDS()[page][1]}</small>
+                </span>
+            </a>`;
+        })}
+    </nav>
 `;
 
 // ---------------------------------------------------------------------------------------------

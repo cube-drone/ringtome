@@ -30,7 +30,7 @@
 //! disk and reports its path, never its bytes. A fooled check can start a backup; it cannot read
 //! one.
 //!
-//! **Reading one back** (the Server app's Backups page, 2026-09-25) is a different door with a
+//! **Reading one back** (the server settings' Backups page, 2026-09-25) is a different door with a
 //! stricter lock: listing, downloading and revealing archives take a `node_admin` SESSION and
 //! nothing else - loopback alone never qualifies, because these doors do hand the archive over. A
 //! download names an archive by its exact `backup_<UTC>.tar.gz` name, never a path. On a desktop

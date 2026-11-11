@@ -8,7 +8,7 @@ import htm from 'htm';
 
 import { api } from './net.js';
 import { t } from './i18n.js';
-import { appHref, accountHref } from './links.js';
+import { accountHref, serverHref } from './links.js';
 import { askYes } from './modal.js';
 import { formatWhen } from './pure/when.js';
 import { sizeLabel } from './pure/backups.js';
@@ -43,7 +43,7 @@ export const AccountPage = ({ id, current }) => {
         return html`<div class="device">
             <h2 class="computers-title">${t('account.evicted', 'Evicted')}</h2>
             <p class="null-sub">${t('account.evicted-sub', '{name} no longer has an account here, and its personas have left this place.', { name: evicted })}</p>
-            <a class="removal-option" href=${appHref('device')}>
+            <a class="removal-option" href=${serverHref()}>
                 <span class="removal-option-title">${t('account.back-to-the-server', 'back to the server')}</span>
             </a>
         </div>`;

@@ -95,7 +95,7 @@ export function useSession() {
     };
 
     // `setAccount`: an answer that changed the account's tags (developer.js's "make me a
-    // node_admin") takes effect at once, the Server app included.
+    // node_admin") takes effect at once, the server settings included.
     return { account, checking, login, register, logout, setAccount };
 }
 

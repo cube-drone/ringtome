@@ -170,7 +170,7 @@ pub async fn seed(state: &AppState, data: &Store, root_hex: &str) {
 // The operator's own list (Curtis, 2026-10-02: an admin who doesn't want the whole "everyone here
 // is a friend" group should at least be able to choose who every newcomer starts out following).
 
-/// One person on the operator's list, as the Server app shows it.
+/// One person on the operator's list, as the server settings shows it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AutoFollow {
     /// Their root, hex.

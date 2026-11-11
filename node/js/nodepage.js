@@ -14,7 +14,7 @@ import { t } from './i18n.js';
 import { formatWhen } from './pure/when.js';
 import { personHref } from './links.js';
 import { PersonInline } from './person.js';
-import { MachineRow, aboutLine } from './apps/device.js';
+import { MachineRow, aboutLine } from './serversettings.js';
 import { NodeReportModal } from './report.js';
 import { NodeMark } from './nodemark.js';
 import {
