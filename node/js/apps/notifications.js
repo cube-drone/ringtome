@@ -23,7 +23,7 @@ import { MiniPost } from '../postentry.js';
 import { PushToggle } from '../push.js';
 import { agoUnit, agoWords } from '../pure/ago.js';
 import { speakable } from '../speakable.js';
-import { groupHref, groupPostHref, reportHref, roomHref } from '../links.js';
+import { groupHref, groupPostHref, quarantineHref, reportHref, roomHref } from '../links.js';
 
 const html = htm.bind(h);
 
@@ -104,8 +104,22 @@ const reportWords = (r) => {
     });
 };
 
+/// A report that sealed a file on this server (notifications.rs `KIND_QUARANTINE`), as a link to
+/// the file's place in the quarantine.
+const quarantineWords = (r) =>
+    tNodes(
+        'apps.notifications.sent-report-that-quarantined',
+        'sent a report that quarantined {file}',
+        {
+            file: html`<a class="notif-report" href=${quarantineHref(r.doc_id)}>
+            ${t('apps.notifications.a-file-on-this-server', 'a file on this server')}
+        </a>`,
+        },
+    );
+
 const sentence = (r) => {
     if (r.kind === 'report') return reportWords(r);
+    if (r.kind === 'quarantine') return quarantineWords(r);
     // The share kind first: it carries no bands, and the public-edge ladder below would
     // otherwise dress it as "publishes their trust in you" - the exact miscopy that hid
     // share notifications in plain sight (2026-08-25: the row rendered, wearing the wrong

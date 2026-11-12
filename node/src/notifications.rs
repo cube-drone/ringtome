@@ -116,6 +116,52 @@ pub async fn forget_report(node_db: &Db, moderator: &str, report: &str) -> Resul
     Ok(())
 }
 
+/// "Someone's report quarantined a file here." The quarantine's news (quarantine.rs; Curtis,
+/// 2026-11-11: quarantine reports alert as the queue's do): when a child-abuse report seals what
+/// it names, every administrator's persona gets a row - its author the reporter, its doc the first
+/// file sealed, by its hash, which is its place on the Moderation page's quarantine tab. It leaves
+/// when that file is released.
+pub const KIND_QUARANTINE: &str = "quarantine";
+
+/// Tell the administrators a report sealed a file, and wake their open pages.
+pub async fn note_quarantine(
+    state: &AppState,
+    administrators: &std::collections::BTreeSet<String>,
+    reporter: &str,
+    hash: &str,
+) -> Result<()> {
+    let now = crate::clock::now_ms();
+    for admin in administrators {
+        upsert_row(
+            &state.node_db,
+            admin,
+            reporter,
+            KIND_QUARANTINE,
+            hash,
+            None,
+            None,
+            None,
+            now,
+            now,
+        )
+        .await?;
+    }
+    nudge_streams(state, administrators);
+    Ok(())
+}
+
+/// A quarantined file was released: its news goes with it, from every administrator's bell.
+pub async fn forget_quarantine(node_db: &Db, hash: &str) -> Result<()> {
+    node_db
+        .execute(
+            "DELETE FROM notifications WHERE kind = ?1 AND doc_id = ?2",
+            (KIND_QUARANTINE, hash),
+        )
+        .await
+        .context("dropping a quarantine's notification")?;
+    Ok(())
+}
+
 /// Tell a persona they completed a contract (bank.rs decides when, and only once).
 pub async fn note_contract(node_db: &Db, root: &str, contract: &str, detail: &str) -> Result<()> {
     let now = crate::clock::now_ms();

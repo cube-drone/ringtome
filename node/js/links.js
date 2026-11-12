@@ -205,7 +205,8 @@ export const settingsHref = (page) => {
 /// The place's own settings - the server's, or in the desktop app the device's - which were an app
 /// of their own (`/ringtome/device/<page>`, which still redirects) until 2026-11-11, and are the
 /// Settings app's last section now: `network`, `registration`, `backups`, `moderation`,
-/// `customization`, `frontmatter`, and `account/<id>`. With no page, the Settings app itself.
+/// `customization`, `frontmatter`, `account/<id>`, and Moderation's two tabs, `moderation/reports` and
+/// `moderation/quarantine`. With no page, the Settings app itself.
 export const serverHref = (page) => settingsHref(page ? `server/${page}` : null);
 
 /// Your computers' tabs (2026-10-09): `new` adds a computer (the page's default), `all` is every
@@ -221,6 +222,15 @@ export const contentHref = (tab = 'tags') => settingsHref(`content/${tab}`);
 /// One report's place in the moderation queue (reportqueue.js scrolls to it): what a report's row
 /// in the bell, and its alert (attention.rs `REPORTS_ROUTE`), lead to.
 export const reportHref = (id) => `${contentHref('reports')}?report=${encodeURIComponent(id)}`;
+
+/// The server's Moderation page's two tabs (servermoderation.js): `reports` (the default) and
+/// `quarantine`.
+export const serverModerationHref = (tab = 'reports') => serverHref(`moderation/${tab}`);
+
+/// One quarantined file's place on the quarantine tab, by its hash: what its row in the bell, and
+/// its alert (attention.rs `QUARANTINE_ROUTE`), lead to.
+export const quarantineHref = (hash) =>
+    `${serverModerationHref('quarantine')}?file=${encodeURIComponent(hash)}`;
 
 /// Import/export's two tabs (plans/EXPORT.md): `export` (the default) and `import`.
 export const importExportHref = (tab = 'export') => settingsHref(`import-export/${tab}`);

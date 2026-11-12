@@ -27326,3 +27326,43 @@ stranger is a row, up to the stranger pool; only the alerts collapse.
 of the report's words, kept through a proposal, gone when listed or dropped);
 `just ui-check`. Seen in Chrome on a scratch node: two reports, two rows and a
 badge of 2 on Nags, and the link landing on the outlined report.
+
+## Moderation's two tabs (2026-11-11)
+
+Curtis: the server settings' Moderation page is divided into reports and
+quarantine - make those tabs, in the style of the rest of the settings.
+
+- `servermoderation.js`: the page is tabbed as content control is, each tab its
+  own address - `/ringtome/settings/server/moderation/reports` (the default; a
+  bare or unknown tab lands there) and `…/moderation/quarantine`. The two
+  section headings went with it; the tab says it.
+- `index.js` routes `/ringtome/settings/server/moderation/:tab`; SERVER.md's
+  _Quarantine_ names the tab.
+
+`just strings-check`, `just ui-check`. Seen in Chrome on a scratch node: the
+bare address landing on reports, and each tab showing only its own half.
+
+## The quarantine tab, and hearing of a quarantine (2026-11-11)
+
+Curtis: open the quarantine tab by saying what it is for, fold the tool and
+_What to do now_ under "Quarantine Something Dangerous", style each quarantined
+file as a report is, and have quarantine reports alert as regular reports do.
+
+- `servermoderation.js`: the tab opens with "Quarantine is for content that may
+  be illegal to carry, including CSAM", the last word a link to Wikipedia. The
+  sealing form and _What to do now_ sit in a `<details>`, closed until asked
+  for. Each quarantined file is a card in the queue's style (`.report-row`): a
+  strip saying sealed or released and when, who reported it, the note, the hash,
+  the buttons. The old `.quarantine-row` CSS went.
+- `notifications.rs` `KIND_QUARANTINE`, `note_quarantine`, `forget_quarantine`:
+  when a child-abuse report seals what it names (`reports.rs` `take`), every
+  administrator's persona gets a bell row - the reporter its author, a sealed
+  file's hash its doc. `quarantine.rs` `release` takes it away.
+- `attention.rs` words and routes the alert to the file's place on the tab
+  (`?file=<hash>`, `links.js` `quarantineHref`); past three they collapse to
+  one. hrseNags words the row; the assistant's `read_notifications` names the
+  file.
+- plans/MODERATION.md gains _Hearing of a quarantine_.
+
+Not done: a seal made by hand alerts nobody. The moderator a sealing report was
+sent to gets two rows, the report's and the quarantine's.

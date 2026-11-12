@@ -489,7 +489,7 @@ async fn pass(state: &AppState, root: &str, known: &mut Seen) -> anyhow::Result<
 
 /// Too many at once reads as noise: past [`BURST`], each room's lines become one "N new
 /// messages", the bell's rows one "N new notifications", and the moderation queue's one "N new
-/// reports" - a flood of reports is one alert, not one each.
+/// reports" - a flood of reports is one alert, not one each - as the quarantine's are.
 fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
     if alerts.len() <= BURST {
         return alerts;
@@ -500,6 +500,7 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
         // Each report's alert leads to its own place in the queue; together they are the queue's.
         let place = match a.route.split_once('?') {
             Some((REPORTS_ROUTE, _)) => REPORTS_ROUTE.to_string(),
+            Some((QUARANTINE_ROUTE, _)) => QUARANTINE_ROUTE.to_string(),
             _ => a.route.clone(),
         };
         match by_route.iter_mut().find(|(r, _)| *r == place) {
@@ -517,6 +518,20 @@ fn collapse(root: &str, alerts: Vec<Alert>) -> Vec<Alert> {
                 root: root.to_string(),
                 title: crate::msg!("attention.reports", "Reports").english,
                 body: crate::msg!("attention.n-new-reports", "{n} new reports", n = n).english,
+                route,
+                picture: None,
+                picture_png: None,
+            });
+        } else if route == QUARANTINE_ROUTE {
+            out.push(Alert {
+                root: root.to_string(),
+                title: crate::msg!("attention.quarantine", "Quarantine").english,
+                body: crate::msg!(
+                    "attention.n-files-quarantined",
+                    "{n} reports quarantined files on this server",
+                    n = n
+                )
+                .english,
                 route,
                 picture: None,
                 picture_png: None,
@@ -555,6 +570,9 @@ const BELL_ROUTE: &str = "/ringtome/notifications";
 /// The moderation queue, in Settings' content control (js/links.js `reportHref`). One report's
 /// place in it is this with `?report=<id>`.
 const REPORTS_ROUTE: &str = "/ringtome/settings/content/reports";
+/// The server's quarantine, in Settings' server settings (js/links.js `quarantineHref`). One
+/// file's place in it is this with `?file=<hash>`.
+const QUARANTINE_ROUTE: &str = "/ringtome/settings/server/moderation/quarantine";
 
 /// A room's address in the app (PROJECT_PLAN's "`/ringtome/` replaces `/home`, `/in` and `/id`",
 /// 2026-09-28): `/ringtome/user/<author, short form>/room/<doc>`. An author that is not a hex root
@@ -592,6 +610,7 @@ async fn bell_alert(
         || item.kind == crate::notifications::KIND_MENTIONED
         || item.kind == crate::notifications::KIND_GROUP_INVITE
         || item.kind == crate::notifications::KIND_REPORT
+        || item.kind == crate::notifications::KIND_QUARANTINE
         || item.group.is_some()
     {
         None
@@ -732,6 +751,14 @@ async fn bell_alert(
                 .english
             }
         },
+        // A report that sealed a file here (notifications.rs `KIND_QUARANTINE`).
+        (k::KIND_QUARANTINE, _) => {
+            crate::msg!(
+                "attention.sent-a-report-that-quarantined",
+                "sent a report that quarantined a file on this server"
+            )
+            .english
+        }
         // A report for the moderation queue (notifications.rs `KIND_REPORT`): what it is about,
         // never what it says.
         (k::KIND_REPORT, _) => match item.detail.as_deref() {
@@ -799,6 +826,8 @@ async fn bell_alert(
         }
     } else if item.kind == crate::notifications::KIND_REPORT {
         format!("{REPORTS_ROUTE}?report={}", item.doc_id)
+    } else if item.kind == crate::notifications::KIND_QUARANTINE {
+        format!("{QUARANTINE_ROUTE}?file={}", item.doc_id)
     } else if item.kind == crate::notifications::KIND_GROUP_INVITE {
         crate::roster::group_route(&item.doc_id)
     } else if let Some(group) = &item.group {
@@ -1106,6 +1135,16 @@ mod tests {
         assert_eq!(many.len(), 1);
         assert_eq!(many[0].route, REPORTS_ROUTE);
         assert!(many[0].body.contains(&format!("{} new reports", BURST + 3)), "{}", many[0].body);
+    }
+
+    /// Quarantines collapse the same way, to the quarantine tab.
+    #[test]
+    fn a_burst_of_quarantines_collapses_to_the_tab() {
+        let one = |h: &str| alert(&format!("{QUARANTINE_ROUTE}?file={h}"), "sent a report");
+        let many = collapse("me", (0..BURST + 1).map(|i| one(&i.to_string())).collect());
+        assert_eq!(many.len(), 1);
+        assert_eq!(many[0].route, QUARANTINE_ROUTE);
+        assert!(many[0].body.contains(&format!("{} reports quarantined", BURST + 1)));
     }
 
     /// A completed contract alerts as the bank's news, in the bell's words - never as the

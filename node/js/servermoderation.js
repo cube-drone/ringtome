@@ -1,20 +1,24 @@
 // The server settings' Moderation page (plans/SCANNING.md, plans/MODERATION.md): what the people who look
 // after this place do when something on it is something no one should hold.
 //
+// Two tabs, each its own address:
+//
 // - Reports (node/src/reports.rs): Allow Users to Accept Reports, the strangers' pool and how long
 //   reports are kept - with the advice that opens the door: put upload scanning in front first.
 // - Quarantine (node/src/quarantine.rs): seal a picture by its address, or a file by its hash. The
 //   bytes stay - keeping them can be the operator's legal duty - and nothing here reads, fetches or
 //   serves them again until released. Beside it, what to do now: report it, keep it, don't look.
 import { h } from 'preact';
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from './net.js';
 import { formatWhen } from './pure/when.js';
-import { t } from './i18n.js';
+import { t, tNodes } from './i18n.js';
 import { askYes } from './modal.js';
-import { personHref } from './links.js';
+import { useLocation } from 'preact-iso';
+import { personHref, serverModerationHref } from './links.js';
+import { Icons } from './icons.js';
 import { PersonInline } from './person.js';
 
 const html = htm.bind(h);
@@ -62,35 +66,48 @@ const WhatToDoNow = () => html`<div class="quarantine-now">
     <p class="null-sub">${t('quarantine.not-legal-advice', 'This is not legal advice.')}</p>
 </div>`;
 
-/// One quarantined file. A seal a child-abuse report made names its reporter (Curtis, 2026-11-03),
-/// and offers to undo everything their reports sealed at once.
-const QuarantineRow = ({ row, onRelease, onReleaseReporter }) => {
+/// One quarantined file, as a card in the moderation queue's style (reportqueue.js `ReportRow`):
+/// the strip across its top, who and why, and what can be done. A seal a child-abuse report made
+/// names its reporter (Curtis, 2026-11-03), and offers to undo everything their reports sealed at
+/// once.
+const QuarantineRow = ({ row, sought, onRelease, onReleaseReporter }) => {
     const sealed = !row.released_ms;
-    return html`<li class=${sealed ? 'quarantine-row' : 'quarantine-row quarantine-released'}>
-        <code class="quarantine-hash">${row.hash}</code>
-        <span class="null-sub">
-            ${
-                sealed
-                    ? t('quarantine.sealed-since', 'sealed {when}', {
-                          when: formatWhen(row.quarantined_ms),
-                      })
-                    : t('quarantine.released-at', 'released {when}', {
-                          when: formatWhen(row.released_ms),
-                      })
-            }
-            ${row.held ? '' : html` - ${t('quarantine.never-arrived', 'not on this disk')}`}
-        </span>
-        ${row.why && html`<span class="quarantine-why">${row.why}</span>`}
+    const classes = [
+        'report-row',
+        row.reporter && 'report-row-child',
+        !sealed && 'quarantine-released',
+        sought && 'report-row-sought',
+    ];
+    return html`<li class=${classes.filter(Boolean).join(' ')} data-quarantine=${row.hash}>
+        <p class="report-kind">
+            <${Icons.lock} />
+            ${sealed ? t('quarantine.sealed', 'Sealed') : t('quarantine.released', 'Released')}
+            <span class="report-kind-when">${formatWhen(sealed ? row.quarantined_ms : row.released_ms)}</span>
+        </p>
         ${
             row.reporter &&
-            html`<span class="quarantine-reporter">
+            html`<p class="report-from">
                 ${t('quarantine.reported-by', 'reported by')}
                 <a class="moderation-who" href=${personHref(row.reporter)}><${PersonInline} root=${row.reporter} /></a>
-            </span>`
+            </p>`
+        }
+        ${row.why && html`<blockquote class="report-reason">${row.why}</blockquote>`}
+        <code class="quarantine-hash">${row.hash}</code>
+        ${
+            (!sealed || !row.held) &&
+            html`<p class="null-sub">
+                ${
+                    !sealed &&
+                    t('quarantine.sealed-since', 'sealed {when}', {
+                        when: formatWhen(row.quarantined_ms),
+                    })
+                }
+                ${!sealed && !row.held && ' - '} ${!row.held && t('quarantine.never-arrived', 'not on this disk')}
+            </p>`
         }
         ${
             sealed &&
-            html`<span class="quarantine-actions">
+            html`<div class="report-buttons">
                 <button class="removal-option" onClick=${() => onRelease(row.hash)}>
                     ${t('quarantine.release', 'release')}
                 </button>
@@ -100,10 +117,12 @@ const QuarantineRow = ({ row, onRelease, onReleaseReporter }) => {
                         ${t('quarantine.release-all-they-reported', 'release everything they reported')}
                     </button>`
                 }
-            </span>`
+            </div>`
         }
     </li>`;
 };
+
+const CSAM_ARTICLE = 'https://en.wikipedia.org/wiki/Child_sexual_abuse_material';
 
 const Quarantine = () => {
     const [rows, setRows] = useState(null);
@@ -111,6 +130,18 @@ const Quarantine = () => {
     const [why, setWhy] = useState('');
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    const loc = useLocation();
+    // Come from a quarantine's row in the bell, or its alert (links.js `quarantineHref`): once the
+    // list is drawn, the file's place is scrolled to and marked - once, as the queue does.
+    const sought = new URLSearchParams(loc.url.split('?')[1] || '').get('file');
+    const wentTo = useRef(null);
+    useEffect(() => {
+        if (!sought || !rows || wentTo.current === sought) return;
+        const row = document.querySelector(`[data-quarantine="${CSS.escape(sought)}"]`);
+        if (!row) return;
+        wentTo.current = sought;
+        row.scrollIntoView({ block: 'center' });
+    }, [sought, rows]);
     const load = useCallback(() => {
         api('/api/admin/quarantine')
             .then((r) => setRows(r.rows))
@@ -169,28 +200,41 @@ const Quarantine = () => {
         }
     };
     return html`<section class="quarantine">
-        <h3>${t('quarantine.quarantine', 'Quarantine')}</h3>
-        <p class="null-sub">
-            ${t('quarantine.what-it-does', 'Seal a picture this server holds: nobody here - on the web, in the app, or another server asking - gets it again, and the file is kept, untouched, until you release it.')}
+        <p>
+            ${tNodes(
+                'quarantine.what-it-is-for',
+                'Quarantine is for content that may be illegal to carry, including {csam}.',
+                {
+                    csam: html`<a href=${CSAM_ARTICLE} target="_blank" rel="noopener noreferrer">${t('quarantine.csam', 'CSAM')}</a>`,
+                },
+            )}
         </p>
-        <label class="device-field">
-            <span>${t('quarantine.the-pictures-address', "the picture's address, or its post's - or a file's hash")}</span>
-            <input value=${address} onInput=${(e) => setAddress(e.currentTarget.value)} />
-        </label>
-        <label class="device-field">
-            <span>${t('quarantine.a-note-for-the-record', 'a note for the record')}</span>
-            <input value=${why} onInput=${(e) => setWhy(e.currentTarget.value)} />
-        </label>
+        <details class="report-floods-box">
+            <summary class="report-floods-head quarantine-tool-head">
+                ${t('quarantine.quarantine-something-dangerous', 'Quarantine Something Dangerous')}
+            </summary>
+            <p class="null-sub">
+                ${t('quarantine.what-it-does', 'Seal a picture this server holds: nobody here - on the web, in the app, or another server asking - gets it again, and the file is kept, untouched, until you release it.')}
+            </p>
+            <label class="device-field">
+                <span>${t('quarantine.the-pictures-address', "the picture's address, or its post's - or a file's hash")}</span>
+                <input value=${address} onInput=${(e) => setAddress(e.currentTarget.value)} />
+            </label>
+            <label class="device-field">
+                <span>${t('quarantine.a-note-for-the-record', 'a note for the record')}</span>
+                <input value=${why} onInput=${(e) => setWhy(e.currentTarget.value)} />
+            </label>
+            <button class="removal-go" disabled=${busy || !address.trim()} onClick=${seal}>
+                ${t('quarantine.quarantine-it', 'quarantine it')}
+            </button>
+            <${WhatToDoNow} />
+        </details>
         ${error && html`<p class="form-error">${error}</p>`}
-        <button class="removal-go" disabled=${busy || !address.trim()} onClick=${seal}>
-            ${t('quarantine.quarantine-it', 'quarantine it')}
-        </button>
-        <${WhatToDoNow} />
         ${
             rows &&
             (rows.length
-                ? html`<ul class="quarantine-list">
-                      ${rows.map((row) => html`<${QuarantineRow} key=${row.hash} row=${row} onRelease=${release} onReleaseReporter=${releaseReporter} />`)}
+                ? html`<ul class="report-queue">
+                      ${rows.map((row) => html`<${QuarantineRow} key=${row.hash} row=${row} sought=${row.hash === sought} onRelease=${release} onReleaseReporter=${releaseReporter} />`)}
                   </ul>`
                 : html`<p class="null-sub">${t('quarantine.nothing-quarantined', 'Nothing is quarantined here.')}</p>`)
         }
@@ -225,7 +269,6 @@ const ReportPolicy = () => {
         if (Number.isFinite(n) && n >= 0) save({ [key]: Math.round(n) });
     };
     return html`<section class="quarantine">
-        <h3>${t('reports.reports', 'Reports')}</h3>
         <label class="profile-setting">
             <input type="checkbox" checked=${policy.users_may} onChange=${(e) => save({ users_may: e.currentTarget.checked })} />
             ${t('reports.allow-users-to-accept-reports', 'Allow Users to Accept Reports')}
@@ -249,8 +292,30 @@ const ReportPolicy = () => {
     </section>`;
 };
 
-export const ServerModeration = () => html`<div class="device">
-    <h2 class="computers-title">${t('device.moderation', 'Moderation')}</h2>
-    <${ReportPolicy} />
-    <${Quarantine} />
-</div>`;
+/// The page's two tabs, each its own address as content control's are (Curtis, 2026-11-11):
+/// `reports` (the default) and `quarantine`.
+const MODERATION_TABS = ['reports', 'quarantine'];
+
+/// `/ringtome/settings/server/moderation` and `…/moderation/:tab` - a bare or unknown tab lands on
+/// `reports`.
+export const ServerModeration = ({ tab }) => {
+    const loc = useLocation();
+    const known = MODERATION_TABS.includes(tab);
+    useEffect(() => {
+        if (!known) loc.route(serverModerationHref('reports'), true);
+    }, [known, loc]);
+    if (!known) return null;
+    const tabLink = (to, icon, words) =>
+        html`<a class=${tab === to ? 'tab active' : 'tab'} href=${serverModerationHref(to)}>
+            <${icon} /> ${words}
+        </a>`;
+    return html`<div class="device">
+        <h2 class="computers-title">${t('device.moderation', 'Moderation')}</h2>
+        <nav class="welcome-tabs">
+            ${tabLink('reports', Icons.report, t('device.moderation-tab-reports', 'reports'))}
+            ${tabLink('quarantine', Icons.lock, t('device.moderation-tab-quarantine', 'quarantine'))}
+        </nav>
+        ${tab === 'reports' && html`<${ReportPolicy} />`}
+        ${tab === 'quarantine' && html`<${Quarantine} />`}
+    </div>`;
+};

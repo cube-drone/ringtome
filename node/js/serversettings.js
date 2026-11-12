@@ -107,7 +107,7 @@ const PAGE_ICONS = {
 
 /// One of the place's settings pages, by its address. A page that isn't this person's, or isn't
 /// one at all, is the list of those that are.
-export const ServerSettings = ({ page, account, admin, current }) => {
+export const ServerSettings = ({ page, account, tab, admin, current }) => {
     if (page === 'network') return html`<${Network} current=${current} admin=${admin} />`;
     if (!admin) {
         return html`<div class="device">
@@ -121,7 +121,7 @@ export const ServerSettings = ({ page, account, admin, current }) => {
         return html`<${AccountPage} id=${account} current=${current} />`;
     if (page === 'customization' && !isDevice()) return html`<${Customization} />`;
     if (page === 'frontmatter') return html`<${FrontMatterPage} current=${current} />`;
-    if (page === 'moderation') return html`<${ServerModeration} />`;
+    if (page === 'moderation') return html`<${ServerModeration} tab=${tab} />`;
     return html`<div class="device"><${ServerSettingsList} admin=${admin} /></div>`;
 };
 

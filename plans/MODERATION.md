@@ -265,6 +265,23 @@ window." Until then a report landed in the queue and told nobody.
 - **The row leaves with the report**: dismissed, listed, dropped with its node's
   others, or trimmed past its keeping. One an assistant only proposed on stays.
 
+### Hearing of a quarantine
+
+Curtis, 2026-11-11: "Quarantine reports should alert, in the same way as regular
+reports."
+
+- **When a child-abuse report seals what it names**, every administrator's
+  persona gets a row in the bell (`notifications.rs` `KIND_QUARANTINE`), not
+  only the moderator it was sent to: who reported, and one of the files sealed,
+  by its hash. The moderator it was sent to also has the report's own row.
+- **It alerts as a report does**, and more than three at once collapse into one
+  alert that opens the quarantine tab.
+- **The row, and the alert, lead to the file's place on the quarantine tab**
+  (`/ringtome/settings/server/moderation/quarantine?file=<hash>`), scrolled to
+  and outlined. Releasing the file takes the row away.
+- **A seal an administrator makes by hand tells nobody**: they are the one who
+  did it.
+
 ## Left out, on purpose
 
 Weighting lists against each other, a first run offering a menu of lists, any

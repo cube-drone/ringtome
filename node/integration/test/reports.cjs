@@ -273,11 +273,24 @@ const fact = (who, root, about, key, value) =>
             rows.every((x) => x.reporter === repRoot),
             'each seal names whose report it was',
         );
+        // The administrator hears of the seal, in the bell: one of the files, by its hash.
+        const sealedNews = async () =>
+            (await (await admin(`api/identity/${mod}/notifications`)).json()).items.filter(
+                (n) => n.kind === 'quarantine' && n.author === repRoot,
+            );
+        const news = await sealedNews();
+        assert.equal(news.length, 1, 'one row for the report that sealed');
+        assert.ok(
+            rows.some((x) => x.hash === news[0].doc_id),
+            'naming a file it sealed',
+        );
+        assert.ok(!news[0].seen, 'unseen');
         // Undone all at once, by reporter: every seal of theirs released, its row kept.
         const freed = await admin(`api/admin/quarantine/reported-by/${repRoot}/release`, {
             method: 'POST',
         });
         assert.equal(freed.status, 200, await freed.clone().text());
+        assert.equal((await sealedNews()).length, 0, 'released, it is off the bell');
         const after = (await freed.json()).rows.filter((x) => x.doc_id === post);
         assert.equal(after.length, rows.length, 'the record stays');
         assert.ok(

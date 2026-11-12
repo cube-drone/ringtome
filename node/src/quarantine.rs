@@ -462,6 +462,7 @@ async fn release(state: &AppState, hashes: &[[u8; 32]], by_account: &str) -> any
             .await
             .context("releasing a quarantine")?;
         state.files.unseal(&iroh_blobs::Hash::from_bytes(*hash));
+        crate::notifications::forget_quarantine(&state.node_db, &hex::encode(hash)).await?;
     }
     reload_refusal(state).await
 }

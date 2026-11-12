@@ -807,6 +807,7 @@ const Inside = ({ session }) => {
             <${ServerSettings} path="/ringtome/settings/server" admin=${nodeAdmin} current=${persona.current} />
             <${ServerSettings} path="/ringtome/settings/server/:page" admin=${nodeAdmin} current=${persona.current} />
             <${ServerSettings} path="/ringtome/settings/server/account/:account" page="account" admin=${nodeAdmin} current=${persona.current} />
+            <${ServerSettings} path="/ringtome/settings/server/moderation/:tab" page="moderation" admin=${nodeAdmin} current=${persona.current} />
             <${ServerMoved} path="/ringtome/device" />
             <${ServerMoved} path="/ringtome/device/*" />
             <${ChatApp} path="/ringtome/chat" current=${persona.current} admin=${nodeAdmin} searchQuery=${query} onSearch=${setQuery} />

@@ -176,18 +176,7 @@ label.moderation-overrule {
 .quarantine-hotlines {
     margin: 0.25rem 0 0;
 }
-.quarantine-list {
-    list-style: none;
-    padding: 0;
-}
-.quarantine-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.25rem 0.75rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border);
-}
+/* A quarantined file is a card in the queue's style (.report-row, below); these are its own. */
 .quarantine-released {
     opacity: 0.6;
 }
@@ -195,20 +184,13 @@ label.moderation-overrule {
     font-size: 0.8em;
     overflow-wrap: anywhere;
 }
-.quarantine-why {
-    flex-basis: 100%;
+/* The tool, folded under its name (.report-floods-box): the name reads as a heading, not a note. */
+.report-floods-head.quarantine-tool-head {
+    color: var(--ink);
+    font-weight: 600;
 }
-/* Whose child-abuse report sealed it, and the way to undo all of theirs (2026-11-03). */
-.quarantine-reporter {
-    flex-basis: 100%;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-.quarantine-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
+.report-floods-box[open] > .quarantine-tool-head {
+    margin-bottom: 0.6rem;
 }
 
 /* Reports (report.js, reportqueue.js). */

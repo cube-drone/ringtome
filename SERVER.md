@@ -438,17 +438,17 @@ carries only where the post is, never the picture.
 ### Quarantine
 
 If you find a picture on your server that no one should hold, quarantine it:
-hrseSettings, _server settings_, _Moderation_, with the picture's address (or a
-file's hash). The server stops serving it at once - on the web, in the app and
-to other servers - and keeps the file, sealed, because preserving it may be your
-legal duty. The page says what to do next: don't look at it again or copy it,
-report it (in Canada, Cybertip.ca; in the US, NCMEC's CyberTipline), keep it
-sealed until the authorities say otherwise, and purge its address from your
-CDN's cache. Quarantining also puts the picture's fingerprint (PDQ) on your
-server's private refusal list: the same picture uploaded again, resized or
-re-encoded and by anyone, is refused, and a copy arriving from another server is
-sealed as it lands. The list is never published. **Release** unseals a file; the
-record of what was held, when and by whom stays.
+hrseSettings, _server settings_, _Moderation_, the _quarantine_ tab, with the
+picture's address (or a file's hash). The server stops serving it at once - on
+the web, in the app and to other servers - and keeps the file, sealed, because
+preserving it may be your legal duty. The page says what to do next: don't look
+at it again or copy it, report it (in Canada, Cybertip.ca; in the US, NCMEC's
+CyberTipline), keep it sealed until the authorities say otherwise, and purge its
+address from your CDN's cache. Quarantining also puts the picture's fingerprint
+(PDQ) on your server's private refusal list: the same picture uploaded again,
+resized or re-encoded and by anyone, is refused, and a copy arriving from
+another server is sealed as it lands. The list is never published. **Release**
+unseals a file; the record of what was held, when and by whom stays.
 
 For a picture that is merely unwelcome, block it instead: Content control, _Your
 public list_, with the picture's address. Blocking is public, like every entry

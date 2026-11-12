@@ -960,6 +960,10 @@ fn notification(item: &Value, reader: &str) -> Value {
             line["report"] = json!(report);
             line["about"] = json!(detail);
         }
+        // A report sealed a file on this server: the file, by its hash on the quarantine list.
+        (notifications::KIND_QUARANTINE, Some(file)) => {
+            line["quarantined"] = json!(file);
+        }
         (notifications::KIND_CONTRACT, Some(_)) => {
             let contract: Value =
                 detail.and_then(|d| serde_json::from_str(d).ok()).unwrap_or_default();

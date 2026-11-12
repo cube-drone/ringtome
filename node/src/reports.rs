@@ -323,6 +323,18 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
             let by = crate::quarantine::reported_by(&reporter);
             crate::quarantine::seal(state, &item_hashes, picture, "a child-abuse report", &by)
                 .await?;
+            // Every administrator hears of it (notifications.rs `KIND_QUARANTINE`), not only
+            // the one the report was sent to: the quarantine is the whole server's.
+            if let Err(e) = crate::notifications::note_quarantine(
+                state,
+                &admins,
+                &reporter,
+                &hex::encode(item_hashes[0]),
+            )
+            .await
+            {
+                tracing::warn!(error = ?e, "a quarantine's notification wasn't stored");
+            }
         }
     }
     tracing::info!(moderator = %moderator, standing = standing.word(), "took a report");
