@@ -297,6 +297,7 @@ export default {
     'apps.chat.chats': 'chats',
     'apps.chat.no-chats-wear-those-tags': 'no chats wear those tags',
     'apps.chat.no-rooms-yet-column': 'no chats yet',
+    'apps.chat.groups': 'groups',
     'apps.chat.ims': 'IMs',
     'apps.chat.new-im': '+ new IM',
     'apps.chat.requests': 'requests',

@@ -319,6 +319,12 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
                 ? html`<p class="chat-rooms-empty">${filtered ? t('apps.chat.no-chats-wear-those-tags', 'no chats wear those tags') : t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
                 : html`<ul class="chat-list">${active.map(row)}</ul>`
         }
+        ${
+            /* The groups' piles under a heading of their own, as the IMs and the left are
+            (Curtis, 2026-11-11) - when there are any. */
+            ofGroups.length > 0 &&
+            html`<p class="chat-list-divider">${t('apps.chat.groups', 'groups')}</p>`
+        }
         ${ofGroups.map(
             (pile) => html`<${GroupPile}
                 key=${pile.group}

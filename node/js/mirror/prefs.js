@@ -74,6 +74,7 @@ export function usePrefMap(root, prefix) {
     const rows = useLive(
         () => openMirror(root).prefs.where('key').startsWith(prefix).toArray(),
         [root, prefix],
+        `prefs:${root}:${prefix}*`,
     );
     return useMemo(
         () =>
@@ -105,6 +106,7 @@ export function usePrefValue(root, key) {
     const rows = useLive(
         () => (root ? openMirror(root).prefs.where('key').equals(key).toArray() : []),
         [root, key],
+        `prefs:${root}:${key}`,
     );
     return rows && rows[0] ? rows[0].value : undefined;
 }
@@ -113,6 +115,7 @@ export function usePref(root, key, fallback) {
     const rows = useLive(
         () => openMirror(root).prefs.where('key').equals(key).toArray(),
         [root, key],
+        `prefs:${root}:${key}`,
     );
     const stored = rows && rows[0] && rows[0].value;
     const [pick, setPick] = useState(null);

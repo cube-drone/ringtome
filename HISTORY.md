@@ -27366,3 +27366,56 @@ file as a report is, and have quarantine reports alert as regular reports do.
 
 Not done: a seal made by hand alerts nobody. The moderator a sealing report was
 sent to gets two rows, the report's and the quarantine's.
+
+## Chat's groups heading (2026-11-12)
+
+Curtis: the chats column has headings for IMs and left - put the groups' chats
+under a "groups" one, if any exist.
+
+- `apps/chat.js` `RoomsColumn`: a `chat-list-divider` reading "groups" above the
+  groups' piles, drawn only when there is one; `chat.css` pulls the first pile
+  up under it.
+
+`just strings-check`, `just ui-check`. Seen in Chrome on a scratch node with one
+group: groups, the group's pile, IMs.
+
+## A delete no longer blanks the notes list (2026-11-12)
+
+Curtis: deleting a note in hrseWriter hid the list of notes for a second or two,
+the next note opened hid it again, and that note took longer to load.
+
+A note at its own address and the notebook's list are different routes, so a
+delete, and the next note opened, each mount a fresh app. The fresh app's live
+query starts from nothing, so the list drew empty until it answered; the fresh
+document route said "looking that up…" over the whole app until its own did.
+
+- `doc/docapp.js`: the documents as last read are kept per persona (`lastDocs`),
+  and `useDocApp` starts from them until its query answers. A deleted document
+  is taken out as it is forgotten.
+- `index.js`: `DocRoute` and the shell's placement take the document's row from
+  that last read (`lastRow`) until their own queries answer, so a note opened
+  from the list draws in the app at once.
+
+`just ui-check`. In Chrome on a scratch node, sixty notes, sampled every frame
+through a delete and then a click on another note: the list went 60 rows to 59
+and never empty, and "looking that up…" never showed. Not measured on a large
+real mirror, where the wait was seconds.
+
+## The notes column keeps its width across a delete (2026-11-12)
+
+Curtis, after the entry above: "There's still a blip where the width of the
+notes changes after a delete, and then on the first click after a delete."
+
+The same fresh mount, one layer down: the column's width, its tucks and its
+list-or-tree pick are prefs, read by live queries that start from nothing, so
+the column drew at its stylesheet default and then jumped to the stored width.
+
+- `mirror.js` `useLive` takes a third argument, a name to remember the query's
+  answer under; a fresh mount starts from the last answer under that name.
+- `mirror/prefs.js`: `usePrefMap`, `usePrefValue` and `usePref` name theirs, so
+  every pref-driven layout starts where it was.
+
+`just ui-check`. In Chrome on a scratch node, the column dragged to 370px and
+sampled every frame through a delete and a click on another note: 370
+throughout. With the memory switched off, the same run showed 240 then 370 on
+the click.

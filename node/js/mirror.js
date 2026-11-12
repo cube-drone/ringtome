@@ -258,11 +258,21 @@ export function startLiveCache(root) {
 
 // Subscribe a component to a Dexie query: re-renders on every mirror change, in every tab
 // (Dexie's liveQuery observes IndexedDB cross-tab). `undefined` until the first result.
-export function useLive(queryFn, deps) {
-    const [value, setValue] = useState(undefined);
+//
+// `remember` names the query (Curtis, 2026-11-12: after a delete the notes column blipped to its
+// default width and back): a component mounted afresh - the route under it changed - starts from
+// what the last one read under that name rather than from `undefined`, and the query's own answer
+// takes over a moment later. For what lays a page out (prefs: widths, tucks), where "not read
+// yet" draws as the default and then jumps. Per tab.
+const remembered = new Map();
+export function useLive(queryFn, deps, remember = null) {
+    const [value, setValue] = useState(() => (remember ? remembered.get(remember) : undefined));
     useEffect(() => {
         const sub = liveQuery(queryFn).subscribe({
-            next: setValue,
+            next: (v) => {
+                if (remember) remembered.set(remember, v);
+                setValue(v);
+            },
             error: (e) => console.warn('live query error', e),
         });
         return () => sub.unsubscribe();

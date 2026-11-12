@@ -45,9 +45,25 @@ export function forgetLastDoc(root, docId) {
  * - `bumpTree` exists because deleting a document never touches the taxonomy roster, so the tree
  *   pane has no way to notice on its own.
  */
+/// The documents as the app last read them, per persona (Curtis, 2026-11-12: a delete hid the list
+/// for a second or two, and so did the next note opened). A note at its own address and the
+/// notebook's list are different routes (index.js), so a delete - and the next note opened - mounts
+/// a fresh app, whose live query answers a moment later; until it does, the app shows what the last
+/// one held. Per tab, and never the truth for longer than that moment.
+const lastDocs = new Map();
+
+/// This document's row in the last read, or null: a document's own route and the shell ask, so
+/// neither says "looking that up…" over a list that was on screen a moment ago.
+export const lastRow = (root, docId) =>
+    (lastDocs.get(root) || []).find((d) => d.doc_id === docId) || null;
+
 export function useDocApp(root, app, docId, bucket, { resume = true } = {}) {
     const loc = useLocation();
-    const docs = useLive(() => openMirror(root).docs.toArray(), [root]);
+    const live = useLive(() => openMirror(root).docs.toArray(), [root]);
+    useEffect(() => {
+        if (live) lastDocs.set(root, live);
+    }, [root, live]);
+    const docs = live || lastDocs.get(root);
 
     const selected = docId || null;
     // Where a document, or the list, lives: the document's own address in a notebook app; the
@@ -94,6 +110,13 @@ export function useDocApp(root, app, docId, bucket, { resume = true } = {}) {
     const forget = (id) => {
         const key = `${root}:${app.id}`;
         if (lastDocMemory.get(key) === id) lastDocMemory.delete(key);
+        // Nor does the list the next mount starts from still hold it.
+        const held = lastDocs.get(root);
+        if (held)
+            lastDocs.set(
+                root,
+                held.filter((d) => d.doc_id !== id),
+            );
     };
 
     const [treeReload, setTreeReload] = useState(0);

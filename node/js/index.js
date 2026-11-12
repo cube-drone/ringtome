@@ -95,6 +95,7 @@ import { isDesktopApp, isDevice, isMacApp } from './net.js';
 import { outwardLink } from './pure/outward.js';
 import { t, tNodes, setLocale, detectLocale } from './i18n.js';
 import { DiffPage } from './doc/diffpage.js';
+import { lastRow } from './doc/docapp.js';
 import { NodeFeed, RecentPosts, SuperPins } from './nodefeed.js';
 import { SuperPinner, useFront, frontName } from './frontdoor.js';
 import { setTurbolinkReader } from './doc/turbolinks.js';
@@ -336,10 +337,13 @@ const Inside = ({ session }) => {
         ref && ref.kind === 'doc' && root && (parseSpeakable(ref.seg) || {}).root === root
             ? ref.doc
             : null;
-    const ownDocRow = useLive(
+    const ownDocLive = useLive(
         () => (ownDoc ? openMirror(root).docs.get(ownDoc) : null),
         [root, ownDoc],
     );
+    // Until the query answers for a document just opened from a list, the row that list held
+    // (doc/docapp.js `lastRow`) places it.
+    const ownDocRow = ownDocLive || (ownDoc ? lastRow(root, ownDoc) : null);
     const placed = ownDoc && ownDocRow ? docPlacement(ownDocRow, roster, ref.bucket) : null;
     const cozyBucketRow = notebookSlug
         ? (roster || []).find((b) => slugify(b.name) === notebookSlug) || null
@@ -983,13 +987,18 @@ const DocRoute = ({ seg, doc, current, appHere, searchQuery, searchKind, bucket 
     // Here, as a primitive (2026-10-08, the frontend audit): `true`, null or undefined. The row
     // itself is a fresh object on every save of the open document, which re-rendered this route and
     // the whole app under it every few seconds while you typed; presence is all this route asks.
-    const row = useLive(() => {
+    const asked = useLive(() => {
         if (!mine) return null;
         const docs = openMirror(current.root).docs;
         return Promise.all([docs.get(doc), docs.count()]).then(([r, held]) =>
             r ? true : held > 0 ? null : undefined,
         );
     }, [mine, current && current.root, doc]);
+    // Coming from the notebook's list - a different route, so this one is freshly mounted and its
+    // query hasn't answered - the list that was just on screen held the document (doc/docapp.js
+    // `lastRow`): it is there, with no "looking that up…" over the app in between (Curtis,
+    // 2026-11-12).
+    const row = asked === undefined && mine && lastRow(current.root, doc) ? true : asked;
     // The mirror not holding it is not the document not existing (Curtis, 2026-10-03: a flash of
     // "that isn't here", then the whole page): a mirror carried over from the last visit holds the
     // documents it held then, and one made since arrives with the stream a moment later. So the node
