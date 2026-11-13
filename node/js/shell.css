@@ -17,6 +17,16 @@
     fill: var(--teal);
 }
 
+/* A narrow window draws everything at nine tenths (Curtis, 2026-11-13: "everything in the mobile
+   view is a little... big"). The stylesheets size in rem, so the root's font size is the one dial:
+   type, padding and controls all follow it. Lengths written in px (hairlines, a few fixed boxes)
+   stay as they are. The width is the one the columns become tabs at (panes.js `NARROW`). */
+@media (max-width: 900px) {
+    html {
+        font-size: 90%;
+    }
+}
+
 body {
     margin: 0;
     padding: 0;

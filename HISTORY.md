@@ -27580,3 +27580,19 @@ on Node.js 24", naming `actions/checkout@v4`, `actions/setup-node@v4` and
   a release, where a surprise costs most, so they wait for a dry run.
 
 Not run: proven by the next push (ci) and the next Android and release runs.
+
+## The narrow layout at nine tenths (2026-11-13)
+
+Curtis: "Everything in the mobile view is a little... big - is it possible to
+have everything in the entire mobile CSS ... displayed at, like, 80% size?"
+
+- `shell.css`: under 900px (where the columns become tabs) the root's font size
+  is 90% (80% first; Curtis: "Let's do 90% instead"). The stylesheets size in
+  rem, so type, padding, buttons and the dock all follow; lengths written in px
+  stay as they are.
+- By the root's font size and not `zoom`, which would also scale what the page
+  measures - pointer positions on a drawing among them.
+
+`just strings-check`, `just ui-check`. Seen in Chrome at 390 wide on a scratch
+node, a note open, before and after, at 80%. Not seen at 90%, or on a phone, and
+only that one screen was looked at.
