@@ -1,7 +1,7 @@
 // A person's own domain (plans/CUSTOM_DOMAINS.md, slice 3): a node serving cube-drone.com answers
 // it as cube-drone's website, and says whose in the page (`<meta name="ringtome-site">`,
 // domainsite.rs). Here the app is a reading site of theirs (section 5): `/` is their page, `/<path>`
-// a post or a folder, `/post/<id>` a post by its id - and their address in the node's form
+// a post or a folder, `/post/<id>` a post by its id, with the band's search over their posts - and their address in the node's form
 // (`/ringtome/user/<them>/...`), which the app's links are minted in, is the same place at home.
 // Nothing here signs in: anything of the node's - someone else, the console, the front page - is a
 // whole page load, which the node sends on to its own address.
@@ -28,6 +28,10 @@ export const DomainSite = ({ seg }) => {
     const loc = useLocation();
     const [title, setTitle] = useState(null);
     const [node, setNode] = useState('');
+    // The page's search (Curtis, 2026-11-12: "cube-drone.com specifically doesn't support search"):
+    // the band's box, as on the node's own address, over this person's posts - on their page,
+    // which is what searches. A post or a folder has no box.
+    const [query, setQuery] = useState('');
     useEffect(() => {
         publicUrl().then(setNode);
     }, []);
@@ -45,7 +49,7 @@ export const DomainSite = ({ seg }) => {
     const shared = { seg, current: null, onTitle: setTitle };
     let page;
     if (!parts.length) {
-        page = html`<${IdPage} ...${shared} persona=${null} session=${null} />`;
+        page = html`<${IdPage} ...${shared} persona=${null} session=${null} searchQuery=${query} />`;
     } else if (parts[0] === 'post' && parts[1]) {
         page =
             parts[2] === 'history'
@@ -59,6 +63,18 @@ export const DomainSite = ({ seg }) => {
             <span class="app-header-lead">
                 <span class="app-header-title outside-band-title">${title || ''}</span>
             </span>
+            ${
+                !parts.length &&
+                html`<span class="app-header-search-box">
+                    <input
+                        class="app-header-search"
+                        type="search"
+                        placeholder=${t('index.search', 'search…')}
+                        value=${query}
+                        onInput=${(e) => setQuery(e.currentTarget.value)}
+                    />
+                </span>`
+            }
             <span class="app-header-actions">
                 ${
                     node &&

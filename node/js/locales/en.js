@@ -1443,6 +1443,7 @@ export default {
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
 
     // --- node/js/domainsite.js ---
+    'index.search': 'search…',
     'domainsite.on-the-node': 'on Horse Drawing Tycoon 2',
 
     // --- node/js/downloads.js ---
@@ -1705,7 +1706,6 @@ export default {
     'index.back-to-people': 'back to hrseNeighbors™',
     'index.back-to-their-page': 'back to their page',
     'index.close': 'close',
-    'index.search': 'search…',
     'index.back-to-the-group': 'back to the group',
     'index.back-to-your-groups': 'back to your groups',
     'index.back-to-the-list': 'back to the list',

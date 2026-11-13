@@ -35,6 +35,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
+          # Pinned (2026-11-12): stable moved to 1.100.0, where turso_core 0.8.3 - itself pinned,
+          # node/Cargo.toml - doesn't compile (index_method/fts/directory.rs, E0308). Back to
+          # `stable` once a turso that builds there is taken.
+          toolchain: '1.99.1'
           components: clippy
 
       # Cache cargo registry + target dir; the iroh dependency tree is heavy enough that this

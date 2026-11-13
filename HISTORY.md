@@ -27430,3 +27430,29 @@ not doing much of value there."
   A chat still wears its tags on its row, and a new chat can still be given
   them.
 - plans/UNLOCKS.md no longer lists a tag column in Chat.
+
+## Search on a person's own domain (2026-11-12)
+
+Curtis: "cube-drone.com specifically doesn't support search." The domain's shell
+(`domainsite.js`) drew no search box and handed the person's page no query; the
+server was never in the way (`/api/…` passes through on a domain).
+
+- `domainsite.js`: the band's search box on the person's page (`/`), its words
+  handed to `IdPage` as on the node's own address. A post or a folder has no
+  box.
+
+`just ui-check`. Seen in Chrome on a scratch node made to draw the domain shell
+(the page's `ringtome-site` meta set by hand): three public posts, and
+"zebrafish" narrowing them to the one that says it. Not seen on a real served
+domain.
+
+## CI pinned to Rust 1.99.1 (2026-11-12)
+
+Two pushes went red in the first minutes of the gate, in `lint`, on nothing of
+ours: stable moved to 1.100.0 (2026-11-09), where `turso_core` 0.8.3 - pinned in
+`node/Cargo.toml` - does not compile (`index_method/fts/directory.rs`, E0308).
+The last green run was on 1.99.1.
+
+- Every workflow's `dtolnay/rust-toolchain` step asks for `1.99.1` (ci, android,
+  mainline-smoke, release). To go back to `stable` once a turso that builds
+  there is taken; crates.io had only 0.8.4 pre-releases on the day.

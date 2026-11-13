@@ -207,6 +207,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: '1.99.1'
           targets: ${{ matrix.rust-targets }}
 
       - uses: Swatinem/rust-cache@v2
@@ -425,6 +426,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: '1.99.1'
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
@@ -494,6 +496,7 @@ jobs:
       # The bundler reads the workspace's metadata, so cargo has to be there; nothing compiles.
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: '1.99.1'
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - uses: actions/setup-node@v4
