@@ -27563,3 +27563,20 @@ Not run: there is no Android SDK on the laptop, so the steps are proven only by
 a run of the workflow. To look for on the first one: that the bundle is found
 where the step looks, that the store flag reached the Rust build through Gradle,
 and the version code the build prints.
+
+## Actions off Node 20 (2026-11-12)
+
+GitHub's warning on every run: "Node.js 20 is deprecated ... being forced to run
+on Node.js 24", naming `actions/checkout@v4`, `actions/setup-node@v4` and
+`extractions/setup-just@v2`.
+
+- All four workflows: `checkout` v5, `setup-node` v5, `setup-java` v5,
+  `upload-artifact` v6, `download-artifact` v7, `setup-just` v3 - each the first
+  major whose `action.yml` says `node24` (or, for `setup-just`, no Node at all),
+  read from the tags on the day.
+- Left on Node 20, in `release.yml` only: `docker/login-action@v3`,
+  `docker/setup-buildx-action@v3`, `docker/build-push-action@v6` and
+  `azure/login@v2`. Each has a Node 24 major (v4, v4, v7, v3); they run only in
+  a release, where a surprise costs most, so they wait for a dry run.
+
+Not run: proven by the next push (ci) and the next Android and release runs.

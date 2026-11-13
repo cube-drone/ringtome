@@ -200,7 +200,7 @@ jobs:
         desktop/target/**/release/bundle/**/*.msi.sig
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # The notes live in the tag's own annotation, written by `just release-*`.
           fetch-depth: 0
@@ -218,9 +218,9 @@ jobs:
             desktop -> target
           cache-on-failure: true
 
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v3
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -366,7 +366,7 @@ jobs:
       - name: Stash the artifacts
         id: stash
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-${{ matrix.platform }}
           path: ${{ env.STASH_PATHS }}
@@ -381,7 +381,7 @@ jobs:
         id: stash2
         if: steps.stash.outcome == 'failure'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-${{ matrix.platform }}
           path: ${{ env.STASH_PATHS }}
@@ -395,7 +395,7 @@ jobs:
 
       - name: Stash the artifacts (last try)
         if: steps.stash.outcome == 'failure' && steps.stash2.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-${{ matrix.platform }}
           path: ${{ env.STASH_PATHS }}
@@ -422,7 +422,7 @@ jobs:
     # A cold optimized build: a tag never finds another tag's cache, only its own re-runs do.
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -438,9 +438,9 @@ jobs:
             desktop -> target
           cache-on-failure: true
 
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v3
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -469,7 +469,7 @@ jobs:
         run: tar -C desktop/target/${{ matrix.target }}/release -cf mac-binary.tar "$MAC_BINARY"
 
       - name: Stash the binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mac-binary-${{ matrix.target }}
           path: mac-binary.tar
@@ -491,7 +491,7 @@ jobs:
         desktop/target/universal-apple-darwin/release/bundle/**/*.app.tar.gz
         desktop/target/universal-apple-darwin/release/bundle/**/*.app.tar.gz.sig
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The bundler reads the workspace's metadata, so cargo has to be there; nothing compiles.
       - uses: dtolnay/rust-toolchain@stable
@@ -499,7 +499,7 @@ jobs:
           toolchain: '1.99.1'
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -509,7 +509,7 @@ jobs:
         working-directory: desktop
         run: npm ci --no-audit --no-fund
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: mac-binary-*
           path: halves
@@ -603,7 +603,7 @@ jobs:
       - name: Stash the artifacts
         id: stash
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-macos-latest
           path: ${{ env.STASH_PATHS }}
@@ -617,7 +617,7 @@ jobs:
         id: stash2
         if: steps.stash.outcome == 'failure'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-macos-latest
           path: ${{ env.STASH_PATHS }}
@@ -630,7 +630,7 @@ jobs:
 
       - name: Stash the artifacts (last try)
         if: steps.stash.outcome == 'failure' && steps.stash2.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-macos-latest
           path: ${{ env.STASH_PATHS }}
@@ -662,7 +662,7 @@ jobs:
     container: quay.io/pypa/manylinux_2_28_${{ matrix.arch }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Rust
         run: |
@@ -674,9 +674,9 @@ jobs:
           key: server-${{ matrix.arch }}
           cache-on-failure: true
 
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v3
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -736,14 +736,14 @@ jobs:
           cp target/release/ringtome "image/${{ matrix.docker }}/ringtome"
           echo "packaged $name"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: server-${{ matrix.arch }}
           path: |
             dist/*.tar.gz
             dist/*.tar.gz.sha256
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: image-bin-${{ matrix.docker }}
           path: image/
@@ -763,15 +763,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: server-*
           merge-multiple: true
           path: dist
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -831,7 +831,7 @@ jobs:
           print(json.dumps(manifest, indent=2))
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: server-release
           path: dist/*
@@ -854,9 +854,9 @@ jobs:
       # workflow at this tag" - no key to keep, nothing to rotate.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: image-bin-*
           merge-multiple: true
@@ -945,13 +945,13 @@ jobs:
       TAG: ${{ github.ref_name }}
       REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: "{desktop-*,server-release,android-release}"
           path: artifacts
