@@ -295,7 +295,6 @@ export default {
     'apps.chat.fold-this-groups-chats': "fold this group's chats away",
     'apps.chat.new-chat': '+ new chat',
     'apps.chat.chats': 'chats',
-    'apps.chat.no-chats-wear-those-tags': 'no chats wear those tags',
     'apps.chat.no-rooms-yet-column': 'no chats yet',
     'apps.chat.groups': 'groups',
     'apps.chat.ims': 'IMs',
@@ -413,7 +412,6 @@ export default {
     'apps.chat.searching': 'searching…',
     'apps.chat.nothing-said-that': 'nothing said in your chats says that',
     'apps.chat.n-lines-say-that': '{n} lines say that',
-    'apps.chat.tags': 'tags',
     'apps.chat.no-rooms-yet': 'no rooms yet - open one above, or follow someone who has',
     'apps.chat.pick-a-chat': 'pick a chat on the left, or start a new one',
 

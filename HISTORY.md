@@ -27419,3 +27419,14 @@ the column drew at its stylesheet default and then jumped to the stored width.
 sampled every frame through a delete and a click on another note: 370
 throughout. With the memory switched off, the same run showed 240 then 370 on
 the click.
+
+## Chat loses its tags column (2026-11-12)
+
+Curtis: "Can we remove the 'tags' column from chat entirely? It feels like it's
+not doing much of value there."
+
+- `apps/chat.js`: the tags column, its rail, its filter over the chats and the
+  "no chats wear those tags" line are gone; `chat.css` loses the column's width.
+  A chat still wears its tags on its row, and a new chat can still be given
+  them.
+- plans/UNLOCKS.md no longer lists a tag column in Chat.

@@ -27,9 +27,8 @@ import { contactCollection } from '../pure/contact.js';
 import { normalTag } from '../pure/annotations.js';
 import { veilsMedia, withoutMedia } from '../pure/chatveil.js';
 import { speakable } from '../speakable.js';
-import { useColWidths, useColTucks, PaneHead, Rail, TagColumn } from '../panes.js';
+import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { useUnlocked } from '../unlocks.js';
-import { tagCounts as roomTagCounts } from '../pure/doclist.js';
 import { Modal } from '../modal.js';
 import {
     usePref,
@@ -269,7 +268,7 @@ const GroupPile = ({ pile, row, folded, onFold, isOpen }) => {
     </div>`;
 };
 
-const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
+const RoomsColumn = ({ current, rooms, selected, onTuck }) => {
     const loc = useLocation();
     const root = current && current.root;
     // Starting a chat for two is bought (plans/UNLOCKS.md, "Chats for two"), as on a person's page.
@@ -316,7 +315,7 @@ const RoomsColumn = ({ current, rooms, selected, onTuck, filtered }) => {
         </button>
         ${
             rooms && rooms.length === 0
-                ? html`<p class="chat-rooms-empty">${filtered ? t('apps.chat.no-chats-wear-those-tags', 'no chats wear those tags') : t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
+                ? html`<p class="chat-rooms-empty">${t('apps.chat.no-rooms-yet-column', 'no chats yet')}</p>`
                 : html`<ul class="chat-list">${active.map(row)}</ul>`
         }
         ${
@@ -2519,9 +2518,8 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     const root = current && current.root;
     // Chat is bought (plans/UNLOCKS.md): without it a room reached by its address still opens -
     // it was addressed or handed to you - but alone, with no list of rooms and no way to start
-    // one. The tag column is bought with tags.
+    // one.
     const ownsChat = useUnlocked(root, 'chat');
-    const tagging = useUnlocked(root, 'tags') && ownsChat;
     const loc = useLocation();
     const [page, setRoomsPage] = useState(() => keptRooms.get(root) || null);
     const setPage = (next) =>
@@ -2542,21 +2540,19 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     const searching = needle.length >= 2;
     const hits = useRoomSearch(root, needle);
     const restored = useRef(false);
-    // The tags column (Curtis, 2026-09-20), Writer's: a histogram of the tags the rooms in
-    // view wear, clicking one into or out of the filter, and minimized to a rail until asked
-    // for - a room's tags are its creator's word about it, and most rooms have none.
-    const [tagFilter, setTagFilter] = useState([]);
+    // There was a tags column here, Writer's (2026-09-20), filtering the chats by the tags they
+    // wear; it went (Curtis, 2026-11-12: "not doing much of value there"). A chat still wears its
+    // tags on its row.
     // In a narrow window (panes.js) the rooms are the tab it opens on while no room is open, and
     // opening one closes the tab to show it.
-    const { tucked, toggleTuck, settle, tab } = useColTucks(root, APP_ID, ['tags'], {
+    const { tucked, toggleTuck, settle, tab } = useColTucks(root, APP_ID, [], {
         lead: author && doc ? null : 'rooms',
     });
     useEffect(() => {
         if (author && doc) settle();
     }, [author, doc, settle]);
-    const { resizer, colStyle } = useColWidths(root, APP_ID, ['rooms', 'tags'], {
+    const { resizer, colStyle } = useColWidths(root, APP_ID, ['rooms'], {
         rooms: 180,
-        tags: 150,
     });
     // The persona showing now, for an answer that comes back after a switch: kept for the persona
     // it was asked for, drawn only if that's still who is here.
@@ -2608,9 +2604,6 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     }, [root]);
     if (!root) return null;
     const all = page && page.items;
-    // Counted over every room this persona may see, so the cloud shows what could be picked
-    // rather than only what survives the picking; the list narrows, the cloud does not.
-    const cloud = roomTagCounts(all);
     // The room open now is read (Curtis, 2026-10-30: "as soon as I click on a chat with a dot, we
     // should clear that dot"): at once, not when its history has loaded and `rooms_seen` is written
     // (Room), and still so if a refresh of the list lands before that write does.
@@ -2619,32 +2612,15 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
         list.map((r) =>
             r.unread && r.author === author && r.doc_id === doc ? { ...r, unread: false } : r,
         );
-    const rooms = opened(
-        all && tagFilter.length > 0
-            ? all.filter((r) => tagFilter.every((tag) => (r.tags || []).includes(tag)))
-            : all,
-    );
+    const rooms = opened(all);
     const selected = author && doc ? { author, doc } : null;
     const roomsTucked = tucked.has('rooms');
-    const tagsTucked = tucked.has('tags');
     return html`<div class="chat">
         <div class="chat-columns panes" style=${colStyle}>
             ${
                 /* The chats come LAST of the columns, beside the room (Curtis, 2026-10-23, as
                 Writer's list: a rail between them fans open under the pointer on its way from a
                 chat to its words). They stood leftmost until then (2026-10-04). */ ''
-            }
-            ${
-                tagging &&
-                (tagsTucked
-                    ? html`<${Rail} icon=${Icons.tag} label=${t('apps.chat.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
-                    : html`${tab('tags', Icons.tag, t('apps.chat.tags', 'tags'))}<${TagColumn}
-                      cloud=${cloud}
-                      active=${tagFilter}
-                      label=${t('apps.chat.tags', 'tags')}
-                      onToggleTag=${(tag) => setTagFilter((have) => (have.includes(tag) ? have.filter((x) => x !== tag) : [...have, tag]))}
-                      onTuck=${() => toggleTuck('tags')}
-                  />${resizer('tags')}`)
             }
             ${
                 ownsChat &&
@@ -2654,7 +2630,6 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
                       current=${current}
                       rooms=${rooms}
                       selected=${selected}
-                      filtered=${tagFilter.length > 0}
                       onTuck=${() => toggleTuck('rooms')}
                   />${resizer('rooms')}`)
             }

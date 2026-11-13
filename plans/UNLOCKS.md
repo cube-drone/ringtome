@@ -235,8 +235,8 @@ contract still counts them; the column, the backlinks view, is the unlock.
 
 - The tag field in the annotations panel (`doc/annotations.js`), wherever it's
   mounted (editor, reader, drawing, book column, upload modal).
-- The tag columns: Writer's (`features.tagColumn`) and Chat's (`panes.js`
-  `TagColumn`).
+- The tag column: Writer's (`features.tagColumn`, `panes.js` `TagColumn`). Chat
+  had one too, until 2026-11-12.
 - Room tags when making a chat (`apps/chat.js` `NewRoom`).
 - The filters: every `FacetRow` / `LabelFacets` (`facets.js`) - Feed, a person's
   posts, People, hrseFiles, the image picker.
@@ -288,10 +288,10 @@ Unpublishing stays: taking something down is never behind a price.
 
 ### Chat
 
-hrseChat itself, and the tag column inside it. _As built:_ a room reached by its
-address opens without Chat - alone, with no list of rooms and no way to start
-one - rather than the locked card: a chat for two someone started with you is a
-room, and reading what's addressed to you is never for sale (_Never gated_).
+hrseChat itself. _As built:_ a room reached by its address opens without Chat -
+alone, with no list of rooms and no way to start one - rather than the locked
+card: a chat for two someone started with you is a room, and reading what's
+addressed to you is never for sale (_Never gated_).
 
 ### Chats for two
 
