@@ -195,6 +195,16 @@ up this same persona on this same node").
   one, so no central form is needed.
 - **Copies elsewhere are said honestly**: public posts other nodes already hold,
   and what followers kept, are theirs to drop.
+- **The policy says how** (2026-11-12): `PRIVACY.md`'s _Deleting your account_
+  gives the steps, what goes and what stays - the page to hand Play as the
+  deletion address (`/privacy` on horsedrawingtycoon.com).
+- **A device's administrator can go** (2026-11-12): the first account on a phone
+  or a desktop app is its `node_admin`, and `leaving.rs` used to refuse it ("you
+  run this server"), which left a Play install's only account undeletable in the
+  app. On a device (`Tenancy::Single`) the administrator now deletes their
+  account like anyone, and the next account made there becomes the administrator
+  (`auth.rs` `inherit_device`). Accounts already on the device stay as they
+  were. A server's administrator is still refused.
 - Still open: a waiting period before the delete is final (the password asked
   again covers a session left open; a stolen password does not).
 

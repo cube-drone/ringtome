@@ -22,8 +22,11 @@
 //!
 //! Both doors ask for the password again, and only from a signed-in browser - a session left open
 //! on a borrowed computer, or a program holding an API key, must not be able to delete anybody.
-//! The node administrator's own account can't be deleted here: no server is ever left with nobody
-//! to run it (accounts.rs's rule, from the other side).
+//! A server's administrator can't delete their own account here: no server is ever left with
+//! nobody to run it (accounts.rs's rule, from the other side). A device - the desktop or phone
+//! app, `Tenancy::Single` - is different (Curtis, 2026-11-12): its administrator may delete their
+//! account like anyone, since Google Play asks that every account can be deleted in the app, and
+//! the next account made on the device becomes its administrator (auth.rs `inherit_device`).
 
 use std::time::Duration;
 
@@ -133,7 +136,13 @@ async fn delete_account_handler(
 ) -> Result<(CookieJar, Json<AccountDeleted>), AppError> {
     confirm(&state, &ctx, &session, &req.password).await?;
     let account = session.account.id;
-    if crate::auth::has_tag(&state.node_db, &account, crate::auth::TAG_NODE_ADMIN).await? {
+    // A server is never left with nobody to run it. A device is its owner's to walk away from:
+    // its administrator may go, and the next account made there takes it on (auth.rs
+    // `inherit_device`).
+    let device = state.config.tenancy == crate::config::Tenancy::Single;
+    if !device
+        && crate::auth::has_tag(&state.node_db, &account, crate::auth::TAG_NODE_ADMIN).await?
+    {
         return Err(AppError::BadRequest(crate::msg!(
             "leaving.you-run-this-server",
             "you run this server - hand that to someone else before deleting your account"

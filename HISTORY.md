@@ -27495,3 +27495,49 @@ might conceivably be under the age of 13, for store builds only?"
 `cargo test -p ringtome-node`, `just ui-check`. Seen on a scratch node compiled
 with `RINGTOME_STORE=play`: the four answers over the API, and the form refusing
 2013 in Chrome. Not seen: the refusal surviving a reload, a real store build.
+
+## The privacy policy says how to delete an account (2026-11-12)
+
+Play wants a web address whose page shows the steps to delete an account and
+says what is deleted and what is kept; `PRIVACY.md` had one sentence under _Your
+choices_.
+
+- `PRIVACY.md`: a section of its own, _Deleting your account_ - the four steps
+  through hrseSettings' "delete me", what goes from the server, that copies
+  elsewhere stay, what someone who runs the server does, and who to ask when you
+  can't sign in. Dated in _Changes_. The text is part of the terms version, so
+  that hash moves.
+- plans/STORES.md section 4 names it as the deletion address, and writes down
+  what reading `leaving.rs` for it turned up: a device's only account is its
+  administrator and can't delete itself in the app.
+
+`cargo test -p ringtome-node frontmatter`. The page was not looked at in a
+browser.
+
+## The age rule, past clippy (2026-11-12)
+
+"no tweens allowed" went red in `lint`: `old_enough` was written
+`this_year - birth_year - 1 >= MINIMUM_AGE`, which clippy's `int_plus_one`
+refuses. Now `this_year - birth_year > MINIMUM_AGE`, the same rule. The change
+had been handed over on `cargo test` and `just ui-check` without `just lint`.
+
+`just lint`, `cargo test -p ringtome-node store::tests`.
+
+## A device's administrator can delete their account (2026-11-12)
+
+Curtis: "we should let a single-user device's admin delete their account: once
+they have, the device admin should pass on to the next account created on the
+device." Google Play asks that every account can be deleted in the app, and a
+phone's only account is its `node_admin`, which `leaving.rs` refused.
+
+- `leaving.rs`: on a device (`Tenancy::Single`) an administrator's account
+  deletes like anyone's. A server's is still refused.
+- `auth.rs` `inherit_device`, called after a sign-up on a device: when no
+  account holds `node_admin`, the new one takes it. Accounts already on the
+  device are left as they were - it is the next one made that inherits.
+- `PRIVACY.md`'s _Deleting your account_ and plans/STORES.md section 4 say so.
+
+`just lint`, `cargo test -p ringtome-node`. Seen on a scratch node run with
+`RINGTOME_TENANCY=single`: an administrator's account deleted over the API, and
+its sign-in gone. The inheriting is covered by a unit test only - a scratch node
+is a test node, which skips administrator bootstraps.

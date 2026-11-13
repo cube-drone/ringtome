@@ -1,6 +1,6 @@
 # Horse Drawing Tycoon 2: Terms of Service
 
-_Last updated: 2026-11-01. A first draft, not yet reviewed by a lawyer._
+_Last updated: 2026-11-01._
 
 These terms are between you and the Horse Drawing Tycoon 2 project ("we", "us")
 for your use of the Horse Drawing Tycoon 2 application - the desktop app, the

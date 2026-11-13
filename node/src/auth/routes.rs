@@ -147,6 +147,14 @@ async fn register_handler(
     )
     .await?;
     crate::frontmatter::agree(&state.node_db, &account.id).await?;
+    // A device whose administrator deleted their account (leaving.rs) goes to whoever signs up
+    // next. Under the same conditions as the first-account rule above.
+    if state.config.tenancy == crate::config::Tenancy::Single
+        && !state.config.local_test
+        && state.config.admin_persona.is_none()
+    {
+        crate::auth::inherit_device(&state.node_db, &account.id).await?;
+    }
     Ok(Json(AccountInfo {
         id: account.id.to_string(),
         username: account.username,

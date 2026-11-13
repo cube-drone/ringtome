@@ -28,7 +28,7 @@ pub enum AgeRefusal {
 /// year is all that is asked, so the birthday may not have come yet: the youngest they could be
 /// is one less than the difference, and "might conceivably be under" is a no (Curtis, 2026-11-12).
 pub fn old_enough(birth_year: i32, this_year: i32) -> bool {
-    this_year - birth_year - 1 >= MINIMUM_AGE
+    this_year - birth_year > MINIMUM_AGE
 }
 
 /// The age screen at registration (plans/STORES.md, section 1): a store build asks the year of

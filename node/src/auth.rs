@@ -644,6 +644,25 @@ pub async fn has_tag(db: &Db, account_id: &Uuid, tag: &str) -> Result<bool, AppE
     Ok(row.is_some())
 }
 
+/// A device with nobody running it takes its newest account as its administrator (Curtis,
+/// 2026-11-12: "the device admin should pass on to the next account created on the device"). A
+/// device's administrator may delete their own account (leaving.rs), which can leave the device
+/// with no `node_admin`; the next account made there inherits it. Called after a sign-up on a
+/// device only: a server is never left without an administrator, so it has nothing to inherit.
+pub async fn inherit_device(db: &Db, account_id: &Uuid) -> Result<bool, AppError> {
+    let held: Option<(i64,)> = db
+        .fetch_optional("SELECT 1 FROM account_tags WHERE tag = ?1 LIMIT 1", (TAG_NODE_ADMIN,))
+        .await
+        .context("looking for an administrator")
+        .map_err(AppError::Internal)?;
+    if held.is_some() {
+        return Ok(false);
+    }
+    add_tag(db, account_id, TAG_NODE_ADMIN).await?;
+    tracing::info!(account = %account_id, "this device had no administrator; the new account is node_admin");
+    Ok(true)
+}
+
 /// All tags on an account.
 /// The intended administrator arrived (`RINGTOME_ADMIN_PERSONA_ID`): the account that now
 /// hosts that persona is `node_admin`. Called wherever a persona becomes hosted; a no-op
@@ -833,6 +852,28 @@ mod tests {
 
         assert!(has_tag(&pool, &first.id, TAG_NODE_ADMIN).await.unwrap());
         assert!(!has_tag(&pool, &second.id, TAG_NODE_ADMIN).await.unwrap());
+    }
+
+    /// A device whose administrator deleted their account hands the device to the next account
+    /// made on it - and only then: while anyone runs it, a newcomer inherits nothing.
+    #[tokio::test]
+    async fn a_device_nobody_runs_goes_to_the_next_account() {
+        let pool = crate::db::test_node_db().await;
+        let first = register(&pool, "founder", "password123", 8, false, true).await.unwrap();
+        let second = register(&pool, "housemate", "password123", 8, false, true).await.unwrap();
+        assert!(!inherit_device(&pool, &second.id).await.unwrap(), "the founder still runs it");
+        assert!(!has_tag(&pool, &second.id, TAG_NODE_ADMIN).await.unwrap());
+
+        remove_account(&pool, &first.id.to_string()).await.unwrap();
+        // An account that was already here stays as it was; the next one made inherits.
+        assert!(!has_tag(&pool, &second.id, TAG_NODE_ADMIN).await.unwrap());
+        let third = register(&pool, "newcomer", "password123", 8, false, true).await.unwrap();
+        assert!(!has_tag(&pool, &third.id, TAG_NODE_ADMIN).await.unwrap(), "not the first account");
+        assert!(inherit_device(&pool, &third.id).await.unwrap());
+        assert!(has_tag(&pool, &third.id, TAG_NODE_ADMIN).await.unwrap());
+
+        let fourth = register(&pool, "later", "password123", 8, false, true).await.unwrap();
+        assert!(!inherit_device(&pool, &fourth.id).await.unwrap(), "somebody runs it again");
     }
 
     /// With an intended administrator named at boot, nobody is promoted for being first;
