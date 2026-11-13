@@ -149,8 +149,12 @@ architecture makes ours unusual in content, not in kind:
   never starts its loop - a Mac App Store build would otherwise have gone on
   fetching releases from GitHub. A Play build is the Android one with the flag
   set and an app bundle instead of an APK -
-  `RINGTOME_STORE=play npm run tauri -- android build --aab` - not yet a job in
-  `android.yml`.
+  `RINGTOME_STORE=play npm run tauri -- android build --aab`. **In `android.yml`
+  (2026-11-12)**: while the `ANDROID_PLAY` repository variable is `true`, or on
+  a run by hand, an `aab` job beside `apk` builds the bundle and signs it with
+  the release keystore (Play's upload key), as the artifact `android-play`. It
+  is not attached to the GitHub Release; getting it to Play is by hand until an
+  upload step exists.
 - **The Mac App Store is optional.** Notarized downloads (what ships now) need
   no review. A store build must be sandboxed: network client and server
   entitlements for the node's loopback server and iroh, and the data directory

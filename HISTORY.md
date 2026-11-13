@@ -27541,3 +27541,25 @@ phone's only account is its `node_admin`, which `leaving.rs` refused.
 `RINGTOME_TENANCY=single`: an administrator's account deleted over the API, and
 its sign-in gone. The inheriting is covered by a unit test only - a scratch node
 is a test node, which skips administrator bootstraps.
+
+## The Play bundle, in the Android workflow (2026-11-12)
+
+Google Play takes an app bundle, not an APK, and wants the store build
+(`RINGTOME_STORE=play`: no update notice, the age screen).
+
+- `android.yml`: an `aab` job beside `apk`. It builds the `.aab` with the store
+  flag set, signs it with the release keystore (`jarsigner` - Play knows that
+  key as the upload key), and stashes it as `android-play`. While the
+  `ANDROID_PLAY` repository variable is `true`, wherever `apk` builds, releases
+  included, or on a run of the workflow by hand. Unset, nothing changes.
+- A job of its own, not steps after the APK's (Curtis: runner minutes are free
+  for a public repository; wall-clock time is the thing to spend less of). It
+  compiles everything a second time, at the same time.
+- The bundle is not attached to the GitHub Release: nobody but Play can install
+  one. It reaches the Play Console by hand for now.
+- plans/STORES.md section 3 says so.
+
+Not run: there is no Android SDK on the laptop, so the steps are proven only by
+a run of the workflow. To look for on the first one: that the bundle is found
+where the step looks, that the store flag reached the Rust build through Gradle,
+and the version code the build prints.

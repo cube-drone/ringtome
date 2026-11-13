@@ -15,9 +15,18 @@
 #   until a push build is green, so a red Android build can never hold a desktop release back.
 # - by hand (Actions -> Android -> Run workflow), whatever the variables say.
 #
-# Two jobs, side by side. `node` cross-compiles the node library alone - no Tauri, no Gradle - which
+# And a third variable, `ANDROID_PLAY`: while it is `true`, the `aab` job builds the app bundle
+# Google Play takes (plans/STORES.md, section 3) wherever `apk` builds - the same app compiled with
+# `RINGTOME_STORE=play`, an `.aab` signed with the same keystore, which Play knows as the upload
+# key. It is the artifact `android-play`, kept out of the GitHub Release: it is for the Play
+# Console and nobody else can install it. Unset, nothing here builds one, so an unproven bundle
+# build can't hold a release back; a run of this workflow by hand builds it whatever the variable
+# says.
+#
+# Three jobs, side by side. `node` cross-compiles the node library alone - no Tauri, no Gradle - which
 # is the fast answer to "does turso's bindgen and aws-lc's C build for Android", the known risk
 # (plans/MOBILE.md, "the known snags"). `apk` is the whole app, signed and stashed as an artifact.
+# `aab` is the whole app again, for Play.
 #
 # Signing: `ANDROID_KEYSTORE_BASE64` (the keystore, base64), `ANDROID_KEYSTORE_PASSWORD` and
 # `ANDROID_KEY_ALIAS`, repository secrets. Absent, the APK is signed with a key made for this run
@@ -214,6 +223,122 @@ jobs:
           name: android-release
           path: out/*.apk
           retention-days: 14
+          if-no-files-found: error
+
+  # Google Play's build (header): the `apk` job's setup again, then the store build as a bundle. A
+  # job of its own, beside `apk`, so a release waits on the slower of the two and not on their sum
+  # (Curtis, 2026-11-12: runner minutes are free for a public repository, wall-clock time is not).
+  aab:
+    if: ${{ !inputs.project && ((github.event_name == 'workflow_dispatch' && !inputs.release) || (vars.ANDROID_PLAY == 'true' && (inputs.release || vars.ANDROID_ON_PUSH == 'true'))) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      # The runner's disk is the tightest part of this: the SDK image plus an LTO release build of
+      # the node. What a Rust build never uses goes first.
+      - name: Room on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/node_modules/@angular "$AGENT_TOOLSDIRECTORY/CodeQL"
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.1'
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-aab
+          workspaces: desktop -> target
+          cache-on-failure: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: extractions/setup-just@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            node/js/package-lock.json
+            desktop/package-lock.json
+
+      - name: Build the UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
+
+      # The Tauri CLI, pinned in desktop/package.json: the generated Gradle project runs it back
+      # through `npm run tauri` to build the Rust half, so it must be installed where it looks.
+      - name: The Tauri CLI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      # Tauri finds the NDK by NDK_HOME and sets the C compilers itself; bindgen still wants the
+      # sysroot said.
+      - name: The NDK
+        run: |
+          ndk="${ANDROID_NDK_LATEST_HOME:?the runner image has no NDK}"
+          {
+            echo "NDK_HOME=$ndk"
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          } >> "$GITHUB_ENV"
+
+      # Committed (desktop/gen/android); this checks it still carries what the app needs.
+      - name: The Android project
+        working-directory: desktop
+        run: tools/android-project.sh
+
+      # The store flag set, so the node compiles as a store build - no update notice, the age screen
+      # at sign-up - and a bundle instead of an APK.
+      - name: Build the Play bundle
+        working-directory: desktop
+        env:
+          RINGTOME_STORE: play
+        run: |
+          npm run tauri -- android build --ci --aab --target aarch64
+          # Play refuses a bundle whose version code is not above the last one it took.
+          cat gen/android/app/tauri.properties
+
+      # jarsigner, since apksigner signs only APKs. Play re-signs what people install with the key
+      # it holds; this signature is the upload key's, saying the bundle is ours.
+      - name: Sign the Play bundle
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE: ${{ inputs.release && 'true' || 'false' }}
+        run: |
+          unsigned=$(find desktop/gen/android -path '*elease*' -name '*.aab' | head -1)
+          [ -n "$unsigned" ] || { echo "::error::no release bundle under desktop/gen/android"; find desktop/gen/android -name '*.aab'; exit 1; }
+          version=$(python3 -c "import json;print(json.load(open('desktop/tauri.conf.json'))['version'])")
+          mkdir -p play
+          aab="play/horse-drawing-tycoon-2-${version}-play.aab"
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            if [ "$RELEASE" = true ]; then
+              echo "::error::a Play bundle needs the ANDROID_KEYSTORE_* secrets: Play takes only what the upload key signed"
+              exit 1
+            fi
+            echo "::warning::no ANDROID_KEYSTORE_BASE64: the bundle is unsigned, and Play will not take it"
+            cp "$unsigned" "$aab"
+          else
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            jarsigner -keystore "$RUNNER_TEMP/release.keystore" -storepass:env KEYSTORE_PASSWORD \
+              -sigalg SHA256withRSA -digestalg SHA-256 -signedjar "$aab" "$unsigned" "$KEY_ALIAS"
+            jarsigner -verify "$aab"
+            rm -f "$RUNNER_TEMP/release.keystore"
+          fi
+          ls -l play
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-play
+          path: play/*.aab
+          retention-days: 30
           if-no-files-found: error
 
   # The Android project as Tauri generates it, and nothing else (Curtis, 2026-10-08: "pull the
