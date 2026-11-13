@@ -1,8 +1,8 @@
 //! Store builds (plans/STORES.md, section 3): the app as Google Play or Apple's App Store ship it.
 //! Both forbid an app to update itself, or to send people to update it, by any road but the
 //! store's own - so a store build never shows the update notice, and its "get the app" panel
-//! leaves out the download for its own system (js/update.js, js/downloads.js). Everything else is
-//! the same app.
+//! leaves out the download for its own system (js/update.js, js/downloads.js), and on a desktop
+//! the self-updater is never registered (desktop/src/update.rs). Everything else is the same app.
 //!
 //! Fixed when the node is compiled: `RINGTOME_STORE=play` or `app-store`, checked by build.rs.
 //! Unset, the build is a download, which updates itself from the releases page as ever.

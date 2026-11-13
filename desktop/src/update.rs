@@ -17,6 +17,10 @@
 //! number that means nothing, so a dev build never checks - the same split as the
 //! prod-versus-dev node in `main.rs`.
 //!
+//! **And never a store build** (plans/STORES.md, section 3): Google Play and the App Store
+//! forbid an app to update itself by any road but theirs, so a build with `RINGTOME_STORE` set
+//! registers no updater plugin and never starts the loop. The store updates the app.
+//!
 //! Where an update comes from: `latest.json` on the newest GitHub Release, which the release
 //! workflow writes (`includeUpdaterJson`). The plugin compares its version to this build's
 //! and downloads the platform's artifact - the `.app.tar.gz`, the NSIS installer, the
@@ -72,10 +76,19 @@ pub fn window_shown(app: &AppHandle) {
     }
 }
 
+/// Whether this build is for a store, which updates the app itself: no plugin, no loop.
+pub fn store_updates() -> bool {
+    ringtome_node::store::STORE.is_some()
+}
+
 /// Start the loop. Called once from `main`, after the plugins are registered.
 pub fn start(app: AppHandle) {
     if cfg!(debug_assertions) {
         tracing::info!("dev build: the updater is off");
+        return;
+    }
+    if let Some(store) = ringtome_node::store::STORE {
+        tracing::info!(store, "store build: the updater is off, the store updates the app");
         return;
     }
     app.manage(Waiting::default());
@@ -165,7 +178,7 @@ async fn check_once(app: &AppHandle) -> anyhow::Result<()> {
 /// bundle is replaced under the running app, which is about to stop using it.
 pub fn install_pending(app: &AppHandle) {
     let Some(waiting) = app.try_state::<Waiting>() else {
-        return; // a dev build never managed the state
+        return; // a dev build or a store build never managed the state
     };
     let Some(pending) = waiting.pending.lock().unwrap().take() else {
         return;

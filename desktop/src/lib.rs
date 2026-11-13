@@ -46,6 +46,13 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
+    // A store build has no updater at all (update.rs): the store updates the app.
+    #[cfg(desktop)]
+    let builder = if update::store_updates() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_updater::Builder::new().build())
+    };
     #[cfg(desktop)]
     let builder = builder
         // First, so a second launch is answered before anything else is built.
@@ -56,7 +63,6 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![tray::HIDDEN_ARG]),
         ))
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .on_window_event(|window, event| {
             // Close hides (DESKTOP.md, Stage 5): the node is the point, and it runs on. Unless

@@ -27456,3 +27456,19 @@ The last green run was on 1.99.1.
 - Every workflow's `dtolnay/rust-toolchain` step asks for `1.99.1` (ci, android,
   mainline-smoke, release). To go back to `stable` once a turso that builds
   there is taken; crates.io had only 0.8.4 pre-releases on the day.
+
+## A store build has no self-updater (2026-11-12)
+
+The store flag (`RINGTOME_STORE`, plans/STORES.md section 3) turned off the
+update notice on the page, and nothing in `desktop/` read it: a Mac App Store
+build would have gone on checking GitHub for releases and installing them. Play
+and iOS never had the gap - the updater is desktop-only.
+
+- `desktop/src/lib.rs` registers the updater plugin only when the build is not
+  for a store; `update.rs` `start` returns before its loop, beside the dev-build
+  check. The exit hook and the tray's window calls already do nothing without
+  the loop's state.
+- plans/STORES.md and `node/src/store.rs` say so.
+
+`cargo check` in `desktop/`, as a download and with `RINGTOME_STORE=app-store`.
+No store build was run.

@@ -126,8 +126,11 @@ architecture makes ours unusual in content, not in kind:
   notice is off, not pointed at the listing: the store updates the app itself.
   The "get the app" panel leaves out the store's own system, and its "every
   release" fallback; the version label still opens the running version's release
-  notes. A Play build is the Android one with the flag set and an app bundle
-  instead of an APK -
+  notes. On a desktop a store build also has no self-updater (2026-11-12): with
+  the flag set, `desktop/src/lib.rs` registers no updater plugin and `update.rs`
+  never starts its loop - a Mac App Store build would otherwise have gone on
+  fetching releases from GitHub. A Play build is the Android one with the flag
+  set and an app bundle instead of an APK -
   `RINGTOME_STORE=play npm run tauri -- android build --aab` - not yet a job in
   `android.yml`.
 - **The Mac App Store is optional.** Notarized downloads (what ships now) need
