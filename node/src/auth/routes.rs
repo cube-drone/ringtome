@@ -60,6 +60,10 @@ struct Credentials {
     /// (frontmatter.rs) - required to make an account. Ignored by login.
     #[serde(default)]
     agreed: bool,
+    /// The year the person was born, which a store build asks (store.rs, `admit_age`). Looked at
+    /// and dropped: nothing keeps it. Ignored by login, and by a build that is not for a store.
+    #[serde(default)]
+    birth_year: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -113,6 +117,24 @@ async fn register_handler(
             "auth.routes.agree-to-the-terms-first",
             "agree to the terms of service, the privacy policy and the license first"
         )));
+    }
+    // A store build's age screen. The refusal names no age: a neutral screen does not say which
+    // year would have passed.
+    let this_year = time::OffsetDateTime::now_utc().year();
+    match crate::store::admit_age(crate::store::STORE, creds.birth_year, this_year) {
+        Ok(()) => {}
+        Err(crate::store::AgeRefusal::NoYear) => {
+            return Err(AppError::BadRequest(crate::msg!(
+                "auth.routes.say-the-year-you-were-born",
+                "say the year you were born first"
+            )));
+        }
+        Err(crate::store::AgeRefusal::TooYoung) => {
+            return Err(AppError::Forbidden(crate::msg!(
+                "auth.routes.no-account-here",
+                "you can't make an account here"
+            )));
+        }
     }
 
     let account = register(

@@ -27472,3 +27472,26 @@ and iOS never had the gap - the updater is desktop-only.
 
 `cargo check` in `desktop/`, as a download and with `RINGTOME_STORE=app-store`.
 No store build was run.
+
+## The age screen, in store builds (2026-11-12)
+
+Curtis: "When a user first creates an account, along with asking for their ToS
+acceptance - can we ask them for their birth year, and deny them entry if they
+might conceivably be under the age of 13, for store builds only?"
+
+- `src/store.rs`: `admit_age` and `old_enough`. A year alone leaves a year of
+  doubt, so the youngest someone could be is one less than the difference; born
+  2013 and asked in 2026 is refused, born 2012 is let in. A download asks
+  nothing.
+- `/api/auth/register` takes `birth_year`, asks `admit_age`, and keeps nothing:
+  400 with no year, 403 for a refusal, neither naming an age.
+- `auth.js`: "the year you were born" above the terms, in a store build only
+  (the page's `app-store` meta). A refusal says "You can't make an account
+  here.", shuts the form, and is kept in the page's storage so it stays shut;
+  signing in is untouched. The rule on the form is `js/pure/age.js`.
+- plans/STORES.md section 1 says what was built and how it is narrower than the
+  draft: a year, store builds only, 13 fixed, nothing recorded on the account.
+
+`cargo test -p ringtome-node`, `just ui-check`. Seen on a scratch node compiled
+with `RINGTOME_STORE=play`: the four answers over the API, and the form refusing
+2013 in Chrome. Not seen: the refusal surviving a reload, a real store build.

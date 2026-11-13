@@ -46,7 +46,7 @@ it.
 
 | need                          | asked by                    | have                                              | to build                                   |
 | ----------------------------- | --------------------------- | ------------------------------------------------- | ------------------------------------------ |
-| an age screen                 | COPPA, both stores' forms   | nothing                                           | at registration, on the node (section 1)   |
+| an age screen                 | COPPA, both stores' forms   | built 2026-11-12: a birth year, store builds only | the web's sign-up, if wanted (section 1)   |
 | terms agreed before posting   | Google Play UGC             | built 2026-11-01: agreed at sign-up               | asking again when the terms change         |
 | privacy policy, terms         | both stores                 | built 2026-11-01: `/tos`, `/privacy`, `/eula`     | legal review                               |
 | no updating outside the store | Play, Mac App Store         | the update notice links to GitHub                 | a store-build flag (section 3)             |
@@ -80,6 +80,24 @@ a neutral age screen is the standard way not to know.
   jurisdiction. `SERVER.md` says so.
 - Personas made later inside an account need no new screen - the account is the
   person.
+
+**Built (2026-11-12), narrower than the list above** (Curtis: "can we ask them
+for their birth year, and deny them entry if they might conceivably be under the
+age of 13, for store builds only?"):
+
+- **Store builds only.** A build with `RINGTOME_STORE` set (section 3) asks; a
+  download and a server's web sign-up ask nothing.
+- **A year, not a date.** A year leaves a year of doubt, so the rule assumes the
+  birthday has not come: born in 2013 and asked in 2026 might be twelve, and is
+  refused. The rule is `store.rs` `admit_age` on the node, at
+  `/api/auth/register`, and `js/pure/age.js` on the form.
+- **Kept nowhere.** The year is looked at and dropped. Nothing is recorded on
+  the account either: every account a store build makes has passed.
+- **Neutral, and remembered.** The refusal is "You can't make an account here.",
+  with no age in it, and the device keeps it (`age-screen-refused` in the page's
+  storage), so the form stays shut. Signing in to an existing account is
+  untouched.
+- The age is fixed at 13, not the operator's to set.
 
 ## 2. Terms and privacy
 

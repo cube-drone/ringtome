@@ -15,6 +15,7 @@ import { readQr } from './qrread.js';
 import { DownloadPanel } from './downloads.js';
 import { Marquee } from './frontdoor.js';
 import { AgreeToTerms } from './frontmatter.js';
+import { ageAnswer } from './pure/age.js';
 
 const html = htm.bind(h);
 
@@ -33,6 +34,28 @@ export const takeImportIntent = () => {
 // never cleared - signing out does not make someone new. It only orders the front door's tabs:
 // sign in leads for someone who has signed in here before, and comes last for everyone else.
 const RETURNING = 'signed-in-before';
+// A store build's age screen (plans/STORES.md, section 1; src/store.rs): it asks the year of
+// birth before making an account, and turns away anyone who might be under 13. A refusal is kept
+// on this device, so the next year down is not one tap away; signing in to an account that
+// already exists is untouched.
+const storeBuild = () =>
+    !!document.querySelector('meta[name="app-store"]')?.getAttribute('content');
+const AGE_REFUSED = 'age-screen-refused';
+const wasRefused = () => {
+    try {
+        return localStorage.getItem(AGE_REFUSED) === 'yes';
+    } catch {
+        return false;
+    }
+};
+const markRefused = () => {
+    try {
+        localStorage.setItem(AGE_REFUSED, 'yes');
+    } catch {
+        /* no storage: the refusal lasts as long as the page */
+    }
+};
+
 const wasHereBefore = () => {
     try {
         return localStorage.getItem(RETURNING) === 'yes';
@@ -76,7 +99,7 @@ export function useSession() {
 
     // Register does not set the session cookie (it just makes the account), so
     // signing up is register-then-login in one motion.
-    const register = async (username, password, registrationPassword, agreed) => {
+    const register = async (username, password, registrationPassword, agreed, birthYear = null) => {
         await api('/api/auth/register', {
             method: 'POST',
             body: JSON.stringify({
@@ -84,6 +107,7 @@ export function useSession() {
                 password,
                 registration_password: registrationPassword || null,
                 agreed: !!agreed,
+                birth_year: birthYear,
             }),
         });
         await login(username, password);
@@ -205,6 +229,9 @@ export const Welcome = ({ session }) => {
     const [newUsername, setNewUsername] = useState('');
     const [signupPassword, setSignupPassword] = useState('');
     const [agreed, setAgreed] = useState(false);
+    const [asksAge] = useState(storeBuild);
+    const [birthYear, setBirthYear] = useState('');
+    const [refused, setRefused] = useState(() => asksAge && wasRefused());
     const [registration, signupGroup] = useRegistrationMode();
     const signupsClosed = registration === 'closed';
     const askSignupPassword = registration === 'password';
@@ -240,6 +267,20 @@ export const Welcome = ({ session }) => {
 
     const submit = async (e) => {
         e.preventDefault();
+        if (registering && asksAge) {
+            if (refused) return;
+            const answer = ageAnswer(birthYear, new Date().getFullYear());
+            if (answer === 'none') {
+                setError(t('auth.say-the-year-you-were-born', 'say the year you were born first'));
+                return;
+            }
+            if (answer === 'young') {
+                markRefused();
+                setRefused(true);
+                setError(null);
+                return;
+            }
+        }
         setBusy(true);
         setError(null);
         try {
@@ -261,7 +302,13 @@ export const Welcome = ({ session }) => {
             } else if (registering) {
                 importIntent = importing;
                 try {
-                    await session.register(username, password, signupPassword, agreed);
+                    await session.register(
+                        username,
+                        password,
+                        signupPassword,
+                        agreed,
+                        asksAge ? Number(birthYear) : null,
+                    );
                 } catch (err) {
                     importIntent = false;
                     throw err;
@@ -506,11 +553,36 @@ export const Welcome = ({ session }) => {
                 <p class="field-note">${t('auth.whoever-invited-you-has-it', 'whoever invited you has it')}</p>`
                 }
 
+                ${
+                    registering &&
+                    asksAge &&
+                    html`<label>
+                    ${t('auth.year-you-were-born', 'the year you were born')}
+                    <input
+                        class="jag-field"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="[0-9]{4}"
+                        maxlength="4"
+                        value=${birthYear}
+                        onInput=${(e) => setBirthYear(e.currentTarget.value)}
+                        autocomplete="bday-year"
+                        disabled=${refused}
+                        required
+                    />
+                </label>`
+                }
+
                 ${registering && html`<${AgreeToTerms} agreed=${agreed} onAgreed=${setAgreed} />`}
 
+                ${
+                    registering &&
+                    refused &&
+                    html`<p class="form-error">${t('auth.no-account-here', "You can't make an account here.")}</p>`
+                }
                 ${error && html`<p class="form-error">${error}</p>`}
 
-                <button class="welcome-go" type="submit" disabled=${busy}>
+                <button class="welcome-go" type="submit" disabled=${busy || (registering && refused)}>
                     ${busy ? '…' : registering ? t('auth.make-an-account', 'make an account') : t('auth.come-in', 'come in')}
                 </button>
                 ${

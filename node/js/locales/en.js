@@ -598,6 +598,7 @@ export default {
     'auth.warning': 'Warning:',
     'auth.linux-works-best-in': 'on Linux, Horse Drawing Tycoon 2 works best from Chrome or Firefox.',
     'auth.open-in-your-browser': 'Click here to open in your system browser.',
+    'auth.say-the-year-you-were-born': 'say the year you were born first',
     'auth.wrong-name-or-pin': 'wrong name or PIN',
     'auth.locked-out-your-spare-key': 'locked out? your spare key gets you back in.',
     'auth.name': 'name',
@@ -625,6 +626,8 @@ export default {
     'auth.password': 'password',
     'auth.sign-up-password': 'sign-up password',
     'auth.whoever-invited-you-has-it': 'whoever invited you has it',
+    'auth.year-you-were-born': 'the year you were born',
+    'auth.no-account-here': "You can't make an account here.",
     'auth.make-an-account': 'make an account',
     'auth.come-in': 'come in',
     'auth.lost-your-pin': 'lost your PIN?',
@@ -2739,6 +2742,8 @@ export default {
 
     // --- node/src/auth/routes.rs ---
     'auth.routes.agree-to-the-terms-first': 'agree to the terms of service, the privacy policy and the license first',
+    'auth.routes.say-the-year-you-were-born': 'say the year you were born first',
+    'auth.routes.no-account-here': "you can't make an account here",
     'auth.routes.no-account': 'no account "{username}"',
     'auth.routes.only-on-a-development-build': 'only a development build makes anyone a node administrator for asking',
     'auth.routes.no-account-2': 'no account "{username}"',
