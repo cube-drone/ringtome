@@ -78,26 +78,43 @@ describe("Wordaga's rules", () => {
         assert.equal(g.apostrophes, 0);
     });
 
-    it('rules out a letter that is not in the word, of its own choosing', () => {
+    it('rules out a letter that is not in the word, of its own choosing, for a 1', () => {
         let g = dealt('neon', Array(22).fill(1));
         for (let i = 0; i < 22; i++) g = G.play(g, 'rule-out', [i]);
         // Twenty-six letters less n, e, o: twenty-three absent, twenty-two now known.
         const out = Object.keys(g.known);
         assert.equal(out.length, 22);
         assert.ok(out.every((l) => g.known[l] === 'out' && !'neo'.includes(l)));
+        const hand = dealt('neon', [1, 2, 6]);
+        assert.deepEqual(
+            [0, 1, 2].map((i) => G.can(hand, 'rule-out', [i])),
+            [true, false, false],
+            'only a 1 will do',
+        );
     });
 
-    it('tests a consonant for six apostrophes and no die', () => {
-        const start = dealt('neon', [1, 1, 1, 1], { apostrophes: 13 });
-        assert.equal(G.can({ ...start, apostrophes: 5 }, 'consonant', []), false);
-        const hit = G.play(start, 'consonant', [], 'n');
+    it('tests a consonant for a run and two apostrophes, or a pair and six', () => {
+        const start = dealt('neon', [2, 3, 4, 4], { apostrophes: 8 });
+        assert.equal(G.can({ ...start, apostrophes: 1 }, 'consonant-run', [0, 1, 2]), false);
+        assert.equal(G.can(start, 'consonant-run', [0, 2, 3]), false, 'not a run');
+        const hit = G.play(start, 'consonant-run', [0, 1, 2], 'n');
         assert.deepEqual(G.shown(hit), ['n', null, null, 'n'], 'every place of the letter');
-        assert.equal(hit.apostrophes, 7);
-        assert.ok(hit.hand.every((d) => !d.spent));
-        const miss = G.play(hit, 'consonant', [], 't');
+        assert.equal(hit.apostrophes, 6);
+        assert.deepEqual(
+            hit.hand.map((d) => d.spent),
+            [true, true, true, false],
+        );
+        assert.equal(G.can({ ...start, apostrophes: 5 }, 'consonant-pair', [2, 3]), false);
+        const miss = G.play(start, 'consonant-pair', [2, 3], 't');
         assert.equal(miss.known.t, 'out');
-        assert.equal(G.play(miss, 'consonant', [], 't'), null, 'not twice');
-        assert.equal(G.play(start, 'consonant', [], 'e'), null, 'a vowel is not a consonant');
+        assert.equal(miss.apostrophes, 2);
+        assert.equal(G.play(miss, 'consonant-run', [0, 1, 2], 't'), null, 'not twice');
+        assert.equal(G.play(start, 'consonant-run', [0, 1, 2], 'e'), null, 'not a vowel');
+        assert.equal(
+            G.can({ ...start, apostrophes: 99 }, 'consonant-pair', []),
+            false,
+            'never for no dice',
+        );
     });
 
     it('tests an unlikely consonant for a pair', () => {
@@ -109,8 +126,9 @@ describe("Wordaga's rules", () => {
         assert.deepEqual([...G.UNLIKELY].sort().join(''), 'bjkpqvwxyz');
     });
 
-    it('buys a die for a pair and six apostrophes, up to seven', () => {
-        const start = dealt('neon', [2, 2, 5, 6], { apostrophes: 6 });
+    it('buys a die for a pair and four apostrophes, up to seven', () => {
+        const start = dealt('neon', [2, 2, 5, 6], { apostrophes: 4 });
+        assert.equal(G.can({ ...start, apostrophes: 3 }, 'buy-die', [0, 1]), false);
         const g = G.play(start, 'buy-die', [0, 1]);
         assert.equal(g.count, 5);
         assert.equal(g.hand.length, 5);
@@ -137,19 +155,26 @@ describe("Wordaga's rules", () => {
         );
     });
 
-    it('gives a guess when the last die is spent, and another for a run', () => {
+    it('tests a vowel for nine apostrophes and no dice', () => {
+        const start = dealt('neon', [1, 2], { apostrophes: 9 });
+        assert.equal(G.can({ ...start, apostrophes: 8 }, 'vowel-paid', []), false);
+        assert.equal(G.can(start, 'vowel-paid', [0]), false, 'no dice');
+        const g = G.play(start, 'vowel-paid', [], 'o');
+        assert.deepEqual(G.shown(g), [null, null, 'o', null]);
+        assert.equal(g.apostrophes, 0);
+        assert.ok(g.hand.every((d) => !d.spent));
+        assert.equal(G.play(start, 'vowel-paid', [], 'n'), null, 'not a consonant');
+    });
+
+    it('gives one guess when the last die is spent, and then the next cycle', () => {
         let g = dealt('neon', [2, 3, 4, 6]);
         assert.equal(G.guess(g, 'neon'), null, 'not before the dice are spent');
-        g = G.play(g, 'extra-guess', [0, 1, 2]);
-        g = G.play(g, 'earn', [3]);
+        g = G.play(g, 'earn', [0, 1, 2, 3]);
         assert.equal(G.guessing(g), true);
         g = G.guess(g, 'noon');
-        assert.equal(g.cycle, 1, 'the run bought a second guess');
-        g = G.guess(g, 'nein');
         assert.equal(g.cycle, 2);
-        assert.equal(g.guesses, 1);
-        assert.equal(g.apostrophes, 3, 'apostrophes carry over');
-        assert.deepEqual(g.misses, ['noon', 'nein']);
+        assert.equal(g.apostrophes, 8, 'apostrophes carry over');
+        assert.deepEqual(g.misses, ['noon']);
         assert.ok(g.hand.length === 4 && g.hand.every((d) => !d.spent));
     });
 
@@ -160,7 +185,7 @@ describe("Wordaga's rules", () => {
         assert.equal(g.won, true);
         assert.equal(g.cycle, 2);
         assert.deepEqual(G.shown(g), ['n', 'e', 'o', 'n']);
-        assert.equal(G.can(g, 'consonant', []), false);
+        assert.equal(G.can(g, 'earn', [0]), false);
     });
 
     it('turns over a blank for four of a kind, and three for five of a kind', () => {
@@ -190,10 +215,10 @@ describe("Wordaga's rules", () => {
     it('is won when the last letter is placed, by whatever placed it', () => {
         const start = dealt('neon', [1, 1], { apostrophes: 12, known: { e: 'in', o: 'in' } });
         assert.equal(start.won, false);
-        const g = G.play(start, 'consonant', [], 'n');
+        const g = G.play(start, 'consonant-pair', [0, 1], 'n');
         assert.equal(g.won, true);
         assert.equal(g.cycle, 1);
-        assert.equal(G.play(start, 'consonant', [], 't').won, false);
+        assert.equal(G.play(start, 'consonant-pair', [0, 1], 't').won, false);
     });
 
     it('is won outright by six of a kind', () => {

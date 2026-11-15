@@ -13,8 +13,14 @@
 
 export const START_DICE = 4;
 export const MOST_DICE = 7;
-/// What the dearer abilities cost, in apostrophes.
+/// What a pair asks for on top of its dice to test a consonant, in apostrophes.
 export const PRICE = 6;
+/// What a pair asks for on top of its dice to buy another die.
+export const DIE_PRICE = 4;
+/// What testing a vowel costs with no dice at all: the one thing apostrophes buy by themselves.
+export const VOWEL_PRICE = 9;
+/// What a run asks for on top of its dice, to test a consonant.
+export const RUN_PRICE = 2;
 /// What throwing dice that total seven again costs.
 export const SEVEN = 1;
 
@@ -61,8 +67,6 @@ export function newGame(word, seed) {
         apostrophes: 0,
         // What is known of each letter tried: 'in' or 'out'.
         known: {},
-        // Guesses left this cycle, once the dice are spent; a run adds to it.
-        guesses: 1,
         // Blanks the player may still turn over, bought with four or five of a kind (`reveal`).
         reveals: 0,
         misses: [],
@@ -82,11 +86,12 @@ export const guessing = (state) => !state.won && state.hand.every((d) => d.spent
 /// Exactly `n` dice, all showing the same.
 const kind = (n) => (pips) => pips.length === n && pips.every((p) => p === pips[0]);
 const sum = (pips) => pips.reduce((a, b) => a + b, 0);
-/// A run of exactly `n`: that many dice, each one more than the last.
-const run = (n) => (pips) => {
+/// A run: three dice, each one more than the last.
+const run = (pips) => {
     const s = [...pips].sort((a, b) => a - b);
-    return s.length === n && s.every((p, i) => i === 0 || p === s[i - 1] + 1);
+    return s.length === 3 && s[1] === s[0] + 1 && s[2] === s[1] + 1;
 };
+const CONSONANTS = [...LETTERS].filter((l) => !isVowel(l)).join('');
 
 /// The abilities, in the order the page lists them. `dice` says whether the picked dice will do;
 /// `price` is in apostrophes; `target` is what the player must point at before the move is made:
@@ -95,21 +100,22 @@ const run = (n) => (pips) => {
 export const ABILITIES = [
     { id: 'earn', dice: (p) => p.length >= 1 },
     { id: 'reroll', dice: (p) => p.length === 1, target: 'dice' },
-    { id: 'rule-out', dice: (p) => p.length === 1 },
+    { id: 'rule-out', dice: (p) => p.length === 1 && p[0] === 1 },
     { id: 'seven', dice: (p) => p.length > 1 && sum(p) === 7, price: SEVEN, keeps: true },
     { id: 'unlikely', dice: kind(2), target: 'letter', among: UNLIKELY },
-    { id: 'buy-die', dice: kind(2), price: PRICE },
-    { id: 'extra-guess', dice: run(3) },
+    { id: 'buy-die', dice: kind(2), price: DIE_PRICE },
+    { id: 'consonant-run', dice: run, price: RUN_PRICE, target: 'letter', among: CONSONANTS },
+    { id: 'consonant-pair', dice: kind(2), price: PRICE, target: 'letter', among: CONSONANTS },
     { id: 'reveal-one', dice: kind(4) },
     { id: 'reveal-three', dice: kind(5), min: 5 },
     { id: 'win', dice: kind(6), min: 6 },
     { id: 'test-vowel', dice: kind(3), target: 'letter', among: VOWELS },
     {
-        id: 'consonant',
+        id: 'vowel-paid',
         dice: (p) => p.length === 0,
-        price: PRICE,
+        price: VOWEL_PRICE,
         target: 'letter',
-        among: [...LETTERS].filter((l) => !isVowel(l)).join(''),
+        among: VOWELS,
     },
 ];
 const ability = (id) => ABILITIES.find((a) => a.id === id);
@@ -222,11 +228,8 @@ export function play(state, id, picked, target) {
             next.hand.push({ pips, spent: false });
             break;
         }
-        case 'extra-guess':
-            next.guesses = state.guesses + 1;
-            break;
         default:
-            // The three tests: a letter of the player's choosing.
+            // The tests: a letter of the player's choosing.
             if (!targets(state, id).includes(target)) return null;
             learn(target);
     }
@@ -251,8 +254,8 @@ export function reveal(state, slot) {
 /// What a guess is held to: letters only, in one case.
 const tidy = (text) => text.toLowerCase().replace(/[^a-z]/g, '');
 
-/// Guess the word, once the dice are spent. Right wins the game; wrong uses a guess, and the last
-/// guess of a cycle rolls the next one. The state after, or null if it is not time to guess or
+/// Guess the word, once the dice are spent: one guess a cycle. Right wins the game; wrong rolls
+/// the next cycle. The state after, or null if it is not time to guess or
 /// nothing was said.
 export function guess(state, text) {
     const said = tidy(text);
@@ -265,16 +268,13 @@ export function guess(state, text) {
     const next = {
         ...state,
         misses: [...state.misses, said],
-        guesses: state.guesses - 1,
         last: { ability: 'guess', hit: false, said },
     };
-    if (next.guesses > 0) return next;
     const [dice, pips] = roll(state.dice, state.count);
     return {
         ...next,
         dice,
         cycle: state.cycle + 1,
         hand: pips.map((p) => ({ pips: p, spent: false })),
-        guesses: 1,
     };
 }

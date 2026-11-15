@@ -27714,3 +27714,33 @@ Chrome at phone width on a scratch node, when it was still bought with a run;
 the of-a-kind rules, the priced seven and the many-dice take are held by tests
 and were not looked at in a browser. The reroll of several dice was played
 there.
+
+## Wordaga: what a consonant costs, and what a 1 is for (2026-11-14)
+
+Curtis, after a simulation of the two plain strategies over every word, five
+dice seeds each: ruling out every letter took 5.24 cycles on average; testing
+consonants and vowels took 4.56 with no dice bought and 5.90 buying up to seven.
+Dice were not worth their price in a game that short, and making them cheaper
+alone would have left ruling out as the line to beat.
+
+- **Testing a consonant** takes a run of three and 2 apostrophes, or a pair
+  and 6. The test for 6 apostrophes and no dice is gone.
+- **The extra guess is gone**: a run tests a consonant and does nothing else. A
+  cycle has one guess.
+- **Ruling out a letter takes a 1**, and no other die.
+
+`just strings-check`, `just ui-check`. Not looked at in a browser.
+
+Later the same day: a die costs a pair and 4 apostrophes, down from 6, and a
+vowel can be tested for 16 apostrophes and no dice - the one thing apostrophes
+buy by themselves. Simulated over the same games with the best policy found
+(patterns used as rolled, 1s ruling out, unpaid pairs testing unlikely
+consonants, sevens rerolled): 5.62 cycles buying no dice, 5.63 buying one, 5.84
+buying three; the paid vowel moved no row by more than 0.03, since a player who
+spends on runs and pairs seldom holds 16. Held by tests; not looked at in a
+browser.
+
+The paid vowel came down to 9 apostrophes the same day. At 16, hoarding for
+vowels took 7.02 cycles against 5.62 for spending as it came; at 9 the hoard
+takes 5.73, and spending as it comes with a vowel bought whenever 9 are in hand
+takes 5.52, or 5.46 with one die bought - the first time a die has paid.

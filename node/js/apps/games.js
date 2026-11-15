@@ -11,10 +11,13 @@ import { t } from '../i18n.js';
 import { wordOfDay, wordagaDay, untilNextWord } from '../pure/wordaga.js';
 import {
     ABILITIES,
+    DIE_PRICE,
     LETTERS,
     PRICE,
+    RUN_PRICE,
     SEVEN,
     UNLIKELY,
+    VOWEL_PRICE,
     can,
     guess,
     guessing,
@@ -83,7 +86,7 @@ const ABILITY_WORDS = {
     ],
     'rule-out': () => [
         t('games.ability-rule-out', 'rule out a letter'),
-        t('games.needs-die', 'any die'),
+        t('games.needs-one', 'a 1'),
     ],
     seven: () => [
         t('games.ability-seven-paid', 'roll these again'),
@@ -103,11 +106,15 @@ const ABILITY_WORDS = {
     ],
     'buy-die': () => [
         t('games.ability-buy-die', 'buy another die'),
-        t('games.needs-pair-paid', 'a pair and {price} apostrophes', { price: PRICE }),
+        t('games.needs-pair-paid', 'a pair and {price} apostrophes', { price: DIE_PRICE }),
     ],
-    'extra-guess': () => [
-        t('games.ability-extra-guess', 'an extra guess this cycle'),
-        t('games.needs-run', 'a run of three'),
+    'consonant-run': () => [
+        t('games.ability-consonant', 'test a consonant'),
+        t('games.needs-run-paid', 'a run of three and {price} apostrophes', { price: RUN_PRICE }),
+    ],
+    'consonant-pair': () => [
+        t('games.ability-consonant', 'test a consonant'),
+        t('games.needs-pair-paid', 'a pair and {price} apostrophes', { price: PRICE }),
     ],
     'reveal-one': () => [
         t('games.ability-reveal-one', 'reveal a blank of your choosing'),
@@ -122,9 +129,9 @@ const ABILITY_WORDS = {
         t('games.ability-test-vowel', 'test a vowel'),
         t('games.needs-three', 'three of a kind'),
     ],
-    consonant: () => [
-        t('games.ability-consonant', 'test a consonant'),
-        t('games.needs-paid', '{price} apostrophes, no dice', { price: PRICE }),
+    'vowel-paid': () => [
+        t('games.ability-test-vowel', 'test a vowel'),
+        t('games.needs-paid-only', '{price} apostrophes, no dice', { price: VOWEL_PRICE }),
     ],
 };
 
@@ -146,8 +153,6 @@ const lastWords = (last) => {
     if (last.ability === 'earn')
         return t('games.earned', 'apostrophes taken: {n}.', { n: last.gained });
     if (last.ability === 'buy-die') return t('games.bought-die', 'a new die, yours to keep.');
-    if (last.ability === 'extra-guess')
-        return t('games.bought-guess', 'one more guess this cycle.');
     return t('games.rolled-again', 'rolled again.');
 };
 
@@ -272,13 +277,7 @@ const Board = ({ word, seed, day }) => {
                                   autocapitalize="none"
                                   spellcheck=${false}
                                   aria-label=${t('games.your-guess', 'your guess')}
-                                  placeholder=${
-                                      game.guesses > 1
-                                          ? t('games.guesses-left', 'your guess ({n} left)', {
-                                                n: game.guesses,
-                                            })
-                                          : t('games.your-guess', 'your guess')
-                                  }
+                                  placeholder=${t('games.your-guess', 'your guess')}
                                   value=${said}
                                   onInput=${(e) => setSaid(e.target.value)}
                               />
