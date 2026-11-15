@@ -51,6 +51,7 @@ import { SettingsApp } from './apps/settings.js';
 import { BankApp } from './apps/bank.js';
 import { AmpApp } from './apps/amp.js';
 import { RssApp } from './apps/rss.js';
+import { GamesApp, Wordaga } from './apps/games.js';
 import { PlayerProvider, MiniPlayer } from './player.js';
 import { watchUncarried } from './rights.js';
 
@@ -807,6 +808,8 @@ const Inside = ({ session }) => {
             <${NotificationsApp} path="/ringtome/notifications" current=${persona.current} />
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
             <${RssApp} path="/ringtome/rss" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
+            <${GamesApp} path="/ringtome/games" />
+            <${Wordaga} path="/ringtome/games/wordaga" />
             <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
             <${ServerSettings} path="/ringtome/settings/server" admin=${nodeAdmin} current=${persona.current} />
             <${ServerSettings} path="/ringtome/settings/server/:page" admin=${nodeAdmin} current=${persona.current} />

@@ -318,7 +318,7 @@ describe('app registry', () => {
             const none = () => false;
             assert.deepEqual(
                 appsFor(false, none).map((a) => a.id),
-                ['persona', 'settings', 'notifications', 'drawing', 'bank'],
+                ['persona', 'settings', 'notifications', 'drawing', 'bank', 'games'],
                 "Settings is everyone's, second, and never sold (2026-10-09)",
             );
             const friends = (id) => id === 'friends';

@@ -167,6 +167,9 @@ export const LAUNCHER = PREFIX;
 export const appHref = (appId) =>
     appId ? `${PREFIX}/${appPath(appById(appId)) || appId}` : PREFIX;
 
+/// hrseGames' list, and one game's page under it (apps/games.js).
+export const gamesHref = (game) => (game ? `${appHref('games')}/${game}` : appHref('games'));
+
 /// People's Groups tab, and one group's page under it (plans/GROUPS.md, section 7).
 /// An account, as this place's administrator sees it (account.js).
 export const accountHref = (id) => `${serverHref('account')}/${id}`;

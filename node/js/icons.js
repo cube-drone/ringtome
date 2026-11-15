@@ -6,6 +6,7 @@
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
     Archive,
+    Joystick,
     Books,
     Scroll,
     PiggyBank,
@@ -356,6 +357,9 @@ export const Icons = {
     superPin: CrownSimple,
     // a person's RSS, in their page's top right corner (rss.rs, 2026-09-30)
     rss: Rss,
+    // hrseGames™, and its first game (apps/games.js, 2026-11-13)
+    games: Joystick,
+    wordaga: TextAa,
     // a node administrator's way to the account behind a persona hosted here (account.js, 2026-10-20)
     adminAccount: PoliceCar,
     // a QR code of a person or a post, to scan with another phone (qr.js, plans/QR.md)

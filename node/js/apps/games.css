@@ -1,0 +1,218 @@
+/* hrseGames (apps/games.js). The list of games wears Settings' menu (persona.css); what is here is
+   the games' own pages. */
+
+/* Wordaga: the word in blanks, the dice, what they buy, and the alphabet with what is known. */
+.wordaga {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-bottom: 0.8rem;
+}
+
+.wordaga-stats {
+    display: flex;
+    justify-content: space-between;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.wordaga-note,
+.wordaga-prompt,
+.wordaga-last {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.wordaga-last,
+.wordaga-prompt {
+    color: var(--ink-soft);
+}
+
+.wordaga-prompt {
+    font-weight: 600;
+}
+
+.wordaga-word {
+    display: flex;
+    gap: 0.4rem;
+    margin: 0;
+}
+
+/* One letter of the word: a blank until it is placed. */
+.wordaga-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.6rem;
+    height: 3rem;
+    color: var(--ink);
+    background: var(--surface);
+    border-bottom: 3px solid var(--border-strong);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 1.8rem;
+    text-transform: uppercase;
+}
+
+/* A blank that a reveal may be spent on. */
+.wordaga-slot.open {
+    padding: 0;
+    border: 2px solid var(--teal);
+    cursor: pointer;
+}
+
+.wordaga-won {
+    margin: 0;
+    color: var(--accent-ink);
+    font-weight: 600;
+}
+
+.wordaga-dice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.wordaga-die {
+    width: 2.8rem;
+    height: 2.8rem;
+    font: inherit;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--paper);
+    border: 2px solid var(--border-strong);
+    border-radius: 0.4rem;
+    cursor: pointer;
+}
+
+.wordaga-die.picked {
+    color: var(--on-accent);
+    background: var(--teal);
+    border-color: var(--teal);
+}
+
+/* Marked to be rolled again, by the die that is paying. */
+.wordaga-die.marked {
+    border-color: var(--teal);
+    border-style: dashed;
+    color: var(--accent-ink);
+}
+
+.wordaga-die:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.wordaga-abilities {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+}
+
+/* An ability: its name over what it asks for. Dim until the picked dice will pay for it. */
+.wordaga-ability {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.45rem 0.6rem;
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    cursor: pointer;
+}
+
+.wordaga-ability small {
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+
+.wordaga-ability.picked {
+    border-color: var(--teal);
+    outline: 2px solid var(--teal);
+}
+
+.wordaga-ability:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.wordaga-letters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.wordaga-letter {
+    width: 2rem;
+    height: 2.2rem;
+    padding: 0;
+    font: inherit;
+    font-family: "JetBrains Mono", monospace;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--teal);
+    cursor: pointer;
+}
+
+.wordaga-letter:disabled {
+    background: var(--surface-2);
+    border-color: var(--border);
+    cursor: default;
+}
+
+.wordaga-letter.in {
+    color: var(--on-accent);
+    background: var(--sea);
+    border-color: var(--sea);
+}
+
+.wordaga-letter.out {
+    color: var(--faint);
+    text-decoration: line-through;
+}
+
+.wordaga-guess,
+.wordaga-more {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.wordaga-guess-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.6rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--field);
+    border: 1px solid var(--border-strong);
+}
+
+.wordaga-more {
+    margin-top: 0.6rem;
+}
+
+.wordaga-go {
+    padding: 0.4rem 1rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--teal);
+    border: none;
+    --j: 3px;
+    clip-path: var(--jag-1);
+    cursor: pointer;
+}
+
+.wordaga-go:disabled {
+    opacity: 0.6;
+    cursor: default;
+}

@@ -27596,3 +27596,121 @@ have everything in the entire mobile CSS ... displayed at, like, 80% size?"
 `just strings-check`, `just ui-check`. Seen in Chrome at 390 wide on a scratch
 node, a note open, before and after, at 80%. Not seen at 90%, or on a phone, and
 only that one screen was looked at.
+
+## hrseGames, and a blank Wordaga (2026-11-13)
+
+Curtis: "Let's create a new app: hrseGames™ (phosphor icon: 'joystick') -
+there's one game in hrseGames at first - Wordaga. The list of games is similar
+to the layout in Settings: just a list of sub-pages. Wordaga's icon is
+'text-aa'. Wordaga is just a blank page, for now."
+
+- `pure/apps.js`: `games`, hrseGames™, last in the registry, after hrseBank. Not
+  a documents app, and not sold in the Market: it is in everyone's starting set
+  (the registry test's list says so).
+- `apps/games.js`: the list, in Settings' menu markup - one row, Wordaga, "guess
+  today's word, with dice!" - and `Wordaga`, a page with its name and nothing
+  else. `/ringtome/games` and `/ringtome/games/wordaga` (`links.js`
+  `gamesHref`).
+- `icons.js`: `games` (Joystick) and `wordaga` (TextAa); the console tile's
+  blurb in `console.js`.
+
+`just strings-check`, `just ui-check`. Seen in Chrome on a scratch node: the
+tile on the console, the list, and the blank page with the header's back arrow.
+
+## Wordaga's word of the day (2026-11-13)
+
+Curtis: "let's have Wordaga display a word of the day. The word is chosen from
+the app's standard wordlist. It's the same for every person on the network for a
+given day. It's 'random', or at least random feeling enough for the average
+user, who _can_ pre-calculate every word from now until the end of time ... The
+word changes every day at @0."
+
+- `pure/wordaga.js`: `wordOfDay(ms, words)`. The day is the Biel day (UTC+1, no
+  summer time), so it turns at @000. The list - `pure/words.js`, or another
+  handed in - is walked in a shuffled order, reshuffled each pass by the pass's
+  number, so every word has its day before any returns. Nobody hands the word
+  out; every install works it out, which makes the arithmetic an agreement
+  between them. `integration/test/pure/wordaga.cjs` pins words to dates.
+- `apps/games.js`: Wordaga shows "today's word", the word, and "a new word every
+  day at @000", and a page left open over the turn draws the next one.
+  `apps/games.css` for the word.
+
+No server knows the word. When guesses are scored anywhere but the browser, the
+rule needs a Rust twin held to the same dates.
+
+`just strings-check`, `just ui-check`. Seen in Chrome on a scratch node: NEON,
+the pinned word for the day. The turn at @000 was not watched happen.
+
+## Wordaga, playable (2026-11-14)
+
+Curtis's rules: a game is a run of cycles; a cycle rolls your dice (four to
+start), you spend them on abilities that buy facts about the word, and when the
+last is spent you guess. A guess is right or wrong and says nothing more. The
+score is the cycle you got it in. Apostrophes are the game's own money, kept
+from cycle to cycle.
+
+- `pure/wordagagame.js`: the rules as pure steps over plain data - `newGame`,
+  `can`, `play`, `guess`. Ten abilities: a die for one to three apostrophes; a
+  die to roll another again; a die to rule out a letter the game picks; dice
+  totalling 7 rolled again for nothing; a pair to test one of Q Z Y W P X B K V
+  J; a pair and 6 apostrophes for another die (seven at most); a run of three
+  for an extra guess; three of a kind to test a vowel, and with 6 apostrophes to
+  have one placed; 6 apostrophes and no die to test a consonant. A hit shows
+  every place of the letter.
+- The dice come off a counter in the state, seeded from the day's number, and
+  the letters the game picks come off a second one: everyone who plays a day the
+  same way rolls the same. `integration/test/pure/wordagagame.cjs` pins the
+  opening rolls and holds each rule.
+- `apps/games.js`: the board - the word in blanks, the dice, the abilities (lit
+  when the picked dice pay for them), the alphabet with what is known, and the
+  guess. The day's game is kept on the device (`wordaga-today`) so a refresh
+  resumes it. A pick-up game, any word and any dice and counted nowhere, sits
+  beside it while the rules are tried.
+
+Decided here, not by Curtis: a bought die is rolled into the cycle it was bought
+in; "rule out" picks evenly among the letters not in the word; buying a vowel
+when none is left to place rules the other vowels out; the day's game is kept
+per device, not per account. Nothing is sent to a server, and no score is
+recorded anywhere but the device.
+
+`just strings-check`, `just ui-check`. Played in Chrome at phone width on a
+scratch node: a vowel tested, apostrophes taken, a wrong guess into cycle 2, a
+letter ruled out. Winning, the pick-up game and the desktop width were not
+looked at in a browser.
+
+## Wordaga: four, five and six of a kind (2026-11-14)
+
+Curtis, after talking over what the first rules left out and what they let a
+player get away with.
+
+- **Four of a kind** reveals a blank of the player's choosing; **five of a
+  kind** reveals three; **six of a kind** wins the game outright. The blanks are
+  chosen after the dice are spent, one at a time (`reveal` in
+  `pure/wordagagame.js`), so a letter that fills two blanks is seen before the
+  next is picked. A revealed letter is placed everywhere it stands, as any hit
+  is. The page lists five and six of a kind only once the player owns that many
+  dice.
+- **Rolling a seven again costs an apostrophe.** It was free and without limit,
+  which made it a chore to do every cycle.
+- **One die rolls any number of the others again.** It rolled one, which was
+  never worth the die; any number was what Curtis had meant from the start. On
+  the page the paying die is picked, then the others are marked and rolled
+  together.
+- **A word with every letter placed is won**, in the cycle the last letter went
+  in, without the player typing it.
+- **"Buy a vowel" is gone**: three of a kind tests a vowel, and that is the only
+  thing it does.
+- **"Take apostrophes" takes any number of dice at once**, each paying its own:
+  a 3, a 5 and a 6 pay 8.
+
+Tried and taken out the same day: a nudge (one apostrophe to turn a die a pip),
+with the reveals and the win on runs of four, five and six. A simulation of
+20,000 games showed the two together won in four cycles without learning a
+letter - buy two dice, then nudge six dice into 1 to 6 for about four
+apostrophes.
+
+`just strings-check`, `just ui-check`. The reveal of a blank was played in
+Chrome at phone width on a scratch node, when it was still bought with a run;
+the of-a-kind rules, the priced seven and the many-dice take are held by tests
+and were not looked at in a browser. The reroll of several dice was played
+there.

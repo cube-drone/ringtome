@@ -70,6 +70,8 @@ function appBlurb(app) {
                 'console.blurb-bank',
                 'your horse capital: every HorseBuck, and where it came from',
             );
+        case 'games':
+            return t('console.blurb-games', 'games to play, one so far');
         case 'lost-found':
             return t(
                 'console.blurb-lost-found',

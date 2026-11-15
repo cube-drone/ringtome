@@ -227,6 +227,15 @@ export const APPS = [
         // earning has paid, and the ledger that shows its working. Not a documents app.
         itemNoun: 'line',
     },
+    {
+        // hrseGames (Curtis, 2026-11-13): games to play, listed as Settings lists its pages
+        // (apps/games.js). Not a documents app, and not sold in the Market.
+        id: 'games',
+        name: 'hrseGames™',
+        icon: 'games',
+        live: true,
+        itemNoun: 'game',
+    },
     // The place's own settings were an app here (`device`: hrseServer™, hrseDevice™ in the desktop
     // app) until 2026-11-11, when a second settings app had confused people once too often
     // (Curtis). They are the Settings app's last section now (serversettings.js).
