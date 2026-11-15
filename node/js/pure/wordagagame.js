@@ -54,6 +54,12 @@ function roll(counter, n) {
     return [counter, pips];
 }
 
+/// A die in the hand: its pips, whether it is spent, and which throw put it there - the throws of a
+/// game are numbered from 1, so the page can tell the dice just thrown from the ones that lay still.
+const thrownDie = (thrown) => (pips) => ({ pips, spent: false, thrown });
+/// The number the next throw takes.
+const nextThrow = (state) => (state.throws ?? 0) + 1;
+
 /// A new game of `word`. Two games with one seed and one word roll the same dice.
 export function newGame(word, seed) {
     const [dice, pips] = roll((Math.imul(seed, 0x9e3779b1) ^ SALT_DICE) >>> 0, START_DICE);
@@ -63,7 +69,8 @@ export function newGame(word, seed) {
         letters: (Math.imul(seed, 0x85ebca6b) ^ SALT_LETTERS) >>> 0,
         cycle: 1,
         count: START_DICE,
-        hand: pips.map((p) => ({ pips: p, spent: false })),
+        hand: pips.map(thrownDie(1)),
+        throws: 1,
         apostrophes: 0,
         // What is known of each letter tried: 'in' or 'out'.
         known: {},
@@ -193,7 +200,8 @@ export function play(state, id, picked, target) {
                 return null;
             const [counter, pips] = roll(state.dice, again.length);
             next.dice = counter;
-            again.forEach((i, n) => (next.hand[i] = { pips: pips[n], spent: false }));
+            next.throws = nextThrow(state);
+            again.forEach((i, n) => (next.hand[i] = thrownDie(next.throws)(pips[n])));
             break;
         }
         case 'reveal-one':
@@ -210,7 +218,8 @@ export function play(state, id, picked, target) {
             // These dice are thrown again, not spent.
             const [counter, pips] = roll(state.dice, picked.length);
             next.dice = counter;
-            picked.forEach((i, n) => (next.hand[i] = { pips: pips[n], spent: false }));
+            next.throws = nextThrow(state);
+            picked.forEach((i, n) => (next.hand[i] = thrownDie(next.throws)(pips[n])));
             break;
         }
         case 'rule-out': {
@@ -225,7 +234,8 @@ export function play(state, id, picked, target) {
             const [counter, [pips]] = roll(state.dice, 1);
             next.dice = counter;
             next.count = state.count + 1;
-            next.hand.push({ pips, spent: false });
+            next.throws = nextThrow(state);
+            next.hand.push(thrownDie(next.throws)(pips));
             break;
         }
         default:
@@ -275,6 +285,7 @@ export function guess(state, text) {
         ...next,
         dice,
         cycle: state.cycle + 1,
-        hand: pips.map((p) => ({ pips: p, spent: false })),
+        hand: pips.map(thrownDie(nextThrow(state))),
+        throws: nextThrow(state),
     };
 }

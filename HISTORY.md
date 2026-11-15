@@ -27744,3 +27744,31 @@ The paid vowel came down to 9 apostrophes the same day. At 16, hoarding for
 vowels took 7.02 cycles against 5.62 for spending as it came; at 9 the hoard
 takes 5.73, and spending as it comes with a vowel bought whenever 9 are in hand
 takes 5.52, or 5.46 with one die bought - the first time a die has paid.
+
+## Wordaga's dice are dice (2026-11-14)
+
+Curtis wanted the dice to feel like dice: a bar they spill into and roll across
+to numbers already settled, quickly, with some drama. Weighed: three.js, a
+canvas with or without a game library, an animation library, and plain CSS. CSS
+won because the numbers are settled before anything moves - a cube of six faces
+lands where it is told, the dice stay buttons, and the colourways cost nothing.
+What it cannot do is have dice knock into each other.
+
+- `apps/games.js` `Die`: a button holding a cube of six faces set in real space
+  with CSS 3D transforms, pips as dots. At rest the cube is turned so its number
+  faces front. On a throw the cube tumbles to that turn through whole extra
+  turns (the browser's own `animate`, no library): a whole hand spills in from
+  the left one die after another, a die thrown again where it lies hops. The
+  turns and the pace vary by the throw's number and the die's place, so the same
+  game tumbles the same. Nothing moves for a reader who asked for reduced
+  motion.
+- `pure/wordagagame.js` numbers each throw (`throws`, and `thrown` on a die), so
+  the page can tell the dice just thrown from the ones that lay still. A game
+  picked up from storage lies as it was left and does not roll again.
+- `apps/games.css`: the dice bar is a shallow tray that clips the dice on their
+  way in.
+
+`just strings-check`, `just ui-check`. Looked at in headless Chrome at phone
+width on a scratch node, as frames frozen part way through: the spill, the dice
+at rest, picked, marked, a reroll's hop and its end. Not watched in motion, not
+tried in the app's own webview (WebKit), and not looked at at desktop width.

@@ -68,37 +68,83 @@
     font-weight: 600;
 }
 
+/* The dice bar: a shallow tray the dice spill into from the left. It clips them on the way in. */
 .wordaga-dice {
     display: flex;
-    flex-wrap: wrap;
     gap: 0.5rem;
+    padding: 0.7rem 0.5rem;
+    overflow: hidden;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
 }
 
+/* A die is a button with a cube inside it. The button is the eye: its perspective is what makes
+   the near faces larger. `--half` is half the cube's edge. */
 .wordaga-die {
+    --half: 1.4rem;
+    flex: none;
     width: 2.8rem;
     height: 2.8rem;
-    font: inherit;
-    font-family: "JetBrains Mono", monospace;
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: var(--ink);
-    background: var(--paper);
-    border: 2px solid var(--border-strong);
-    border-radius: 0.4rem;
+    padding: 0;
+    background: none;
+    border: none;
+    perspective: 11rem;
     cursor: pointer;
 }
 
-.wordaga-die.picked {
-    color: var(--on-accent);
+/* Sets the cube back by half its depth, so the face in front lies in the page and is its true size. */
+.wordaga-die-seat {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transform: translateZ(calc(var(--half) * -1));
+}
+
+/* The cube itself: the turn that shows its number is set on it by the page (apps/games.js `Die`). */
+.wordaga-cube {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+}
+
+/* One face: nine places, some holding a pip. Its place on the cube is set by the page. */
+.wordaga-face {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+    box-sizing: border-box;
+    padding: 0.32rem;
+    background: var(--paper);
+    border: 2px solid var(--border-strong);
+    border-radius: 0.4rem;
+    backface-visibility: hidden;
+}
+
+.wordaga-pip {
+    place-self: center;
+    width: 0.42rem;
+    height: 0.42rem;
+    background: var(--ink);
+    border-radius: 50%;
+}
+
+.wordaga-die.picked .wordaga-face {
     background: var(--teal);
     border-color: var(--teal);
 }
 
+.wordaga-die.picked .wordaga-pip {
+    background: var(--on-accent);
+}
+
 /* Marked to be rolled again, by the die that is paying. */
-.wordaga-die.marked {
+.wordaga-die.marked .wordaga-face {
     border-color: var(--teal);
     border-style: dashed;
-    color: var(--accent-ink);
 }
 
 .wordaga-die:disabled {

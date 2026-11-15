@@ -482,6 +482,7 @@ export default {
     'games.earned': 'apostrophes taken: {n}.',
     'games.bought-die': 'a new die, yours to keep.',
     'games.rolled-again': 'rolled again.',
+    'games.die-showing': 'a die showing {n}',
     'games.cycle-n': 'cycle {n}',
     'games.apostrophes-n': 'apostrophes: {n}',
     'games.the-word': 'the word',

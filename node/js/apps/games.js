@@ -2,7 +2,7 @@
 // lists its pages (persona.js `SettingsList`), and each game is a page of its own beneath it:
 // `/ringtome/games/<game>`. One game so far, Wordaga, whose rules are pure/wordagagame.js.
 import { h } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { Icons } from '../icons.js';
@@ -156,6 +156,97 @@ const lastWords = (last) => {
     return t('games.rolled-again', 'rolled again.');
 };
 
+/// A die as a cube: six faces standing in real space, the browser doing the perspective. Where each
+/// face stands on the cube, and the turn of the whole cube that brings each to the front.
+const FACE_AT = {
+    1: '',
+    2: 'rotateY(90deg)',
+    3: 'rotateX(90deg)',
+    4: 'rotateX(-90deg)',
+    5: 'rotateY(-90deg)',
+    6: 'rotateY(180deg)',
+};
+const TURN_TO = { 1: [0, 0], 2: [0, -90], 3: [-90, 0], 4: [90, 0], 5: [0, 90], 6: [0, 180] };
+const turned = ([x, y]) => `rotateX(${x}deg) rotateY(${y}deg)`;
+/// Which of a face's nine places hold a pip, row by row.
+const PIPS = {
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8],
+};
+const NINE = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+/// One die in the bar. It rests with its number to the front; when a throw newer than `quiet` puts
+/// it there it tumbles to that number - the number was settled before it moved, the tumble is only
+/// the telling. A whole hand thrown spills in from the left, one die after another; a die thrown
+/// again where it lies (`lone`) hops. The turns and the pace vary from die to die, by the throw's
+/// number and the die's place, so a game drawn again tumbles the same.
+const Die = ({ die, index, lone, quiet, state, disabled, pressed, onClick }) => {
+    const button = useRef(null);
+    const cube = useRef(null);
+    useLayoutEffect(() => {
+        if (!(die.thrown > quiet) || !cube.current?.animate) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        const [x, y] = TURN_TO[die.pips];
+        const mix = (die.thrown * 7 + index * 13) % 6;
+        const from = [x + 360 * (1 + (mix % 2)), y - 360 * (1 + ((mix >> 1) % 3))];
+        const timing = {
+            duration: 620 + mix * 40,
+            delay: lone ? 0 : index * 55,
+            easing: 'cubic-bezier(0.15, 0.6, 0.25, 1)',
+            fill: 'backwards',
+        };
+        cube.current.animate([{ transform: turned(from) }, { transform: turned([x, y]) }], timing);
+        button.current.animate(
+            lone
+                ? [
+                      { transform: 'translateY(0)' },
+                      { transform: 'translateY(-0.45rem)', offset: 0.35 },
+                      { transform: 'translateY(0)' },
+                  ]
+                : [
+                      { transform: 'translateX(-24rem)' },
+                      { transform: 'translateX(0.4rem)', offset: 0.75 },
+                      { transform: 'translateX(0)' },
+                  ],
+            timing,
+        );
+        // Only a new throw tumbles: the pips, the place and the rest are read as they stand then.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [die.thrown]);
+    return html`<button
+        ref=${button}
+        type="button"
+        class=${state ? `wordaga-die ${state}` : 'wordaga-die'}
+        disabled=${disabled}
+        aria-pressed=${pressed}
+        aria-label=${t('games.die-showing', 'a die showing {n}', { n: die.pips })}
+        onClick=${onClick}
+    >
+        <span class="wordaga-die-seat" aria-hidden="true">
+            <span ref=${cube} class="wordaga-cube" style=${`transform: ${turned(TURN_TO[die.pips])}`}>
+                ${[1, 2, 3, 4, 5, 6].map(
+                    (face) =>
+                        html`<span
+                            key=${face}
+                            class="wordaga-face"
+                            style=${`transform: ${FACE_AT[face]} translateZ(var(--half))`}
+                        >
+                            ${NINE.map((place) =>
+                                PIPS[face].includes(place)
+                                    ? html`<i key=${place} class="wordaga-pip"></i>`
+                                    : html`<i key=${place}></i>`,
+                            )}
+                        </span>`,
+                )}
+            </span>
+        </span>
+    </button>`;
+};
+
 /// Today's game, kept on this device so a refresh picks it up where it was, and so the day's game
 /// is played once. A kept game for another day, or another word, is nobody's.
 const KEPT = 'wordaga-today';
@@ -178,9 +269,12 @@ const keepGame = (day, game) => {
 /// One game on the table. `day` is set for the day's own game, which is kept; a pick-up game has
 /// none and lives for the page.
 const Board = ({ word, seed, day }) => {
-    const [game, setGame] = useState(
-        () => (day !== undefined && keptGame(day, word)) || newGame(word, seed),
-    );
+    // A game picked up from storage lies as it was left: only throws after `quiet` tumble.
+    const [start] = useState(() => {
+        const kept = day !== undefined && keptGame(day, word);
+        return { game: kept || newGame(word, seed), quiet: kept ? (kept.throws ?? 0) : 0 };
+    });
+    const [game, setGame] = useState(start.game);
     // The dice picked to spend, and the ability waiting to be pointed at something.
     const [picked, setPicked] = useState([]);
     const [pending, setPending] = useState(null);
@@ -249,22 +343,17 @@ const Board = ({ word, seed, day }) => {
                 : html`<div class="wordaga-dice">
                           ${game.hand.map(
                               (die, i) =>
-                                  html`<button
+                                  html`<${Die}
                                       key=${i}
-                                      type="button"
-                                      class=${
-                                          picked.includes(i)
-                                              ? 'wordaga-die picked'
-                                              : marked.includes(i)
-                                                ? 'wordaga-die marked'
-                                                : 'wordaga-die'
-                                      }
+                                      die=${die}
+                                      index=${i}
+                                      lone=${game.hand.some((other) => other.thrown !== die.thrown)}
+                                      quiet=${start.quiet}
+                                      state=${picked.includes(i) ? 'picked' : marked.includes(i) ? 'marked' : ''}
                                       disabled=${die.spent || (pending === 'reroll' && picked.includes(i))}
-                                      aria-pressed=${picked.includes(i) || marked.includes(i)}
+                                      pressed=${picked.includes(i) || marked.includes(i)}
                                       onClick=${() => onDie(i)}
-                                  >
-                                      ${die.pips}
-                                  </button>`,
+                                  />`,
                           )}
                       </div>
                       ${

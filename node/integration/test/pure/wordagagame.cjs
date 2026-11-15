@@ -228,6 +228,26 @@ describe("Wordaga's rules", () => {
         assert.deepEqual(G.shown(g), ['n', 'e', 'o', 'n']);
     });
 
+    it('numbers each throw, so the dice just thrown can be told from the rest', () => {
+        const start = G.newGame('neon', 3);
+        assert.deepEqual(
+            start.hand.map((d) => d.thrown),
+            [1, 1, 1, 1],
+        );
+        const again = G.play(start, 'reroll', [0], [1, 3]);
+        assert.deepEqual(
+            again.hand.map((d) => d.thrown),
+            [1, 2, 1, 2],
+        );
+        const next = G.guess(G.play(again, 'earn', [1, 2, 3]), 'nope');
+        assert.deepEqual(
+            next.hand.map((d) => d.thrown),
+            [3, 3, 3, 3],
+        );
+        const bought = G.play(dealt('neon', [2, 2], { apostrophes: 4 }), 'buy-die', [0, 1]);
+        assert.equal(bought.hand[2].thrown, 2);
+    });
+
     it('keeps a bought die into the next cycle', () => {
         let g = dealt('neon', [2, 2], { apostrophes: 6 });
         g = G.play(g, 'buy-die', [0, 1]);
