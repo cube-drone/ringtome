@@ -1053,6 +1053,8 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/static/{version}/app.css", get(ui::app_css))
         // Marquee font files (embedded in binary, read from disk in dev)
         .route("/fonts/{filename}", get(ui::font))
+        // Sound effects (embedded in binary)
+        .route("/sounds/{filename}", get(ui::sound))
         // API routes
         .route("/health", get(health))
         .route("/api/config", get(get_config))

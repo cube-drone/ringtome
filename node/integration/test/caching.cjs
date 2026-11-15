@@ -193,11 +193,12 @@ describe('caching: a page or a file says how it may be kept', function () {
         assert.equal(await cacheOf('health'), 'no-store');
     });
 
-    it('a dev node asks about its bundles each time; fonts are kept a day', async () => {
+    it('a dev node asks about its bundles each time; fonts and sounds are kept a day', async () => {
         const { version } = await (await anon('health')).json();
         assert.equal(await cacheOf(`static/${version}/app.js`), 'no-cache');
         assert.equal(await cacheOf(`static/${version}/app.css`), 'no-cache');
         assert.equal(await cacheOf('fonts/lexend.woff2'), 'public, max-age=86400');
+        assert.equal(await cacheOf('sounds/dice-throw-1.ogg'), 'public, max-age=86400');
     });
 
     it('an answer that names no rule is asked about each time', async () => {

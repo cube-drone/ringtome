@@ -485,6 +485,9 @@ export default {
     'games.die-showing': 'a die showing {n}',
     'games.cycle-n': 'cycle {n}',
     'games.apostrophes-n': 'apostrophes: {n}',
+    'games.sound': 'sound',
+    'games.sound-is-on': 'sound is on',
+    'games.sound-is-off': 'sound is off',
     'games.the-word': 'the word',
     'games.reveal-this': 'reveal this letter',
     'games.won-in-one': 'you got it in one cycle.',
@@ -3316,6 +3319,7 @@ export default {
     'ui.not-a-font-file-filename': 'not a font file: {filename}',
     'ui.font-not-found-at': 'font not found at {path}: {error}',
     'ui.unknown-font-filename': 'unknown font: {filename}',
+    'ui.unknown-sound-filename': 'unknown sound: {filename}',
     'ui.invalid-version-requested': 'invalid version: {requested}',
     'ui.requested-version-requested-is-newer': 'requested version {requested} is newer than running version {current}',
 

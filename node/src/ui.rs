@@ -538,6 +538,64 @@ pub async fn font(
     }
 }
 
+// --- Sounds: the app's sound effects, baked into the binary ---
+//
+// Each is kept twice: the Ogg Vorbis file as it came, and an MP3 made from it for the web views
+// that cannot decode Ogg (Safari before 18.4, and so the desktop and iOS apps on an older system).
+// `js/sound.js` asks for the Ogg and falls back. `node/sounds/README.md` says where they came from
+// and how to add one.
+
+macro_rules! sound {
+    ($name:literal) => {
+        ($name, include_bytes!(concat!("../sounds/", $name)) as &[u8])
+    };
+}
+
+/// (filename, embedded bytes) - every sound the app can ask for.
+pub(crate) const EMBEDDED_SOUNDS: &[(&str, &[u8])] = &[
+    sound!("dice-throw-1.ogg"),
+    sound!("dice-throw-1.mp3"),
+    sound!("dice-throw-2.ogg"),
+    sound!("dice-throw-2.mp3"),
+    sound!("dice-throw-3.ogg"),
+    sound!("dice-throw-3.mp3"),
+    sound!("die-throw-1.ogg"),
+    sound!("die-throw-1.mp3"),
+    sound!("die-throw-2.ogg"),
+    sound!("die-throw-2.mp3"),
+    sound!("die-throw-3.ogg"),
+    sound!("die-throw-3.mp3"),
+    sound!("die-throw-4.ogg"),
+    sound!("die-throw-4.mp3"),
+];
+
+/// A sound's bytes and its media type, by filename. Pure.
+fn embedded_sound(filename: &str) -> Option<(&'static [u8], &'static str)> {
+    let kind = match filename.rsplit_once('.')?.1 {
+        "ogg" => "audio/ogg",
+        "mp3" => "audio/mpeg",
+        _ => return None,
+    };
+    EMBEDDED_SOUNDS.iter().find(|(name, _)| *name == filename).map(|(_, data)| (*data, kind))
+}
+
+/// Serve a sound effect from the binary's embedded data - in dev too: a sound is a few kilobytes
+/// that changes about never, and a new one is a new line above either way. Kept a day, as a font
+/// is, since its address names no version.
+pub async fn sound(Path(filename): Path<String>) -> Result<impl IntoResponse, AppError> {
+    let (bytes, kind) = embedded_sound(&filename).ok_or_else(|| {
+        AppError::NotFound(crate::msg!(
+            "ui.unknown-sound-filename",
+            "unknown sound: {filename}",
+            filename = filename
+        ))
+    })?;
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, kind), (axum::http::header::CACHE_CONTROL, FONT_CACHE)],
+        bytes,
+    ))
+}
+
 /// A font's address names no version - the face changes when the fonts package does, about never -
 /// so it is kept a day, as the icons are.
 const FONT_CACHE: &str = "public, max-age=86400";
@@ -606,6 +664,18 @@ mod tests {
         );
         assert_eq!(branch_from_head("ref: "), None);
         assert_eq!(branch_from_head("not a head"), None);
+    }
+
+    #[test]
+    fn every_sound_is_kept_as_ogg_and_as_mp3() {
+        for (name, bytes) in EMBEDDED_SOUNDS {
+            let (stem, _) = name.rsplit_once('.').unwrap();
+            assert!(!bytes.is_empty(), "{name}");
+            assert_eq!(embedded_sound(&format!("{stem}.ogg")).unwrap().1, "audio/ogg");
+            assert_eq!(embedded_sound(&format!("{stem}.mp3")).unwrap().1, "audio/mpeg");
+        }
+        assert!(embedded_sound("dice-throw-1.wav").is_none());
+        assert!(embedded_sound("../Cargo.toml").is_none());
     }
 
     #[test]

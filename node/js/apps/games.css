@@ -17,6 +17,24 @@
     font-size: 0.8rem;
 }
 
+.wordaga-stats {
+    align-items: center;
+}
+
+.wordaga-sound {
+    display: inline-flex;
+    padding: 0.2rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 1.1rem;
+    cursor: pointer;
+}
+
+.wordaga-sound[aria-pressed='true'] {
+    color: var(--ink);
+}
+
 .wordaga-note,
 .wordaga-prompt,
 .wordaga-last {

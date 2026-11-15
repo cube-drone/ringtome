@@ -8,6 +8,7 @@ import htm from 'htm';
 import { Icons } from '../icons.js';
 import { gamesHref } from '../links.js';
 import { t } from '../i18n.js';
+import { playSound, preloadSounds, setSoundOn, useSoundOn } from '../sound.js';
 import { wordOfDay, wordagaDay, untilNextWord } from '../pure/wordaga.js';
 import {
     ABILITIES,
@@ -179,6 +180,10 @@ const PIPS = {
 };
 const NINE = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
+/// What a throw sounds like (sound.js): several dice at once, or one die alone.
+const DICE_SOUNDS = ['dice-throw-1', 'dice-throw-2', 'dice-throw-3'];
+const DIE_SOUNDS = ['die-throw-1', 'die-throw-2', 'die-throw-3', 'die-throw-4'];
+
 /// One die in the bar. It rests with its number to the front; when a throw newer than `quiet` puts
 /// it there it tumbles to that number - the number was settled before it moved, the tumble is only
 /// the telling. A whole hand thrown spills in from the left, one die after another; a die thrown
@@ -281,6 +286,17 @@ const Board = ({ word, seed, day }) => {
     // The dice marked to be rolled again, while 'reroll' is pending.
     const [marked, setMarked] = useState([]);
     const [said, setSaid] = useState('');
+    const sound = useSoundOn();
+
+    useEffect(() => preloadSounds([...DICE_SOUNDS, ...DIE_SOUNDS]), []);
+    // A throw is heard as it is seen: only one newer than `quiet`, and by how many dice it threw.
+    useEffect(() => {
+        if (!(game.throws > start.quiet)) return;
+        const thrown = game.hand.filter((die) => die.thrown === game.throws).length;
+        playSound(thrown > 1 ? DICE_SOUNDS : DIE_SOUNDS);
+        // Only a new throw sounds: the hand is read as it stands then.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [game.throws]);
 
     const move = (next) => {
         if (!next) return;
@@ -316,6 +332,16 @@ const Board = ({ word, seed, day }) => {
         <p class="wordaga-stats">
             <span>${t('games.cycle-n', 'cycle {n}', { n: game.cycle })}</span>
             <span>${t('games.apostrophes-n', 'apostrophes: {n}', { n: game.apostrophes })}</span>
+            <button
+                type="button"
+                class="wordaga-sound"
+                aria-pressed=${sound}
+                aria-label=${t('games.sound', 'sound')}
+                title=${sound ? t('games.sound-is-on', 'sound is on') : t('games.sound-is-off', 'sound is off')}
+                onClick=${() => setSoundOn(!sound)}
+            >
+                <${sound ? Icons.speaker : Icons.speakerOff} />
+            </button>
         </p>
         <p class="wordaga-word" aria-label=${t('games.the-word', 'the word')}>
             ${shown(game).map((letter, i) =>

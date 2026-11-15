@@ -27772,3 +27772,46 @@ What it cannot do is have dice knock into each other.
 width on a scratch node, as frames frozen part way through: the spill, the dice
 at rest, picked, marked, a reroll's hop and its end. Not watched in motion, not
 tried in the app's own webview (WebKit), and not looked at at desktop width.
+
+## The first sound: Wordaga's dice are heard (2026-11-15)
+
+Curtis asked for the roll to make a sound - Kenney's _Casino Audio_ (CC0), one
+of three `dice-throw` sounds for several dice, one of four `die-throw` sounds
+for a die alone - and there was no sound anywhere in the app, so this is the
+system as well as its first use.
+
+- **Where they live**: `node/sounds/`, seven Ogg files copied from the pack,
+  each with an MP3 made from it (`node/sounds/README.md` says how, and how to
+  add one). Baked into the binary and served at `/sounds/<file>` (`ui.rs`
+  `EMBEDDED_SOUNDS`, `sound`), kept a day as a font is, and passed through on a
+  persona's own domain. So the web, the desktop app and the phone apps all get
+  them from the node they already talk to; nothing is bundled twice. About 140
+  kB in the binary.
+- **Why MP3 as well**: Safari decodes Ogg only from 18.4, and the Mac and iOS
+  apps use the system's web view. `sound.js` asks for the ending the web view
+  says it plays and falls back to the other if decoding fails.
+- **When they load**: `js/sound.js` `preloadSounds` - the Wordaga board fetches
+  its seven when it is drawn, through net.js; nothing is fetched by a reader who
+  never opens the game, or who has sound off. Decoded once, at first play.
+- **Whether they play**: a browser lets a page make sound only after its reader
+  has clicked, tapped or typed on it. `playSound` makes the one audio context at
+  the first sound that is allowed (so Chrome has nothing to warn about), and
+  drops - never holds - a sound asked for before that, or one not ready within a
+  quarter second. Getting to the game by a click inside the app counts; a page
+  loaded straight onto the game rolls its first hand silently. On iOS a context
+  wakes only inside a touch, so there the first hand may be silent either way
+  and the sound starts with the first tap.
+- **On or off**: this device's choice (`sound` in local storage), a speaker
+  button on the board's top line. Mine, not asked for: a first sound with no way
+  to stop it seemed wrong.
+- A throw is heard as it is seen: only throws newer than the kept game's, by the
+  count of dice the throw rolled. A reader who asked for reduced motion still
+  hears it.
+
+`cargo test -p ringtome-node` (the `ui` tests), `just lint`,
+`just strings-check`, `just ui-check`, the caching acceptance area. In headless
+Chrome on a scratch node, with the audio calls recorded: nothing played and no
+context made on an untouched page, a `dice-throw` started on a dealt hand, a
+`die-throw` on a one-die reroll, nothing with sound off, and nothing about audio
+in the console. Not heard by ear, and not tried in Safari, the desktop app or a
+phone - so the MP3 path has never run.

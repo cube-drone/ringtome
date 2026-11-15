@@ -187,7 +187,7 @@ fn place(site_root: &[u8; 32], path: &str) -> Place {
         .contains(&path.trim_start_matches('/'));
     match parts.as_slice() {
         _ if through_root => Place::Through,
-        ["api" | "static" | "fonts", _, ..] => Place::Through,
+        ["api" | "static" | "fonts" | "sounds", _, ..] => Place::Through,
         ["feed.xml" | "index.xml"] => Place::Feed,
         // A picture or a post's words, anyone's: what a page shows is fetched from where it is.
         ["ringtome", "user", _, "doc", _, "body" | "thumb", ..]
