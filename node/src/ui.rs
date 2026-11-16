@@ -567,6 +567,18 @@ pub(crate) const EMBEDDED_SOUNDS: &[(&str, &[u8])] = &[
     sound!("die-throw-3.mp3"),
     sound!("die-throw-4.ogg"),
     sound!("die-throw-4.mp3"),
+    sound!("dice-grab-1.ogg"),
+    sound!("dice-grab-1.mp3"),
+    sound!("dice-grab-2.ogg"),
+    sound!("dice-grab-2.mp3"),
+    sound!("card-place-1.ogg"),
+    sound!("card-place-1.mp3"),
+    sound!("card-place-2.ogg"),
+    sound!("card-place-2.mp3"),
+    sound!("card-place-3.ogg"),
+    sound!("card-place-3.mp3"),
+    sound!("card-place-4.ogg"),
+    sound!("card-place-4.mp3"),
 ];
 
 /// A sound's bytes and its media type, by filename. Pure.

@@ -16,6 +16,6 @@ the desktop and iOS apps on an older system).
 
 ## Where they came from
 
-`dice-throw-*` and `die-throw-*` are from Kenney's _Casino Audio_ (1.1), by
-Kenney Vleugels (kenney.nl), under Creative Commons Zero (CC0):
-http://creativecommons.org/publicdomain/zero/1.0/
+`dice-throw-*`, `die-throw-*`, `dice-grab-*` and `card-place-*` are from
+Kenney's _Casino Audio_ (1.1), by Kenney Vleugels (kenney.nl), under Creative
+Commons Zero (CC0): http://creativecommons.org/publicdomain/zero/1.0/

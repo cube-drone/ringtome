@@ -12,18 +12,14 @@ import { playSound, preloadSounds, setSoundOn, useSoundOn } from '../sound.js';
 import { wordOfDay, wordagaDay, untilNextWord } from '../pure/wordaga.js';
 import {
     ABILITIES,
-    DIE_PRICE,
     LETTERS,
-    PRICE,
-    RUN_PRICE,
-    SEVEN,
     UNLIKELY,
-    VOWEL_PRICE,
     can,
     guess,
     guessing,
     newGame,
     play,
+    priceOf,
     reveal,
     shown,
     targets,
@@ -78,7 +74,7 @@ const useWordagaDay = () => {
 /// What each ability is called, and what it asks for, in the order pure/wordagagame.js lists them.
 const ABILITY_WORDS = {
     earn: () => [
-        t('games.ability-earn', 'take apostrophes'),
+        t('games.ability-earn', 'take money'),
         t('games.needs-earn', 'any dice: a 1-2 pays one, a 3-4 pays two, a 5-6 pays three'),
     ],
     reroll: () => [
@@ -91,13 +87,7 @@ const ABILITY_WORDS = {
     ],
     seven: () => [
         t('games.ability-seven-paid', 'roll these again'),
-        t(
-            'games.needs-seven-paid',
-            'dice that total 7, and {price} apostrophe: the dice are not spent',
-            {
-                price: SEVEN,
-            },
-        ),
+        t('games.needs-seven-paid', 'dice that total 7: the dice are not spent'),
     ],
     unlikely: () => [
         t('games.ability-unlikely', 'test an unlikely consonant'),
@@ -107,15 +97,15 @@ const ABILITY_WORDS = {
     ],
     'buy-die': () => [
         t('games.ability-buy-die', 'buy another die'),
-        t('games.needs-pair-paid', 'a pair and {price} apostrophes', { price: DIE_PRICE }),
+        t('games.needs-pair-paid', 'a pair'),
     ],
     'consonant-run': () => [
         t('games.ability-consonant', 'test a consonant'),
-        t('games.needs-run-paid', 'a run of three and {price} apostrophes', { price: RUN_PRICE }),
+        t('games.needs-run-paid', 'a run of three'),
     ],
     'consonant-pair': () => [
         t('games.ability-consonant', 'test a consonant'),
-        t('games.needs-pair-paid', 'a pair and {price} apostrophes', { price: PRICE }),
+        t('games.needs-pair-paid', 'a pair'),
     ],
     'reveal-one': () => [
         t('games.ability-reveal-one', 'reveal a blank of your choosing'),
@@ -132,7 +122,7 @@ const ABILITY_WORDS = {
     ],
     'vowel-paid': () => [
         t('games.ability-test-vowel', 'test a vowel'),
-        t('games.needs-paid-only', '{price} apostrophes, no dice', { price: VOWEL_PRICE }),
+        t('games.needs-paid-only', 'no dice'),
     ],
 };
 
@@ -151,8 +141,7 @@ const lastWords = (last) => {
         return last.hit
             ? t('games.letter-in', '{letter} is in the word.', { letter })
             : t('games.letter-out', '{letter} is not in the word.', { letter });
-    if (last.ability === 'earn')
-        return t('games.earned', 'apostrophes taken: {n}.', { n: last.gained });
+    if (last.ability === 'earn') return t('games.earned', 'money taken: {n}.', { n: last.gained });
     if (last.ability === 'buy-die') return t('games.bought-die', 'a new die, yours to keep.');
     return t('games.rolled-again', 'rolled again.');
 };
@@ -180,9 +169,53 @@ const PIPS = {
 };
 const NINE = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
+/// The dice each ability takes, drawn on its card: a number is a die-shaped hole holding that many
+/// faint pips (0 is any die), anything else is a sign set between the holes. `=` between holes says
+/// the dice match; the run's pips are one example of three in a row.
+const same = (n) => Array.from({ length: n * 2 - 1 }, (_, i) => (i % 2 ? '=' : 0));
+const WANTS = {
+    earn: [0],
+    reroll: [0],
+    'rule-out': [1],
+    seven: [0, '+', 0, '= 7'],
+    unlikely: same(2),
+    'buy-die': same(2),
+    'consonant-pair': same(2),
+    'consonant-run': [2, 3, 4],
+    'test-vowel': same(3),
+    'reveal-one': same(4),
+    'reveal-three': same(5),
+    win: same(6),
+};
+
+/// Whether an ability's dice are too many to draw at full size on half the board's width: more
+/// than three holes.
+const isWide = (id) =>
+    !!WANTS[id] && WANTS[id].filter((want) => typeof want === 'number').length > 3;
+
+/// That picture: for the eye only - the line under it says the same in words.
+const Wants = ({ id }) =>
+    WANTS[id] &&
+    html`<span class="wordaga-wants" aria-hidden="true">
+        ${WANTS[id].map((want, i) =>
+            typeof want === 'number'
+                ? html`<span key=${i} class="wordaga-hole">
+                      ${NINE.map((place) =>
+                          want && PIPS[want].includes(place)
+                              ? html`<i key=${place} class="wordaga-hole-pip"></i>`
+                              : html`<i key=${place}></i>`,
+                      )}
+                  </span>`
+                : html`<span key=${i} class="wordaga-sign">${want}</span>`,
+        )}
+    </span>`;
+
 /// What a throw sounds like (sound.js): several dice at once, or one die alone.
 const DICE_SOUNDS = ['dice-throw-1', 'dice-throw-2', 'dice-throw-3'];
 const DIE_SOUNDS = ['die-throw-1', 'die-throw-2', 'die-throw-3', 'die-throw-4'];
+/// A die picked up, and an ability's card put down.
+const GRAB_SOUNDS = ['dice-grab-1', 'dice-grab-2'];
+const CARD_SOUNDS = ['card-place-1', 'card-place-2', 'card-place-3', 'card-place-4'];
 
 /// One die in the bar. It rests with its number to the front; when a throw newer than `quiet` puts
 /// it there it tumbles to that number - the number was settled before it moved, the tumble is only
@@ -288,7 +321,10 @@ const Board = ({ word, seed, day }) => {
     const [said, setSaid] = useState('');
     const sound = useSoundOn();
 
-    useEffect(() => preloadSounds([...DICE_SOUNDS, ...DIE_SOUNDS]), []);
+    useEffect(
+        () => preloadSounds([...DICE_SOUNDS, ...DIE_SOUNDS, ...GRAB_SOUNDS, ...CARD_SOUNDS]),
+        [],
+    );
     // A throw is heard as it is seen: only one newer than `quiet`, and by how many dice it threw.
     useEffect(() => {
         if (!(game.throws > start.quiet)) return;
@@ -307,6 +343,8 @@ const Board = ({ word, seed, day }) => {
         setPending(null);
     };
     const onDie = (i) => {
+        // A die taken up is heard; one put back is not.
+        if (!(pending === 'reroll' ? marked : picked).includes(i)) playSound(GRAB_SOUNDS);
         // While a die is paying for a reroll, a tap marks another to be rolled again.
         if (pending === 'reroll')
             return setMarked((now) => (now.includes(i) ? now.filter((m) => m !== i) : [...now, i]));
@@ -315,8 +353,11 @@ const Board = ({ word, seed, day }) => {
     };
     const onAbility = (a) => {
         setMarked([]);
+        const next = a.target ? null : play(game, a.id, picked);
+        // The card is heard, unless it throws dice: then the throw is the sound.
+        if (a.target || (next && next.throws === game.throws)) playSound(CARD_SOUNDS);
         if (a.target) setPending(pending === a.id ? null : a.id);
-        else move(play(game, a.id, picked));
+        else move(next);
     };
     const onGuess = (e) => {
         e.preventDefault();
@@ -331,7 +372,13 @@ const Board = ({ word, seed, day }) => {
     return html`<div class="wordaga">
         <p class="wordaga-stats">
             <span>${t('games.cycle-n', 'cycle {n}', { n: game.cycle })}</span>
-            <span>${t('games.apostrophes-n', 'apostrophes: {n}', { n: game.apostrophes })}</span>
+            <span
+                class="wordaga-money"
+                role="img"
+                aria-label=${t('games.money-n', 'money: {n}', { n: game.apostrophes })}
+            >
+                <${Icons.money} /> ${game.apostrophes}
+            </span>
             <button
                 type="button"
                 class="wordaga-sound"
@@ -356,6 +403,20 @@ const Board = ({ word, seed, day }) => {
                     : html`<span key=${i} class="wordaga-slot">${letter ?? ''}</span>`,
             )}
         </p>
+        <div class="wordaga-letters">
+            ${[...LETTERS].map(
+                (letter) =>
+                    html`<button
+                        key=${letter}
+                        type="button"
+                        class=${`wordaga-letter ${game.known[letter] ?? ''}`.trim()}
+                        disabled=${!open.includes(letter)}
+                        onClick=${() => move(play(game, pending, picked, letter))}
+                    >
+                        ${letter}
+                    </button>`,
+            )}
+        </div>
         <p class="wordaga-last" role="status">${lastWords(game.last)}</p>
         ${
             game.won
@@ -435,35 +496,43 @@ const Board = ({ word, seed, day }) => {
                           </p>`
                       }
                       <div class="wordaga-abilities">
-                          ${ABILITIES.filter((a) => game.count >= (a.min ?? 0)).map((a) => {
+                          ${ABILITIES.map((a) => {
                               const [name, needs] = ABILITY_WORDS[a.id]();
+                              const price = priceOf(game, a.id);
                               return html`<button
                                   key=${a.id}
                                   type="button"
-                                  class=${pending === a.id ? 'wordaga-ability picked' : 'wordaga-ability'}
+                                  class=${[
+                                      'wordaga-ability',
+                                      isWide(a.id) && 'wide',
+                                      pending === a.id && 'picked',
+                                  ]
+                                      .filter(Boolean)
+                                      .join(' ')}
                                   disabled=${!can(game, a.id, picked)}
                                   onClick=${() => onAbility(a)}
                               >
+                                  ${
+                                      price > 0 &&
+                                      html`<span
+                                          class=${
+                                              game.apostrophes >= price
+                                                  ? 'wordaga-price lit'
+                                                  : 'wordaga-price'
+                                          }
+                                          role="img"
+                                          aria-label=${t('games.costs-n', 'costs {n}', { n: price })}
+                                      >
+                                          <${Icons.money} /> ${price}
+                                      </span>`
+                                  }
+                                  <${Wants} id=${a.id} />
                                   <strong>${name}</strong>
                                   <small>${needs}</small>
                               </button>`;
                           })}
                       </div>`
         }
-        <div class="wordaga-letters">
-            ${[...LETTERS].map(
-                (letter) =>
-                    html`<button
-                        key=${letter}
-                        type="button"
-                        class=${`wordaga-letter ${game.known[letter] ?? ''}`.trim()}
-                        disabled=${!open.includes(letter)}
-                        onClick=${() => move(play(game, pending, picked, letter))}
-                    >
-                        ${letter}
-                    </button>`,
-            )}
-        </div>
         ${
             game.misses.length > 0 &&
             html`<p class="wordaga-note">

@@ -177,6 +177,7 @@ import {
     ThumbsUp,
     ThumbsDown,
     Playlist,
+    MoneyWavy,
 } from '@phosphor-icons/react';
 
 export { IconContext } from '@phosphor-icons/react';
@@ -360,6 +361,8 @@ export const Icons = {
     // hrseGames™, and its first game (apps/games.js, 2026-11-13)
     games: Joystick,
     wordaga: TextAa,
+    // Wordaga's money: what dice pay and abilities cost.
+    money: MoneyWavy,
     // a node administrator's way to the account behind a persona hosted here (account.js, 2026-10-20)
     adminAccount: PoliceCar,
     // a QR code of a person or a post, to scan with another phone (qr.js, plans/QR.md)

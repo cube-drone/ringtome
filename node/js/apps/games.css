@@ -54,6 +54,7 @@
 
 .wordaga-word {
     display: flex;
+    justify-content: center;
     gap: 0.4rem;
     margin: 0;
 }
@@ -173,7 +174,8 @@
 .wordaga-abilities {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.4rem;
+    gap: 0.75rem 0.4rem;
+    grid-auto-flow: dense;
 }
 
 /* An ability: its name over what it asks for. Dim until the picked dice will pay for it. */
@@ -181,7 +183,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.1rem;
-    padding: 0.45rem 0.6rem;
+    padding: 0.45rem 0.4rem;
     font: inherit;
     font-size: 0.85rem;
     text-align: left;
@@ -189,6 +191,7 @@
     background: var(--surface);
     border: 1px solid var(--border-strong);
     cursor: pointer;
+    position: relative;
 }
 
 .wordaga-ability small {
@@ -201,14 +204,111 @@
     outline: 2px solid var(--teal);
 }
 
+/* A card that cannot be played dims its words and its edge, not its price: the badge says on
+   its own whether the money is there. */
 .wordaga-ability:disabled {
-    opacity: 0.45;
+    border-color: var(--border);
     cursor: default;
+}
+
+.wordaga-ability:disabled strong,
+.wordaga-ability:disabled small {
+    opacity: 0.45;
+}
+
+/* The dice a card takes: die-shaped holes, with faint pips where the number matters, and signs
+   between them. */
+.wordaga-wants {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+/* A hole is exactly a die: the size, the corners and the pips of the dice in the tray, so it
+   reads as the place one goes. Three and their signs fit half the board on a phone; on a
+   narrower one the holes give a little sooner than wrap. */
+.wordaga-hole {
+    display: grid;
+    grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+    flex: 0 1 2.8rem;
+    box-sizing: border-box;
+    min-width: 0;
+    aspect-ratio: 1;
+    padding: 0.32rem;
+    background: var(--surface-2);
+    border: 2px dashed var(--border-strong);
+    border-radius: 0.4rem;
+}
+
+.wordaga-hole-pip {
+    place-self: center;
+    width: 0.42rem;
+    height: 0.42rem;
+    background: var(--muted);
+    border-radius: 50%;
+    opacity: 0.6;
+}
+
+.wordaga-sign {
+    flex: none;
+    min-width: 0.45rem;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* A card whose dice are too many for half the board's width takes the whole of it. */
+.wordaga-ability.wide {
+    grid-column: 1 / -1;
+}
+
+.wordaga-ability:disabled .wordaga-wants {
+    opacity: 0.6;
+}
+
+/* What a card costs: a badge hung on its top right corner, a little outside it and over
+   whatever dice lie there. Lit once the money in hand covers it. */
+.wordaga-price {
+    position: absolute;
+    top: -0.55rem;
+    right: -0.3rem;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.1rem 0.45rem;
+    font-size: 0.95rem;
+    color: var(--muted);
+    background: var(--paper);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+}
+
+.wordaga-price.lit {
+    color: var(--on-accent);
+    background: var(--teal);
+    border-color: var(--teal);
+}
+
+/* A priced card with no dice on it: its name stays clear of the badge. */
+.wordaga-ability:has(.wordaga-price):not(:has(.wordaga-wants)) {
+    padding-right: 3rem;
+}
+
+.wordaga-money {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--ink);
+    font-size: 1.25rem;
 }
 
 .wordaga-letters {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 0.25rem;
 }
 

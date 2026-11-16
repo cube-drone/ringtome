@@ -126,14 +126,19 @@ describe("Wordaga's rules", () => {
         assert.deepEqual([...G.UNLIKELY].sort().join(''), 'bjkpqvwxyz');
     });
 
-    it('buys a die for a pair and four apostrophes, up to seven', () => {
-        const start = dealt('neon', [2, 2, 5, 6], { apostrophes: 4 });
-        assert.equal(G.can({ ...start, apostrophes: 3 }, 'buy-die', [0, 1]), false);
+    it('buys a die for a pair and money, each one more than the last, up to seven', () => {
+        const start = dealt('neon', [2, 2, 5, 6], { apostrophes: 2 });
+        assert.equal(G.priceOf(start, 'buy-die'), 2);
+        assert.equal(G.can({ ...start, apostrophes: 1 }, 'buy-die', [0, 1]), false);
         const g = G.play(start, 'buy-die', [0, 1]);
         assert.equal(g.count, 5);
         assert.equal(g.hand.length, 5);
         assert.equal(g.hand[4].spent, false);
         assert.equal(g.apostrophes, 0);
+        assert.equal(G.priceOf(g, 'buy-die'), 3);
+        assert.equal(G.priceOf(dealt('neon', [2, 2, 2, 2, 2, 2]), 'buy-die'), 4);
+        assert.equal(G.priceOf(start, 'consonant-pair'), G.PRICE);
+        assert.equal(G.priceOf(start, 'earn'), 0);
         const full = dealt('neon', [2, 2, 2, 2, 2, 2, 2], { apostrophes: 6 });
         assert.equal(G.can(full, 'buy-die', [0, 1]), false);
     });

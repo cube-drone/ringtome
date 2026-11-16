@@ -15,8 +15,9 @@ export const START_DICE = 4;
 export const MOST_DICE = 7;
 /// What a pair asks for on top of its dice to test a consonant, in apostrophes.
 export const PRICE = 6;
-/// What a pair asks for on top of its dice to buy another die.
-export const DIE_PRICE = 4;
+/// What a pair asks for on top of its dice to buy the first extra die. Each die after costs one
+/// more than the last: 2, then 3, then 4.
+export const FIRST_DIE_PRICE = 2;
 /// What testing a vowel costs with no dice at all: the one thing apostrophes buy by themselves.
 export const VOWEL_PRICE = 9;
 /// What a run asks for on top of its dice, to test a consonant.
@@ -100,23 +101,29 @@ const run = (pips) => {
 };
 const CONSONANTS = [...LETTERS].filter((l) => !isVowel(l)).join('');
 
-/// The abilities, in the order the page lists them. `dice` says whether the picked dice will do;
-/// `price` is in apostrophes; `target` is what the player must point at before the move is made:
+/// The abilities, in the order the page lists them: by how rare the dice they ask for are - any
+/// dice, a 1, a total of 7, a pair, a run of three, then three, four, five and six of a kind - with
+/// the one that asks for no dice last. `dice` says whether the picked dice will do;
+/// `price` is in apostrophes, a number or what the state makes it (read it with `priceOf`); `target` is what the player must point at before the move is made:
 /// 'dice' (any number of the others), or a letter out of `among`; `keeps` marks the ones that change the picked dice and do
-/// not spend them; `min` is how many dice a player must own before the page need list it.
+/// not spend them.
 export const ABILITIES = [
     { id: 'earn', dice: (p) => p.length >= 1 },
     { id: 'reroll', dice: (p) => p.length === 1, target: 'dice' },
     { id: 'rule-out', dice: (p) => p.length === 1 && p[0] === 1 },
     { id: 'seven', dice: (p) => p.length > 1 && sum(p) === 7, price: SEVEN, keeps: true },
     { id: 'unlikely', dice: kind(2), target: 'letter', among: UNLIKELY },
-    { id: 'buy-die', dice: kind(2), price: DIE_PRICE },
-    { id: 'consonant-run', dice: run, price: RUN_PRICE, target: 'letter', among: CONSONANTS },
+    {
+        id: 'buy-die',
+        dice: kind(2),
+        price: (state) => FIRST_DIE_PRICE + Math.max(0, state.count - START_DICE),
+    },
     { id: 'consonant-pair', dice: kind(2), price: PRICE, target: 'letter', among: CONSONANTS },
-    { id: 'reveal-one', dice: kind(4) },
-    { id: 'reveal-three', dice: kind(5), min: 5 },
-    { id: 'win', dice: kind(6), min: 6 },
+    { id: 'consonant-run', dice: run, price: RUN_PRICE, target: 'letter', among: CONSONANTS },
     { id: 'test-vowel', dice: kind(3), target: 'letter', among: VOWELS },
+    { id: 'reveal-one', dice: kind(4) },
+    { id: 'reveal-three', dice: kind(5) },
+    { id: 'win', dice: kind(6) },
     {
         id: 'vowel-paid',
         dice: (p) => p.length === 0,
@@ -126,6 +133,13 @@ export const ABILITIES = [
     },
 ];
 const ability = (id) => ABILITIES.find((a) => a.id === id);
+
+/// What `id` costs as the game stands, in apostrophes: 0 for an ability that is free. Only a die's
+/// price moves.
+export function priceOf(state, id) {
+    const price = ability(id)?.price ?? 0;
+    return typeof price === 'function' ? price(state) : price;
+}
 
 /// What a die earns when cashed: one apostrophe for a 1 or 2, two for a 3 or 4, three for a 5 or 6.
 export const earns = (pips) => Math.ceil(pips / 2);
@@ -145,7 +159,7 @@ export function can(state, id, picked) {
     if (new Set(picked).size !== picked.length) return false;
     if (picked.some((i) => !state.hand[i] || state.hand[i].spent)) return false;
     if (!a.dice(picked.map((i) => state.hand[i].pips))) return false;
-    if ((a.price ?? 0) > state.apostrophes) return false;
+    if (priceOf(state, id) > state.apostrophes) return false;
     if (a.target === 'letter' && targets(state, id).length === 0) return false;
     switch (id) {
         case 'reroll':
@@ -174,7 +188,7 @@ export function play(state, id, picked, target) {
         hand: state.hand.map((d, i) =>
             picked.includes(i) && !a.keeps ? { ...d, spent: true } : d,
         ),
-        apostrophes: state.apostrophes - (a.price ?? 0),
+        apostrophes: state.apostrophes - priceOf(state, id),
         known: { ...state.known },
         last: { ability: id },
     };

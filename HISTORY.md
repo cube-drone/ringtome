@@ -27815,3 +27815,49 @@ context made on an untouched page, a `dice-throw` started on a dealt hand, a
 `die-throw` on a one-die reroll, nothing with sound off, and nothing about audio
 in the console. Not heard by ear, and not tried in Safari, the desktop app or a
 phone - so the MP3 path has never run.
+
+Later the same day, two more from the same pack: a die picked or marked plays
+one of two `dice-grab` sounds (a die put back is silent), and pressing an
+ability plays one of four `card-place` sounds. An ability that also throws
+dice - sevens, a bought die - is heard as the throw alone. Same gates; not heard
+by ear.
+
+And the board's order (2026-11-16): the alphabet sits right under the word,
+above the dice and the abilities, where it used to fall below the fold on a
+phone; the word and the alphabet are centred.
+
+And money for apostrophes (2026-11-16): the word "apostrophes" is off the page,
+its place taken by the wavy banknote icon - beside the count on the top line,
+and in a badge in the top right corner of every card that costs something. The
+badge lights (teal) once the money in hand covers the price, whether or not the
+dice are right; a card that cannot be played dims its words, not its badge. The
+needs line no longer repeats the price. The rules still call the field
+`apostrophes`, since kept games do.
+
+The cards are listed by how rare their dice are (Curtis, 2026-11-16): any dice,
+a 1, a total of 7, the pairs, the run of three, then three, four, five and six
+of a kind, and the vowel bought with no dice last. Three of a kind used to sit
+after six.
+
+Each card that takes dice shows them (Curtis, 2026-11-16): die-shaped holes
+under the card's name - one hole for any die, a hole with a faint pip for the 1,
+two holes with `+` and `= 7`, holes joined by `=` for a pair and for three to
+six of a kind, and holes of two, three and four pips for the run. For the eye
+only; the words under it still say it. Then above the name, and exactly the size
+of the dice in the tray, so a hole reads as where a die goes. Three fit across
+half the board once the price badge is out of the row: it hangs on the card's
+top right corner, a little outside it, over the dice if need be. Only four of a
+kind and up take the board's whole width.
+
+Five and six of a kind are listed from the start (Curtis, 2026-11-16), not only
+once that many dice are owned: the cards show what more dice are for.
+
+A die's price climbs (Curtis, 2026-11-16): the first extra die costs a pair and
+2, the next 3, the last 4 - it was 4 each - so that buying dice is worth
+weighing, most of all on a long word. `priceOf(state, id)` is what an ability
+costs as the game stands; the page's badge reads it. Simulated as before (6,480
+games, greedy play by someone who knows the word list), mean cycles to win: no
+dice bought 5.52, one 5.25 (it was 5.46 at the old price), two 5.29, three 5.38
+(was 5.60); three dice and a chase for six of a kind 5.58, landing it in 4.5% of
+games. The word list is three to five letters (81, 433, 781, and a single six),
+and the gain from a die is about the same at each length.
