@@ -84,6 +84,10 @@ const useLedgerState = () => {
     return s;
 };
 
+/// The persona open in this tab, or null: for a component drawn where none is handed down (a card
+/// in the words).
+export const useTabRoot = () => useLedgerState().root || null;
+
 /// The ledger's state for this persona - another persona's answer, or none yet, reads as nothing.
 export const useLedger = (root) => {
     const s = useLedgerState();

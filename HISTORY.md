@@ -27959,3 +27959,66 @@ and if there are earlier records, the page shows a rule, a "history" heading and
 every earlier day's victory panel under the pick-up button, newest first: the
 same panel as today's, with the date (year included) in place of the confetti
 and its heading one level lower. Before today's game is won, none of it shows.
+
+## Wordaga's streaks (2026-11-17)
+
+A day won straight after another is on a streak - its length the days won
+without a gap before it - and its prize is multiplied by 1 + 0.1 per day
+(`wordaga_streak`, `wordaga_pays` in `bank.rs`; twins `wordagaStreak`,
+`wordagaPays` in `pure/wordaga.js`). The bank line's detail carries `streak`,
+and the bank page says it ("won Wordaga in 7 attempts, on a 3 day streak (x
+1.3)"). The victory panel shows an "N day streak!" badge under its heading, and
+the earnings line shows the sum: "You earned H$ 975.00: H$ 750.00 x 1.3 streak
+bonus".
+
+- Only a day recorded in time (on its day or the day after) counts toward a
+  streak, the same rule as being paid. `wordagaRecords` now carries `timely`,
+  and a history panel for a day recorded late no longer claims earnings.
+- A line is priced once, when the bank first reads the record: days banked
+  before this change keep what they paid.
+
+Unit tests in Rust and JS for the 11-12-14-15-16-17 example and the multiplier;
+an acceptance claim in `bank.cjs` (yesterday then today pays today x 1.1).
+
+## Wordaga scores can be shared (2026-11-17)
+
+Today's victory panel ends in a "share" button, which publishes the score to the
+persona's public feed; once shared it stays, disabled: "Shared!". No sealing to
+a person or group yet - public only.
+
+- **What a games post is**: an ordinary Marquee post whose whole body is one
+  container directive, `:::wordaga day= attempts= streak= earned= length=`, with
+  a line of plain words inside for anything that draws no card (RSS, a crawler,
+  a search excerpt). So it is in the author's feed and their followers', takes
+  replies, exports and is searched like any post, with no Rust change. It is not
+  a new wire `Format`: ONE_PUBLISH's "a new kind, worked" lists the fifteen-odd
+  places that would touch, and nothing asked here needs them. A first-class kind
+  (filtering the feed by it) would be that recipe.
+- **What it carries**: the attempts, the streak, the earnings (none where the
+  bank is gone) and the word's LENGTH, drawn as blanks - never the word or the
+  guesses. `wordagaShareSource` / `wordagaShared` in `pure/wordaga.js`, with
+  vectors.
+- **The card** (`doc/wordagacard.js`, hooked in `usercard.js`'s directive hook):
+  the victory panel - "Wordaga, <date>", "Got it in 7 attempts!", the streak
+  badge, "Earned ...", the blanks. For a reader who has not won today's game, on
+  a score that is today's, an "Ok, My Turn" button to today's Wordaga. Which
+  days a persona has won is read once per tab from the `wordaga` register, and
+  the game's page tells it of a win as it happens.
+- **Shared once**: a private register of its own, `wordaga-shares` (day -> post
+  id), written after the publish. Not a field on the day's record: rewriting
+  that would restamp it, and the bank and the streak read the stamp. Kept by the
+  page only - a hand-written post can carry the directive too, as it can carry
+  any words.
+- The button needs the `social` unlock, as public posting does.
+- **Tagged `gaming` and `wordaga`**: put on the draft before the publish, which
+  restates a draft's tags on the post. The tags are how games posts are found,
+  since the format is an ordinary one. The bank's two tagging contracts ("Tag a
+  private note", "Tag a public post") do not count them: the game put those tags
+  on, the person did not (`tagged_by_hand` in `bank.rs`: a document wearing
+  `wordaga` is passed over, hand-tagged or not).
+- `unlocks.js` gains `useTabRoot`, for a component drawn where no persona is
+  handed down.
+
+Checked in headless Chrome on a scratch node: won, shared, "Shared!" after a
+reload, the card in the feed with its reply link; a second persona opening the
+post saw "Ok, My Turn" and landed on a fresh board.

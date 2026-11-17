@@ -238,9 +238,22 @@ const RowWords = ({ row, current }) => {
             const score = many ? 0 : Number((row.lines[0].detail || {}).score) || 0;
             if (many)
                 return t('apps.bank.n-wordaga', 'won Wordaga {count} times', { count: row.count });
-            return score === 1
-                ? t('apps.bank.wordaga-in-one', 'won Wordaga in one attempt')
-                : t('apps.bank.wordaga-in-n', 'won Wordaga in {n} attempts', { n: score });
+            const won =
+                score === 1
+                    ? t('apps.bank.wordaga-in-one', 'won Wordaga in one attempt')
+                    : t('apps.bank.wordaga-in-n', 'won Wordaga in {n} attempts', { n: score });
+            // On a streak, the line says so: that is why it paid more than its attempts do.
+            const streak = Number((row.lines[0].detail || {}).streak) || 0;
+            return streak > 0
+                ? t('apps.bank.wordaga-streak', '{won}, on a {n} day streak (× {times})', {
+                      won,
+                      n: streak,
+                      times: ((10 + streak) / 10).toLocaleString(undefined, {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                      }),
+                  })
+                : won;
         }
         case 'unlock':
             return html`${t('apps.bank.unlocked', 'unlocked')} ${namesOf(row, unlockName)}`;

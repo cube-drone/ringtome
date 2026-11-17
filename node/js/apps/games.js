@@ -10,14 +10,21 @@ import { gamesHref } from '../links.js';
 import { t } from '../i18n.js';
 import { playSound, preloadSounds, setSoundOn, useSoundOn } from '../sound.js';
 import { api } from '../net.js';
-import { useAbolished } from '../unlocks.js';
+import { toast } from '../toasts.js';
+import { useAbolished, useUnlocked } from '../unlocks.js';
+import { publishTo } from '../doc/publish.js';
+import { noteWordagaWon, streakTimes, wordagaDate } from '../doc/wordagacard.js';
+import { FEED_STYLE } from '../pure/feed.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import {
     wordOfDay,
     wordagaDay,
+    wordagaPays,
     wordagaPrize,
     wordagaRecord,
+    wordagaStreak,
     wordagaRecords,
+    wordagaShareSource,
     untilNextWord,
 } from '../pure/wordaga.js';
 import {
@@ -427,12 +434,107 @@ const keepGame = (day, game) => {
     }
 };
 
+/// The private register that remembers which days' scores were shared: the day's number -> the
+/// post. Its own register, not a field of the day's record: writing that again would stamp it
+/// anew, and the bank reads the stamp (bank.rs `wordaga_won`).
+const SHARES = 'wordaga-shares';
+/// What every shared score is tagged, and so how the feed finds games posts.
+const SHARE_TAGS = ['gaming', 'wordaga'];
+
+/// "share": today's score, published to this persona's public feed as a post like any other -
+/// followers see it, anyone may reply. What goes is the score's card (doc/wordagacard.js): the
+/// attempts, the streak, the earnings and the word's length, never the word or the guesses.
+/// Once shared the button stays, spent: "Shared!". Public posting is an unlock (`social`); a
+/// persona without it has no button.
+const Share = ({ root, day, score, streak, earned, length }) => {
+    const social = useUnlocked(root, 'social');
+    // null until the register has been read: a score is not offered twice on a guess.
+    const [shared, setShared] = useState(null);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        setShared(null);
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/private/kv/${SHARES}`)
+            .then((r) => live && setShared((r.values || []).some((v) => Number(v.key) === day)))
+            .catch(() => {
+                /* unread: the button stays shut this visit */
+            });
+        return () => {
+            live = false;
+        };
+    }, [root, day]);
+    if (!root || !social) return null;
+    const onShare = async () => {
+        setBusy(true);
+        try {
+            const won =
+                score === 1
+                    ? t('games.share-in-one', 'Wordaga: got it in one attempt.')
+                    : t('games.share-in-n', 'Wordaga: got it in {n} attempts.', { n: score });
+            const line =
+                streak > 0
+                    ? t('games.share-streak', '{won} {n} day streak!', { won, n: streak })
+                    : won;
+            const made = await api(`/api/identity/${root}/docs`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    title: '',
+                    body: wordagaShareSource(
+                        { day, attempts: score, streak, earned, length },
+                        line,
+                    ),
+                    format: 'marquee',
+                }),
+            });
+            await api(
+                `/api/identity/${root}/docs/${made.doc_id}/buckets/${encodeURIComponent(FEED_STYLE)}`,
+                { method: 'PUT' },
+            );
+            // Tagged before it goes out: publishing restates the draft's tags on the post, and the
+            // tags are how a games post is found, since it is an ordinary post by format.
+            for (const tag of SHARE_TAGS) {
+                await api(
+                    `/api/identity/${root}/docs/${made.doc_id}/annotations/tags/${encodeURIComponent(tag)}`,
+                    { method: 'PUT' },
+                );
+            }
+            // One publish (doc/publish.js), as the draft stands: public, open to replies.
+            const posted = await publishTo(root, made.doc_id, { words: true }, { choice: null });
+            setShared(true);
+            // Remembered after it is out: a post nobody remembers can be shared twice, which is
+            // better than a day marked shared that never was.
+            await api(`/api/identity/${root}/private/kv/${SHARES}/${day}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: JSON.stringify({ post_id: posted.post_id }) }),
+            }).catch(() => {});
+        } catch (e) {
+            toast(
+                t('games.couldnt-share', "couldn't share it: {message}", { message: e.message }),
+                { kind: 'error' },
+            );
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<button
+        class="wordaga-go wordaga-share"
+        type="button"
+        disabled=${shared !== false || busy}
+        onClick=${onShare}
+    >
+        ${shared ? t('games.shared', 'Shared!') : t('games.share', 'share')}
+    </button>`;
+};
+
 /// A game that is over: "You got it in 3 attempts!" as its heading, what the day's game earned
 /// under that in small print, then the wrong guesses and the word. Nothing to play with is left on
 /// it. `paid` is whether this was the day's game; what it earned is not said where the bank is
 /// gone (unlocks.js `COMMUNISM`) - there are no HorseBucks to speak of.
-const Won = ({ word, misses, score, paid, date }) => {
+const Won = ({ word, misses, score, paid, date, streak = 0, share }) => {
     const abolished = useAbolished();
+    const times = streakTimes(streak);
+    const earns = paid && !abolished;
     // In the history (a `date`): the day it was in place of the confetti, one heading lower.
     return html`<div class="wordaga-victory"><div class="wordaga wordaga-victory-in">
         ${
@@ -450,12 +552,29 @@ const Won = ({ word, misses, score, paid, date }) => {
             }
         <//>
         ${
-            paid &&
-            !abolished &&
+            streak > 0 &&
+            html`<p class="wordaga-streak">
+                ${t('games.n-day-streak', '{n} day streak!', { n: streak })}
+            </p>`
+        }
+        ${
+            earns &&
             html`<p class="wordaga-earned">
-                ${t('games.you-earned', 'You earned {amount}', {
-                    amount: formatHorseBucks(wordagaPrize(score) * 100),
-                })}
+                ${
+                    streak > 0
+                        ? t(
+                              'games.you-earned-streak',
+                              'You earned {amount}: {prize} × {times} streak bonus',
+                              {
+                                  amount: formatHorseBucks(wordagaPays(score, streak)),
+                                  prize: formatHorseBucks(wordagaPrize(score) * 100),
+                                  times,
+                              },
+                          )
+                        : t('games.you-earned', 'You earned {amount}', {
+                              amount: formatHorseBucks(wordagaPrize(score) * 100),
+                          })
+                }
             </p>`
         }
         ${
@@ -467,6 +586,17 @@ const Won = ({ word, misses, score, paid, date }) => {
         <p class="wordaga-word" aria-label=${t('games.the-word', 'the word')}>
             ${[...word].map((letter, i) => html`<span key=${i} class="wordaga-slot">${letter}</span>`)}
         </p>
+        ${
+            share &&
+            html`<${Share}
+                root=${share.root}
+                day=${share.day}
+                score=${score}
+                streak=${streak}
+                earned=${earns ? wordagaPays(score, streak) : 0}
+                length=${word.length}
+            />`
+        }
     </div></div>`;
 };
 
@@ -474,7 +604,7 @@ const Won = ({ word, misses, score, paid, date }) => {
 /// none and lives for the page. `onWon(day, game)` hears of the day's game being won - at the
 /// winning move, and again whenever a won game is drawn, so a record that failed to be written
 /// gets another go.
-const Board = ({ word, seed, day, onWon }) => {
+const Board = ({ word, seed, day, onWon, streak, root }) => {
     // A game picked up from storage lies as it was left: only throws after `quiet` tumble.
     const [start] = useState(() => {
         const kept = day !== undefined && keptGame(day, word);
@@ -564,6 +694,8 @@ const Board = ({ word, seed, day, onWon }) => {
             misses=${game.misses}
             score=${game.cycle}
             paid=${day !== undefined}
+            streak=${day !== undefined ? streak : 0}
+            share=${day !== undefined && root ? { root, day } : null}
         />`;
     const owed = game.reveals ?? 0;
     // What to do next, where a move is half made: a card waiting to be pointed at something, or
@@ -721,23 +853,16 @@ const RECORDS = 'wordaga';
 
 /// A day's game already won - on another computer, or before this browser forgot it: the word,
 /// the guesses that missed, and how it went.
-const Finished = ({ record, date }) =>
+const Finished = ({ record, date, paid = true, streak, share }) =>
     html`<${Won}
         word=${record.word}
         misses=${record.guesses.filter((g) => g !== record.word)}
         score=${record.score}
-        paid=${true}
+        paid=${paid}
+        streak=${streak}
         date=${date}
+        share=${share}
     />`;
-
-/// The date a day's number names, as this reader's machine writes dates.
-const dateOf = (day) =>
-    new Date(day * 86_400_000).toLocaleDateString(undefined, {
-        timeZone: 'UTC',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-    });
 
 /// Wordaga: the day's game, the same word and the same dice for everyone, and for now a pick-up
 /// game beside it - any word, any dice, counted nowhere - to try the rules on. A day's game, once
@@ -776,12 +901,18 @@ export const Wordaga = ({ current }) => {
         })
             .then(() =>
                 setRecords((now) =>
-                    [{ day: won.day, ...record }, ...(now || [])].sort((a, b) => b.day - a.day),
+                    [{ day: won.day, ...record, timely: true }, ...(now || [])].sort(
+                        (a, b) => b.day - a.day,
+                    ),
                 ),
             )
             .catch(() => writing.current.delete(won.day));
     }, [root, records, won]);
-    const onWon = (wonDay, game) => setWon({ day: wonDay, game });
+    const onWon = (wonDay, game) => {
+        setWon({ day: wonDay, game });
+        // Score cards in the feed stop offering this persona its turn (doc/wordagacard.js).
+        noteWordagaWon(root, wonDay);
+    };
 
     const word = wordOfDay(Date.now());
     const today = records && records.find((r) => r.day === day);
@@ -789,6 +920,8 @@ export const Wordaga = ({ current }) => {
     const elsewhere = today && !keptGame(day, word) ? today : null;
     // The history: every earlier day's game, newest first, shown once today's is done - until
     // then the page is today's game and nothing else.
+    // The streak today's game is on: the days won straight before it.
+    const streak = wordagaStreak(records, day);
     const done = !!today || (!!won && won.day === day);
     const past = done ? (records || []).filter((r) => r.day !== day) : [];
     const deal = () =>
@@ -804,13 +937,19 @@ export const Wordaga = ({ current }) => {
             pickup
                 ? html`<${Board} key=${`pickup-${pickup.seed}`} word=${pickup.word} seed=${pickup.seed} />`
                 : elsewhere
-                  ? html`<${Finished} record=${elsewhere} />`
+                  ? html`<${Finished}
+                        record=${elsewhere}
+                        streak=${streak}
+                        share=${root ? { root, day } : null}
+                    />`
                   : html`<${Board}
                         key=${`day-${day}`}
                         word=${word}
                         seed=${day}
                         day=${day}
                         onWon=${onWon}
+                        streak=${streak}
+                        root=${root}
                     />`
         }
         <p class="wordaga-note">
@@ -840,7 +979,16 @@ export const Wordaga = ({ current }) => {
             html`<hr class="wordaga-rule" />
                 <h2 class="wordaga-history-title">${t('games.history', 'history')}</h2>
                 <div class="wordaga-history">
-                    ${past.map((r) => html`<${Finished} key=${r.day} record=${r} date=${dateOf(r.day)} />`)}
+                    ${past.map(
+                        (r) =>
+                            html`<${Finished}
+                                key=${r.day}
+                                record=${r}
+                                date=${wordagaDate(r.day)}
+                                paid=${r.timely}
+                                streak=${wordagaStreak(records, r.day)}
+                            />`,
+                    )}
                 </div>`
         }
     </div>`;

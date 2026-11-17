@@ -1305,6 +1305,31 @@ describe("HorseBucks: Wordaga's prize", function () {
         const kv = await (await wes(`api/identity/${root}/private/kv/wordaga`)).json();
         assert.equal((kv.values || []).length, 3, 'the records themselves are all kept');
     });
+
+    it('pays a tenth more for each day of a streak (2026-11-17)', async () => {
+        const sal = await makeUserFetch({ prefix: 'wordsal' });
+        const root = (await (await sal('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const record = (day, value) =>
+            sal(`api/identity/${root}/private/kv/wordaga/${day}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: JSON.stringify(value) }),
+            });
+        const today = Math.floor((Date.now() + 3_600_000) / 86_400_000);
+        // Yesterday's game, recorded the day after, still counts; the day before that is too late
+        // to, so the streak is one day long.
+        await record(today - 2, { word: 'hull', score: 7, guesses: ['hull'] });
+        await record(today - 1, { word: 'half', score: 7, guesses: ['half'] });
+        await record(today, { word: 'neon', score: 7, guesses: ['neon'] });
+        const bank = await (await sal(`api/identity/${root}/bank`)).json();
+        const lines = bank.lines
+            .filter((l) => l.kind === 'wordaga')
+            .map((l) => [l.source, l.pennies, l.detail.streak])
+            .sort();
+        assert.deepEqual(lines, [
+            [String(today - 1), '75000', 0],
+            [String(today), '82500', 1],
+        ]);
+    });
 });
 
 describe('HorseBucks: Automated Luxury Horse Communism', function () {

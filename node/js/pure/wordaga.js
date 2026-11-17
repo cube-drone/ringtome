@@ -81,6 +81,62 @@ export function wordagaPrize(attempts) {
     return 100;
 }
 
+/// How long a streak a day is on: the days won straight before it, without a gap - so the day
+/// after one won day is on a one-day streak. `records` are `wordagaRecords`; only a day recorded
+/// in time counts (bank.rs `wordaga_streak` is its twin, and pays by it).
+export function wordagaStreak(records, day) {
+    const won = new Set((records || []).filter((r) => r.timely).map((r) => r.day));
+    let streak = 0;
+    while (won.has(day - 1 - streak)) streak += 1;
+    return streak;
+}
+
+/// What a day won pays, in horsepennies: the prize for its attempts, times 1 + a tenth per day of
+/// its streak (bank.rs `wordaga_pays`).
+export function wordagaPays(attempts, streak) {
+    return wordagaPrize(attempts) * 10 * (10 + (streak || 0));
+}
+
+// ---- a score, shared (Curtis, 2026-11-17) ----
+//
+// A day's score goes to the feed as an ordinary Marquee post whose whole body is one container
+// directive: the numbers as its attributes, and inside it a line of plain words for anything that
+// draws no card (RSS, a crawler, a search excerpt). It carries the attempts, the streak, what was
+// earned and how LONG the word is - never the word or the guesses, which would spoil the day.
+
+export const WORDAGA_DIRECTIVE = 'wordaga';
+
+/// The post's source for one score. `earned` is horsepennies, 0 where nothing was (the bank
+/// gone); `line` is the plain words, kept to one line and clear of the fence.
+export function wordagaShareSource({ day, attempts, streak, earned, length }, line) {
+    const words = String(line || '')
+        .replace(/:::/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return [
+        `:::${WORDAGA_DIRECTIVE} day=${day} attempts=${attempts} streak=${streak} earned=${earned} length=${length}`,
+        words,
+        ':::',
+    ].join('\n');
+}
+
+/// The score a card's attributes carry, or null if they are not one: whole numbers, in range.
+/// A post is anyone's to write, so nothing here is trusted further than being drawable.
+export function wordagaShared(attrs) {
+    const whole = (value, least, most) => {
+        const n = Number(value);
+        return /^\d{1,9}$/.test(String(value ?? '')) && n >= least && n <= most ? n : null;
+    };
+    const score = {
+        day: whole(attrs?.day, 1, 999_999),
+        attempts: whole(attrs?.attempts, 1, 9_999),
+        streak: whole(attrs?.streak ?? 0, 0, 99_999),
+        earned: whole(attrs?.earned ?? 0, 0, 999_999_999),
+        length: whole(attrs?.length, 1, 12),
+    };
+    return Object.values(score).includes(null) ? null : score;
+}
+
 /// The most guesses a record carries: it is one entry on a chain, and an entry has a size.
 const MOST_GUESSES = 200;
 
@@ -94,9 +150,11 @@ export function wordagaRecord(game) {
 
 /// The records as the private chain gives them (`values` of the `wordaga` register: the day's
 /// number -> the record as JSON), newest day first, passing over anything that is not one.
+/// `timely` is whether it was recorded on the day it names or the day after: the bank pays only
+/// those, and only those make a streak (bank.rs `wordaga_won`).
 export function wordagaRecords(values) {
     const out = [];
-    for (const { key, value } of values || []) {
+    for (const { key, value, updated_at_ms: at } of values || []) {
         const day = Number(key);
         let record;
         try {
@@ -110,6 +168,7 @@ export function wordagaRecords(values) {
             word: typeof record.word === 'string' ? record.word : '',
             score: record.score,
             guesses: Array.isArray(record.guesses) ? record.guesses.map(String) : [],
+            timely: Number.isFinite(at) && [day, day + 1].includes(wordagaDay(at)),
         });
     }
     return out.sort((a, b) => b.day - a.day);

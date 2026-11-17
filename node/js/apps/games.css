@@ -143,8 +143,34 @@
     text-align: center;
 }
 
+/* Under a finished day's word: share its score. Spent, it stays, dimmed. A score card in the feed
+   offers the reader their turn the same way. */
+.wordaga-share,
+.wordaga-turn {
+    margin-top: 0.3rem;
+    text-decoration: none;
+}
+
+/* A score card in a post's words: the panel, no wider than a game's page. */
+.wordaga-card {
+    max-width: 26rem;
+    margin: 0.4rem auto;
+}
+
+/* The streak a win is on: a solid badge under the heading. */
+.wordaga-streak {
+    margin: -0.2rem 0 0;
+    padding: 0.2rem 0.8rem;
+    color: var(--on-accent);
+    background: var(--teal);
+    font-size: 1.05rem;
+    font-weight: 700;
+    --j: 4px;
+    clip-path: var(--jag-1);
+}
+
 .wordaga-earned {
-    margin: -0.5rem 0 0;
+    margin: -0.4rem 0 0;
     color: var(--muted);
     font-size: 0.85rem;
     text-align: center;

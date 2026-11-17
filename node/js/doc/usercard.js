@@ -18,6 +18,8 @@ import { parseIdReference, parseSpeakable, speakable } from '../speakable.js';
 import { identiconUri } from '../pure/identicon.js';
 import { personaHue, displayNames } from '../pure/person.js';
 import { CARD_DIRECTIVE } from '../pure/mentions.js';
+import { WORDAGA_DIRECTIVE } from '../pure/wordaga.js';
+import { wordagaDirective } from './wordagacard.js';
 import { personLink, slugOf } from '../links.js';
 import { parseRingtome } from '../pure/ringtome.js';
 
@@ -78,6 +80,8 @@ export const marqueeHooks = {
         return html`<${roomCard} target=${target} />`;
     },
     directive: (name, attrs) => {
+        // A Wordaga score (wordagacard.js); one that does not read as a score shows its words.
+        if (name === WORDAGA_DIRECTIVE) return wordagaDirective(attrs);
         if (name !== CARD_DIRECTIVE) return null;
         const root = cardRoot(attrs);
         if (!root) return html`<div class="user-card jag-line user-card-bad">${nobody()}</div>`;

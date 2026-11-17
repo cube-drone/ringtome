@@ -88,6 +88,10 @@ const GIFTS_KV: &str = "gifts";
 // is the page's word for it, as a gift's amount is: HorseBucks are play money, and what is kept
 // honest here is only that a day pays once, and only when it was recorded on the day it names
 // (or the day after, for a game won at the turn) - so no one fills in the days before they came.
+//
+// Streaks (Curtis, 2026-11-17): a day won straight after another is on a streak - one day long if
+// the day before it was won, two if the two before were - and its prize is multiplied by
+// 1 + a tenth per day of the streak. Only days recorded in time count toward one, as only they pay.
 
 /// The private register a persona's finished games of Wordaga are recorded in.
 const WORDAGA_KV: &str = "wordaga";
@@ -119,6 +123,23 @@ fn wordaga_prize(attempts: u64) -> i64 {
         _ => 100,
     }
 }
+
+/// How long a streak a day is on: the days won straight before it, without a gap. `won` is every
+/// day recorded in time (js/pure/wordaga.js `wordagaStreak` is its twin).
+fn wordaga_streak(won: &std::collections::BTreeSet<i64>, day: i64) -> i64 {
+    let mut streak = 0;
+    while won.contains(&(day - 1 - streak)) {
+        streak += 1;
+    }
+    streak
+}
+
+/// What a day won pays, in horsepennies: the prize for its attempts, times 1 + a tenth per day
+/// of its streak. Exact - a prize is whole H$, so a tenth of one is ten pennies.
+fn wordaga_pays(attempts: u64, streak: i64) -> i64 {
+    wordaga_prize(attempts) * (HORSEBUCK / 10) * (10 + streak)
+}
+
 /// What one press gives.
 const DEV_GIFT: i64 = 1_000_000 * HORSEBUCK;
 
@@ -548,6 +569,17 @@ fn chosen_tag(tag: &str) -> bool {
     !tag.is_empty()
         && !crate::annotations::is_emoji_tag(tag)
         && !crate::record::documents::IMPLICIT_TAGS.contains(&tag)
+}
+
+/// The tag every shared Wordaga score wears (`SHARE_TAGS` in js/apps/games.js).
+const WORDAGA_SHARE_TAG: &str = "wordaga";
+
+/// Did a person tag this document, as a tagging contract counts it? One chosen tag is enough,
+/// unless the document is a shared Wordaga score: the game tags those, the person did not. A score
+/// is known by its `wordaga` tag, which is there from before it is published - so a post somebody
+/// tagged "wordaga" by hand does not count either.
+fn tagged_by_hand<'a>(tags: impl Iterator<Item = &'a str> + Clone) -> bool {
+    !tags.clone().any(|t| t.trim() == WORDAGA_SHARE_TAG) && tags.into_iter().any(chosen_tag)
 }
 
 /// Has one of this persona's private notes a link to another? The search index's stored links
@@ -1571,7 +1603,7 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
     }
     if !done.contains_key("tag-a-private-note") {
         let rows = data.annotations().all().await.map_err(|e| anyhow::anyhow!("{e}"))?;
-        if rows.iter().any(|r| r.tags.iter().any(|t| chosen_tag(t))) {
+        if rows.iter().any(|r| tagged_by_hand(r.tags.iter().map(String::as_str))) {
             complete_contract(state, data, root_hex, "tag-a-private-note", &mut done).await?;
         }
     }
@@ -1579,7 +1611,12 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         let said_tags = crate::record::imaol::public_annotations(data.db())
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
-        if said_tags.iter().any(|a| a.present && a.key == "tag" && chosen_tag(&a.value)) {
+        // A post at a time: what counts is all of one post's tags together.
+        let mut by_post: BTreeMap<(&str, [u8; 16]), Vec<&str>> = BTreeMap::new();
+        for a in said_tags.iter().filter(|a| a.present && a.key == "tag") {
+            by_post.entry((a.target_author.as_str(), a.target_doc)).or_default().push(&a.value);
+        }
+        if by_post.values().any(|tags| tagged_by_hand(tags.iter().copied())) {
             complete_contract(state, data, root_hex, "tag-a-public-post", &mut done).await?;
         }
     }
@@ -1643,15 +1680,20 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
 
-    // Wordaga: a day won pays its prize once, at the moment the private chain recorded it.
-    for (day, at, score, word) in wordaga_won(data).await? {
+    // Wordaga: a day won pays its prize once, at the moment the private chain recorded it,
+    // multiplied by the streak it was on.
+    let won = wordaga_won(data).await?;
+    let days: std::collections::BTreeSet<i64> =
+        won.iter().filter_map(|(day, ..)| day.parse().ok()).collect();
+    for (day, at, score, word) in won {
         if is_new("wordaga", &day) {
+            let streak = day.parse().map(|d| wordaga_streak(&days, d)).unwrap_or(0);
             lines.push(Line {
                 kind: "wordaga",
                 source: day,
-                pennies: BigInt::from(wordaga_prize(score) * HORSEBUCK),
+                pennies: BigInt::from(wordaga_pays(score, streak)),
                 at_ms: at,
-                detail: json!({ "score": score, "word": word }),
+                detail: json!({ "score": score, "word": word, "streak": streak }),
             });
         }
     }
@@ -2380,6 +2422,16 @@ pub async fn bank_handler(
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_shared_wordaga_score_is_not_tagged_by_hand() {
+        assert!(tagged_by_hand(["spuds"].into_iter()));
+        assert!(tagged_by_hand(["micro", "gaming"].into_iter()));
+        // The game's own tags, and the length the post says of itself.
+        assert!(!tagged_by_hand(["gaming", "wordaga", "micro"].into_iter()));
+        assert!(!tagged_by_hand(["micro"].into_iter()));
+        assert!(!tagged_by_hand(std::iter::empty()));
+    }
+
     /// Wordaga's prize by attempts (Curtis, 2026-11-16), and its day turning at @000.
     #[test]
     fn wordaga_pays_by_the_attempts_and_its_day_turns_at_biel_midnight() {
@@ -2389,6 +2441,15 @@ mod tests {
         assert_eq!((wordaga_prize(16), wordaga_prize(20)), (250, 250));
         assert_eq!((wordaga_prize(21), wordaga_prize(169)), (100, 100));
         assert_eq!(wordaga_prize(0), 0);
+
+        // Streaks (2026-11-17): the 11th, 12th, 14th, 15th, 16th and 17th won.
+        let won: std::collections::BTreeSet<i64> = [11, 12, 14, 15, 16, 17].into();
+        let streaks: Vec<i64> =
+            [11, 12, 14, 15, 16, 17, 18, 20].iter().map(|d| wordaga_streak(&won, *d)).collect();
+        assert_eq!(streaks, vec![0, 1, 0, 1, 2, 3, 4, 0]);
+        assert_eq!(wordaga_pays(7, 0), 750 * HORSEBUCK);
+        assert_eq!(wordaga_pays(7, 3), 975 * HORSEBUCK, "H$ 750 x 1.3");
+        assert_eq!(wordaga_pays(7, 365), 28_125 * HORSEBUCK, "x 37.5");
         // 2026-11-13T23:00:00Z is where day 20771 begins.
         let turn = 20_771 * 86_400_000 - BIEL_MS;
         assert_eq!(wordaga_day(turn), 20_771);

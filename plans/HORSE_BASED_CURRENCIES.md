@@ -134,6 +134,14 @@ contract from its register. The score is the page's word for it. What the bank
 holds to is that a day pays once, and only if it was recorded on the day it
 names or the day after.
 
+**Streaks** (Curtis, 2026-11-17) — a day won straight after another is on a
+streak: one day long if the day before was won, two if the two before were, and
+so on (won the 11th, 12th, 14th, 15th, 16th, 17th: the 12th and 15th are 1 day
+streaks, the 16th 2, the 17th 3). The prize is multiplied by 1 + 0.1 per day of
+the streak: × 1.1 for 1 day, × 1.3 for 3 (H$ 750 pays H$ 975), × 37.5 for 365.
+Only days recorded in time count toward a streak, as only they pay. A line is
+priced when the bank first reads the day's record and is not repriced after.
+
 **Publication bonus** — paid once, at a work's first publication:
 
 - You earn the private-act amounts for that work _again_.

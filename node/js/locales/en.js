@@ -258,6 +258,7 @@ export default {
     'apps.bank.n-wordaga': 'won Wordaga {count} times',
     'apps.bank.wordaga-in-one': 'won Wordaga in one attempt',
     'apps.bank.wordaga-in-n': 'won Wordaga in {n} attempts',
+    'apps.bank.wordaga-streak': '{won}, on a {n} day streak (× {times})',
     'apps.bank.unlocked': 'unlocked',
     'apps.bank.n-lines': '{n} lines',
     'apps.bank.counting': 'counting…',
@@ -485,8 +486,16 @@ export default {
     'games.rolled-again': 'rolled again.',
     'games.money-n': 'money: {n}',
     'games.die-showing': 'a die showing {n}',
+    'games.share-in-one': 'Wordaga: got it in one attempt.',
+    'games.share-in-n': 'Wordaga: got it in {n} attempts.',
+    'games.share-streak': '{won} {n} day streak!',
+    'games.couldnt-share': "couldn't share it: {message}",
+    'games.shared': 'Shared!',
+    'games.share': 'share',
     'games.won-in-one': 'You got it in one attempt!',
     'games.won-in-n': 'You got it in {n} attempts!',
+    'games.n-day-streak': '{n} day streak!',
+    'games.you-earned-streak': 'You earned {amount}: {prize} × {times} streak bonus',
     'games.you-earned': 'You earned {amount}',
     'games.guessed-wrong': 'not the word',
     'games.the-word': 'the word',
@@ -1508,6 +1517,15 @@ export default {
 
     // --- node/js/doc/usercard.js ---
     'doc.usercard.a-card-naming-nobody': 'a user card naming nobody',
+
+    // --- node/js/doc/wordagacard.js ---
+    'doc.wordagacard.wordaga-on': 'Wordaga, {date}',
+    'doc.wordagacard.in-one': 'Got it in one attempt!',
+    'doc.wordagacard.in-n': 'Got it in {n} attempts!',
+    'doc.wordagacard.earned-streak': 'Earned {amount}: {prize} × {times} streak bonus',
+    'doc.wordagacard.earned': 'Earned {amount}',
+    'doc.wordagacard.n-letters': 'a word of {n} letters',
+    'doc.wordagacard.my-turn': 'Ok, My Turn',
 
     // --- node/js/domainsite.js ---
     'index.search': 'search…',
