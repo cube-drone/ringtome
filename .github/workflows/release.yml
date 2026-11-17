@@ -27,6 +27,15 @@
 # Android rides along while the `ANDROID_IN_RELEASE` repository variable is `true` (2026-10-08): the
 # `android` job calls android.yml, and `publish` then needs its APK like any other artifact. Unset,
 # the job is skipped and `publish` neither waits for it nor asks for the file.
+#
+# Google Play, after the release (2026-11-17): while `ANDROID_PLAY_UPLOAD` is `true` - and
+# `ANDROID_PLAY`, which is what builds the bundle - the `play` job hands the run's `android-play`
+# bundle to Play (node/tools/play-upload.mjs). It runs AFTER `publish` and nothing waits on it:
+# Play never gets a version the release did not, and a refusal from Play cannot hold a release
+# back - it is a red job on a release that is out, and a re-run of that one job. Which track, and
+# whether as a draft, are `ANDROID_PLAY_TRACK` (default `internal`) and `ANDROID_PLAY_STATUS`
+# (default `draft`: it waits in the Play Console for "roll out"; `completed` rolls out by itself).
+# The key is `PLAY_SERVICE_ACCOUNT_JSON`, a secret of the `deploy` environment.
 
 name: Release
 
@@ -1017,3 +1026,42 @@ jobs:
 
       - name: Release
         run: gh release edit "$TAG" -R "$REPO" --draft=false --latest
+
+  # The store's copy (header): the bundle `android` built, handed to Google Play once the release
+  # is out. A version code is used once, so a re-run after Play took the bundle is refused there -
+  # which says the bundle arrived.
+  play:
+    needs: [publish, android]
+    if: >-
+      ${{ !cancelled() && needs.publish.result == 'success'
+      && needs.android.result == 'success'
+      && vars.ANDROID_PLAY == 'true' && vars.ANDROID_PLAY_UPLOAD == 'true' }}
+    runs-on: ubuntu-24.04
+    environment: deploy
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: android-play
+          path: play
+
+      - name: Hand the bundle to Google Play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_TRACK: ${{ vars.ANDROID_PLAY_TRACK || 'internal' }}
+          PLAY_STATUS: ${{ vars.ANDROID_PLAY_STATUS || 'draft' }}
+          PLAY_RELEASE_NAME: ${{ github.ref_name }}
+        run: |
+          [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ] || { echo "::error::ANDROID_PLAY_UPLOAD is on, but the deploy environment has no PLAY_SERVICE_ACCOUNT_JSON secret"; exit 1; }
+          bundle=$(find play -name '*.aab' | head -1)
+          [ -n "$bundle" ] || { echo "::error::the android-play artifact holds no bundle"; exit 1; }
+          PLAY_PACKAGE=$(python3 -c "import json;print(json.load(open('desktop/tauri.conf.json'))['identifier'])")
+          export PLAY_PACKAGE
+          node node/tools/play-upload.mjs "$bundle"

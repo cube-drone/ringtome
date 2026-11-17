@@ -19,7 +19,8 @@
 # Google Play takes (plans/STORES.md, section 3) wherever `apk` builds - the same app compiled with
 # `RINGTOME_STORE=play`, an `.aab` signed with the same keystore, which Play knows as the upload
 # key. It is the artifact `android-play`, kept out of the GitHub Release: it is for the Play
-# Console and nobody else can install it. Unset, nothing here builds one, so an unproven bundle
+# Console and nobody else can install it; a release hands it to Play itself while
+# `ANDROID_PLAY_UPLOAD` is `true` (release.yml's `play` job). Unset, nothing here builds one, so an unproven bundle
 # build can't hold a release back; a run of this workflow by hand builds it whatever the variable
 # says.
 #

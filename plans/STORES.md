@@ -153,8 +153,16 @@ architecture makes ours unusual in content, not in kind:
   (2026-11-12)**: while the `ANDROID_PLAY` repository variable is `true`, or on
   a run by hand, an `aab` job beside `apk` builds the bundle and signs it with
   the release keystore (Play's upload key), as the artifact `android-play`. It
-  is not attached to the GitHub Release; getting it to Play is by hand until an
-  upload step exists.
+  is not attached to the GitHub Release. **Uploaded by the release
+  (2026-11-17)**: while `ANDROID_PLAY_UPLOAD` is `true`, release.yml's last job,
+  `play`, hands that bundle to Play through the Play Developer API
+  (`node/tools/play-upload.mjs`) as a service account
+  (`PLAY_SERVICE_ACCOUNT_JSON`, a secret of the `deploy` environment). It runs
+  after the GitHub Release is out and nothing waits on it. The track is
+  `ANDROID_PLAY_TRACK` (default `internal`); `ANDROID_PLAY_STATUS` is `draft`
+  (the default - the release waits in the Console for "roll out", and the only
+  kind Play takes for an app it has never published) or `completed` (it rolls
+  out by itself).
 - **The Mac App Store is optional.** Notarized downloads (what ships now) need
   no review. A store build must be sandboxed: network client and server
   entitlements for the node's loopback server and iroh, and the data directory

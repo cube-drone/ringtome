@@ -28022,3 +28022,26 @@ a person or group yet - public only.
 Checked in headless Chrome on a scratch node: won, shared, "Shared!" after a
 reload, the card in the feed with its reply link; a second persona opening the
 post saw "Ok, My Turn" and landed on a fresh board.
+
+## Releases hand the Play bundle to Google Play (2026-11-17)
+
+The first `.aab` went to the Play Console by hand; from here a release can take
+it there itself.
+
+- **`play`, the last job of `release.yml`**: after `publish`, while
+  `ANDROID_PLAY_UPLOAD` and `ANDROID_PLAY` are both `true`, it downloads the
+  run's `android-play` bundle and runs `node/tools/play-upload.mjs`. Nothing
+  waits on it: Play never gets a version the GitHub Release did not, and a
+  refusal from Play is a red job on a release that is already out.
+- **The script**: one Play Developer API edit - open, upload the bundle, put it
+  on a track, commit - as a service account, with a token from a JWT it signs
+  itself. Node and nothing else; no third-party action sees the key. Nothing on
+  Play changes before the commit.
+- **Switches**: `ANDROID_PLAY_TRACK` (default `internal`) and
+  `ANDROID_PLAY_STATUS` (default `draft`, which waits in the Console for "roll
+  out" and is all Play takes for an app it has never published; `completed`
+  rolls out by itself). The key is `PLAY_SERVICE_ACCOUNT_JSON`, a secret of the
+  `deploy` environment.
+- **Checked**: the workflow parses, and the script's signed JWT verifies against
+  a stand-in token endpoint. Not checked: a real upload - that needs the service
+  account, and the first release with the switch on is the test.
