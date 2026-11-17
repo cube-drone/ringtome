@@ -28053,3 +28053,38 @@ it there itself.
 - **Checked**: the workflow parses, and the script's signed JWT verifies against
   a stand-in token endpoint. Not checked: a real upload - that needs the service
   account, and the first release with the switch on is the test.
+
+## "17 active users" on a day with one or two (2026-11-17)
+
+The front page's counter had read 17 to 19 every day for two weeks, flat, on a
+network Curtis could see held one or two people a day. The dev network said 90,
+every day, of test personas nobody touches.
+
+- **The cause**: a heartbeat was rung by `store::open`, on the reasoning that
+  every persona-scoped request passes it. So does the node's own work: the
+  subscription sweep and the post-ingest hook open every persona whose database
+  moved (and every persona at all on the first sweep after a boot - the sweep
+  marks are in memory), the bank opens an account's OTHER personas to read what
+  they unlocked, and the group sweep opens an invitee. Each marked the persona
+  active. The website's own People list showed it: six personas, all with
+  today's date, two of them people who signed in once over a month ago.
+- **The fix**: `store::open` still rings the heartbeat and is the door a
+  person's own request comes through; `store::open_unattended` is the same store
+  with no heartbeat, and those four callers take it.
+- **The other eleven** were not hosted on the server (it hosts six). The census
+  merges every talking node's sketch, the desktop app starts at login and hides
+  to the tray, and a desktop node has the same bug: installs still running mark
+  their own local personas daily. Likely, not proven - the sketch names nobody.
+  They stop as each install takes a version with the fix.
+- **Not the cause**: one persona on many computers is one (the sketch is of
+  roots, and merging is idempotent); a computer that is off rings nothing.
+- **The counter never shows under 1**: whoever is reading it is one.
+- **Tests**: `heartbeat.cjs` backdates a persona's heartbeat (`/test/heartbeat`
+  gains `forget`, which also drops the node's memory of having sent today's),
+  runs the subscription sweep on it and has its sibling visit the bank, and
+  finds the old date standing; then its owner's request rings today's. Run
+  against the old sweep it fails 5 of 5. `bank.cjs`'s unlock claim waited on
+  nothing for the day's heartbeat and had been passing because the sweep rang it
+  at creation; it waits now, as the other bank claims do.
+- **Still counted, by choice so far**: a browser tab left open, and an API key
+  or agent making requests - those are the owner's own requests.

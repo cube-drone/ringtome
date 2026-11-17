@@ -172,7 +172,26 @@ pub fn known_owner(state: &AppState, account_id: &Uuid, root_hex: &str) -> bool 
 
 /// Open an identity's data for a logged-in owner: ownership check, signing key, epoch keys, and
 /// the per-identity database, assembled once - and kept (`Opened`) for the next request.
+///
+/// This is the door a PERSON comes through - their own request, for their own persona - so it is
+/// what says the persona was active today (heartbeat.rs). Anything that opens a persona with
+/// nobody at it - a sweep, a hook after ingest, a look at an account's OTHER personas - takes
+/// [`open_unattended`], or it marks idle personas active (2026-11-17: a front page saying 17
+/// active users on a day with one or two).
 pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result<Store, AppError> {
+    let data = open_unattended(state, account_id, root_hex).await?;
+    // The persona did something here, signed in: today's heartbeat, once (heartbeat.rs).
+    crate::heartbeat::note(state, root_hex);
+    Ok(data)
+}
+
+/// [`open`], for the node's own work on a persona whose owner is not the one asking: the same
+/// store, and no heartbeat.
+pub async fn open_unattended(
+    state: &AppState,
+    account_id: &Uuid,
+    root_hex: &str,
+) -> Result<Store, AppError> {
     let root = crate::pubkey::decode(root_hex).ok_or_else(|| {
         AppError::BadRequest(crate::msg!("record.store.bad-root-pubkey", "bad root pubkey"))
     })?;
@@ -233,8 +252,6 @@ pub async fn open(state: &AppState, account_id: &Uuid, root_hex: &str) -> Result
             (signer, epoch_keys)
         }
     };
-    // The persona did something here, signed in: today's heartbeat, once (heartbeat.rs).
-    crate::heartbeat::note(state, root_hex);
     Ok(Store {
         db,
         root,

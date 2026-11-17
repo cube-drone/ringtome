@@ -179,7 +179,9 @@ pub async fn refresh(
 ) -> Result<()> {
     let gate = refresh_gate(root_hex);
     let _held = gate.lock().await;
-    let store = crate::record::store::open(state, account_id, root_hex)
+    // Unattended: the sweep and the post-ingest hook come here for every persona whose database
+    // moved, whoever moved it.
+    let store = crate::record::store::open_unattended(state, account_id, root_hex)
         .await
         .map_err(|e| anyhow::anyhow!("opening {root_hex} to read its ledger: {e}"))?;
     let contacts =

@@ -87,8 +87,8 @@ const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.s
         const view = await census(HOST);
         assert.equal(
             view.shown,
-            Math.max(view.today, view.yesterday),
-            'the counter shows the larger of today and yesterday',
+            Math.max(1, view.today, view.yesterday),
+            'the counter shows the larger of today and yesterday, and never under 1',
         );
         assert.ok(
             view.history.length >= 1 &&

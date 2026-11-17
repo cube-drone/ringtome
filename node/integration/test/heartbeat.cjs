@@ -10,8 +10,8 @@ const dns = require('node:dns');
 dns.setDefaultResultOrder('ipv4first');
 
 const { makeUserFetch } = require('./helpers.cjs');
-const { pullAndFold } = require('./beat.cjs');
-const { HOST_B, sql } = require('./fetch.cjs');
+const { beat, pullAndFold } = require('./beat.cjs');
+const { HOST, HOST_B, makeFetch, sql } = require('./fetch.cjs');
 
 const base58 = async (host) => {
     const { toBase58 } = await import('../../js/speakable.js');
@@ -52,6 +52,46 @@ describe('heartbeats', function () {
             beat.updated_at_ms,
             'one heartbeat a day, not one a request',
         );
+    });
+
+    it("a persona nobody is at stays quiet through the node's own work on it (2026-11-17)", async () => {
+        // The front page said 17 active users on days with one or two: every open of a persona's
+        // store rang its heartbeat, and the node opens personas with nobody at them - the
+        // subscription sweep, and the bank reading what an account's OTHER personas unlocked.
+        const sibling = (await (await ada('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const said = async () =>
+            (
+                ((await (await ada(`api/id/${sibling}/profile`)).json()).fields || []).find(
+                    (f) => f.field === 'heartbeat',
+                ) || {}
+            ).value || null;
+        // Last active long ago, and this node holding no memory of a heartbeat sent today.
+        const rig = makeFetch();
+        const long_ago = '2026-01-01';
+        const put = await rig('test/heartbeat', {
+            method: 'POST',
+            body: JSON.stringify({ root: sibling, date: long_ago, forget: true }),
+        });
+        assert.equal(put.status, 200, await put.text());
+        assert.equal(await said(), long_ago);
+
+        assert.equal((await ada(`api/identity/${adaRoot}/bank`)).status, 200);
+        await beat(HOST, 'mint', sibling);
+        await wait(1500);
+        assert.equal(
+            await said(),
+            long_ago,
+            "the sweep and a sibling's bank are not it being used",
+        );
+
+        // Its owner coming to it is.
+        await ada(`api/identity/${sibling}/docs`);
+        let now = null;
+        for (let i = 0; i < 30 && now !== today(); i++) {
+            now = await said();
+            if (now !== today()) await wait(200);
+        }
+        assert.equal(now, today(), "the owner's own request rings it");
     });
 
     it("a follower's node sees it on the profile, and in the byline cache the People page sorts by", async function () {

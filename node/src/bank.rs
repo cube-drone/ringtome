@@ -240,7 +240,10 @@ async fn owned_elsewhere(
         if persona.root_pubkey == root_hex {
             continue;
         }
-        let other = crate::record::store::open(state, account, &persona.root_pubkey).await?;
+        // Unattended: the person is at ONE persona, and reading its siblings' registers is not
+        // those personas being used.
+        let other =
+            crate::record::store::open_unattended(state, account, &persona.root_pubkey).await?;
         let owned = unlocks_owned(&other).await.map_err(crate::error::AppError::Internal)?;
         if owned.contains_key(EVERYTHING) || owned.contains_key(COMMUNISM) {
             out.extend(UNLOCKS.iter().map(|u| u.id.to_string()));

@@ -337,6 +337,10 @@ pub struct HeartbeatRequest {
     pub root: String,
     /// `YYYY-MM-DD`: the day the persona "used the app".
     pub date: String,
+    /// Also forget that this node sent the persona a heartbeat today, so its next real activity
+    /// rings one again - for a test of what does and does not count as activity.
+    #[serde(default)]
+    pub forget: bool,
 }
 
 /// Record a heartbeat for a given day (HORSE_BASED_CURRENCIES.md, 2026-09-29): HorseBonds pay per
@@ -357,6 +361,9 @@ pub async fn heartbeat(
         &req.date,
     )
     .await?;
+    if req.forget {
+        crate::heartbeat::forget(&req.root);
+    }
     Ok(Json(serde_json::json!({ "date": req.date })))
 }
 

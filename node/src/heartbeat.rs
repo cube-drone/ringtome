@@ -9,7 +9,10 @@
 //! checked for length, not name.
 //!
 //! **When:** the persona's first signed-in activity of the day on this node - every persona-scoped
-//! request passes `store::open`, which rings `note`. The note is an in-memory check; the write is
+//! request passes `store::open`, which rings `note`. The node's own work on a persona (a sweep, a
+//! hook after ingest, a read of an account's other personas) passes `store::open_unattended`, which
+//! does not: until 2026-11-17 it all came through `open`, and a persona was "active" on any day the
+//! node restarted or anything arrived for it. The note is an in-memory check; the write is
 //! spawned, opens the persona with the node's own key (the sweeps' door), and skips itself when the
 //! folded profile already says today (another of the persona's computers got there first). So a
 //! persona costs at most one entry a day per computer, and usually one a day.
@@ -85,6 +88,11 @@ pub fn note(state: &AppState, root_hex: &str) {
             SENT.lock().expect("heartbeats poisoned").remove(&root);
         }
     });
+}
+
+/// Forget that a persona's heartbeat was sent today (the test rig's, test_endpoints.rs).
+pub fn forget(root_hex: &str) {
+    SENT.lock().expect("heartbeats poisoned").remove(root_hex);
 }
 
 async fn beat(state: &AppState, root_hex: &str, today: &str) -> Result<(), crate::error::AppError> {

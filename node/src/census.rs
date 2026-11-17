@@ -9,7 +9,8 @@
 //! commutative, idempotent, order-free - so a persona active on two computers counts once however
 //! many nodes report them, and the registers name nobody.
 //!
-//! **What goes in:** the personas active on this node today (`heartbeat::note`), and any persona
+//! **What goes in:** the personas active on this node today (`heartbeat::note`, rung by a person's
+//! own request and by nothing the node does unasked - `store::open`), and any persona
 //! whose heartbeat this node holds (`profiles::refresh`, off the byline cache's `last_active`).
 //!
 //! **How it spreads:** every few minutes the node swaps sketches with a few peers it has synced with
@@ -265,8 +266,8 @@ async fn swap(state: AppState, paced: bool) -> Result<()> {
 // The front page's counter
 
 /// GET `/api/node/census` - this node's estimate of the network's daily actives: the number to
-/// show (the larger of today-so-far and yesterday), both days, and every day's estimate for the
-/// graph, oldest first. Public: it names nobody.
+/// show (the larger of today-so-far and yesterday, and never under 1 - whoever is reading it is
+/// one), both days, and every day's estimate for the graph, oldest first. Public: it names nobody.
 pub async fn census_handler(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<serde_json::Value> {
@@ -284,7 +285,7 @@ pub async fn census_handler(
         .map(|(day, e)| serde_json::json!({ "date": crate::heartbeat::utc_date(day * DAY_MS), "active": e }))
         .collect();
     axum::Json(
-        serde_json::json!({ "shown": now.max(before), "today": now, "yesterday": before, "history": history }),
+        serde_json::json!({ "shown": now.max(before).max(1), "today": now, "yesterday": before, "history": history }),
     )
 }
 

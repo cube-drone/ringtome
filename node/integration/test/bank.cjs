@@ -870,6 +870,13 @@ describe('HorseBucks: unlocks', function () {
         const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
         const bank = async () => (await who(`api/identity/${root}/bank`)).json();
         const buy = (id) => j(who, `api/identity/${root}/bank/unlocks`, { id });
+        // The day's heartbeat pays H$ 10 when it lands, and it lands a moment after the persona's
+        // first request: in hand before the balance is read, or it arrives between two readings.
+        for (let i = 0; i < 50; i++) {
+            const fields = await (await who(`api/identity/${root}/profile`)).json();
+            if (fields.some((f) => f.field === 'heartbeat')) break;
+            await wait(100);
+        }
 
         const before = await bank();
         assert.equal(before.everything, true, "the rig's nodes unlock everything");

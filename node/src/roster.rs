@@ -2400,7 +2400,7 @@ async fn invite_declined(state: &AppState, root: &str, group: &GroupId) -> bool 
         return false;
     };
     let Ok(account) = account.parse::<uuid::Uuid>() else { return false };
-    let Ok(data) = store::open(state, &account, root).await else { return false };
+    let Ok(data) = store::open_unattended(state, &account, root).await else { return false };
     let (Ok(declined), Ok(notices)) = (declines(&data).await, invite_notices(&data).await) else {
         return false;
     };
