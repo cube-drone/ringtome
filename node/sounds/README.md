@@ -16,6 +16,10 @@ the desktop and iOS apps on an older system).
 
 ## Where they came from
 
-`dice-throw-*`, `die-throw-*`, `dice-grab-*` and `card-place-*` are from
-Kenney's _Casino Audio_ (1.1), by Kenney Vleugels (kenney.nl), under Creative
-Commons Zero (CC0): http://creativecommons.org/publicdomain/zero/1.0/
+`dice-throw-*`, `die-throw-*`, `dice-grab-*`, `card-place-*` and
+`chips-handle-*` are from Kenney's _Casino Audio_ (1.1), by Kenney Vleugels
+(kenney.nl), under Creative Commons Zero (CC0):
+http://creativecommons.org/publicdomain/zero/1.0/
+
+`confirmation_*` and `question_*` are from Kenney's _Interface Sounds_ (1.0),
+under the same licence.

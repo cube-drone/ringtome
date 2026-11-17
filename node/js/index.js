@@ -809,7 +809,7 @@ const Inside = ({ session }) => {
             <${BankApp} path="/ringtome/bank" current=${persona.current} />
             <${RssApp} path="/ringtome/rss" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
             <${GamesApp} path="/ringtome/games" />
-            <${Wordaga} path="/ringtome/games/wordaga" />
+            <${Wordaga} path="/ringtome/games/wordaga" current=${persona.current} />
             <${AmpApp} path="/ringtome/amp" current=${persona.current} searchQuery=${query} onSearch=${setQuery} />
             <${ServerSettings} path="/ringtome/settings/server" admin=${nodeAdmin} current=${persona.current} />
             <${ServerSettings} path="/ringtome/settings/server/:page" admin=${nodeAdmin} current=${persona.current} />

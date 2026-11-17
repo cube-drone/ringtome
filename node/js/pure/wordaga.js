@@ -66,3 +66,51 @@ export function wordOfDay(ms, words = WORDS) {
     const place = ((day % n) + n) % n;
     return words[orderOf(pass, n)[place]];
 }
+
+// ---- the prize, and the record of a day's game (Curtis, 2026-11-16) ----
+
+/// What winning the day's game pays, in whole H$, by the attempts it took. The bank pays it
+/// (bank.rs `wordaga_prize` is this table's twin, and the one that counts); this copy is for the
+/// page to say.
+export function wordagaPrize(attempts) {
+    const table = [15000, 10000, 7500, 2500, 1500, 1000, 750, 650, 600, 550];
+    if (!(attempts >= 1)) return 0;
+    if (attempts <= 10) return table[attempts - 1];
+    if (attempts <= 15) return 500;
+    if (attempts <= 20) return 250;
+    return 100;
+}
+
+/// The most guesses a record carries: it is one entry on a chain, and an entry has a size.
+const MOST_GUESSES = 200;
+
+/// A won game (pure/wordagagame.js) as the record kept of it: the word, the score - the attempts
+/// it took - and every word guessed, in order, the right one last if a guess is what won it.
+export function wordagaRecord(game) {
+    const guesses = [...(game.misses || [])];
+    if (game.last?.ability === 'guess' && game.last.hit) guesses.push(game.word);
+    return { word: game.word, score: game.cycle, guesses: guesses.slice(-MOST_GUESSES) };
+}
+
+/// The records as the private chain gives them (`values` of the `wordaga` register: the day's
+/// number -> the record as JSON), newest day first, passing over anything that is not one.
+export function wordagaRecords(values) {
+    const out = [];
+    for (const { key, value } of values || []) {
+        const day = Number(key);
+        let record;
+        try {
+            record = JSON.parse(value);
+        } catch {
+            continue;
+        }
+        if (!Number.isInteger(day) || !record || !(record.score >= 1)) continue;
+        out.push({
+            day,
+            word: typeof record.word === 'string' ? record.word : '',
+            score: record.score,
+            guesses: Array.isArray(record.guesses) ? record.guesses.map(String) : [],
+        });
+    }
+    return out.sort((a, b) => b.day - a.day);
+}

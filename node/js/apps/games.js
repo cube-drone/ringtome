@@ -9,7 +9,17 @@ import { Icons } from '../icons.js';
 import { gamesHref } from '../links.js';
 import { t } from '../i18n.js';
 import { playSound, preloadSounds, setSoundOn, useSoundOn } from '../sound.js';
-import { wordOfDay, wordagaDay, untilNextWord } from '../pure/wordaga.js';
+import { api } from '../net.js';
+import { useAbolished } from '../unlocks.js';
+import { formatHorseBucks } from '../pure/horsebucks.js';
+import {
+    wordOfDay,
+    wordagaDay,
+    wordagaPrize,
+    wordagaRecord,
+    wordagaRecords,
+    untilNextWord,
+} from '../pure/wordaga.js';
 import {
     ABILITIES,
     LETTERS,
@@ -128,15 +138,17 @@ const ABILITY_WORDS = {
 
 /// What the last move did, in a sentence.
 const lastWords = (last) => {
-    if (!last) return t('games.wordaga-start', 'pick dice, then pick what to spend them on.');
+    if (!last)
+        return t(
+            'games.wordaga-start',
+            'guess the word by picking dice, then choosing what to spend them on.',
+        );
     const letter = last.letter?.toUpperCase();
-    if (last.ability === 'win') return t('games.won-by-six', 'six of a kind: the word is yours.');
-    if (last.ability === 'reveal-one' || last.ability === 'reveal-three')
-        return t('games.reveal-bought', 'pick a blank in the word to reveal.');
+    // A reveal bought and not yet spent: the board says what to do, with how many are owed.
+    if (last.ability === 'reveal-one' || last.ability === 'reveal-three') return '';
+    // Only a wrong guess is spoken of: a won game shows its own page, and not this line.
     if (last.ability === 'guess')
-        return last.hit
-            ? t('games.guess-right', 'that is the word!')
-            : t('games.guess-wrong', '"{said}" is not the word.', { said: last.said });
+        return t('games.guess-wrong', '"{said}" is not the word.', { said: last.said });
     if (letter)
         return last.hit
             ? t('games.letter-in', '{letter} is in the word.', { letter })
@@ -216,6 +228,94 @@ const DIE_SOUNDS = ['die-throw-1', 'die-throw-2', 'die-throw-3', 'die-throw-4'];
 /// A die picked up, and an ability's card put down.
 const GRAB_SOUNDS = ['dice-grab-1', 'dice-grab-2'];
 const CARD_SOUNDS = ['card-place-1', 'card-place-2', 'card-place-3', 'card-place-4'];
+/// How a move came out: a letter found, the word won, a wrong word guessed, a letter tested and
+/// not there.
+const FOUND_SOUNDS = ['confirmation_001', 'confirmation_002', 'confirmation_003'];
+const WON_SOUNDS = ['confirmation_004'];
+const WRONG_WORD_SOUNDS = ['question_001'];
+const WRONG_LETTER_SOUNDS = ['question_002'];
+/// The sound of what `next` did to `game`, or none: ruling a letter out is no test, and says
+/// nothing.
+const outcomeSounds = (game, next) => {
+    const last = next.last ?? {};
+    if (next.won && !game.won) return WON_SOUNDS;
+    if (last.ability === 'guess') return last.hit ? null : WRONG_WORD_SOUNDS;
+    if (!last.letter || last.ability === 'rule-out') return null;
+    return last.hit ? FOUND_SOUNDS : WRONG_LETTER_SOUNDS;
+};
+/// Money changing hands.
+const CHIP_SOUNDS = [1, 2, 3, 4, 5, 6].map((n) => `chips-handle-${n}`);
+/// How long after a move its money is heard (ms): behind the card's own sound, not on top of it.
+const CHIPS_AFTER = 350;
+/// How long a change to the money stays written beside it (ms): the length of its fade in games.css.
+const CHANGE_SHOWN = 2600;
+
+/// The money in hand, top left. When it changes it shakes, the change is written near it for a
+/// few seconds - `+2`, `-4`, a short way off above it at an angle of its own - and chips are heard.
+/// A game picked up from storage starts with what it had and says nothing.
+const Money = ({ amount }) => {
+    const total = useRef(null);
+    const before = useRef(amount);
+    const timers = useRef(new Set());
+    const [changes, setChanges] = useState([]);
+    const later = (fn, ms) => {
+        const timer = setTimeout(() => {
+            timers.current.delete(timer);
+            fn();
+        }, ms);
+        timers.current.add(timer);
+    };
+    useEffect(() => {
+        const pending = timers.current;
+        return () => pending.forEach(clearTimeout);
+    }, []);
+    useEffect(() => {
+        const by = amount - before.current;
+        before.current = amount;
+        if (!by) return;
+        // Up and mostly to the right - the total sits against the board's left edge: 25 to 100
+        // degrees from the horizontal, 1.7rem out.
+        const angle = ((25 + Math.random() * 75) * Math.PI) / 180;
+        const change = {
+            id: `${Date.now()}-${Math.random()}`,
+            by,
+            dx: (Math.cos(angle) * 1.7).toFixed(2),
+            dy: (-Math.sin(angle) * 1.7).toFixed(2),
+        };
+        setChanges((now) => [...now, change]);
+        later(() => setChanges((now) => now.filter((c) => c.id !== change.id)), CHANGE_SHOWN);
+        later(() => playSound(CHIP_SOUNDS), CHIPS_AFTER);
+        if (
+            total.current?.animate &&
+            !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        )
+            total.current.animate(
+                [0, -3, 3, -2, 2, -1, 0].map((x) => ({ transform: `translateX(${x}px)` })),
+                { duration: 380, easing: 'ease-out' },
+            );
+    }, [amount]);
+    return html`<span class="wordaga-money-place">
+        <span
+            ref=${total}
+            class="wordaga-money"
+            role="img"
+            aria-label=${t('games.money-n', 'money: {n}', { n: amount })}
+        >
+            <${Icons.money} /> ${amount}
+        </span>
+        ${changes.map(
+            (change) =>
+                html`<span
+                    key=${change.id}
+                    class=${change.by > 0 ? 'wordaga-change gain' : 'wordaga-change'}
+                    style=${`--dx: ${change.dx}rem; --dy: ${change.dy}rem`}
+                    aria-hidden="true"
+                >
+                    ${change.by > 0 ? `+${change.by}` : `\u2212${-change.by}`}
+                </span>`,
+        )}
+    </span>`;
+};
 
 /// One die in the bar. It rests with its number to the front; when a throw newer than `quiet` puts
 /// it there it tumbles to that number - the number was settled before it moved, the tumble is only
@@ -285,6 +385,29 @@ const Die = ({ die, index, lone, quiet, state, disabled, pressed, onClick }) => 
     </button>`;
 };
 
+/// The one line that tells the player things: what the last move did, and what to do next. It
+/// jiggles whenever `mark` changes, so a new instruction is seen. `children` is a button the
+/// instruction needs (the roll).
+const Telling = ({ words, mark, children }) => {
+    const line = useRef(null);
+    const first = useRef(true);
+    useEffect(() => {
+        if (first.current) {
+            first.current = false;
+            return;
+        }
+        if (
+            line.current?.animate &&
+            !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        )
+            line.current.animate(
+                [0, -1.5, 1.5, -1, 1, 0].map((deg) => ({ transform: `rotate(${deg}deg)` })),
+                { duration: 420, easing: 'ease-out' },
+            );
+    }, [mark]);
+    return html`<p ref=${line} class="wordaga-last" role="status">${words} ${children}</p>`;
+};
+
 /// Today's game, kept on this device so a refresh picks it up where it was, and so the day's game
 /// is played once. A kept game for another day, or another word, is nobody's.
 const KEPT = 'wordaga-today';
@@ -304,9 +427,54 @@ const keepGame = (day, game) => {
     }
 };
 
+/// A game that is over: "You got it in 3 attempts!" as its heading, what the day's game earned
+/// under that in small print, then the wrong guesses and the word. Nothing to play with is left on
+/// it. `paid` is whether this was the day's game; what it earned is not said where the bank is
+/// gone (unlocks.js `COMMUNISM`) - there are no HorseBucks to speak of.
+const Won = ({ word, misses, score, paid, date }) => {
+    const abolished = useAbolished();
+    // In the history (a `date`): the day it was in place of the confetti, one heading lower.
+    return html`<div class="wordaga-victory"><div class="wordaga wordaga-victory-in">
+        ${
+            date
+                ? html`<p class="wordaga-date">${date}</p>`
+                : html`<span class="wordaga-confetti" aria-hidden="true"
+                      ><${Icons.confetti}
+                  /></span>`
+        }
+        <${date ? 'h3' : 'h2'} class="wordaga-won">
+            ${
+                score === 1
+                    ? t('games.won-in-one', 'You got it in one attempt!')
+                    : t('games.won-in-n', 'You got it in {n} attempts!', { n: score })
+            }
+        <//>
+        ${
+            paid &&
+            !abolished &&
+            html`<p class="wordaga-earned">
+                ${t('games.you-earned', 'You earned {amount}', {
+                    amount: formatHorseBucks(wordagaPrize(score) * 100),
+                })}
+            </p>`
+        }
+        ${
+            misses.length > 0 &&
+            html`<ul class="wordaga-misses" aria-label=${t('games.guessed-wrong', 'not the word')}>
+                ${misses.map((miss, i) => html`<li key=${i}><s>${miss}</s></li>`)}
+            </ul>`
+        }
+        <p class="wordaga-word" aria-label=${t('games.the-word', 'the word')}>
+            ${[...word].map((letter, i) => html`<span key=${i} class="wordaga-slot">${letter}</span>`)}
+        </p>
+    </div></div>`;
+};
+
 /// One game on the table. `day` is set for the day's own game, which is kept; a pick-up game has
-/// none and lives for the page.
-const Board = ({ word, seed, day }) => {
+/// none and lives for the page. `onWon(day, game)` hears of the day's game being won - at the
+/// winning move, and again whenever a won game is drawn, so a record that failed to be written
+/// gets another go.
+const Board = ({ word, seed, day, onWon }) => {
     // A game picked up from storage lies as it was left: only throws after `quiet` tumble.
     const [start] = useState(() => {
         const kept = day !== undefined && keptGame(day, word);
@@ -319,10 +487,23 @@ const Board = ({ word, seed, day }) => {
     // The dice marked to be rolled again, while 'reroll' is pending.
     const [marked, setMarked] = useState([]);
     const [said, setSaid] = useState('');
+    // How many moves this page has seen: the same words said twice are still news.
+    const [moves, setMoves] = useState(0);
     const sound = useSoundOn();
 
     useEffect(
-        () => preloadSounds([...DICE_SOUNDS, ...DIE_SOUNDS, ...GRAB_SOUNDS, ...CARD_SOUNDS]),
+        () =>
+            preloadSounds([
+                ...DICE_SOUNDS,
+                ...DIE_SOUNDS,
+                ...GRAB_SOUNDS,
+                ...CARD_SOUNDS,
+                ...CHIP_SOUNDS,
+                ...FOUND_SOUNDS,
+                ...WON_SOUNDS,
+                ...WRONG_WORD_SOUNDS,
+                ...WRONG_LETTER_SOUNDS,
+            ]),
         [],
     );
     // A throw is heard as it is seen: only one newer than `quiet`, and by how many dice it threw.
@@ -334,9 +515,18 @@ const Board = ({ word, seed, day }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [game.throws]);
 
+    useEffect(() => {
+        if (game.won && day !== undefined && onWon) onWon(day, game);
+        // Only the winning: the game is read as it stands then.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [game.won]);
+
     const move = (next) => {
         if (!next) return;
+        const heard = outcomeSounds(game, next);
+        if (heard) playSound(heard);
         setGame(next);
+        setMoves((n) => n + 1);
         if (day !== undefined) keepGame(day, next);
         setPicked([]);
         setMarked([]);
@@ -368,17 +558,31 @@ const Board = ({ word, seed, day }) => {
 
     const open = pending && pending !== 'reroll' ? targets(game, pending) : [];
     const atGuess = guessing(game);
-    const owed = game.won ? 0 : (game.reveals ?? 0);
+    if (game.won)
+        return html`<${Won}
+            word=${game.word}
+            misses=${game.misses}
+            score=${game.cycle}
+            paid=${day !== undefined}
+        />`;
+    const owed = game.reveals ?? 0;
+    // What to do next, where a move is half made: a card waiting to be pointed at something, or
+    // reveals still to be spent. It follows what the last move did, except while a card waits -
+    // then the last move is old news.
+    const todo =
+        pending === 'reroll'
+            ? t('games.pick-dice', 'now pick the dice to roll again.')
+            : pending
+              ? t('games.pick-a-letter', 'now pick a letter.')
+              : owed > 0
+                ? t('games.reveals-owed', 'pick a blank in the word to reveal ({n} to pick).', {
+                      n: owed,
+                  })
+                : '';
+    const telling = pending ? todo : [lastWords(game.last), todo].filter(Boolean).join(' ');
     return html`<div class="wordaga">
         <p class="wordaga-stats">
-            <span>${t('games.cycle-n', 'cycle {n}', { n: game.cycle })}</span>
-            <span
-                class="wordaga-money"
-                role="img"
-                aria-label=${t('games.money-n', 'money: {n}', { n: game.apostrophes })}
-            >
-                <${Icons.money} /> ${game.apostrophes}
-            </span>
+            <${Money} amount=${game.apostrophes} />
             <button
                 type="button"
                 class="wordaga-sound"
@@ -390,6 +594,12 @@ const Board = ({ word, seed, day }) => {
                 <${sound ? Icons.speaker : Icons.speakerOff} />
             </button>
         </p>
+        ${
+            game.misses.length > 0 &&
+            html`<ul class="wordaga-misses" aria-label=${t('games.guessed-wrong', 'not the word')}>
+                ${game.misses.map((word) => html`<li key=${word}><s>${word}</s></li>`)}
+            </ul>`
+        }
         <p class="wordaga-word" aria-label=${t('games.the-word', 'the word')}>
             ${shown(game).map((letter, i) =>
                 letter === null && owed > 0
@@ -417,17 +627,20 @@ const Board = ({ word, seed, day }) => {
                     </button>`,
             )}
         </div>
-        <p class="wordaga-last" role="status">${lastWords(game.last)}</p>
-        ${
-            game.won
-                ? html`<p class="wordaga-won">
-                      ${
-                          game.cycle === 1
-                              ? t('games.won-in-one', 'you got it in one cycle.')
-                              : t('games.won-in-n', 'you got it in {n} cycles.', { n: game.cycle })
-                      }
-                  </p>`
-                : html`<div class="wordaga-dice">
+        <${Telling} words=${telling} mark=${`${moves} ${telling}`}>
+            ${
+                pending === 'reroll' &&
+                html`<button
+                    class="wordaga-go"
+                    type="button"
+                    disabled=${marked.length === 0}
+                    onClick=${() => move(play(game, 'reroll', picked, marked))}
+                >
+                    ${t('games.roll-them', 'roll')}
+                </button>`
+            }
+        <//>
+        <div class="wordaga-dice">
                           ${game.hand.map(
                               (die, i) =>
                                   html`<${Die}
@@ -461,39 +674,6 @@ const Board = ({ word, seed, day }) => {
                                   ${t('games.guess', 'guess')}
                               </button>
                           </form>`
-                      }
-                      ${
-                          owed > 0 &&
-                          html`<p class="wordaga-prompt">
-                              ${t(
-                                  'games.reveals-owed',
-                                  'pick a blank in the word to reveal ({n} to pick).',
-                                  {
-                                      n: owed,
-                                  },
-                              )}
-                          </p>`
-                      }
-                      ${
-                          pending &&
-                          html`<p class="wordaga-prompt">
-                              ${
-                                  pending === 'reroll'
-                                      ? t('games.pick-dice', 'now pick the dice to roll again.')
-                                      : t('games.pick-a-letter', 'now pick a letter.')
-                              }
-                              ${
-                                  pending === 'reroll' &&
-                                  html` <button
-                                      class="wordaga-go"
-                                      type="button"
-                                      disabled=${marked.length === 0}
-                                      onClick=${() => move(play(game, 'reroll', picked, marked))}
-                                  >
-                                      ${t('games.roll-them', 'roll')}
-                                  </button>`
-                              }
-                          </p>`
                       }
                       <div class="wordaga-abilities">
                           ${ABILITIES.map((a) => {
@@ -531,22 +711,86 @@ const Board = ({ word, seed, day }) => {
                                   <small>${needs}</small>
                               </button>`;
                           })}
-                      </div>`
-        }
-        ${
-            game.misses.length > 0 &&
-            html`<p class="wordaga-note">
-                ${t('games.not-the-word', 'not the word: {words}', { words: game.misses.join(', ') })}
-            </p>`
-        }
+                      </div>
     </div>`;
 };
 
+/// The private register a persona's finished games are recorded in (bank.rs `WORDAGA_KV`, which
+/// pays the prize from it): the day's number -> the record as JSON.
+const RECORDS = 'wordaga';
+
+/// A day's game already won - on another computer, or before this browser forgot it: the word,
+/// the guesses that missed, and how it went.
+const Finished = ({ record, date }) =>
+    html`<${Won}
+        word=${record.word}
+        misses=${record.guesses.filter((g) => g !== record.word)}
+        score=${record.score}
+        paid=${true}
+        date=${date}
+    />`;
+
+/// The date a day's number names, as this reader's machine writes dates.
+const dateOf = (day) =>
+    new Date(day * 86_400_000).toLocaleDateString(undefined, {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+
 /// Wordaga: the day's game, the same word and the same dice for everyone, and for now a pick-up
-/// game beside it - any word, any dice, counted nowhere - to try the rules on.
-export const Wordaga = () => {
+/// game beside it - any word, any dice, counted nowhere - to try the rules on. A day's game, once
+/// won, is recorded on the persona's private chain - the word, the guesses, the score - and the
+/// bank pays its prize from that record.
+export const Wordaga = ({ current }) => {
+    const root = current && current.root;
     const day = useWordagaDay();
     const [pickup, setPickup] = useState(null);
+    // The records, newest first: null until the private chain has been read.
+    const [records, setRecords] = useState(null);
+    // The day's game as it was won on this page, waiting to be recorded.
+    const [won, setWon] = useState(null);
+    const writing = useRef(new Set());
+    useEffect(() => {
+        setRecords(null);
+        if (!root) return undefined;
+        let live = true;
+        api(`/api/identity/${root}/private/kv/${RECORDS}`)
+            .then((r) => live && setRecords(wordagaRecords(r.values)))
+            .catch(() => {
+                /* unread: nothing is recorded this visit, and the next one tries again */
+            });
+        return () => {
+            live = false;
+        };
+    }, [root]);
+    useEffect(() => {
+        if (!root || !records || !won) return;
+        if (records.some((r) => r.day === won.day) || writing.current.has(won.day)) return;
+        writing.current.add(won.day);
+        const record = wordagaRecord(won.game);
+        api(`/api/identity/${root}/private/kv/${RECORDS}/${won.day}`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: JSON.stringify(record) }),
+        })
+            .then(() =>
+                setRecords((now) =>
+                    [{ day: won.day, ...record }, ...(now || [])].sort((a, b) => b.day - a.day),
+                ),
+            )
+            .catch(() => writing.current.delete(won.day));
+    }, [root, records, won]);
+    const onWon = (wonDay, game) => setWon({ day: wonDay, game });
+
+    const word = wordOfDay(Date.now());
+    const today = records && records.find((r) => r.day === day);
+    // Won elsewhere, and not on the table here: shown as it went, not dealt again.
+    const elsewhere = today && !keptGame(day, word) ? today : null;
+    // The history: every earlier day's game, newest first, shown once today's is done - until
+    // then the page is today's game and nothing else.
+    const done = !!today || (!!won && won.day === day);
+    const past = done ? (records || []).filter((r) => r.day !== day) : [];
     const deal = () =>
         setPickup({
             word: WORDS[Math.floor(Math.random() * WORDS.length)],
@@ -559,7 +803,15 @@ export const Wordaga = () => {
         ${
             pickup
                 ? html`<${Board} key=${`pickup-${pickup.seed}`} word=${pickup.word} seed=${pickup.seed} />`
-                : html`<${Board} key=${`day-${day}`} word=${wordOfDay(Date.now())} seed=${day} day=${day} />`
+                : elsewhere
+                  ? html`<${Finished} record=${elsewhere} />`
+                  : html`<${Board}
+                        key=${`day-${day}`}
+                        word=${word}
+                        seed=${day}
+                        day=${day}
+                        onWon=${onWon}
+                    />`
         }
         <p class="wordaga-note">
             ${
@@ -583,5 +835,13 @@ export const Wordaga = () => {
                 </button>`
             }
         </p>
+        ${
+            past.length > 0 &&
+            html`<hr class="wordaga-rule" />
+                <h2 class="wordaga-history-title">${t('games.history', 'history')}</h2>
+                <div class="wordaga-history">
+                    ${past.map((r) => html`<${Finished} key=${r.day} record=${r} date=${dateOf(r.day)} />`)}
+                </div>`
+        }
     </div>`;
 };

@@ -177,6 +177,7 @@ import {
     ThumbsUp,
     ThumbsDown,
     Playlist,
+    Confetti,
     MoneyWavy,
 } from '@phosphor-icons/react';
 
@@ -363,6 +364,8 @@ export const Icons = {
     wordaga: TextAa,
     // Wordaga's money: what dice pay and abilities cost.
     money: MoneyWavy,
+    // Wordaga won.
+    confetti: Confetti,
     // a node administrator's way to the account behind a persona hosted here (account.js, 2026-10-20)
     adminAccount: PoliceCar,
     // a QR code of a person or a post, to scan with another phone (qr.js, plans/QR.md)

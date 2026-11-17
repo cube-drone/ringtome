@@ -108,6 +108,32 @@ large bonuses for publishing.
 
 **Heartbeats:** every heartbeat, 10 H$.
 
+**Wordaga** (Curtis, 2026-11-16) — the day's game, once won, pays once, by the
+attempts it took:
+
+| Attempts   | H$     |
+| ---------- | ------ |
+| 1          | 15,000 |
+| 2          | 10,000 |
+| 3          | 7,500  |
+| 4          | 2,500  |
+| 5          | 1,500  |
+| 6          | 1,000  |
+| 7          | 750    |
+| 8          | 650    |
+| 9          | 600    |
+| 10         | 550    |
+| 11 to 15   | 500    |
+| 16 to 20   | 250    |
+| 21 or more | 100    |
+
+The game is played in the page and no node knows the word: the page records a
+won day on the persona's private chain (the `wordaga` register: the day's number
+-> word, score, guesses) and the bank pays from that record, as it pays a
+contract from its register. The score is the page's word for it. What the bank
+holds to is that a day pays once, and only if it was recorded on the day it
+names or the day after.
+
 **Publication bonus** — paid once, at a work's first publication:
 
 - You earn the private-act amounts for that work _again_.

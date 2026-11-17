@@ -55,6 +55,7 @@ const KINDS = {
     magic_words: () => t('apps.bank.kind-magic-words', 'the magic words'),
     contract: () => t('apps.bank.kind-contract', 'contracts completed'),
     gift: () => t('apps.bank.kind-gift', 'gifts, from developer options'),
+    wordaga: () => t('apps.bank.kind-wordaga', 'Wordaga won'),
     unlock: () => t('apps.bank.kind-unlock', 'unlocks bought'),
     commodity: () => t('apps.bank.kind-commodity', 'commodities bought'),
     commodity_sale: () => t('apps.bank.kind-commodity-sale', 'commodities sold'),
@@ -233,6 +234,14 @@ const RowWords = ({ row, current }) => {
                       count: row.count,
                   })
                 : t('apps.bank.a-gift', 'a gift, from developer options');
+        case 'wordaga': {
+            const score = many ? 0 : Number((row.lines[0].detail || {}).score) || 0;
+            if (many)
+                return t('apps.bank.n-wordaga', 'won Wordaga {count} times', { count: row.count });
+            return score === 1
+                ? t('apps.bank.wordaga-in-one', 'won Wordaga in one attempt')
+                : t('apps.bank.wordaga-in-n', 'won Wordaga in {n} attempts', { n: score });
+        }
         case 'unlock':
             return html`${t('apps.bank.unlocked', 'unlocked')} ${namesOf(row, unlockName)}`;
         default:

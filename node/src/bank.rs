@@ -78,6 +78,47 @@ const CONTRACTS_KV: &str = "contracts";
 
 /// The private register gifts are recorded in: an id -> "<at_ms> <pennies>".
 const GIFTS_KV: &str = "gifts";
+
+// ---- Wordaga's prize (Curtis, 2026-11-16) ----
+//
+// A day's game of Wordaga (js/apps/games.js), once won, is recorded on the persona's PRIVATE chain
+// by the page: the register below, the day's number -> `{"word", "score", "guesses"}`. That is the
+// persona's record of its games, and the bank pays a prize from it, once a day, by the score -
+// the attempts it took. The game is played in the page and no node knows the word, so the score
+// is the page's word for it, as a gift's amount is: HorseBucks are play money, and what is kept
+// honest here is only that a day pays once, and only when it was recorded on the day it names
+// (or the day after, for a game won at the turn) - so no one fills in the days before they came.
+
+/// The private register a persona's finished games of Wordaga are recorded in.
+const WORDAGA_KV: &str = "wordaga";
+/// Biel Mean Time is UTC+1: Wordaga's day turns at @000 (js/pure/wordaga.js `wordagaDay`).
+const BIEL_MS: i64 = 3_600_000;
+
+/// Wordaga's day number for a moment: whole Biel days since 1970.
+fn wordaga_day(ms: i64) -> i64 {
+    (ms + BIEL_MS).div_euclid(86_400_000)
+}
+
+/// What winning the day's Wordaga pays, in whole H$, by the attempts it took (js/pure/wordaga.js
+/// `wordagaPrize` is its twin, for the page to say).
+fn wordaga_prize(attempts: u64) -> i64 {
+    match attempts {
+        0 => 0,
+        1 => 15_000,
+        2 => 10_000,
+        3 => 7_500,
+        4 => 2_500,
+        5 => 1_500,
+        6 => 1_000,
+        7 => 750,
+        8 => 650,
+        9 => 600,
+        10 => 550,
+        11..=15 => 500,
+        16..=20 => 250,
+        _ => 100,
+    }
+}
 /// What one press gives.
 const DEV_GIFT: i64 = 1_000_000 * HORSEBUCK;
 
@@ -623,6 +664,26 @@ async fn gifts_given(data: &Store) -> Result<Vec<(String, i64, BigInt)>> {
         .filter_map(|r| {
             let (at, pennies) = r.value.trim().split_once(' ')?;
             Some((r.key, at.parse::<i64>().ok()?, pennies.parse::<BigInt>().ok()?))
+        })
+        .collect())
+}
+
+/// The days of Wordaga won, as the private chain records them: (day, when recorded, attempts,
+/// word) - only those recorded on the day they name or the day after.
+async fn wordaga_won(data: &Store) -> Result<Vec<(String, i64, u64, String)>> {
+    let (recorded, _) = data.private_registers(WORDAGA_KV).all().await?;
+    Ok(recorded
+        .into_iter()
+        .filter_map(|r| {
+            let day = r.key.parse::<i64>().ok()?;
+            let on = wordaga_day(r.updated_at_ms);
+            if on != day && on != day + 1 {
+                return None;
+            }
+            let record: serde_json::Value = serde_json::from_str(&r.value).ok()?;
+            let score = record.get("score")?.as_u64().filter(|n| *n >= 1)?;
+            let word = record.get("word").and_then(|w| w.as_str()).unwrap_or("").to_string();
+            Some((r.key, r.updated_at_ms, score, word))
         })
         .collect())
 }
@@ -1582,6 +1643,19 @@ async fn catch_up_now(state: &AppState, data: &Store, root_hex: &str) -> Result<
         }
     }
 
+    // Wordaga: a day won pays its prize once, at the moment the private chain recorded it.
+    for (day, at, score, word) in wordaga_won(data).await? {
+        if is_new("wordaga", &day) {
+            lines.push(Line {
+                kind: "wordaga",
+                source: day,
+                pennies: BigInt::from(wordaga_prize(score) * HORSEBUCK),
+                at_ms: at,
+                detail: json!({ "score": score, "word": word }),
+            });
+        }
+    }
+
     let paid = lines.len();
     bank(data, lines).await?;
     // The marks move once the lines are banked: a pass that fails part way is read again whole.
@@ -2305,6 +2379,21 @@ pub async fn bank_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Wordaga's prize by attempts (Curtis, 2026-11-16), and its day turning at @000.
+    #[test]
+    fn wordaga_pays_by_the_attempts_and_its_day_turns_at_biel_midnight() {
+        let prizes: Vec<i64> = (1..=10).map(wordaga_prize).collect();
+        assert_eq!(prizes, [15_000, 10_000, 7_500, 2_500, 1_500, 1_000, 750, 650, 600, 550]);
+        assert_eq!((wordaga_prize(11), wordaga_prize(15)), (500, 500));
+        assert_eq!((wordaga_prize(16), wordaga_prize(20)), (250, 250));
+        assert_eq!((wordaga_prize(21), wordaga_prize(169)), (100, 100));
+        assert_eq!(wordaga_prize(0), 0);
+        // 2026-11-13T23:00:00Z is where day 20771 begins.
+        let turn = 20_771 * 86_400_000 - BIEL_MS;
+        assert_eq!(wordaga_day(turn), 20_771);
+        assert_eq!(wordaga_day(turn - 1), 20_770);
+    }
 
     /// Debt charges 2% a day toward zero, and stops at the ceiling: the last charge only goes the
     /// way there, and a debt at or past it is charged nothing (Curtis, 2026-10-06).

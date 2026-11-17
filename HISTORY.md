@@ -27861,3 +27861,101 @@ dice bought 5.52, one 5.25 (it was 5.46 at the old price), two 5.29, three 5.38
 (was 5.60); three dice and a chase for six of a kind 5.58, landing it in 4.5% of
 games. The word list is three to five letters (81, 433, 781, and a single six),
 and the gain from a die is about the same at each length.
+
+A playable card under the pointer takes a touch of teal and a slightly heavier
+edge (2026-11-16); not on touch screens, where it would stick after a tap.
+
+Wrong guesses are listed above the word (2026-11-16): one to a line, struck
+through - they were a comma'd line at the foot of the board.
+
+The cycle count is off the board's top line (Curtis, 2026-11-16): the struck
+guesses above the word count the cycles tried. The money sits top left, the
+speaker top right.
+
+The line that says what the last move did is larger and darker (2026-11-16): it
+is what a player reads after every move.
+
+Money moving is seen and heard (Curtis, 2026-11-16): when the total changes it
+shakes, the change is written near it for a few seconds - `+2` in teal, `-4` in
+ink, see-through, a short way off above it at an angle picked each time, fading
+
+- and one of six `chips-handle` sounds (same Kenney pack) plays a third of a
+  second behind the card's own. A kept game says nothing on being picked up.
+  With reduced motion the total stays still and the change only fades.
+
+A move's outcome is heard (Curtis, 2026-11-16), from Kenney's _Interface Sounds_
+(CC0): a letter tested or revealed and found plays one of
+`confirmation_001`-`003`, winning plays `confirmation_004`, a wrong word
+`question_001`, a letter tested and not there `question_002`. Ruling a letter
+out says nothing: it is not a test, and it always comes out the same.
+
+## Wordaga keeps a record and pays a prize (2026-11-16)
+
+Curtis asked for a record of past games on the persona's private chain - every
+word, every guess, every score - and H$ by the attempts a win took: 15,000 for
+one, 10,000, 7,500, 2,500, 1,500, 1,000, 750, 650, 600, 550 for ten, 500 for 11
+to 15, 250 for 16 to 20, 100 beyond. (His bands met at 10, 15 and 20; each
+boundary went to the higher prize.)
+
+- **The record**: when the day's game is won, the page writes it to the private
+  register `wordaga` - the day's number -> `{word, score, guesses}`, the right
+  word last among the guesses if a guess won it (`pure/wordaga.js`
+  `wordagaRecord`). A pick-up game is not recorded, and neither is a day not
+  won. No migration: a register is an entry on the private chain.
+- **The prize**: `bank.rs` folds the register into a `wordaga` ledger line, as
+  it folds contracts and gifts - once a day (the line's source is the day), by
+  the score in the record, at the moment the chain recorded it. The page shows
+  the amount beside "you got it in N attempts", from a twin of the table.
+- **What is trusted**: the game is played in the page and no node knows the
+  word, so the score is the page's say-so; any client can already write a
+  private register, the ones the bank pays gifts and contracts from included.
+  The bank holds only to this: a day pays once, and only if recorded on the day
+  it names or the day after, so the days before cannot be filled in. Checking a
+  score would mean the rules and the word list's shuffle in Rust, replaying the
+  moves; not built.
+- **On the page**: a day already won on another computer is shown as it went,
+  not dealt again; the last fourteen earlier days are listed under the board -
+  date, word, attempts. `Wordaga` is handed the current persona.
+- The bank page words the line ("won Wordaga in 3 attempts").
+
+Unit tests for the table and the day in Rust and in JS, the record's shape, and
+an acceptance claim in `bank.cjs` (a day pays once by its score; a rewrite and a
+late-filled day pay nothing).
+
+## Wordaga says everything in one line (2026-11-16)
+
+What the last move did ("money taken: 2") and what to do next ("now pick a
+letter") were drawn in different places. Now there is one line, `Telling` in
+`apps/games.js`, under the alphabet: what happened, then what is owed (blanks
+still to reveal); while a card waits to be pointed at something it says only
+that, and the reroll's roll button sits in it. The line jiggles (a small
+rotation, 420 ms, not under reduced motion) whenever its words change or a move
+is made, so the same words twice still draw the eye. `.wordaga-prompt` is gone,
+and so is the phrase `games.reveal-bought`, which the count of reveals owed
+already said.
+
+## Wordaga's finished game is a page of its own (2026-11-16)
+
+A won game no longer leaves the board standing. `Won` in `apps/games.js` draws
+"You got it in 7 attempts!" as a large heading, then the wrong guesses, then the
+word; the money, the sound control, the alphabet and the telling line are gone
+from it. Under the heading, small and muted, "You earned H$ 750.00" - for the
+day's game only, and not where the bank has been destroyed by Automated Luxury
+Horse Communism (`useAbolished`). A day won on another computer (`Finished`)
+draws the same page. The phrases "that is the word!" and "six of a kind: the
+word is yours." are removed: nothing shows them any more.
+
+## Wordaga's victory panel (2026-11-16)
+
+The finished game sits in a panel: a thick teal line with the two-step jagged
+corners (two layered boxes cut to `--jag`: 5px line, 6px step), and at its top,
+centred, Phosphor's confetti at 75px, bouncing (`wordaga-bounce`; still under
+reduced motion).
+
+## Wordaga's history (2026-11-16)
+
+The fourteen-line "earlier days" list is replaced. Once today's game is done,
+and if there are earlier records, the page shows a rule, a "history" heading and
+every earlier day's victory panel under the pick-up button, newest first: the
+same panel as today's, with the date (year included) in place of the confetti
+and its heading one level lower. Before today's game is won, none of it shows.

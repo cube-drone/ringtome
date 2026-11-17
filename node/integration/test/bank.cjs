@@ -1258,6 +1258,55 @@ describe('HorseBucks: a gift from developer options', function () {
     });
 });
 
+/*
+    Wordaga's prize (Curtis, 2026-11-16). The game is played in the page; a day's game, once won,
+    is recorded on the persona's private chain - the day's number -> its word, score and guesses -
+    and the bank pays the prize from that record: once a day, by the attempts it took, and only
+    for a day recorded when it was played.
+*/
+describe("HorseBucks: Wordaga's prize", function () {
+    this.timeout(60000);
+
+    it('pays a day won once, by its attempts, and nothing for a day filled in later', async () => {
+        const wes = await makeUserFetch({ prefix: 'wordwes' });
+        const root = (await (await wes('api/identity', { method: 'POST' })).json()).root_pubkey;
+        const bank = async () => (await wes(`api/identity/${root}/bank`)).json();
+        const prizes = async () => (await bank()).lines.filter((l) => l.kind === 'wordaga');
+        const record = (day, value) =>
+            wes(`api/identity/${root}/private/kv/wordaga/${day}`, {
+                method: 'PUT',
+                body: JSON.stringify({ value: JSON.stringify(value) }),
+            });
+        // Wordaga's day turns at @000, an hour ahead of UTC (js/pure/wordaga.js).
+        const today = Math.floor((Date.now() + 3_600_000) / 86_400_000);
+
+        const put = await record(today, {
+            word: 'neon',
+            score: 3,
+            guesses: ['nine', 'noon', 'neon'],
+        });
+        assert.equal(put.status, 200, await put.clone().text());
+        let lines = await prizes();
+        assert.equal(lines.length, 1, 'the day won is a line');
+        assert.equal(lines[0].pennies, '750000', 'three attempts: H$ 7,500');
+        assert.equal(lines[0].source, String(today));
+        assert.equal(lines[0].detail.score, 3);
+
+        // The same day written again - a better score claimed - pays nothing more.
+        await record(today, { word: 'neon', score: 1, guesses: ['neon'] });
+        // A day long gone, recorded now, pays nothing; nor does a record with no score.
+        await record(today - 5, { word: 'hull', score: 1, guesses: ['hull'] });
+        await record(today - 6, { word: 'half' });
+        lines = await prizes();
+        assert.deepEqual(
+            lines.map((l) => [l.source, l.pennies]),
+            [[String(today), '750000']],
+        );
+        const kv = await (await wes(`api/identity/${root}/private/kv/wordaga`)).json();
+        assert.equal((kv.values || []).length, 3, 'the records themselves are all kept');
+    });
+});
+
 describe('HorseBucks: Automated Luxury Horse Communism', function () {
     this.timeout(60000);
 
