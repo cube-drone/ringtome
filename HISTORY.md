@@ -28088,3 +28088,22 @@ every day, of test personas nobody touches.
   at creation; it waits now, as the other bank claims do.
 - **Still counted, by choice so far**: a browser tab left open, and an API key
   or agent making requests - those are the owner's own requests.
+
+## 0.7.1's release failed: an unpinned Rust, and an Apple agreement (2026-11-17)
+
+The `v0.7.1-yummy-lure` release run published nothing. Two jobs failed, for
+unrelated reasons, and `publish` and `play` were skipped behind them.
+
+- **Both `server` jobs** failed compiling `turso_core` 0.8.3 (E0308,
+  `index_method/fts/directory.rs`) - the Rust 1.100.0 failure of 2026-11-12. The
+  pin made that day covered every `dtolnay/rust-toolchain` step; the server job
+  installs Rust with rustup inside its manylinux container and still asked for
+  `stable`. It asks for `1.99.1` now. It had not run since the pin: 0.7.1 was
+  the first release after it.
+- **`mac`** signed the app and was refused at notarization: Apple answered 403,
+  "a required agreement is missing or has expired". Nothing in the repo: the
+  account holder accepts the new agreement at developer.apple.com (or App Store
+  Connect, Agreements), and the job passes on a rerun.
+
+Not run: the workflow fix is checked only by reading; the next release run is
+its test.

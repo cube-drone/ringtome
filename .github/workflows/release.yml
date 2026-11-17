@@ -676,9 +676,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The same pin as every `dtolnay/rust-toolchain` step in these workflows, by hand because
+      # this job installs Rust inside the container: stable (1.100.0) does not compile the pinned
+      # `turso_core`, and 0.7.1's release lost both server builds to it (2026-11-17).
       - name: Rust
         run: |
-          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.99.1
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - uses: Swatinem/rust-cache@v2
