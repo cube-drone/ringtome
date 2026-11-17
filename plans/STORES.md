@@ -159,10 +159,14 @@ architecture makes ours unusual in content, not in kind:
   (`node/tools/play-upload.mjs`) as a service account
   (`PLAY_SERVICE_ACCOUNT_JSON`, a secret of the `deploy` environment). It runs
   after the GitHub Release is out and nothing waits on it. The track is
-  `ANDROID_PLAY_TRACK` (default `internal`); `ANDROID_PLAY_STATUS` is `draft`
-  (the default - the release waits in the Console for "roll out", and the only
-  kind Play takes for an app it has never published) or `completed` (it rolls
-  out by itself).
+  `ANDROID_PLAY_TRACK` (default `internal`); `ANDROID_PLAY_STATUS` is
+  `completed` (the default since 2026-11-17 - it rolls out to the track by
+  itself) or `draft` (it waits in the Console for "roll out"). Play takes only
+  drafts for an app it has never published: refused for that, the script leaves
+  a draft and warns in the log. The release's notes ride along as Play's "what's
+  new", cut to the 500 characters Play allows at the end of a line, in the
+  listing's default language, which the script asks Play for
+  (`ANDROID_PLAY_LANGUAGE` names another).
 - **The Mac App Store is optional.** Notarized downloads (what ships now) need
   no review. A store build must be sandboxed: network client and server
   entitlements for the node's loopback server and iroh, and the data directory

@@ -28038,10 +28038,18 @@ it there itself.
   itself. Node and nothing else; no third-party action sees the key. Nothing on
   Play changes before the commit.
 - **Switches**: `ANDROID_PLAY_TRACK` (default `internal`) and
-  `ANDROID_PLAY_STATUS` (default `draft`, which waits in the Console for "roll
-  out" and is all Play takes for an app it has never published; `completed`
-  rolls out by itself). The key is `PLAY_SERVICE_ACCOUNT_JSON`, a secret of the
-  `deploy` environment.
+  `ANDROID_PLAY_STATUS` (default `completed`: the release rolls out to the track
+  by itself. It began as `draft`, and Curtis found the click in the Console a
+  chore the same day. `draft` waits for "roll out". Play takes only drafts for
+  an app it has never published; refused for that, the script leaves a draft and
+  warns). The key is `PLAY_SERVICE_ACCOUNT_JSON`, a secret of the `deploy`
+  environment.
+- **Release notes**: the tagged commit's message, which is the GitHub Release's
+  notes, goes along as Play's "what's new" - cut to Play's 500 characters at the
+  end of a line, with an ellipsis. They are sent in the listing's default
+  language, which the script asks Play for (the listing is `en-CA`, and a
+  default of `en-US` here would have been refused); `ANDROID_PLAY_LANGUAGE`
+  names another.
 - **Checked**: the workflow parses, and the script's signed JWT verifies against
   a stand-in token endpoint. Not checked: a real upload - that needs the service
   account, and the first release with the switch on is the test.
