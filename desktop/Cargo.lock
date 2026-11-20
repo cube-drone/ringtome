@@ -1873,9 +1873,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-html-import"
-version = "0.10.4"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5847e32d6a697d84a8062082277ea5a83067306aa1109c46d82ea1e4f0b844d7"
+checksum = "5045c6604118be529fa8658880d50618db947e637fe847b18a916f5376834f2f"
 dependencies = [
  "cube-drone-marquee-parser",
  "ego-tree",
@@ -1885,9 +1885,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-html-renderer"
-version = "0.10.4"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ee94b610e48e45f2eb0c83376ec564acec6da0738ac4df1145b9d8398e95eca"
+checksum = "ff1f2c300e3eb317c6dc5bd54031b756f238b502140842313181ca553d4ccb44"
 dependencies = [
  "cube-drone-marquee-parser",
  "serde_json",
@@ -1896,9 +1896,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-markdown"
-version = "0.10.4"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891ef1083099475ba8feb5cadd4776a07ca74976b9c8c2bb6f7ab97ffcd2aeea"
+checksum = "b44a515f8df457f523662c60ba0361c0edb81943aa6af50ed0dabbf859fca9b0"
 dependencies = [
  "comrak",
  "cube-drone-marquee-parser",
@@ -1906,9 +1906,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-markup"
-version = "0.10.4"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64c7f03446a2b627434a29dfdc7d9b806f00a7f5e11344d33445c94f8faee6a8"
+checksum = "60d909e157398c1f23c84bfb13abf639021fcfd6051a4dc51cf4b9974ce97bcf"
 dependencies = [
  "base64 0.22.1",
  "cube-drone-marquee-html-renderer",
@@ -1921,9 +1921,9 @@ dependencies = [
 
 [[package]]
 name = "cube-drone-marquee-parser"
-version = "0.10.4"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcd9c403792e1ce6e9323c7c2bae50248101a4b2b55ccccf08a42ee095521774"
+checksum = "cfa3e298fe931750b3f5e6649eccb6df0b337063a2dd981aafda0b1b8da79c92"
 dependencies = [
  "serde",
  "serde_json",

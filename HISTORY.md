@@ -28107,3 +28107,28 @@ unrelated reasons, and `publish` and `play` were skipped behind them.
 
 Not run: the workflow fix is checked only by reading; the next release run is
 its test.
+
+## Marquee Markup 0.10.5: a picture no longer throws the page (2026-11-19)
+
+Curtis, in Writer's live editor: clicking a picture, or dragging over one, shot
+the page far down. Not Tauri's doing - it happened in WebKit and Chrome alike.
+
+- **The cause** was in `@cube-drone/marquee-codemirror`. A rendered block is a
+  new CodeMirror widget each time it opens to its source or closes again, and
+  CodeMirror takes a widget it has not drawn for one line tall. A tall picture
+  whose top was scrolled out of sight then seemed to end above the window, was
+  never drawn or measured, and everything under it slid up by the picture's
+  height - and was shoved again whenever a scroll reached the picture.
+- **The fix**, in 0.10.5: the block widget remembers each block's measured
+  height by its HTML and gives it to CodeMirror as `estimatedHeight`.
+- **Here**: the five `cube-drone-marquee-*` crates and the six
+  `@cube-drone/marquee-*` packages move from 0.10.4 to 0.10.5, in
+  `desktop/Cargo.lock` too. Nothing in the app changed.
+- **Seen** on a scratch node, in headless WebKit and Chrome: a page with an
+  800px picture, scrolled so only its foot shows. Open the picture, then click
+  the text under it. On 0.10.4 the top line went from paragraph 1 to paragraph
+  14; on 0.10.5 it stays, and the one-frame flash on opening is gone. What still
+  moves is the 70px the source line takes when a picture opens. Not seen in the
+  Tauri window itself.
+
+`cargo test -p ringtome-node` 757, `just ui-check` 1150.
