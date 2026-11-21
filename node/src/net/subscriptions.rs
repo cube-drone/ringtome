@@ -60,6 +60,14 @@ pub struct Edge {
     /// current, as a follow's posts are. A routing fact like interest, so never gated on
     /// consent - the node routing by its own personas' wants is not a disclosure.
     pub moderates: bool,
+    /// The kinds of their files this persona declines to sync, as `storage::Kind::skip_bit`s
+    /// (the relationship panel's "do not sync images / audio / video from this user"). A routing
+    /// fact, and never a reason to keep a row by itself.
+    pub skip_kinds: i64,
+    /// Of `skip_kinds`, the kinds whose files already here this persona asked to have deleted
+    /// ("delete existing images"). Never a bit `skip_kinds` lacks: taking a decline back takes
+    /// this back with it.
+    pub purge_kinds: i64,
 }
 
 impl Edge {
@@ -72,15 +80,23 @@ impl Edge {
     }
 }
 
-/// Rows per multi-row subscription upsert: 8 binds each, under SQLite's classic 999-variable
+/// Rows per multi-row subscription upsert: 10 binds each, under SQLite's classic 999-variable
 /// floor (the `fanout::JOURNAL_CHUNK_ROWS` discipline).
-const SUBSCRIPTION_CHUNK_ROWS: usize = 120;
+const SUBSCRIPTION_CHUNK_ROWS: usize = 99;
 
 /// The ledger's keys, spelled once (they mirror `js/pure/contact.js`'s collection).
 const INTEREST: &str = "interest";
 const REBROADCAST: &str = "interest_rebroadcasts";
 const TRUST: &str = "trust";
 const EDGES_PUBLIC: &str = "edges_public";
+/// "yes" under the first key declines that kind of their files, and under the second asks for
+/// the ones already here to be deleted (they mirror `js/pure/contact.js`'s `SYNC_SKIPS`), beside
+/// the bit each sets.
+const SYNC_SKIPS: [(&str, &str, crate::storage::Kind); 3] = [
+    ("sync_skip_pictures", "sync_purge_pictures", crate::storage::Kind::Pictures),
+    ("sync_skip_video", "sync_purge_video", crate::storage::Kind::Video),
+    ("sync_skip_audio", "sync_purge_audio", crate::storage::Kind::Audio),
+];
 
 /// A stored band as its ladder rung, mirroring `js/pure/contact.js::bandOrdinal`: the five
 /// words and nothing else. Silence and garbage are both `None`, never the bottom rung - the
@@ -106,6 +122,15 @@ pub(crate) fn band_ordinal(value: &str) -> Option<i64> {
 /// disclosure - the gate matters for what leaves the persona's database as a TRUST fact.
 fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
     let band = |k: &str| facts.get(k).and_then(|v| band_ordinal(v));
+    let yes = |k: &str| facts.get(k).map(String::as_str) == Some("yes");
+    let skip_kinds = SYNC_SKIPS
+        .iter()
+        .filter(|(skip, _, _)| yes(skip))
+        .fold(0, |bits, (_, _, kind)| bits | kind.skip_bit());
+    let purge_kinds = SYNC_SKIPS
+        .iter()
+        .filter(|(skip, purge, _)| yes(skip) && yes(purge))
+        .fold(0, |bits, (_, _, kind)| bits | kind.skip_bit());
     // PUBLIC is the resting state (2026-08-09): only an explicit "no" withholds. The gate is
     // still a gate - it just defaults open, because a trust graph nobody opts into never
     // grows (PROJECT_PLAN, Edge-Endpoint Visibility).
@@ -117,7 +142,110 @@ fn edge_of(facts: &BTreeMap<String, String>) -> Edge {
         public: consented,
         moderates: facts.get(crate::moderation::MODERATES).map(String::as_str) == Some("yes")
             && facts.get("blocked").map(String::as_str) != Some("yes"),
+        skip_kinds,
+        purge_kinds,
     }
+}
+
+/// The kinds of `foreign_root`'s files that EVERYONE here who dials them declines: one person on
+/// a shared server wanting their videos is enough to fetch them, since the bytes are kept once.
+/// Nothing when nobody here dials them at all (a persona held on a friend's word).
+///
+/// `(declined, purged)`: the second is the declined kinds whose files already here everyone
+/// also asked to have deleted.
+pub async fn declined_kinds(node_db: &crate::db::Db, foreign_root: &str) -> Result<(i64, i64)> {
+    let rows: Vec<(i64, i64)> = node_db
+        .fetch_all(
+            "SELECT skip_kinds, purge_kinds FROM subscriptions WHERE foreign_root = ?1",
+            (foreign_root,),
+        )
+        .await
+        .context("reading what a persona's followers decline")?;
+    let (skip, purge) = rows.into_iter().reduce(|a, b| (a.0 & b.0, a.1 & b.1)).unwrap_or((0, 0));
+    Ok((skip, skip & purge))
+}
+
+/// The files of `foreign_root` this node does not fetch, because everyone here who follows them
+/// said not to sync that kind (`declined_kinds`): each public blob a declined version names -
+/// its thumbnail and preview with it, as the Storage page counts them - unless a version of a
+/// kind still wanted names it too. Their face and banner are always fetched: a person is not
+/// made faceless by "no images". Empty for a persona of this node's own, whose files are theirs.
+pub async fn declined_hashes(
+    state: &AppState,
+    foreign_root: &str,
+    held: Option<&crate::db::Db>,
+) -> Result<std::collections::HashSet<[u8; 32]>> {
+    let (declined, _) = declined_kinds(&state.node_db, foreign_root).await?;
+    hashes_of_kinds(state, foreign_root, held, declined).await
+}
+
+/// Of `declined_hashes`, the ones whose kind everyone here also asked to have deleted: the files
+/// the reaper stops keeping on this persona's account, and the Storage tally stops counting.
+/// Whatever else on the node points at one still keeps it - another persona's version, a shared
+/// post, a report - and a quarantined file is kept whatever anyone asks (reaper.rs).
+pub async fn purged_hashes(
+    state: &AppState,
+    foreign_root: &str,
+    held: Option<&crate::db::Db>,
+) -> Result<std::collections::HashSet<[u8; 32]>> {
+    let (_, purged) = declined_kinds(&state.node_db, foreign_root).await?;
+    hashes_of_kinds(state, foreign_root, held, purged).await
+}
+
+async fn hashes_of_kinds(
+    state: &AppState,
+    foreign_root: &str,
+    held: Option<&crate::db::Db>,
+    declined: i64,
+) -> Result<std::collections::HashSet<[u8; 32]>> {
+    use std::collections::HashSet;
+    if declined == 0
+        || crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, foreign_root)
+            .await?
+            .is_some()
+    {
+        return Ok(HashSet::new());
+    }
+    let opened;
+    let db = match held {
+        Some(db) => db,
+        None => match state.user_dbs.get(foreign_root).await? {
+            Some(db) => {
+                opened = db;
+                &opened
+            }
+            None => return Ok(HashSet::new()),
+        },
+    };
+    let face: Vec<String> = crate::profiles::bylines(&state.node_db, &[foreign_root.to_string()])
+        .await?
+        .remove(foreign_root)
+        .into_iter()
+        .flat_map(|b| [b.avatar, b.banner])
+        .flatten()
+        .collect();
+    let refs = crate::record::documents::version_blobs(db)
+        .await
+        .map_err(|e| anyhow::anyhow!("reading the blobs the versions name: {e}"))?;
+    Ok(split_declined(&refs, declined, &face))
+}
+
+/// `declined_hashes`, of the versions' blobs: those only declined kinds name, the documents in
+/// `spared` (hex ids - the face and the banner) aside.
+fn split_declined(
+    refs: &[crate::record::documents::VersionBlob],
+    declined: i64,
+    spared: &[String],
+) -> std::collections::HashSet<[u8; 32]> {
+    use std::collections::HashSet;
+    let (mut out, mut wanted): (HashSet<[u8; 32]>, HashSet<[u8; 32]>) = Default::default();
+    for r in refs.iter().filter(|r| r.public) {
+        let skip = crate::storage::Kind::of(r.format).skip_bit() & declined != 0
+            && !spared.contains(&hex::encode(r.doc));
+        if skip { &mut out } else { &mut wanted }.insert(r.hash);
+    }
+    out.retain(|h| !wanted.contains(h));
+    out
 }
 
 /// Whether this refresh pass may mint public-edge statements (publish::reconcile).
@@ -206,6 +334,20 @@ pub async fn refresh(
         .map(|(r,): (String,)| r)
         .collect();
 
+    // And what was asked to be deleted, before: a change there changes what the followed persona
+    // takes on this node, which its storage tally would not otherwise notice.
+    let purges_before: BTreeMap<String, i64> = state
+        .node_db
+        .fetch_all(
+            "SELECT foreign_root, purge_kinds FROM subscriptions
+             WHERE local_root = ?1 AND purge_kinds != 0",
+            (root_hex,),
+        )
+        .await
+        .context("reading the purges before the rewrite")?
+        .into_iter()
+        .collect();
+
     let now = now_ms();
     let mut edges: Vec<(String, Edge)> = Vec::new();
     let mut eager_now: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -222,9 +364,9 @@ pub async fn refresh(
     for chunk in edges.chunks(SUBSCRIPTION_CHUNK_ROWS) {
         let placeholders: Vec<String> = (0..chunk.len())
             .map(|i| {
-                let b = i * 8;
+                let b = i * 10;
                 format!(
-                    "(?{},?{},?{},?{},?{},?{},?{},?{})",
+                    "(?{},?{},?{},?{},?{},?{},?{},?{},?{},?{})",
                     b + 1,
                     b + 2,
                     b + 3,
@@ -232,13 +374,15 @@ pub async fn refresh(
                     b + 5,
                     b + 6,
                     b + 7,
-                    b + 8
+                    b + 8,
+                    b + 9,
+                    b + 10
                 )
             })
             .collect();
         let sql = format!(
             "INSERT INTO subscriptions
-               (local_root, foreign_root, eagerness, rebroadcast, trust, public, moderates, updated_at_ms)
+               (local_root, foreign_root, eagerness, rebroadcast, trust, public, moderates, skip_kinds, purge_kinds, updated_at_ms)
              VALUES {}
              ON CONFLICT (local_root, foreign_root) DO UPDATE SET
                  eagerness = excluded.eagerness,
@@ -246,6 +390,8 @@ pub async fn refresh(
                  trust = excluded.trust,
                  public = excluded.public,
                  moderates = excluded.moderates,
+                 skip_kinds = excluded.skip_kinds,
+                 purge_kinds = excluded.purge_kinds,
                  updated_at_ms = excluded.updated_at_ms",
             placeholders.join(",")
         );
@@ -261,6 +407,8 @@ pub async fn refresh(
                     dial(edge.trust),
                     turso::Value::Integer(edge.public as i64),
                     turso::Value::Integer(edge.moderates as i64),
+                    turso::Value::Integer(edge.skip_kinds),
+                    turso::Value::Integer(edge.purge_kinds),
                     turso::Value::Integer(now),
                 ]
             })
@@ -270,6 +418,19 @@ pub async fn refresh(
             .execute(&sql, turso::params_from_iter(params))
             .await
             .context("storing subscriptions")?;
+    }
+
+    let purges_now: BTreeMap<&str, i64> = edges
+        .iter()
+        .filter(|(_, edge)| edge.purge_kinds != 0)
+        .map(|(root, edge)| (root.as_str(), edge.purge_kinds))
+        .collect();
+    let touched: std::collections::BTreeSet<&str> =
+        purges_before.keys().map(String::as_str).chain(purges_now.keys().copied()).collect();
+    for foreign_root in touched {
+        if purges_before.get(foreign_root) != purges_now.get(foreign_root) {
+            crate::storage::mark_moved(&state.node_db, foreign_root).await?;
+        }
     }
 
     // The stamp sweep: every kept row was just stamped `updated_at_ms = now`, so "rows this
@@ -645,10 +806,67 @@ mod tests {
     }
 
     #[test]
+    fn declining_kinds_sets_their_bits_and_only_yes_counts() {
+        let e = edge_of(&facts(&[
+            ("interest", "high"),
+            ("sync_skip_pictures", "yes"),
+            ("sync_skip_audio", "yes"),
+            ("sync_skip_video", "no"),
+        ]));
+        assert_eq!(e.skip_kinds, 1 | 4);
+        assert_eq!(edge_of(&facts(&[("interest", "high")])).skip_kinds, 0);
+        // Deleting what is here rides the decline: asked without it, or after it is taken back,
+        // it is nothing.
+        assert_eq!(e.purge_kinds, 0);
+        let purged = edge_of(&facts(&[
+            ("sync_skip_pictures", "yes"),
+            ("sync_purge_pictures", "yes"),
+            ("sync_skip_video", "no"),
+            ("sync_purge_video", "yes"),
+        ]));
+        assert_eq!((purged.skip_kinds, purged.purge_kinds), (1, 1));
+    }
+
+    /// What is not fetched: the public blobs only declined kinds name - never a private one, a
+    /// kind still wanted, a blob a wanted version shares, or the face.
+    #[test]
+    fn declined_files_are_the_public_ones_only_declined_kinds_name() {
+        use crate::record::documents::VersionBlob;
+        use ringtome_proto::registry::doc_format as f;
+        let blob = |n: u8, format: Option<u64>, public: bool| VersionBlob {
+            doc: [n; 16],
+            hash: [n; 32],
+            format,
+            public,
+        };
+        let refs = vec![
+            blob(1, Some(f::AVIF), true),
+            blob(2, Some(f::WEBM_AV1), true),
+            blob(3, Some(f::OGG_OPUS), true),
+            blob(4, Some(f::MARQUEE), true),
+            blob(5, Some(f::WEBM_AV1), false),
+            blob(6, Some(f::AVIF), true), // their face
+            // One blob a video and a note both name: the note still wants it.
+            VersionBlob { doc: [7; 16], hash: [9; 32], format: Some(f::WEBM_AV1), public: true },
+            VersionBlob { doc: [8; 16], hash: [9; 32], format: None, public: true },
+        ];
+        let face = vec![hex::encode([6u8; 16])];
+        let video = split_declined(&refs, 2, &face);
+        assert_eq!(video, [[2u8; 32]].into_iter().collect());
+        let pictures_and_audio = split_declined(&refs, 1 | 4, &face);
+        assert_eq!(pictures_and_audio, [[1u8; 32], [3u8; 32]].into_iter().collect());
+        assert!(split_declined(&refs, 0, &face).is_empty());
+    }
+
+    #[test]
     fn an_edge_with_nothing_on_it_is_not_a_row() {
         assert!(edge_of(&facts(&[])).is_empty());
         assert!(edge_of(&facts(&[("nickname", "Bee")])).is_empty(), "a name is not an edge");
         assert!(edge_of(&facts(&[("blocked", "yes")])).is_empty(), "a block stays home");
+        assert!(
+            edge_of(&facts(&[("sync_skip_video", "yes")])).is_empty(),
+            "declining a kind is not following"
+        );
         assert!(
             !edge_of(&facts(&[("moderates", "yes")])).is_empty(),
             "a moderator's list is wanted here, as a follow's posts are"

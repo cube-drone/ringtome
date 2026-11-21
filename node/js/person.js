@@ -37,7 +37,8 @@ import { agoUnit, agoWords } from './pure/ago.js';
 import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import { sizeLabel } from './pure/backups.js';
-import { contactCollection, bandOf } from './pure/contact.js';
+import { contactCollection, bandOf, followed } from './pure/contact.js';
+import { ContactStorage } from './contactstorage.js';
 import {
     contactTags,
     tagCounts,
@@ -1116,6 +1117,10 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 instead of blocking anyone, and blocking is an edit like the rest. */ ''
             }
             <${ModerationControls} myRoot=${myRoot} facts=${facts} put=${put} />
+            ${
+                followed(facts) &&
+                html`<${ContactStorage} myRoot=${myRoot} theirRoot=${theirRoot} facts=${facts} put=${put} />`
+            }
             <button
                 class=${standing ? 'ledger-block ledger-blocked' : 'ledger-block'}
                 onClick=${() => setBlocking(true)}

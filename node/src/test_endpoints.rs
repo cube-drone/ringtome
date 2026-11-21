@@ -690,8 +690,11 @@ pub async fn blob_present(
             "not a blob hash: 64 hex characters expected"
         ))
     })?;
-    let present = state.files.has(iroh_blobs::Hash::from_bytes(bytes)).await;
-    Ok(Json(serde_json::json!({ "present": present })))
+    let hash = iroh_blobs::Hash::from_bytes(bytes);
+    let present = state.files.has(hash).await;
+    // `kept`: the bytes are on disk, readable or not - a quarantined blob is kept and not present.
+    let kept = state.files.size_of(hash).await.is_some();
+    Ok(Json(serde_json::json!({ "present": present, "kept": kept })))
 }
 
 /// Convert a database row into a JSON object. The stored value's own type drives the JSON shape

@@ -91,7 +91,7 @@ pub struct Kinds {
 /// What a version's format makes its blobs. In this order a blob two versions disagree about
 /// takes the first - which no honest chain does, but the sums must not depend on row order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Kind {
+pub(crate) enum Kind {
     Pictures,
     Video,
     Audio,
@@ -103,7 +103,7 @@ impl Kind {
     /// A `doc_format` id as a kind: text of every sort is writing (plain, Marquee, a book's
     /// table, a room's description), and a drawing's strokes are a picture to the person who
     /// drew it.
-    fn of(format: Option<u64>) -> Kind {
+    pub(crate) fn of(format: Option<u64>) -> Kind {
         use ringtome_proto::registry::doc_format as f;
         match format {
             None | Some(f::MARQUEE | f::BOOK | f::ROOM) => Kind::Writing,
@@ -111,6 +111,20 @@ impl Kind {
             Some(f::WEBM_AV1) => Kind::Video,
             Some(f::OGG_OPUS) => Kind::Audio,
             Some(_) => Kind::Other,
+        }
+    }
+}
+
+impl Kind {
+    /// This kind's bit among the kinds a follower may decline to sync
+    /// (`subscriptions.skip_kinds`): pictures, video and audio. Writing is the post itself and is
+    /// never declined.
+    pub(crate) fn skip_bit(self) -> i64 {
+        match self {
+            Kind::Pictures => 1,
+            Kind::Video => 2,
+            Kind::Audio => 4,
+            Kind::Writing | Kind::Other => 0,
         }
     }
 }
@@ -227,7 +241,11 @@ async fn retake(state: &AppState, db: &Db, root: &str, mtime: i64) -> Result<Tal
     for r in &refs {
         per_doc.entry(r.doc).or_default().insert(r.hash);
     }
-    let size = |h: &[u8; 32]| sizes.get(h).copied().unwrap_or(0);
+    // Files deleted at the follower's asking (net::subscriptions, "delete existing images") take
+    // nothing, though their sizes are still remembered for when they come back.
+    let purged = crate::net::subscriptions::purged_hashes(state, root, Some(db)).await?;
+    let size =
+        |h: &[u8; 32]| if purged.contains(h) { 0 } else { sizes.get(h).copied().unwrap_or(0) };
     let docs: BTreeMap<String, i64> = per_doc
         .iter()
         .map(|(doc, hashes)| (hex::encode(doc), hashes.iter().map(size).sum()))
@@ -450,6 +468,18 @@ pub async fn all(node_db: &Db) -> Result<BTreeMap<String, Standing>> {
             (root, standing)
         })
         .collect())
+}
+
+/// This persona's files are not what its tally says any more, though its database did not move
+/// (a follower asked for a kind of its files to be deleted, or took that back): the next ask or
+/// beat retakes it.
+pub async fn mark_moved(node_db: &Db, root: &str) -> Result<()> {
+    TALLIES.lock().expect("tallies poisoned").remove(root);
+    node_db
+        .execute("UPDATE persona_storage SET files_mtime_ms = 0 WHERE root_pubkey = ?1", (root,))
+        .await
+        .context("marking a persona's tally as moved")?;
+    Ok(())
 }
 
 /// The background beat: retally the personas whose files moved since their last tally - a few per

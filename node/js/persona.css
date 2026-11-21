@@ -1088,6 +1088,57 @@
     font-size: 0.8rem;
 }
 
+/* The storage section (js/contactstorage.js): what they take here, as a pie, and the kinds of
+   their files you can stop syncing. */
+.ledger-storage {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.ledger-storage-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.8rem;
+}
+
+.ledger-storage-title {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+/* A switch, and beside it once on: the button that deletes what is already here. */
+.ledger-skip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.3rem 0.8rem;
+}
+
+.ledger-purge {
+    font-size: 0.8rem;
+    padding: 0.15rem 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 0.4rem;
+    color: var(--coral);
+    cursor: pointer;
+}
+
+.ledger-purge:hover {
+    border-color: var(--coral);
+}
+
+.ledger-check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--ink);
+}
+
 .ledger-dial {
     display: flex;
     align-items: center;

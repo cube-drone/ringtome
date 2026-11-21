@@ -854,6 +854,20 @@ export default {
     'console.blurb-games': 'games to play, one so far',
     'console.blurb-lost-found': 'every private file from every notebook, where nothing gets lost',
 
+    // --- node/js/contactstorage.js ---
+    'contact-storage.skip-pictures': 'do not sync images from this user',
+    'contact-storage.purge-pictures': 'Delete existing images',
+    'contact-storage.purged-pictures': 'existing images will be deleted soon',
+    'contact-storage.skip-audio': 'do not sync audio from this user',
+    'contact-storage.purge-audio': 'Delete existing audio',
+    'contact-storage.purged-audio': 'existing audio will be deleted soon',
+    'contact-storage.skip-video': 'do not sync video from this user',
+    'contact-storage.purge-video': 'Delete existing video',
+    'contact-storage.purged-video': 'existing video will be deleted soon',
+    'contact-storage.title': 'storage',
+    'contact-storage.nothing-here': 'nothing of theirs is kept here yet',
+    'storage.still-counting': 'still counting their files',
+
     // --- node/js/contracts.js ---
     'contracts.draw-a-horse': 'Draw a horse in hrseDrawing™',
     'contracts.post-a-horse': 'Post your horse to the hrseFeed™',
@@ -2629,7 +2643,6 @@ export default {
     'storage.your-records-sub': 'everything you have written, public and private, and its history',
     'storage.people-you-follow': 'people you follow ({n})',
     'storage.nobody-followed-here': 'Nobody you follow is kept here yet.',
-    'storage.still-counting': 'still counting their files',
     'storage.show-everyone': 'show everyone ({n} more)',
     'storage.everyone-else': 'everyone else kept here ({n})',
     'storage.everyone-else-sub-device': 'your other personas, and people kept on the word of someone you trust',

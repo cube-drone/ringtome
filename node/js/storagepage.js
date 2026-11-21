@@ -55,7 +55,7 @@ const KIND_WORDS = () => ({
 });
 
 /// Each kind of file a persona has, by name.
-const FILE_WORDS = () => ({
+export const FILE_WORDS = () => ({
     pictures: [t('storage.file-pictures', 'pictures')],
     video: [t('storage.file-video', 'video')],
     audio: [t('storage.file-audio', 'audio')],
@@ -86,7 +86,7 @@ const KIND_CLASS = {
 };
 
 /// Parts as a pie with each part's size beside it. `label` names the pie to a screen reader.
-const Breakdown = ({ parts, words, label }) => {
+export const Breakdown = ({ parts, words, label }) => {
     const name = (kind) =>
         kind === 'records' ? t('storage.records-short', 'records') : words[kind][0];
     return html`

@@ -198,7 +198,9 @@ const wait = (ms) => new Promise((res) => setTimeout(res, ms));
                         HOST_C,
                     )
                 ).rows.length;
-            assert.equal(await grants(), 0, "nothing has asked for cal's key yet");
+            // No "nothing has asked yet" check before the beat: the node rings this pass by itself
+            // every thirty seconds, and when one landed between the pull and that check the grant
+            // was already there (a CI flake, 2026-11-21: 1 of 5 reruns, "expected 0, actual 1").
             await beat(HOST_C, 'key-prefetch');
             assert.equal(await grants(), 1, "the prefetch asked bea's node, on bea's trust");
             await withUnplugged([HOST, HOST_B], async () => {

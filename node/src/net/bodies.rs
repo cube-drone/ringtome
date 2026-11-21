@@ -184,7 +184,9 @@ pub async fn fetch_wanted(
             .context("reading wanted bodies")?;
         // A tagged song's audio, where the operator refuses it (rights.rs): not fetched, and no
         // longer wanted.
-        let fenced = crate::rights::fenced_hashes(state, root_hex, None).await?;
+        let mut fenced = crate::rights::fenced_hashes(state, root_hex, None).await?;
+        // Nor a kind of file everyone here who follows them declined (the relationship panel).
+        fenced.extend(crate::net::subscriptions::declined_hashes(state, root_hex, None).await?);
         let mut hashes: Vec<iroh_blobs::Hash> = Vec::new();
         for (bytes,) in rows {
             if let Ok(h) = <[u8; 32]>::try_from(bytes.as_slice()) {

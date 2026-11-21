@@ -314,6 +314,9 @@ fn user_db_opens_are_deliberate() {
         // search.rs (2026-09-07): one open when a body is INDEXED - inside the per-request
         // budget, never per candidate; currency is the listing's own stamp.
         ("search.rs", 1),
+        // declined_hashes (2026-11-20): one open per body-sweep attempt at ONE followed persona
+        // whose followers here declined a kind of file - never reached while nobody has.
+        ("net/subscriptions.rs", 1),
         ("storage.rs", 1), // tally: ONE persona whose files moved, on its own files browser's ask or the beat's (a few per beat)
         ("annotations.rs", 2), // 2: `holder_admits` asks the one gate now (2026-09-10 pm); 3: `holder_admits` - once per DISTINCT seal holder among a page's sealed labels, memoised per request (2026-09-10),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
                                // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the

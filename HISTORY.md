@@ -28234,3 +28234,84 @@ line - and again with a post published, for the two pies. Not seen in the Tauri
 window, and rung 0121 was climbed only by fresh databases.
 `cargo test -p ringtome-node` 759, `just ui-check` 1166, `just lint`, and the
 `storage accounting` and `heartbeats` acceptance areas.
+
+## Declining a kind of someone's files (2026-11-20)
+
+Curtis, of a person followed: "in the 'your relationship pop-out', can we also
+include a 'storage' header - under which we display their disk usage, pie chart,
+and three options: 'do not sync images from this user', 'do not sync audio from
+this user', and 'do not sync video from this user', all unchecked by default."
+
+The panel on a person's page (`person.js`) gains a storage section for anyone
+followed (`contactstorage.js`): what they take here and the Storage page's pie
+of it, then the three switches. A switch is a key in the follower's private
+record of that person - `sync_skip_pictures`, `sync_skip_audio`,
+`sync_skip_video`, "yes" to decline (`pure/contact.js`, `SYNC_SKIPS`) - so it
+travels to every computer of the follower's, as the dials do.
+
+The node copies the three into its follow memo as bits (rung `node/0122`,
+`subscriptions.skip_kinds`; `Edge::skip_kinds`) and the two places that fetch a
+followed persona's files leave out what was declined
+(`subscriptions::declined_hashes`, beside the tagged-song fence in
+`documents::fetch_missing_bodies` and `bodies::fetch_wanted`). The rules:
+
+- A kind is skipped only when everyone on this node who dials that person
+  declines it: the bytes are kept once, so one member of a shared server wanting
+  the videos is enough to fetch them.
+- A declined version's thumbnail and preview go with it, as the Storage page
+  counts them. A blob a still-wanted version also names is fetched.
+- Their face and banner always come. Writing is never declined.
+- Public files only, and never a persona of this node's own.
+
+Not done, and Curtis's to decide (files already here: see _Delete existing_
+below). Taking a switch back fetches the files on the next exchange with that
+person, not at once. And a declined picture shows in the feed as any file that
+has not arrived does; nothing says "you chose not to sync this".
+
+`cargo test -p ringtome-node` (two new unit tests), `just ui-check`,
+`just lint`, and a new two-node acceptance file, `syncskips.cjs`: images
+declined, the post and a song arrive and the picture does not; taken back, it
+comes. The panel was seen in headless Chrome on a scratch node, wide and
+phone-width, a switch surviving a reload. Not seen in the Tauri window; rung
+0122 climbed only by fresh databases.
+
+**Delete existing** (Curtis, 2026-11-21: "If we select a checkbox, can we add a
+button next to it? 'Delete existing images'? Make sure that this doesn't clear
+quarantined images because they're undeletable."). Beside a ticked switch stands
+a button; pressed, it writes a second key in the same record
+(`sync_purge_pictures` and its two siblings), which counts only while the
+decline stands - unticking the switch takes it back. The node keeps the bits
+beside the others (rung `node/0123`, `subscriptions.purge_kinds`), again as what
+everyone here who dials that person asked.
+
+Nothing deletes a file directly. The blob reaper keeps whatever anything on the
+node still points at, and a purge only stops it counting those files as that
+persona's (`subscriptions::purged_hashes`, in `reaper::live_set`): its next
+round collects what nothing else holds. So another persona's copy, a shared
+post, a report's evidence and a moderation hold are all untouched, and
+quarantine is added to the kept set after everything else, as it was - a
+quarantined file stays whatever anyone asks. The Storage tally counts a purged
+file as nothing, and a change of purge marks that persona's tally as moved
+(`storage::mark_moved`), so the pie shrinks without waiting for their database
+to move.
+
+Because the choice is a key in the follower's record, it travels: pressed on one
+computer, the files go from every computer of theirs. On a desktop app the
+reaper's round is half-hourly, so "will be deleted soon" is the wording.
+
+`syncskips.cjs` gained the claim: with one of two pictures quarantined, delete
+existing images takes the other's bytes off the disk, keeps the quarantined
+one's, never touches the song, and the picture is not fetched again.
+`/test/blob` now also says `kept` (bytes on disk), since a sealed blob reads as
+absent to everything else - the first run of the claim failed on exactly that.
+
+## The onward key claim raced the node's own prefetch (2026-11-21)
+
+CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
+early", failed 1 of 5 reruns with "nothing has asked for cal's key yet -
+expected 0, actual 1". The claim checked that no grant existed, then rang the
+key-prefetch pass and checked for one. The node rings that pass itself every
+thirty seconds (`lib.rs`), so a pass landing between the pull and the first
+check had already asked. The first check is gone; the claim still shows the
+grant after the beat and the read with both other nodes dark. The cause is read
+from the assertion and the loop's schedule, not reproduced.

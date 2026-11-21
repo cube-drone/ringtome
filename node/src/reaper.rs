@@ -101,8 +101,14 @@ async fn live_set(state: &AppState) -> Result<HashSet<Hash>> {
             }
             None => None,
         };
+        // A followed persona's files of a kind everyone here declined and asked to have deleted
+        // (net::subscriptions, "delete existing images") are not kept on that persona's account.
+        // Any other reference still keeps one, and so does quarantine, below.
+        let purged = crate::net::subscriptions::purged_hashes(state, &root, Some(&db)).await?;
         for hash in crate::record::documents::blob_refs(&db, keys.as_ref()).await? {
-            live.insert(Hash::from_bytes(hash));
+            if !purged.contains(&hash) {
+                live.insert(Hash::from_bytes(hash));
+            }
         }
     }
 

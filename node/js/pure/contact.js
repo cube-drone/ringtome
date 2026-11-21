@@ -40,3 +40,18 @@ export function bandOrdinal(value) {
     const band = bandOf(value);
     return band === null ? null : BANDS.indexOf(band);
 }
+
+/// The kinds of a followed person's files a follower may decline to sync, each its key in the
+/// contact's collection - "yes" declines, anything else syncs (the relationship panel's storage
+/// section, 2026-11-20). `purge` is the key that, "yes" while the kind is declined, asks for the
+/// files of that kind already here to be deleted. The node reads the same keys (node/src/net/subscriptions.rs,
+/// `SYNC_SKIPS`).
+export const SYNC_SKIPS = [
+    { kind: 'pictures', key: 'sync_skip_pictures', purge: 'sync_purge_pictures' },
+    { kind: 'audio', key: 'sync_skip_audio', purge: 'sync_purge_audio' },
+    { kind: 'video', key: 'sync_skip_video', purge: 'sync_purge_video' },
+];
+
+/// Does this contact's ledger put them among the people followed? Any interest above the bottom
+/// stop - the node's own rule for whom it syncs eagerly.
+export const followed = (facts) => (bandOrdinal(facts && facts.interest) || 0) > 0;

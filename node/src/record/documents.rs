@@ -3709,7 +3709,11 @@ pub async fn fetch_missing_bodies(
         catch_up_public_lane(&db).await?;
         // Tagged songs' audio, on a node whose operator refuses it (rights.rs, the fence): never
         // fetched. Their thumbnails still are.
-        let fenced = crate::rights::fenced_hashes(state, root_hex, Some(&db)).await?;
+        let mut fenced = crate::rights::fenced_hashes(state, root_hex, Some(&db)).await?;
+        // And the kinds everyone here who follows them declined ("do not sync video from this
+        // user"): not fetched either.
+        fenced
+            .extend(crate::net::subscriptions::declined_hashes(state, root_hex, Some(&db)).await?);
         type BodyRefs = (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
         let public_rows: Vec<BodyRefs> = db
             .fetch_all(
