@@ -137,6 +137,14 @@ pub fn run() {
                 // `dragover`, no `drop`: no tree reorganizing, no note dragged into the editor as
                 // a link, no file dropped on a page. The page handles files itself, as a browser.
                 .disable_drag_drop_handler()
+                // The page stays awake while its window is out of sight (Curtis, 2026-11-21: the
+                // Mac window "just goes blank - all black" after a while away, and takes 400ms to
+                // a second to draw again): WebKit's default suspends a hidden view after about
+                // five minutes, and a suspended page keeps no picture of itself. The node runs in
+                // this process regardless, and the page's pollers already rest while it is hidden
+                // (`whileVisible`), so staying awake costs little. macOS 14 and later; ignored
+                // before that, and on Windows and Linux.
+                .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
                 .inner_size(1280.0, 860.0)
                 .visible(!hidden)
                 .initialization_script(format!(

@@ -28437,13 +28437,19 @@ green for six or under, ink for seven or eight, red past that. The heading, the
 lines under the letters and the share button took the colour next, and so did a
 score shared to the feed, by its attempts.
 
-## The onward key claim raced the node's own prefetch (2026-11-21)
+## The desktop window stays awake out of sight (2026-11-21)
 
-CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
-early", failed 1 of 5 reruns with "nothing has asked for cal's key yet -
-expected 0, actual 1". The claim checked that no grant existed, then rang the
-key-prefetch pass and checked for one. The node rings that pass itself every
-thirty seconds (`lib.rs`), so a pass landing between the pull and the first
-check had already asked. The first check is gone; the claim still shows the
-grant after the beat and the read with both other nodes dark. The cause is read
-from the assertion and the loop's schedule, not reproduced.
+Curtis: on macOS, after the app has been out of sight for a bit, its window
+"just goes blank - all black", and coming back to it reliably takes 400ms to a
+second to draw again. Not our rendering: WebKit's default suspends a hidden web
+view after roughly five minutes, and a suspended page keeps no picture of
+itself, so the return is a wake and a whole repaint. The window builder in
+`desktop/src/lib.rs` now asks for `BackgroundThrottlingPolicy::Disabled`
+(WKWebView's `inactiveSchedulingPolicy`, macOS 14 and later; ignored elsewhere).
+The cost is a page that stays awake while hidden, which is small here: the node
+shares the process either way, and the page's pollers already rest while
+`document.hidden`. No background colour was set for the window - Curtis judged
+no colour less confusing than black. **Not yet seen to work**: whether WebKit
+still drops a hidden window's painted surface with the suspension off is the
+open question, and the test is a desktop build left hidden for ten minutes.
+
