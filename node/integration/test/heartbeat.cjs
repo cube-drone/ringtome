@@ -65,6 +65,11 @@ describe('heartbeats', function () {
                     (f) => f.field === 'heartbeat',
                 ) || {}
             ).value || null;
+        // Making a persona is its owner at it, so that rings too - in the background, after the
+        // answer. Wait for it to land: rewound while it was still on its way, it landed afterwards
+        // and read as the sweep having rung (a CI flake, 2026-11-20: 3 of 5 reruns).
+        for (let i = 0; i < 50 && (await said()) !== today(); i++) await wait(200);
+        assert.equal(await said(), today(), 'being made rang it');
         // Last active long ago, and this node holding no memory of a heartbeat sent today.
         const rig = makeFetch();
         const long_ago = '2026-01-01';

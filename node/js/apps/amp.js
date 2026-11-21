@@ -26,6 +26,7 @@ import {
     sorted,
     wordTags,
 } from '../pure/amp.js';
+import { Pie } from '../pie.js';
 import { formatWhen } from '../pure/when.js';
 import { speakable } from '../speakable.js';
 import { SoundTags } from '../doc/soundtags.js';
@@ -798,29 +799,16 @@ const songCount = (n) => t('amp.n-songs', '{n} songs', { n });
 
 /// The station as a pie (section 6): each slice its share of the circle, and its name and how many
 /// songs it holds under the pointer. `labels[i]` says slice i.
-const Pie = ({ slices, labels = [] }) => {
-    const parts = shares(slices);
-    const c = 50;
-    const r = 46;
-    const at = (turn) => [
-        c + r * Math.cos(2 * Math.PI * turn - Math.PI / 2),
-        c + r * Math.sin(2 * Math.PI * turn - Math.PI / 2),
-    ];
-    let turn = 0;
-    const drawn = parts.map((p, i) => {
-        if (!p) return null;
-        const said = labels[i] && html`<title>${labels[i]}</title>`;
-        if (p >= 100)
-            return html`<circle key=${i} class=${sliceClass(i)} cx=${c} cy=${c} r=${r}>${said}</circle>`;
-        const [x1, y1] = at(turn);
-        turn += p / 100;
-        const [x2, y2] = at(turn);
-        return html`<path key=${i} class=${sliceClass(i)} d=${`M${c} ${c} L${x1} ${y1} A${r} ${r} 0 ${p > 50 ? 1 : 0} 1 ${x2} ${y2} Z`}>${said}</path>`;
-    });
-    return html`<svg class="amp-pie" viewBox="0 0 100 100" role="img" aria-label=${t('amp.station-pie', 'the station, as a pie')}>
-        ${parts.some((p) => p > 0) ? drawn : html`<circle class="amp-pie-empty" cx=${c} cy=${c} r=${r} />`}
-    </svg>`;
-};
+const StationPie = ({ slices, labels = [] }) => html`
+    <${Pie}
+        class="amp-pie"
+        parts=${shares(slices)}
+        classes=${slices.map((_, i) => sliceClass(i))}
+        labels=${labels}
+        label=${t('amp.station-pie', 'the station, as a pie')}
+        empty="amp-pie-empty"
+    />
+`;
 
 /// A radio station, opened (section 6): the pie; a slider per slice, its share beside it, and its
 /// trash first; a slice to add - everything, a saved filter, a mixtape, or another station that
@@ -865,7 +853,7 @@ const StationView = ({
             </button>
         </div>
         <div class="amp-station-body">
-            <${Pie} slices=${station.slices} labels=${station.slices.map((sl, i) => `${nameOf(sl)}: ${songCount(counts[i])}`)} />
+            <${StationPie} slices=${station.slices} labels=${station.slices.map((sl, i) => `${nameOf(sl)}: ${songCount(counts[i])}`)} />
             <div class="amp-station-slices">
                 ${station.slices.map(
                     (sl, i) => html`<div class="amp-slice-row" key=${`${i}:${sl.kind}:${sl.id}`}>

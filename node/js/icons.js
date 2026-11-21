@@ -31,6 +31,7 @@ import {
     Gear,
     Desktop,
     HardDrives,
+    Database,
     PaintBrush,
     Hand,
     PaintBucket,
@@ -426,6 +427,8 @@ export const Icons = {
     // the desktop app - the app wears whichever the person is holding.
     server: HardDrives,
     device: Laptop,
+    // The Storage page (storagepage.js): what the place keeps on disk.
+    storage: Database,
     // Drawing (DRAWING.md): the app tile and the brush tool share the brush; the eraser is its own.
     drawing: PaintBrush,
     eraser: Eraser,

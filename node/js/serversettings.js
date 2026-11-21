@@ -3,11 +3,13 @@
 // a second settings app "might feel redundant: folks have been confused about that in the past");
 // now the last section of the Settings app (`ServerSettingsList`), their pages under
 // `/ringtome/settings/server/<page>`. Everyone's since 2026-10-17 (plans/NETWORK.md, ruling 5), page
-// by page: a regular user sees the Network page alone; administrators every page, and the node
+// by page: a regular user sees the Network and Storage pages; administrators every page, and the node
 // refuses anyone else at every admin door regardless.
 //
 // - Network (everyone): every machine this place talks to, by name, how reliably each answers,
 //   and the viewer's own links to them. An administrator renames this machine there.
+// - Storage (everyone, 2026-11-20): what this place keeps on disk, what the viewer's persona takes
+//   of it and what each person they follow does (storagepage.js, node/src/storage.rs).
 // - Registration (servers only): who may sign up - open, a shared sign-up password, or closed
 //   (node/src/registration.rs). A desktop app is its owner's alone, and what it would mean for one
 //   to host other people is not settled yet, so the device settings do not offer the page.
@@ -30,6 +32,7 @@ import { api, isDevice } from './net.js';
 import { AccountPage } from './account.js';
 import { FrontMatterPage } from './frontmatter.js';
 import { ServerModeration } from './servermoderation.js';
+import { StoragePage } from './storagepage.js';
 import { t } from './i18n.js';
 import { backupTime, sizeLabel } from './pure/backups.js';
 import { groupHref, nodeHref, personHref, serverHref } from './links.js';
@@ -44,16 +47,24 @@ import { NodeMark } from './nodemark.js';
 
 const html = htm.bind(h);
 
-/// The pages this section offers this person: the Network page to everyone, and the rest to an
+/// The pages this section offers this person: Network and Storage to everyone, and the rest to an
 /// administrator. A desktop app has no front page for strangers, so no Customization there. (A
 /// desktop app's owner has the same sign-up choices a server's has - Curtis, 2026-09-28: every
 /// desktop app is a localhost multi-user server now.)
 const pages = (admin) =>
     !admin
-        ? ['network']
+        ? ['network', 'storage']
         : isDevice()
-          ? ['network', 'registration', 'backups', 'moderation', 'frontmatter']
-          : ['network', 'registration', 'backups', 'moderation', 'customization', 'frontmatter'];
+          ? ['network', 'storage', 'registration', 'backups', 'moderation', 'frontmatter']
+          : [
+                'network',
+                'storage',
+                'registration',
+                'backups',
+                'moderation',
+                'customization',
+                'frontmatter',
+            ];
 
 /// Each page's name and what it's for, as the Settings app lists them.
 const PAGE_WORDS = () => ({
@@ -63,6 +74,15 @@ const PAGE_WORDS = () => ({
             'device.the-machines-this-place-talks-to',
             'the machines this place talks to, and how well each answers',
         ),
+    ],
+    storage: [
+        t('device.storage', 'Storage'),
+        isDevice()
+            ? t(
+                  'device.storage-sub-device',
+                  'how much room this takes on your computer, and whose it is',
+              )
+            : t('device.storage-sub-server', 'how much room this place takes, and whose it is'),
     ],
     registration: [
         t('device.registration', 'Registration'),
@@ -98,6 +118,7 @@ const PAGE_WORDS = () => ({
 /// Each page's mark in the list.
 const PAGE_ICONS = {
     network: Icons.computerNode,
+    storage: Icons.storage,
     registration: Icons.newHere,
     backups: Icons.saved,
     moderation: Icons.deputy,
@@ -109,6 +130,7 @@ const PAGE_ICONS = {
 /// one at all, is the list of those that are.
 export const ServerSettings = ({ page, account, tab, admin, current }) => {
     if (page === 'network') return html`<${Network} current=${current} admin=${admin} />`;
+    if (page === 'storage') return html`<${StoragePage} current=${current} />`;
     if (!admin) {
         return html`<div class="device">
             <p class="null-sub">${t('device.only-for-the-people-who-look-after-this', 'These settings are only for the people who look after this place.')}</p>
@@ -126,7 +148,7 @@ export const ServerSettings = ({ page, account, tab, admin, current }) => {
 };
 
 /// The Settings app's last section: the place's own settings, under a heading that names what the
-/// person is holding. Everyone gets the Network page; an administrator the rest.
+/// person is holding. Everyone gets the Network and Storage pages; an administrator the rest.
 export const ServerSettingsList = ({ admin }) => html`
     <h2 class="settings-section-title settings-server-title">
         ${isDevice() ? t('device.device-settings', 'device settings') : t('device.server-settings', 'server settings')}

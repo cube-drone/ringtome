@@ -1064,6 +1064,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/census", get(census::census_handler))
         .route("/api/identity/{root}/bank", get(bank::bank_handler))
         .route("/api/identity/{root}/storage", get(storage::persona_handler))
+        .route("/api/identity/{root}/storage/overview", get(storage::overview_handler))
         .route("/api/node/storage", get(storage::node_handler))
         .route("/api/identity/{root}/bank/instruments", axum::routing::post(bank::buy_handler))
         .route("/api/identity/{root}/bank/gift", axum::routing::post(bank::gift_handler))

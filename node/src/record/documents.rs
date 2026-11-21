@@ -3250,25 +3250,40 @@ pub async fn materialize_some(
     Ok(view)
 }
 
+/// One blob a stored version names, with what the version says of itself: its format (a
+/// `doc_format` id; `None` is plain text) and its lane.
+pub struct VersionBlob {
+    pub doc: [u8; 16],
+    pub hash: [u8; 32],
+    pub format: Option<u64>,
+    pub public: bool,
+}
+
 /// Every blob each stored version names - its body, and its thumbnail and preview when it has
-/// them - as `(doc_id, blob hash)`, both lanes, deleted documents too (their bytes are still held).
+/// them - both lanes, deleted documents too (their bytes are still held). A thumbnail or preview
+/// carries its version's format: it is part of what that picture or video takes.
 /// What the storage tally (storage.rs) sizes: one read of the persisted fold, nothing decrypted
 /// and no catch-up - a version folded later moves the persona's files, and the next tally sees it.
 /// (`blob_refs` is the reaper's mark: hashes alone, fold first.)
-pub async fn version_blobs(db: &Db) -> Result<Vec<([u8; 16], [u8; 32])>, AppError> {
-    /// (doc_id, body, thumb, preview), as the versions row holds them.
-    type BlobRow = (Vec<u8>, Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
+pub async fn version_blobs(db: &Db) -> Result<Vec<VersionBlob>, AppError> {
+    /// (doc_id, body, thumb, preview, format, lane), as the versions row holds them.
+    type BlobRow = (Vec<u8>, Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>, Option<i64>, String);
     let rows: Vec<BlobRow> = db
-        .fetch_all("SELECT doc_id, file_hash, thumb_hash, preview_hash FROM doc_versions", ())
+        .fetch_all(
+            "SELECT doc_id, file_hash, thumb_hash, preview_hash, format, lane FROM doc_versions",
+            (),
+        )
         .await
         .context("reading the blobs the versions name")
         .map_err(AppError::Internal)?;
     let mut out = Vec::new();
-    for (doc, body, thumb, preview) in rows {
+    for (doc, body, thumb, preview, format, lane) in rows {
         let Ok(doc) = <[u8; 16]>::try_from(doc.as_slice()) else { continue };
+        let format = format.and_then(|f| u64::try_from(f).ok());
+        let public = lane == "public";
         for hash in [Some(body), thumb, preview].into_iter().flatten() {
             if let Ok(hash) = <[u8; 32]>::try_from(hash.as_slice()) {
-                out.push((doc, hash));
+                out.push(VersionBlob { doc, hash, format, public });
             }
         }
     }

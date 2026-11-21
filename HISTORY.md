@@ -28132,3 +28132,105 @@ the page far down. Not Tauri's doing - it happened in WebKit and Chrome alike.
   Tauri window itself.
 
 `cargo test -p ringtome-node` 757, `just ui-check` 1150.
+
+## The heartbeat claim raced the persona's own first beat (2026-11-20)
+
+CI went red on the push after 0.7.2: `heartbeats`, "a persona nobody is at stays
+quiet through the node's own work on it", unstable at 3 of 5 reruns. The claim
+makes a sibling persona, winds its heartbeat back to January and checks the
+sweep does not ring it.
+
+- **The cause** was in the claim, not the node. Making a persona is its owner at
+  it, so that rings a heartbeat too - in a background task, after the answer.
+  Wound back while that task was still on its way, the heartbeat was rung by it
+  afterwards and read as the sweep's doing.
+- **Proven** by slowing the task 900ms: the claim failed with the same assertion
+  and the same two dates as CI, every time; with the fix it passes under the
+  same delay.
+- **The fix**: the claim waits for the persona's own first heartbeat to land
+  before winding it back.
+
+## Storage: what hosting takes (2026-11-20)
+
+Curtis: people weighing a p2p app ask "how much space am I giving up to hosting
+a node?", and nothing answered them. A new page, Storage, in the place's
+settings (device settings in the app, server settings in a browser), open to
+everyone the place hosts like Network beside it. Three figures:
+
+- **Everything this computer or server keeps**, by kind: files (the blob store),
+  records (every persona's database, log and journal), backups, and the rest.
+  The node walks its data directory for it - at most once a minute, off the
+  async threads (`storage::footprint`).
+- **The viewer's persona**: its records, and its files by kind - pictures,
+  video, audio, writing - with how much of them is public and how much private.
+  Public and private records share one database per persona, so they are one
+  figure.
+- **Each person followed** that this node holds, largest first, from the memos
+  the storage beat keeps - and one line for everyone else kept here, as a count
+  and a sum. A followed person the beat has not reached is tallied on the ask, a
+  few at a time, and the page asks again every few seconds until all are
+  counted.
+
+Every bar is a share of the place's total. A file two people both have is kept
+once and counted for each, so the people can sum past the total; the page says
+so. It also says what the browser (or the app's window) keeps of its own, as the
+browser estimates it.
+
+**By kind** (Curtis, the same day: "is it possible to divide files up by file
+type?"). Every stored version already says its format and its lane beside the
+blobs it names, and the node transcodes everything at ingest, so the formats are
+a closed set. The tally reads the two columns with the hashes
+(`documents::version_blobs`) and sums each blob once, under one kind and one
+lane (`storage::split`); a thumbnail or preview counts with the thing it belongs
+to, and a drawing's strokes are pictures. Rung `node/0121` adds the kinds and
+the public share to `persona_storage` and marks every tally as moved, so the
+beat retakes them a few at a time. Each person followed lists their records and
+their kinds under their bar, a line apiece and the biggest first ("I want to
+know if Jeff is filling my hard drive with videos or music", Curtis) -
+`pure/storageshare.js`'s `personParts`. The place's own "files" row stays whole:
+a blob does not know its kind, only the documents naming it do.
+
+`GET /api/identity/{root}/storage/overview` is the persona's owner's alone -
+whom a persona follows is its own business. The page is `storagepage.js`, its
+arithmetic `pure/storageshare.js`.
+
+Not settled: on a server with several accounts, a member who follows someone
+hosted there sees that person's whole figure, private files included - a size,
+by kind, and nothing else.
+
+A followed person's figures lagged their files by up to the beat's five minutes:
+the overview only tallied the ones no tally had reached. It now also retakes, a
+few per ask, the ones whose files moved since their tally, so an open page is no
+more than about a minute behind.
+
+The page's opening paragraph went (Curtis: "Let's remove this entirely"), and
+under the place's total it now says what the disk holding the data directory has
+free and its size (`fs4::statvfs`, on `Footprint`; left out where the system
+will not say) - Curtis asked for the place's "free and total memory", read here
+as disk space, this being the Storage page. The line reads "187 GB Free / 926 GB
+Total", small and italic under the figure, and the browser's own share "24 MB:
+Browser Cache" - Curtis's wording for both, in place of sentences. That line was
+not looked at in a browser.
+
+**Each lane by kind, as pies** (Curtis: "for each I'd like to see how they split
+into files, pictures, audio, video et al - also, this seems like it could be a
+good use for pie charts! We've done some already in our hrseAmp app"). The
+viewer's own files are two boxes, public and private, each a pie of its kinds
+with the sizes beside it; they replace the row per kind and the sentence giving
+the two totals. `storage::split` now gives the public files by kind and the
+private ones are the rest (`Kinds::less`); they ride the in-memory tally only,
+so no rung - a followed person is still shown whole, by kind. The pie itself
+left `apps/amp.js` for `pie.js` (arithmetic in `pure/pie.js`), which the
+stations and this page both draw with; hrseAmp's station pie was not looked at
+again after the move. A published picture is a second file (the public twin), so
+publishing grows the files rather than moving them between the pies. Each person
+followed got the same (Curtis: "Can we do the pie charts for each user we
+follow, as well?"): one pie of their records and their kinds, the biggest first,
+with the sizes beside it, in place of the plain lines.
+
+Seen in headless Chrome on a scratch node, wide and phone-width, with two people
+followed - one with a video, two recordings and a picture, each on its own
+line - and again with a post published, for the two pies. Not seen in the Tauri
+window, and rung 0121 was climbed only by fresh databases.
+`cargo test -p ringtome-node` 759, `just ui-check` 1166, `just lint`, and the
+`storage accounting` and `heartbeats` acceptance areas.

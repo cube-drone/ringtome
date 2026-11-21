@@ -255,3 +255,203 @@
     gap: 0.4rem;
     margin-top: 1rem;
 }
+
+/* The Storage page (storagepage.js): three sections of figures, each row a name, a size and a bar
+   that is its share of everything the place keeps. */
+.storage-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.storage-total {
+    font-family: "Press Start 2P", monospace;
+    font-size: 1.1rem;
+    color: var(--ink);
+    margin: 0.2rem 0 0.3rem;
+}
+
+/* Under the place's total: what the disk it is on has left, and its size. */
+.storage-disk {
+    margin: 0 0 0.3rem;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--muted);
+}
+
+.storage-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.storage-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.9rem;
+}
+
+.storage-row-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.8rem;
+}
+
+.storage-row-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+a.storage-row-label {
+    color: var(--accent-ink);
+}
+
+.storage-row-size {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+}
+
+.storage-row-sub {
+    color: var(--muted);
+}
+
+/* One line of a legend: the kind, then its size. */
+.storage-part {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.storage-part dt {
+    display: flex;
+    align-items: center;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.storage-part dd {
+    margin: 0;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+}
+
+/* The viewer's own files, a lane a box: public and private side by side, each a pie of its kinds
+   with the kinds' sizes beside it. A kind's colour is the slice's and the swatch's alike. */
+.storage-lanes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 0.5rem;
+}
+
+.storage-lane {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.9rem;
+}
+
+.storage-lane-body {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin-top: 0.3rem;
+}
+
+.storage-pie {
+    width: 4.75rem;
+    height: 4.75rem;
+    flex: none;
+}
+
+.storage-pie path,
+.storage-pie circle {
+    stroke: var(--surface);
+    stroke-width: 0.8;
+}
+
+.storage-pie-empty {
+    fill: var(--surface-2);
+}
+
+.storage-legend {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.9rem;
+    max-width: 16rem;
+}
+
+.storage-swatch {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 0.15rem;
+    margin-right: 0.4rem;
+    flex: none;
+}
+
+.storage-kind-records {
+    fill: var(--muted);
+    background: var(--muted);
+}
+
+.storage-kind-pictures {
+    fill: var(--teal);
+    background: var(--teal);
+}
+
+.storage-kind-video {
+    fill: var(--pink);
+    background: var(--pink);
+}
+
+.storage-kind-audio {
+    fill: var(--peach);
+    background: var(--peach);
+}
+
+.storage-kind-writing {
+    fill: var(--ink);
+    background: var(--ink);
+}
+
+.storage-kind-other {
+    fill: var(--border-strong);
+    background: var(--border-strong);
+}
+
+/* The bar: the row's share of the place's total. */
+.storage-bar {
+    height: 0.45rem;
+    background: var(--surface-2);
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+.storage-bar span {
+    display: block;
+    height: 100%;
+    background: var(--teal);
+    border-radius: 0.25rem;
+}
