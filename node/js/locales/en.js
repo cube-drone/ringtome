@@ -2050,6 +2050,11 @@ export default {
     'persona.download-it': 'download it',
     'persona.i-put-my-spare-key': 'I put my spare key somewhere safe',
     'persona.okay-im-ready': "okay, I'm ready",
+    'persona.look-title': 'This could be you.',
+    'persona.look-sub': 'Every persona gets a colour and a pair of words that are theirs for good. A name and a picture come later, and those you can change - these you cannot. Roll again until you like them.',
+    'persona.look-reroll': 'roll again',
+    'persona.look-keep': "that's me - keep this one",
+    'persona.look-cancel': 'never mind',
     'persona.what-should-people-call-you': 'What should people call you?',
     'persona.this-is-the-name-people': "This is the name people see next to your stuff. It's yours to change whenever - it doesn't have to match your sign-in.",
     'persona.--a-name-this-long': "- a name this long won't fit",
@@ -3058,6 +3063,8 @@ export default {
     'identity.adoption.our-key-is-not-yet': 'our key is not (yet) authorized on the identity chain - paste the request code at the granting node first',
 
     // --- node/src/identity/routes.rs ---
+    'identity.create-unreadable': "that isn't a way to ask for a persona",
+    'identity.candidate-gone': 'that persona is no longer on offer - roll again',
     'identity.routes.not-found': 'not found',
     'identity.routes.a-private-chat-needs-two': 'a private chat needs two people',
     'identity.routes.no-private-chat-with-them-yet': 'no private chat with them yet',

@@ -28385,6 +28385,31 @@ model, which is why max trust is "tribe" and not a relative. Rebroadcast
 interest always carries its word so that a generated name can never spell one of
 the seven's; a pure test walks every setting and finds 248 distinct names.
 
+## Choosing a persona's look (2026-11-21)
+
+Making a persona gave a spare key, then asked for a name. Curtis asked for a
+step where "I see the color and word-pair I've been assigned, and get an
+opportunity to re-roll until I find a color and word-pair that I like". Both are
+drawn from the persona's root public key, so a different look is a different
+key - which settles the order: the look comes **first**, before the spare key,
+because the spare key belongs to the persona kept and every re-roll after it
+would void the one just put away.
+
+`POST /api/identity/roll` rolls a candidate: a root keypair held in memory, one
+per account, for an hour (`identity::roll`), saying only its public key. Rolling
+again drops the last. Nothing is written - no key file, no database, no chain -
+until `POST /api/identity` names the root kept (`take_candidate`), and
+`identity::create` uses that key in place of a fresh one. A candidate the node
+no longer holds (rolled past, taken, expired, or lost to a restart) is refused
+with "roll again" and makes nobody, so a persona is never quietly born with a
+different face. A create with no body still makes one of a fresh key, as every
+script and test does.
+
+The page (`persona.js`, `PersonaLook`, state `look`): "This could be you." over
+the candidate's heptagon on its own tiled pattern and its two words, with "roll
+again", "that's me - keep this one" and "never mind", which goes back to where
+it was asked from. `personalook.cjs` claims the server half.
+
 ## The onward key claim raced the node's own prefetch (2026-11-21)
 
 CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes

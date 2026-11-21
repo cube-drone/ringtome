@@ -20,6 +20,7 @@ import { HitCounter } from './census.js';
 import {
     usePersona,
     NullState,
+    PersonaLook,
     SpareKeyCeremony,
     NamePicker,
     JoinFlow,
@@ -732,6 +733,9 @@ const Inside = ({ session }) => {
         return stage(
             html`<div class="loading-shell"><p>${t('index.loading', 'Loading…')}</p></div>`,
         );
+    }
+    if (persona.state === 'look') {
+        return stage(html`<${PersonaLook} persona=${persona} />`);
     }
     if (persona.state === 'ceremony') {
         return stage(html`<${SpareKeyCeremony} persona=${persona} />`);

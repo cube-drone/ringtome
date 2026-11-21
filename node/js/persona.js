@@ -17,12 +17,12 @@ import { takeImportIntent } from './auth.js';
 import { ImagePickModal } from './doc/imagepick.js';
 import { DrawingThumb } from './doc/drawing.js';
 import { avatarBytes } from './pickbytes.js';
-import { speakable } from './speakable.js';
+import { speakable, wordsFor } from './speakable.js';
 import { startLiveCache, forgetMirror, openMirror, useLive } from './mirror.js';
 import { isDeparted } from './pure/removal.js';
 import { PROFILE_LIMITS, profileChars, overProfileLimit } from './pure/profile.js';
 import { personaHue, shortcode } from './pure/person.js';
-import { bannerStyle, ownDomainAnswered } from './person.js';
+import { PersonHex, bannerStyle, ownDomainAnswered } from './person.js';
 import { Icons } from './icons.js';
 import { QrCode } from './qr.js';
 import { t, tNodes } from './i18n.js';
@@ -67,9 +67,10 @@ export function usePersona(account) {
     // A persona brought from another computer lands on its computers, where its first sync shows
     // (2026-10-19) - the app selector would be empty while everything is still arriving.
     const loc = useLocation();
-    // checking | none | ceremony | naming | join | open | farewell
+    // checking | none | look | ceremony | naming | join | open | farewell
     const [state, setState] = useState('checking');
     const [current, setCurrent] = useState(null); // { root, name, avatar }
+    const [look, setLook] = useState(null); // { root, back }: a rolled persona, not yet made
     const [ceremony, setCeremony] = useState(null); // { root, secret }
     const [naming, setNaming] = useState(null); // root awaiting its display name
     const [join, setJoin] = useState(null); // { requestCode } - the outbound half of adoption
@@ -223,9 +224,32 @@ export function usePersona(account) {
         await refreshPersonas();
     };
 
+    // Making a persona starts with a look at one (Curtis, 2026-11-21): the node rolls a
+    // candidate - a key it holds in memory and nowhere else - and says its root, from which
+    // its colour, picture and words are drawn. Rolling again is another key; nothing exists
+    // until one is kept. This comes before the spare key because the spare key is that of the
+    // persona kept: shown first, every re-roll would void the one just put away.
+    const roll = async () => (await api('/api/identity/roll', { method: 'POST' })).root_pubkey;
     const create = async () => {
         setError(null);
-        const made = await api('/api/identity', { method: 'POST' });
+        const root = await roll();
+        setLook({ root, back: state });
+        setState('look');
+    };
+    const reroll = async () => {
+        const root = await roll();
+        setLook((was) => was && { ...was, root });
+    };
+    const cancelLook = () => {
+        setState(look.back);
+        setLook(null);
+    };
+    const keepLook = async () => {
+        const made = await api('/api/identity', {
+            method: 'POST',
+            body: JSON.stringify({ root_pubkey: look.root }),
+        });
+        setLook(null);
         // The secret exists in this browser tab and nowhere else we can ever show again.
         setCeremony({ root: made.root_pubkey, secret: made.recovery_secret });
         setState('ceremony');
@@ -371,6 +395,10 @@ export function usePersona(account) {
         farewell,
         error,
         create,
+        look,
+        reroll,
+        keepLook,
+        cancelLook,
         ceremonyDone,
         setDisplayName,
         startJoin,
@@ -593,6 +621,50 @@ export const SpareKeyCeremony = ({ persona }) => {
             </label>
             <button class="welcome-go" disabled=${!saved} onClick=${persona.ceremonyDone}>
                 ${t('persona.okay-im-ready', "okay, I'm ready")}
+            </button>
+        </div>
+    `;
+};
+
+// The first step of being born (Curtis, 2026-11-21): the colour and the pair of words this
+// persona would wear, and another roll for as long as they don't suit. Both are drawn from the
+// persona's key and can never be changed afterwards, which is why the choosing is here.
+export const PersonaLook = ({ persona }) => {
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const root = persona.look.root;
+    const run = (act) => async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await act();
+        } catch (e) {
+            setError(e.message);
+        }
+        setBusy(false);
+    };
+    return html`
+        <div class="ceremony">
+            <p class="null-title">${t('persona.look-title', 'This could be you.')}</p>
+            <p class="null-sub">
+                ${t(
+                    'persona.look-sub',
+                    'Every persona gets a colour and a pair of words that are theirs for good. A name and a picture come later, and those you can change - these you cannot. Roll again until you like them.',
+                )}
+            </p>
+            <div class="persona-look" style=${bannerStyle(root)}>
+                <${PersonHex} person=${{ root, hue: personaHue(root) }} size="hero" />
+            </div>
+            <p class="persona-look-words">${wordsFor(root).join('-')}</p>
+            ${error && html`<p class="form-error">${error}</p>`}
+            <button class="ceremony-download" disabled=${busy} onClick=${run(persona.reroll)}>
+                ${t('persona.look-reroll', 'roll again')}
+            </button>
+            <button class="welcome-go" disabled=${busy} onClick=${run(persona.keepLook)}>
+                ${busy ? '…' : t('persona.look-keep', "that's me - keep this one")}
+            </button>
+            <button type="button" class="skip-link" disabled=${busy} onClick=${persona.cancelLook}>
+                ${t('persona.look-cancel', 'never mind')}
             </button>
         </div>
     `;

@@ -9,6 +9,23 @@
     gap: 1rem;
 }
 
+/* The look a persona would wear, before it is made (js/persona.js, PersonaLook): its face over
+   its own tiled pattern, as a profile's banner would show it, and its words beneath. */
+.persona-look {
+    display: flex;
+    justify-content: center;
+    padding: 1.2rem 0;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+}
+
+.persona-look-words {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
 /* Import/export (js/exportpage.js): its acts are a button or a download link, styled alike. */
 .export-go {
     display: flex;

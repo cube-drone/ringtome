@@ -35,6 +35,7 @@ pub struct BodyLimits {
 pub fn router(limits: BodyLimits) -> Router<AppState> {
     Router::new()
         .route("/api/identity", post(create_handler))
+        .route("/api/identity/roll", post(roll_handler))
         .route("/api/identity", get(list_handler))
         .route("/api/identity/{root}/detach", post(detach_handler))
         .route("/api/identity/{root}/profile", get(get_profile_handler).post(set_profile_handler))
@@ -326,12 +327,54 @@ struct CreatedIdentityInfo {
     authorize_entry_hash: String,
 }
 
+#[derive(Serialize)]
+struct RolledIdentity {
+    root_pubkey: String,
+}
+
+/// POST `/api/identity/roll`: a candidate persona to look at before making one - its root
+/// public key, from which the page draws its colour, picture and words. Asking again rolls
+/// another and drops the last; nothing exists until `POST /api/identity` names the one kept.
+async fn roll_handler(session: Session) -> Result<Json<RolledIdentity>, AppError> {
+    crate::auth::keys::identity_by_browser(&session)?;
+    Ok(Json(RolledIdentity { root_pubkey: super::roll(&session.account.id) }))
+}
+
+/// What `POST /api/identity` may say: the rolled candidate to make real. Nothing, or no body
+/// at all, makes a persona of a fresh key.
+#[derive(Deserialize, Default)]
+struct CreateIdentity {
+    root_pubkey: Option<String>,
+}
+
 /// Create a new identity owned by the logged-in account, minting its recovery key.
 async fn create_handler(
     session: Session,
     State(state): State<AppState>,
+    body: axum::body::Bytes,
 ) -> Result<Json<CreatedIdentityInfo>, AppError> {
     crate::auth::keys::identity_by_browser(&session)?;
+    let asked: CreateIdentity = if body.iter().all(u8::is_ascii_whitespace) {
+        CreateIdentity::default()
+    } else {
+        serde_json::from_slice(&body).map_err(|_| {
+            AppError::BadRequest(crate::msg!(
+                "identity.create-unreadable",
+                "that isn't a way to ask for a persona"
+            ))
+        })?
+    };
+    // The persona they were shown, or none at all: a candidate this node no longer holds (it
+    // restarted, or an hour passed) must not quietly become somebody with a different face.
+    let chosen = match asked.root_pubkey.as_deref() {
+        Some(root) => Some(super::take_candidate(&session.account.id, root).ok_or_else(|| {
+            AppError::BadRequest(crate::msg!(
+                "identity.candidate-gone",
+                "that persona is no longer on offer - roll again"
+            ))
+        })?),
+        None => None,
+    };
     let created = super::create(
         &state.node_db,
         &state.keystore,
@@ -339,6 +382,7 @@ async fn create_handler(
         &session.account.id,
         &crate::machines::node_name(&state.config.node_name),
         state.config.admin_persona,
+        chosen,
     )
     .await?;
     // Participation implies locatability (the discoverability doctrine): a newborn identity

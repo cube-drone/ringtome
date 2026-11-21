@@ -61,7 +61,47 @@ pub struct CreatedIdentity {
     pub authorize_entry_hash: String,
 }
 
-/// Create a new identity owned by `account_id`: generate the root keypair, seal the root's
+/// How long a rolled candidate waits to be kept (`roll`).
+const CANDIDATE_LIFE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// The persona each account is looking at before making one (Curtis, 2026-11-21: "see the
+/// color and word-pair I've been assigned, and get an opportunity to re-roll"): a root keypair,
+/// held in memory and nowhere else. A persona's colour, picture and words are all drawn from
+/// its root public key, so a different look IS a different key - and a key nobody kept should
+/// never have touched the disk. One per account: rolling again drops the last, and so does a
+/// restart.
+static CANDIDATES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<Uuid, (SigningKey, std::time::Instant)>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Roll `account_id` a candidate persona and say its root public key (hex), which is all its
+/// look takes. Replaces the account's last candidate. Nothing is stored: `create` with this
+/// root makes it real, and until then it is a key in memory.
+pub fn roll(account_id: &Uuid) -> String {
+    let signing_key = SigningKey::generate(&mut OsRng);
+    let root = hex::encode(signing_key.verifying_key().to_bytes());
+    let mut held = CANDIDATES.lock().expect("candidates poisoned");
+    held.retain(|_, (_, rolled)| rolled.elapsed() < CANDIDATE_LIFE);
+    held.insert(*account_id, (signing_key, std::time::Instant::now()));
+    root
+}
+
+/// Take `account_id`'s candidate if it is the one named - the persona they were shown - and
+/// still fresh. Taken is gone: a candidate is made real once.
+pub fn take_candidate(account_id: &Uuid, root_hex: &str) -> Option<SigningKey> {
+    let mut held = CANDIDATES.lock().expect("candidates poisoned");
+    let named = held.get(account_id).is_some_and(|(key, rolled)| {
+        rolled.elapsed() < CANDIDATE_LIFE && hex::encode(key.verifying_key().to_bytes()) == root_hex
+    });
+    if named {
+        held.remove(account_id).map(|(key, _)| key)
+    } else {
+        None
+    }
+}
+
+/// Create a new identity owned by `account_id`: generate the root keypair (or take the
+/// candidate `chosen`), seal the root's
 /// private key, record the identity, materialize its per-user database, and **mint the recovery
 /// key** - a fresh keypair authorized as the root's first child (rank path `[0]`), structurally
 /// senior to every key added afterward, forever (PROJECT_PLAN, Recovery Planning).
@@ -72,9 +112,11 @@ pub async fn create(
     account_id: &Uuid,
     node_name: &str,
     intended_admin: Option<[u8; 32]>,
+    chosen: Option<SigningKey>,
 ) -> Result<CreatedIdentity, AppError> {
-    // 1. Generate the root keypair. The public key is the identity's name.
-    let signing_key = SigningKey::generate(&mut OsRng);
+    // 1. The root keypair: the candidate its owner chose (`roll`), or a fresh one. The public
+    //    key is the identity's name.
+    let signing_key = chosen.unwrap_or_else(|| SigningKey::generate(&mut OsRng));
     let root_pubkey = signing_key.verifying_key().to_bytes();
     let pubkey_hex = hex::encode(root_pubkey);
 
@@ -830,4 +872,22 @@ pub async fn revoke_key(
 
     tracing::info!(root = %root_hex, target = %target_hex, ?disposition, "revoked key");
     Ok(hex::encode(signed.hash()))
+}
+
+#[cfg(test)]
+mod candidate_tests {
+    use super::*;
+
+    #[test]
+    fn a_rolled_candidate_is_taken_once_by_its_account_and_only_by_name() {
+        let (ada, bea) = (Uuid::new_v4(), Uuid::new_v4());
+        let first = roll(&ada);
+        let second = roll(&ada);
+        assert_ne!(first, second, "a roll is a different key, so a different look");
+        assert!(take_candidate(&ada, &first).is_none(), "rolling again dropped the last");
+        assert!(take_candidate(&bea, &second).is_none(), "one account's is not another's");
+        let key = take_candidate(&ada, &second).expect("the one on offer");
+        assert_eq!(hex::encode(key.verifying_key().to_bytes()), second);
+        assert!(take_candidate(&ada, &second).is_none(), "made real once");
+    }
 }
