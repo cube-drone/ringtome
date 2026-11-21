@@ -192,6 +192,56 @@ pub async fn purged_hashes(
     hashes_of_kinds(state, foreign_root, held, purged).await
 }
 
+/// Every asked-for deletion no reaper round has run for yet, as `(local_root, foreign_root,
+/// purge_kinds)` - and every row still saying one was swept that is asked for no longer. Read by
+/// the reaper BEFORE it marks, so that what it then calls swept is only what its round saw.
+pub async fn unswept(node_db: &crate::db::Db) -> Result<Vec<(String, String, i64)>> {
+    node_db
+        .fetch_all(
+            "SELECT local_root, foreign_root, purge_kinds FROM subscriptions
+             WHERE purge_kinds != swept_kinds",
+            (),
+        )
+        .await
+        .context("reading the deletions not yet swept for")
+}
+
+/// A reaper round ran having seen `rows` (`unswept`): their deletions have happened, as far as
+/// they ever will - what the round kept, something else holds (another follower here, a shared
+/// post, a report, quarantine), and that is not this follower's to wait on. A purge changed
+/// since the round began keeps only the bits both agree on.
+pub async fn mark_swept(node_db: &crate::db::Db, rows: &[(String, String, i64)]) -> Result<()> {
+    for (local_root, foreign_root, seen) in rows {
+        node_db
+            .execute(
+                "UPDATE subscriptions SET swept_kinds = purge_kinds & ?3
+                 WHERE local_root = ?1 AND foreign_root = ?2",
+                (local_root.as_str(), foreign_root.as_str(), *seen),
+            )
+            .await
+            .context("marking a deletion swept")?;
+    }
+    Ok(())
+}
+
+/// Of the kinds `local_root` asked to have deleted, per followed persona, the ones a reaper
+/// round has run for (`mark_swept`): what the relationship panel calls deleted.
+pub async fn swept_kinds(
+    node_db: &crate::db::Db,
+    local_root: &str,
+) -> Result<BTreeMap<String, i64>> {
+    Ok(node_db
+        .fetch_all(
+            "SELECT foreign_root, purge_kinds & swept_kinds FROM subscriptions
+             WHERE local_root = ?1 AND swept_kinds != 0",
+            (local_root,),
+        )
+        .await
+        .context("reading the deletions swept for")?
+        .into_iter()
+        .collect())
+}
+
 async fn hashes_of_kinds(
     state: &AppState,
     foreign_root: &str,
@@ -392,6 +442,7 @@ pub async fn refresh(
                  moderates = excluded.moderates,
                  skip_kinds = excluded.skip_kinds,
                  purge_kinds = excluded.purge_kinds,
+                 swept_kinds = subscriptions.swept_kinds & excluded.purge_kinds,
                  updated_at_ms = excluded.updated_at_ms",
             placeholders.join(",")
         );

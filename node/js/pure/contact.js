@@ -23,7 +23,7 @@
 export const BANDS = ['none', 'low', 'medium', 'high', 'max'];
 
 /// The private-KV collection carrying everything I record about one contact. Keys inside:
-/// `trust`, `interest`, `interest_rebroadcasts`, `edges_public`, `blocked`, `nickname`.
+/// `trust`, `interest`, `interest_rebroadcasts`, `edges_public`, `blocked`, `nickname`, `notes`.
 export const contactCollection = (root) => `contact:${root}`;
 
 /// A stored value as a band, or null for "no opinion". Silence and garbage both land on

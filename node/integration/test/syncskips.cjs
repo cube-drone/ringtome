@@ -183,6 +183,14 @@ const base58 = async (host) => {
             { value: 'yes' },
             'PUT',
         );
+        // What the panel reads to say "will be deleted soon", then "deleted".
+        const deleted = async () =>
+            (
+                (
+                    await (await ada(`api/identity/${adaRoot}/storage/overview`)).json()
+                ).following.find((p) => p.root === beaRoot) || {}
+            ).deleted;
+        assert.deepEqual(await deleted(), [], 'nothing asked for, nothing deleted');
         await decline('sync_skip_pictures', 'yes', 1, 'purge_kinds');
 
         let gone = false;
@@ -199,10 +207,30 @@ const base58 = async (host) => {
         assert.equal(await kept(sealed), true, 'the quarantined picture is kept');
         assert.equal(await kept(picture), false, 'where the other is gone from the disk');
         assert.equal(await held(song), true, 'and the song was never asked about');
+        // The panel is told, though one picture was kept: a quarantined file was never going.
+        assert.deepEqual(await deleted(), ['pictures'], 'the deleting is done');
         // And it stays gone: declined, it is not fetched again.
         await pullAndFold(HOST, beaRoot);
         await beat(HOST, 'bodies-sweep');
         assert.equal(await held(picture), false);
+    });
+
+    it('the deleting taken back and asked again waits for the reaper again', async () => {
+        await decline('sync_purge_pictures', 'no', 0, 'purge_kinds');
+        const row = async () =>
+            (
+                await sql(
+                    `SELECT purge_kinds AS asked, swept_kinds AS swept FROM subscriptions WHERE local_root = '${adaRoot}' AND foreign_root = '${beaRoot}'`,
+                )
+            ).rows[0];
+        assert.equal((await row()).swept, 0, 'taking it back forgets it was done');
+        await decline('sync_purge_pictures', 'yes', 1, 'purge_kinds');
+        let swept = 0;
+        for (let i = 0; i < 60 && swept !== 1; i++) {
+            swept = (await row()).swept;
+            if (swept !== 1) await wait(500);
+        }
+        assert.equal(swept, 1, 'and a round later it is done again');
     });
 
     after(async () => {

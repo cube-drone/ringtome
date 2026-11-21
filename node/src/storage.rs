@@ -129,6 +129,17 @@ impl Kind {
     }
 }
 
+impl Kind {
+    /// The declinable kinds among `bits` (`skip_bit`), by the names the Storage page knows them.
+    pub(crate) fn declinable_in(bits: i64) -> Vec<&'static str> {
+        [(Kind::Pictures, "pictures"), (Kind::Video, "video"), (Kind::Audio, "audio")]
+            .into_iter()
+            .filter(|(kind, _)| bits & kind.skip_bit() != 0)
+            .map(|(_, name)| name)
+            .collect()
+    }
+}
+
 impl Kinds {
     /// The five, summed.
     pub fn total(&self) -> i64 {
@@ -680,6 +691,9 @@ struct Followed {
     /// False until a tally that splits by kind reaches them: until the first, `bytes` is their
     /// database alone.
     counted: bool,
+    /// The kinds of their files the asker had deleted here ("delete existing images"), once a
+    /// round of the reaper has run for it: `pictures`, `video`, `audio`.
+    deleted: Vec<&'static str>,
 }
 
 /// GET `/api/identity/{root}/storage/overview` - the Storage page: what this place keeps in all,
@@ -742,6 +756,9 @@ pub async fn overview_handler(
     };
     let names =
         crate::profiles::bylines(&state.node_db, &followed).await.map_err(AppError::Internal)?;
+    let swept = crate::net::subscriptions::swept_kinds(&state.node_db, &root)
+        .await
+        .map_err(AppError::Internal)?;
     let mut following: Vec<Followed> = followed
         .iter()
         .map(|who| {
@@ -756,6 +773,7 @@ pub async fn overview_handler(
                 chains_bytes,
                 kinds: standing.and_then(|s| s.kinds),
                 counted: reached(&standings, who),
+                deleted: swept.get(who).map_or_else(Vec::new, |bits| Kind::declinable_in(*bits)),
             }
         })
         .collect();

@@ -182,6 +182,7 @@ mod tests {
         // publishes no empty statement.
         assert_eq!(desired_of(&facts(&[])), None);
         assert_eq!(desired_of(&facts(&[("nickname", "Bee")])), None);
+        assert_eq!(desired_of(&facts(&[("notes", "met at the fair")])), None);
         // The retired numeric scale is not a band and must never be signed onto a chain.
         assert_eq!(desired_of(&facts(&[("trust", "95")])), None);
     }

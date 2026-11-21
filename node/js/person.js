@@ -905,6 +905,10 @@ const BLOCK_WORDS = () => ({
 // Ledger - a vouch IS a positive trust edge its author chose to publish). The block is
 // likewise the RECORD of the decision; the Inbound Gate learns to read it when inbound acts
 // arrive.
+/// The most a note about someone holds. Every contact's facts ride the contacts mirror to the
+/// browser, so a note stays a note and not a journal.
+const NOTES_MAX = 2000;
+
 /// The chips and the "+ tag" input on a contact's ledger: every tag this persona has put on
 /// anyone is offered as a completion, so a spelling stays one spelling.
 const ContactTagsEditor = ({ myRoot, tags, onChange }) => {
@@ -997,6 +1001,15 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
         setNickDraft(null);
     };
 
+    // Notes commit the same way: one private record per sitting, not per keystroke.
+    const [notesDraft, setNotesDraft] = useState(null);
+    const commitNotes = () => {
+        if (notesDraft !== null && notesDraft.trim() !== (facts.notes || '')) {
+            put('notes', notesDraft.trim());
+        }
+        setNotesDraft(null);
+    };
+
     const put = (key, value) => {
         setPending((p) => ({ ...p, [key]: value }));
         writeQueue.current = writeQueue.current.then(() =>
@@ -1063,34 +1076,6 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                     <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
                 </select>
             </label>
-            <label class="ledger-dial">
-                <span class="ledger-label">
-                    ${t('person.your-nickname-for-them', 'your nickname for them')}
-                    <small>${t('person.only-you-ever-see-this', 'only you ever see this name')}</small>
-                </span>
-                <input
-                    class="ledger-nick jag-field"
-                    type="text"
-                    placeholder=${t('person.a-name-of-your-choosing', 'a name of your choosing')}
-                    value=${nickDraft !== null ? nickDraft : facts.nickname || ''}
-                    onInput=${(e) => setNickDraft(e.currentTarget.value)}
-                    onBlur=${commitNick}
-                    onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                />
-            </label>
-            ${
-                /* Contact tags (PROJECT_PLAN's Contact tags, 2026-09-10): "family",
-                "trade-show" - private labels, one register in the contact's bag, so every
-                computer you sign in on keeps the same lists and nobody else ever sees them.
-                The People page filters by them; the audience arc will seal to them. */ ''
-            }
-            <div class="ledger-dial">
-                <span class="ledger-label">
-                    ${t('person.your-tags-for-them', 'your tags for them')}
-                    <small>${t('person.tags-hint', 'private - tag this person')}</small>
-                </span>
-                <${ContactTagsEditor} myRoot=${myRoot} tags=${contactTags(facts)} onChange=${(next) => put('tags', serialiseTags(next))} />
-            </div>
             <${Dial}
                 label=${t('person.trust', 'trust')}
                 hint=${t('person.trust-hint', "whether you believe they're real")}
@@ -1113,18 +1098,83 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 onPick=${(v) => put('interest_rebroadcasts', v)}
             />
             ${
-                /* The block lives INSIDE: a button in the summary would toggle the disclosure
-                instead of blocking anyone, and blocking is an edit like the rest. */ ''
+                /* Three headed sections under the dials (Curtis, 2026-11-21: once storage had a
+                subheader, the rest wanted theirs): what you call them, who you let act for
+                you, and what of theirs this place keeps. */ ''
             }
-            <${ModerationControls} myRoot=${myRoot} facts=${facts} put=${put} />
+            <div class="ledger-section">
+                <div class="ledger-section-head">
+                    <span class="ledger-section-title">${t('person.customization', 'customization')}</span>
+                </div>
+                <label class="ledger-dial">
+                    <span class="ledger-label">
+                        ${t('person.your-nickname-for-them', 'your nickname for them')}
+                        <small>${t('person.only-you-ever-see-this', 'only you ever see this name')}</small>
+                    </span>
+                    <input
+                        class="ledger-nick jag-field"
+                        type="text"
+                        placeholder=${t('person.a-name-of-your-choosing', 'a name of your choosing')}
+                        value=${nickDraft !== null ? nickDraft : facts.nickname || ''}
+                        onInput=${(e) => setNickDraft(e.currentTarget.value)}
+                        onBlur=${commitNick}
+                        onKeyDown=${(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                    />
+                </label>
+                ${
+                    /* Contact tags (PROJECT_PLAN's Contact tags, 2026-09-10): "family",
+                    "trade-show" - private labels, one register in the contact's bag, so every
+                    computer you sign in on keeps the same lists and nobody else ever sees them.
+                    The People page filters by them; the audience arc will seal to them. */ ''
+                }
+                <div class="ledger-dial">
+                    <span class="ledger-label">
+                        ${t('person.your-tags-for-them', 'your tags for them')}
+                        <small>${t('person.tags-hint', 'private - tag this person')}</small>
+                    </span>
+                    <${ContactTagsEditor} myRoot=${myRoot} tags=${contactTags(facts)} onChange=${(next) => put('tags', serialiseTags(next))} />
+                </div>
+                ${
+                    /* Notes (Curtis, 2026-11-21): "a block of space to just write, like, where
+                    they met the user or how they know them". One more private register in the
+                    contact's bag: it follows you to every computer you sign in on, and the
+                    published relationship (publish.rs) carries trust and interest only. */ ''
+                }
+                <label class="ledger-notes">
+                    <span class="ledger-label">
+                        ${t('person.your-notes-about-them', 'your notes about this user')}
+                        <small>${t('person.notes-hint', 'only you ever see these')}</small>
+                    </span>
+                    <textarea
+                        class="ledger-notes-text jag-field"
+                        rows="4"
+                        maxlength=${NOTES_MAX}
+                        placeholder=${t('person.notes-placeholder', 'where you met, how you know them, anything at all')}
+                        value=${notesDraft !== null ? notesDraft : facts.notes || ''}
+                        onInput=${(e) => setNotesDraft(e.currentTarget.value)}
+                        onBlur=${commitNotes}
+                    ></textarea>
+                </label>
+            </div>
+            <div class="ledger-section">
+                <div class="ledger-section-head">
+                    <span class="ledger-section-title">${t('person.moderation', 'moderation')}</span>
+                </div>
+                <${ModerationControls} myRoot=${myRoot} facts=${facts} put=${put} />
+                ${
+                    /* The block lives INSIDE: a button in the summary would toggle the
+                    disclosure instead of blocking anyone, and blocking is an edit like the
+                    rest. */ ''
+                }
+                <button
+                    class=${standing ? 'ledger-block ledger-blocked' : 'ledger-block'}
+                    onClick=${() => setBlocking(true)}
+                >${BLOCK_WORDS()[standing || 'none']}</button>
+            </div>
             ${
                 followed(facts) &&
                 html`<${ContactStorage} myRoot=${myRoot} theirRoot=${theirRoot} facts=${facts} put=${put} />`
             }
-            <button
-                class=${standing ? 'ledger-block ledger-blocked' : 'ledger-block'}
-                onClick=${() => setBlocking(true)}
-            >${BLOCK_WORDS()[standing || 'none']}</button>
             ${
                 blocking &&
                 html`<${BlockModal}

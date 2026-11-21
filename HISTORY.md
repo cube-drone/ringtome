@@ -28305,6 +28305,45 @@ one's, never touches the song, and the picture is not fetched again.
 `/test/blob` now also says `kept` (bytes on disk), since a sealed blob reads as
 absent to everything else - the first run of the claim failed on exactly that.
 
+## The relationship pop-out in headed sections (2026-11-21)
+
+Once storage had a subheader in a person's "your relationship" pop-out, Curtis
+asked for the rest to have theirs: "your nickname for them" and "your tags for
+them" under **customization**, "trust them to moderate for me" and the block
+button under **moderation**. The dials that say how you hold someone
+(visibility, trust, interest, rebroadcasts) stay unheaded at the top, so the
+nickname and tags moved below them; then customization, moderation, storage. The
+storage section's classes became the shared `.ledger-section*` (`persona.css`).
+The note a pressed "Delete existing" leaves now reads "existing images will be
+deleted soon".
+
+Customization then gained a third row, "your notes about this user": a block to
+write where you met someone or how you know them. It is one more private key
+(`notes`) in the contact's record, written on leaving the box like the nickname,
+capped at 2000 characters in the page because every contact's facts ride the
+contacts mirror. The published relationship carries trust and interest only, and
+`publish.rs` now claims a note alone publishes nothing.
+
+## "Will be deleted soon" learns when it is done (2026-11-21)
+
+Curtis asked whether "existing video will be deleted soon" clears once the video
+is deleted. It did not: the panel knew only that the deleting was asked for. Now
+a new column, `subscriptions.swept_kinds` (rung `node/0124`), holds the
+asked-for kinds a round of the blob reaper has run for. The reaper reads the
+unswept requests before its mark and stamps them after it (`reaper::arm`,
+`subscriptions::unswept` / `mark_swept`), so a request made mid-round waits for
+the next; taking a purge back clears its bit in the same upsert that clears the
+purge. The Storage overview gives each followed person's `deleted` kinds, and
+the panel says "existing video deleted" once theirs is among them, asking again
+every fifteen seconds while one is still to come.
+
+A file the round kept - quarantined, or still held by another follower here, a
+shared post, a report - does not hold the word back (Curtis: "ignore those
+files"): it was never going, and "deleted" means the reaper has been round, not
+that every byte went. `syncskips.cjs` claims both: the overview says `pictures`
+deleted with the quarantined picture still kept, and a purge taken back and
+asked again waits for a round again.
+
 ## The onward key claim raced the node's own prefetch (2026-11-21)
 
 CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes

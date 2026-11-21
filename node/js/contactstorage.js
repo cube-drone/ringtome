@@ -18,48 +18,67 @@ import { Breakdown, FILE_WORDS } from './storagepage.js';
 
 const html = htm.bind(h);
 
-/// Each switch, the button beside it once it is on, and what stands there once pressed - the
-/// first two in Curtis's words.
+/// How often the section asks again while a deletion is asked for and not yet done: the node's
+/// reaper comes round on its own time (half-hourly on a computer in real use).
+const DELETING_EVERY_MS = 15000;
+
+/// Each switch, the button beside it once it is on, what stands there once pressed, and what
+/// once the node's reaper has been round for it - the first three in Curtis's words.
 const SKIP_WORDS = () => ({
     pictures: {
         skip: t('contact-storage.skip-pictures', 'do not sync images from this user'),
         purge: t('contact-storage.purge-pictures', 'Delete existing images'),
-        deleted: t('contact-storage.purged-pictures', 'existing images will be deleted soon'),
+        deleting: t('contact-storage.purged-pictures', 'existing images will be deleted soon'),
+        deleted: t('contact-storage.deleted-pictures', 'existing images deleted'),
     },
     audio: {
         skip: t('contact-storage.skip-audio', 'do not sync audio from this user'),
         purge: t('contact-storage.purge-audio', 'Delete existing audio'),
-        deleted: t('contact-storage.purged-audio', 'existing audio will be deleted soon'),
+        deleting: t('contact-storage.purged-audio', 'existing audio will be deleted soon'),
+        deleted: t('contact-storage.deleted-audio', 'existing audio deleted'),
     },
     video: {
         skip: t('contact-storage.skip-video', 'do not sync video from this user'),
         purge: t('contact-storage.purge-video', 'Delete existing video'),
-        deleted: t('contact-storage.purged-video', 'existing video will be deleted soon'),
+        deleting: t('contact-storage.purged-video', 'existing video will be deleted soon'),
+        deleted: t('contact-storage.deleted-video', 'existing video deleted'),
     },
 });
 
 export const ContactStorage = ({ myRoot, theirRoot, facts, put }) => {
     // undefined while asking; null when nothing of theirs is kept here (or the asking failed).
     const [theirs, setTheirs] = useState(undefined);
+    // Asked again when a deletion is asked for or taken back, and every so often while one is
+    // still to come: `deleted` on their row says which the reaper has been round for. Kept
+    // files do not hold the word back - a quarantined one, or one somebody else here still
+    // has, was never going (Curtis, 2026-11-21: "ignore those files").
+    const asked = SYNC_SKIPS.filter((s) => facts[s.key] === 'yes' && facts[s.purge] === 'yes')
+        .map((s) => s.kind)
+        .join(',');
+    const done = (kind) => !!theirs && (theirs.deleted || []).includes(kind);
+    const waiting = asked !== '' && asked.split(',').some((kind) => !done(kind));
     useEffect(() => {
         let live = true;
-        setTheirs(undefined);
-        api(`/api/identity/${myRoot}/storage/overview`)
-            .then(
-                (a) =>
-                    live &&
-                    setTheirs((a.following || []).find((p) => p.root === theirRoot) || null),
-            )
-            .catch(() => live && setTheirs(null));
+        const ask = () =>
+            api(`/api/identity/${myRoot}/storage/overview`)
+                .then(
+                    (a) =>
+                        live &&
+                        setTheirs((a.following || []).find((p) => p.root === theirRoot) || null),
+                )
+                .catch(() => live && setTheirs((was) => was || null));
+        ask();
+        const again = waiting ? setInterval(ask, DELETING_EVERY_MS) : null;
         return () => {
             live = false;
+            if (again) clearInterval(again);
         };
-    }, [myRoot, theirRoot]);
+    }, [myRoot, theirRoot, asked, waiting]);
     const words = SKIP_WORDS();
     return html`
-        <div class="ledger-storage">
-            <div class="ledger-storage-head">
-                <span class="ledger-storage-title">${t('contact-storage.title', 'storage')}</span>
+        <div class="ledger-section">
+            <div class="ledger-section-head">
+                <span class="ledger-section-title">${t('contact-storage.title', 'storage')}</span>
                 ${theirs && html`<span class="storage-row-size">${sizeLabel(theirs.bytes)}</span>`}
             </div>
             ${
@@ -93,7 +112,7 @@ export const ContactStorage = ({ myRoot, theirRoot, facts, put }) => {
                         ${
                             declined &&
                             (purged
-                                ? html`<small class="ledger-note">${words[kind].deleted}</small>`
+                                ? html`<small class="ledger-note">${done(kind) ? words[kind].deleted : words[kind].deleting}</small>`
                                 : html`<button class="ledger-purge" onClick=${() => put(purge, 'yes')}>
                                       ${words[kind].purge}
                                   </button>`)

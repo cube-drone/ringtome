@@ -36,7 +36,15 @@ pub fn arm(state: &AppState) {
     let st = state.clone();
     state.files.arm_gc(std::sync::Arc::new(move || {
         let st = st.clone();
-        Box::pin(async move { live_set(&st).await })
+        Box::pin(async move {
+            // The deletions followers asked for (net::subscriptions, "delete existing images"),
+            // read before the mark so that this round saw every one of them: once the mark
+            // stands, the sweep behind it is their deleting, and the panel may say so.
+            let asked = crate::net::subscriptions::unswept(&st.node_db).await?;
+            let live = live_set(&st).await?;
+            crate::net::subscriptions::mark_swept(&st.node_db, &asked).await?;
+            Ok(live)
+        })
     }));
 }
 
