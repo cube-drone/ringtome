@@ -28410,6 +28410,13 @@ the candidate's heptagon on its own tiled pattern and its two words, with "roll
 again", "that's me - keep this one" and "never mind", which goes back to where
 it was asked from. `personalook.cjs` claims the server half.
 
+## The bank's portfolio waits for Horse Financial (2026-11-21)
+
+hrseBank's portfolio column holds bonds and commodities, which only Horse
+Financial sells, so until that unlock is bought the column - and its rail when
+tucked - is not drawn (`apps/bank.js`). An owner of everything sees it as
+before.
+
 ## The onward key claim raced the node's own prefetch (2026-11-21)
 
 CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes

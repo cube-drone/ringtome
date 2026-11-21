@@ -578,6 +578,10 @@ const Bond = ({ root, balance, onBought }) => {
         </section>`;
 };
 
+/// The unlock that opens the Market to bonds and commodities (bank.rs), and so the portfolio
+/// that holds them.
+const FINANCIAL = 'horse-financial';
+
 /// The portfolio column (Curtis, 2026-09-29: "tuck our purchased HorseBonds in a new column"):
 /// every instrument held, newest first, with how far along each is. In debt, a bond still paying
 /// can be sold for its price (2026-09-30: "If you're in debt you should be allowed to sell bonds").
@@ -737,6 +741,11 @@ export const BankApp = ({ current }) => {
         return html`<div class="bank-app"><div class="bank"><p class="null-sub">${t('apps.bank.counting', 'counting…')}</p></div></div>`;
     const kinds = Object.entries(bank.by_kind || {}).filter(([, p]) => p !== '0');
     const months = bank.months || [];
+    // The portfolio holds what Horse Financial sells - bonds and commodities - so until that is
+    // bought there is nothing it could ever show, and the column is not there (Curtis, 2026-11-21).
+    const financial =
+        bank.everything || (bank.unlocks || []).some((u) => u.id === FINANCIAL && u.bought_ms);
+    const portfolioTucked = tucked.has('portfolio');
     return html`<div class="bank-app"><div class="bank-columns panes" style=${colStyle}>
         ${
             tucked.has('market')
@@ -752,9 +761,11 @@ export const BankApp = ({ current }) => {
               </aside>${resizer('market')}`
         }
         ${
-            tucked.has('portfolio')
-                ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`
-                : html`${tab('portfolio', Icons.bank, t('apps.bank.portfolio', 'portfolio'))}<aside class="bank-portfolio">
+            !financial
+                ? null
+                : portfolioTucked
+                  ? html`<${Rail} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onClick=${() => toggleTuck('portfolio')} />`
+                  : html`${tab('portfolio', Icons.bank, t('apps.bank.portfolio', 'portfolio'))}<aside class="bank-portfolio">
                   <${PaneHead} icon=${Icons.bank} label=${t('apps.bank.portfolio', 'portfolio')} onTuck=${() => toggleTuck('portfolio')} />
                   <${Portfolio}
                       root=${root}
