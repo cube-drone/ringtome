@@ -1,8 +1,9 @@
 // Wordaga, the game (apps/games.js; Curtis, 2026-11-14): guess the day's word, with dice.
 //
 // A game is a run of cycles. A cycle rolls every die you own; you spend the dice on abilities
-// that buy facts about the word, and when the last die is spent you get a guess. A guess is right
-// or wrong and says nothing else. Wrong, and the next cycle begins. The score is the cycle you got
+// that buy facts about the word, and when the last die is spent you get a guess - or give it up
+// for two apostrophes. A guess is right or wrong and says nothing else. Wrong, or given up, and
+// the next cycle begins. The score is the cycle you got
 // it in, and lower is better. Apostrophes are the game's own money: earned from dice, spent on
 // the dearer abilities, kept from cycle to cycle, gone when the game is.
 //
@@ -24,6 +25,19 @@ export const VOWEL_PRICE = 9;
 export const RUN_PRICE = 2;
 /// What throwing dice that total seven again costs.
 export const SEVEN = 1;
+/// Par (Curtis, 2026-11-21: "6 is kind of 'par' for this game"): a cycle's guess is `under` for
+/// the first six cycles, `par` for the two after, and `over` from the ninth on.
+export const PAR = 6;
+export const PAR_GRACE = 2;
+/// Where the cycle numbered `cycle` (from 1) stands against par.
+export const standing = (cycle) =>
+    cycle <= PAR ? 'under' : cycle <= PAR + PAR_GRACE ? 'par' : 'over';
+
+/// What giving up a cycle's guess pays, in apostrophes (`pass`).
+export const PASS_PAYS = 2;
+/// A cycle passed, as it stands among the misses: no word at all, which no guess can be. The
+/// page writes it as "skip" (apps/games.js), so the list still counts the cycles gone by.
+export const SKIPPED = '';
 
 export const VOWELS = 'aeiou';
 /// The consonants a pair tests: the ones a word seldom has.
@@ -289,17 +303,35 @@ export function guess(state, text) {
         for (const letter of state.word) known[letter] = 'in';
         return { ...state, known, won: true, last: { ability: 'guess', hit: true } };
     }
-    const next = {
+    return nextCycle({
         ...state,
         misses: [...state.misses, said],
         last: { ability: 'guess', hit: false, said },
-    };
+    });
+}
+
+/// The cycle after this one: every die owned, thrown.
+function nextCycle(state) {
     const [dice, pips] = roll(state.dice, state.count);
     return {
-        ...next,
+        ...state,
         dice,
         cycle: state.cycle + 1,
         hand: pips.map(thrownDie(nextThrow(state))),
         throws: nextThrow(state),
     };
+}
+
+/// Give up the cycle's guess for `PASS_PAYS` apostrophes (Curtis, 2026-11-21: "early guesses at
+/// the word are mostly worthless: there's not enough data to make any meaningful inferences").
+/// The cycle is still spent - the next begins, and the score counts it as it counts a miss - and
+/// it stands among the misses as `SKIPPED`, so the list is still one entry a cycle gone by. The state after, or null if it is not time to guess.
+export function pass(state) {
+    if (!guessing(state)) return null;
+    return nextCycle({
+        ...state,
+        misses: [...state.misses, SKIPPED],
+        apostrophes: state.apostrophes + PASS_PAYS,
+        last: { ability: 'pass', gained: PASS_PAYS },
+    });
 }

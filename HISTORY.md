@@ -28417,6 +28417,26 @@ Financial sells, so until that unlock is bought the column - and its rail when
 tucked - is not drawn (`apps/bank.js`). An owner of everything sees it as
 before.
 
+## Wordaga: a guess may be given up for 2 (2026-11-21)
+
+Curtis: "early guesses at the word are mostly worthless: there's not enough data
+to make any meaningful inferences", so a player may give the guess up for $2.
+Read as the game's own money - the apostrophes dice earn, which the page shows
+as money - not HorseBucks: beside the guess box, "skip for 2" takes two and
+begins the next cycle (`pure/wordagagame.js`, `pass`). The cycle is still spent,
+so the score counts it exactly as it counts a miss, and it stands in the list of
+wrong guesses as a crossed-out "skip" (the list would otherwise stop saying how
+many cycles have gone by), and the dice thrown next are the ones a wrong guess
+would have thrown. Nothing in the bank changed: the prize is still by the cycle
+won in.
+
+The list is coloured against par, which Curtis put at six: the first six entries
+green, the next two plain ink, the rest red (`standing`). The won panel wears
+the same by the cycle it was won in - its border and its bouncing confetti:
+green for six or under, ink for seven or eight, red past that. The heading, the
+lines under the letters and the share button took the colour next, and so did a
+score shared to the feed, by its attempts.
+
 ## The onward key claim raced the node's own prefetch (2026-11-21)
 
 CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes

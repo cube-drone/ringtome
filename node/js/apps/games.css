@@ -81,13 +81,42 @@
 
 /* A game that is over: a panel in a thick jagged line, confetti bouncing at its top, its heading,
    and under it, quietly, what it earned. The line is layering, as the frame's is (tokens.css): a
-   teal box cut to the jag, and a paper one cut the same way a line's width inside it. */
+   coloured box cut to the jag, and a paper one cut the same way a line's width inside it. */
 .wordaga-victory {
     --j: 6px;
     margin-bottom: 0.8rem;
     padding: 5px;
-    background: var(--teal);
+    background: var(--won, var(--teal));
     clip-path: var(--jag);
+}
+
+/* The panel's colour against par (pure/wordagagame.js `standing`), for its line and its confetti:
+   won in six or under, in seven or eight - ink, so dark on a light theme and light on a dark one -
+   or in more. */
+.wordaga-victory-under {
+    --won: var(--sea);
+}
+
+.wordaga-victory-par {
+    --won: var(--ink);
+}
+
+.wordaga-victory-over {
+    --won: var(--coral);
+}
+
+/* And what else on the panel wears it: the heading, the lines under the letters, and the button
+   (share the score, or take a turn). */
+.wordaga-victory .wordaga-won {
+    color: var(--won, var(--accent-ink));
+}
+
+.wordaga-victory .wordaga-slot {
+    border-bottom-color: var(--won, var(--border-strong));
+}
+
+.wordaga-victory .wordaga-go {
+    background: var(--won, var(--teal));
 }
 
 .wordaga-victory-in {
@@ -100,7 +129,7 @@
 
 .wordaga-confetti {
     display: flex;
-    color: var(--teal);
+    color: var(--won, var(--teal));
     font-size: 75px;
     line-height: 1;
     transform-origin: 50% 100%;
@@ -484,6 +513,19 @@
     text-transform: uppercase;
 }
 
+/* A miss against par: the first six cycles, the two after, and the rest. */
+.wordaga-miss-under {
+    color: var(--sea);
+}
+
+.wordaga-miss-par {
+    color: var(--ink);
+}
+
+.wordaga-miss-over {
+    color: var(--coral);
+}
+
 .wordaga-letters {
     display: flex;
     flex-wrap: wrap;
@@ -553,6 +595,23 @@
     --j: 3px;
     clip-path: var(--jag-1);
     cursor: pointer;
+}
+
+/* Beside the guess: giving it up for money. Quieter than the guess itself. */
+.wordaga-pass {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.8rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    cursor: pointer;
+}
+
+.wordaga-pass:hover {
+    border-color: var(--teal);
 }
 
 .wordaga-go:disabled {

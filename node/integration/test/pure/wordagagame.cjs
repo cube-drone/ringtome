@@ -183,6 +183,43 @@ describe("Wordaga's rules", () => {
         assert.ok(g.hand.length === 4 && g.hand.every((d) => !d.spent));
     });
 
+    it('lets the guess be given up for two apostrophes, and the cycle is spent all the same', () => {
+        let g = dealt('neon', [2, 3, 4, 6]);
+        assert.equal(G.pass(g), null, 'not before the dice are spent');
+        g = G.play(g, 'earn', [0, 1, 2, 3]);
+        const passed = G.pass(g);
+        assert.equal(passed.apostrophes, g.apostrophes + G.PASS_PAYS);
+        assert.equal(G.PASS_PAYS, 2);
+        assert.equal(passed.cycle, 2, 'the score counts a cycle passed as it counts a miss');
+        assert.deepEqual(passed.misses, [G.SKIPPED], 'a skip stands where a guess would');
+        assert.equal(G.SKIPPED, '', 'and is no word a guess could be');
+        assert.deepEqual(G.guess(G.play(passed, 'earn', [0, 1, 2, 3]), 'nope').misses, [
+            '',
+            'nope',
+        ]);
+        assert.deepEqual(passed.last, { ability: 'pass', gained: 2 });
+        assert.ok(passed.hand.length === 4 && passed.hand.every((d) => !d.spent));
+        // The same dice as a wrong guess would have thrown: passing moves no die.
+        assert.deepEqual(
+            passed.hand.map((d) => d.pips),
+            G.guess(g, 'nope').hand.map((d) => d.pips),
+        );
+        assert.equal(G.pass(passed), null, 'one a cycle: the new dice are not spent yet');
+        const won = G.guess(G.play(passed, 'earn', [0, 1, 2, 3]), 'neon');
+        assert.equal(G.pass(won), null, 'nothing to give up in a game won');
+    });
+
+    it('holds six cycles to be par: under through the sixth, par for two more, over after', () => {
+        assert.deepEqual([1, 6, 7, 8, 9, 20].map(G.standing), [
+            'under',
+            'under',
+            'par',
+            'par',
+            'over',
+            'over',
+        ]);
+    });
+
     it('is won by the word, however it is typed, and scored by the cycle', () => {
         let g = dealt('neon', [1]);
         g = G.guess(G.play(g, 'earn', [0]), 'nope');

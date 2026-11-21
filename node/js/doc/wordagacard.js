@@ -15,6 +15,7 @@ import { gamesHref } from '../links.js';
 import { useAbolished, useTabRoot } from '../unlocks.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import { wordagaDay, wordagaPays, wordagaPrize, wordagaShared } from '../pure/wordaga.js';
+import { standing } from '../pure/wordagagame.js';
 
 const html = htm.bind(h);
 
@@ -62,6 +63,16 @@ const useWonDay = (root, day) => {
     return days ? days.has(day) : null;
 };
 
+/// A won panel's colour by the cycle it was won in, against par (pure/wordagagame.js `standing`;
+/// Curtis, 2026-11-21): green for six or under, ink for seven or eight, red past that. It colours
+/// the panel's line, its heading, the lines under the letters and its button (games.css `--won`) -
+/// on the game's own page and on a score shared to the feed alike.
+export const WON_CLASS = {
+    under: 'wordaga-victory-under',
+    par: 'wordaga-victory-par',
+    over: 'wordaga-victory-over',
+};
+
 /// The streak's multiplier, as this reader's machine writes numbers: 1.3, 37.5.
 export const streakTimes = (streak) =>
     ((10 + streak) / 10).toLocaleString(undefined, {
@@ -87,7 +98,7 @@ const WordagaCard = ({ score }) => {
     const done = useWonDay(root, today);
     const { day, attempts, streak, earned, length } = score;
     const summed = streak > 0 && earned === wordagaPays(attempts, streak);
-    return html`<div class="wordaga-victory wordaga-card">
+    return html`<div class=${`wordaga-victory wordaga-card ${WON_CLASS[standing(attempts)]}`}>
         <div class="wordaga wordaga-victory-in">
             <p class="wordaga-date">
                 ${t('doc.wordagacard.wordaga-on', 'Wordaga, {date}', { date: wordagaDate(day) })}

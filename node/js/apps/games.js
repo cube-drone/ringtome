@@ -13,7 +13,7 @@ import { api } from '../net.js';
 import { toast } from '../toasts.js';
 import { useAbolished, useUnlocked } from '../unlocks.js';
 import { publishTo } from '../doc/publish.js';
-import { noteWordagaWon, streakTimes, wordagaDate } from '../doc/wordagacard.js';
+import { noteWordagaWon, streakTimes, wordagaDate, WON_CLASS } from '../doc/wordagacard.js';
 import { FEED_STYLE } from '../pure/feed.js';
 import { formatHorseBucks } from '../pure/horsebucks.js';
 import {
@@ -34,6 +34,10 @@ import {
     can,
     guess,
     guessing,
+    pass,
+    PASS_PAYS,
+    SKIPPED,
+    standing,
     newGame,
     play,
     priceOf,
@@ -161,6 +165,8 @@ const lastWords = (last) => {
             ? t('games.letter-in', '{letter} is in the word.', { letter })
             : t('games.letter-out', '{letter} is not in the word.', { letter });
     if (last.ability === 'earn') return t('games.earned', 'money taken: {n}.', { n: last.gained });
+    if (last.ability === 'pass')
+        return t('games.passed', 'no guess this time. money taken: {n}.', { n: last.gained });
     if (last.ability === 'buy-die') return t('games.bought-die', 'a new die, yours to keep.');
     return t('games.rolled-again', 'rolled again.');
 };
@@ -254,6 +260,18 @@ const outcomeSounds = (game, next) => {
 const CHIP_SOUNDS = [1, 2, 3, 4, 5, 6].map((n) => `chips-handle-${n}`);
 /// How long after a move its money is heard (ms): behind the card's own sound, not on top of it.
 const CHIPS_AFTER = 350;
+/// A miss as the list writes it: the word guessed, or "skip" for a cycle whose guess was given up
+/// (Curtis, 2026-11-21) - one entry a cycle, so the list still says how far in the game is.
+const missWord = (miss) => (miss === SKIPPED ? t('games.skipped', 'skip') : miss);
+
+/// A miss's colour by the cycle it was made in, against par (pure/wordagagame.js `standing`):
+/// green through the sixth, plain for the two after, red from there (games.css).
+const MISS_CLASS = {
+    under: 'wordaga-miss-under',
+    par: 'wordaga-miss-par',
+    over: 'wordaga-miss-over',
+};
+
 /// How long a change to the money stays written beside it (ms): the length of its fade in games.css.
 const CHANGE_SHOWN = 2600;
 
@@ -536,7 +554,7 @@ const Won = ({ word, misses, score, paid, date, streak = 0, share }) => {
     const times = streakTimes(streak);
     const earns = paid && !abolished;
     // In the history (a `date`): the day it was in place of the confetti, one heading lower.
-    return html`<div class="wordaga-victory"><div class="wordaga wordaga-victory-in">
+    return html`<div class=${`wordaga-victory ${WON_CLASS[standing(score)]}`}><div class="wordaga wordaga-victory-in">
         ${
             date
                 ? html`<p class="wordaga-date">${date}</p>`
@@ -580,7 +598,7 @@ const Won = ({ word, misses, score, paid, date, streak = 0, share }) => {
         ${
             misses.length > 0 &&
             html`<ul class="wordaga-misses" aria-label=${t('games.guessed-wrong', 'not the word')}>
-                ${misses.map((miss, i) => html`<li key=${i}><s>${miss}</s></li>`)}
+                ${misses.map((miss, i) => html`<li key=${i} class=${MISS_CLASS[standing(i + 1)]}><s>${missWord(miss)}</s></li>`)}
             </ul>`
         }
         <p class="wordaga-word" aria-label=${t('games.the-word', 'the word')}>
@@ -729,7 +747,7 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
         ${
             game.misses.length > 0 &&
             html`<ul class="wordaga-misses" aria-label=${t('games.guessed-wrong', 'not the word')}>
-                ${game.misses.map((word) => html`<li key=${word}><s>${word}</s></li>`)}
+                ${game.misses.map((miss, i) => html`<li key=${i} class=${MISS_CLASS[standing(i + 1)]}><s>${missWord(miss)}</s></li>`)}
             </ul>`
         }
         <p class="wordaga-word" aria-label=${t('games.the-word', 'the word')}>
@@ -804,6 +822,21 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
                               />
                               <button class="wordaga-go" type="submit" disabled=${!said.trim()}>
                                   ${t('games.guess', 'guess')}
+                              </button>
+                              ${
+                                  /* Or give the guess up for money (Curtis, 2026-11-21): an early
+                                  guess is mostly worthless, with nothing yet to go on. */ ''
+                              }
+                              <button
+                                  class="wordaga-pass"
+                                  type="button"
+                                  title=${t('games.pass-title', 'give up this guess and take {n} money instead', { n: PASS_PAYS })}
+                                  onClick=${() => {
+                                      setSaid('');
+                                      move(pass(game));
+                                  }}
+                              >
+                                  ${t('games.pass', 'skip for')} <${Icons.money} /> ${PASS_PAYS}
                               </button>
                           </form>`
                       }
