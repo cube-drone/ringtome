@@ -28369,6 +28369,22 @@ them apart, so a plain follow is medium interest. Nothing dialled above its
 bottom stop still reads "nothing recorded yet". The notifications page's signal
 bars (what someone else published about you) are untouched.
 
+The People list's "by trust" and "by interest" orders folded into one, "by
+relationship": trust weighs most, then interest, then rebroadcast interest, each
+a full tie-break of the one before (`pure/people.js`, `relationshipRank`). "By
+recent activity" stands beside it as before.
+
+A custom relationship then got a name of its own, generated from its dials, so
+all 248 settings read differently: "secret" when private, a word for interest
+(muted, quiet, nothing at the middle, keen, devoted), a word for rebroadcast
+interest (solo, sampling, steady, tuned-in, all-in), and trust as the noun
+(follow, fan, acquaintance, friend, tribe) - "secret devoted all-in fan". The
+seven keep their concrete names (Curtis: "the matrix is just the auto-generated
+names for custom relationships"), and no word claims a tie the dials do not
+model, which is why max trust is "tribe" and not a relative. Rebroadcast
+interest always carries its word so that a generated name can never spell one of
+the seven's; a pure test walks every setting and finds 248 distinct names.
+
 ## The onward key claim raced the node's own prefetch (2026-11-21)
 
 CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes

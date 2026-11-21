@@ -8,16 +8,25 @@
 import { bandOrdinal } from './contact.js';
 import { byRecentActivity } from './heartbeat.js';
 
-/// The two orderings the shelf offers. Both descend (most first); the tie-break is the root,
-/// so two same-scored contacts never shuffle between renders or devices.
-export const PEOPLE_SORTS = [{ key: 'trust' }, { key: 'interest' }, { key: 'recent' }]; // words: apps/people.js SORT_WORDS
+/// The orderings the shelf offers. Both descend (most first); the tie-break is the root, so two
+/// same-scored contacts never shuffle between renders or devices.
+export const PEOPLE_SORTS = [{ key: 'relationship' }, { key: 'recent' }]; // words: apps/people.js SORT_WORDS
 
-/// Order contact rows by one fact, descending, blocked personas sinking to the bottom
+/// A relationship as one number to rank by (Curtis, 2026-11-21, folding "by trust" and "by
+/// interest" into one order): trust weighs most, then interest, then interest in their
+/// rebroadcasts - each a band's rung (0-4), so a rung of trust outranks any amount of the two
+/// below it, and a rung of interest any amount of rebroadcast interest.
+export function relationshipRank(facts) {
+    const rung = (key) => bandOrdinal((facts || {})[key]) ?? 0;
+    return rung('trust') * 25 + rung('interest') * 5 + rung('interest_rebroadcasts');
+}
+
+/// Order contact rows by relationship, closest first, blocked personas sinking to the bottom
 /// regardless (a blocked contact is still YOURS to see and unblock - hidden would mean
 /// unfindable - but it never outranks the living relationships).
 /// `recent` (2026-09-29) orders by their last heartbeat instead: newest first, the never-seen last.
 export function sortContacts(rows, by) {
-    const score = (r) => bandOrdinal((r.facts || {})[by]) ?? 0;
+    const score = (r) => relationshipRank(r.facts);
     const blocked = (r) => ((r.facts || {}).blocked === 'yes' ? 1 : 0);
     const rank =
         by === 'recent'

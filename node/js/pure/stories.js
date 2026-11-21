@@ -54,6 +54,28 @@ export function storyOf(facts) {
     return told ? told.id : CUSTOM;
 }
 
+/// A custom relationship's name, as parts (Curtis, 2026-11-21: the seven keep their concrete
+/// names, "the matrix is just the auto-generated names for custom relationships"). One word a
+/// dial, stacked: `secret` when the relationship is private, then interest, then interest in
+/// their rebroadcasts, then a core noun for trust - each the band it stands at. The UI turns
+/// the bands into words (js/person.js): "secret devoted all-in fan", "quiet solo friend".
+///
+/// Interest at its middle stop says nothing, so the commonest names are short; rebroadcast
+/// interest always speaks, which is what keeps a generated name from ever spelling one of the
+/// seven's ("quiet friend" the story is low interest and no rebroadcasts; low interest and
+/// medium rebroadcasts must not read the same).
+export function customName(facts) {
+    const f = facts || {};
+    const band = (value) => ['none', 'low', 'medium', 'high', 'max'][rung(value)];
+    const interest = band(f.interest);
+    return {
+        secret: !open(f),
+        interest: interest === 'medium' ? null : interest,
+        rebroadcasts: band(f.interest_rebroadcasts),
+        trust: band(f.trust),
+    };
+}
+
 /// What picking a story writes: the four keys, as `[key, value]` pairs, less the ones `facts`
 /// already hold - one private record per dial that actually moves. Nothing for an unknown id.
 export function storyWrites(id, facts) {

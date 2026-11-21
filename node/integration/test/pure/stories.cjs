@@ -3,9 +3,9 @@
 // since his table gave both the same settings) is pinned here too.
 const assert = require('node:assert');
 
-let STORIES, CUSTOM, storyOf, storyWrites, storyOpacity;
+let STORIES, CUSTOM, storyOf, storyWrites, storyOpacity, customName;
 before(async () => {
-    ({ STORIES, CUSTOM, storyOf, storyWrites, storyOpacity } =
+    ({ STORIES, CUSTOM, storyOf, storyWrites, storyOpacity, customName } =
         await import('../../../js/pure/stories.js'));
 });
 
@@ -120,5 +120,80 @@ describe('relationship stories', () => {
             [0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1],
         );
         assert.equal(storyOpacity(CUSTOM), 1);
+    });
+});
+
+// The words js/person.js gives the parts, so the claims below are about names as read.
+const INTEREST = { none: 'muted', low: 'quiet', high: 'keen', max: 'devoted' };
+const REBROADCASTS = {
+    none: 'solo',
+    low: 'sampling',
+    medium: 'steady',
+    high: 'tuned-in',
+    max: 'all-in',
+};
+const TRUST = { none: 'follow', low: 'fan', medium: 'acquaintance', high: 'friend', max: 'tribe' };
+const STORY_NAMES = {
+    'quiet-follow': 'quiet follow',
+    follow: 'follow',
+    fan: 'fan',
+    acquaintance: 'acquaintance',
+    friend: 'friend',
+    'quiet-friend': 'quiet friend',
+    family: 'family',
+};
+const spelled = (facts) => {
+    const n = customName(facts);
+    return [
+        n.secret && 'secret',
+        n.interest && INTEREST[n.interest],
+        REBROADCASTS[n.rebroadcasts],
+        TRUST[n.trust],
+    ]
+        .filter(Boolean)
+        .join(' ');
+};
+
+describe("a custom relationship's generated name", () => {
+    it('stacks a word a dial: secret, interest, rebroadcasts, then trust as the noun', () => {
+        assert.equal(
+            spelled({
+                edges_public: 'no',
+                trust: 'low',
+                interest: 'max',
+                interest_rebroadcasts: 'max',
+            }),
+            'secret devoted all-in fan',
+        );
+        assert.equal(spelled({ trust: 'high', interest: 'low' }), 'quiet solo friend');
+        assert.equal(
+            spelled({ trust: 'max', interest_rebroadcasts: 'high' }),
+            'muted tuned-in tribe',
+        );
+    });
+
+    it('interest at its middle stop says nothing; rebroadcast interest always speaks', () => {
+        assert.equal(spelled({ trust: 'high', interest: 'medium' }), 'solo friend');
+        assert.equal(
+            spelled({ trust: 'none', interest: 'medium', interest_rebroadcasts: 'medium' }),
+            'steady follow',
+        );
+    });
+
+    it('every setting of the dials reads as a name of its own, the seven included', () => {
+        const bands = ['none', 'low', 'medium', 'high', 'max'];
+        const names = new Map();
+        for (const edges_public of ['yes', 'no'])
+            for (const trust of bands)
+                for (const interest of bands)
+                    for (const interest_rebroadcasts of bands) {
+                        const facts = { edges_public, trust, interest, interest_rebroadcasts };
+                        const story = storyOf(facts);
+                        if (!story) continue;
+                        const name = story === CUSTOM ? spelled(facts) : STORY_NAMES[story];
+                        assert.ok(!names.has(name), `${name}: ${JSON.stringify(facts)}`);
+                        names.set(name, facts);
+                    }
+        assert.equal(names.size, 248);
     });
 });

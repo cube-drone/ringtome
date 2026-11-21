@@ -38,7 +38,7 @@ import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import { sizeLabel } from './pure/backups.js';
 import { contactCollection, bandOf, followed } from './pure/contact.js';
-import { CUSTOM, STORIES, storyOf, storyOpacity, storyWrites } from './pure/stories.js';
+import { CUSTOM, STORIES, customName, storyOf, storyOpacity, storyWrites } from './pure/stories.js';
 import { ContactStorage } from './contactstorage.js';
 import {
     contactTags,
@@ -861,11 +861,55 @@ const storyWords = () => ({
     custom: [t('story.custom', 'custom'), t('story.custom-sub', 'customize relationship')],
 });
 
+/// The words a custom relationship's name is stacked from (pure/stories.js, `customName`): one
+/// a dial, at the band it stands at. Curtis's rule for them: no word claims a tie the dials do
+/// not model - no "housemate", no "relative" - so the nouns are the stories' own, with "tribe"
+/// where "family" would stand.
+const customWords = () => ({
+    secret: t('story.name-secret', 'secret'),
+    interest: {
+        none: t('story.name-interest-none', 'muted'),
+        low: t('story.name-interest-low', 'quiet'),
+        high: t('story.name-interest-high', 'keen'),
+        max: t('story.name-interest-max', 'devoted'),
+    },
+    rebroadcasts: {
+        none: t('story.name-rebroadcasts-none', 'solo'),
+        low: t('story.name-rebroadcasts-low', 'sampling'),
+        medium: t('story.name-rebroadcasts-medium', 'steady'),
+        high: t('story.name-rebroadcasts-high', 'tuned-in'),
+        max: t('story.name-rebroadcasts-max', 'all-in'),
+    },
+    trust: {
+        none: t('story.name-trust-none', 'follow'),
+        low: t('story.name-trust-low', 'fan'),
+        medium: t('story.name-trust-medium', 'acquaintance'),
+        high: t('story.name-trust-high', 'friend'),
+        max: t('story.name-trust-max', 'tribe'),
+    },
+});
+
+/// What a relationship is called: its story's name, or for a custom one the name its dials
+/// spell - "secret devoted all-in fan".
+const storyName = (story, facts) => {
+    if (story !== CUSTOM) return storyWords()[story][0];
+    const parts = customName(facts);
+    const words = customWords();
+    return [
+        parts.secret && words.secret,
+        parts.interest && words.interest[parts.interest],
+        words.rebroadcasts[parts.rebroadcasts],
+        words.trust[parts.trust],
+    ]
+        .filter(Boolean)
+        .join(' ');
+};
+
 /// The dials behind a story, in words, one to a line - the hover text of its icon, so the
 /// precise settings are one pause away from the one-glance reading.
 const storyDetails = (story, facts) =>
     [
-        storyWords()[story][0],
+        storyName(story, facts),
         t('story.detail-trust', 'trust: {value}', {
             value: stopLabel(trustStops(), facts.trust),
         }),
@@ -901,15 +945,18 @@ export const RelationshipGlance = ({ facts, named }) => {
     const Icon = STORY_ICONS[story];
     return html`<span class="ledger-glance" title=${storyDetails(story, facts)}>
         <span class="story-icon" style=${`opacity: ${storyOpacity(story)}`}><${Icon} /></span>
-        ${named && html`<span class="story-name">${storyWords()[story][0]}</span>`}
+        ${named && html`<span class="story-name">${storyName(story, facts)}</span>`}
     </span>`;
 };
 
 /// The stories as a choice (Curtis, 2026-11-21): one press sets all four dials. The last row is
 /// `custom`, which sets nothing and opens the dials themselves - and is the one lit whenever
 /// they sit where no story does.
-const StoryPicker = ({ story, customizing, onPick, onCustomize }) => {
+const StoryPicker = ({ story, facts, customizing, onPick, onCustomize }) => {
     const words = storyWords();
+    // A custom relationship's row says what its dials spell, where a story's says its line.
+    const line = (id) =>
+        id === CUSTOM && story === CUSTOM ? storyName(story, facts) : words[id][1];
     const row = (id, pressed, onClick) => {
         const Icon = STORY_ICONS[id];
         return html`
@@ -917,7 +964,7 @@ const StoryPicker = ({ story, customizing, onPick, onCustomize }) => {
                 <span class="story-icon" style=${`opacity: ${storyOpacity(id)}`}><${Icon} /></span>
                 <span class="story-option-words">
                     <span class="story-option-name">${words[id][0]}</span>
-                    <small>${words[id][1]}</small>
+                    <small>${line(id)}</small>
                 </span>
             </button>
         `;
@@ -1125,6 +1172,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
             }
             <${StoryPicker}
                 story=${story}
+                facts=${facts}
                 customizing=${customizing}
                 onPick=${pickStory}
                 onCustomize=${() => setCustomizing((was) => !was)}

@@ -10,26 +10,48 @@ before(async () => {
 const row = (root, facts) => ({ root, facts });
 
 describe('the People shelf', () => {
-    it('offers the orderings: trust, interest and recent activity', () => {
+    it('offers the orderings: relationship and recent activity', () => {
         assert.deepEqual(
             PEOPLE_SORTS.map((s) => s.key),
-            ['trust', 'interest', 'recent'],
+            ['relationship', 'recent'],
         );
     });
 
-    it('orders by the chosen fact, descending', () => {
+    it('orders by relationship: trust first, then interest, then rebroadcast interest', () => {
         const rows = [
             row('bb', { trust: 'low' }),
             row('aa', { trust: 'high' }),
             row('cc', { trust: 'medium' }),
         ];
         assert.deepEqual(
-            sortContacts(rows, 'trust').map((r) => r.root),
+            sortContacts(rows, 'relationship').map((r) => r.root),
             ['aa', 'cc', 'bb'],
         );
-        const byInterest = [row('aa', { interest: 'low' }), row('bb', { interest: 'max' })];
+        // A rung of trust outranks any amount of interest and rebroadcast interest together.
+        const trustLeads = [
+            row('aa', { interest: 'max', interest_rebroadcasts: 'max' }),
+            row('bb', { trust: 'low' }),
+        ];
         assert.deepEqual(
-            sortContacts(byInterest, 'interest').map((r) => r.root),
+            sortContacts(trustLeads, 'relationship').map((r) => r.root),
+            ['bb', 'aa'],
+        );
+        // Trust level, interest breaks the tie - and outranks any rebroadcast interest.
+        const interestNext = [
+            row('aa', { trust: 'high', interest: 'low', interest_rebroadcasts: 'max' }),
+            row('bb', { trust: 'high', interest: 'medium' }),
+        ];
+        assert.deepEqual(
+            sortContacts(interestNext, 'relationship').map((r) => r.root),
+            ['bb', 'aa'],
+        );
+        // Both level, rebroadcast interest is the last word.
+        const rebroadcastLast = [
+            row('aa', { trust: 'high', interest: 'low' }),
+            row('bb', { trust: 'high', interest: 'low', interest_rebroadcasts: 'low' }),
+        ];
+        assert.deepEqual(
+            sortContacts(rebroadcastLast, 'relationship').map((r) => r.root),
             ['bb', 'aa'],
         );
     });
@@ -37,7 +59,7 @@ describe('the People shelf', () => {
     it('missing or garbage facts score zero, and ties break by root - stable everywhere', () => {
         const rows = [row('cc', {}), row('aa', { trust: 'what' }), row('bb', { trust: 'none' })];
         assert.deepEqual(
-            sortContacts(rows, 'trust').map((r) => r.root),
+            sortContacts(rows, 'relationship').map((r) => r.root),
             ['aa', 'bb', 'cc'],
         );
     });
@@ -58,14 +80,14 @@ describe('the People shelf', () => {
     it('blocked personas sink to the bottom regardless of score - visible, never outranking', () => {
         const rows = [row('aa', { trust: 'max', blocked: 'yes' }), row('bb', { trust: 'low' })];
         assert.deepEqual(
-            sortContacts(rows, 'trust').map((r) => r.root),
+            sortContacts(rows, 'relationship').map((r) => r.root),
             ['bb', 'aa'],
         );
     });
 
     it('never mutates its input (the mirror hands out live arrays)', () => {
         const rows = [row('bb', { trust: 'low' }), row('aa', { trust: 'medium' })];
-        sortContacts(rows, 'trust');
+        sortContacts(rows, 'relationship');
         assert.deepEqual(
             rows.map((r) => r.root),
             ['bb', 'aa'],

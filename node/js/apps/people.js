@@ -31,8 +31,7 @@ const html = htm.bind(h);
 
 /// The shelf's orderings (pure/people.js keeps the keys), translatable.
 const SORT_WORDS = {
-    trust: () => t('apps.people.sort-by-trust', 'by trust'),
-    interest: () => t('apps.people.sort-by-interest', 'by interest'),
+    relationship: () => t('apps.people.sort-by-relationship', 'by relationship'),
     recent: () => t('apps.people.sort-by-recent-activity', 'by recent activity'),
 };
 
@@ -235,7 +234,7 @@ const PeopleShelves = ({ current, admin = false, searchQuery }) => {
         };
     }, [admin]);
     const standingOf = (r) => (standings ? standings[r] : null);
-    const [sortBy, setSortBy] = useState('trust');
+    const [sortBy, setSortBy] = useState('relationship');
     // Search-first (settled 2026-08-08): the header bar's query filters the shelf, and the
     // shelf shows a SLICE. The DOM holds at most PEOPLE_SHELF_SLICE rows however many
     // thousands the ledger does - which is what keeps a popular persona's rolodex a page
