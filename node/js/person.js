@@ -38,6 +38,7 @@ import { Icons } from './icons.js';
 import { t } from './i18n.js';
 import { sizeLabel } from './pure/backups.js';
 import { contactCollection, bandOf, followed } from './pure/contact.js';
+import { CUSTOM, STORIES, storyOf, storyOpacity, storyWrites } from './pure/stories.js';
 import { ContactStorage } from './contactstorage.js';
 import {
     contactTags,
@@ -825,52 +826,108 @@ export const SignalCell = ({ stops, value, label }) => {
     </span>`;
 };
 
-/// One dial as a PAIR: the column's own icon saying which dial this is, then its level in
-/// signal bars. The kind stays neutral (it's a label); the bars carry the colour, so a
-/// glance reads "what, and how much" without a legend. The naming-a-dial prop is `label` on
-/// purpose: that word is in the strings scanner's HUMAN_ATTRS, so a bare-English caller gets
-/// flagged instead of quietly shipping untranslated.
-const GlancePair = ({ kind, stops, value, label }) => {
-    const level = signalLevel(value);
-    const Bars = SIG_ICONS[level];
-    return html`<span class="glance-pair" title="${label}: ${stopLabel(stops, value)}">
-        <${kind} />
-        <span class="glance-bars ${SIG_CLASSES[level]}"><${Bars} weight="bold" /></span>
-    </span>`;
+/// The relationship stories' faces (pure/stories.js; Curtis, 2026-11-21): each one's icon, its
+/// name, and what it says in his words. `custom` is every setting of the dials that is no story.
+const STORY_ICONS = {
+    'quiet-follow': Icons.storyQuietFollow,
+    follow: Icons.storyFollow,
+    fan: Icons.storyFan,
+    acquaintance: Icons.storyAcquaintance,
+    friend: Icons.storyFriend,
+    'quiet-friend': Icons.storyQuietFriend,
+    family: Icons.storyFamily,
+    custom: Icons.storyCustom,
 };
+const storyWords = () => ({
+    'quiet-follow': [
+        t('story.quiet-follow', 'quiet follow'),
+        t('story.quiet-follow-sub', 'I might be interested in this person'),
+    ],
+    follow: [
+        t('story.follow', 'follow'),
+        t('story.follow-sub', "I'm interested in this person, don't tell anyone"),
+    ],
+    fan: [t('story.fan', 'fan'), t('story.fan-sub', "I'm publicly a fan of this person")],
+    acquaintance: [
+        t('story.acquaintance', 'acquaintance'),
+        t('story.acquaintance-sub', "I've met them, yeah"),
+    ],
+    friend: [t('story.friend', 'friend'), t('story.friend-sub', 'buddy, pal, compatriot')],
+    'quiet-friend': [
+        t('story.quiet-friend', 'quiet friend'),
+        t('story.quiet-friend-sub', "we're friends but show me less content from them"),
+    ],
+    family: [t('story.family', 'family'), t('story.family-sub', "the closest link we've got")],
+    custom: [t('story.custom', 'custom'), t('story.custom-sub', 'customize relationship')],
+});
 
-/// The relationship at a glance: three pairs - trust, interest, their rebroadcasts. A
-/// BLOCKED persona gets none of it: just a red lock, because the only fact about a blocked
-/// relationship that matters is that it's shut.
-export const RelationshipGlance = ({ facts }) => {
+/// The dials behind a story, in words, one to a line - the hover text of its icon, so the
+/// precise settings are one pause away from the one-glance reading.
+const storyDetails = (story, facts) =>
+    [
+        storyWords()[story][0],
+        t('story.detail-trust', 'trust: {value}', {
+            value: stopLabel(trustStops(), facts.trust),
+        }),
+        t('story.detail-interest', 'interest: {value}', {
+            value: stopLabel(interestStops(), facts.interest),
+        }),
+        t('story.detail-rebroadcasts', 'rebroadcasts: {value}', {
+            value: stopLabel(interestStops(), facts.interest_rebroadcasts),
+        }),
+        t('story.detail-visibility', 'visibility: {value}', {
+            value:
+                facts.edges_public === 'no'
+                    ? t('story.private', 'private')
+                    : t('story.public', 'public'),
+        }),
+    ].join('\n');
+
+/// The relationship at a glance: its story's one icon, fainter the more distant the story
+/// (70% for a quiet follow up to whole for family), with the dials in the hover text. `named`
+/// writes the story's name beside it, where there is room. A BLOCKED persona gets none of it:
+/// just a red lock, because the only fact about a blocked relationship that matters is that
+/// it's shut.
+export const RelationshipGlance = ({ facts, named }) => {
     if (facts.blocked === 'yes') {
         return html`<span class="ledger-glance ledger-glance-blocked" title=${t('person.blocked', 'blocked')}>
             <${Icons.trustPrivate} weight="fill" />
         </span>`;
     }
-    if (!facts.trust && !facts.interest && !facts.interest_rebroadcasts) {
+    const story = storyOf(facts);
+    if (!story) {
         return html`<span class="ledger-glance ledger-glance-empty">${t('person.nothing-recorded-yet', 'nothing recorded yet')}</span>`;
     }
-    return html`<span class="ledger-glance">
-        <${GlancePair}
-            kind=${Icons.colTrust}
-            stops=${trustStops()}
-            value=${facts.trust}
-            label=${t('person.dial-trust', 'trust')}
-        />
-        <${GlancePair}
-            kind=${Icons.colInterest}
-            stops=${interestStops()}
-            value=${facts.interest}
-            label=${t('person.dial-interest', 'interest')}
-        />
-        <${GlancePair}
-            kind=${Icons.colRebroadcast}
-            stops=${interestStops()}
-            value=${facts.interest_rebroadcasts}
-            label=${t('person.dial-rebroadcasts', 'rebroadcasts')}
-        />
+    const Icon = STORY_ICONS[story];
+    return html`<span class="ledger-glance" title=${storyDetails(story, facts)}>
+        <span class="story-icon" style=${`opacity: ${storyOpacity(story)}`}><${Icon} /></span>
+        ${named && html`<span class="story-name">${storyWords()[story][0]}</span>`}
     </span>`;
+};
+
+/// The stories as a choice (Curtis, 2026-11-21): one press sets all four dials. The last row is
+/// `custom`, which sets nothing and opens the dials themselves - and is the one lit whenever
+/// they sit where no story does.
+const StoryPicker = ({ story, customizing, onPick, onCustomize }) => {
+    const words = storyWords();
+    const row = (id, pressed, onClick) => {
+        const Icon = STORY_ICONS[id];
+        return html`
+            <button key=${id} type="button" class="story-option" aria-pressed=${pressed} onClick=${onClick}>
+                <span class="story-icon" style=${`opacity: ${storyOpacity(id)}`}><${Icon} /></span>
+                <span class="story-option-words">
+                    <span class="story-option-name">${words[id][0]}</span>
+                    <small>${words[id][1]}</small>
+                </span>
+            </button>
+        `;
+    };
+    return html`
+        <div class="story-picker" role="group" aria-label=${t('story.pick', 'your relationship with them')}>
+            ${STORIES.map((s) => row(s.id, story === s.id, () => onPick(s.id)))}
+            ${row(CUSTOM, story === CUSTOM || customizing, onCustomize)}
+        </div>
+    `;
 };
 
 // One dial of the ledger: a labeled select over the stops, saving on change (a dropdown
@@ -1035,6 +1092,16 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
     );
     const standing = blockState(facts, listed);
     const [blocking, setBlocking] = useState(false);
+
+    // The story the dials tell, and whether the dials themselves are out: always for a custom
+    // relationship, and for a story's once "custom" is pressed.
+    const story = storyOf(facts);
+    const [customizing, setCustomizing] = useState(false);
+    const dialsOut = customizing || story === CUSTOM;
+    const pickStory = (id) => {
+        setCustomizing(false);
+        for (const [key, value] of storyWrites(id, facts)) put(key, value);
+    };
     // PUBLIC is the resting state (settled 2026-08-09): only an explicit "no" keeps a
     // relationship quiet, so an unset register publishes. See PROJECT_PLAN, Edge-Endpoint
     // Visibility - the trust graph the features will read cannot grow out of a default
@@ -1048,7 +1115,7 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
         <details class="contact-ledger">
             <summary class="ledger-head">
                 <span class="ledger-title">${t('person.your-relationship', 'your relationship')}</span>
-                <${RelationshipGlance} facts=${facts} />
+                <${RelationshipGlance} facts=${facts} named />
             </summary>
             ${
                 blocked &&
@@ -1056,49 +1123,60 @@ export const ContactLedger = ({ myRoot, theirRoot }) => {
                 ${t('person.blocked---nothing-of-theirs', 'blocked')}
             </p>`
             }
+            <${StoryPicker}
+                story=${story}
+                customizing=${customizing}
+                onPick=${pickStory}
+                onCustomize=${() => setCustomizing((was) => !was)}
+            />
             ${
-                /* Visibility leads (2026-08-09): every dial below it is a thing that may be
-                published, so the question of who sees them is not a footnote to that list -
-                it is the frame around it. Public is the resting state; this is where you
-                take it back. */ ''
+                dialsOut &&
+                html`<div class="story-dials">
+                    ${
+                        /* Visibility leads (2026-08-09): every dial below it is a thing that may be
+                        published, so the question of who sees them is not a footnote to that list -
+                        it is the frame around it. Public is the resting state; this is where you
+                        take it back. */ ''
+                    }
+                    <label class="ledger-dial">
+                        <span class="ledger-label">
+                            ${t('person.who-can-see-this-relationship', 'who can see this relationship')}
+                            <small>${t('person.sharing-how-you-hold-people', 'is this relationship visible to others')}</small>
+                        </span>
+                        <select
+                            class="ledger-select jag-field"
+                            value=${edgesPublic ? 'yes' : 'no'}
+                            onChange=${(e) => put('edges_public', e.currentTarget.value)}
+                        >
+                            <option value="yes">${t('person.public---shared-with-the', 'public - shared with the network')}</option>
+                            <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
+                        </select>
+                    </label>
+                    <${Dial}
+                        label=${t('person.trust', 'trust')}
+                        hint=${t('person.trust-hint', "whether you believe they're real")}
+                        stops=${trustStops()}
+                        value=${facts.trust}
+                        onPick=${(v) => put('trust', v)}
+                    />
+                    <${Dial}
+                        label=${t('person.interest', 'interest')}
+                        hint=${t('person.interest-hint', 'how much of theirs you want to see')}
+                        stops=${interestStops()}
+                        value=${facts.interest}
+                        onPick=${(v) => put('interest', v)}
+                    />
+                    <${Dial}
+                        label=${t('person.their-rebroadcasts', 'their rebroadcasts')}
+                        hint=${t('person.rebroadcasts-hint', 'things they pass along from others')}
+                        stops=${interestStops()}
+                        value=${facts.interest_rebroadcasts}
+                        onPick=${(v) => put('interest_rebroadcasts', v)}
+                    />
+                </div>`
             }
-            <label class="ledger-dial">
-                <span class="ledger-label">
-                    ${t('person.who-can-see-this-relationship', 'who can see this relationship')}
-                    <small>${t('person.sharing-how-you-hold-people', 'is this relationship visible to others')}</small>
-                </span>
-                <select
-                    class="ledger-select jag-field"
-                    value=${edgesPublic ? 'yes' : 'no'}
-                    onChange=${(e) => put('edges_public', e.currentTarget.value)}
-                >
-                    <option value="yes">${t('person.public---shared-with-the', 'public - shared with the network')}</option>
-                    <option value="no">${t('person.private---just-my-computers', 'private - just my computers')}</option>
-                </select>
-            </label>
-            <${Dial}
-                label=${t('person.trust', 'trust')}
-                hint=${t('person.trust-hint', "whether you believe they're real")}
-                stops=${trustStops()}
-                value=${facts.trust}
-                onPick=${(v) => put('trust', v)}
-            />
-            <${Dial}
-                label=${t('person.interest', 'interest')}
-                hint=${t('person.interest-hint', 'how much of theirs you want to see')}
-                stops=${interestStops()}
-                value=${facts.interest}
-                onPick=${(v) => put('interest', v)}
-            />
-            <${Dial}
-                label=${t('person.their-rebroadcasts', 'their rebroadcasts')}
-                hint=${t('person.rebroadcasts-hint', 'things they pass along from others')}
-                stops=${interestStops()}
-                value=${facts.interest_rebroadcasts}
-                onPick=${(v) => put('interest_rebroadcasts', v)}
-            />
             ${
-                /* Three headed sections under the dials (Curtis, 2026-11-21: once storage had a
+                /* Three headed sections under the stories (Curtis, 2026-11-21: once storage had a
                 subheader, the rest wanted theirs): what you call them, who you let act for
                 you, and what of theirs this place keeps. */ ''
             }

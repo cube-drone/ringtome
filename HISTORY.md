@@ -28344,6 +28344,31 @@ that every byte went. `syncskips.cjs` claims both: the overview says `pictures`
 deleted with the quarantined picture still kept, and a purge taken back and
 asked again waits for a round again.
 
+## Relationship stories (2026-11-21)
+
+Curtis: the dial cluster - three icons with three bar graphs, for trust,
+interest and rebroadcasts - was hard to turn into a relationship at a glance,
+"even I, a person who came up with the whole thing". So the four routing dials
+now read as one of seven **stories**, or custom: quiet follow, follow, fan,
+acquaintance, friend, quiet friend, family, each a full setting of visibility,
+trust, interest and rebroadcast interest, each with its own Phosphor icon and a
+line in his words. All UI: nothing is stored about which story was picked, so
+dials set by hand to a story's settings are that story, and one nudged off it is
+custom (`js/pure/stories.js`, `storyOf` / `storyWrites` / `storyOpacity`).
+
+The glance - on a People row and on the closed "your relationship" pop-out - is
+the story's one icon, 70% solid for a quiet follow climbing to whole for family,
+with the dials in words as hover text, one to a line; the pop-out writes the
+story's name beside it. Open, the pop-out leads with the eight as buttons: one
+press writes the dials that differ, and "custom" opens the four dials, which
+also stand open whenever the relationship is custom.
+
+One departure from his table, which gave quiet follow and follow the same
+settings (private, no trust, low interest, no rebroadcasts): nothing could tell
+them apart, so a plain follow is medium interest. Nothing dialled above its
+bottom stop still reads "nothing recorded yet". The notifications page's signal
+bars (what someone else published about you) are untouched.
+
 ## The onward key claim raced the node's own prefetch (2026-11-21)
 
 CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
