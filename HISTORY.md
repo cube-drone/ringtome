@@ -28476,13 +28476,17 @@ takes its open tab with it - a column left open in the feed would otherwise keep
 the bank's own tab dark. Seen in a browser at 390px across all eight apps: the
 strip, each move between tabs, and the feed-then-bank case.
 
-## The onward key claim raced the node's own prefetch (2026-11-21)
+## iOS, begun: can the node be compiled for an iPhone (2026-11-22)
 
-CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
-early", failed 1 of 5 reruns with "nothing has asked for cal's key yet -
-expected 0, actual 1". The claim checked that no grant existed, then rang the
-key-prefetch pass and checked for one. The node rings that pass itself every
-thirty seconds (`lib.rs`), so a pass landing between the pull and the first
-check had already asked. The first check is gone; the claim still shows the
-grant after the beat and the read with both other nodes dark. The cause is read
-from the assertion and the loop's schedule, not reproduced.
+With Android on Google Play's testing tracks, Curtis: "next we have the
+difficult task of getting this running on iOS, only exacerbated by my troubling
+lack of iPhone" - and, on where the tools go, "XCode on CI only". So the first
+step is the one Android took: `.github/workflows/ios.yml`, whose `node` job
+cross-compiles the node library alone for `aarch64-apple-ios` and
+`aarch64-apple-ios-sim` on a macOS runner - by hand, or on every push while
+`IOS_ON_PUSH` is `true`. It answers whether turso's bindgen and aws-lc's C build
+survive the iPhone SDK before anything is built on top. `plans/MOBILE.md` gained
+_The iOS build_: the order of steps (the project, a simulator build that boots,
+TestFlight) and what is known ahead of time - suspension, launch time, review.
+**Written, not run**: the laptop has no Xcode to try it with, so its first run
+is its first test.

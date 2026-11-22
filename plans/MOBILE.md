@@ -234,6 +234,43 @@ Not done, and known: the node boots in `setup` on Android's main thread, which
 risks a "not responding" kill on a slow first boot; and the battery and cellular
 policy of open question 3 still doesn't exist.
 
+## The iOS build (2026-11-22)
+
+Begun, after Android reached Google Play's testing tracks. **Xcode lives in CI
+only** (Curtis: "this laptop is Just a Little Guy and not really ready to be
+jam-packed full of development tools"), as the Android SDK does: the laptop has
+the command-line tools, so no iPhone SDK and no simulator. And there is no
+iPhone to hand, which the simulator covers for the interface, the node's boot
+and the loopback window - and does not cover for background suspension, real
+speed, or a TestFlight install. Those wait for a physical phone, a tester's or a
+bought one.
+
+The order, each step answering a question before the next is built on it:
+
+1. **Does the node cross-compile** - `.github/workflows/ios.yml`, the `node`
+   job, for the phone (`aarch64-apple-ios`) and the simulator
+   (`aarch64-apple-ios-sim`). Android's first question again: turso's bindgen
+   and aws-lc's C build. _Written 2026-11-22; not yet run._
+2. **The iOS project**, generated in CI by `tauri ios init` and committed as
+   `desktop/gen/apple`, as `desktop/gen/android` was - with the exception that
+   lets the window load `http://127.0.0.1` (App Transport Security's
+   local-networking allowance).
+3. **A simulator build that boots**, with screenshots sent back as artifacts,
+   since nobody here can look at it.
+4. **Signing and TestFlight** from CI, which is the only road onto a real phone:
+   iOS has no sideloading.
+
+Known ahead of time, and not yet met:
+
+- **Suspension.** iOS stops an app seconds after it leaves the screen. The node
+  stops with it, and its listening socket may be dead on return: the node has to
+  notice and recover on resume. hrseAmp's background playing is native work of
+  its own, as its media service was on Android.
+- **Launch time.** The node boots in `setup` on the main thread (the Android
+  section's "not done, and known"); iOS kills an app that takes too long to
+  launch.
+- **Review** - open question 2 below, unchanged, and now with a date coming.
+
 ## The mirror question
 
 **IndexedDB-on-WebKit is the most notorious compatibility surface on the web

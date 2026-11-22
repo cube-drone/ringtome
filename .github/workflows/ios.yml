@@ -1,0 +1,81 @@
+# The iOS app, begun (2026-11-22): for now the first question only - does the node cross-compile
+# for an iPhone at all (plans/MOBILE.md, "The iOS build").
+#
+# Built HERE and nowhere else, as Android is (Curtis, 2026-11-22: "XCode on CI only - as we've
+# established, this laptop is Just a Little Guy"): the laptop holds the command-line tools and no
+# Xcode, so it has no iPhone SDK to compile against and no simulator to run in.
+#
+# Two ways in, and one repository variable decides the automatic one (`gh variable set NAME --body
+# true`):
+#
+# - every push, while `IOS_ON_PUSH` is `true` - for getting it working, and for a stretch of iOS
+#   work. Unset (or anything else) and a push builds nothing here.
+# - by hand (Actions -> iOS -> Run workflow), whatever the variable says.
+#
+# One job, twice over. `node` cross-compiles the node library alone - no Tauri, no Xcode project -
+# for a real iPhone (`aarch64-apple-ios`) and for the simulator on an Apple-silicon Mac
+# (`aarch64-apple-ios-sim`), which are different targets with different SDKs: the simulator is where
+# the app will first be seen, with no iPhone to hand, and the phone is where it has to end up. The
+# known risk is the one Android had: turso's bindgen and aws-lc's C build.
+
+name: iOS
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+# One build per branch at a time: a newer push makes the older one moot.
+concurrency:
+  group: ios-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+env:
+  # The oldest iOS the C builds aim at. Tauri's own floor for an iOS app; the Xcode project, when
+  # there is one, says the same number.
+  IPHONEOS_DEPLOYMENT_TARGET: "14.0"
+
+jobs:
+  node:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.IOS_ON_PUSH == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      # Each target answers for itself: the phone failing says nothing about the simulator.
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-ios, aarch64-apple-ios-sim]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.1'
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios-node-${{ matrix.target }}
+          cache-on-failure: true
+
+      - uses: extractions/setup-just@v3
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: node/js/package-lock.json
+
+      # The node bakes the UI into itself (`include_str!`), so the bundle exists before cargo runs.
+      - name: Build the UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
+
+      # Said in the log, so a failure below can be read against what the runner actually held.
+      - name: The Xcode and SDKs on this runner
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Cross-compile the node
+        run: cargo build --target ${{ matrix.target }} -p ringtome-node --lib
