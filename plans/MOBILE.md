@@ -255,6 +255,8 @@ The order, each step answering a question before the next is built on it:
    Apple system; libc 0.2.190 keeps that struct for macOS alone. No netdev up to
    0.48.0 has the fix, so `node/Cargo.toml` holds libc below 0.2.190 until one
    does. The build stopped there, so turso and aws-lc are still unanswered._
+   _Second run, same day: both targets compile, in about twenty minutes each.
+   turso and aws-lc needed nothing._
 2. **The iOS project**, generated in CI by `tauri ios init` and committed as
    `desktop/gen/apple`, as `desktop/gen/android` was - with the exception that
    lets the window load `http://127.0.0.1` (App Transport Security's

@@ -28305,6 +28305,17 @@ one's, never touches the song, and the picture is not fetched again.
 `/test/blob` now also says `kept` (bytes on disk), since a sealed blob reads as
 absent to everything else - the first run of the claim failed on exactly that.
 
+## The onward key claim raced the node's own prefetch (2026-11-21)
+
+CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
+early", failed 1 of 5 reruns with "nothing has asked for cal's key yet -
+expected 0, actual 1". The claim checked that no grant existed, then rang the
+key-prefetch pass and checked for one. The node rings that pass itself every
+thirty seconds (`lib.rs`), so a pass landing between the pull and the first
+check had already asked. The first check is gone; the claim still shows the
+grant after the beat and the read with both other nodes dark. The cause is read
+from the assertion and the loop's schedule, not reproduced.
+
 ## The relationship pop-out in headed sections (2026-11-21)
 
 Once storage had a subheader in a person's "your relationship" pop-out, Curtis
@@ -28502,13 +28513,10 @@ netdev stops asking. `cargo check` passes for the node and the desktop crate on
 this Mac with the older libc. The iOS build stopped at netdev, so what lies past
 it - turso, aws-lc - is still unknown.
 
-## The onward key claim raced the node's own prefetch (2026-11-21)
-
-CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
-early", failed 1 of 5 reruns with "nothing has asked for cal's key yet -
-expected 0, actual 1". The claim checked that no grant existed, then rang the
-key-prefetch pass and checked for one. The node rings that pass itself every
-thirty seconds (`lib.rs`), so a pass landing between the pull and the first
-check had already asked. The first check is gone; the claim still shows the
-grant after the beat and the read with both other nodes dark. The cause is read
-from the assertion and the loop's schedule, not reproduced.
+The second run, with the ceiling in: both targets green, about twenty minutes
+each. turso's bindgen and aws-lc's C build needed nothing at all - the iPhone
+SDK is the Mac's own toolchain pointed elsewhere, where Android's NDK had to be
+introduced to each of them. Next, the project: `ios.yml` gained a `project` job,
+run by hand with `project` ticked, which runs `tauri ios init` on a macOS runner
+and uploads `desktop/gen/apple` to be committed, as Android's project was.
+Written, not run.
