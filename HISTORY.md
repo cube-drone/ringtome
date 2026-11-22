@@ -28490,3 +28490,25 @@ _The iOS build_: the order of steps (the project, a simulator build that boots,
 TestFlight) and what is known ahead of time - suspension, launch time, review.
 **Written, not run**: the laptop has no Xcode to try it with, so its first run
 is its first test.
+
+The first run (2026-11-22) went red on both targets at the same place, and not
+where expected: `netdev` 0.46.3 - iroh's, through `netwatch` - "cannot find type
+`in6_ifreq` in crate `libc`". netdev names that struct on every Apple system,
+and libc 0.2.190 fenced it to macOS; the pair has not compiled for iOS since, in
+any netdev up to 0.48.0 (read from the crates' sources). The fix here is a
+ceiling: `node/Cargo.toml` asks for `libc <0.2.190` on iOS, which holds the one
+libc every platform shares at 0.2.189 in both lockfiles, to be deleted when
+netdev stops asking. `cargo check` passes for the node and the desktop crate on
+this Mac with the older libc. The iOS build stopped at netdev, so what lies past
+it - turso, aws-lc - is still unknown.
+
+## The onward key claim raced the node's own prefetch (2026-11-21)
+
+CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
+early", failed 1 of 5 reruns with "nothing has asked for cal's key yet -
+expected 0, actual 1". The claim checked that no grant existed, then rang the
+key-prefetch pass and checked for one. The node rings that pass itself every
+thirty seconds (`lib.rs`), so a pass landing between the pull and the first
+check had already asked. The first check is gone; the claim still shows the
+grant after the beat and the read with both other nodes dark. The cause is read
+from the assertion and the loop's schedule, not reproduced.

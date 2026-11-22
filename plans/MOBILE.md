@@ -250,7 +250,11 @@ The order, each step answering a question before the next is built on it:
 1. **Does the node cross-compile** - `.github/workflows/ios.yml`, the `node`
    job, for the phone (`aarch64-apple-ios`) and the simulator
    (`aarch64-apple-ios-sim`). Android's first question again: turso's bindgen
-   and aws-lc's C build. _Written 2026-11-22; not yet run._
+   and aws-lc's C build. _First run, 2026-11-22: both targets stopped at
+   `netdev` (iroh's, through `netwatch`), which names `libc::in6_ifreq` on every
+   Apple system; libc 0.2.190 keeps that struct for macOS alone. No netdev up to
+   0.48.0 has the fix, so `node/Cargo.toml` holds libc below 0.2.190 until one
+   does. The build stopped there, so turso and aws-lc are still unanswered._
 2. **The iOS project**, generated in CI by `tauri ios init` and committed as
    `desktop/gen/apple`, as `desktop/gen/android` was - with the exception that
    lets the window load `http://127.0.0.1` (App Transport Security's

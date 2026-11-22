@@ -239,3 +239,12 @@ tower = { version = "0.5", features = ["util"] }
 # (sha2 is a regular dependency now - Web Push's HKDF - and the released-migrations pin in
 # tests/conventions.rs uses it from there: sha256, because the release script that writes the pin
 # is JavaScript, and sha256 is the hash node:crypto has built in.)
+
+# An iPhone's alone, and a ceiling rather than a wish (2026-11-22, the first iOS cross-compile):
+# `netdev` (iroh's, through `netwatch`) names `libc::in6_ifreq` on every Apple system, and libc
+# 0.2.190 took that struct away from all of them but macOS - so on iOS netdev stopped compiling,
+# in every version up to 0.48.0. Nothing here calls libc; this only holds it below the change.
+# One libc is resolved for every platform, so this keeps the whole tree on 0.2.189 until netdev
+# stops asking: delete it then, and `cargo update -p libc` in both workspaces.
+[target.'cfg(target_os = "ios")'.dependencies]
+libc = "<0.2.190"
