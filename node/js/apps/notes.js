@@ -64,6 +64,15 @@ import { pruneSelection, selectAll, toggleSelection } from '../pure/bulk.js';
 
 const html = htm.bind(h);
 
+/// The main surface's tab in a narrow window (panes.js `main`): what the page beside the columns
+/// IS, in a word - a drawing in hrseDrawing, a file in hrseFiles, a document everywhere else
+/// (Curtis, 2026-11-21: "Art" in hrseDrawing, "Doc" in hrseWriter).
+const mainTab = (app, main) => {
+    if (app.id === 'drawing') return main(Icons.fileImage, t('apps.notes.main-tab-art', 'art'));
+    if (app.everything) return main(Icons.lostFound, t('apps.notes.main-tab-file', 'file'));
+    return main(Icons.page, t('apps.notes.main-tab-doc', 'doc'));
+};
+
 const when = (ms) => formatWhen(ms);
 
 // The three status icons (PUBLISH.md ruling 6), on every row.
@@ -652,7 +661,7 @@ export const DocsApp = ({
     // its tag column and tree waiting as rails); a stored preference always wins over it.
     // In a narrow window (panes.js) the list is the tab it opens on while no note is chosen, and
     // choosing one closes the tab to show it.
-    const { tucked, toggleTuck, settle, tab } = useColTucks(root, app.id, app.startsTucked, {
+    const { tucked, toggleTuck, settle, tab, main } = useColTucks(root, app.id, app.startsTucked, {
         lead: selected ? null : 'list',
     });
     useEffect(() => {
@@ -762,6 +771,7 @@ export const DocsApp = ({
     return html`
         <div class="notes">
             <div class="notes-columns panes" style=${colStyle}>
+                ${mainTab(app, main)}
                 ${
                     /* The list comes LAST of the columns, beside the editor (Curtis, 2026-10-23:
                     the rails between them fanned open every time the pointer crossed from a note

@@ -28453,3 +28453,36 @@ no colour less confusing than black. **Not yet seen to work**: whether WebKit
 still drops a hidden window's painted surface with the suspension off is the
 open question, and the test is a desktop build left hidden for ten minutes.
 
+## A narrow window's columns are tabs in earnest (2026-11-21)
+
+Curtis: a test user met the phone's column strip and applied the model "tabs" -
+then "became very confused", because the strip's entries opened and closed OVER
+the page rather than standing beside it. "I think they may be in the right of
+it." So the page has a tab of its own now, first in the strip and lit while no
+column is open: `feed`, `amp`, `art` (hrseDrawing), `doc` (hrseWriter), `file`
+(hrseFiles), `chat`, `bank`, and `posts` in Horse's RSS. One moves between tabs:
+pressing another tab goes to it, pressing the page's tab goes back to the page,
+and pressing the tab that is already open does nothing (it used to close the
+column). A column's header, which in a wide window tucks the column away, is in
+a narrow one only the tab's title - no arrow, no click. Everything that used to
+close a column still does, and now reads as going back to the page's tab:
+choosing a note or a room, `data-settles` actions, a post sent, a purchase made.
+
+All of it is `panes.js`: `useColTucks` hands back `main(icon, label)` beside
+`tab`, nothing in a wide window, and each of the seven rows of columns wears it
+first. The page's tab is lit by "nothing is open", which is one fact for the
+whole window (a drawing's tools share Writer's row), so an app that leaves now
+takes its open tab with it - a column left open in the feed would otherwise keep
+the bank's own tab dark. Seen in a browser at 390px across all eight apps: the
+strip, each move between tabs, and the feed-then-bank case.
+
+## The onward key claim raced the node's own prefetch (2026-11-21)
+
+CI went red on the "Storage Info settings" push: `onward.cjs`, "the key comes
+early", failed 1 of 5 reruns with "nothing has asked for cal's key yet -
+expected 0, actual 1". The claim checked that no grant existed, then rang the
+key-prefetch pass and checked for one. The node rings that pass itself every
+thirty seconds (`lib.rs`), so a pass landing between the pull and the first
+check had already asked. The first check is gone; the claim still shows the
+grant after the beat and the read with both other nodes dark. The cause is read
+from the assertion and the loop's schedule, not reproduced.

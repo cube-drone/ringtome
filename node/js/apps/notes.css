@@ -150,6 +150,15 @@
     color: var(--ink);
 }
 
+/* A narrow window's header is its tab's title, and closes nothing (panes.js). */
+.pane-head-tab {
+    cursor: default;
+}
+
+.pane-head-tab:hover {
+    color: var(--ink-soft);
+}
+
 /* The column's icon beside its name, the rail's own. */
 .pane-head-label {
     display: inline-flex;
@@ -206,9 +215,9 @@
     }
 }
 
-/* The open tab in a narrow window's strip (panes.js `tab`): still in its place, lifted to the page's
-   own surface and edged in the accent, the way the open divider stands out of a binder. A click
-   closes it. */
+/* The open tab in a narrow window's strip (panes.js `tab`, and `main` for the page's own): still
+   in its place, lifted to the page's own surface and edged in the accent, the way the open divider
+   stands out of a binder. */
 .pane-rail.active {
     color: var(--teal);
     background: var(--surface);
@@ -368,10 +377,6 @@
 
     .pane-head-label svg {
         font-size: 1.2rem;
-    }
-
-    .pane-min {
-        font-size: 1.08rem;
     }
 
     .panes.panes > :not(.pane-rail) {

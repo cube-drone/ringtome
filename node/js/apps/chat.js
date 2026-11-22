@@ -2545,7 +2545,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     // tags on its row.
     // In a narrow window (panes.js) the rooms are the tab it opens on while no room is open, and
     // opening one closes the tab to show it.
-    const { tucked, toggleTuck, settle, tab } = useColTucks(root, APP_ID, [], {
+    const { tucked, toggleTuck, settle, tab, main } = useColTucks(root, APP_ID, [], {
         lead: author && doc ? null : 'rooms',
     });
     useEffect(() => {
@@ -2617,6 +2617,7 @@ export const ChatApp = ({ current, author, doc, line, mode, admin, searchQuery, 
     const roomsTucked = tucked.has('rooms');
     return html`<div class="chat">
         <div class="chat-columns panes" style=${colStyle}>
+            ${main(Icons.room, t('apps.chat.main-tab', 'chat'))}
             ${
                 /* The chats come LAST of the columns, beside the room (Curtis, 2026-10-23, as
                 Writer's list: a rail between them fans open under the pointer on its way from a

@@ -1194,7 +1194,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     // A drag in an open mixtape: the song lifted, and where it would land.
     const dragKey = useRef(null);
     const [dropAt, setDropAt] = useState(null); // { key, after }
-    const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'amp');
+    const { tucked, toggleTuck, tab, main, settle } = useColTucks(root, 'amp');
     // The Playlists column, the now-playing column and the file column, each as wide as it was
     // dragged (panes.js).
     const { resizer, colStyle } = useColWidths(root, 'amp', ['playlists', 'now', 'file'], {
@@ -2028,6 +2028,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             player && player.expanded
                 ? html`<${Cassette} rating=${nowRating} onRate=${rateNow} />`
                 : html`<div class="amp-main panes" style=${colStyle}>
+            ${main(Icons.cassette, t('amp.main-tab', 'amp'))}
             ${
                 tucked.has('playlists')
                     ? html`<${Rail} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onClick=${() => toggleTuck('playlists')} />`

@@ -685,7 +685,7 @@ export const BankApp = ({ current }) => {
     // Each month's lines, once fetched; the newest arrives with the first answer.
     const [lines, setLines] = useState({});
     const [open, setOpen] = useState(new Set());
-    const { tucked, toggleTuck, tab, settle } = useColTucks(root, 'bank');
+    const { tucked, toggleTuck, tab, main, settle } = useColTucks(root, 'bank');
     const { resizer, colStyle } = useColWidths(root, 'bank', ['market', 'portfolio', 'contracts'], {
         market: 240,
         portfolio: 200,
@@ -747,6 +747,7 @@ export const BankApp = ({ current }) => {
         bank.everything || (bank.unlocks || []).some((u) => u.id === FINANCIAL && u.bought_ms);
     const portfolioTucked = tucked.has('portfolio');
     return html`<div class="bank-app"><div class="bank-columns panes" style=${colStyle}>
+        ${main(Icons.money, t('apps.bank.main-tab', 'bank'))}
         ${
             tucked.has('market')
                 ? html`<${Rail} icon=${Icons.bond} label=${t('apps.bank.market', 'market')} onClick=${() => toggleTuck('market')} />`

@@ -33,23 +33,33 @@ const html = htm.bind(h);
 /// The whole header tucks its column (Curtis, 2026-10-02: "a click anywhere in the column header
 /// folds the column, rather than just the tiny <| target"). The button stays, for the keyboard: its
 /// click bubbles here, so it carries no handler of its own - two would tuck and untuck at once.
-export const PaneHead = ({ icon = null, label, onTuck }) => html`<div
-    class="pane-head jag-line"
-    title=${`tuck the ${label} column away`}
-    onClick=${onTuck}
->
-    <span class="pane-head-label">${icon && html`<${icon} />`}${label}</span>
-    <button class="pane-min" title=${`tuck the ${label} column away`}>
-        <${Icons.back} />
-    </button>
-</div>`;
+export const PaneHead = ({ icon = null, label, onTuck }) => {
+    // In a narrow window the column is a tab (below), and a tab has no closing: the header is its
+    // title and nothing more (Curtis, 2026-11-21).
+    const narrow = useNarrow();
+    if (narrow) {
+        return html`<div class="pane-head pane-head-tab jag-line">
+            <span class="pane-head-label">${icon && html`<${icon} />`}${label}</span>
+        </div>`;
+    }
+    return html`<div
+        class="pane-head jag-line"
+        title=${`tuck the ${label} column away`}
+        onClick=${onTuck}
+    >
+        <span class="pane-head-label">${icon && html`<${icon} />`}${label}</span>
+        <button class="pane-min" title=${`tuck the ${label} column away`}>
+            <${Icons.back} />
+        </button>
+    </div>`;
+};
 
 /// What a tucked column leaves behind: a slim vertical strip, its icon above its name running
 /// downward, which brings the column back when clicked. In a narrow window it is a tab, and the
 /// open column's own tab is `active` - still in the strip, where it was, marked as the one open.
 export const Rail = ({ icon, label, onClick, active = false }) => html`<button
     class=${active ? 'pane-rail jag-line active' : 'pane-rail jag-line'}
-    title=${active ? `close ${label}` : `show ${label}`}
+    title=${active ? label : `show ${label}`}
     aria-pressed=${active}
     onClick=${onClick}
 >
@@ -64,6 +74,12 @@ export const Rail = ({ icon, label, onClick, active = false }) => html`<button
 // can't be per app. The open column fills the row and the main surface steps aside until it closes
 // (notes.css, `.panes`); choosing something in it closes it (`settle`). This is the window's state,
 // not a preference: nothing is stored, and the wide arrangement is untouched underneath.
+//
+// Tabs in earnest (Curtis, 2026-11-21: a test user read the strip as tabs, "and became very
+// confused" when they opened and closed over the page instead): the main surface has a tab of its
+// own, first in the strip (`main`, below) and lit while no column is open, and pressing the tab
+// that is already open does nothing - one moves BETWEEN tabs, the page's among them. What used to
+// "close the column" (`settle`, `data-settles`) now reads as going back to the page's tab.
 const NARROW = '(max-width: 900px)';
 let openKey = null; // `${appId}/${col}`, or none
 const openers = new Set();
@@ -138,7 +154,8 @@ function useOpenKey() {
 /// in a column - closes it to show what was chosen. `lead` is the tab a narrow window opens on
 /// when nothing of this app's is open: the Writer's list while no note is chosen. `tab(col, icon,
 /// label)` is the open column's own tab, for the column to wear ahead of itself in a narrow window
-/// (a binder shows every divider, the open one too) - nothing in a wide one.
+/// (a binder shows every divider, the open one too) - nothing in a wide one. `main(icon, label)`
+/// is the main surface's tab, for the row to wear first - nothing in a wide one either.
 ///
 /// `startsTucked` names the columns that are away until this device says otherwise - how
 /// Writer opens on a plain list with its tag column and tree as rails, rather than greeting a
@@ -157,10 +174,20 @@ export function useColTucks(root, appId, startsTucked = [], { lead = null } = {}
     useEffect(() => {
         if (narrow && lead && !(openKey || '').startsWith(`${appId}/`)) setOpen(`${appId}/${lead}`);
     }, [narrow, appId, lead]);
+    // An app that leaves takes its open tab with it: the page's tab is lit by "nothing is open",
+    // and a column left open in the app before this one would keep it dark.
+    useEffect(
+        () => () => {
+            if ((openKey || '').startsWith(`${appId}/`)) setOpen(null);
+        },
+        [appId],
+    );
     if (narrow) {
         return {
             tab: (col, icon, label) =>
-                html`<${Rail} icon=${icon} label=${label} active=${true} onClick=${() => setOpen(null)} />`,
+                html`<${Rail} icon=${icon} label=${label} active=${true} onClick=${() => {}} />`,
+            main: (icon, label) =>
+                html`<${Rail} icon=${icon} label=${label} active=${!open} onClick=${() => setOpen(null)} />`,
             tucked: { has: (col) => !mine(col) },
             toggleTuck: (col) => setOpen(mine(col) ? null : `${appId}/${col}`),
             openCol: (col) => setOpen(`${appId}/${col}`),
@@ -172,6 +199,7 @@ export function useColTucks(root, appId, startsTucked = [], { lead = null } = {}
     for (const col of startsTucked) if (!known.has(col)) tucked.add(col);
     return {
         tab: () => null,
+        main: () => null,
         tucked,
         toggleTuck: (col) => setFlag(root, tuckKey(appId, col), !tucked.has(col)),
         // Open, whatever it was: for an address that asks for a column (the feed's `?compose=1`),

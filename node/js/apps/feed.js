@@ -263,7 +263,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
     const editingFor = useOwnPostEditing(current, (r) => overlayPosted(r, postedAs[r.doc_id]));
     // Column chrome, shared with the documents apps (panes.js): the composer is a column you
     // can widen or tuck away to a rail, and the choice settles into this browser's prefs.
-    const { tucked, toggleTuck, openCol, tab, settle } = useColTucks(root, 'feed');
+    const { tucked, toggleTuck, openCol, tab, main, settle } = useColTucks(root, 'feed');
     // Saved feeds (Curtis, 2026-10-11), read off the persona's private registers: the Feeds column,
     // the feed on screen (to know one of them), and the one asked for.
     const [saved, setSaved] = useState([]);
@@ -664,6 +664,7 @@ export const FeedApp = ({ current, searchQuery, onSearch }) => {
         <div class="feed-app">
             <${BakeModal} items=${baking} />
             <div class="feed-columns panes" style=${colStyle}>
+                ${main(Icons.feed, t('apps.feed.main-tab', 'feed'))}
                 ${
                     tucked.has('compose')
                         ? html`<${Rail}

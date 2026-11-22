@@ -203,7 +203,7 @@ export const RssApp = ({ current, searchQuery, onSearch }) => {
     const selected = new URLSearchParams(loc.url.split('?')[1] || '').get('feed') || null;
     const [tagFilter, setTagFilter] = useState([]);
     // In a narrow window the feeds are the tab it opens on until a feed is chosen, as chat's rooms are.
-    const { tucked, toggleTuck, settle, tab } = useColTucks(root, APP_ID, ['tags'], {
+    const { tucked, toggleTuck, settle, tab, main } = useColTucks(root, APP_ID, ['tags'], {
         lead: selected ? null : 'feeds',
     });
     const { resizer, colStyle } = useColWidths(root, APP_ID, ['feeds', 'tags'], {
@@ -254,6 +254,7 @@ export const RssApp = ({ current, searchQuery, onSearch }) => {
         : `/api/identity/${root}/rss/feed`;
     return html`<div class="rss">
         <div class="rss-columns panes" style=${colStyle}>
+            ${main(Icons.page, t('apps.rss.main-tab', 'posts'))}
             ${
                 tucked.has('tags')
                     ? html`<${Rail} icon=${Icons.tag} label=${t('apps.rss.tags', 'tags')} onClick=${() => toggleTuck('tags')} />`
