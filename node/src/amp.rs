@@ -258,6 +258,216 @@ pub async fn library_handler(
 /// notebook's tree is `wiki:<name>`.
 pub const MIXTAPE: &str = "mixtape:";
 
+/// The most tracks a published mixtape holds (plans/MIXTAPES.md, ruling 3: "all the songs that
+/// will fit on a real cassette tape"). A mixtape may hold more; it is publishing that stops here.
+pub const TAPE_MAX: usize = 30;
+/// The private field a mixtape's draft wears: the taxonomy it is the publishing of, in hex. It is
+/// what makes a publish of that draft mint a mixtape (`is_tape_draft`), on every road.
+pub const TAPE_OF: &str = "mixtape_of";
+/// Where a mixtape's draft is kept, by its taxonomy (private kv).
+const TAPE_DRAFTS_KV: &str = "mixtape_drafts";
+/// The notebook the drafts are filed in, so hrseFiles shows them together and says what they are.
+const TAPES_BUCKET: &str = "mixtapes";
+
+/// Is this note a mixtape's draft? Then publishing it publishes the mixtape.
+pub async fn is_tape_draft(data: &store::Store, doc: &[u8; 16]) -> Result<bool, AppError> {
+    Ok(data.annotations().field(doc, TAPE_OF).await?.is_some())
+}
+
+/// PUT `/api/identity/{root}/amp/tapes/{taxonomy}/draft` - the mixtape as a note the ordinary
+/// publish can take (plans/MIXTAPES.md): its title the mixtape's name, its words one embedded
+/// sound per track, in the mixtape's order - the author's own sounds by their private address,
+/// anybody else's by their public one, which publishing copies (ruling 1). Made the first time,
+/// and brought up to the mixtape as it stands every time after; the publish row asks for it before
+/// it publishes, so what goes out is what the mixtape holds now. A mixtape of more than
+/// `TAPE_MAX` tracks, or of none, is refused in words.
+///
+/// Answers `{ doc_id, tracks }`. The note is the draft every publish door knows how to treat -
+/// where it goes, when, sealed or not, taken down - and `TAPE_OF` on it is what makes the post a
+/// mixtape rather than a page of thirty players.
+pub async fn tape_draft_handler(
+    session: Session,
+    State(state): State<AppState>,
+    Path((root, taxonomy)): Path<(String, String)>,
+) -> Result<Json<Value>, AppError> {
+    let owned = store::open(&state, &session.account.id, &root).await?;
+    let no_such =
+        || AppError::NotFound(crate::msg!("amp.no-such-mixtape", "there is no such mixtape"));
+    let tape_id = <[u8; 16]>::try_from(hex::decode(&taxonomy).map_err(|_| no_such())?.as_slice())
+        .map_err(|_| no_such())?;
+    let tape = owned
+        .taxonomies()
+        .all()
+        .await?
+        .into_iter()
+        .find(|t| t.taxonomy_id == tape_id && t.title.starts_with(MIXTAPE))
+        .ok_or_else(no_such)?;
+    let name = tape.title[MIXTAPE.len()..].to_string();
+    let members = owned.taxonomies().members(&tape_id).await?;
+    if members.is_empty() {
+        return Err(AppError::BadRequest(crate::msg!(
+            "amp.an-empty-mixtape",
+            "a mixtape with no songs on it has nothing to publish"
+        )));
+    }
+    if members.len() > TAPE_MAX {
+        return Err(AppError::BadRequest(crate::msg!(
+            "amp.mixtape-too-large",
+            "this playlist is too large to publish (>{max} tracks)",
+            max = TAPE_MAX
+        )));
+    }
+    let words = tape_words(&root, &members);
+
+    let docs = owned.documents();
+    let (drafts, _) = owned.private_registers(TAPE_DRAFTS_KV).all().await?;
+    let kept = drafts
+        .iter()
+        .find(|r| r.key == taxonomy)
+        .and_then(|r| hex::decode(&r.value).ok())
+        .and_then(|b| <[u8; 16]>::try_from(b.as_slice()).ok());
+    let held = match kept {
+        Some(id) => docs.one(&id).await?.map(|doc| (id, doc)),
+        None => None,
+    };
+    let doc_id = match held {
+        Some((id, doc)) => {
+            let resolved = docs.resolved(&doc).await?;
+            if resolved.title != name || resolved.body.as_deref() != Some(words.as_str()) {
+                docs.save(crate::record::documents::Save {
+                    doc_id: id,
+                    parents: doc.heads.clone(),
+                    title: name.clone(),
+                    body: words.clone().into_bytes(),
+                    format: crate::record::documents::Format::Marquee,
+                    media: None,
+                    refs: Vec::new(),
+                })
+                .await?;
+            }
+            id
+        }
+        None => {
+            let (id, _) = docs
+                .create(&name, words.as_bytes(), crate::record::documents::Format::Marquee)
+                .await?;
+            owned.annotations().set_field(&id, TAPE_OF, &taxonomy).await?;
+            owned.buckets().place(&id, TAPES_BUCKET).await?;
+            owned.private_registers(TAPE_DRAFTS_KV).set(&taxonomy, &hex::encode(id)).await?;
+            id
+        }
+    };
+    Ok(Json(json!({ "doc_id": hex::encode(doc_id), "tracks": members.len() })))
+}
+
+/// One track of a published mixtape, as its body says it (plans/MIXTAPES.md): the public document
+/// the song is, and what a card shows of it without opening it.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct TapeTrack {
+    pub doc: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub artist: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub album: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ms: Option<i64>,
+}
+
+/// A published mixtape's body: its tracks, in order.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+pub struct TapeBody {
+    #[serde(default)]
+    pub tracks: Vec<TapeTrack>,
+}
+
+/// The tracks a published mixtape of this persona's names now, read from its body - under its
+/// key where it is sealed, which its draft holds. None where the post has no head, or its words
+/// can't be read here; that only costs a takedown its memory of what to take with it.
+pub(crate) async fn tape_tracks(
+    state: &AppState,
+    data: &store::Store,
+    post: &[u8; 16],
+) -> Result<Vec<[u8; 16]>, AppError> {
+    let Some(head) = crate::record::documents::public_head(data.db(), post).await? else {
+        return Ok(Vec::new());
+    };
+    let Some(bytes) = state
+        .files
+        .get_public(iroh_blobs::Hash::from_bytes(head.file_hash))
+        .await
+        .map_err(AppError::Internal)?
+    else {
+        return Ok(Vec::new());
+    };
+    let key = match data.annotations().note_claiming(post).await? {
+        Some(note) => data
+            .annotations()
+            .field(&note, store::TRUSTED_KEY)
+            .await?
+            .and_then(|v| hex::decode(v).ok())
+            .and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok()),
+        None => None,
+    };
+    let plain = match key {
+        Some(key) => crate::record::private::open_post_body(&bytes, &key).unwrap_or(bytes),
+        None => bytes,
+    };
+    let body: TapeBody = serde_json::from_slice(&plain).unwrap_or_default();
+    Ok(body
+        .tracks
+        .iter()
+        .filter_map(|t| <[u8; 16]>::try_from(hex::decode(&t.doc).ok()?.as_slice()).ok())
+        .collect())
+}
+
+/// Take down the tracks a mixtape no longer names (ruling 6: "removal should cascade") - `were`
+/// less whatever any standing post or mixtape of this persona's still names. A mixtape's tracks
+/// are in its body, not its header's refs (a post's refs are what a share carries whole, and
+/// thirty songs is no share), so `orphaned_twins` cannot see them: this is its other half. Called
+/// after the mixtape's own new version, or its tombstone, has landed.
+pub(crate) async fn retract_dropped(
+    state: &AppState,
+    data: &store::Store,
+    post: &[u8; 16],
+    were: &[[u8; 16]],
+) -> Result<usize, AppError> {
+    if were.is_empty() {
+        return Ok(0);
+    }
+    let mut named = crate::record::documents::standing_refs(data.db(), post).await?;
+    for tape in crate::record::documents::standing_tapes(data.db()).await? {
+        named.extend(tape_tracks(state, data, &tape).await?);
+    }
+    let mut gone = 0;
+    for track in were {
+        if named.contains(track)
+            || crate::record::documents::public_head(data.db(), track).await?.is_none()
+        {
+            continue;
+        }
+        data.documents().retract_public(track).await?;
+        gone += 1;
+    }
+    Ok(gone)
+}
+
+/// A mixtape's draft words: one embedded sound to a line, in order.
+fn tape_words(me: &str, members: &[store::TaxonomyMember]) -> String {
+    let mut words = String::new();
+    for (i, member) in members.iter().enumerate() {
+        let (author, doc) = (hex::encode(member.root), hex::encode(member.doc_id));
+        let address = if author == me {
+            format!("/api/identity/{me}/docs/{doc}/body/track.ogg")
+        } else {
+            format!("/id/{author}/docs/{doc}/body")
+        };
+        words.push_str(&format!("![track {}]({address})\n\n", i + 1));
+    }
+    words
+}
+
 /// Someone else's songs in the reader's mixtapes, `(author, sound)` in hex.
 async fn mixtape_members(
     owned: &store::Store,

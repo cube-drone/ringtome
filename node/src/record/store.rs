@@ -1532,6 +1532,7 @@ impl Documents<'_> {
             onward,
             room,
             im,
+            mixtape,
         } = flags;
         // The one note, not the view (2026-10-02: a small edit to a big old post took ages to
         // publish - every publish folded the persona's whole notebook to find the note it was).
@@ -1587,6 +1588,8 @@ impl Documents<'_> {
         }
         // A room (CHAT.md, ruling 1): the draft stays Marquee; the POST is a room.
         let format = if room { crate::record::documents::Format::Room } else { format };
+        // ...and a mixtape (plans/MIXTAPES.md): the bake hands this its tracklist for a body.
+        let format = if mixtape { crate::record::documents::Format::Mixtape } else { format };
 
         // Already published? Then this is a new version of that post, not a new post.
         let existing = self

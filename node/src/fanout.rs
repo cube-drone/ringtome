@@ -1929,7 +1929,7 @@ impl Own {
 
 /// The kinds of post a feed shows: text, books, rooms and followed feeds' items (feedreader.rs) -
 /// never media, which are ingredients.
-pub const FEED_FORMATS: &[&str] = &["marquee", "plaintext", "book", "room", "rss"];
+pub const FEED_FORMATS: &[&str] = &["marquee", "plaintext", "book", "room", "rss", "mixtape"];
 
 /// Which of one reader's journal rows a caller wants (2026-09-27, PROJECT_PLAN's Scores and sort
 /// orders, *Shape*): the one filter every reader of the journal goes through, in SQL on an index -

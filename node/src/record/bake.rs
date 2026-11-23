@@ -794,6 +794,12 @@ pub async fn publish_reporting(
     // What the words embed, read as every destination reads them (`embeds`): the links made fit,
     // the count cap and the rights fence said before a byte is baked, the missing named.
     let Embeds { body, refs, missing } = embeds(state, data, root_hex, &body).await?;
+    if refs.is_empty() && flags.mixtape {
+        return Err(AppError::BadRequest(crate::msg!(
+            "amp.an-empty-mixtape",
+            "a mixtape with no songs on it has nothing to publish"
+        )));
+    }
     if refs.is_empty() {
         return Ok(Outcome::Posted(
             docs.publish(doc_id, Some(body), Vec::new(), reply, flags).await?,
@@ -987,7 +993,11 @@ pub async fn publish_reporting(
     // Everything is baked and public, so the bytes this post will ask the network to carry are
     // finally knowable. Checked HERE rather than at upload: a single upload under the per-file
     // cap says nothing about a post that embeds forty of them.
-    media_budget(state, data, &baked).await?;
+    // A mixtape's songs are not the post's media (below): each is fetched as its own file, by
+    // whoever plays it, and a mixtape is capped by its count (amp.rs `TAPE_MAX`).
+    if !flags.mixtape {
+        media_budget(state, data, &baked).await?;
+    }
     // Each sound's fields, said on its twin (plans/AUDIO.md, slice 4): a reader's hrseAmp shows a
     // song's title, artist and album from them. Best-effort, like every label: they must not
     // unsay the post.
@@ -1018,6 +1028,65 @@ pub async fn publish_reporting(
         let value = serde_json::to_string(&chain)
             .map_err(|e| AppError::Internal(anyhow!("provenance: {e}")))?;
         annotations.set_field(doc_id, crate::record::store::PROVENANCE, &value).await?;
+    }
+    // A mixtape (plans/MIXTAPES.md): the twins are its tracks, said in its body in the order the
+    // draft embedded them, and NOT among its refs - a post's refs are what a share carries whole
+    // (`media_budget`), and thirty songs is no share. So its takedowns are its own to carry.
+    if flags.mixtape {
+        let mut tracks: Vec<crate::amp::TapeTrack> = Vec::new();
+        for twin in &baked {
+            if tracks.iter().any(|t| t.doc == hex::encode(twin)) {
+                continue;
+            }
+            let Some(media) = crate::record::documents::public_media(data.db(), twin).await? else {
+                continue;
+            };
+            if media.format != Some(ringtome_proto::registry::doc_format::OGG_OPUS) {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "amp.a-mixtape-holds-songs",
+                    "a mixtape holds songs, and one of these isn't a sound"
+                )));
+            }
+            let fields = match sound_twins.iter().find(|(_, t)| t == twin) {
+                Some((source, _)) => sound_fields(state, data, source).await?,
+                None => Default::default(),
+            };
+            let said =
+                |key: &str| fields.get(key).map(|v| v.trim().to_string()).unwrap_or_default();
+            // A sealed twin's title is under its key; the sound's own field, or the private
+            // sound's title, says it here, where the words are sealed with the post.
+            let title = match said("track") {
+                t if !t.is_empty() => t,
+                _ => media.title.clone(),
+            };
+            tracks.push(crate::amp::TapeTrack {
+                doc: hex::encode(twin),
+                title,
+                artist: said("artist"),
+                album: said("album"),
+                ms: media.duration_ms,
+            });
+        }
+        let words = serde_json::to_string(&crate::amp::TapeBody { tracks })
+            .map_err(|e| AppError::Internal(anyhow!("a mixtape's tracklist: {e}")))?;
+        // What it named before this version, so a track taken off is taken down.
+        let was = match data.annotations().field(doc_id, crate::record::store::PUBLISHED_AS).await?
+        {
+            Some(post) => {
+                match <[u8; 16]>::try_from(hex::decode(post).unwrap_or_default().as_slice()) {
+                    Ok(post) => crate::amp::tape_tracks(state, data, &post).await?,
+                    Err(_) => Vec::new(),
+                }
+            }
+            None => Vec::new(),
+        };
+        let post = docs.publish(doc_id, Some(words), Vec::new(), reply, flags).await?;
+        let now: Vec<[u8; 16]> = baked.clone();
+        let dropped: Vec<[u8; 16]> = was.into_iter().filter(|t| !now.contains(t)).collect();
+        if let Err(e) = crate::amp::retract_dropped(state, data, &post, &dropped).await {
+            tracing::warn!(error = ?e, "a mixtape's dropped tracks stayed up; the mixtape stands");
+        }
+        return Ok(Outcome::Posted(post));
     }
     // The baked twin set IS the header's refs: derived post-rewrite, so it names exactly the
     // public documents a reader's renderer will ask for. Deduplicated - the same picture
@@ -1061,21 +1130,7 @@ async fn sound_fields_on_twin(
     post_key: Option<[u8; 32]>,
 ) -> Result<(), AppError> {
     use crate::media::audio::SOUND_FIELDS;
-    let fields: std::collections::BTreeMap<String, String> = match source {
-        SoundSource::Own(media) => data.annotations().fields(media).await?,
-        SoundSource::Copied(author, theirs) => {
-            let asked = [(author.clone(), theirs.clone())];
-            crate::annotations::for_posts(state, &asked, None)
-                .await
-                .map_err(AppError::Internal)?
-                .remove(&asked[0])
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|a| &a.annotator == author)
-                .map(|a| (a.key, a.value))
-                .collect()
-        }
-    };
+    let fields = sound_fields(state, data, source).await?;
     let self_root = <[u8; 32]>::try_from(hex::decode(root_hex).unwrap_or_default().as_slice())
         .map_err(|_| AppError::Internal(anyhow!("the author's root is not 32 bytes")))?;
     let mut desired: std::collections::BTreeSet<(String, String)> = Default::default();
@@ -1093,6 +1148,30 @@ async fn sound_fields_on_twin(
     }
     crate::identity::restate_labels(data, &self_root, twin, &desired, post_key).await?;
     Ok(())
+}
+
+/// A sound's fields at their source: the private sound's own, or - for a copy - what its author
+/// said on theirs.
+async fn sound_fields(
+    state: &AppState,
+    data: &crate::record::store::Store,
+    source: &SoundSource,
+) -> Result<std::collections::BTreeMap<String, String>, AppError> {
+    Ok(match source {
+        SoundSource::Own(media) => data.annotations().fields(media).await?,
+        SoundSource::Copied(author, theirs) => {
+            let asked = [(author.clone(), theirs.clone())];
+            crate::annotations::for_posts(state, &asked, None)
+                .await
+                .map_err(AppError::Internal)?
+                .remove(&asked[0])
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|a| &a.annotator == author)
+                .map(|a| (a.key, a.value))
+                .collect()
+        }
+    })
 }
 
 /// What one post's embedded media may total, once baked.

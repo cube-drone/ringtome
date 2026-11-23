@@ -153,6 +153,12 @@ lightly federated, unapologetically Old Internet.
   markup language's libraries and handed over, each open item written up to be
   handed over as it stands (where, what, why it matters here, a suggested fix),
   and what later releases fixed. The running list, not a design.
+- [`MIXTAPES.md`](plans/MIXTAPES.md) — a mixtape, published: a new kind of post
+  (a cassette, a tracklist, "play now") whose songs travel with it, to the
+  public, sealed, or one group; "friends' mixtapes", "shared playlists" and a
+  person's loose tracks in hrseAmp; and a trash for songs thrown out of your own
+  storage. Rulings 2026-11-22; the node's half of publishing is built, nothing
+  on screen yet.
 - [`MCP.md`](plans/MCP.md) — Horse Drawing Tycoon 2 for AI agents: the node
   serves the Model Context Protocol at `/mcp`, behind the existing API key
   (never a cookie); a small set of task-shaped tools dispatched through the

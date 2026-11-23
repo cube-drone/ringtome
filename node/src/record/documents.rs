@@ -51,6 +51,9 @@ pub enum Format {
     /// text, never line-merged, never searched by its body; not media, inlined in the doc JSON like
     /// text. Private only.
     Drawing,
+    /// A published mixtape (plans/MIXTAPES.md): the tracklist as JSON, the tracks its refs.
+    /// Public only, minted from a Marquee draft by a publish that says so.
+    Mixtape,
 }
 
 impl Format {
@@ -66,6 +69,7 @@ impl Format {
             Some(doc_format::BOOK) => Format::Book,
             Some(doc_format::ROOM) => Format::Room,
             Some(doc_format::DRAWING) => Format::Drawing,
+            Some(doc_format::MIXTAPE) => Format::Mixtape,
             _ => Format::Plaintext,
         }
     }
@@ -81,6 +85,7 @@ impl Format {
             Format::Book => Some(doc_format::BOOK),
             Format::Room => Some(doc_format::ROOM),
             Format::Drawing => Some(doc_format::DRAWING),
+            Format::Mixtape => Some(doc_format::MIXTAPE),
         }
     }
 
@@ -95,6 +100,7 @@ impl Format {
             Format::Book => "book",
             Format::Room => "room",
             Format::Drawing => "drawing",
+            Format::Mixtape => "mixtape",
         }
     }
 
@@ -109,6 +115,7 @@ impl Format {
             "book" => Some(Format::Book),
             "room" => Some(Format::Room),
             "drawing" => Some(Format::Drawing),
+            "mixtape" => Some(Format::Mixtape),
             _ => None,
         }
     }
@@ -131,6 +138,7 @@ impl Format {
             Format::Book => "application/json",
             Format::Room => "text/plain; charset=utf-8",
             Format::Drawing => "application/json",
+            Format::Mixtape => "application/json",
         }
     }
 }
@@ -1023,6 +1031,10 @@ pub async fn save_public_text(
                 if carried_format == Some(ringtome_proto::registry::doc_format::ROOM) {
                     format = Format::Room;
                 }
+                // ...and a mixtape a mixtape (plans/MIXTAPES.md).
+                if carried_format == Some(ringtome_proto::registry::doc_format::MIXTAPE) {
+                    format = Format::Mixtape;
+                }
                 let genesis = match carried_genesis {
                     Some(g) => g,
                     None => public_genesis(db, &id).await?.unwrap_or_else(crate::clock::now_ms),
@@ -1167,6 +1179,9 @@ pub struct PublishFlags {
     /// An IM (CHAT.md, ruling 12): a room sealed to exactly one other person, which nobody
     /// mutes, closes, deletes or passes along, and which both parties keep whole.
     pub im: bool,
+    /// A MIXTAPE (plans/MIXTAPES.md): the draft's embedded sounds publish as the post's tracks,
+    /// and the post's body is their list. Carried on re-publication, as a room's format is.
+    pub mixtape: bool,
 }
 
 /// The draft's `display_date` claim as the header's stamp (PUBLISH.md). The claim is in the
@@ -1333,10 +1348,11 @@ pub async fn public_doc(db: &Db, doc_id: &[u8; 16]) -> Result<Option<PublicDoc>,
         return Ok(None);
     }
     let text_only = format!(
-        "(format IS NULL OR format IN ({}, {}, {}))",
+        "(format IS NULL OR format IN ({}, {}, {}, {}))",
         doc_format::MARQUEE,
         doc_format::BOOK,
-        doc_format::ROOM
+        doc_format::ROOM,
+        doc_format::MIXTAPE
     );
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
@@ -1514,10 +1530,11 @@ async fn shelf(
     }
     // NULL is plaintext (absent on the wire); the only other text format is marquee.
     let text_only = format!(
-        "(format IS NULL OR format IN ({}, {}, {}))",
+        "(format IS NULL OR format IN ({}, {}, {}, {}))",
         doc_format::MARQUEE,
         doc_format::BOOK,
-        doc_format::ROOM
+        doc_format::ROOM,
+        doc_format::MIXTAPE
     );
     // Retracted documents leave THIS shelf too (2026-08-14). `public_doc_ids` had the filter
     // from the day tombstones landed, and every feed reconciliation inherited it - but this
@@ -1685,10 +1702,11 @@ pub async fn public_docs_updated_since(
         return Ok(Vec::new());
     }
     let text_only = format!(
-        "(format IS NULL OR format IN ({}, {}, {}))",
+        "(format IS NULL OR format IN ({}, {}, {}, {}))",
         doc_format::MARQUEE,
         doc_format::BOOK,
-        doc_format::ROOM
+        doc_format::ROOM,
+        doc_format::MIXTAPE
     );
     let not_retracted = "doc_id NOT IN (SELECT doc_id FROM public_retractions)";
     type Row = (
@@ -2593,6 +2611,49 @@ pub async fn orphaned_twins(db: &Db, post_id: &[u8; 16]) -> Result<Vec<[u8; 16]>
         still_named.extend(decode_refs(&refs));
     }
     Ok(header.refs.into_iter().filter(|r| !still_named.contains(r)).collect())
+}
+
+/// Every public document a standing post of this persona names among its refs, `except` one
+/// post's own: what `orphaned_twins` weighs a retraction against, for a caller with its own list
+/// of candidates (a mixtape's tracks, which its body names and its refs do not - amp.rs).
+pub async fn standing_refs(
+    db: &Db,
+    except: &[u8; 16],
+) -> Result<std::collections::HashSet<[u8; 16]>, AppError> {
+    let rows: Vec<(Vec<u8>, Vec<u8>)> = db
+        .fetch_all(
+            "SELECT h.doc_id, v.refs FROM doc_heads h
+             JOIN doc_versions v ON v.entry_hash = h.entry_hash AND v.doc_id = h.doc_id
+             WHERE h.lane = 'public' AND length(v.refs) > 0
+               AND h.doc_id NOT IN (SELECT doc_id FROM public_retractions)",
+            (),
+        )
+        .await
+        .context("reading the refs standing posts name")
+        .map_err(AppError::Internal)?;
+    let mut named = std::collections::HashSet::new();
+    for (id, refs) in rows {
+        if id.as_slice() != except {
+            named.extend(decode_refs(&refs));
+        }
+    }
+    Ok(named)
+}
+
+/// This persona's standing published mixtapes (plans/MIXTAPES.md), by post.
+pub async fn standing_tapes(db: &Db) -> Result<Vec<[u8; 16]>, AppError> {
+    catch_up_public_lane(db).await?;
+    let rows: Vec<(Vec<u8>,)> = db
+        .fetch_all(
+            "SELECT doc_id FROM doc_heads
+             WHERE lane = 'public' AND format = ?1
+               AND doc_id NOT IN (SELECT doc_id FROM public_retractions)",
+            (doc_format::MIXTAPE as i64,),
+        )
+        .await
+        .context("listing published mixtapes")
+        .map_err(AppError::Internal)?;
+    Ok(rows.into_iter().filter_map(|(id,)| <[u8; 16]>::try_from(id.as_slice()).ok()).collect())
 }
 
 /// Fold one `post-retract` tombstone: the document is withdrawn.
@@ -4056,6 +4117,7 @@ fn render_segments(
                 | Format::WebmAv1
                 | Format::OggOpus
                 | Format::Book
+                | Format::Mixtape
                 | Format::Drawing => {
                     unreachable!("media and drawings never reach text merge")
                 }
@@ -4080,6 +4142,7 @@ fn whole_version_conflict(
         | Format::WebmAv1
         | Format::OggOpus
         | Format::Book
+        | Format::Mixtape
         | Format::Drawing => {
             unreachable!("media conflicts are keep-both and drawings merge stroke-wise: never synthesized text")
         }
@@ -4322,6 +4385,7 @@ pub async fn resolve(
                 | Format::WebmAv1
                 | Format::OggOpus
                 | Format::Book
+                | Format::Mixtape
                 | Format::Drawing => {
                     unreachable!("media and drawings never reach text merge")
                 }

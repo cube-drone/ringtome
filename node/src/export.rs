@@ -827,8 +827,9 @@ fn render(at: &str, meta: &Meta, body: &[u8]) -> Vec<Rendering> {
                 (format!("{at}.{ext}.yml"), front_matter(meta).into_bytes()),
             ]
         }
-        // A book is a published notebook, whose pages are posts of their own.
-        Format::Book => Vec::new(),
+        // A book is a published notebook, whose pages are posts of their own; a mixtape a
+        // published list, whose songs are files of their own.
+        Format::Book | Format::Mixtape => Vec::new(),
     }
 }
 

@@ -1887,6 +1887,7 @@ impl<'a> Ctx<'a> {
             part_of: None,
             room: false,
             im: false,
+            mixtape: false,
         };
         let held = crate::fold::hold(self.root);
         let mut posted = None;

@@ -443,6 +443,7 @@ async fn rollout(
             dated_ms: claimed_date(data, doc_id, plan.tz_offset_min).await?,
             part_of: Some(book_id),
             room: false,
+            mixtape: false,
         };
         // Built off this frame (`stack::boxed`), which a debug build had at 429 KB under a rollout.
         match crate::stack::boxed(|| {

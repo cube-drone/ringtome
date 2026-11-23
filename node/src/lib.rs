@@ -1117,6 +1117,10 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route("/api/node/slug-of/{root}", get(nodeface::slug_of))
         // hrseAmp (plans/AUDIO.md): the sound in a reader's feed.
         .route("/api/identity/{root}/amp/library", get(amp::library_handler))
+        .route(
+            "/api/identity/{root}/amp/tapes/{taxonomy}/draft",
+            axum::routing::put(amp::tape_draft_handler),
+        )
         // The tagged songs a draft carries, for the app's rights warning (section 8 - the sign).
         .route("/api/identity/{root}/tagged-songs", axum::routing::post(rights::tagged_handler))
         .route("/api/node/at/{slug}", get(nodeface::at_name))

@@ -229,6 +229,12 @@ pub mod doc_format {
     /// the strokes undone - and two versions merge by putting both sets of strokes together.
     /// Private only: a drawing crosses the membrane as a picture of itself, never as strokes.
     pub const DRAWING: u64 = 8;
+    /// A MIXTAPE (plans/MIXTAPES.md, 2026-11-22): a list of songs published to be played. The
+    /// title is the mixtape's name and the body its tracklist as JSON - each track's public
+    /// document, in order, with what a card shows of it; the tracks themselves are the post's
+    /// refs, as any post's media are. Public only: the private side is a taxonomy, and the
+    /// draft a Marquee note the publish makes of it.
+    pub const MIXTAPE: u64 = 9;
 }
 
 /// Payload of an `authorize` entry: the signer (parent) grants `child` membership in the key

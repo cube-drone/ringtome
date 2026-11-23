@@ -154,6 +154,7 @@ async fn mint_public(
         dated_ms: Some(plan.at),
         part_of: None,
         room: false, // nor a room
+        mixtape: crate::amp::is_tape_draft(data, doc_id).await?,
     };
     match crate::record::bake::publish(state, data, root, doc_id, None, flags).await? {
         crate::record::bake::Outcome::Posted(post_id) => {

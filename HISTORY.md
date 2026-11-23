@@ -28812,3 +28812,59 @@ italics: under mixtapes: 'an orderable list of songs' - under radio stations:
 'combine mixtapes into a bigger mix'". Each line stands under its heading in the
 Playlists column while the persona has none of that kind, and goes when the
 first is made. Not seen in a browser.
+
+## Published mixtapes: a plan, and its questions (2026-11-22)
+
+Curtis asked for the arc whole: a mixtape published to the public, sealed, or to
+one group, as "a totally new post type" - a generated cassette, a tracklist and
+a "play now" - with its songs shared along with it; "friends' mixtapes" and
+"shared playlists" rows in hrseAmp; a person's loose songs gathered as "Garf
+Barfunkel's Tracks"; and deleting a shared mixtape or track from one's own
+storage, with a trash to undelete from.
+
+Written up as `plans/MIXTAPES.md` rather than begun, because seven of its
+answers change what is built. The shape it proposes is a book's (`books.rs`): a
+`MIXTAPE` format whose body is the tracklist, minted by a rollout that publishes
+each track `part_of` the mixtape - which is what keeps the songs out of feeds -
+through the one publish door, so every destination comes with it. The trash is
+the new machinery: what a node declines today is a kind of a person's files, and
+this is one document. Eight slices, the first four public-only and in order, the
+rest independent. Nothing built.
+
+## Published mixtapes: the rulings, and the kind (2026-11-22)
+
+Curtis answered six of the plan's seven questions the same day: somebody else's
+song is copied ("Yeah, copy"); "I don't want this mixtape" and "unpublish" are
+two things, both built; thirty tracks - "That's all the songs that will fit on a
+real cassette tape" - with the publish bar greyed past it and "this playlist is
+too large to publish (>30 tracks)"; "Play anyways" for a reader without hrseAmp;
+"removal should cascade"; a loose song "stays in Garf's tracks". The rights
+fence he left open ("This one ... I'm not sure about"), and it refuses the
+mixtape whole until he rules.
+
+Then the node's half of slice 1, which did not come out as the plan had sketched
+it:
+
+- **The draft is a note.** `PUT .../amp/tapes/<taxonomy>/draft` makes, or brings
+  up to date, a Marquee note of the mixtape - its name, and one embedded sound
+  per track - wearing `mixtape_of`. That field is what makes a publish of it
+  mint the new `MIXTAPE` format (wire 9), on the ordinary publish door and on
+  the schedule's sweep alike. So where it goes, when, sealed or not, edited,
+  taken down: all of it is the door's, as a room's is. The first sketch had a
+  book-style rollout of its own.
+- **The bake does the work** it already does for a post that embeds sound: an
+  own sound to a public twin with its fields, somebody else's copied with its
+  credits, the fence and the count first. The mixtape's body is then the
+  tracklist as JSON - the twin, and its title, artist, album and length.
+- **The tracks are in the body and not in the refs.** First built as refs, which
+  was the short road and the wrong one: a post's media may total 10 MB because a
+  share carries its refs whole (`MAX_POST_MEDIA_BYTES`, whose comment says "a
+  mixtape is a bucket, not a document"). So a track is a public file of its own,
+  and what refs gave for free is the kind's to do: `amp::retract_dropped` takes
+  down a track taken off at a republish, and every track at a takedown, unless a
+  standing post or mixtape still names it.
+
+`mixtape_publish.cjs`, six claims, green; `amp.cjs` green beside it; 762 unit
+tests; lint. Two of the test's first failures were the test's own - a wrong
+address, and expecting a file's title where its own `track` tag rightly wins.
+Nothing is on screen yet.
