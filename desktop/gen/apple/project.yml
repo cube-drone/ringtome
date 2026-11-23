@@ -82,6 +82,11 @@ targets:
       - sdk: MetalKit.framework
       - sdk: QuartzCore.framework
       - sdk: Security.framework
+      # Ours (2026-11-22), and the first edit to the generated project: iroh's network watcher
+      # (`netwatch`, through the `system-configuration` and `netdev` crates) reads the network's
+      # state from it, and the first simulator build stopped at the link with fifty of its
+      # symbols undefined. Named in the .xcodeproj too, which is what the build reads.
+      - sdk: SystemConfiguration.framework
       - sdk: UIKit.framework
       - sdk: WebKit.framework
     preBuildScripts:

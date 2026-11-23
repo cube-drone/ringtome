@@ -28609,3 +28609,46 @@ stranger's "active today" lagging by that much.
 
 Not seen in a browser: `just ui-check` passes, and the flash it removes was not
 measured before or after.
+
+## A room line pushed to a bystander went nowhere (2026-11-22)
+
+Curtis, of a public chat Xore opened from a phone with Cube Drone, the phone
+since off: "As Curtis, I commented on the public Chat that Xore opened with Cube
+Drone: this should work, it's a public chat. These messages never reached Cube
+Drone" - not on the website, not on the desktop app, not later. His guess was a
+missing middle-man, and it was nearly the opposite: there was one, and it was
+the wrong one.
+
+A speaker pushes their room chain to the creator's node, and with the creator
+dark, to every other speaker's (ruling 4). But `push_room` asked
+`creator_endpoints`, whose first entry is wherever this node first read the
+creator from (`foreign_fetches.last_via`) - and Curtis's nodes had never reached
+Xore's phone, so that was some node that merely held Xore. It is in the room, so
+it took the push; `push_room` logged "pushed to the creator's node" and stopped.
+Nobody asks a bystander who has spoken, so the lines stayed there.
+
+Two readings were tried in the rig first and both were wrong, which is why they
+are written down: a newcomer speaking with the creator dark reaches another
+speaker as designed, and a speaker's second computer, away when the push landed
+on the first, hears it once back. The third, `chat_push_bystander.cjs`, points a
+speaker's `last_via` for the creator at a fourth node that only entered the
+room, darkens the creator, and has the speaker speak: red five of five before,
+green after. The fix: a push counts as delivered only when the endpoint that
+took it is provably the creator's own (`creator_own_endpoints`: their key tree's
+leaves, their proven peer rows); otherwise the other speakers are told as well.
+`chat_lane`, `chat_offline` and `chat_siblings` pass beside it.
+
+Not verified against the real three machines: which node Curtis's first read
+Xore from was inferred, not read from its database. The lines already said are
+still on Curtis's chain, and a chain is pushed whole - his next line in that
+room, from a fixed node, should carry them.
+
+## iOS: the first simulator build stopped at the link (2026-11-22)
+
+The `sim` job's first whole run: forty-four minutes of Rust, cold, all of it
+compiling, then `ld` with fifty undefined symbols - every one `SC…`, Apple's
+SystemConfiguration, which iroh's network watcher reads. The framework is now
+among the project's (`project.yml`, and the `.xcodeproj` by hand, since that is
+what the build reads): the first edit to the generated project. Tauri archives
+even for a simulator, so whether an archive holds a runnable `.app` where the
+job looks for one is still the next thing the run says.

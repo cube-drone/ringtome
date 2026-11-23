@@ -91,7 +91,13 @@ is where "all of it" lives.
    (`room_directory`), and the room pulse learns it for rooms in a feed while
    the creator's node is up. With the creator dark, a node asks the remembered
    speakers' nodes, whoever passed the room along, and the nodes that delivered
-   the room post, then pulls each chain from any participant's node.
+   the room post, then pulls each chain from any participant's node. _And a push
+   counts as reaching the creator only when one of the creator's own computers
+   took it (2026-11-22)_: the first place a speaker's node looks for the creator
+   is wherever it first read them from, which may be a node that merely holds
+   the room - it takes the push as readily, and nobody asks it who has spoken.
+   Unless the taker is provably the creator's (their key tree's leaves, their
+   proven peer rows), the other speakers' nodes are told as well.
 5. **Live is gossip, and gossip carries the same entries.** Each room has an
    iroh-gossip topic; every live machine of every participant joins it,
    bootstrapped from the creator's node and the peer ledger's rows for the

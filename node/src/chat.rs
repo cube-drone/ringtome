@@ -3292,6 +3292,27 @@ async fn creator_endpoints(state: &AppState, author_hex: &str) -> Vec<String> {
     endpoints
 }
 
+/// The creator's computers that are provably theirs: the ones their key tree names, and the peer
+/// rows a leaf of theirs stands behind. `creator_endpoints` without its first guess, for the one
+/// caller that must know the difference (`push_room`).
+async fn creator_own_endpoints(state: &AppState, author_hex: &str) -> Vec<String> {
+    let mut endpoints: Vec<String> = Vec::new();
+    for leaf in crate::idface::stored_tree_leaves(state, author_hex).await {
+        let ep = crate::idface::leaf_via_to_endpoint(state, author_hex, &leaf).await;
+        if ep != leaf && !endpoints.contains(&ep) {
+            endpoints.push(ep);
+        }
+    }
+    for (ep, leaf, _) in
+        crate::net::sync::peer_leaves(&state.node_db, author_hex).await.unwrap_or_default()
+    {
+        if leaf.is_some() && !endpoints.contains(&ep) {
+            endpoints.push(ep);
+        }
+    }
+    endpoints
+}
+
 /// The viewer's own other computers, proven so (Curtis, 2026-10-30: a chat held on one computer,
 /// opened on another while the other person's node was off - and the second showed only its own
 /// half). A sibling that was there when the room spoke holds every speaker's chain, though it is
@@ -3310,6 +3331,8 @@ async fn sibling_endpoints(state: &AppState, root_hex: &str) -> Vec<String> {
 /// Push this persona's room chain to the creator's node (a participant's half of ruling
 /// 4): one room-scoped exchange, at the first creator endpoint that answers. Nothing to
 /// push when the creator is hosted here - the chain is already where the directory reads.
+/// When the creator's own computer didn't take it - dark, or the one that answered only holds
+/// the room - every other speaker's node is told instead.
 pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: &[u8; 16]) {
     if crate::identity::is_hosted(&state.node_db, author_hex).await.unwrap_or(false) {
         return; // this node IS the directory: the others pull from it
@@ -3317,9 +3340,18 @@ pub async fn push_room(state: &AppState, root_hex: &str, author_hex: &str, doc: 
     // Each list raced, staggered (net::race): a dark computer costs the next a head start.
     let creator = creator_endpoints(state, author_hex).await;
     match crate::net::sync::sync_room_with_first(state, root_hex, &creator, *doc).await {
-        Ok((_, stats)) => {
-            tracing::debug!(root = %root_hex, room = %hex::encode(doc), sent = stats.sent, "room chain pushed to the creator's node");
-            return;
+        // Told, when the one that took it is the creator's own computer. `creator_endpoints`
+        // begins with wherever this node first read the creator from, which need not be theirs
+        // (Curtis, 2026-11-22: lines said in a room whose creator's phone was off "never reached"
+        // another speaker, then or later). A node that merely holds the room takes the push as
+        // readily, and nobody asks it who has spoken - so with only its word, the speakers are
+        // told as well, as they are when nobody answered.
+        Ok((took, stats)) => {
+            let theirs = creator_own_endpoints(state, author_hex).await.contains(&took);
+            tracing::debug!(root = %root_hex, room = %hex::encode(doc), sent = stats.sent, %took, theirs, "room chain pushed toward the creator's node");
+            if theirs {
+                return;
+            }
         }
         Err(e) => {
             tracing::debug!(root = %root_hex, error = ?e, "room push failed")

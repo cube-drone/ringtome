@@ -269,7 +269,11 @@ The order, each step answering a question before the next is built on it:
    runner's newest simulated iPhone, installs and launches it, and uploads three
    screenshots (10, 40 and 100 seconds in), the app's own output, the system's
    log of it and the node's `/health` as the `ios-simulator` artifact - since
-   nobody here can look at it. _Written 2026-11-22; not yet run._
+   nobody here can look at it. _First run, 2026-11-22: the Rust built
+   (forty-four minutes, cold) and the link failed - fifty undefined symbols, all
+   SystemConfiguration's, which iroh's network watcher reads. The framework is
+   now named in `project.yml` and the `.xcodeproj`: the first edit to the
+   generated project._
 4. **Signing and TestFlight** from CI, which is the only road onto a real phone:
    iOS has no sideloading.
 
