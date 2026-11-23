@@ -830,13 +830,13 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
                               <button
                                   class="wordaga-pass"
                                   type="button"
-                                  title=${t('games.pass-title', 'give up this guess and take {n} money instead', { n: PASS_PAYS })}
+                                  title=${t('games.pass-title', 'give up this guess and earn {n} money instead - it still counts as an attempt', { n: PASS_PAYS })}
                                   onClick=${() => {
                                       setSaid('');
                                       move(pass(game));
                                   }}
                               >
-                                  ${t('games.pass', 'skip for')} <${Icons.money} /> ${PASS_PAYS}
+                                  ${t('games.pass', 'skip to earn')} <${Icons.money} /> +${PASS_PAYS}
                               </button>
                           </form>`
                       }

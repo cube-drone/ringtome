@@ -28577,3 +28577,11 @@ and `node` now builds for the phone alone, since this job covers the simulator's
 target. **Written, not run**: what Tauri's build leaves for a simulator, and
 where, is found by looking for a `.app`, and the first run says whether that
 holds.
+
+## Wordaga's skip says which way the money goes (2026-11-22)
+
+A player read "skip for 2" as a price: "What does paying $2 to skip do? I tried
+it and it still counted as a failed guess attempt." Curtis: "It's gaining $2
+from a skip! ... i need to mark that better". The button now reads "skip to
+earn" and the amount wears a plus sign; its hover says the guess is given up for
+money earned, and that it still counts as an attempt.
