@@ -18,6 +18,34 @@
 
 /* The Playlists column (plans/AUDIO.md, section 3): its rows wear the feed's saved-feed look
    (persona.css), grouped - filters now; mixtapes and radio stations in their slices. */
+/* The upload column (2026-11-22): hrseFiles' dropper, in a column's width. */
+.amp-upload {
+    width: var(--w-upload, 18rem);
+    min-width: 220px; /* the JS floor's CSS twin, for the moment before prefs load */
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.amp-upload-note {
+    margin: 0 0.4rem;
+}
+
+.amp-upload-drop {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.amp-upload-drop .file-dropper {
+    width: 100%;
+    min-height: 12rem;
+    padding: 1rem;
+}
+
 .amp-playlists {
     width: var(--w-playlists, 180px);
     flex-shrink: 0;

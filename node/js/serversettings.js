@@ -731,29 +731,38 @@ const Customization = () => {
     const [lines, setLines] = useState('');
     // The colourway a stranger sees (Curtis, 2026-11-22); the app's own until one is chosen.
     const [colorway, setColorway] = useState(DEFAULT_COLORWAY);
+    // ...and the effects they see: the CRT screen on and no snow, until chosen otherwise.
+    const [crt, setCrt] = useState(true);
+    const [snow, setSnow] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [saved, setSaved] = useState(false);
     const ownLines = defaultTaglines().join('\n');
+    const took = useCallback(
+        (f) => {
+            setName(f.name || '');
+            setLines(f.taglines && f.taglines.length ? f.taglines.join('\n') : ownLines);
+            setColorway(f.colorway || DEFAULT_COLORWAY);
+            setCrt(f.crt !== false);
+            setSnow(f.snow === true);
+        },
+        [ownLines],
+    );
     useEffect(() => {
         api('/api/node/front')
             .then((f) => {
-                setName(f.name || '');
-                setLines(f.taglines && f.taglines.length ? f.taglines.join('\n') : ownLines);
-                setColorway(f.colorway || DEFAULT_COLORWAY);
+                took(f);
                 setLoaded(true);
             })
             .catch((e) => setError(e.message));
-    }, [ownLines]);
+    }, [took]);
     const save = async (body) => {
         setBusy(true);
         setError('');
         setSaved(false);
         try {
             const f = await api('/api/admin/front', { method: 'PUT', body: JSON.stringify(body) });
-            setName(f.name || '');
-            setLines(f.taglines && f.taglines.length ? f.taglines.join('\n') : ownLines);
-            setColorway(f.colorway || DEFAULT_COLORWAY);
+            took(f);
             setSaved(true);
             refreshFront();
         } catch (e) {
@@ -797,6 +806,34 @@ const Customization = () => {
                     ${t('device.front-colorway-explained', "A person's own page still wears their colorway, and anyone signed in sees their own. Sign out to see this one.")}
                 </p>
             </div>
+            <div class="device-field">
+                <span>${t('device.front-effects', "effects for people who aren't signed in")}</span>
+                <label class="profile-setting">
+                    <input
+                        type="checkbox"
+                        checked=${crt}
+                        onChange=${(e) => {
+                            setSaved(false);
+                            setCrt(e.currentTarget.checked);
+                        }}
+                    />
+                    <${Icons.crt} /> ${t('device.front-crt', 'the CRT screen')}
+                </label>
+                <label class="profile-setting">
+                    <input
+                        type="checkbox"
+                        checked=${snow}
+                        onChange=${(e) => {
+                            setSaved(false);
+                            setSnow(e.currentTarget.checked);
+                        }}
+                    />
+                    <${Icons.snow} /> ${t('device.front-snow', 'snowflakes')}
+                </label>
+                <p class="null-sub">
+                    ${t('device.front-effects-explained', 'Anyone signed in keeps their own choice of each.')}
+                </p>
+            </div>
             ${error && html`<p class="form-error">${error}</p>`}
             ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
             <div class="device-actions">
@@ -808,9 +845,12 @@ const Customization = () => {
                             name,
                             taglines: lines.trim() === ownLines.trim() ? null : lines.split('\n'),
                             colorway: colorway === DEFAULT_COLORWAY ? null : colorway,
+                            // The app's own - the screen on, no snow - is saved as nothing.
+                            crt: crt ? null : false,
+                            snow: snow ? true : null,
                         })}
                 >${busy ? '…' : t('device.save', 'save')}</button>
-                <button class="computer-remove" disabled=${busy} onClick=${() => save({ name: null, taglines: null, colorway: null })}>
+                <button class="computer-remove" disabled=${busy} onClick=${() => save({ name: null, taglines: null, colorway: null, crt: null, snow: null })}>
                     ${t('device.back-to-the-apps-own', "back to the app's own")}
                 </button>
             </div>

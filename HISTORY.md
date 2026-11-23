@@ -28702,3 +28702,69 @@ ignores and iOS takes literally. `desktop/src/lib.rs` asks only on a desktop
 now. `cargo check` passes for the desktop crate on this Mac; the next simulator
 run is the test. The app's own stdout and stderr came back empty from
 `simctl launch`, the system's log did not - unchased.
+
+## hrseAmp: an upload column (2026-11-22)
+
+Curtis: "My friends were confused that you have to go to hrseFiles to upload
+music for hrseAmp: can we add an 'upload' column to hrseAmp?" It has one: a rail
+beside Playlists until opened (a tab in a narrow window), holding hrseFiles' own
+dropper - `FileDropper` took a `frame` and an `accept`, so the picker offers
+sound files and the box is a column's rather than a page's - under a line saying
+where the songs are kept. Nothing about where a file lands changed: the files
+bucket, private until shared, and the table lists it as it lists every sound.
+Seen on a scratch node: the rail, the open column at 1280px and 390px, and an
+mp3 picked through it listed in the table a moment later, the page still
+hrseAmp.
+
+## Two colourways for the winter: holidaymas and jack-frost (2026-11-22)
+
+Curtis: "A new colorway is going to be necessary for the winter season:
+'holidaymas', which is black with green and red, with white and gold accents;
+'jack-frost' which is primary a cold blue with silver and gold accents."
+
+**holidaymas** is a dark one: a black page, the header band pine green and the
+dock band berry red, so both are always in sight; white words; gold for the
+accent and the app tiles' rims; good is the green and danger the red.
+**jack-frost** is a light one: an ice-blue page under white panels, a cold blue
+frame, dock and accent, silver for borders and tags, and gold where a thing is
+marked out - the active dock tile, what is scheduled, the tiles' rims, a search
+hit. Gold is not its accent because gold words on ice read at under 2:1.
+
+Each is the usual five places: `tokens.css` (the palette and the swatch),
+`persona.css` (the swatch's class), `colorway.js` and `index.html` (the names,
+held together by a pure test), and `bank.rs` (`colorway-holidaymas`,
+`colorway-jack-frost`, H$ 25,000 each as the others are - the Market, the
+profile's picker and the server's own picker all read the list). Sold rather
+than free, and not taken off sale when the season ends: both were choices made
+here, not asked for. Seen on a scratch node by wearing each over the feed, the
+bank, Writer and the launcher.
+
+## Effects: a television for the CRT, and snow (2026-11-22)
+
+Curtis: "'disable CRT' - can that be marked with the phosphor 'television' icon?
+Requesting a new effect: 'enable snowflakes' - it stacks with CRT - gentle
+snowfall from the top of the screen to the bottom. Not TOO intrusive. Disabled
+by default."
+
+The profile's switch wears Phosphor's Television, and beside it stands a second,
+under a Snowflake: "enable snowflakes", off until pressed. It is the persona's
+own choice, kept where the CRT's is (the private `appearance` collection, key
+`snow`), so it follows the persona to every computer; `crtpref.js` holds both
+effects in one store now and the shell wears both (`useWornEffects`). Signed out
+there is no snow.
+
+The snow is `snow.css`, and nothing but CSS: two layers on the page root's own
+pseudo-elements (the body's are the CRT's, whose glass is drawn over the snow),
+each a tile of scattered flakes on a box that slides down by exactly one tile
+forever - a transform, so the page is never redrawn for it - with a slow sway
+from side to side. Fourteen small flakes to a 560px tile at about thirty pixels
+a second, six larger to an 810px tile at about forty-five. The first cut used
+smaller tiles and read as a grid in a still picture; the tiles were widened and
+the flakes scattered until it didn't. A flake is white with a faint cold rim, so
+a white page still shows it. Nothing can be touched through it, and a reader who
+asked for less motion is shown none.
+
+Seen on a scratch node: both switches with their icons, the snow on horse-relax
+and witchlight, the layers moving, the choice still on after a reload, each
+switch flipping without the other, and `off`/`off` kept in the register at the
+end.

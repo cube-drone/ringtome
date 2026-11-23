@@ -943,7 +943,11 @@ export { FILES_BUCKET };
 /// queue (`PendingUpload`), which is why the window no longer has to. Its bytes may still be going
 /// up, with no document to open yet: the window folds to a line on this page, and the file opens
 /// the moment it has an id. Several files stay here, each going on with its line until it lands.
-export const FileDropper = ({ root, onOpen }) => {
+///
+/// hrseAmp's upload column is the same dropper (Curtis, 2026-11-22: "My friends were confused that
+/// you have to go to hrseFiles to upload music for hrseAmp"): `frame` is the class of the box
+/// around it there, `accept` what its file picker offers. The files land where they always did.
+export const FileDropper = ({ root, onOpen, frame = 'reader reader-empty', accept = null }) => {
     const [files, setFiles] = useState(null); // File[] | null
     // Which pick this is: each one gets a window of its own (2026-10-10: the window reads its files
     // when it opens, so a second pick into one still open - folded, holding a failure - brought the
@@ -978,7 +982,7 @@ export const FileDropper = ({ root, onOpen }) => {
     };
     const hasFiles = (e) =>
         Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
-    return html`<div class="reader reader-empty">
+    return html`<div class=${frame}>
         <div
             class=${over ? 'file-dropper over' : 'file-dropper'}
             onDragEnter=${(e) => {
@@ -1015,6 +1019,7 @@ export const FileDropper = ({ root, onOpen }) => {
                 type="file"
                 multiple
                 hidden
+                accept=${accept}
                 ref=${pick}
                 onChange=${(e) => {
                     take(e.currentTarget.files);

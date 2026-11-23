@@ -1,7 +1,8 @@
 // The colourways (Curtis, 2026-09-30): the whole app in horse-relax, the beige and teal it was born
 // in; witchlight, black and purple with a yellow accent; doors-xp, something windowsy; bosc,
 // something mac-ossy; micross, white, royal blue and cherry red; terminal, black and lime green; or pride, the whole rainbow
-// on black, and trans, bi and ace, their flags across the header band (2026-10-08). A colourway is only a `data-colorway` on
+// on black, and trans, bi and ace, their flags across the header band (2026-10-08); and for the winter (2026-11-22),
+// holidaymas, black with green and red, and jack-frost, a cold blue with silver and gold. A colourway is only a `data-colorway` on
 // the page root - tokens.css redefines every colour under it. Yours is a profile field, `colorway`,
 // public on purpose: on a person's page the app wears THEIRS, and everywhere else your own. Signed
 // out, horse-relax, but on a person's page theirs all the same.
@@ -36,6 +37,8 @@ export const COLORWAYS = [
     'trans',
     'bi',
     'ace',
+    'holidaymas',
+    'jack-frost',
 ];
 
 /// The colourways everyone has (Curtis, 2026-10-05); every other one is sold in hrseBank's Market,
@@ -65,6 +68,8 @@ export const COLORWAY_WORDS = {
     trans: () => t('persona.colorway-trans', 'trans'),
     bi: () => t('persona.colorway-bi', 'bi'),
     ace: () => t('persona.colorway-ace', 'ace'),
+    holidaymas: () => t('persona.colorway-holidaymas', 'holidaymas'),
+    'jack-frost': () => t('persona.colorway-jack-frost', 'jack-frost'),
 };
 
 /// A colourway's swatch: three stripes of its own colours (persona.css, tokens.css).
@@ -83,6 +88,8 @@ export const COLORWAY_CLASS = {
     trans: 'colorway-swatch colorway-trans',
     bi: 'colorway-swatch colorway-bi',
     ace: 'colorway-swatch colorway-ace',
+    holidaymas: 'colorway-swatch colorway-holidaymas',
+    'jack-frost': 'colorway-swatch colorway-jack-frost',
 };
 export const DEFAULT_COLORWAY = 'horse-relax';
 const KEPT = 'colorway';

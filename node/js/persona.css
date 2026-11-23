@@ -3003,7 +3003,17 @@ article:has(.label-emoji-strip) {
     cursor: pointer;
 }
 
+/* The effects' switches, side by side under the colourway. */
+.effect-toggles {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 .crt-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     align-self: flex-start;
     padding: 0.35rem 0.7rem;
     font: inherit;
@@ -3152,6 +3162,18 @@ article:has(.label-emoji-strip) {
     --s1: var(--swatch-ace-1);
     --s2: var(--swatch-ace-2);
     --s3: var(--swatch-ace-3);
+}
+
+.colorway-holidaymas {
+    --s1: var(--swatch-holidaymas-1);
+    --s2: var(--swatch-holidaymas-2);
+    --s3: var(--swatch-holidaymas-3);
+}
+
+.colorway-jack-frost {
+    --s1: var(--swatch-jack-frost-1);
+    --s2: var(--swatch-jack-frost-2);
+    --s3: var(--swatch-jack-frost-3);
 }
 
 /* API keys (persona.js, 2026-09-30): a heading, what a key is, the keys - trash first, the name, when -

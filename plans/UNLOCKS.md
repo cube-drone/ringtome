@@ -71,10 +71,12 @@ with the game's systems": horse-relax and witchlight stay free; doors-xp, bosc,
 micross, terminal and three new phosphors - terminal-white, terminal-cyan,
 terminal-orange - are H$ 25,000 each, and a fourth, terminal-gold, H$ 500,000.
 Pride (2026-10-08), the whole rainbow on black, is H$ 25,000 too, and so are
-trans, bi and ace, their flags across the header band. The Market shows them in
-a section of their own after the hrseBond (unlock ids `colorway-<name>`); the
-profile's picker offers the free ones, the owned ones, and the one worn - a
-colourway chosen before it was for sale stays on.
+trans, bi and ace, their flags across the header band. For the winter
+(2026-11-22), holidaymas - black, green and red, with white and gold - and
+jack-frost, a cold blue with silver and gold, H$ 25,000 each and on sale for
+good. The Market shows them in a section of their own after the hrseBond (unlock
+ids `colorway-<name>`); the profile's picker offers the free ones, the owned
+ones, and the one worn - a colourway chosen before it was for sale stays on.
 
 ## Rulings (Curtis, 2026-10-05)
 

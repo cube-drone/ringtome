@@ -305,7 +305,7 @@ pub fn is_colorway(name: &str) -> bool {
 }
 
 /// Every unlock, in the order the Market lists them.
-pub const UNLOCKS: [Unlock; 30] = [
+pub const UNLOCKS: [Unlock; 32] = [
     unlock("friends", "Friends", 1_000, &[]),
     unlock("social", "Social", 1_000, &[]),
     unlock("private-notes", "Private notes", 2_500, &[]),
@@ -344,6 +344,9 @@ pub const UNLOCKS: [Unlock; 30] = [
     unlock("colorway-trans", "trans", 25_000, &[]),
     unlock("colorway-bi", "bi", 25_000, &[]),
     unlock("colorway-ace", "ace", 25_000, &[]),
+    // For the winter (Curtis, 2026-11-22), and kept on sale after it.
+    unlock("colorway-holidaymas", "holidaymas", 25_000, &[]),
+    unlock("colorway-jack-frost", "jack-frost", 25_000, &[]),
     unlock("colorway-terminal-gold", "terminal-gold", 500_000, &[]),
     // The last (Curtis, 2026-10-31), and always last in the Market: `COMMUNISM`.
     unlock(COMMUNISM, "Automated Luxury Horse Communism", 5_000_000, &[]),

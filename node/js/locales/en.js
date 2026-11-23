@@ -181,6 +181,8 @@ export default {
     'amp.forget-station': 'Forget the station "{name}"?',
     'amp.file': 'file',
     'amp.main-tab': 'amp',
+    'amp.upload': 'upload',
+    'amp.upload-note': 'Songs you upload are yours alone until you share them. They are kept with your files, in hrseFiles™.',
     'amp.looking': 'looking for music…',
     'amp.select-all': 'select all',
     'amp.refresh': 'refresh',
@@ -784,6 +786,8 @@ export default {
     'persona.colorway-trans': 'trans',
     'persona.colorway-bi': 'bi',
     'persona.colorway-ace': 'ace',
+    'persona.colorway-holidaymas': 'holidaymas',
+    'persona.colorway-jack-frost': 'jack-frost',
 
     // --- node/js/commodities.js ---
     'commodities.hay': 'hay',
@@ -951,6 +955,8 @@ export default {
     // --- node/js/crtpref.js ---
     'crtpref.disable-crt': 'disable CRT',
     'crtpref.enable-crt': 'enable CRT',
+    'crtpref.disable-snow': 'disable snowflakes',
+    'crtpref.enable-snow': 'enable snowflakes',
 
     // --- node/js/curiosity.js ---
     'apps.feed.stop-explorer': 'explorer',
@@ -2625,6 +2631,10 @@ export default {
     'device.taglines-one-per-line': 'taglines, one to a line, scrolling under the sign-in',
     'device.front-colorway': "the colorway for people who aren't signed in",
     'device.front-colorway-explained': "A person's own page still wears their colorway, and anyone signed in sees their own. Sign out to see this one.",
+    'device.front-effects': "effects for people who aren't signed in",
+    'device.front-crt': 'the CRT screen',
+    'device.front-snow': 'snowflakes',
+    'device.front-effects-explained': 'Anyone signed in keeps their own choice of each.',
     'device.back-to-the-apps-own': "back to the app's own",
     'device.search-engines': 'search engines',
     'device.tagged-audio': 'tagged songs',

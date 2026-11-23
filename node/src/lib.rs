@@ -180,10 +180,11 @@ pub struct AppState {
     /// The people this node's public posts link to (publinks.rs): a stranger is admitted to
     /// them as a member's visit is. Rebuilt by the public-link pass; a boot runs it at once.
     pub publicly_linked: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
-    /// The colourway a stranger sees, when the administrator chose one (frontdoor.rs): kept here
-    /// because every page's head names it, and a page is rendered without a database read. Read
-    /// at boot, and written beside the row whenever it is set.
-    pub front_colorway: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    /// How the place looks to a stranger, where the administrator chose (frontdoor.rs): the
+    /// colourway, the CRT screen, the snow. Kept here because every page's head says it, and a
+    /// page is rendered without a database read. Read at boot, and written beside the row
+    /// whenever it is set.
+    pub front_look: std::sync::Arc<std::sync::Mutex<frontdoor::Look>>,
     /// The tick sweeps' stat-before-open marks (loops::FreshnessMarks): a backstop sweep
     /// skips every root whose files haven't moved since it last folded them.
     pub sweep_marks: loops::FreshnessMarks,
@@ -602,7 +603,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         view_epochs: ViewEpochs::default(),
         refreshing: Default::default(),
         publicly_linked: Default::default(),
-        front_colorway: Default::default(),
+        front_look: Default::default(),
         sweep_marks: Default::default(),
         activity: Default::default(),
         unplugged,
@@ -624,9 +625,9 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     if let Err(e) = machines::load(&state.node_db).await {
         tracing::warn!(error = ?e, "the machine table didn't load; it starts empty");
     }
-    // The colourway a stranger sees (frontdoor.rs), before the first page is served.
+    // How the place looks to a stranger (frontdoor.rs), before the first page is served.
     if let Err(e) = frontdoor::load(&state).await {
-        tracing::warn!(error = ?e, "the front door's colourway didn't load; strangers see the app's own");
+        tracing::warn!(error = ?e, "the front door's look didn't load; strangers see the app's own");
     }
     // What the operator quarantined is sealed before any peer can ask for it (quarantine.rs).
     if let Err(e) = quarantine::load(&state).await {

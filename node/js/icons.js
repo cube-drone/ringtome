@@ -95,6 +95,8 @@ import {
     ArrowLeft,
     ArrowRight,
     UploadSimple,
+    Television,
+    Snowflake,
     PaperPlaneRight,
     Smiley,
     Eye,
@@ -331,6 +333,9 @@ export const Icons = {
     // help with writing Marquee - the editor's tool row, out to its own site (doc/editor.js)
     help: Lifebuoy,
     upload: UploadSimple,
+    // The profile's effects (crtpref.js): the CRT screen, and the snow.
+    crt: Television,
+    snow: Snowflake,
     // say it: the chat composer's send
     send: PaperPlaneRight,
     // answer a line with an emoji (CHAT.md, slice 9)

@@ -182,6 +182,10 @@
 :root {
     /* The CRT experiment (crt.css, 2026-10-06), the same over every colourway: scanlines, the
        vignette and bezel shadow, the glass's glare, and the bezel the screen's corners are cut by. */
+    /* Snow (snow.css, 2026-11-22), the same over every colourway: a white flake, and the faint
+       cold rim that lets it show on a white page. */
+    --snow: rgba(255, 255, 255, 0.9);
+    --snow-rim: rgba(110, 135, 165, 0.35);
     --crt-scanline: rgba(0, 0, 0, 0.06);
     --crt-vignette: rgba(0, 0, 0, 0.18);
     --crt-edge: rgba(0, 0, 0, 0.3);
@@ -232,6 +236,12 @@
     --swatch-ace-1: linear-gradient(to right, #000000 50%, #a3a3a3 50%);
     --swatch-ace-2: #ffffff;
     --swatch-ace-3: #800080;
+    --swatch-holidaymas-1: #060807;
+    --swatch-holidaymas-2: linear-gradient(to right, #1f8a4c 50%, #c8202c 50%);
+    --swatch-holidaymas-3: linear-gradient(to right, #ffffff 50%, #e8c15a 50%);
+    --swatch-jack-frost-1: #1f78c8;
+    --swatch-jack-frost-2: #c7d3de;
+    --swatch-jack-frost-3: #e3b23c;
 }
 
 :root[data-colorway='witchlight'] {
@@ -901,6 +911,108 @@
     --scrim: rgba(0, 0, 0, 0.7);
     --shadow-drop: rgba(0, 0, 0, 0.7);
     --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* holidaymas (Curtis, 2026-11-22: "black with green and red, with white and gold accents"): the page
+   black, the header band pine green and the dock band berry red, so both are always in sight; the
+   words white; and gold for the accent - what is pressed, focused and chosen - and the app tiles'
+   rims. Good is the green and danger the red, which is what they were already. */
+:root[data-colorway='holidaymas'] {
+    color-scheme: dark;
+    --bg: #060807;
+    --surface: #121815;
+    --surface-2: #1b2520;
+    --chip-on: #7a1420;
+    --paper: #101512;
+    --field: #0a0d0b;
+    --ink: #f6f3ea;
+    --ink-soft: #dcd8cb;
+    --muted: #a9b3a6;
+    --faint: #76806f;
+    --border: #2b4634;
+    --border-strong: #3f6a4c;
+    --frame: #0e4a2a;
+
+    --teal: #e8c15a;
+    --teal-deep: #7a1420;
+    --dock-active: var(--teal); /* the active dock tile's cap: the gold, on the red band */
+    --accent-ink: var(--teal); /* the deep accent is the dock's, and dark on a dark page */
+    --sea: #3ec46d;
+    --pink: #f3efe2;          /* tags: the white */
+    --peach: #f0a45c;
+    --coral: #ff5a5a;
+    --react-good: #173524;
+    --react-bad: #3d1a1d;
+
+    --glow: rgba(232, 193, 90, 0.5);
+    --crt-text-glow: 0 0 3px rgba(246, 243, 234, 0.35);
+    --dock-text: #fffaf0;
+    --on-accent: #0a0a0a;
+    --on-danger: #0a0a0a;
+    --sunk-shadow: rgba(0, 0, 0, 0.7);
+    --sunk-light: rgba(255, 255, 255, 0.08);
+    --row-veil: rgba(18, 24, 21, 0.6);
+    --banner-veil: rgba(6, 8, 7, 0.55);
+    --plate: rgba(8, 12, 10, 0.8);
+
+    --hex-border-dark: #c9a23a;
+    --hex-border-light: #1b2520;
+
+    --marker: #6b5616;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --shadow-drop: rgba(0, 0, 0, 0.7);
+    --shadow-punch: rgba(0, 0, 0, 0.5);
+}
+
+/* jack-frost (Curtis, 2026-11-22: "primarily a cold blue with silver and gold accents"): a light one -
+   an ice-blue page under white panels, a cold blue frame, dock and accent; silver for the borders and
+   the tags; gold where a thing is marked out - the active dock tile, what is scheduled, the app
+   tiles' rims, a search hit. Gold is no accent for words on ice (it reads at under 2:1), which is
+   why the blue carries those. */
+:root[data-colorway='jack-frost'] {
+    --bg: #d3e6f5;
+    --surface: #eaf3fa;
+    --surface-2: #d9e8f4;
+    --chip-on: var(--teal);
+    --chip-on-ink: var(--on-accent);
+    --chip-on-count: var(--on-accent);
+    --paper: #ffffff;
+    --field: #f7fbfe;
+    --ink: #10263b;
+    --ink-soft: #24405a;
+    --muted: #54708a;
+    --faint: #8198ad;
+    --border: #b4c5d4;
+    --border-strong: #8ea2b5;
+    --frame: #1d5e9e;
+
+    --teal: #1f78c8;
+    --teal-deep: #164f86;
+    --dock-active: #e3b23c;   /* the active dock tile's cap: gold, on the blue band */
+    --sea: #1e8fa6;
+    --pink: #6b7f93;          /* tags: silver, dark enough to carry light words */
+    --peach: #e3b23c;
+    --coral: #cf4a45;
+    --react-good: #cfe9ee;
+    --react-bad: #f4d6d3;
+
+    --glow: rgba(31, 120, 200, 0.5);
+    --dock-text: #ffffff;
+    --on-accent: #ffffff;
+    --on-danger: #ffffff;
+    --sunk-shadow: rgba(10, 40, 80, 0.4);
+    --sunk-light: rgba(255, 255, 255, 0.25);
+    --row-veil: rgba(234, 243, 250, 0.55);
+    --banner-veil: rgba(211, 230, 245, 0.5);
+    --plate: rgba(255, 255, 255, 0.8);
+
+    --hex-border-dark: #c9a23a;
+    --hex-border-light: #f1f5f9;
+
+    --marker: #ffe9a3;
+    --scrim: rgba(10, 30, 60, 0.45);
+    --shadow-drop: rgba(10, 30, 60, 0.35);
+    --shadow-punch: rgba(10, 30, 60, 0.28);
 }
 
 /* The jagged line, as a class (Curtis, 2026-09-30: "this has proven to be kind of a reliable pain").

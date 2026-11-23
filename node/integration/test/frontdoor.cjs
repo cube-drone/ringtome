@@ -18,7 +18,7 @@ const { HOST, makeFetch, sql } = require('./fetch.cjs');
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 
-describe('the front door: its name, its taglines, its colourway, its super-pins', function () {
+describe('the front door: its name, its taglines, its look, its super-pins', function () {
     this.timeout(300000);
 
     const stranger = makeFetch();
@@ -57,7 +57,7 @@ describe('the front door: its name, its taglines, its colourway, its super-pins'
     });
 
     after(async () => {
-        await j(admin, 'api/admin/front', { name: null, taglines: null, colorway: null }, 'PUT');
+        await j(admin, 'api/admin/front', {}, 'PUT');
         await admin(`api/admin/super-pins/${root}/${open}`, { method: 'DELETE' });
     });
 
@@ -122,6 +122,40 @@ describe('the front door: its name, its taglines, its colourway, its super-pins'
 
         await j(admin, 'api/admin/front', { colorway: null }, 'PUT');
         assert.doesNotMatch(await head(), named, 'taken back, the page names none again');
+    });
+
+    it("the effects a stranger sees are the administrator's too: the CRT screen, and the snow", async () => {
+        const head = async () => (await stranger('')).text();
+        const says = (page, key) =>
+            page.match(new RegExp(`<meta name="node-${key}" content="([^"]*)">`))?.[1];
+        await j(admin, 'api/admin/front', {}, 'PUT');
+        const own = await front();
+        assert.deepEqual([own.crt, own.snow], [null, null], "nothing chosen: the app's own");
+        const plainHead = await head();
+        assert.equal(says(plainHead, 'crt'), undefined, 'and the page says nothing of either');
+        assert.equal(says(plainHead, 'snow'), undefined);
+
+        assert.equal(
+            (await j(plain, 'api/admin/front', { snow: true }, 'PUT')).status,
+            403,
+            'for node administrators only',
+        );
+        const set = await j(admin, 'api/admin/front', { crt: false, snow: true }, 'PUT');
+        assert.equal(set.status, 200, await set.clone().text());
+        const chosen = await front();
+        assert.deepEqual([chosen.crt, chosen.snow], [false, true]);
+        const page = await head();
+        assert.equal(says(page, 'crt'), 'off', "the app's page says the screen is off");
+        assert.equal(says(page, 'snow'), 'on', 'and that it snows');
+
+        // Each on its own: the screen left the app's own, the snow chosen.
+        await j(admin, 'api/admin/front', { snow: true }, 'PUT');
+        const half = await head();
+        assert.equal(says(half, 'crt'), undefined);
+        assert.equal(says(half, 'snow'), 'on');
+
+        await j(admin, 'api/admin/front', {}, 'PUT');
+        assert.equal(says(await head(), 'snow'), undefined, 'taken back, the page says nothing');
     });
 
     it('a node administrator super-pins a public post hosted here, and a stranger sees it', async () => {

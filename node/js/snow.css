@@ -1,0 +1,94 @@
+/* Snow over the whole application (Curtis, 2026-11-22: "gentle snowfall from the top of the screen
+   to the bottom. Not TOO intrusive. Disabled by default"). On only while the page root wears
+   `data-snow="on"` (crtpref.js: the persona's own choice, kept beside the CRT's).
+
+   Two fixed layers on the root's own pseudo-elements - the body's are the CRT's, so the two effects
+   stack, and the glass (a higher z-index) is drawn over the snow. Each layer is one square tile of
+   scattered flakes, repeated, on a box that starts a tile above the window and slides down by exactly
+   one tile, forever: the loop has no seam, and the slide is a transform, which the compositor does
+   without redrawing the page. The far layer is small flakes falling slowly, the near one fewer,
+   larger and quicker. Each also drifts a little from side to side (`translate`, apart from the
+   fall's `transform`, so the two run on their own clocks).
+
+   Nothing here can be touched (`pointer-events: none`), and nothing moves for a reader who asked
+   their machine for less motion: the snow is simply not drawn. The flakes are tokens.css's
+   (`--snow`, `--snow-rim`): white, with a faint cold rim so a white page still shows them. */
+:root[data-snow="on"]::before,
+:root[data-snow="on"]::after {
+    content: "";
+    position: fixed;
+    left: -2rem;
+    right: -2rem;
+    top: calc(-1 * var(--snow-tile));
+    height: calc(100vh + var(--snow-tile));
+    pointer-events: none;
+    z-index: 2147482000;
+    background-size: var(--snow-tile) var(--snow-tile);
+    animation:
+        snow-fall var(--snow-fall) linear infinite,
+        snow-drift var(--snow-drift) ease-in-out infinite alternate;
+}
+
+/* The far layer: fourteen small flakes scattered over a wide tile - wide, so the eye finds no
+   grid in it - about thirty pixels a second. */
+:root[data-snow="on"]::before {
+    --snow-tile: 560px;
+    --snow-fall: 19s;
+    --snow-drift: 7s;
+    opacity: 0.8;
+    background-image:
+        radial-gradient(circle at 61% 75%, var(--snow) 0 1.2px, var(--snow-rim) 1.2px 2.1px, transparent 2.3px),
+        radial-gradient(circle at 28% 27%, var(--snow) 0 1.3px, var(--snow-rim) 1.3px 2.2px, transparent 2.4px),
+        radial-gradient(circle at 69% 64%, var(--snow) 0 1.2px, var(--snow-rim) 1.2px 2.1px, transparent 2.3px),
+        radial-gradient(circle at 84% 82%, var(--snow) 0 1.3px, var(--snow-rim) 1.3px 2.2px, transparent 2.4px),
+        radial-gradient(circle at 61% 42%, var(--snow) 0 1.2px, var(--snow-rim) 1.2px 2.1px, transparent 2.3px),
+        radial-gradient(circle at 72% 92%, var(--snow) 0 1.1px, var(--snow-rim) 1.1px 2.0px, transparent 2.2px),
+        radial-gradient(circle at 85% 9%, var(--snow) 0 1.5px, var(--snow-rim) 1.5px 2.4px, transparent 2.6px),
+        radial-gradient(circle at 80% 54%, var(--snow) 0 1.5px, var(--snow-rim) 1.5px 2.4px, transparent 2.6px),
+        radial-gradient(circle at 24% 83%, var(--snow) 0 1.4px, var(--snow-rim) 1.4px 2.3px, transparent 2.5px),
+        radial-gradient(circle at 5% 71%, var(--snow) 0 1.3px, var(--snow-rim) 1.3px 2.2px, transparent 2.4px),
+        radial-gradient(circle at 12% 11%, var(--snow) 0 1.1px, var(--snow-rim) 1.1px 2.0px, transparent 2.2px),
+        radial-gradient(circle at 8% 28%, var(--snow) 0 1.0px, var(--snow-rim) 1.0px 1.9px, transparent 2.1px),
+        radial-gradient(circle at 45% 60%, var(--snow) 0 1.1px, var(--snow-rim) 1.1px 2.0px, transparent 2.2px),
+        radial-gradient(circle at 79% 29%, var(--snow) 0 0.9px, var(--snow-rim) 0.9px 1.8px, transparent 2.0px);
+}
+
+/* The near layer: six larger flakes to a wider tile still, about forty-five pixels a second. */
+:root[data-snow="on"]::after {
+    --snow-tile: 810px;
+    --snow-fall: 18s;
+    --snow-drift: 5s;
+    opacity: 0.9;
+    background-image:
+        radial-gradient(circle at 17% 55%, var(--snow) 0 2.9px, var(--snow-rim) 2.9px 3.8px, transparent 4.0px),
+        radial-gradient(circle at 53% 12%, var(--snow) 0 2.4px, var(--snow-rim) 2.4px 3.3px, transparent 3.5px),
+        radial-gradient(circle at 6% 91%, var(--snow) 0 2.1px, var(--snow-rim) 2.1px 3.0px, transparent 3.2px),
+        radial-gradient(circle at 4% 31%, var(--snow) 0 2.6px, var(--snow-rim) 2.6px 3.5px, transparent 3.7px),
+        radial-gradient(circle at 30% 10%, var(--snow) 0 2.7px, var(--snow-rim) 2.7px 3.6px, transparent 3.8px),
+        radial-gradient(circle at 64% 52%, var(--snow) 0 2.2px, var(--snow-rim) 2.2px 3.1px, transparent 3.3px);
+}
+
+@keyframes snow-fall {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(var(--snow-tile));
+    }
+}
+
+@keyframes snow-drift {
+    from {
+        translate: -0.9rem 0;
+    }
+    to {
+        translate: 0.9rem 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root[data-snow="on"]::before,
+    :root[data-snow="on"]::after {
+        display: none;
+    }
+}

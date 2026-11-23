@@ -38,7 +38,7 @@ import {
     colorwayUnlock,
 } from './colorway.js';
 import { useLedger, unlockedIn } from './unlocks.js';
-import { CrtToggle } from './crtpref.js';
+import { EffectToggles } from './crtpref.js';
 import { WarningLists } from './warnings.js';
 import { BlocklistTab, ModeratorsTab } from './moderationpage.js';
 import { ReportSections } from './reportqueue.js';
@@ -1426,7 +1426,7 @@ export const Profile = ({ current }) => {
                 ></textarea>
             </label>
             <${ColorwayPicker} root=${root} />
-            <${CrtToggle} root=${root} />
+            <${EffectToggles} root=${root} />
             <div class="profile-save-row">
                 <button
                     class="profile-save"

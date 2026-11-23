@@ -61,6 +61,7 @@ import {
     readMixtape,
 } from '../pure/mixtapes.js';
 import { Chip } from '../doc/chips.js';
+import { FileDropper } from '../doc/upload.js';
 import { useColWidths, useColTucks, useNarrow, PaneHead, Rail } from '../panes.js';
 import { longPress, pressedLong } from '../longpress.js';
 import { edgeScrollDuring } from '../edgescroll.js';
@@ -1202,13 +1203,20 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     // A drag in an open mixtape: the song lifted, and where it would land.
     const dragKey = useRef(null);
     const [dropAt, setDropAt] = useState(null); // { key, after }
-    const { tucked, toggleTuck, tab, main, settle } = useColTucks(root, 'amp');
+    // The upload column waits as a rail until it is wanted: the table is what the app is for.
+    const { tucked, toggleTuck, tab, main, settle } = useColTucks(root, 'amp', ['upload']);
     // The Playlists column, the now-playing column and the file column, each as wide as it was
     // dragged (panes.js).
-    const { resizer, colStyle } = useColWidths(root, 'amp', ['playlists', 'now', 'file'], {
-        file: 260,
-        now: 200,
-    });
+    const { resizer, colStyle } = useColWidths(
+        root,
+        'amp',
+        ['playlists', 'upload', 'now', 'file'],
+        {
+            file: 260,
+            now: 200,
+            upload: 220,
+        },
+    );
 
     const loadFilters = () =>
         root &&
@@ -2091,6 +2099,21 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           pins=${pins}
                           onPin=${togglePin}
                       />${resizer('playlists')}`
+            }
+            ${
+                /* Songs go up from here (Curtis, 2026-11-22: "My friends were confused that you
+                have to go to hrseFiles to upload music for hrseAmp") - hrseFiles' own dropper,
+                offering sound files. They land where they always did, and the table lists them
+                as it lists every sound. */ ''
+            }
+            ${
+                tucked.has('upload')
+                    ? html`<${Rail} icon=${Icons.upload} label=${t('amp.upload', 'upload')} onClick=${() => toggleTuck('upload')} />`
+                    : html`${tab('upload', Icons.upload, t('amp.upload', 'upload'))}<aside class="amp-upload">
+                          <${PaneHead} icon=${Icons.upload} label=${t('amp.upload', 'upload')} onTuck=${() => toggleTuck('upload')} />
+                          <p class="null-sub amp-upload-note">${t('amp.upload-note', 'Songs you upload are yours alone until you share them. They are kept with your files, in hrseFiles™.')}</p>
+                          <${FileDropper} root=${root} frame="amp-upload-drop" accept="audio/*" />
+                      </aside>${resizer('upload')}`
             }
             ${nowColumn}
             ${

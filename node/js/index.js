@@ -111,7 +111,7 @@ import { installPictureViewer } from './zoomview.js';
 import { usePerson, faceOf } from './person.js';
 import { useNarrow } from './panes.js';
 import { useOwnColorway, DEFAULT_COLORWAY } from './colorway.js';
-import { useWornCrt } from './crtpref.js';
+import { useWornEffects } from './crtpref.js';
 import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
 import { useRecents } from './mirror/recents.js';
 import { newestThings } from './pure/recents.js';
@@ -398,8 +398,9 @@ const Inside = ({ session }) => {
             ? undefined
             : ownColorway || DEFAULT_COLORWAY,
     );
-    // The CRT screen (crt.css), on unless the persona turned it off - on any of its computers.
-    useWornCrt(root);
+    // The CRT screen (crt.css), on unless the persona turned it off - on any of its computers -
+    // and the snow (snow.css), off unless they turned it on.
+    useWornEffects(root);
 
     // Search is a top-level, consistent feature: its box lives in the app header (not buried in a
     // column), the same place across every app that offers it. The query is lifted here so the
@@ -1156,7 +1157,7 @@ const Outside = ({ session }) => {
     // Nobody's in: the server's colourway, but on a person's page, theirs (colorway.js).
     useOwnColorway(null);
     // ...and the CRT screen on, the default: the choice to turn it off is a persona's.
-    useWornCrt(null);
+    useWornEffects(null);
     const [query, setQuery] = useState('');
     const [idTitle, setIdTitle] = useState(null);
     // A single post has nothing to search (postshowing.js; Curtis, 2026-10-19).
