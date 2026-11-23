@@ -90,34 +90,32 @@ without opening it (title, artist, album, length).
 book-style rollout). The private side stays a taxonomy, and the node makes a
 Marquee note of it on request (`PUT .../amp/tapes/<id>/draft`): the mixtape's
 name for a title, one embedded sound per track for words - the author's own
-sounds by their private address, anybody else's by their public one. The note
-wears `mixtape_of`, and that field is what makes a publish of it mint a mixtape.
-So a mixtape is published by **the door every note takes**: where it goes, when,
-sealed or not, scheduled, edited, taken down - none of it is the kind's own. The
-room is the precedent ("the draft is Marquee and the publish says 'room'").
+sounds by their private address, anybody else's by their public one. The note is
+kept by its taxonomy in the persona's private `mixtape_drafts`, and being named
+there is what makes a publish of it mint a mixtape. So a mixtape is published by
+**the door every note takes**: where it goes, when, sealed or not, scheduled,
+edited, taken down - none of it is the kind's own. The room is the precedent
+("the draft is Marquee and the publish says 'room'").
 
 The publish's bake does the rest as it does for any post that embeds sound: an
 own sound becomes a public twin carrying its fields, somebody else's is copied
 into a twin with its credits (ruling 1), the rights fence and the count are said
 before a byte moves.
 
-**The tracks are named by the body and are not among the post's refs.** A post's
-refs are what a share carries whole, which is why a post's media may total 10 MB
-(`bake.rs` `MAX_POST_MEDIA_BYTES`: "a mixtape is a bucket, not a document").
-Thirty songs as refs would make every rebroadcast of a mixtape a
-hundred-megabyte fragment. So each track is a public file of its own, fetched by
-whoever holds the author's public files or plays the song, and three things that
-refs gave for free are the kind's to do:
+**The tracks are the post's refs**, as any post's media are (ruling 8). So they
+go wherever the post goes - a follower's node holds them, and so does the node
+of somebody who only follows a person who rebroadcast it - and a takedown of the
+mixtape takes them, by the road every post's media takes (`orphaned_twins`). A
+mixtape is **the one post over the media budget** (`bake.rs`
+`MAX_POST_MEDIA_BYTES`, 10 MB, whose comment and PROJECT_PLAN's _What travels
+with a share_ both name the mixtape as the case deferred): it is capped by its
+count instead, thirty. One thing is still the kind's own: a track taken off at a
+republish is taken down then (ruling 6), where an ordinary post's dropped
+picture is left standing.
 
-- **Takedowns.** `orphaned_twins` reads refs. A track taken off at a republish,
-  and every track at an unpublish, is taken down by `amp::retract_dropped` -
-  unless a standing post's refs or another standing mixtape's body still names
-  it.
-- **The library.** `amp::read_sounds` finds a post's sounds by its refs; a
-  mixtape's are in its body (slice 3).
-- **A reader who doesn't follow the author** - by a rebroadcast, or a link -
-  holds the tracklist and none of the songs until one is asked for (slice 3
-  decides how it is asked for).
+(Built for a day the other way - tracks named in the body alone, fetched on
+demand - which kept shares small and meant a reader could see a mixtape they
+could not play.)
 
 Everything the envelope does comes with it and needs nothing new: the poster,
 rebroadcast, the QR code, replies, reactions, comments-off, tags, the score.
@@ -211,6 +209,15 @@ Asked as seven questions; six answered the same day.
    it as they drop any takedown: "removal should cascade."
 7. **A person's loose song stays in "`<name>`'s Tracks"** when the reader puts
    it on a mixtape of their own: "it stays in Garf's tracks."
+8. **A rebroadcast carries the songs** (2026-11-23). Asked whether a reader
+   could see a mixtape and not have its tracks: "if someone you follow
+   rebroadcasts a mixtape, you should download the tracks because _someone you
+   follow rebroadcast them_ ... That's not an on-demand thing, you just get them
+   automatically because you're part of a network that makes that available to
+   you." The cost is the one the media budget exists to bound - everyone who
+   follows a sharer downloads the whole tape, at every hop - and what bounds it
+   here is the thirty tracks, "don't sync audio from this person", and the
+   trash.
 
 ## 5. Slices
 
@@ -219,20 +226,42 @@ In the order that lets each be seen working before the next.
 1. **The kind, in public.** _The node's half built 2026-11-22_: the format; the
    draft a note made of the taxonomy; publishing by the ordinary door; the
    tracklist; thirty tracks; takedowns of dropped tracks and of the whole.
-   `mixtape_publish.cjs`: one post in a follower's feed and none of its songs, a
-   song taken off taken down, thirty-one refused, the takedown taking the songs.
-   _Still to build_: the publish row in hrseAmp, with "post to" offering public
-   alone.
-2. **The card.** The cassette, the tracklist, the reading copy; MCP's kind
-   filter, the feed's implicit tag, search.
-3. **Play now, and "friends' mixtapes".** The library door carries mixtape
-   posts; the Playlists row; the read-only view; the link that starts the first
-   track.
-4. **"Shared playlists", and republishing.** The ledger of what is published
-   against what is held; added and removed tracks.
+   `mixtape_publish.cjs`, across three nodes: one post in a follower's feed and
+   none of its songs, her node holding them; a rebroadcast reaching somebody who
+   never followed the author, songs and all; a song taken off taken down;
+   thirty-one refused; the takedown taking the songs. _The publish row built
+   2026-11-23_ (`doc/tapepublish.js`): the bar Writer and Drawing wear, over an
+   open mixtape of your own - "publish…" makes the draft, the bar publishes it,
+   and every publish brings the draft up to the mixtape first. Greyed past
+   thirty tracks, with ruling 3's words. Groups are not offered yet, and a
+   sealed mixtape is offered and untested.
+2. **The card.** _Built 2026-11-23_ (`doc/mixtapecard.js`): the cassette
+   (`player.js` `CassetteArt`, pulled out of the player's own), the tracklist,
+   and "play now", which plays the tape in the app-wide player from its first
+   track and takes a reader who owns hrseAmp there. _Still to build_: the
+   reading copy; MCP's kind filter, the feed's kinds, search.
+3. **Play now, and "friends' mixtapes".** _Built 2026-11-23._ The library door
+   answers `tapes` - the mixtape posts in the reader's feed, at its dial - and
+   the Playlists column lists them under "friends' mixtapes", each with whose it
+   is. Opened, one is the table in its own order (read from the post's words),
+   with no drag handle, no "out of" and no publish row. The card's "play now"
+   goes to it (`?tape=<author>/<post>`); the author's own card opens the mixtape
+   it was published from.
+4. **"Shared playlists", and republishing.** _Built 2026-11-23._ The row lists
+   each of the reader's mixtapes whose draft stands published, with where it
+   went; opened, it is the mixtape under its publish row. The ledger is one
+   stamp: a publish marks the draft with the version that went out
+   (`published_head`, as a drawing's does), the row brings the draft up to the
+   mixtape whenever its songs or name change, and "update" is offered when the
+   two differ - with "published with N tracks - the mixtape holds M now". _Not
+   built_: the two lists side by side, track by track; and a song's own fields
+   changing (a new title) does not offer the update.
 5. **Sealed.**
 6. **Groups.**
-7. **"`<name>`'s Tracks".**
+7. **"`<name>`'s Tracks".** _Built 2026-11-23_, in the "friends' mixtapes"
+   section, one row per person. The library marks each sound a mixtape in the
+   feed names (`taped`), so a song posted on its own _and_ put on a mixtape is
+   the mixtape's. Read-only, newest first.
 8. **The trash.** The ledger, the fetch and the reaper, the row, undelete.
 
 Slices 5 to 8 don't depend on each other. Slice 8 is the only one that touches
@@ -245,6 +274,8 @@ storage and the reaper, and is the one to run the full gate for.
 - **Storage**: every published track is a public document on its author's chain,
   priced as a post's media is (`media_budget_of`), and held by every follower's
   node. A hundred-track mixtape is a few hundred megabytes in each.
+- **Shares that are not small**: a rebroadcast of a mixtape is the whole tape,
+  to every follower of the sharer (ruling 8).
 - **A second deletion ledger** beside the kind-level one. They have to agree
   about a file both of them name: declined by kind _or_ trashed is not fetched;
   kept only when neither says otherwise.

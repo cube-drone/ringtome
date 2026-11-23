@@ -128,9 +128,15 @@ export default {
     'amp.mixtapes': 'mixtapes',
     'amp.new-mixtape-title': 'a new mixtape',
     'amp.mixtapes-none': 'an orderable list of songs',
+    'amp.shared-playlists': 'shared playlists',
+    'amp.friends-mixtapes': "friends' mixtapes",
     'amp.radio-stations': 'radio stations',
     'amp.new-station': 'a new radio station',
     'amp.stations-none': 'combine mixtapes into a bigger mix',
+    'audience.everyone': 'everyone',
+    'audience.people-i-trust-and-onward': 'people I trust, and onward',
+    'audience.people-i-trust': 'people I trust',
+    'audience.the-people-mentioned': 'the people mentioned',
     'amp.everything': 'everything',
     'amp.slice-gone': '(gone)',
     'amp.n-songs': '{n} songs',
@@ -158,6 +164,8 @@ export default {
     'amp.columns': 'columns',
     'amp.couldnt-pin': "couldn't change the pin: {message}",
     'amp.you': 'you',
+    'amp.untitled-mixtape': 'a mixtape',
+    'amp.persons-tracks': "{name}'s Tracks",
     'facets.me': 'me',
     'amp.save-filter-title-modal': 'save the filter',
     'amp.save-filter-name': 'A name for this filter:',
@@ -168,6 +176,7 @@ export default {
     'amp.forget-filter': 'Forget the filter "{name}"?',
     'amp.forget-it': 'forget it',
     'amp.couldnt-forget-it': "couldn't forget it: {message}",
+    'amp.couldnt-read-mixtape': "couldn't read that mixtape: {message}",
     'amp.couldnt-change-mixtape': "couldn't change the mixtape: {message}",
     'amp.new-mixtape-name': 'A name for the new mixtape:',
     'amp.make-it': 'make it',
@@ -185,10 +194,13 @@ export default {
     'amp.main-tab': 'amp',
     'amp.upload': 'upload',
     'amp.upload-note': 'Songs you upload are yours alone until you share them. They are kept with your files, in hrseFiles™.',
+    'amp.lent-mixtape-note': 'a mixtape somebody published - its songs and their order are theirs',
+    'amp.lent-tracks-note': 'their songs that reached you outside a mixtape, newest first',
     'amp.looking': 'looking for music…',
     'amp.select-all': 'select all',
     'amp.refresh': 'refresh',
     'amp.drag-to-reorder': 'drag to move it in the mixtape',
+    'amp.lent-not-here': "this mixtape's songs haven't arrived on this computer yet.",
     'amp.empty-mixtape': 'nothing on this mixtape yet - add songs from the file column.',
     'amp.nothing-matches': 'nothing matches that.',
     'amp.no-music-yet': 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.',
@@ -671,10 +683,6 @@ export default {
     'settings.title': 'your settings',
 
     // --- node/js/audience.js ---
-    'audience.everyone': 'everyone',
-    'audience.people-i-trust-and-onward': 'people I trust, and onward',
-    'audience.people-i-trust': 'people I trust',
-    'audience.the-people-mentioned': 'the people mentioned',
     'audience.your-tags': 'your tags',
     'audience.your-groups': 'your groups',
     'audience.in-public-as-a-group': 'in public, as a group',
@@ -1340,6 +1348,13 @@ export default {
     'doc.marqueebody.this-marquee-doesnt-parse-right': 'this page has a formatting problem. Showing the plain text.',
     'doc.marqueebody.marquee-doesnt-parse': "marquee doesn't parse: {message}",
 
+    // --- node/js/doc/mixtapecard.js ---
+    'mixtape.cannot-read': 'a mixtape this computer cannot read yet',
+    'mixtape.one-track': '1 track',
+    'mixtape.n-tracks': '{n} tracks',
+    'mixtape.untitled': 'untitled',
+    'mixtape.play-now': 'play now',
+
     // --- node/js/doc/navigator.js ---
     'doc.navigator.map': 'drag the red square to look around',
     'doc.navigator.zoom-out': 'zoom out',
@@ -1445,6 +1460,13 @@ export default {
     'doc.soundtags.length': 'length',
     'doc.soundtags.description': 'description',
     'doc.soundtags.date': 'date',
+
+    // --- node/js/doc/tapepublish.js ---
+    'amp.mixtape-too-large': 'this playlist is too large to publish (>{max} tracks)',
+    'amp.mixtape-moved': 'published with {out} tracks - the mixtape holds {now} now. "update" publishes it as it stands.',
+    'amp.mixtape-empty-publish': 'put a song on this mixtape to publish it',
+    'amp.mixtape-private': 'private',
+    'amp.mixtape-publish': 'publish…',
 
     // --- node/js/doc/texthelpers.js ---
     'texthelpers.rainbow': 'a rainbow running through it',
@@ -2868,6 +2890,10 @@ export default {
     'accounts.take-their-administrator-status-first': 'that account runs this server too - take its administrator status away first',
     'accounts.nobody-here-manages-that-persona': 'no account here manages that persona',
 
+    // --- node/src/amp.rs ---
+    'amp.no-such-mixtape': 'there is no such mixtape',
+    'amp.an-empty-mixtape': 'a mixtape with no songs on it has nothing to publish',
+
     // --- node/src/attention.rs ---
     'attention.a-new-message': 'a new message',
     'attention.speaker-in-room': '{who} in {room}',
@@ -3310,6 +3336,7 @@ export default {
     'record.bake.no-such-document': 'no such document',
     'record.bake.this-notes-words-havent-arrived': "this note's words haven't arrived on this computer yet",
     'record.bake.trusted-cant-bake-external': "a trusted-only post can't bake media from the open web yet - save the image and attach it directly",
+    'amp.a-mixtape-holds-songs': "a mixtape holds songs, and one of these isn't a sound",
     'record.bake.post-media-over-budget': "this post's media adds up to {total} - one post may carry {cap}. Split it across several posts.",
 
     // --- node/src/record/documents.rs ---

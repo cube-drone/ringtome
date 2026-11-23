@@ -71,4 +71,48 @@ describe("hrseAmp's mixtapes (plans/AUDIO.md)", () => {
         assert.equal(m.dropIndex(order, 'b', 'c', false), null, 'b before c: where it is');
         assert.equal(m.dropIndex(order, 'b', 'b', true), null, 'onto itself');
     });
+
+    it("a published mixtape's words are its songs, in its order", () => {
+        const body = { tracks: [{ doc: 'd2' }, { doc: 'd1' }, { title: 'no document' }] };
+        assert.deepEqual(m.tapeMembers('ada', body), ['ada.d2', 'ada.d1']);
+        assert.deepEqual(m.tapeMembers('ada', null), []);
+    });
+
+    it("a person's loose songs are the ones no mixtape of theirs brought", () => {
+        const rows = [
+            { key: 'me:1', own: true, author: 'me', post: null, dateMs: 9 },
+            { key: 'garf:a', author: 'garf', post: 'p1', dateMs: 1 },
+            { key: 'garf:b', author: 'garf', post: 'p0', taped: true, dateMs: 5 },
+            { key: 'garf:c', author: 'garf', post: 'p2', dateMs: 3 },
+            { key: 'bea:x', author: 'bea', post: 'p3', dateMs: 7 },
+        ];
+        const loose = m.looseTracks(rows);
+        assert.deepEqual(loose, [
+            { author: 'bea', members: ['bea:x'] },
+            { author: 'garf', members: ['garf:c', 'garf:a'] },
+        ]);
+        assert.deepEqual(m.looseTracks(rows.slice(0, 1)), [], 'your own are not a row');
+    });
+
+    it('a shared playlist is a mixtape whose draft stands published, and says where it went', () => {
+        const tapes = [
+            { id: 't1', name: 'Out', members: [] },
+            { id: 't2', name: 'Drafted', members: [] },
+            { id: 't3', name: 'Never', members: [] },
+            { id: 't4', name: 'Sealed', members: [] },
+        ];
+        const docRows = new Map([
+            ['n1', { fields: { published_as: 'post1' } }],
+            ['n2', { fields: {} }],
+            ['n4', { fields: { published_as: 'post4', audience: 'band' } }],
+        ]);
+        const shared = m.sharedTapes(tapes, { t1: 'n1', t2: 'n2', t4: 'n4' }, docRows);
+        assert.deepEqual(
+            shared.map((x) => [x.tape.name, x.post, x.to]),
+            [
+                ['Out', 'post1', ''],
+                ['Sealed', 'post4', 'tag:band'],
+            ],
+        );
+    });
 });

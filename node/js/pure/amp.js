@@ -174,6 +174,8 @@ export function feedRow(sound, layer = {}) {
         // operator refuses tagged songs and this is one.
         carried: sound.carried !== false,
         thumb: !!sound.thumb,
+        // Named by a published mixtape in this feed (amp.rs): not one of its author's loose songs.
+        taped: !!sound.taped,
     });
 }
 

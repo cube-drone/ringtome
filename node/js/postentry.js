@@ -87,6 +87,8 @@ import { veilsMedia, withoutMedia } from './pure/chatveil.js';
 /// Feed cards' public words, by address and the post's last edit (see the card's body effect).
 const cardBodies = new Map();
 const CARD_BODIES_KEPT = 500;
+import { MixtapeCard, parseTape } from './doc/mixtapecard.js';
+
 const html = htm.bind(h);
 
 export const StatusDot = ({ status }) =>
@@ -2258,20 +2260,28 @@ const PostEntryBody = ({
                           ${
                               item.format === 'book'
                                   ? html`<${BookCard} book=${parseBook(shown)} author=${item.author} />`
-                                  : item.format === 'room'
-                                    ? html`${
-                                          /* In the post's own paper (Curtis, 2026-09-30): a room's
+                                  : item.format === 'mixtape'
+                                    ? html`<${MixtapeCard}
+                                          tape=${parseTape(shown)}
+                                          author=${item.author}
+                                          post=${item.doc_id}
+                                          title=${item.title}
+                                          viewer=${current && current.root}
+                                      />`
+                                    : item.format === 'room'
+                                      ? html`${
+                                            /* In the post's own paper (Curtis, 2026-09-30): a room's
                                       opening line and its latest, bubbled as a post's words are. */ ''
-                                      }<div class="reader-marquee jag-line">
+                                        }<div class="reader-marquee jag-line">
                                       <${RoomFloor} item=${item} current=${current} post=${shownBody} />
                                   </div>`
-                                    : bodyFormat === 'marquee'
-                                      ? html`<${MarqueeBody}
+                                      : bodyFormat === 'marquee'
+                                        ? html`<${MarqueeBody}
                                         source=${shown}
                                         profile=${tlProfile}
                                         onUnparsable=${bareSource}
                                     />`
-                                      : html`<pre class="reader-plain jag-line">${fading ? html`<span class="feed-entry-fade-words">${shown}</span>` : shown}</pre>`
+                                        : html`<pre class="reader-plain jag-line">${fading ? html`<span class="feed-entry-fade-words">${shown}</span>` : shown}</pre>`
                           }
                       </div>`
                       }`

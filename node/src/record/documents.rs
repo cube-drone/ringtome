@@ -2614,8 +2614,9 @@ pub async fn orphaned_twins(db: &Db, post_id: &[u8; 16]) -> Result<Vec<[u8; 16]>
 }
 
 /// Every public document a standing post of this persona names among its refs, `except` one
-/// post's own: what `orphaned_twins` weighs a retraction against, for a caller with its own list
-/// of candidates (a mixtape's tracks, which its body names and its refs do not - amp.rs).
+/// post's own: what a caller with its own candidates weighs a takedown against (a mixtape's
+/// dropped tracks, bake.rs). The excepted post is the one just re-published, whose head row may
+/// not have caught up with the version that dropped them - the caller knows what it names now.
 pub async fn standing_refs(
     db: &Db,
     except: &[u8; 16],
@@ -2640,20 +2641,15 @@ pub async fn standing_refs(
     Ok(named)
 }
 
-/// This persona's standing published mixtapes (plans/MIXTAPES.md), by post.
-pub async fn standing_tapes(db: &Db) -> Result<Vec<[u8; 16]>, AppError> {
-    catch_up_public_lane(db).await?;
-    let rows: Vec<(Vec<u8>,)> = db
-        .fetch_all(
-            "SELECT doc_id FROM doc_heads
-             WHERE lane = 'public' AND format = ?1
-               AND doc_id NOT IN (SELECT doc_id FROM public_retractions)",
-            (doc_format::MIXTAPE as i64,),
-        )
-        .await
-        .context("listing published mixtapes")
-        .map_err(AppError::Internal)?;
-    Ok(rows.into_iter().filter_map(|(id,)| <[u8; 16]>::try_from(id.as_slice()).ok()).collect())
+/// The refs a standing public post's head names, or none.
+pub async fn public_refs(db: &Db, post_id: &[u8; 16]) -> Result<Vec<[u8; 16]>, AppError> {
+    let Some(entry) = public_header_entry(db, post_id).await? else {
+        return Ok(Vec::new());
+    };
+    let Payload::Inline(payload) = &entry.entry().payload else {
+        return Ok(Vec::new());
+    };
+    Ok(DocHeaderPlain::decode(payload).map(|h| h.refs).unwrap_or_default())
 }
 
 /// Fold one `post-retract` tombstone: the document is withdrawn.

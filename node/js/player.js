@@ -1062,30 +1062,40 @@ function useFitted(svg) {
 /// carries them, under the cassette: `rating` and `onRate` as the bar takes them.
 /// The cassette is the play button too (Curtis, 2026-10-18): a press pauses it or plays it on, and
 /// so does Enter while it has the focus (Space already does, anywhere in hrseAmp).
-export const Cassette = ({ rating = '', onRate = null }) => {
-    const p = usePlayer();
-    const svg = useRef(null);
-    const floor = useRef(null);
-    const kickList = useKicks(p && p.current, p && p.me);
-    useBounce(svg, floor, kickList, !!(p && p.playing), p);
+/// The cassette itself, drawn (pulled out of `Cassette` 2026-11-23, for a mixtape's card in the
+/// feed - plans/MIXTAPES.md): the look `tapeKey` gives it (pure/cassette.js), `title` and `artist`
+/// written on its label. `playing` turns the reels. `press`, given, makes it a button: `{ label,
+/// onPress, onKey }`. `svgRef` is the caller's hold on it, for the player's bounce.
+export const CassetteArt = ({
+    tapeKey,
+    title: titleWords,
+    artist: artistWords,
+    playing = false,
+    press = null,
+    svgRef = null,
+}) => {
+    const own = useRef(null);
+    const svg = svgRef || own;
     useFitted(svg);
-    if (!p) return null;
-    const { current, playing, me } = p;
-    const press = playing ? t('player.pause', 'pause') : t('player.play', 'play');
-    const onKey = (e) => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        if (current) p.toggle();
-    };
+    const pressing = press
+        ? {
+              role: 'button',
+              tabindex: '0',
+              'aria-label': press.label,
+              title: press.label,
+              onClick: press.onPress,
+              onKeyDown: press.onKey,
+          }
+        : { role: 'img', 'aria-label': titleWords || '' };
     const reels = [100, 220];
-    const look = cassetteLook(current && current.key);
+    const look = cassetteLook(tapeKey);
     const stacked = look.layout === 'stacked';
     const fit = (words, part) => {
         const f = fontFit(look.font, part, stacked);
         return onLabel(words, f.room, f.size, f.least);
     };
-    const title = fit(current && current.title, 'title');
-    const artist = fit(current && current.artist, 'artist');
+    const title = fit(titleWords, 'title');
+    const artist = fit(artistWords, 'artist');
     // Where the words go (pure/cassette.js `LAYOUTS`).
     const titleAt = stacked
         ? { x: 40, y: 32, anchor: 'start' }
@@ -1139,22 +1149,7 @@ export const Cassette = ({ rating = '', onRate = null }) => {
         right: { x: 284, y: 12, width: 10, height: 130 },
         top: { x: 26, y: 12, width: 268, height: stacked ? 5 : 7 },
     }[look.block];
-    return html`<div class="player-expanded">
-        ${
-            /* The cover behind it, blurred most at the middle and least at the edges (Curtis,
-            2026-10-13): a lightly blurred copy, under a heavily blurred one masked to a circle. */ ''
-        }
-        ${
-            current &&
-            current.thumb &&
-            html`<div class="player-backdrop">
-                <img class="player-backdrop-light" src=${soundThumb(current, me)} alt="" />
-                <img class="player-backdrop-heavy" src=${soundThumb(current, me)} alt="" />
-            </div>`
-        }
-        <div class="cassette-stage">
-        <div class="cassette-floor" ref=${floor}></div>
-        <svg ref=${svg} class=${`cassette ${look.style} ${look.font.cls}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" role="button" tabindex="0" aria-label=${press} title=${press} onClick=${() => current && p.toggle()} onKeyDown=${onKey}>
+    return html`<svg ref=${svg} class=${`cassette ${look.style} ${look.font.cls}${playing ? ' cassette-playing' : ''}`} viewBox="0 0 320 200" ...${pressing}>
             <defs>
                 <clipPath id="cassette-window-clip">
                     <rect x="70" y="72" width="180" height="40" rx="20" />
@@ -1215,7 +1210,46 @@ export const Cassette = ({ rating = '', onRate = null }) => {
             <rect class="cassette-hole" x="134" y="174" width="10" height="10" rx="2" />
             <rect class="cassette-hole" x="176" y="174" width="10" height="10" rx="2" />
             <rect class="cassette-hole" x="154" y="164" width="12" height="6" rx="2" />
-        </svg>
+        </svg>`;
+};
+
+export const Cassette = ({ rating = '', onRate = null }) => {
+    const p = usePlayer();
+    const svg = useRef(null);
+    const floor = useRef(null);
+    const kickList = useKicks(p && p.current, p && p.me);
+    useBounce(svg, floor, kickList, !!(p && p.playing), p);
+    if (!p) return null;
+    const { current, playing, me } = p;
+    const press = playing ? t('player.pause', 'pause') : t('player.play', 'play');
+    const onKey = (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (current) p.toggle();
+    };
+    return html`<div class="player-expanded">
+        ${
+            /* The cover behind it, blurred most at the middle and least at the edges (Curtis,
+            2026-10-13): a lightly blurred copy, under a heavily blurred one masked to a circle. */ ''
+        }
+        ${
+            current &&
+            current.thumb &&
+            html`<div class="player-backdrop">
+                <img class="player-backdrop-light" src=${soundThumb(current, me)} alt="" />
+                <img class="player-backdrop-heavy" src=${soundThumb(current, me)} alt="" />
+            </div>`
+        }
+        <div class="cassette-stage">
+        <div class="cassette-floor" ref=${floor}></div>
+        <${CassetteArt}
+            tapeKey=${current && current.key}
+            title=${current && current.title}
+            artist=${current && current.artist}
+            playing=${playing}
+            svgRef=${svg}
+            press=${{ label: press, onPress: () => current && p.toggle(), onKey }}
+        />
         </div>
         ${current && onRate && html`<${Thumbs} rating=${rating} onRate=${onRate} className="player-rate player-cassette-rate" />`}
     </div>`;

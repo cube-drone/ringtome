@@ -993,8 +993,8 @@ pub async fn publish_reporting(
     // Everything is baked and public, so the bytes this post will ask the network to carry are
     // finally knowable. Checked HERE rather than at upload: a single upload under the per-file
     // cap says nothing about a post that embeds forty of them.
-    // A mixtape's songs are not the post's media (below): each is fetched as its own file, by
-    // whoever plays it, and a mixtape is capped by its count (amp.rs `TAPE_MAX`).
+    // A mixtape is the one post over the media budget, on purpose (plans/MIXTAPES.md): it is
+    // capped by its count (amp.rs `TAPE_MAX`), and everyone its songs reach is meant to hold them.
     if !flags.mixtape {
         media_budget(state, data, &baked).await?;
     }
@@ -1029,9 +1029,10 @@ pub async fn publish_reporting(
             .map_err(|e| AppError::Internal(anyhow!("provenance: {e}")))?;
         annotations.set_field(doc_id, crate::record::store::PROVENANCE, &value).await?;
     }
-    // A mixtape (plans/MIXTAPES.md): the twins are its tracks, said in its body in the order the
-    // draft embedded them, and NOT among its refs - a post's refs are what a share carries whole
-    // (`media_budget`), and thirty songs is no share. So its takedowns are its own to carry.
+    // A mixtape (plans/MIXTAPES.md): the twins are its tracks - its refs, as any post's media
+    // are, so a rebroadcast carries the songs to whoever follows the sharer (Curtis, 2026-11-23:
+    // "you just get them automatically because you're part of a network that makes that available
+    // to you") - and its body is their list, in the order the draft embedded them.
     if flags.mixtape {
         let mut tracks: Vec<crate::amp::TapeTrack> = Vec::new();
         for twin in &baked {
@@ -1069,22 +1070,40 @@ pub async fn publish_reporting(
         }
         let words = serde_json::to_string(&crate::amp::TapeBody { tracks })
             .map_err(|e| AppError::Internal(anyhow!("a mixtape's tracklist: {e}")))?;
-        // What it named before this version, so a track taken off is taken down.
+        // What it named before this version, so a track taken off is taken down (ruling 6:
+        // "removal should cascade") - unless a standing post of this persona's still names it.
         let was = match data.annotations().field(doc_id, crate::record::store::PUBLISHED_AS).await?
         {
             Some(post) => {
                 match <[u8; 16]>::try_from(hex::decode(post).unwrap_or_default().as_slice()) {
-                    Ok(post) => crate::amp::tape_tracks(state, data, &post).await?,
+                    Ok(post) => crate::record::documents::public_refs(data.db(), &post).await?,
                     Err(_) => Vec::new(),
                 }
             }
             None => Vec::new(),
         };
-        let post = docs.publish(doc_id, Some(words), Vec::new(), reply, flags).await?;
-        let now: Vec<[u8; 16]> = baked.clone();
-        let dropped: Vec<[u8; 16]> = was.into_iter().filter(|t| !now.contains(t)).collect();
-        if let Err(e) = crate::amp::retract_dropped(state, data, &post, &dropped).await {
-            tracing::warn!(error = ?e, "a mixtape's dropped tracks stayed up; the mixtape stands");
+        let mut tape_refs: Vec<[u8; 16]> = Vec::new();
+        for id in &baked {
+            if !tape_refs.contains(id) {
+                tape_refs.push(*id);
+            }
+        }
+        let post = docs.publish(doc_id, Some(words), tape_refs.clone(), reply, flags).await?;
+        // Which version of the draft this was, as a drawing's publish says it (`published_head`):
+        // the publish row's "update" is offered when the mixtape has moved past it.
+        if let Some(head) = doc.display_head() {
+            data.annotations()
+                .set_field(doc_id, crate::record::store::PUBLISHED_HEAD, &hex::encode(head.hash))
+                .await?;
+        }
+        let named = crate::record::documents::standing_refs(data.db(), &post).await?;
+        for track in was.into_iter().filter(|t| !named.contains(t) && !tape_refs.contains(t)) {
+            if crate::record::documents::public_head(data.db(), &track).await?.is_none() {
+                continue;
+            }
+            if let Err(e) = data.documents().retract_public(&track).await {
+                tracing::warn!(error = ?e, "a mixtape's dropped track stayed up; the mixtape stands");
+            }
         }
         return Ok(Outcome::Posted(post));
     }

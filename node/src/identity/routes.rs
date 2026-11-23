@@ -5100,7 +5100,7 @@ async fn publish_handler(
         onward,
         room,
         im,
-        // A mixtape's draft says so itself (amp.rs `TAPE_OF`), so every road that publishes it -
+        // A mixtape's draft is known for one (amp.rs `is_tape_draft`), so every road that publishes it -
         // this one, the schedule's sweep - mints a mixtape without being told.
         mixtape: crate::amp::is_tape_draft(&data, &doc_id).await?,
     };
@@ -5279,18 +5279,7 @@ async fn unpublish_handler(
     let reply_pins = crate::record::documents::public_doc(data.db(), &post_id)
         .await?
         .map(|p| (p.reply_to, p.thread_root));
-    // A mixtape's songs go with it (plans/MIXTAPES.md): read from its words before the tombstone
-    // lands, taken down after - those no other post or mixtape of this persona's still names.
-    let tape_tracks = crate::amp::tape_tracks(&state, &data, &post_id).await.unwrap_or_default();
-    let is_tape = crate::record::documents::public_head(data.db(), &post_id)
-        .await?
-        .is_some_and(|h| h.format == Some(ringtome_proto::registry::doc_format::MIXTAPE));
     let signed = data.documents().retract_post(&post_id).await?;
-    if is_tape {
-        if let Err(e) = crate::amp::retract_dropped(&state, &data, &post_id, &tape_tracks).await {
-            tracing::warn!(error = ?e, "a mixtape's tracks stayed up after its takedown");
-        }
-    }
     // A post some public group counted as its own is the group's no longer (plans/PUBLIC_GROUPS.md).
     crate::roster::unclaim_public(&state, &data, &root, &post_id).await?;
     if let Some((reply_to, thread_root)) = reply_pins {

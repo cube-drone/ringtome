@@ -7,7 +7,7 @@ import { h } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
-import { api } from '../net.js';
+import { api, apiText } from '../net.js';
 import { openMirror, optimisticDoc, useLive } from '../mirror.js';
 import { usePref } from '../mirror/prefs.js';
 import { appById } from '../pure/apps.js';
@@ -59,9 +59,14 @@ import {
     mixtapesBySong,
     notYetIn,
     readMixtape,
+    lentKey,
+    looseTracks,
+    sharedTapes,
+    tapeMembers,
 } from '../pure/mixtapes.js';
 import { Chip } from '../doc/chips.js';
 import { FileDropper } from '../doc/upload.js';
+import { TapePublish } from '../doc/tapepublish.js';
 import { useColWidths, useColTucks, useNarrow, PaneHead, Rail } from '../panes.js';
 import { longPress, pressedLong } from '../longpress.js';
 import { edgeScrollDuring } from '../edgescroll.js';
@@ -665,6 +670,11 @@ const Playlists = ({
     onNewTape,
     pins,
     onPin,
+    shared = [],
+    friends = [],
+    loose = [],
+    lent = null,
+    onOpenLent,
 }) => {
     const isPinned = (kind, x) => pins.has(pinKey(kind, x.id));
     const pin = (kind, x) => {
@@ -728,6 +738,15 @@ const Playlists = ({
         </button>
         ${pin('station', st)}
     </div>`;
+    // The rows nobody made here (plans/MIXTAPES.md): read-only, so no trash and no pin - a spacer
+    // keeps their names in line with the rest - and a quiet word after the name.
+    const lentRow = (key, name, said, on, open) => html`<div
+        key=${key}
+        class=${on ? 'feed-saved-row active' : 'feed-saved-row'}
+    >
+        <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
+        <button class="feed-saved-name" onClick=${open}>${name}${said && html` <span class="amp-playlists-by">${said}</span>`}</button>
+    </div>`;
     const ROWS = { filter: filterRow, mixtape: tapeRow, station: stationRow };
     const pinned = pinnedLists(pins, { filters, tapes, stations });
     const restTapes = tapes.filter((x) => !isPinned('mixtape', x));
@@ -761,6 +780,37 @@ const Playlists = ({
         }
         ${restTapes.map((x) => tapeRow(x, false))}
         ${
+            /* Your own published mixtapes, each saying where it went: opened, it is the mixtape
+            itself, under its publish row. */
+            shared.length > 0 &&
+            html`<p class="amp-playlists-group">${t('amp.shared-playlists', 'shared playlists')}</p>`
+        }
+        ${shared.map((x) =>
+            lentRow(
+                `shared:${x.tape.id}`,
+                x.tape.name,
+                sharedWith(x.to),
+                openTape === x.tape.id,
+                () => onOpenTape(x.tape),
+            ),
+        )}
+        ${
+            /* Other people's: each mixtape that reached your feed, then each person's songs that
+            came some other way ("Garf Barfunkel's Tracks"). */
+            friends.length + loose.length > 0 &&
+            html`<p class="amp-playlists-group">${t('amp.friends-mixtapes', "friends' mixtapes")}</p>`
+        }
+        ${friends.map((x) =>
+            lentRow(`friend:${x.id}`, x.name, x.by, !!lent && lent.id === x.id, () =>
+                onOpenLent({ kind: 'friend', author: x.author, post: x.post }),
+            ),
+        )}
+        ${loose.map((x) =>
+            lentRow(`tracks:${x.author}`, x.name, '', !!lent && lent.id === x.author, () =>
+                onOpenLent({ kind: 'tracks', author: x.author }),
+            ),
+        )}
+        ${
             /* Radio stations (section 6): each a pie of filters, mixtapes and stations, opened to edit
             and play. */ ''
         }
@@ -774,6 +824,16 @@ const Playlists = ({
         }
         ${stations.filter((st) => !isPinned('station', st)).map((st) => stationRow(st, false))}
     </aside>`;
+};
+
+/// Where a shared playlist went, in the publish row's own words (audience.js).
+const sharedWith = (to) => {
+    if (!to) return t('audience.everyone', 'everyone');
+    if (to === 'onward')
+        return t('audience.people-i-trust-and-onward', 'people I trust, and onward');
+    if (to === 'trusted') return t('audience.people-i-trust', 'people I trust');
+    if (to === 'mentioned') return t('audience.the-people-mentioned', 'the people mentioned');
+    return to.startsWith('tag:') ? to.slice(4) : to;
 };
 
 /// A slice's colour, the pie's and its swatch's alike (apps/amp.css), by its place in the station.
@@ -1080,7 +1140,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     const player = usePlayer();
     const docs = useLive(() => (root ? openMirror(root).docs.toArray() : []), [root]);
     const [layerRows, setLayerRows] = useState([]);
-    const [feed, setFeed] = useState({ sounds: [], names: {} });
+    const [feed, setFeed] = useState({ sounds: [], tapes: [], names: {} });
     const [loading, setLoading] = useState(true);
     const [rawSettings, setRawSettings] = usePref(root, TABLE_PREF, '');
     const settings = useMemo(() => readTableSettings(rawSettings), [rawSettings]);
@@ -1152,6 +1212,31 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         );
     }, [root, tapeIds, tapesAt]);
     const tape = tapes.find((x) => x.id === openTape) || null;
+    // Somebody else's, open in the table read-only (plans/MIXTAPES.md): a friend's published
+    // mixtape - its order read from its own words when it is opened - or a person's loose songs.
+    const [lentOpen, setLentOpen] = useState(null);
+    // Which of this persona's mixtapes have a draft (the node's `mixtape_drafts`): the published
+    // ones among them are the "shared playlists".
+    const [drafts, setDrafts] = useState({});
+    useEffect(() => {
+        if (!root) return undefined;
+        let live = true;
+        setDrafts({});
+        setLentOpen(null);
+        api(`/api/identity/${root}/private/kv/mixtape_drafts`)
+            .then((r) => {
+                if (!live) return;
+                setDrafts(
+                    Object.fromEntries(
+                        ((r && r.values) || []).filter((v) => v.value).map((v) => [v.key, v.value]),
+                    ),
+                );
+            })
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [root]);
     // Radio stations (section 6): read from their registers, the one open to edit, and the saving
     // of a slider's move a moment after it settles.
     const [stations, setStations] = useState([]);
@@ -1257,7 +1342,11 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const answer = await api(
             `/api/identity/${root}/amp/library?stop=${encodeURIComponent(stop)}`,
         ).catch(() => ({ sounds: [], names: {} }));
-        setFeed({ sounds: answer.sounds || [], names: answer.names || {} });
+        setFeed({
+            sounds: answer.sounds || [],
+            tapes: answer.tapes || [],
+            names: answer.names || {},
+        });
         setLoading(false);
     };
     useEffect(() => {
@@ -1289,14 +1378,50 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         () => ({ ...feed.names, [root]: t('amp.you', 'you') }),
         [feed.names, root],
     );
+    // The Playlists column's other rows: your published mixtapes, the mixtapes in your feed, and
+    // each person's songs that no mixtape brought.
+    const shared = useMemo(() => sharedTapes(tapes, drafts, docRows), [tapes, drafts, docRows]);
+    const friends = useMemo(
+        () =>
+            feed.tapes.map((x) => ({
+                id: lentKey(x.author, x.post),
+                author: x.author,
+                post: x.post,
+                name: x.title || t('amp.untitled-mixtape', 'a mixtape'),
+                by: nameOf(names, x.author),
+            })),
+        [feed.tapes, names],
+    );
+    const loose = useMemo(
+        () =>
+            looseTracks(rows).map((x) => ({
+                ...x,
+                name: t('amp.persons-tracks', "{name}'s Tracks", { name: nameOf(names, x.author) }),
+            })),
+        [rows, names],
+    );
+    // The one open, as a mixtape the table can show: never edited, so nothing drags in it.
+    const lent = useMemo(() => {
+        if (!lentOpen) return null;
+        if (lentOpen.kind === 'tracks') {
+            const person = loose.find((x) => x.author === lentOpen.author);
+            return person
+                ? { id: person.author, name: person.name, members: person.members }
+                : null;
+        }
+        const id = lentKey(lentOpen.author, lentOpen.post);
+        const friend = friends.find((x) => x.id === id);
+        return { id, name: friend ? friend.name : '', members: lentOpen.members || [] };
+    }, [lentOpen, loose, friends]);
+    const order = tape || lent;
     const shown = useMemo(() => {
         const narrowed = searched(narrowedSongs(rows, picks, scope), searchQuery);
         // An open mixtape is its own order: the strip and the search narrow it, nothing sorts it.
-        if (tape) return inMixtapeOrder(narrowed, tape);
+        if (order) return inMixtapeOrder(narrowed, order);
         const list = sorted(narrowed, settings.sort, names);
         // Probable duplicates: each set of copies together, where its first stands in the order.
         return dupeMode(picks) === 'only' ? byDuplicateGroup(list, duplicateGroups(list)) : list;
-    }, [rows, picks, scope, searchQuery, settings.sort, names, tape]);
+    }, [rows, picks, scope, searchQuery, settings.sort, names, order]);
     const settingsNow = filterSettings(picks, stop, scope, searchQuery);
 
     // A value on the strip, in words: "me", a person's name, or the value itself.
@@ -1376,6 +1501,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         settle();
         setLoadedId(f ? f.id : null);
         setOpenTape(null);
+        setLentOpen(null);
         setOpenStation(null);
         if (!f) {
             setPicks(NO_AMP_PICKS);
@@ -1395,7 +1521,35 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         setLoadedId(null);
         setPicks(NO_AMP_PICKS);
         if (onSearch) onSearch('');
+        setLentOpen(null);
         setOpenTape(x.id);
+    };
+    // Somebody else's, opened the same way. A friend's mixtape is read first - its order is its
+    // own words - so the table goes straight from what it showed to the mixtape, and a song already
+    // playing from its card plays on.
+    const openLent = async (x) => {
+        let next = x;
+        if (x.kind === 'friend') {
+            try {
+                const words = await apiText(`/id/${x.author}/docs/${x.post}/body`);
+                next = { ...x, members: tapeMembers(x.author, JSON.parse(words)) };
+            } catch (e) {
+                toast(
+                    t('amp.couldnt-read-mixtape', "couldn't read that mixtape: {message}", {
+                        message: e.message,
+                    }),
+                    { kind: 'error' },
+                );
+                return;
+            }
+        }
+        settle();
+        setOpenStation(null);
+        setLoadedId(null);
+        setPicks(NO_AMP_PICKS);
+        if (onSearch) onSearch('');
+        setOpenTape(null);
+        setLentOpen(next);
     };
     const failed = (e) =>
         toast(
@@ -1740,6 +1894,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     function openStationView(st) {
         settle();
         setOpenTape(null);
+        setLentOpen(null);
         setOpenStation(st.id);
     }
     // A playlist's own address (plans/RECENTS.md: its recent tile opens it): `?mixtape=`, `?station=`
@@ -1750,13 +1905,32 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const tapeAsked = asked.mixtape && tapes.find((x) => x.id === asked.mixtape);
         const stationAsked = asked.station && stations.find((x) => x.id === asked.station);
         const filterAsked = asked.filter && filters.find((x) => x.id === asked.filter);
+        // `?tape=<author>/<post>`: a published mixtape, from its card's "play now" - a friend's,
+        // or your own (which opens as the mixtape it was published from).
+        const lentAsked = asked.tape && friends.find((x) => x.id === asked.tape);
+        const ownAsked = asked.tape && shared.find((x) => lentKey(root, x.post) === asked.tape);
         if (tapeAsked) openMixtape(tapeAsked);
         else if (stationAsked) openStationView(stationAsked);
         else if (filterAsked) applyFilter(filterAsked);
-        else return;
+        else if (lentAsked)
+            openLent({ kind: 'friend', author: lentAsked.author, post: lentAsked.post });
+        else if (ownAsked) openMixtape(ownAsked.tape);
+        // One that isn't here (not in this feed, or not read yet) waits while the library loads.
+        else if (!asked.tape || loading) return;
         loc.route(appHref('amp'), true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [asked.mixtape, asked.station, asked.filter, tapes, stations, filters]);
+    }, [
+        asked.mixtape,
+        asked.station,
+        asked.filter,
+        asked.tape,
+        tapes,
+        stations,
+        filters,
+        friends,
+        shared,
+        loading,
+    ]);
     // What the open station played lately, newest first - while it's the one on the air.
     const liveRun =
         player && player.station && openStation === player.station ? player.stationRun() : null;
@@ -1780,14 +1954,17 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         });
     const playingFrom = tape
         ? { kind: 'mixtape', id: tape.id, name: tape.name }
-        : loaded && sameFilter(loaded, settingsNow)
-          ? { kind: 'filter', id: loaded.id, name: loaded.name }
-          : anyAmpPicks(picks) || searchQuery
-            ? { kind: 'filtered' }
-            : { kind: 'all' };
+        : lent
+          ? { kind: 'mixtape', id: lent.id, name: lent.name, lent: true }
+          : loaded && sameFilter(loaded, settingsNow)
+            ? { kind: 'filter', id: loaded.id, name: loaded.name }
+            : anyAmpPicks(picks) || searchQuery
+              ? { kind: 'filtered' }
+              : { kind: 'all' };
     // Played from a saved filter or a mixtape: that playlist is a recent thing ("all" isn't one).
     const notePlayedFrom = (from) =>
         (from.kind === 'mixtape' || from.kind === 'filter') &&
+        !from.lent &&
         notePlaylist(from.kind, from.id, from.name);
     const keys = useMemo(() => shown.map((r) => r.key), [shown]);
 
@@ -2089,7 +2266,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     ? html`<${Rail} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onClick=${() => toggleTuck('playlists')} />`
                     : html`${tab('playlists', Icons.music, t('amp.playlists', 'playlists'))}<${Playlists}
                           filters=${filters}
-                          now=${tape || openStation ? null : settingsNow}
+                          now=${order || openStation ? null : settingsNow}
                           onAll=${() => applyFilter(null)}
                           onPick=${applyFilter}
                           onForget=${forgetFilter}
@@ -2107,6 +2284,11 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           onNewTape=${newTape}
                           pins=${pins}
                           onPin=${togglePin}
+                          shared=${shared}
+                          friends=${friends}
+                          loose=${loose}
+                          lent=${lent}
+                          onOpenLent=${openLent}
                       />${resizer('playlists')}`
             }
             ${
@@ -2147,6 +2329,20 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                               onPlay=${() => playStation(openStationObj)}
                           />`
                         : html`
+                ${
+                    /* An open mixtape of your own wears the publish row (plans/MIXTAPES.md). */
+                    tape &&
+                    html`<${TapePublish}
+                        root=${root}
+                        tape=${tape}
+                        onDraft=${(doc) => setDrafts((have) => ({ ...have, [tape.id]: doc }))}
+                    />`
+                }
+                ${
+                    /* Somebody else's wears its name, and that it is theirs to change. */
+                    lent &&
+                    html`<p class="amp-lent-head"><${Icons.cassette} /> <strong>${lent.name}</strong> <span class="amp-lent-note">${lentOpen.kind === 'friend' ? t('amp.lent-mixtape-note', 'a mixtape somebody published - its songs and their order are theirs') : t('amp.lent-tracks-note', 'their songs that reached you outside a mixtape, newest first')}</span></p>`
+                }
                 ${
                     stop &&
                     html`<${FilterStrip}
@@ -2205,7 +2401,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                                 onClick=${() => sortBy(c)}
                             >
                                 <span class="amp-th-word">${COLUMN_WORDS[c.key]()}</span>
-                                ${!tape && settings.sort.column === c.key && html`<span class="amp-th-dir">${settings.sort.down ? '▾' : '▴'}</span>`}
+                                ${!order && settings.sort.column === c.key && html`<span class="amp-th-dir">${settings.sort.down ? '▾' : '▴'}</span>`}
                                 <span class="amp-th-edge" onPointerDown=${resize(c.key)} onClick=${(e) => e.stopPropagation()}></span>
                             </div>`,
                         )}
@@ -2268,7 +2464,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                             </div>`,
                         )}
                     </div>
-                    ${!loading && shown.length === 0 && html`<p class="null-sub amp-empty">${tape && !searchQuery && !anyAmpPicks(picks) ? t('amp.empty-mixtape', 'nothing on this mixtape yet - add songs from the file column.') : searchQuery || anyAmpPicks(picks) ? t('amp.nothing-matches', 'nothing matches that.') : t('amp.no-music-yet', 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.')}</p>`}
+                    ${!loading && shown.length === 0 && html`<p class="null-sub amp-empty">${lent && !searchQuery && !anyAmpPicks(picks) ? t('amp.lent-not-here', "this mixtape's songs haven't arrived on this computer yet.") : tape && !searchQuery && !anyAmpPicks(picks) ? t('amp.empty-mixtape', 'nothing on this mixtape yet - add songs from the file column.') : searchQuery || anyAmpPicks(picks) ? t('amp.nothing-matches', 'nothing matches that.') : t('amp.no-music-yet', 'no music yet - upload some sounds in hrseFiles, or follow someone who posts theirs.')}</p>`}
                 </div>
 `
                 }

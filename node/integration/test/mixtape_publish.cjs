@@ -2,32 +2,40 @@
     A mixtape, published (plans/MIXTAPES.md, slice 1): the kind, in public. A mixtape is a
     taxonomy; its draft is a note the node makes of it (`PUT .../amp/tapes/<id>/draft`), one
     embedded sound per track, and publishing that note - by the door every note takes - mints a
-    post of the `mixtape` format whose body is the tracklist. The songs are published with it,
-    each its own public file, named by the tracklist and by nothing else: a follower's feed shows
-    the cassette and none of its songs. Taking a song off and publishing again takes that song
-    down; taking the mixtape down takes them all. And thirty is the most a mixtape publishes.
+    post of the `mixtape` format whose body is the tracklist. The songs are published with it
+    as the post's own media, so they go wherever the post goes: a follower's node holds them, and
+    so does the node of somebody who only follows a person who rebroadcast it (Curtis, 2026-11-23:
+    "you just get them automatically because you're part of a network that makes that available
+    to you"). A feed shows the cassette and none of its songs. Taking a song off and publishing
+    again takes that song down; taking the mixtape down takes them all. And thirty is the most a
+    mixtape publishes.
 */
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const { makeUserFetch } = require('./helpers.cjs');
-const { beat } = require('./beat.cjs');
-const { HOST, makeFetch } = require('./fetch.cjs');
+const { pullAndFold, shareArrives } = require('./beat.cjs');
+const { HOST_B, HOST_C, makeFetch } = require('./fetch.cjs');
 
 const j = (who, p, body, method = 'POST') => who(p, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const sample = (f) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'sample_media', f));
 
-describe('a mixtape, published', function () {
+const base58 = async (who) => {
+    const { toBase58 } = await import('../../js/speakable.js');
+    return toBase58((await (await who('api/node')).json()).endpoint_id);
+};
+
+(HOST_B && HOST_C ? describe : describe.skip)('a mixtape, published', function () {
     this.timeout(600000);
 
     const stranger = makeFetch();
     let ada, adaRoot, bea, beaRoot;
     let songA, songB, tape, draft, post;
 
-    const persona = async (prefix) => {
-        const who = await makeUserFetch({ prefix });
+    const persona = async (prefix, host) => {
+        const who = await makeUserFetch(host ? { prefix, host } : { prefix });
         const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
         await j(who, `api/identity/${root}/serve`, {});
         return [who, root];
@@ -89,7 +97,12 @@ describe('a mixtape, published', function () {
 
     before(async () => {
         [ada, adaRoot] = await persona('tapeada');
-        [bea, beaRoot] = await persona('tapebea');
+        [bea, beaRoot] = await persona('tapebea', HOST_B);
+        assert.equal(
+            (await bea(`api/id/${adaRoot}/profile?via=${await base58(ada)}`)).status,
+            200,
+            'bea finds ada',
+        );
         await j(
             bea,
             `api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`,
@@ -141,25 +154,114 @@ describe('a mixtape, published', function () {
         for (const t of tracks) assert.ok(await stands(t.doc), `track ${t.title} is served`);
     });
 
-    it("a follower's feed shows the mixtape, and none of its songs", async () => {
+    // The draft as ada's own list has it: its fields, and the version it stands at.
+    const draftRow = async () =>
+        (await (await ada(`api/identity/${adaRoot}/docs`)).json()).docs.find(
+            (d) => d.doc_id === draft,
+        );
+
+    it('the draft is stamped with the version that went out', async () => {
+        const row = await draftRow();
+        assert.equal(row.fields.published_as, post);
+        assert.equal(row.fields.published_head, row.head, 'nothing to update yet');
+        const labels = await (await stranger(`api/id/${adaRoot}/posts/${post}`)).text();
+        assert.ok(!labels.includes(row.head), 'and the stamp is not a label on the post');
+    });
+
+    // Whether this reader's own node hands over a file of ada's.
+    const holds = async (who, doc) => (await who(`id/${adaRoot}/docs/${doc}/body`)).status === 200;
+
+    it("a follower's feed shows the mixtape and none of its songs, and her node holds every song", async () => {
+        const tracks = (await tracklist()).map((t) => t.doc);
         let items = [];
-        for (let i = 0; i < 60; i++) {
-            await beat(HOST, 'fold', adaRoot);
+        let held = false;
+        for (let i = 0; i < 60 && !(held && items.some((it) => it.doc_id === post)); i++) {
+            await pullAndFold(HOST_B, adaRoot);
             items = (await (await bea(`api/identity/${beaRoot}/feed`)).json()).items || [];
-            if (items.some((it) => it.doc_id === post)) break;
-            await wait(500);
+            held = (await Promise.all(tracks.map((t) => holds(bea, t)))).every(Boolean);
+            if (!held) await wait(500);
         }
-        const mine = items.filter((it) => it.author_root === adaRoot || it.root === adaRoot);
+        const seen = items.map((i) => [i.doc_id, i.format]);
         assert.ok(
             items.some((it) => it.doc_id === post),
-            `the mixtape is in bea's feed: ${JSON.stringify(items.map((i) => [i.doc_id, i.format]))}`,
-        );
-        const tracks = (await tracklist()).map((t) => t.doc);
-        assert.ok(
-            !items.some((it) => tracks.includes(it.doc_id)),
-            `no song is a post of its own: ${JSON.stringify(mine.map((i) => [i.doc_id, i.format]))}`,
+            `the mixtape is in bea's feed: ${JSON.stringify(seen)}`,
         );
         assert.equal(items.find((it) => it.doc_id === post).format, 'mixtape');
+        assert.ok(
+            !items.some((it) => tracks.includes(it.doc_id)),
+            `no song is a post of its own: ${JSON.stringify(seen)}`,
+        );
+        assert.ok(held, "bea's node holds both songs");
+    });
+
+    it("her hrseAmp names the mixtape among her friends', and its songs as that post's", async () => {
+        const tracks = (await tracklist()).map((t) => t.doc);
+        let lib = {};
+        for (let i = 0; i < 40; i++) {
+            lib = await (await bea(`api/identity/${beaRoot}/amp/library`)).json();
+            const songs = (lib.sounds || []).filter((x) => x.post === post);
+            if ((lib.tapes || []).length && songs.length === tracks.length) break;
+            await pullAndFold(HOST_B, adaRoot);
+            await wait(500);
+        }
+        assert.deepEqual(
+            (lib.tapes || []).map((x) => [x.author, x.post, x.title]),
+            [[adaRoot, post, 'Road Songs']],
+            JSON.stringify(lib.tapes),
+        );
+        assert.deepEqual(
+            lib.sounds
+                .filter((x) => x.post === post)
+                .map((x) => x.doc)
+                .sort(),
+            [...tracks].sort(),
+            "both songs are rows, come by the mixtape's post",
+        );
+        assert.ok(
+            lib.sounds.filter((x) => x.post === post).every((x) => x.taped),
+            "and each is marked a mixtape's, so it is no loose song of ada's",
+        );
+    });
+
+    it("rebroadcast, it reaches the sharer's follower with its songs - who never followed ada", async () => {
+        const [cal, calRoot] = await persona('tapecal', HOST_C);
+        assert.equal(
+            (await cal(`api/id/${beaRoot}/profile?via=${await base58(bea)}`)).status,
+            200,
+            'cal finds bea',
+        );
+        await j(
+            cal,
+            `api/identity/${calRoot}/private/kv/contact:${beaRoot}/interest_rebroadcasts`,
+            { value: 'high' },
+            'PUT',
+        );
+        const shared = await j(bea, `api/identity/${beaRoot}/rebroadcasts`, {
+            author: adaRoot,
+            doc_id: post,
+        });
+        assert.equal(shared.status, 200, await shared.text());
+        const tracks = (await tracklist()).map((t) => t.doc);
+        let items = [];
+        let held = [];
+        for (let i = 0; i < 40; i++) {
+            await shareArrives(HOST_C, beaRoot, adaRoot);
+            items = (await (await cal(`api/identity/${calRoot}/feed`)).json()).items || [];
+            held = await Promise.all(tracks.map((t) => holds(cal, t)));
+            if (items.some((it) => it.doc_id === post) && held.every(Boolean)) break;
+            await wait(500);
+        }
+        assert.ok(
+            items.some((it) => it.doc_id === post && it.format === 'mixtape'),
+            `the mixtape reached cal by bea's share: ${JSON.stringify(items.map((i) => [i.doc_id, i.format]))}`,
+        );
+        assert.deepEqual(held, [true, true], "and cal's node holds its songs");
+        const lib = await (await cal(`api/identity/${calRoot}/amp/library`)).json();
+        assert.deepEqual(
+            (lib.tapes || []).map((x) => [x.author, x.post, x.via]),
+            [[adaRoot, post, beaRoot]],
+            `cal's hrseAmp names it, come through bea: ${JSON.stringify(lib.tapes)}`,
+        );
     });
 
     it('a song taken off and the mixtape published again: the song is taken down', async () => {
@@ -175,6 +277,8 @@ describe('a mixtape, published', function () {
             'the tracklist names what is left',
         );
         assert.ok(await stands(first.doc), 'the song still on it stands');
+        const row = await draftRow();
+        assert.equal(row.fields.published_head, row.head, 'the stamp follows the new version');
         assert.ok(!(await stands(second.doc)), 'the one taken off is gone');
     });
 

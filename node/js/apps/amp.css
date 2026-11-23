@@ -1364,3 +1364,98 @@
 .feed-saved-row.active .amp-pinned-kind {
     color: var(--surface);
 }
+
+/* A mixtape's publish row when there is nothing it can do yet (doc/tapepublish.js): too many
+   tracks, or none. Greyed, with its reason for words. */
+.tape-publish-off {
+    opacity: 0.6;
+}
+
+/* A published mixtape's card (doc/mixtapecard.js): the cassette, its tracklist, "play now". */
+.mixtape-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.6rem 0.4rem;
+}
+
+.mixtape-card-cassette {
+    width: min(100%, 22rem);
+}
+
+.mixtape-card-tracks {
+    align-self: stretch;
+    margin: 0;
+    padding: 0 0 0 1.8rem;
+    font-size: 0.9rem;
+}
+
+.mixtape-card-track {
+    padding: 0.15rem 0;
+}
+
+.mixtape-card-title {
+    color: var(--ink);
+}
+
+.mixtape-card-artist {
+    margin-left: 0.5rem;
+    color: var(--muted);
+}
+
+.mixtape-card-length {
+    margin-left: 0.5rem;
+    color: var(--faint);
+    font-family: var(--mono, monospace);
+    font-size: 0.8rem;
+}
+
+.mixtape-card-play {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 1.1rem;
+    font: inherit;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--teal);
+    --line: var(--teal);
+    --j: 3px;
+    cursor: pointer;
+}
+
+.mixtape-card-play:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* The Playlists column's read-only rows (plans/MIXTAPES.md): the quiet word after a name - whose
+   mixtape it is, or where your own went. */
+.amp-playlists-by {
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.feed-saved-row.active .amp-playlists-by {
+    color: var(--surface);
+}
+
+/* Somebody else's mixtape, open in the table: its name, and that it isn't yours to change. */
+.amp-lent-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin: 0.2rem 0 0.4rem;
+}
+
+.amp-lent-note,
+.tape-publish-moved {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.tape-publish-moved {
+    margin: 0.2rem 0 0.4rem;
+}

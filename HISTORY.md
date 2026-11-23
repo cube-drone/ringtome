@@ -28868,3 +28868,95 @@ it:
 tests; lint. Two of the test's first failures were the test's own - a wrong
 address, and expecting a file's title where its own `track` tag rightly wins.
 Nothing is on screen yet.
+
+## Mixtapes: a rebroadcast carries the songs (2026-11-23)
+
+Curtis stopped the next slice to ask of the last: "with tracks being named in
+the tracklist, does that mean that mixtape rebroadcasts won't carry the mixtape
+media with them? is it possible for someone to see a mixtape but not have access
+to its tracks with this strategy?" Yes to both, as built. Offered
+fetch-on-demand with the sharer obliged to hold the songs, he went further: "if
+someone you follow rebroadcasts a mixtape, you should download the tracks
+because _someone you follow rebroadcast them_ ... you just get them
+automatically because you're part of a network that makes that available to
+you."
+
+So the tracks are the post's refs again, which is where they began, and a
+mixtape is the one post exempt from the 10 MB media budget - capped at thirty
+tracks instead. PROJECT_PLAN's _What travels with a share_ names this very case
+as deferred; this is it decided, at the cost that budget bounds: every follower
+of a sharer downloads the tape, at each hop. The takedown of a whole mixtape is
+the ordinary one again (`orphaned_twins`), and `amp::retract_dropped`, the body
+reader and `standing_tapes` are gone. What stays the kind's own is a track taken
+off at a republish being taken down then - and its first cut failed its claim:
+"does anything still name this" read the mixtape's own head row, which had not
+caught up with the version that dropped the track. `standing_refs` leaves out
+the post being re-published.
+
+`mixtape_publish.cjs` runs across three nodes now and gained the claim that was
+asked about: ada publishes, bea follows her and rebroadcasts, cal follows only
+bea's rebroadcasts - and cal's own node serves both songs. Seven claims, green,
+with `amp.cjs` beside it.
+
+## Mixtapes: the publish row, and the cassette in the feed (2026-11-23)
+
+The first of it anyone can see. **The publish row** (`doc/tapepublish.js`) sits
+over an open mixtape of your own in hrseAmp: "private - publish…" asks the node
+for the mixtape's draft, and from then on it is the very bar Writer and Drawing
+wear, "post to" and all, with the draft brought up to the mixtape before every
+publish. Past thirty tracks it is greyed and says "this playlist is too large to
+publish (>30 tracks)". **The card** (`doc/mixtapecard.js`) is the cassette -
+`CassetteArt`, pulled out of the player's own so both draw the one tape - with
+the mixtape's name on its label, the tracklist, and "play now", which hands the
+songs to the app-wide player in order and takes a reader who owns hrseAmp there
+(ruling 5).
+
+Seen on a scratch node, start to finish: the row, the bar, the rights sign
+asking of a tagged song before anything went out - the existing sign, with no
+line of this arc written for it - the bar turning live, the card in the feed,
+and the first track playing after "play now".
+
+Two things the browser found that the suite had not. The post wore a tag of
+thirty-two hex digits: the draft's `mixtape_of` field, which publishing restated
+as a public label, as it restates every field of a note - so what marks a draft
+is its place in the private `mixtape_drafts` now, and no field. And the first
+file for the row lived under `apps/`, which the import graph's test refuses an
+app to import from another file there; it moved to `doc/`. Left as found: the
+post's "in mixtapes" chip (the draft's notebook), and "update" offered whether
+or not the mixtape changed.
+
+## Mixtapes: the three rows in hrseAmp (2026-11-23)
+
+Curtis: "Let's add those rows! :)" The Playlists column gains two sections, each
+there only while it has something in it.
+
+**Friends' mixtapes.** The library door (`amp.rs`) answers `tapes`, the mixtape
+posts in the reader's feed at its dial, and the column lists them with whose
+each is. Opened, one is the table in the mixtape's own order - read from the
+post's words when it is opened - under its name and "a mixtape somebody
+published - its songs and their order are theirs": no drag handle, no "out of",
+no publish row. The card's "play now" now goes to that mixtape
+(`?tape=<author>/<post>`) and the song it started plays on.
+
+**`<name>`'s Tracks**, in the same section, one row per person: their songs that
+reached the reader outside a mixtape, newest first. The first cut asked whether
+a song's post was a mixtape, and the scratch node showed why that is the wrong
+question - a song on a mixtape and also posted alone is one public copy, kept
+under whichever post is newer. So the library marks each sound a mixtape names
+(`taped`), and loose is whatever isn't.
+
+**Shared playlists**: the reader's own mixtapes whose draft stands published,
+each with where it went ("everyone", a tag's name). Opened, it is the mixtape
+itself under its publish row. And the row's "update" is honest now: a publish
+stamps the draft with the version that went out (`published_head`, the stamp a
+drawing has always had), the row brings the draft up to the mixtape whenever its
+songs or its name change, and "update" shows only when the two differ, with
+"published with 2 tracks - the mixtape holds 3 now" under it.
+
+`mixtape_publish.cjs` is nine claims now: the stamp, and a follower's library
+naming the mixtape with its songs marked - and so does the library of somebody
+reached by a rebroadcast, come through the sharer. Seen in a browser on a
+scratch node as both people. Not built: the published and held lists side by
+side, track by track; a renamed song offering the update; pins and recents for
+somebody else's mixtape; and the trash, which is where these rows get their "I
+don't want this".
