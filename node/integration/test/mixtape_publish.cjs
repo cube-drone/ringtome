@@ -434,6 +434,9 @@ const base58 = async (who) => {
             200,
             'no song for the untrusted, on any node',
         );
+        const before = await (await dee(`api/identity/${deeRoot}/amp/library`)).json();
+        assert.deepEqual(before.tapes, [], "nor is it in the untrusted reader's hrseAmp");
+        assert.deepEqual(before.sounds, []);
         await j(
             ada,
             `api/identity/${adaRoot}/private/kv/contact:${deeRoot}/trust`,
@@ -473,6 +476,25 @@ const base58 = async (who) => {
         assert.ok(
             items.some((it) => it.doc_id === post && it.format === 'mixtape'),
             `and it is in her feed: ${JSON.stringify(items.map((i) => [i.doc_id, i.format]))}`,
+        );
+        // And in her hrseAmp: the mixtape, marked sealed, and its songs as rows of that post.
+        const lib = await (await dee(`api/identity/${deeRoot}/amp/library`)).json();
+        assert.deepEqual(
+            lib.tapes.map((x) => [x.author, x.post, x.sealed]),
+            [[adaRoot, post, true]],
+            JSON.stringify(lib.tapes),
+        );
+        assert.deepEqual(
+            lib.sounds
+                .filter((x) => x.post === post)
+                .map((x) => x.doc)
+                .sort(),
+            tracks.map((t) => t.doc).sort(),
+            `both sealed songs are rows: ${JSON.stringify(lib.sounds).slice(0, 400)}`,
+        );
+        assert.ok(
+            lib.sounds.every((x) => x.duration_ms > 0),
+            'each saying how long it plays',
         );
     });
 });

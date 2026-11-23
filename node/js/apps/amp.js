@@ -7,7 +7,7 @@ import { h } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
-import { api, apiText } from '../net.js';
+import { api, apiText, apiTextTitled } from '../net.js';
 import { openMirror, optimisticDoc, useLive } from '../mirror.js';
 import { usePref } from '../mirror/prefs.js';
 import { appById } from '../pure/apps.js';
@@ -61,6 +61,7 @@ import {
     readMixtape,
     lentKey,
     looseTracks,
+    namedBySealedTapes,
     sharedTapes,
     tapeMembers,
 } from '../pure/mixtapes.js';
@@ -93,6 +94,10 @@ import {
     sameFilter,
     songFacets,
 } from '../pure/ampfilters.js';
+
+/// Each sealed mixtape's words as last opened, by reader, post and the post's version: its name
+/// and its tracklist, which only the body door can say.
+const openedTapes = new Map();
 
 /// Each mixtape as last read, by `root:id`, with the roster entry it was read under.
 const keptTapes = new Map();
@@ -1361,6 +1366,33 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         }).catch(() => {});
     };
 
+    // A sealed mixtape's name and its songs' names are in its words (plans/MIXTAPES.md, slice 5):
+    // each is asked of the body door once per version - which is also what has the node fetch its
+    // key - and the rows and the Playlists column are named from what comes back.
+    const [sealedOpen, setSealedOpen] = useState({});
+    useEffect(() => {
+        let live = true;
+        const sealed = feed.tapes.filter((x) => x.sealed);
+        Promise.all(
+            sealed.map(async (x) => {
+                const id = lentKey(x.author, x.post);
+                const at = `${root}:${id}:${x.updated_ms || 0}`;
+                if (!openedTapes.has(at)) {
+                    try {
+                        const got = await apiTextTitled(`/id/${x.author}/docs/${x.post}/body`);
+                        const body = JSON.parse(got.text);
+                        openedTapes.set(at, { name: got.title || '', tracks: body.tracks || [] });
+                    } catch {
+                        return null; // not opened yet: asked again at the next look
+                    }
+                }
+                return [id, openedTapes.get(at)];
+            }),
+        ).then((list) => live && setSealedOpen(Object.fromEntries(list.filter(Boolean))));
+        return () => {
+            live = false;
+        };
+    }, [root, feed.tapes]);
     const layer = useMemo(() => readLayer(layerRows), [layerRows]);
     const docRows = useMemo(() => new Map((docs || []).map((d) => [d.doc_id, d])), [docs]);
     const rows = useMemo(() => {
@@ -1369,11 +1401,12 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             .map((d) => ({ ...ownRow(d, root, layer), builtin: !!d.builtin }));
         // Each knows the mixtapes it's in, by name - the strip's "mixtape" row.
         const byTape = mixtapesBySong(tapes);
-        return [...mine, ...feed.sounds.map((s) => feedRow(s, layer))].map((r) => ({
+        const heard = namedBySealedTapes(feed.sounds, sealedOpen);
+        return [...mine, ...heard.map((s) => feedRow(s, layer))].map((r) => ({
             ...r,
             mixtapes: byTape.get(r.key) || [],
         }));
-    }, [docs, feed, layer, root, tapes]);
+    }, [docs, feed, layer, root, tapes, sealedOpen]);
     const names = useMemo(
         () => ({ ...feed.names, [root]: t('amp.you', 'you') }),
         [feed.names, root],
@@ -1387,10 +1420,13 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                 id: lentKey(x.author, x.post),
                 author: x.author,
                 post: x.post,
-                name: x.title || t('amp.untitled-mixtape', 'a mixtape'),
+                name:
+                    x.title ||
+                    (sealedOpen[lentKey(x.author, x.post)] || {}).name ||
+                    t('amp.untitled-mixtape', 'a mixtape'),
                 by: nameOf(names, x.author),
             })),
-        [feed.tapes, names],
+        [feed.tapes, names, sealedOpen],
     );
     const loose = useMemo(
         () =>

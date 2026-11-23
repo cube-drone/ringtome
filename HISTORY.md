@@ -28982,3 +28982,25 @@ trusts her, and then handed the tracklist and both songs, opened, by her own
 node. What is still missing is in hrseAmp: its library leaves sealed posts out
 (as it always has, for every sound), so a sealed mixtape plays from its card and
 is in no "friends' mixtapes" row.
+
+## Mixtapes: sealed ones in hrseAmp (2026-11-23)
+
+Curtis: "let's get sealed mixtapes into hrseAmp's library". The library door
+left every sealed post out - a sealed sound's name is under its post's key, and
+the door holds no reader's key. A sealed mixtape is the case where that needn't
+stop it: its header names its songs in the open, and what they are called is in
+its tracklist, which the body door already opens for whoever the seal admits.
+
+So `amp.rs` lets a sealed mixtape through when the feed's own gate
+(`readable_feed_rows`, the one that decides which sealed posts a feed shows)
+admits the reader, by its format - its `audio` tag is sealed too - and marks it
+`sealed`. hrseAmp asks the body door for each sealed mixtape's words once per
+version, which is also what has the node fetch the key, and names the Playlists
+row and the songs' rows from them (`pure/mixtapes.js` `namedBySealedTapes`).
+Nothing else sealed joins the library.
+
+The sealed describe in `mixtape_publish.cjs` now says both sides: an untrusted
+follower's library is empty, and once trusted it names the mixtape, sealed, with
+both songs and their lengths. Seen on a scratch node as a trusted reader: the
+row under "friends' mixtapes" by its name, the songs named in the table, and
+"play now" from the card opening the mixtape with its first song playing.

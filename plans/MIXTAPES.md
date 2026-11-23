@@ -259,10 +259,14 @@ In the order that lets each be seen working before the next.
 5. **Sealed.** _Works as built, proved 2026-11-23_ (`mixtape_publish.cjs`, "a
    mixtape, sealed"): the tracklist and each song sealed under the post's key; a
    stranger and an untrusted follower refused; a trusted follower on another
-   node handed the tracklist and every song. _Not built_: hrseAmp's library
-   leaves sealed posts out, so a sealed mixtape is in nobody's "friends'
-   mixtapes" - it plays from its card - and a sealed mixtape holding somebody
-   else's song is still refused.
+   node handed the tracklist and every song. _In hrseAmp, built the same day_:
+   the library lets a sealed mixtape through for a reader the feed's own gate
+   admits (`readable_feed_rows`), marked `sealed`, its songs as rows read off
+   its open header. Its name and its songs' names are under the key, so hrseAmp
+   asks the body door for each sealed mixtape's words once per version and names
+   the row and the songs from them. Every other sealed sound stays out of the
+   library, as before. _Not built_: a sealed mixtape holding somebody else's
+   song is still refused.
 6. **Groups.**
 7. **"`<name>`'s Tracks".** _Built 2026-11-23_, in the "friends' mixtapes"
    section, one row per person. The library marks each sound a mixtape in the

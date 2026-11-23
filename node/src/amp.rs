@@ -60,10 +60,21 @@ pub async fn library_handler(
         crate::annotations::sound_posts(&state.node_db).await.map_err(AppError::Internal)?;
 
     // One row per post, the newest arrival kept; sealed posts left out - their sound is for the
-    // author's trusted readers, and the reading copy of it here would need their key.
+    // author's trusted readers, and the reading copy of it here would need their key. But a sealed
+    // mixtape this reader is admitted to stays (plans/MIXTAPES.md, slice 5): its header names its
+    // songs in the open, the feed's own gate says who may see it, and what the songs are called
+    // is in its tracklist, which the reader's browser asks the body door for. (It is let in by its
+    // format: its `audio` tag is sealed too, and not opened until its words are read.)
+    let (sealed_tapes, journal): (Vec<_>, Vec<_>) =
+        journal.into_iter().partition(|r| r.trusted_only && r.format.as_deref() == Some("mixtape"));
+    let sealed_tapes =
+        crate::identity::routes::readable_feed_rows(&state, &root, sealed_tapes).await;
     let mut posts: BTreeMap<(String, String), crate::fanout::FeedRow> = BTreeMap::new();
-    for row in journal {
-        if row.trusted_only || !with_sound.contains(&(row.author_root.clone(), row.doc_id.clone()))
+    for row in sealed_tapes.into_iter().chain(journal) {
+        let sealed_tape = row.trusted_only && row.format.as_deref() == Some("mixtape");
+        if !sealed_tape
+            && (row.trusted_only
+                || !with_sound.contains(&(row.author_root.clone(), row.doc_id.clone())))
         {
             continue;
         }
@@ -120,6 +131,9 @@ pub async fn library_handler(
                 "title": r.title,
                 "via": r.via_root,
                 "arrived_ms": r.arrived_ms,
+                // Sealed: its name and its songs' are in its words, not here.
+                "sealed": r.trusted_only,
+                "updated_ms": r.updated_ms,
             })
         })
         .collect();

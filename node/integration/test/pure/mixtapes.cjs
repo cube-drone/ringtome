@@ -115,4 +115,26 @@ describe("hrseAmp's mixtapes (plans/AUDIO.md)", () => {
             ],
         );
     });
+
+    it("a sealed mixtape's songs take their names from its tracklist", () => {
+        const sounds = [
+            { author: 'ada', doc: 'd1', fields: {}, duration_ms: null },
+            { author: 'ada', doc: 'd2', fields: { track: 'Its Own' }, duration_ms: 5 },
+            { author: 'bea', doc: 'd1', fields: {} },
+        ];
+        const opened = {
+            'ada/p': {
+                tracks: [
+                    { doc: 'd1', title: 'One', artist: 'Them', ms: 9 },
+                    { doc: 'd2', title: 'Two', album: 'LP' },
+                ],
+            },
+        };
+        const named = m.namedBySealedTapes(sounds, opened);
+        assert.deepEqual(named[0].fields, { track: 'One', artist: 'Them' });
+        assert.equal(named[0].duration_ms, 9);
+        assert.deepEqual(named[1].fields, { track: 'Its Own', album: 'LP' }, 'its own word stays');
+        assert.equal(named[2], sounds[2], "another person's song of the same id is left alone");
+        assert.equal(m.namedBySealedTapes(sounds, {}), sounds);
+    });
 });

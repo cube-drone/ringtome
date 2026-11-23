@@ -923,7 +923,7 @@ async fn feed_kinds(
 
 /// The journal rows this reader may see: a trusted-only post stays unless the author
 /// publishes trust for the reader (or is the reader). Shared by the page and the facets.
-async fn readable_feed_rows(
+pub(crate) async fn readable_feed_rows(
     state: &AppState,
     root: &str,
     rows: Vec<crate::fanout::FeedRow>,

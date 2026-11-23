@@ -103,3 +103,25 @@ export function sharedTapes(tapes, drafts, docRows) {
     }
     return out;
 }
+
+/// A sealed mixtape's songs, named (plans/MIXTAPES.md, slice 5): the library's rows for them
+/// carry no title - a sealed song's fields are under its post's key - so each takes its line of
+/// the tracklist the reader's node opened for them. `sounds` are the library's rows, `opened` is
+/// `{ "<author>/<post>": { tracks } }`; a row that already says a field keeps it.
+export function namedBySealedTapes(sounds, opened) {
+    const lines = new Map();
+    for (const [id, tape] of Object.entries(opened || {})) {
+        const author = id.split('/')[0];
+        for (const x of (tape && tape.tracks) || [])
+            if (x && x.doc) lines.set(rowKey(author, x.doc), x);
+    }
+    if (!lines.size) return sounds;
+    return sounds.map((s) => {
+        const line = lines.get(rowKey(s.author, s.doc));
+        if (!line) return s;
+        const said = { track: line.title, artist: line.artist, album: line.album };
+        const fields = { ...(s.fields || {}) };
+        for (const [k, v] of Object.entries(said)) if (v && !fields[k]) fields[k] = v;
+        return { ...s, fields, duration_ms: s.duration_ms || line.ms || null };
+    });
+}
