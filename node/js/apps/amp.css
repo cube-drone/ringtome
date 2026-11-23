@@ -1459,3 +1459,40 @@
 .tape-publish-moved {
     margin: 0.2rem 0 0.4rem;
 }
+
+/* The trash (plans/MIXTAPES.md, section 3): its row at the foot of the Playlists column, and what
+   it holds, listed in place of the table. */
+.amp-playlists-trash {
+    margin-top: 0.6rem;
+}
+
+.amp-trash {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.amp-trash-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.3rem 0.2rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.amp-trash-name {
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    flex: 1 1 12rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.amp-trash-by {
+    flex: 0 1 auto;
+    color: var(--muted);
+    font-size: 0.8rem;
+}

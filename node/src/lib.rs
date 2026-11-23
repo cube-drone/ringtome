@@ -124,6 +124,7 @@ pub mod storage;
 pub mod store;
 pub mod syncstatus;
 pub mod test_endpoints;
+pub mod trash;
 pub mod ui;
 pub mod uploadlink;
 pub mod webpath;
@@ -1120,6 +1121,12 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route(
             "/api/identity/{root}/amp/tapes/{taxonomy}/draft",
             axum::routing::put(amp::tape_draft_handler),
+        )
+        // Its trash (plans/MIXTAPES.md, section 3): other people's songs, thrown out and taken back.
+        .route("/api/identity/{root}/amp/trash", axum::routing::post(trash::throw_handler))
+        .route(
+            "/api/identity/{root}/amp/trash/restore",
+            axum::routing::post(trash::restore_handler),
         )
         // The tagged songs a draft carries, for the app's rights warning (section 8 - the sign).
         .route("/api/identity/{root}/tagged-songs", axum::routing::post(rights::tagged_handler))

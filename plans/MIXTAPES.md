@@ -302,7 +302,31 @@ In the order that lets each be seen working before the next.
    section, one row per person. The library marks each sound a mixtape in the
    feed names (`taped`), so a song posted on its own _and_ put on a mixtape is
    the mixtape's. Read-only, newest first.
-8. **The trash.** The ledger, the fetch and the reaper, the row, undelete.
+8. **The trash.** _Built 2026-11-23_ (`trash.rs`).
+   - _The ledger_: the persona's private `amp_trash`, a line per document thrown
+     away - when, what it was called, and for a song that went with a mixtape,
+     which. A struck line is an empty one.
+   - _The node's two halves_: a memo of the ledger (`trashed`, rung 0127),
+     rebuilt wherever the persona's ledgers are read, and one rule
+     (`trashed_hashes`): a file goes only when everyone here who follows its
+     author threw it away. `subscriptions::declined_hashes` and `purged_hashes`
+     each include it, so the body lane, the reaper and the Storage tally agree
+     with the kind-level ledger by union, with nothing changed where they ask.
+   - _hrseAmp_: the library leaves trashed songs and mixtapes out and lists them
+     as `trash`. The trash chip in a song's panel throws somebody else's song
+     away; the trash button on a friend's mixtape throws it away with its songs;
+     a "trash" row at the foot of the Playlists column, there while it holds
+     something, opens the list, each line with "undelete". Undelete strikes the
+     lines - a mixtape's with its songs' - and notes their files as wanted, so
+     the body lane asks for them at its next pass.
+   - `mixtape_trash.cjs`, across two nodes: a song thrown away out of the table,
+     in the trash, its bytes collected and not fetched again; undeleted, back
+     from its author; a mixtape out with its songs and back with them.
+   - _Not built_: a group's mixtape or song (the group's media is the group's to
+     keep); what arrived only by a rebroadcast, from somebody nobody here
+     follows, is hidden but not collected while the share stands; and the trash
+     is never emptied - a line is a few bytes, and is what keeps the file from
+     being fetched again.
 
 Slices 5 to 8 don't depend on each other. Slice 8 is the only one that touches
 storage and the reaper, and is the one to run the full gate for.

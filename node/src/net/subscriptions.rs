@@ -176,7 +176,11 @@ pub async fn declined_hashes(
     held: Option<&crate::db::Db>,
 ) -> Result<std::collections::HashSet<[u8; 32]>> {
     let (declined, _) = declined_kinds(&state.node_db, foreign_root).await?;
-    hashes_of_kinds(state, foreign_root, held, declined).await
+    let mut out = hashes_of_kinds(state, foreign_root, held, declined).await?;
+    // And each document everyone here threw away (trash.rs): declined by kind OR trashed is not
+    // fetched.
+    out.extend(crate::trash::trashed_hashes(state, foreign_root, held).await?);
+    Ok(out)
 }
 
 /// Of `declined_hashes`, the ones whose kind everyone here also asked to have deleted: the files
@@ -189,7 +193,10 @@ pub async fn purged_hashes(
     held: Option<&crate::db::Db>,
 ) -> Result<std::collections::HashSet<[u8; 32]>> {
     let (_, purged) = declined_kinds(&state.node_db, foreign_root).await?;
-    hashes_of_kinds(state, foreign_root, held, purged).await
+    let mut out = hashes_of_kinds(state, foreign_root, held, purged).await?;
+    // The trash is "don't fetch" and "delete what's here" at once (trash.rs).
+    out.extend(crate::trash::trashed_hashes(state, foreign_root, held).await?);
+    Ok(out)
 }
 
 /// Every asked-for deletion no reaper round has run for yet, as `(local_root, foreign_root,
@@ -364,6 +371,11 @@ pub async fn refresh(
         .map_err(|e| anyhow::anyhow!("opening {root_hex} to read its ledger: {e}"))?;
     let contacts =
         store.contacts().await.map_err(|e| anyhow::anyhow!("reading the contact ledger: {e}"))?;
+    // The trash's memo rides the same edge (trash.rs): a song thrown away on another of the
+    // persona's computers is not fetched or kept here either.
+    if let Err(e) = crate::trash::mirror(state, &store, root_hex).await {
+        tracing::debug!(root = %root_hex, error = ?e, "mirroring the trash ledger failed");
+    }
 
     // The eager set BEFORE the rewrite, so the rewrite's delta is visible after: an edge
     // crossing from silent to eager is a new follow (backfill their page into this feed), and

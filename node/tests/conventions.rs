@@ -65,6 +65,8 @@ fn owners() -> BTreeMap<&'static str, Vec<&'static str>> {
         ("chain_heads", vec!["net/frontier.rs"]),
         ("media_bakes", vec!["record/bake.rs"]),
         ("subscriptions", vec!["net/subscriptions.rs"]),
+        // hrseAmp's trash (2026-11-23): the node's memo of each persona's private ledger.
+        ("trashed", vec!["trash.rs"]),
         ("identity_demand", vec!["net/demand.rs"]),
         ("crowd_holders", vec!["crowd.rs"]),
         // The tag cloud (2026-09-28) reads a journal window's labels in one join, in the memo's
@@ -317,6 +319,11 @@ fn user_db_opens_are_deliberate() {
         // declined_hashes (2026-11-20): one open per body-sweep attempt at ONE followed persona
         // whose followers here declined a kind of file - never reached while nobody has.
         ("net/subscriptions.rs", 1),
+        // trash.rs (2026-11-23): `trashed_hashes` - one open per body-sweep attempt at ONE followed
+        // persona, and only when everyone here who follows them threw something of theirs away
+        // (the reaper and the tally hand it the database they already hold); `restore_handler` -
+        // once per author named in one request.
+        ("trash.rs", 2),
         ("storage.rs", 1), // tally: ONE persona whose files moved, on its own files browser's ask or the beat's (a few per beat)
         ("annotations.rs", 2), // 2: `holder_admits` asks the one gate now (2026-09-10 pm); 3: `holder_admits` - once per DISTINCT seal holder among a page's sealed labels, memoised per request (2026-09-10),     // refresh_inner: ONE shelf open per fold-lane hook, for the annotator folded (2026-08-30)
                                // + resolve_proof: one annotator-mirror open per served proof, budget-bounded (2026-08-30)         // refresh_inner: ONE shelf open per fold-lane hook, for the

@@ -29082,3 +29082,54 @@ its own lane, in its own time; on a busy runner that was longer than the wait.
 The claim now drives the fold after each of ada's profile writes
 (`beat(HOST, 'fold', ada)`), as beat.cjs asks of every wait that isn't a test of
 the clock. Read from the code, not reproduced: the failure never came back here.
+
+## Mixtapes: the trash (2026-11-23)
+
+Curtis: "Next; the trash?" - the last of the ask: "A user can delete a shared
+mixtape, or a single shared track from another user, removing it from their
+storage (if that was the only copy). Deleted shared tracks go into a 'trash' row
+in hrseAmp, where the user can choose to undelete them (re-requesting them from
+the original source)."
+
+The node already knew how to not fetch and not keep a KIND of somebody's files
+("do not sync audio from this user", `subscriptions.skip_kinds`). The trash is
+the same machine one document at a time, in a new `trash.rs`:
+
+- A private ledger on the persona, `amp_trash`: `<author>.<doc>` to when, what
+  it was called, and - for a song that went with a mixtape - which. An empty
+  value is a line struck.
+- A node memo of it, `trashed` (rung 0127), rebuilt from the ledger at the doors
+  and wherever `subscriptions::refresh` reads the persona's ledgers, so a song
+  thrown away on one of a persona's computers isn't fetched on another.
+- One rule, `trashed_hashes`: the public blobs of the documents EVERYONE here
+  who dials the author threw away, less any a document still wanted names. A
+  persona of this node's own is never touched. `declined_hashes` and
+  `purged_hashes` each add it to what they answer, so the body lane's two
+  fetches, the reaper and the Storage tally all see it without being told, and
+  the two ledgers agree by union.
+
+Two doors: `POST .../amp/trash` and `.../amp/trash/restore`. The library door
+leaves trashed songs and mixtapes out and lists them as `trash`, a song that
+went with a mixtape counted on the mixtape's line. Restoring a mixtape brings
+its songs, and each restored file is noted as wanted (`bodies::want`) so the
+body lane asks its author - or anyone who holds it - at its next pass.
+
+In hrseAmp: the panel's trash chip, which deleted only your own songs, now
+throws somebody else's into the trash when none of the selection is yours; a
+friend's mixtape has a trash button where its row had a spacer; and a "trash"
+row at the foot of the Playlists column, there while it holds anything, opens
+the list in place of the table, each line with "undelete". The copy
+under-promises, once, in `trashMeans`: the file leaves "when storage is next
+tidied - unless something else here still uses it - and comes back only if
+someone still has it."
+
+`mixtape_trash.cjs`, across two nodes, three claims: a song thrown away, out of
+the table and into the trash, its bytes collected and not fetched again, your
+own refused; undeleted, back from its author; a mixtape out with its songs and
+back with them. Seen on a scratch node: a friend's mixtape deleted from its row,
+a loose song from its panel, the trash row counting two, the mixtape undeleted
+and back in "friends' mixtapes".
+
+Not built: a group's mixtape or song; what arrived only by a rebroadcast from
+somebody nobody here follows is hidden but not collected while the share stands;
+the trash is never emptied.

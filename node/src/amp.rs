@@ -57,6 +57,13 @@ pub async fn library_handler(
     .await?;
     let journal =
         crate::fanout::journal_all(&state.node_db, &filter).await.map_err(AppError::Internal)?;
+    // What the reader threw away (trash.rs): a trashed mixtape is no row of the Playlists column
+    // and a trashed song no row of the table. They are listed apart, as `trash`.
+    let thrown = crate::trash::ledger(&owned).await?;
+    let journal: Vec<_> = journal
+        .into_iter()
+        .filter(|r| !thrown.contains_key(&(r.author_root.clone(), r.doc_id.clone())))
+        .collect();
     let with_sound =
         crate::annotations::sound_posts(&state.node_db).await.map_err(AppError::Internal)?;
 
@@ -156,6 +163,9 @@ pub async fn library_handler(
             }
         }
     }
+    found.retain(|(author, _, sound)| {
+        !thrown.contains_key(&(author.clone(), sound.sound_doc.clone()))
+    });
     // One row per sound: a song posted again, or in several posts, is the newest post it came in.
     found.sort_by_key(|a| std::cmp::Reverse(a.1.arrived_ms));
     let mut seen = std::collections::HashSet::new();
@@ -176,7 +186,7 @@ pub async fn library_handler(
             }
         }
         let mut posts_kept: Vec<(String, String)> = Vec::new();
-        for key in wanted.into_iter().filter(|k| !seen.contains(k)) {
+        for key in wanted.into_iter().filter(|k| !seen.contains(k) && !thrown.contains_key(k)) {
             let Some((post, sound)) = known.get(&key).cloned() else { continue };
             posts_kept.push((key.0.clone(), post.clone()));
             found.push((key.0.clone(), kept_row(&key.0, &post, &sound), sound));
@@ -346,10 +356,32 @@ pub async fn library_handler(
             }));
         }
     }
+    // The trash, newest first: each mixtape thrown away, and each song thrown away on its own - a
+    // song that went with a mixtape is counted on the mixtape's line, and comes back with it.
+    let mut trash: Vec<Value> = thrown
+        .iter()
+        .filter(|(_, line)| line.tape.is_empty())
+        .map(|((author, doc), line)| {
+            json!({
+                "author": author,
+                "doc": doc,
+                "kind": if line.kind == "mixtape" { "mixtape" } else { "song" },
+                "title": line.title,
+                "artist": line.artist,
+                "at_ms": line.at,
+                "songs": thrown
+                    .iter()
+                    .filter(|((a, _), l)| a == author && l.tape == *doc)
+                    .count(),
+            })
+        })
+        .collect();
+    trash.sort_by_key(|x| std::cmp::Reverse(x["at_ms"].as_i64().unwrap_or(0)));
     // Who made them and who they came through, by name, for the By and From columns.
     let roots: Vec<String> = sounds
         .iter()
         .chain(tapes.iter())
+        .chain(trash.iter())
         .flat_map(|s| [s["author"].as_str(), s["via"].as_str()])
         .flatten()
         .map(str::to_string)
@@ -360,7 +392,7 @@ pub async fn library_handler(
         .into_iter()
         .filter_map(|(root, b)| b.name.map(|n| (root, n)))
         .collect();
-    Ok(Json(json!({ "sounds": sounds, "tapes": tapes, "names": names })))
+    Ok(Json(json!({ "sounds": sounds, "tapes": tapes, "trash": trash, "names": names })))
 }
 
 /// The title a mixtape's taxonomy wears (plans/AUDIO.md, section 5): `mixtape:<name>`, as a

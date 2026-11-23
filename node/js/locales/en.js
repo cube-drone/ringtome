@@ -75,6 +75,21 @@ export default {
     'amp.delete-them': 'delete them',
     'amp.n-not-deleted': "{n} couldn't be deleted",
     'amp.deleted-n': 'deleted {n}',
+    'amp.trash-means': "It goes to hrseAmp's trash, where you can undelete it. Its file leaves this computer when storage is next tidied - unless something else here still uses it - and comes back only if someone still has it.",
+    'amp.trash-song-title': 'delete the song from your storage',
+    'amp.trash-songs-title': 'delete {n} songs from your storage',
+    'amp.trashed-n': 'moved {n} to the trash',
+    'amp.couldnt-trash': "couldn't delete that: {message}",
+    'mixtape.one-track': '1 track',
+    'mixtape.n-tracks': '{n} tracks',
+    'amp.untitled-mixtape': 'a mixtape',
+    'amp.untitled-song': 'a song',
+    'amp.trash': 'trash',
+    'amp.trash-note': "what you deleted of other people's. \"undelete\" asks for it again - it comes back only if someone still has it.",
+    'amp.trash-empty': 'nothing in the trash.',
+    'amp.undelete': 'undelete',
+    'amp.trash-this-song': 'delete this song from your storage',
+    'amp.trash-these-n': 'delete these {n} from your storage',
     'amp.delete-this-song': 'delete this song',
     'amp.delete-your-n': 'delete your {n} of these',
     'amp.delete': 'delete',
@@ -121,6 +136,7 @@ export default {
     'amp.forget-this-mixtape': 'forget this mixtape - its songs stay where they are',
     'amp.forget-this-station': 'forget this station',
     'amp.on-air': 'playing now',
+    'amp.trash-this-mixtape': 'delete this mixtape and its songs from your storage',
     'amp.playlists': 'playlists',
     'amp.pinned': 'pinned',
     'amp.all-title': 'every song you can see - every chip back to unpicked',
@@ -164,7 +180,6 @@ export default {
     'amp.columns': 'columns',
     'amp.couldnt-pin': "couldn't change the pin: {message}",
     'amp.you': 'you',
-    'amp.untitled-mixtape': 'a mixtape',
     'amp.persons-tracks': "{name}'s Tracks",
     'facets.me': 'me',
     'amp.save-filter-title-modal': 'save the filter',
@@ -177,6 +192,10 @@ export default {
     'amp.forget-it': 'forget it',
     'amp.couldnt-forget-it': "couldn't forget it: {message}",
     'amp.couldnt-read-mixtape': "couldn't read that mixtape: {message}",
+    'amp.trash-mixtape-title': 'delete "{name}" from your storage',
+    'amp.trashed-mixtape': 'moved "{name}" to the trash',
+    'amp.undeleted': 'asked for it again - it returns if someone still has it',
+    'amp.couldnt-undelete': "couldn't undelete that: {message}",
     'amp.couldnt-change-mixtape': "couldn't change the mixtape: {message}",
     'amp.new-mixtape-name': 'A name for the new mixtape:',
     'amp.make-it': 'make it',
@@ -1350,8 +1369,6 @@ export default {
 
     // --- node/js/doc/mixtapecard.js ---
     'mixtape.cannot-read': 'a mixtape this computer cannot read yet',
-    'mixtape.one-track': '1 track',
-    'mixtape.n-tracks': '{n} tracks',
     'mixtape.untitled': 'untitled',
     'mixtape.play-now': 'play now',
 
@@ -3492,6 +3509,10 @@ export default {
     'test_endpoints.not-a-root': 'not a root',
     'test_endpoints.no-such-door': 'no such door: {door}',
     'test.endpoints.unknown-revalidation-mode': 'unknown revalidation mode {other:?} (tree | fast | none | default)',
+
+    // --- node/src/trash.rs ---
+    'trash.not-a-document': "that isn't a document",
+    'trash.not-your-own': "the trash is for other people's songs - delete your own in hrseFiles",
 
     // --- node/src/ui.rs ---
     'ui.not-a-font-file-filename': 'not a font file: {filename}',

@@ -61,6 +61,9 @@ import {
     readMixtape,
     lentKey,
     groupSections,
+    trashable,
+    songTrashItems,
+    tapeTrashItems,
     looseTracks,
     namedBySealedTapes,
     sharedTapes,
@@ -279,7 +282,10 @@ const Reaction = ({ root, row, onLayer }) => {
 /// aren't yours to delete, and the ones that came with the app stay.
 async function deleteSongs(root, rows, onDeleted) {
     const own = rows.filter((r) => r.own && !r.builtin);
-    if (!own.length) return;
+    if (!own.length) {
+        await trashSongs(root, rows, onDeleted);
+        return;
+    }
     const sure = await askYes({
         title:
             own.length === 1
@@ -322,16 +328,98 @@ async function deleteSongs(root, rows, onDeleted) {
     onDeleted();
 }
 
+/// What deleting somebody else's song or mixtape does, said the same wherever it is asked: the
+/// copy under-promises, as all deletion copy here does.
+const trashMeans = () =>
+    t(
+        'amp.trash-means',
+        "It goes to hrseAmp's trash, where you can undelete it. Its file leaves this computer when storage is next tidied - unless something else here still uses it - and comes back only if someone still has it.",
+    );
+
+/// Somebody else's songs among `rows`, thrown out of your storage (plans/MIXTAPES.md, section 3):
+/// into the trash, where they can be taken back.
+async function trashSongs(root, rows, onDeleted) {
+    const items = songTrashItems(rows);
+    if (!items.length) return;
+    const sure = await askYes({
+        title:
+            items.length === 1
+                ? t('amp.trash-song-title', 'delete the song from your storage')
+                : t('amp.trash-songs-title', 'delete {n} songs from your storage', {
+                      n: items.length,
+                  }),
+        body: trashMeans(),
+        yes:
+            items.length === 1
+                ? t('amp.delete-it', 'delete it')
+                : t('amp.delete-them', 'delete them'),
+        danger: true,
+    });
+    if (!sure) return;
+    try {
+        await api(`/api/identity/${root}/amp/trash`, {
+            method: 'POST',
+            body: JSON.stringify({ items }),
+        });
+        toast(t('amp.trashed-n', 'moved {n} to the trash', { n: items.length }));
+    } catch (e) {
+        toast(t('amp.couldnt-trash', "couldn't delete that: {message}", { message: e.message }), {
+            kind: 'error',
+        });
+    }
+    onDeleted(true);
+}
+
+/// The trash, open in place of the table: each mixtape and each song you threw away, newest
+/// first, with the way back.
+const TrashView = ({ trash, names, onRestore }) => {
+    // What each line says, chosen out here: inside the template, a string comparison reads to the
+    // strings cop as copy.
+    const lines = trash.map((x) => {
+        const tape = x.kind === 'mixtape';
+        const tracks =
+            tape && x.songs
+                ? x.songs === 1
+                    ? t('mixtape.one-track', '1 track')
+                    : t('mixtape.n-tracks', '{n} tracks', { n: x.songs })
+                : '';
+        return {
+            x,
+            icon: tape ? Icons.cassette : Icons.music,
+            name:
+                x.title ||
+                (tape ? t('amp.untitled-mixtape', 'a mixtape') : t('amp.untitled-song', 'a song')),
+            by: [x.artist, nameOf(names, x.author), tracks].filter(Boolean).join(' · '),
+        };
+    });
+    return html`<p class="amp-lent-head">
+            <${Icons.trash} /> <strong>${t('amp.trash', 'trash')}</strong>
+            <span class="amp-lent-note">${t('amp.trash-note', 'what you deleted of other people\'s. "undelete" asks for it again - it comes back only if someone still has it.')}</span>
+        </p>
+        ${trash.length === 0 && html`<p class="null-sub amp-empty">${t('amp.trash-empty', 'nothing in the trash.')}</p>`}
+        <ul class="amp-trash">
+            ${lines.map(
+                (l) => html`<li key=${`${l.x.author}.${l.x.doc}`} class="amp-trash-row">
+                    <span class="amp-trash-name"><${l.icon} /> ${l.name}</span>
+                    <span class="amp-trash-by">${l.by}</span>
+                    <button class="facet-more" onClick=${() => onRestore(l.x)}>${t('amp.undelete', 'undelete')}</button>
+                </li>`,
+            )}
+        </ul>`;
+};
+
 /// The panel's head (Curtis, 2026-10-12): what's selected, as a heading ruled off underneath, and
 /// under it the actions - delete first, in the danger colour (the house's order for a row of
 /// actions), then whatever else the panel adds.
 const PanelHead = ({ root, rows, title, onDeleted, children = null }) => {
     const own = rows.filter((r) => r.own && !r.builtin);
+    // Nothing of yours among them: somebody else's go to the trash instead (`trashSongs`).
+    const theirs = own.length ? [] : rows.filter(trashable);
     const del =
-        own.length > 0 &&
+        own.length + theirs.length > 0 &&
         html`<button
             class="chip chip-button amp-delete"
-            title=${rows.length === 1 ? t('amp.delete-this-song', 'delete this song') : t('amp.delete-your-n', 'delete your {n} of these', { n: own.length })}
+            title=${theirs.length ? (theirs.length === 1 ? t('amp.trash-this-song', 'delete this song from your storage') : t('amp.trash-these-n', 'delete these {n} from your storage', { n: theirs.length })) : rows.length === 1 ? t('amp.delete-this-song', 'delete this song') : t('amp.delete-your-n', 'delete your {n} of these', { n: own.length })}
             aria-label=${t('amp.delete', 'delete')}
             onClick=${() => deleteSongs(root, rows, onDeleted)}
         ><${Icons.trash} /></button>`;
@@ -682,6 +770,10 @@ const Playlists = ({
     groups = [],
     lent = null,
     onOpenLent,
+    onTrashTape,
+    trashCount = 0,
+    trashOpen = false,
+    onOpenTrash,
 }) => {
     const isPinned = (kind, x) => pins.has(pinKey(kind, x.id));
     const pin = (kind, x) => {
@@ -747,11 +839,20 @@ const Playlists = ({
     </div>`;
     // The rows nobody made here (plans/MIXTAPES.md): read-only, so no trash and no pin - a spacer
     // keeps their names in line with the rest - and a quiet word after the name.
-    const lentRow = (key, name, said, on, open) => html`<div
+    const lentRow = (key, name, said, on, open, trash = null) => html`<div
         key=${key}
         class=${on ? 'feed-saved-row active' : 'feed-saved-row'}
     >
-        <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
+        ${
+            trash
+                ? html`<button
+                      class="feed-saved-forget"
+                      title=${t('amp.trash-this-mixtape', 'delete this mixtape and its songs from your storage')}
+                      aria-label=${t('amp.trash-this-mixtape', 'delete this mixtape and its songs from your storage')}
+                      onClick=${trash}
+                  ><${Icons.trash} /></button>`
+                : html`<span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>`
+        }
         <button class="feed-saved-name" onClick=${open}>${name}${said && html` <span class="amp-playlists-by">${said}</span>`}</button>
     </div>`;
     const ROWS = { filter: filterRow, mixtape: tapeRow, station: stationRow };
@@ -808,8 +909,13 @@ const Playlists = ({
             html`<p class="amp-playlists-group">${t('amp.friends-mixtapes', "friends' mixtapes")}</p>`
         }
         ${friends.map((x) =>
-            lentRow(`friend:${x.id}`, x.name, x.by, !!lent && lent.id === x.id, () =>
-                onOpenLent({ kind: 'friend', author: x.author, post: x.post }),
+            lentRow(
+                `friend:${x.id}`,
+                x.name,
+                x.by,
+                !!lent && lent.id === x.id,
+                () => onOpenLent({ kind: 'friend', author: x.author, post: x.post }),
+                () => onTrashTape(x),
             ),
         )}
         ${loose.map((x) =>
@@ -846,6 +952,14 @@ const Playlists = ({
             html`<p class="amp-playlists-none">${t('amp.stations-none', 'combine mixtapes into a bigger mix')}</p>`
         }
         ${stations.filter((st) => !isPinned('station', st)).map((st) => stationRow(st, false))}
+        ${
+            /* The trash (plans/MIXTAPES.md, section 3): there while it holds something. */
+            (trashCount > 0 || trashOpen) &&
+            html`<div class=${trashOpen ? 'feed-saved-row amp-playlists-trash active' : 'feed-saved-row amp-playlists-trash'}>
+                <span class="feed-saved-forget feed-saved-spacer" aria-hidden="true"><${Icons.trash} /></span>
+                <button class="feed-saved-name" onClick=${onOpenTrash}><${Icons.trash} /> ${t('amp.trash', 'trash')} <span class="amp-playlists-by">${trashCount}</span></button>
+            </div>`
+        }
     </aside>`;
 };
 
@@ -1239,6 +1353,8 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     // Somebody else's, open in the table read-only (plans/MIXTAPES.md): a friend's published
     // mixtape - its order read from its own words when it is opened - or a person's loose songs.
     const [lentOpen, setLentOpen] = useState(null);
+    // The trash, open in place of the table.
+    const [trashOpen, setTrashOpen] = useState(false);
     // Which of this persona's mixtapes have a draft (the node's `mixtape_drafts`): the published
     // ones among them are the "shared playlists".
     const [drafts, setDrafts] = useState({});
@@ -1247,6 +1363,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         let live = true;
         setDrafts({});
         setLentOpen(null);
+        setTrashOpen(false);
         api(`/api/identity/${root}/private/kv/mixtape_drafts`)
             .then((r) => {
                 if (!live) return;
@@ -1369,6 +1486,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         setFeed({
             sounds: answer.sounds || [],
             tapes: answer.tapes || [],
+            trash: answer.trash || [],
             names: answer.names || {},
         });
         setLoading(false);
@@ -1601,6 +1719,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         setLoadedId(f ? f.id : null);
         setOpenTape(null);
         setLentOpen(null);
+        setTrashOpen(false);
         setOpenStation(null);
         if (!f) {
             setPicks(NO_AMP_PICKS);
@@ -1621,6 +1740,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         setPicks(NO_AMP_PICKS);
         if (onSearch) onSearch('');
         setLentOpen(null);
+        setTrashOpen(false);
         setOpenTape(x.id);
     };
     // Somebody else's, opened the same way. A friend's mixtape is read first - its order is its
@@ -1653,7 +1773,68 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         setPicks(NO_AMP_PICKS);
         if (onSearch) onSearch('');
         setOpenTape(null);
+        setTrashOpen(false);
         setLentOpen(next);
+    };
+    // The trash: opened in place of the table, a friend's mixtape thrown into it with its songs,
+    // and anything in it taken back.
+    const openTrash = () => {
+        settle();
+        setOpenStation(null);
+        setLoadedId(null);
+        setOpenTape(null);
+        setLentOpen(null);
+        setTrashOpen(true);
+    };
+    const trashTape = async (x) => {
+        const sure = await askYes({
+            title: t('amp.trash-mixtape-title', 'delete "{name}" from your storage', {
+                name: x.name,
+            }),
+            body: trashMeans(),
+            yes: t('amp.delete-it', 'delete it'),
+            danger: true,
+        });
+        if (!sure) return;
+        // Its songs, from its own words; unread, the mixtape still goes and its songs stay.
+        let tracks = [];
+        try {
+            tracks = JSON.parse(await apiText(`/id/${x.author}/docs/${x.post}/body`)).tracks || [];
+        } catch {
+            tracks = ((sealedOpen[x.id] || {}).tracks || []).slice();
+        }
+        try {
+            await api(`/api/identity/${root}/amp/trash`, {
+                method: 'POST',
+                body: JSON.stringify({ items: tapeTrashItems(x, tracks) }),
+            });
+            toast(t('amp.trashed-mixtape', 'moved "{name}" to the trash', { name: x.name }));
+        } catch (e) {
+            toast(
+                t('amp.couldnt-trash', "couldn't delete that: {message}", { message: e.message }),
+                { kind: 'error' },
+            );
+            return;
+        }
+        if (lentOpen && lentKey(lentOpen.author, lentOpen.post) === x.id) setLentOpen(null);
+        load();
+    };
+    const restore = async (x) => {
+        try {
+            await api(`/api/identity/${root}/amp/trash/restore`, {
+                method: 'POST',
+                body: JSON.stringify({ items: [{ author: x.author, doc: x.doc }] }),
+            });
+            toast(t('amp.undeleted', 'asked for it again - it returns if someone still has it'));
+        } catch (e) {
+            toast(
+                t('amp.couldnt-undelete', "couldn't undelete that: {message}", {
+                    message: e.message,
+                }),
+                { kind: 'error' },
+            );
+        }
+        load();
     };
     const failed = (e) =>
         toast(
@@ -1999,6 +2180,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         settle();
         setOpenTape(null);
         setLentOpen(null);
+        setTrashOpen(false);
         setOpenStation(st.id);
     }
     // A playlist's own address (plans/RECENTS.md: its recent tile opens it): `?mixtape=`, `?station=`
@@ -2341,7 +2523,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                         layer=${layer}
                         onLayer=${onLayer}
                         onClear=${() => setPicked(new Set())}
-                        onDeleted=${() => setPicked(new Set())}
+                        onDeleted=${(trashed) => {
+                            setPicked(new Set());
+                            if (trashed) load();
+                        }}
                         mixtapes=${{ tapes, openTape, onAdd: addToTape, onRemove: removeFromTape }}
                     />
                 </aside>${resizer('file')}`
@@ -2375,7 +2560,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     ? html`<${Rail} icon=${Icons.music} label=${t('amp.playlists', 'playlists')} onClick=${() => toggleTuck('playlists')} />`
                     : html`${tab('playlists', Icons.music, t('amp.playlists', 'playlists'))}<${Playlists}
                           filters=${filters}
-                          now=${order || openStation ? null : settingsNow}
+                          now=${order || openStation || trashOpen ? null : settingsNow}
                           onAll=${() => applyFilter(null)}
                           onPick=${applyFilter}
                           onForget=${forgetFilter}
@@ -2396,6 +2581,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           shared=${shared}
                           friends=${friends}
                           groups=${groups}
+                          onTrashTape=${trashTape}
+                          trashCount=${(feed.trash || []).length}
+                          trashOpen=${trashOpen}
+                          onOpenTrash=${openTrash}
                           loose=${loose}
                           lent=${lent}
                           onOpenLent=${openLent}
@@ -2424,8 +2613,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
             ${fileColumn}
             <div class="amp-list">
                 ${
-                    openStationObj
-                        ? html`<${StationView}
+                    trashOpen
+                        ? html`<${TrashView} trash=${feed.trash || []} names=${names} onRestore=${restore} />`
+                        : openStationObj
+                          ? html`<${StationView}
                               station=${openStationObj}
                               stations=${stations}
                               filters=${filters}
@@ -2438,7 +2629,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                               onChange=${changeStation}
                               onPlay=${() => playStation(openStationObj)}
                           />`
-                        : html`
+                          : html`
                 ${
                     /* An open mixtape of your own wears the publish row (plans/MIXTAPES.md). */
                     tape &&
