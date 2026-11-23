@@ -56,6 +56,10 @@ pub struct Thrown {
     /// The mixtape (its post) a song went with: it comes back when the mixtape does.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tape: String,
+    /// The group it was posted in, for a group's document: its files are the group's, kept and
+    /// fetched by the group's own machinery (roster.rs), which asks `group_trashed`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
 }
 
 const fn is_hex(len: usize, s: &str) -> bool {
@@ -120,14 +124,17 @@ pub async fn mirror(state: &AppState, data: &store::Store, root_hex: &str) -> Re
         state
             .node_db
             .execute(
-                "INSERT INTO trashed (local_root, foreign_root, doc_id, at_ms)
-                 VALUES (?1, ?2, ?3, ?4)
+                "INSERT INTO trashed (local_root, foreign_root, doc_id, at_ms, group_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT (local_root, foreign_root, doc_id) DO NOTHING",
                 (
                     root_hex,
                     author.as_str(),
                     hex::decode(doc).unwrap_or_default(),
                     held[&(author.clone(), doc.clone())].at,
+                    hex::decode(&held[&(author.clone(), doc.clone())].group)
+                        .ok()
+                        .filter(|g| g.len() == 16),
                 ),
             )
             .await
@@ -136,33 +143,78 @@ pub async fn mirror(state: &AppState, data: &store::Store, root_hex: &str) -> Re
     Ok(())
 }
 
-/// The documents of `foreign_root` that everyone here who dials them threw away: one person on a
-/// shared server who still wants a song is enough to keep it, since the bytes are kept once.
-/// Nothing when nobody here dials them at all, as for a declined kind.
-async fn trashed_docs(node_db: &crate::db::Db, foreign_root: &str) -> Result<HashSet<[u8; 16]>> {
+/// Every author somebody here threw a public document of away.
+pub async fn authors(node_db: &crate::db::Db) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all("SELECT DISTINCT foreign_root FROM trashed WHERE group_id IS NULL", ())
+        .await
+        .context("listing the authors of trashed documents")?;
+    Ok(rows.into_iter().map(|(a,)| a).collect())
+}
+
+/// The documents of `foreign_root` that EVERYONE they reached here threw away: everyone who
+/// dials the author, and everyone with the document - or, for a song a rebroadcast brought, a
+/// post that covers it - in their feed. One person on a shared server who still wants a song is
+/// enough to keep it, since the bytes are kept once. Nothing for a persona of this node's own,
+/// whose files are theirs.
+pub async fn trashed_docs(
+    node_db: &crate::db::Db,
+    foreign_root: &str,
+) -> Result<HashSet<[u8; 16]>> {
     let rows: Vec<(String, Vec<u8>)> = node_db
         .fetch_all(
-            "SELECT local_root, doc_id FROM trashed WHERE foreign_root = ?1",
+            "SELECT local_root, doc_id FROM trashed WHERE foreign_root = ?1 AND group_id IS NULL",
             (foreign_root,),
         )
         .await
         .context("reading what a persona's followers threw away")?;
-    if rows.is_empty() {
+    if rows.is_empty() || crate::identity::is_agented(node_db, foreign_root).await.unwrap_or(true) {
         return Ok(HashSet::new());
     }
     let dialers: HashSet<String> =
         crate::net::subscriptions::dialed_by(node_db, foreign_root).await?.into_iter().collect();
     let mut by: BTreeMap<[u8; 16], HashSet<String>> = BTreeMap::new();
     for (local, doc) in rows {
-        if let (true, Ok(doc)) = (dialers.contains(&local), <[u8; 16]>::try_from(doc.as_slice())) {
+        if let Ok(doc) = <[u8; 16]>::try_from(doc.as_slice()) {
             by.entry(doc).or_default().insert(local);
         }
     }
-    Ok(by
-        .into_iter()
-        .filter(|(_, who)| !dialers.is_empty() && who.len() == dialers.len())
-        .map(|(doc, _)| doc)
-        .collect())
+    let mut out = HashSet::new();
+    for (doc, threw) in by {
+        let doc_hex = hex::encode(doc);
+        let mut posts = crate::fragments::covering_posts(node_db, foreign_root, &doc_hex).await?;
+        posts.push(doc_hex);
+        let mut reached = dialers.clone();
+        reached.extend(crate::fanout::readers_with(node_db, foreign_root, &posts).await?);
+        if !reached.is_empty() && reached.iter().all(|r| threw.contains(r)) {
+            out.insert(doc);
+        }
+    }
+    Ok(out)
+}
+
+/// The documents of a group that every member of it hosted here threw away (`members`, hex): the
+/// group's files are kept once for all of them, so one who still wants a song keeps it. Nothing
+/// when no member is hosted here.
+pub async fn group_trashed(
+    node_db: &crate::db::Db,
+    group: &[u8; 16],
+    members: &[String],
+) -> Result<HashSet<[u8; 16]>> {
+    if members.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let rows: Vec<(String, Vec<u8>)> = node_db
+        .fetch_all("SELECT local_root, doc_id FROM trashed WHERE group_id = ?1", (group.to_vec(),))
+        .await
+        .context("reading what a group's members threw away")?;
+    let mut by: BTreeMap<[u8; 16], HashSet<String>> = BTreeMap::new();
+    for (local, doc) in rows {
+        if let (true, Ok(doc)) = (members.contains(&local), <[u8; 16]>::try_from(doc.as_slice())) {
+            by.entry(doc).or_default().insert(local);
+        }
+    }
+    Ok(by.into_iter().filter(|(_, who)| who.len() == members.len()).map(|(doc, _)| doc).collect())
 }
 
 /// The files of `foreign_root` this node neither fetches nor keeps on their account, because
@@ -175,13 +227,12 @@ pub async fn trashed_hashes(
     held: Option<&crate::db::Db>,
 ) -> Result<HashSet<[u8; 32]>> {
     let docs = trashed_docs(&state.node_db, foreign_root).await?;
-    if docs.is_empty()
-        || crate::identity::load_node_leaf_key(&state.node_db, &state.keystore, foreign_root)
-            .await?
-            .is_some()
-    {
+    if docs.is_empty() {
         return Ok(HashSet::new());
     }
+    // What a rebroadcast brought is on the fragment shelf, whoever's chain is held here.
+    let hex_docs: HashSet<String> = docs.iter().map(hex::encode).collect();
+    let mut out = crate::fragments::blobs_only_of(&state.node_db, foreign_root, &hex_docs).await?;
     let opened;
     let db = match held {
         Some(db) => db,
@@ -190,16 +241,17 @@ pub async fn trashed_hashes(
                 opened = db;
                 &opened
             }
-            None => return Ok(HashSet::new()),
+            None => return Ok(out),
         },
     };
     let refs = crate::record::documents::version_blobs(db)
         .await
         .map_err(|e| anyhow::anyhow!("reading the blobs the versions name: {e}"))?;
-    let (mut out, mut wanted): (HashSet<[u8; 32]>, HashSet<[u8; 32]>) = Default::default();
+    let (mut gone, mut wanted): (HashSet<[u8; 32]>, HashSet<[u8; 32]>) = Default::default();
     for r in refs.iter().filter(|r| r.public) {
-        if docs.contains(&r.doc) { &mut out } else { &mut wanted }.insert(r.hash);
+        if docs.contains(&r.doc) { &mut gone } else { &mut wanted }.insert(r.hash);
     }
+    out.extend(gone);
     out.retain(|h| !wanted.contains(h));
     Ok(out)
 }
@@ -217,6 +269,8 @@ pub struct Item {
     artist: String,
     #[serde(default)]
     tape: String,
+    #[serde(default)]
+    group: String,
 }
 
 #[derive(Deserialize)]
@@ -265,6 +319,7 @@ pub async fn throw_handler(
             title: clip(&item.title),
             artist: clip(&item.artist),
             tape: if is_hex(32, &item.tape) { item.tape.clone() } else { String::new() },
+            group: if is_hex(32, &item.group) { item.group.clone() } else { String::new() },
         };
         let value = serde_json::to_string(&line)
             .map_err(|e| AppError::Internal(anyhow::anyhow!("a trash line: {e}")))?;
@@ -287,9 +342,13 @@ pub async fn restore_handler(
     checked(&root, &req)?;
     let held = ledger(&data).await?;
     let mut back: Vec<(String, String)> = Vec::new();
+    let mut groups: HashSet<String> = HashSet::new();
     for item in &req.items {
         let key = (item.author.clone(), item.doc.clone());
         let Some(line) = held.get(&key) else { continue };
+        if !line.group.is_empty() {
+            groups.insert(line.group.clone());
+        }
         if line.kind == "mixtape" {
             back.extend(
                 held.iter()
@@ -314,6 +373,16 @@ pub async fn restore_handler(
         }
     }
     for (author, docs) in by_author {
+        // What a rebroadcast brought is on the fragment shelf.
+        let hex_docs: HashSet<String> = docs.iter().map(hex::encode).collect();
+        for hash in crate::fragments::blobs_only_of(&state.node_db, author, &hex_docs)
+            .await
+            .unwrap_or_default()
+        {
+            if let Err(e) = crate::net::bodies::want(&state.node_db, author, &hash).await {
+                tracing::debug!(error = ?e, "a restored file was not noted as wanted");
+            }
+        }
         let Ok(Some(db)) = state.user_dbs.get(author).await else { continue };
         let Ok(refs) = crate::record::documents::version_blobs(&db).await else { continue };
         for r in refs.iter().filter(|r| r.public && docs.contains(&r.doc)) {
@@ -321,6 +390,11 @@ pub async fn restore_handler(
                 tracing::debug!(error = ?e, "a restored file was not noted as wanted");
             }
         }
+    }
+    // A group's files come from the group's members: asked for now, in the background.
+    for group in groups {
+        let state = state.clone();
+        tokio::spawn(async move { crate::roster::refetch(&state, &group).await });
     }
     Ok(Json(json!({ "restored": back.len() })))
 }

@@ -62,7 +62,7 @@ async fn live_set(state: &AppState) -> Result<HashSet<Hash>> {
 
     // The documents posted to groups (plans/GROUPS.md): bodies and pictures named on any group
     // lane this node holds - kept in the group memo, never in a persona's views.
-    for hash in crate::roster::blob_refs(&state.node_db).await? {
+    for hash in crate::roster::blob_refs(state).await? {
         live.insert(Hash::from_bytes(hash));
     }
 

@@ -157,7 +157,7 @@ describe("hrseAmp's mixtapes (plans/AUDIO.md)", () => {
         assert.deepEqual(m.groupSections([tapes[0]]), []);
     });
 
-    it("takes only other people's public songs to the trash, each by its name", () => {
+    it("takes only other people's songs to the trash, each by its name", () => {
         const rows = [
             { own: true, author: 'me', doc: 'd0', title: 'Mine' },
             { own: false, author: 'a', doc: 'd1', title: 'Theirs', artist: 'Them' },
@@ -165,11 +165,12 @@ describe("hrseAmp's mixtapes (plans/AUDIO.md)", () => {
         ];
         assert.deepEqual(
             rows.map((r) => m.trashable(r)),
-            [false, true, false],
-            "never your own, nor a group's",
+            [false, true, true],
+            "never your own; a group's too",
         );
         assert.deepEqual(m.songTrashItems(rows), [
             { author: 'a', doc: 'd1', title: 'Theirs', artist: 'Them' },
+            { author: 'a', doc: 'd2', title: 'A Group Song', artist: '', group: 'g1' },
         ]);
     });
 
@@ -185,6 +186,14 @@ describe("hrseAmp's mixtapes (plans/AUDIO.md)", () => {
             m.tapeTrashItems(tape, null),
             [{ author: 'a', doc: 'p1', kind: 'mixtape', title: 'Road Songs' }],
             'unread, the mixtape still goes',
+        );
+        assert.deepEqual(
+            m.tapeTrashItems({ ...tape, group: 'g1' }, [tracks[0]]),
+            [
+                { author: 'a', doc: 'p1', kind: 'mixtape', title: 'Road Songs', group: 'g1' },
+                { author: 'a', doc: 'd1', title: 'One', artist: 'Them', tape: 'p1', group: 'g1' },
+            ],
+            "a group's mixtape names the group on every line",
         );
     });
 });

@@ -108,35 +108,40 @@ export function groupSections(tapes) {
 
 // --- the trash (plans/MIXTAPES.md, section 3): other people's songs, thrown out of your storage ---
 
-/// Whether a row may go in the trash: somebody else's song that reached you in public - never
-/// your own (hrseFiles deletes those), nor a group's, which is the group's to keep.
-export const trashable = (row) => !!row && !row.own && !row.group;
+/// Whether a row may go in the trash: somebody else's song, however it reached you - never your
+/// own, which hrseFiles deletes.
+export const trashable = (row) => !!row && !row.own;
 
 /// The trash door's lines for `rows`: each song, with what it is called - its bytes may be gone
-/// by the time the trash is read.
+/// by the time the trash is read - and the group it was posted in, when it was.
 export const songTrashItems = (rows) =>
     rows.filter(trashable).map((r) => ({
         author: r.author,
         doc: r.doc,
         title: r.title || '',
         artist: r.artist || '',
+        ...(r.group ? { group: r.group } : {}),
     }));
 
 /// The door's lines for a whole mixtape: its post, and each song of its tracklist naming it, so
-/// they come back together. `tape` is `{ author, post, name }`; `tracks` its words' (amp.rs
-/// `TapeBody`), or none when they can't be read.
-export const tapeTrashItems = (tape, tracks) => [
-    { author: tape.author, doc: tape.post, kind: 'mixtape', title: tape.name || '' },
-    ...(tracks || [])
-        .filter((x) => x && x.doc)
-        .map((x) => ({
-            author: tape.author,
-            doc: x.doc,
-            title: x.title || '',
-            artist: x.artist || '',
-            tape: tape.post,
-        })),
-];
+/// they come back together. `tape` is `{ author, post, name, group? }`; `tracks` its words'
+/// (amp.rs `TapeBody`), or none when they can't be read.
+export const tapeTrashItems = (tape, tracks) => {
+    const group = tape.group ? { group: tape.group } : {};
+    return [
+        { author: tape.author, doc: tape.post, kind: 'mixtape', title: tape.name || '', ...group },
+        ...(tracks || [])
+            .filter((x) => x && x.doc)
+            .map((x) => ({
+                author: tape.author,
+                doc: x.doc,
+                title: x.title || '',
+                artist: x.artist || '',
+                tape: tape.post,
+                ...group,
+            })),
+    ];
+};
 
 /// The reader's own published mixtapes ("shared playlists"): each mixtape whose draft (`drafts`,
 /// taxonomy id -> note id, the node's `mixtape_drafts`) is a note that stands published, with the

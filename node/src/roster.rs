@@ -3658,23 +3658,76 @@ fn first_version(list: &[Version]) -> Option<&Version> {
 /// Every blob a group lane held here names - bodies, pictures, their thumbnails - for the reaper
 /// (reaper.rs): kept while any group lane names them, counted or not, since a refold can count
 /// what doesn't count today.
-pub async fn blob_refs(node_db: &crate::db::Db) -> Result<Vec<[u8; 32]>> {
-    let rows: Vec<(Vec<u8>,)> = node_db
+///
+/// Two kinds of document are let go (Curtis, 2026-11-23: "A taken-down group document's files
+/// should be collected"): one its author took down, and one every member of the group hosted here
+/// threw away (trash.rs). A file one of those names is still kept while a standing, wanted
+/// document names it too. A group that can't be folded keeps everything: the reaper never guesses.
+pub async fn blob_refs(state: &AppState) -> Result<Vec<[u8; 32]>> {
+    let rows: Vec<(Vec<u8>, Vec<u8>)> = state
+        .node_db
         .fetch_all(
-            "SELECT body FROM group_lanes WHERE entry_type = ?1",
+            "SELECT group_id, body FROM group_lanes WHERE entry_type = ?1",
             (i64::from(entry_type::DOC_HEADER),),
         )
         .await
         .context("listing the blobs group lanes name")?;
+    let mut dropped: BTreeMap<Vec<u8>, BTreeSet<[u8; 16]>> = BTreeMap::new();
     let mut out = Vec::new();
-    for (body,) in rows {
+    for (group, body) in rows {
         let header = DocHeaderPlain::decode(&body)
             .map_err(|e| anyhow!("a held group document fails decode: {e}"))?;
+        if !dropped.contains_key(&group) {
+            let gone = match GroupId::try_from(group.as_slice()) {
+                Ok(id) => let_go(state, &id).await,
+                Err(_) => BTreeSet::new(),
+            };
+            dropped.insert(group.clone(), gone);
+        }
+        if dropped[&group].contains(&header.doc_id) {
+            continue;
+        }
         out.push(header.file_hash);
         out.extend(header.thumb_hash);
         out.extend(header.preview_hash);
     }
     Ok(out)
+}
+
+/// The members of a group this node hosts, in hex: the ones whose trash decides what it keeps.
+async fn hosted_members(state: &AppState, roster: &Roster) -> Vec<String> {
+    let mut out = Vec::new();
+    for m in &roster.members {
+        let hex = hex::encode(m);
+        if crate::identity::is_agented(&state.node_db, &hex).await.unwrap_or(false) {
+            out.push(hex);
+        }
+    }
+    out
+}
+
+/// The group's documents this node lets go of: taken down by their authors, or thrown away by
+/// every member hosted here. Empty when the group can't be read - then nothing is let go.
+async fn let_go(state: &AppState, group: &GroupId) -> BTreeSet<[u8; 16]> {
+    let Ok(Some((roster, _))) = folded(state, group).await else { return BTreeSet::new() };
+    let Ok((_, mut gone)) = documents_of(state, group, &roster).await else {
+        return BTreeSet::new();
+    };
+    let members = hosted_members(state, &roster).await;
+    match crate::trash::group_trashed(&state.node_db, group, &members).await {
+        Ok(thrown) => gone.extend(thrown),
+        Err(e) => tracing::debug!(error = ?e, "reading a group's trash failed; nothing let go"),
+    }
+    gone
+}
+
+/// Ask the group's nodes again for the files this node lacks (trash.rs: a document taken back
+/// out of the trash is wanted again).
+pub async fn refetch(state: &AppState, group: &str) {
+    let Ok(group) = group_of(group) else { return };
+    let names: BTreeSet<String> =
+        named(&lanes_of(state, &group).await.unwrap_or_default()).into_iter().collect();
+    fetch_bodies(state, &group, &names).await;
 }
 
 /// Fetch the bodies and pictures of a group's documents this node doesn't hold yet, from the
@@ -3683,9 +3736,13 @@ pub async fn blob_refs(node_db: &crate::db::Db) -> Result<Vec<[u8; 32]>> {
 async fn fetch_bodies(state: &AppState, group: &GroupId, names: &BTreeSet<String>) {
     let Ok(Some((roster, _))) = refold(state, group).await else { return };
     let Ok((versions, gone)) = documents_of(state, group, &roster).await else { return };
+    // Nor what every member hosted here threw away (trash.rs): not fetched, as it is not kept.
+    let members = hosted_members(state, &roster).await;
+    let thrown =
+        crate::trash::group_trashed(&state.node_db, group, &members).await.unwrap_or_default();
     let mut missing: Vec<iroh_blobs::Hash> = Vec::new();
     for (doc, list) in &versions {
-        if gone.contains(doc) {
+        if gone.contains(doc) || thrown.contains(doc) {
             continue;
         }
         for v in list {
@@ -5761,7 +5818,7 @@ async fn group_bytes(
     );
     let cache =
         if media || thumb { "private, max-age=31536000, immutable" } else { "private, no-cache" };
-    Ok((
+    let mut response = (
         [
             (header::CONTENT_TYPE, mime),
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
@@ -5769,7 +5826,12 @@ async fn group_bytes(
         ],
         bytes,
     )
-        .into_response())
+        .into_response();
+    // The file's own name, as the public door says it: its hash.
+    if let Ok(tag) = header::HeaderValue::from_str(&format!("\"{}\"", hex::encode(hash))) {
+        response.headers_mut().insert(header::ETAG, tag);
+    }
+    Ok(response)
 }
 
 /// GET `/api/groups/{group}/docs/{doc}/body`.

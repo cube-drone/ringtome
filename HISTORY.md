@@ -29133,3 +29133,49 @@ and back in "friends' mixtapes".
 Not built: a group's mixtape or song; what arrived only by a rebroadcast from
 somebody nobody here follows is hidden but not collected while the share stands;
 the trash is never emptied.
+
+## Mixtapes: the trash, everywhere a song arrives (2026-11-23)
+
+The first full gate on the trash caught three things. Two were the node's own
+conventions: `trash.rs` read `subscriptions` itself (it asks
+`subscriptions::dialed_by` now) and opened persona databases nobody had counted
+(counted, with why; `trashed` registered as its table). The third was the test:
+thrown-away songs' bytes stayed, 5 of 5 on the reruns, because the rig is shared
+and ten other files upload the same sample sounds - another persona on the node
+held the identical bytes, and the node rightly kept them ("if that was the only
+copy"). `mixtape_trash.cjs` makes its own sounds now, half a second of noise
+each. Run beside the other mixtape files it failed before that and passes after.
+
+Then, asked what was left, four gaps - and reading them found a fifth: a group
+document taken down stopped being served and stayed on every member's disk for
+good, since the reaper kept every file any group lane ever named. Curtis: "A
+taken-down group document's files should be collected, yeah. Let's power through
+1 and try and get our trashing mechanics working for all of the situations that
+might call for them."
+
+- **Taken-down group files.** `roster::blob_refs` folds each group and leaves
+  out the documents its authors took down (`let_go`); a group that can't be
+  folded keeps everything.
+- **A group's mixtape or song.** The ledger line names the group (rung 0128, a
+  `group_id` on `trashed`). Such a file goes when every member of the group
+  hosted here threw it away (`trash::group_trashed`), asked by `let_go` for the
+  reaper and by `fetch_bodies` so it isn't fetched back; undelete asks the
+  group's nodes again (`roster::refetch`). The group's door names a file by its
+  hash (an ETag), as the public door does.
+- **What only a rebroadcast brought.** Those files are on the fragment shelf,
+  which the reaper kept whole. `trashed_docs` now asks everyone a document
+  reached here - whoever dials its author, and whoever has it or a post covering
+  it in their feed (`fanout::readers_with`, `fragments::covering_posts`) - and
+  `fragments::blob_refs` leaves out what they all threw away. The row stays, so
+  the shelf's healing has nothing to fetch, and the body lane's fence
+  (`trashed_hashes`, now with the shelf's blobs) drops the want.
+- hrseAmp: the trash button on a group's mixtape, the chip on a group's song.
+
+One of the four was no gap: thumbs and your own fields on somebody else's song
+are your private layer, keyed by the song, and work for a group's as for
+anyone's.
+
+`mixtape_trash.cjs` is three sets now - a follow, a group, a rebroadcast - six
+claims, each proving the bytes leave the node, stay gone through the lane that
+would fetch them, and return on undelete; and that a mixtape taken down in a
+group leaves the other member's disk.

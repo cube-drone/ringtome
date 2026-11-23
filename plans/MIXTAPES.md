@@ -322,11 +322,27 @@ In the order that lets each be seen working before the next.
    - `mixtape_trash.cjs`, across two nodes: a song thrown away out of the table,
      in the trash, its bytes collected and not fetched again; undeleted, back
      from its author; a mixtape out with its songs and back with them.
-   - _Not built_: a group's mixtape or song (the group's media is the group's to
-     keep); what arrived only by a rebroadcast, from somebody nobody here
-     follows, is hidden but not collected while the share stands; and the trash
-     is never emptied - a line is a few bytes, and is what keeps the file from
-     being fetched again.
+   - _Every way a song arrives, the same day_ (Curtis: "get our trashing
+     mechanics working for all of the situations that might call for them"). The
+     one question - did everyone this reached here throw it away? - is asked of
+     whoever it reached: everyone who dials its author and everyone with it, or
+     a post covering it, in their feed (`trashed_docs`), so a mixtape that only
+     a rebroadcast brought goes from the shelf of shared things too, and its
+     healing doesn't fetch it back. A group's document names its group on the
+     ledger line, and goes when every member of the group hosted here threw it
+     away (`group_trashed`; `roster::blob_refs` and `fetch_bodies`). hrseAmp's
+     trash button is on a group's mixtape, and its chip on a group's song.
+   - _A taken-down group document's files are collected_ (Curtis, the same day):
+     `roster::blob_refs` no longer counts a document its author took down, so a
+     mixtape taken down in a group leaves its members' disks.
+   - `mixtape_trash.cjs`: three sets, six claims - a follow, a group, a
+     rebroadcast - each with sounds of its own, since a file another persona on
+     the node also holds is rightly kept.
+   - _Not built_: the trash is never emptied - a line is a few bytes, and is
+     what keeps the file from being fetched again. And where one person on a
+     node dials an author and another has the same song only by a rebroadcast
+     held in the author's chain rather than on the shelf, the second isn't
+     asked.
 
 Slices 5 to 8 don't depend on each other. Slice 8 is the only one that touches
 storage and the reaper, and is the one to run the full gate for.

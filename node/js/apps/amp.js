@@ -928,13 +928,19 @@ const Playlists = ({
             groups.map(
                 (g) => html`<p key=${`group:${g.id}`} class="amp-playlists-group">${g.name}</p>
                     ${g.tapes.map((x) =>
-                        lentRow(`group:${x.id}`, x.name, x.by, !!lent && lent.id === x.id, () =>
-                            onOpenLent({
-                                kind: 'friend',
-                                author: x.author,
-                                post: x.post,
-                                group: x.group,
-                            }),
+                        lentRow(
+                            `group:${x.id}`,
+                            x.name,
+                            x.by,
+                            !!lent && lent.id === x.id,
+                            () =>
+                                onOpenLent({
+                                    kind: 'friend',
+                                    author: x.author,
+                                    post: x.post,
+                                    group: x.group,
+                                }),
+                            () => onTrashTape(x),
                         ),
                     )}`,
             )
@@ -1799,7 +1805,10 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         // Its songs, from its own words; unread, the mixtape still goes and its songs stay.
         let tracks = [];
         try {
-            tracks = JSON.parse(await apiText(`/id/${x.author}/docs/${x.post}/body`)).tracks || [];
+            const door = x.group
+                ? `/api/groups/${x.group}/docs/${x.post}/body`
+                : `/id/${x.author}/docs/${x.post}/body`;
+            tracks = JSON.parse(await apiText(door)).tracks || [];
         } catch {
             tracks = ((sealedOpen[x.id] || {}).tracks || []).slice();
         }

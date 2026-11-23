@@ -986,12 +986,67 @@ pub(crate) fn heal_soon(state: &crate::AppState, author_root: &str, origin_root:
 /// decoded from the stored signed entries. The reaper's mark for the shelf - and STRICT: a row
 /// whose entry no longer decodes is corruption, and the caller must abort the run rather than
 /// reap blobs this function can no longer name.
+///
+/// A document everyone it reached here threw away (trash.rs) is not counted: its row stays - the
+/// header is small, and is what keeps the share from being fetched afresh - and its bytes go,
+/// unless a row still wanted names them too.
 pub async fn blob_refs(node_db: &Db) -> Result<Vec<[u8; 32]>> {
-    let rows: Vec<(Vec<u8>, Vec<u8>)> = node_db
-        .fetch_all("SELECT body_hash, entry FROM fragments", ())
+    let rows: Vec<(String, String, Vec<u8>, Vec<u8>)> = node_db
+        .fetch_all("SELECT author_root, doc_id, body_hash, entry FROM fragments", ())
         .await
         .context("reading the shelf's blob references")?;
-    refs_of_rows(rows)
+    let mut thrown: std::collections::HashMap<String, std::collections::HashSet<String>> =
+        Default::default();
+    for author in crate::trash::authors(node_db).await? {
+        let docs = crate::trash::trashed_docs(node_db, &author).await?;
+        thrown.insert(author, docs.iter().map(hex::encode).collect());
+    }
+    refs_of_rows(
+        rows.into_iter()
+            .filter(|(author, doc, _, _)| !thrown.get(author).is_some_and(|d| d.contains(doc)))
+            .map(|(_, _, body, entry)| (body, entry))
+            .collect(),
+    )
+}
+
+/// The posts on the shelf that cover `media` (hex): why a media fragment is here.
+pub async fn covering_posts(
+    node_db: &Db,
+    author_root: &str,
+    media_hex: &str,
+) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            "SELECT post_doc FROM fragment_covers WHERE author_root = ?1 AND media_doc = ?2",
+            (author_root, media_hex),
+        )
+        .await
+        .context("listing the posts that cover a media fragment")?;
+    Ok(rows.into_iter().map(|(p,)| p).collect())
+}
+
+/// One author's shelf blobs, split by `thrown` (hex doc ids): those only thrown documents name,
+/// for the trash's fence (trash.rs `trashed_hashes`) and for wanting them again.
+pub async fn blobs_only_of(
+    node_db: &Db,
+    author_root: &str,
+    thrown: &std::collections::HashSet<String>,
+) -> Result<std::collections::HashSet<[u8; 32]>> {
+    let rows: Vec<(String, Vec<u8>, Vec<u8>)> = node_db
+        .fetch_all(
+            "SELECT doc_id, body_hash, entry FROM fragments WHERE author_root = ?1",
+            (author_root,),
+        )
+        .await
+        .context("reading an author's shelf blob references")?;
+    /// (body hash, signed entry), as `refs_of_rows` reads a shelf row.
+    type Rows = Vec<(Vec<u8>, Vec<u8>)>;
+    let (mut out, mut kept): (Rows, Rows) = Default::default();
+    for (doc, body, entry) in rows {
+        if thrown.contains(&doc) { &mut out } else { &mut kept }.push((body, entry));
+    }
+    let kept: std::collections::HashSet<[u8; 32]> = refs_of_rows(kept)?.into_iter().collect();
+    Ok(refs_of_rows(out)?.into_iter().filter(|h| !kept.contains(h)).collect())
 }
 
 /// [`blob_refs`] for one author's fragments: the wants the body walk over a chain held here

@@ -961,6 +961,36 @@ pub async fn sharers_of_doc(
     Ok(rows.into_iter().map(|(v,)| v).collect())
 }
 
+/// The readers here with any of `docs` (hex) of `author_root` in their feed, however it came - by
+/// a follow or by somebody's rebroadcast. The trash asks (trash.rs): a file goes only when
+/// everyone it reached here threw it away.
+pub async fn readers_with(
+    node_db: &crate::db::Db,
+    author_root: &str,
+    docs: &[String],
+) -> Result<Vec<String>> {
+    let quoted: Vec<String> = docs
+        .iter()
+        .filter(|d| d.len() == 32 && d.bytes().all(|b| b.is_ascii_hexdigit()))
+        .map(|d| format!("'{d}'"))
+        .collect();
+    if quoted.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<(String,)> = node_db
+        .fetch_all(
+            &format!(
+                "SELECT DISTINCT reader_root FROM feed_journal
+                 WHERE author_root = ?1 AND doc_id IN ({})",
+                quoted.join(",")
+            ),
+            (author_root,),
+        )
+        .await
+        .context("listing the readers a document reached")?;
+    Ok(rows.into_iter().map(|(r,)| r).collect())
+}
+
 /// The per-AUTHOR union of the same - the blob-healing candidates: bodies are wanted per
 /// author, and any sharer of ANY of their documents this node journals is a node that holds
 /// (or knows who holds) that author's public bytes.

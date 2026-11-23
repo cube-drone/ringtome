@@ -325,7 +325,8 @@ pub async fn library_handler(
             continue;
         };
         for track in body.tracks {
-            if !listed.insert((row.author_root.clone(), track.doc.clone())) {
+            let key = (row.author_root.clone(), track.doc.clone());
+            if thrown.contains_key(&key) || !listed.insert(key) {
                 continue;
             }
             let mut fields: BTreeMap<&str, String> = BTreeMap::new();
@@ -369,6 +370,7 @@ pub async fn library_handler(
                 "title": line.title,
                 "artist": line.artist,
                 "at_ms": line.at,
+                "group": line.group,
                 "songs": thrown
                     .iter()
                     .filter(|((a, _), l)| a == author && l.tape == *doc)
