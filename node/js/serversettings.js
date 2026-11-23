@@ -38,6 +38,7 @@ import { backupTime, sizeLabel } from './pure/backups.js';
 import { groupHref, nodeHref, personHref, serverHref } from './links.js';
 import { Icons } from './icons.js';
 import { defaultName, defaultTaglines, refreshFront } from './frontdoor.js';
+import { COLORWAYS, COLORWAY_CLASS, COLORWAY_WORDS, DEFAULT_COLORWAY } from './colorway.js';
 import { formatWhen } from './pure/when.js';
 import { BANDS } from './pure/contact.js';
 import { speakable, wordsFor } from './speakable.js';
@@ -720,13 +721,16 @@ const Backups = () => {
 // ---------------------------------------------------------------------------------------------
 // Server Customization
 
-/// The front page's name and taglines (Curtis, 2026-09-30). Left as the app's own, they stay the
+/// The front page's name and taglines (Curtis, 2026-09-30), and the colourway everyone not signed
+/// in sees the place in (2026-11-22). Left as the app's own, they stay the
 /// app's own - saved as nothing, so they read in each stranger's language and follow later
 /// releases; "back to the app's own" forgets whatever was chosen.
 const Customization = () => {
     const [loaded, setLoaded] = useState(false);
     const [name, setName] = useState('');
     const [lines, setLines] = useState('');
+    // The colourway a stranger sees (Curtis, 2026-11-22); the app's own until one is chosen.
+    const [colorway, setColorway] = useState(DEFAULT_COLORWAY);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [saved, setSaved] = useState(false);
@@ -736,6 +740,7 @@ const Customization = () => {
             .then((f) => {
                 setName(f.name || '');
                 setLines(f.taglines && f.taglines.length ? f.taglines.join('\n') : ownLines);
+                setColorway(f.colorway || DEFAULT_COLORWAY);
                 setLoaded(true);
             })
             .catch((e) => setError(e.message));
@@ -748,6 +753,7 @@ const Customization = () => {
             const f = await api('/api/admin/front', { method: 'PUT', body: JSON.stringify(body) });
             setName(f.name || '');
             setLines(f.taglines && f.taglines.length ? f.taglines.join('\n') : ownLines);
+            setColorway(f.colorway || DEFAULT_COLORWAY);
             setSaved(true);
             refreshFront();
         } catch (e) {
@@ -770,15 +776,41 @@ const Customization = () => {
                 <span>${t('device.taglines-one-per-line', 'taglines, one to a line, scrolling under the sign-in')}</span>
                 <textarea class="device-taglines" rows="10" value=${lines} onInput=${(e) => setLines(e.currentTarget.value)}></textarea>
             </label>
+            <div class="device-field">
+                <span>${t('device.front-colorway', "the colorway for people who aren't signed in")}</span>
+                <div class="colorway-options" role="radiogroup">
+                    ${COLORWAYS.map(
+                        (c) => html`<button
+                            key=${c}
+                            type="button"
+                            role="radio"
+                            aria-checked=${c === colorway}
+                            class=${c === colorway ? 'colorway-option jag-line picked' : 'colorway-option jag-line'}
+                            onClick=${() => {
+                                setSaved(false);
+                                setColorway(c);
+                            }}
+                        ><span class=${COLORWAY_CLASS[c]}><span></span><span></span><span></span></span>${COLORWAY_WORDS[c]()}</button>`,
+                    )}
+                </div>
+                <p class="null-sub">
+                    ${t('device.front-colorway-explained', "A person's own page still wears their colorway, and anyone signed in sees their own. Sign out to see this one.")}
+                </p>
+            </div>
             ${error && html`<p class="form-error">${error}</p>`}
             ${saved && html`<p class="null-sub">${t('device.saved', 'saved')}</p>`}
             <div class="device-actions">
                 <button
                     class="removal-go"
                     disabled=${busy}
-                    onClick=${() => save({ name, taglines: lines.trim() === ownLines.trim() ? null : lines.split('\n') })}
+                    onClick=${() =>
+                        save({
+                            name,
+                            taglines: lines.trim() === ownLines.trim() ? null : lines.split('\n'),
+                            colorway: colorway === DEFAULT_COLORWAY ? null : colorway,
+                        })}
                 >${busy ? '…' : t('device.save', 'save')}</button>
-                <button class="computer-remove" disabled=${busy} onClick=${() => save({ name: null, taglines: null })}>
+                <button class="computer-remove" disabled=${busy} onClick=${() => save({ name: null, taglines: null, colorway: null })}>
                     ${t('device.back-to-the-apps-own', "back to the app's own")}
                 </button>
             </div>

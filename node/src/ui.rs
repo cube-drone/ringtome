@@ -231,6 +231,8 @@ pub fn app_page_with(state: &AppState, head: &str, body: &str) -> String {
         }
         None => head.to_string(),
     };
+    // The server's colourway, for a reader with none of their own (frontdoor.rs).
+    let head = head + &crate::frontdoor::colorway_meta(state);
     HOME_PAGE
         .replace("$HEAD$", &head)
         .replace("$VERSION$", version)

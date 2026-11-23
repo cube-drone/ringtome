@@ -294,6 +294,16 @@ const fn unlock(
     Unlock { id, name, pennies: horsebucks * HORSEBUCK, requires }
 }
 
+/// The colourways everyone has (js/colorway.js `FREE`); the rest are sold as `colorway-<name>`
+/// (`UNLOCKS`).
+pub const FREE_COLORWAYS: [&str; 2] = ["horse-relax", "witchlight"];
+
+/// Whether `name` is one of the app's colourways, free or sold.
+pub fn is_colorway(name: &str) -> bool {
+    FREE_COLORWAYS.contains(&name)
+        || UNLOCKS.iter().any(|u| u.id.strip_prefix("colorway-") == Some(name))
+}
+
 /// Every unlock, in the order the Market lists them.
 pub const UNLOCKS: [Unlock; 30] = [
     unlock("friends", "Friends", 1_000, &[]),

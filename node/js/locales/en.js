@@ -2623,6 +2623,8 @@ export default {
     'device.imports': 'imports',
     'device.front-page-name': "the front page's name",
     'device.taglines-one-per-line': 'taglines, one to a line, scrolling under the sign-in',
+    'device.front-colorway': "the colorway for people who aren't signed in",
+    'device.front-colorway-explained': "A person's own page still wears their colorway, and anyone signed in sees their own. Sign out to see this one.",
     'device.back-to-the-apps-own': "back to the app's own",
     'device.search-engines': 'search engines',
     'device.tagged-audio': 'tagged songs',
@@ -3040,6 +3042,7 @@ export default {
     // --- node/src/frontdoor.rs ---
     'frontdoor.name-too-long': 'that name is longer than a header can hold',
     'frontdoor.too-many-taglines': 'at most a hundred taglines, each under 500 characters',
+    'frontdoor.not-a-colorway': "that isn't one of the app's colourways",
     'frontdoor.only-a-server': 'only a server has a front page to pin to',
     'frontdoor.only-public-posts-here': 'only a public post hosted here can go on the front page',
 

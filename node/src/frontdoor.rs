@@ -6,6 +6,13 @@
 //! supplies the app's own words - so the defaults read in the stranger's language, and a later
 //! release's defaults reach every server that never chose.
 //!
+//! **The colourway** (Curtis, 2026-11-22): what everyone who isn't signed in sees the place in -
+//! any of the app's colourways, the sold ones too, since this is the server's choice and not a
+//! persona's. A person's own page still wears theirs, and anyone signed in their own. Every page's
+//! head names it (`colorway_meta`, for `ui::app_page_with`), so it is on before anything draws;
+//! the choice is kept in memory beside its row (`AppState::front_colorway`) because a page is
+//! rendered without a database read.
+//!
 //! **Super-pins.** A node administrator may pin a public post hosted here to the top of the front
 //! page, above "lately on this node". Only on a server: a desktop app has no front page for
 //! strangers (`registration::is_device`). A pin points at a post the stranger's shelf holds; one
@@ -35,17 +42,41 @@ const PINS_SHOWN: i64 = 20;
 struct Choices {
     name: Option<String>,
     taglines: Option<Vec<String>>,
+    colorway: Option<String>,
 }
 
 async fn choices(state: &AppState) -> Result<Choices, AppError> {
-    let row: Option<(Option<String>, Option<String>)> = state
+    let row: Option<(Option<String>, Option<String>, Option<String>)> = state
         .node_db
-        .fetch_optional("SELECT name, taglines FROM front_door WHERE id = 1", ())
+        .fetch_optional("SELECT name, taglines, colorway FROM front_door WHERE id = 1", ())
         .await
         .context("reading the front door")
         .map_err(AppError::Internal)?;
-    let (name, taglines) = row.unwrap_or((None, None));
-    Ok(Choices { name, taglines: taglines.and_then(|t| serde_json::from_str(&t).ok()) })
+    let (name, taglines, colorway) = row.unwrap_or((None, None, None));
+    Ok(Choices { name, taglines: taglines.and_then(|t| serde_json::from_str(&t).ok()), colorway })
+}
+
+/// At boot: the chosen colourway into memory, where every page's head reads it.
+pub async fn load(state: &AppState) -> anyhow::Result<()> {
+    let row: Option<(Option<String>,)> = state
+        .node_db
+        .fetch_optional("SELECT colorway FROM front_door WHERE id = 1", ())
+        .await
+        .context("reading the front door's colourway")?;
+    *state.front_colorway.lock().expect("front colourway poisoned") = row.and_then(|(c,)| c);
+    Ok(())
+}
+
+/// The line of a page's head that names the server's colourway, or nothing when none was chosen:
+/// index.html's first script puts it on for a reader who has none of their own, before anything
+/// draws (js/colorway.js reads it again).
+pub fn colorway_meta(state: &AppState) -> String {
+    match state.front_colorway.lock().expect("front colourway poisoned").as_deref() {
+        // A colourway's name is letters, digits and hyphens (`bank::is_colorway` held it to the
+        // list on the way in), so it needs no escaping.
+        Some(c) => format!("\n<meta name=\"node-colorway\" content=\"{c}\">"),
+        None => String::new(),
+    }
 }
 
 async fn pinned(state: &AppState) -> Result<Vec<(String, String)>, AppError> {
@@ -79,7 +110,7 @@ pub async fn front_handler(
     }
     let pins = crate::nodeface::feed_items(&state, rows).await?;
     Ok(Json(
-        serde_json::json!({ "name": choices.name, "taglines": choices.taglines, "pins": pins }),
+        serde_json::json!({ "name": choices.name, "taglines": choices.taglines, "colorway": choices.colorway, "pins": pins }),
     ))
 }
 
@@ -91,6 +122,9 @@ pub struct SetFront {
     /// Absent: the app's own taglines. Blank lines are dropped.
     #[serde(default)]
     taglines: Option<Vec<String>>,
+    /// Empty or absent: the app's own colourway.
+    #[serde(default)]
+    colorway: Option<String>,
 }
 
 /// PUT `/api/admin/front`: the server settings' *server customization*.
@@ -117,18 +151,31 @@ pub async fn set_handler(
             )));
         }
     }
+    let colorway = req.colorway.map(|c| c.trim().to_ascii_lowercase()).filter(|c| !c.is_empty());
+    if colorway.as_ref().is_some_and(|c| !crate::bank::is_colorway(c)) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "frontdoor.not-a-colorway",
+            "that isn't one of the app's colourways"
+        )));
+    }
     let taglines_json = taglines.as_ref().map(|l| serde_json::to_string(l).unwrap_or_default());
     state
         .node_db
         .execute(
-            "INSERT INTO front_door (id, name, taglines, updated_ms) VALUES (1, ?1, ?2, ?3)
-             ON CONFLICT (id) DO UPDATE SET name = excluded.name, taglines = excluded.taglines, updated_ms = excluded.updated_ms",
-            (name.as_deref(), taglines_json.as_deref(), crate::clock::now_ms()),
+            "INSERT INTO front_door (id, name, taglines, colorway, updated_ms) VALUES (1, ?1, ?2, ?3, ?4)
+             ON CONFLICT (id) DO UPDATE SET name = excluded.name, taglines = excluded.taglines, colorway = excluded.colorway, updated_ms = excluded.updated_ms",
+            (
+                name.as_deref(),
+                taglines_json.as_deref(),
+                colorway.as_deref(),
+                crate::clock::now_ms(),
+            ),
         )
         .await
         .context("writing the front door")
         .map_err(AppError::Internal)?;
-    Ok(Json(serde_json::json!({ "name": name, "taglines": taglines })))
+    *state.front_colorway.lock().expect("front colourway poisoned") = colorway.clone();
+    Ok(Json(serde_json::json!({ "name": name, "taglines": taglines, "colorway": colorway })))
 }
 
 /// PUT `/api/admin/super-pins/{author}/{doc}`: pin a public post hosted here to the front page.

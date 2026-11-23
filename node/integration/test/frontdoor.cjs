@@ -18,7 +18,7 @@ const { HOST, makeFetch, sql } = require('./fetch.cjs');
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 
-describe('the front door: its name, its taglines, its super-pins', function () {
+describe('the front door: its name, its taglines, its colourway, its super-pins', function () {
     this.timeout(300000);
 
     const stranger = makeFetch();
@@ -57,7 +57,7 @@ describe('the front door: its name, its taglines, its super-pins', function () {
     });
 
     after(async () => {
-        await j(admin, 'api/admin/front', { name: null, taglines: null }, 'PUT');
+        await j(admin, 'api/admin/front', { name: null, taglines: null, colorway: null }, 'PUT');
         await admin(`api/admin/super-pins/${root}/${open}`, { method: 'DELETE' });
     });
 
@@ -91,6 +91,37 @@ describe('the front door: its name, its taglines, its super-pins', function () {
             400,
             "a header's worth, no more",
         );
+    });
+
+    it("the colourway a stranger sees is the administrator's, named in every page's head", async () => {
+        const head = async () => (await stranger('')).text();
+        const named = /<meta name="node-colorway" content="([^"]*)">/;
+        await j(admin, 'api/admin/front', { name: null, taglines: null, colorway: null }, 'PUT');
+        assert.equal((await front()).colorway, null, "none chosen: the app's own");
+        assert.doesNotMatch(await head(), named, 'and the page names none');
+
+        assert.equal(
+            (await j(plain, 'api/admin/front', { colorway: 'witchlight' }, 'PUT')).status,
+            403,
+            'for node administrators only',
+        );
+        assert.equal(
+            (await j(admin, 'api/admin/front', { colorway: 'beige-on-beige' }, 'PUT')).status,
+            400,
+            "one of the app's colourways, or nothing",
+        );
+        assert.equal((await front()).colorway, null, 'a refusal changed nothing');
+
+        // A sold colourway as readily as a free one: the server's choice is no persona's purchase.
+        const set = await j(admin, 'api/admin/front', { colorway: ' Terminal ' }, 'PUT');
+        assert.equal(set.status, 200, await set.clone().text());
+        assert.equal((await front()).colorway, 'terminal', 'trimmed, and in lower case');
+        assert.equal((await head()).match(named)?.[1], 'terminal', "the app's page names it");
+        const feed = await (await stranger('feed')).text();
+        assert.equal(feed.match(named)?.[1], 'terminal', 'and so does every other page');
+
+        await j(admin, 'api/admin/front', { colorway: null }, 'PUT');
+        assert.doesNotMatch(await head(), named, 'taken back, the page names none again');
     });
 
     it('a node administrator super-pins a public post hosted here, and a stranger sees it', async () => {

@@ -838,6 +838,7 @@ mod tests {
             view_epochs: crate::ViewEpochs::default(),
             refreshing: Default::default(),
             publicly_linked: Default::default(),
+            front_colorway: Default::default(),
             activity: Default::default(),
             sweep_marks: Default::default(),
             unplugged: Default::default(),

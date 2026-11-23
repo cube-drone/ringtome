@@ -6,6 +6,12 @@
 // public on purpose: on a person's page the app wears THEIRS, and everywhere else your own. Signed
 // out, horse-relax, but on a person's page theirs all the same.
 //
+// The server's own (Curtis, 2026-11-22: "the ability for the server administrator to choose a
+// colorway for the external-facing site"): signed out, the one the administrator chose in Server
+// Customization, named in every page's head (`node-colorway`, frontdoor.rs) - horse-relax where
+// they chose none. Only signed out: someone signed in who never chose wears horse-relax, said
+// outright (`useOwnColorway`), so "none of their own" always means nobody is in.
+//
 // The last one worn is kept in this browser, and put on before anything draws, so a witchlight
 // persona's reload doesn't flash beige before their profile arrives - by index.html's first script
 // (2026-10-02; the bundle runs after the first paint), which also wears a person's own when the
@@ -82,8 +88,9 @@ export const DEFAULT_COLORWAY = 'horse-relax';
 const KEPT = 'colorway';
 
 const known = (c) => (COLORWAYS.includes(c) ? c : null);
-let own = null; // the reader's
+let own = null; // the reader's; none while nobody is signed in
 let page = null; // the person whose page this is
+let house = null; // the server's, for a reader with none of their own
 
 const wear = (colorway) => {
     if (typeof document === 'undefined') return;
@@ -110,7 +117,7 @@ const tintFavicon = () => {
     link.href = `data:image/svg+xml,${encodeURIComponent(logoSvg(fills))}`;
 };
 
-const apply = () => wear(known(page) || known(own) || DEFAULT_COLORWAY);
+const apply = () => wear(known(page) || known(own) || known(house) || DEFAULT_COLORWAY);
 
 // Where index.html left it: a person's page named by the server (theirs until their profile says,
 // and `usePageColorway` takes over), else the last one this browser wore.
@@ -118,6 +125,9 @@ try {
     const named =
         typeof document !== 'undefined' && document.querySelector('meta[name="page-colorway"]');
     page = known(named && named.content);
+    const chosen =
+        typeof document !== 'undefined' && document.querySelector('meta[name="node-colorway"]');
+    house = known(chosen && chosen.content);
     own = known(localStorage.getItem(KEPT));
     apply();
 } catch {

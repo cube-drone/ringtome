@@ -110,7 +110,7 @@ import { installTooltips, setTooltipsEnabled } from './tooltip.js';
 import { installPictureViewer } from './zoomview.js';
 import { usePerson, faceOf } from './person.js';
 import { useNarrow } from './panes.js';
-import { useOwnColorway } from './colorway.js';
+import { useOwnColorway, DEFAULT_COLORWAY } from './colorway.js';
 import { useWornCrt } from './crtpref.js';
 import { usePrefValue, TOOLTIPS_KEY } from './mirror/prefs.js';
 import { useRecents } from './mirror/recents.js';
@@ -391,8 +391,12 @@ const Inside = ({ session }) => {
             row && row.value ? row.value : held > 0 ? '' : '?',
         );
     }, [root]);
+    // Signed in and never chose: the app's own, said outright - none at all is what a stranger
+    // has, and a stranger wears the server's (colorway.js).
     useOwnColorway(
-        ownColorway === undefined || ownColorway === '?' ? undefined : ownColorway || null,
+        ownColorway === undefined || ownColorway === '?'
+            ? undefined
+            : ownColorway || DEFAULT_COLORWAY,
     );
     // The CRT screen (crt.css), on unless the persona turned it off - on any of its computers.
     useWornCrt(root);
@@ -1149,7 +1153,7 @@ const FrontDoor = ({ session }) => html`<div class="front-door">
 /// viewer and answer as they do for anyone.
 const Outside = ({ session }) => {
     const loc = useLocation();
-    // Nobody's in: the house colourway, but on a person's page, theirs (colorway.js).
+    // Nobody's in: the server's colourway, but on a person's page, theirs (colorway.js).
     useOwnColorway(null);
     // ...and the CRT screen on, the default: the choice to turn it off is a persona's.
     useWornCrt(null);

@@ -28520,3 +28520,32 @@ introduced to each of them. Next, the project: `ios.yml` gained a `project` job,
 run by hand with `project` ticked, which runs `tauri ios init` on a macOS runner
 and uploads `desktop/gen/apple` to be committed, as Android's project was.
 Written, not run.
+
+## The server's colourway, for everyone not signed in (2026-11-22)
+
+Curtis: "I'd like the ability for the server administrator to choose a colorway
+for the external-facing site - this would be one of the server customization
+options." Server Customization gained the persona's own picker, every colourway
+in it - the sold ones too, since this is the server's choice and nobody's
+purchase - saved with the name and the taglines, and forgotten with them by
+"back to the app's own".
+
+What wears it is everyone who isn't signed in, on every page but a person's own,
+which still wears theirs. Signed in, nothing changes: your own, or horse-relax
+if you never chose. That last part is a reading of "external-facing", and it
+took one change to hold: someone signed in who never chose used to be "no
+colourway", the same as a stranger, and is now horse-relax said outright
+(`index.js`), so "none of their own" means nobody is in (`colorway.js`: the
+page's, then the reader's, then the server's, then the app's).
+
+It is on before anything draws. The choice is a column on `front_door`
+(rung 0125) and is kept in memory beside it (`AppState::front_colorway`, read at
+boot, written on save), because a page is rendered without a database read;
+every page's head names it (`<meta name="node-colorway">`,
+`frontdoor::colorway_meta`), and index.html's first script puts it on where this
+browser has kept none. The app's page is the same for every reader, so a CDN
+holding it for its five minutes holds the old colourway that long. The name is
+checked against the app's own list (`bank::is_colorway`, which the MCP colourway
+tool now shares). `frontdoor.cjs` gained the claim: refused to a
+non-administrator, refused for a name that isn't a colourway, named in the head
+of the app's page and of `/feed` once set, and gone from it once taken back.

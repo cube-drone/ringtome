@@ -104,9 +104,7 @@ pub struct ColorwayArgs {
     colorway: String,
 }
 
-/// The colourways everyone has (js/colorway.js `FREE`); the rest are sold as `colorway-<name>`
-/// (bank.rs `UNLOCKS`).
-const FREE_COLORWAYS: [&str; 2] = ["horse-relax", "witchlight"];
+use crate::bank::FREE_COLORWAYS;
 
 #[derive(Deserialize, schemars::JsonSchema)]
 pub struct PublishArgs {
@@ -480,9 +478,7 @@ impl Tools {
         let persona = self.persona(parts, args.persona.as_deref()).await?;
         let colorway = args.colorway.trim().to_ascii_lowercase();
         let sold = format!("colorway-{colorway}");
-        let known = FREE_COLORWAYS.contains(&colorway.as_str())
-            || crate::bank::UNLOCKS.iter().any(|u| u.id == sold);
-        if !known {
+        if !crate::bank::is_colorway(&colorway) {
             let mut names: Vec<String> = FREE_COLORWAYS.iter().map(|c| c.to_string()).collect();
             names.extend(
                 crate::bank::UNLOCKS
