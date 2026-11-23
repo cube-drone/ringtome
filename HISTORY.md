@@ -28562,3 +28562,18 @@ development team; that question waits for signing. The template's floor is iOS
 match. Nothing in the project is edited yet - not even the loopback allowance,
 which the first simulator build should show to be needed or not before it is
 written. Next: that build, booted, with screenshots sent back.
+
+## iOS: a simulator job, to see it at all (2026-11-22)
+
+`ios.yml` gained `sim`: `tauri ios build --debug --no-sign --target aarch64-sim`
+from the committed project, then the runner's newest simulated iPhone booted,
+the app installed and launched, and three screenshots taken at 10, 40 and 100
+seconds - the node boots inside `setup`, so the first may be the launch screen.
+The artifact `ios-simulator` carries them with the app's own output, the
+system's log of the process and, because a simulator shares the Mac's network,
+the node's `/health` asked from the runner at the port the app wrote down. It
+runs where `node` does (by hand, or on a push while `IOS_ON_PUSH` is `true`),
+and `node` now builds for the phone alone, since this job covers the simulator's
+target. **Written, not run**: what Tauri's build leaves for a simulator, and
+where, is found by looking for a `.app`, and the first run says whether that
+holds.

@@ -15,11 +15,17 @@
 # A third, by hand with `project` ticked: the `project` job alone, which generates the Xcode project
 # from Tauri's template and uploads it, to be committed as desktop/gen/apple.
 #
-# `node`, twice over, cross-compiles the node library alone - no Tauri, no Xcode project -
-# for a real iPhone (`aarch64-apple-ios`) and for the simulator on an Apple-silicon Mac
-# (`aarch64-apple-ios-sim`), which are different targets with different SDKs: the simulator is where
-# the app will first be seen, with no iPhone to hand, and the phone is where it has to end up. The
-# known risk is the one Android had: turso's bindgen and aws-lc's C build.
+# `node` cross-compiles the node library alone - no Tauri, no Xcode project - for a real iPhone
+# (`aarch64-apple-ios`): the phone is where it has to end up, and nothing else here builds for one
+# yet. The known risk was the one Android had, turso's bindgen and aws-lc's C build, and neither
+# needed anything.
+#
+# `sim` is the whole app (2026-11-22), built by Tauri from the committed project (desktop/gen/apple)
+# for the simulator on an Apple-silicon Mac (`aarch64-apple-ios-sim`, its own target with its own
+# SDK), then installed in a simulated iPhone, launched and photographed: with no iPhone to hand and
+# no Xcode on the laptop, the screenshots in the `ios-simulator` artifact are the only way anyone
+# sees it. The app's own output and the node's `/health` ride along. Unsigned - a simulator asks
+# for no signature.
 
 name: iOS
 
@@ -49,10 +55,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     strategy:
-      # Each target answers for itself: the phone failing says nothing about the simulator.
       fail-fast: false
       matrix:
-        target: [aarch64-apple-ios, aarch64-apple-ios-sim]
+        target: [aarch64-apple-ios]
     steps:
       - uses: actions/checkout@v5
 
@@ -87,6 +92,125 @@ jobs:
 
       - name: Cross-compile the node
         run: cargo build --target ${{ matrix.target }} -p ringtome-node --lib
+
+  # The whole app, in a simulated iPhone. See the header.
+  sim:
+    if: ${{ !inputs.project && (github.event_name == 'workflow_dispatch' || vars.IOS_ON_PUSH == 'true') }}
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      BUNDLE_ID: net.lassam.ringtome
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.1'
+          targets: aarch64-apple-ios-sim
+
+      # The app builds in the desktop crate's own workspace (desktop/target).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios-sim
+          workspaces: desktop
+          cache-on-failure: true
+
+      - uses: extractions/setup-just@v3
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            node/js/package-lock.json
+            desktop/package-lock.json
+
+      # The node bakes the UI into itself (`include_str!`), so the bundle exists before cargo runs.
+      - name: Build the UI assets
+        working-directory: node
+        run: just ui-install && just ui-build
+
+      # The Tauri CLI, pinned in desktop/package.json: the Xcode project runs it back through
+      # `npm run tauri` to build the Rust half, so it must be installed where it looks.
+      - name: The Tauri CLI
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      - name: XcodeGen
+        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+
+      - name: The Xcode and simulators on this runner
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available
+
+      # A debug build: the release profile's whole-program optimizing is long minutes this job has
+      # no use for. Whatever Tauri leaves, the `.app` is found by looking.
+      - name: Build
+        working-directory: desktop
+        run: |
+          npm run tauri -- ios build --ci --debug --no-sign --target aarch64-sim
+          find gen/apple -name '*.app' -maxdepth 8 -not -path '*/Externals/*'
+
+      # The newest iPhone the runner's simulators offer, booted; the app put in it and started,
+      # its own output kept; then three looks at it - the node boots inside `setup`, so the first
+      # may be a launch screen and the last should be the app.
+      - name: Run it in a simulator
+        run: |
+          mkdir -p out
+          app=$(find desktop/gen/apple -name '*.app' -maxdepth 8 -not -path '*/Externals/*' | head -1)
+          [ -n "$app" ] || { echo "::error::the build left no .app under desktop/gen/apple"; exit 1; }
+          echo "app: $app"
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          runtimes = json.load(sys.stdin)['devices']
+          phones = [(runtime, d) for runtime, ds in runtimes.items() if 'iOS' in runtime for d in ds if d['name'].startswith('iPhone')]
+          phones.sort(key=lambda p: [int(n) for n in p[0].rsplit('iOS-', 1)[-1].split('-') if n.isdigit()])
+          runtime, phone = phones[-1]
+          print(phone['udid'])
+          print(phone['name'], 'on', runtime, file=sys.stderr)
+          ")
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch --stdout="$PWD/out/app-stdout.log" --stderr="$PWD/out/app-stderr.log" "$udid" "$BUNDLE_ID"
+          for wait in 10 30 60; do
+            sleep "$wait"
+            xcrun simctl io "$udid" screenshot "out/after-${wait}s.png" || true
+          done
+
+      # A simulator shares the Mac's network, so the node inside the app answers the runner too:
+      # its port is the one it wrote down in its own data (desktop/src/port.rs). Told, not
+      # required - the screenshots are the verdict, and this says why when they are blank.
+      - name: Is the node up
+        if: ${{ always() && env.UDID != '' }}
+        run: |
+          xcrun simctl spawn "$UDID" launchctl list | grep -i "$BUNDLE_ID" || echo "the app is not running any more"
+          data=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>/dev/null || true)
+          echo "data: $data"
+          port_file=$(find "$data" -name desktop-port 2>/dev/null | head -1)
+          if [ -n "$port_file" ]; then
+            port=$(cat "$port_file")
+            echo "the node's port: $port"
+            curl -sS -m 10 "http://127.0.0.1:$port/health" | tee out/health.json || echo "nothing answered on $port"
+          else
+            echo "no desktop-port file: the node never chose a port"
+            find "$data" -maxdepth 4 2>/dev/null | head -50
+          fi
+          echo "--- the app's own output"
+          tail -n 200 out/app-stderr.log out/app-stdout.log 2>/dev/null || true
+          # What the system said of it, a crash above all.
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "Horse Drawing Tycoon 2"' > out/system.log 2>&1 || true
+          tail -n 60 out/system.log || true
+
+      - uses: actions/upload-artifact@v6
+        if: ${{ always() }}
+        with:
+          name: ios-simulator
+          path: out
+          retention-days: 7
+          if-no-files-found: warn
 
   # The iOS project as Tauri generates it, and nothing else - as Android's was (android.yml,
   # `project`): generating it needs Xcode, which lives only here; the result is committed as

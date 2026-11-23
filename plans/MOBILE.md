@@ -264,8 +264,12 @@ The order, each step answering a question before the next is built on it:
    `node` job's C builds now aim at too (they had guessed 14.0). Whether the
    window may load `http://127.0.0.1` without an App Transport Security
    exception is left for step 3 to show, rather than edited in on a guess.
-3. **A simulator build that boots**, with screenshots sent back as artifacts,
-   since nobody here can look at it.
+3. **A simulator build that boots** - `ios.yml`'s `sim` job: Tauri builds the
+   whole app, debug and unsigned, for `aarch64-apple-ios-sim`; the job boots the
+   runner's newest simulated iPhone, installs and launches it, and uploads three
+   screenshots (10, 40 and 100 seconds in), the app's own output, the system's
+   log of it and the node's `/health` as the `ios-simulator` artifact - since
+   nobody here can look at it. _Written 2026-11-22; not yet run._
 4. **Signing and TestFlight** from CI, which is the only road onto a real phone:
    iOS has no sideloading.
 
