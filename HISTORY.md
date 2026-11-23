@@ -28960,3 +28960,25 @@ scratch node as both people. Not built: the published and held lists side by
 side, track by track; a renamed song offering the update; pins and recents for
 somebody else's mixtape; and the trash, which is where these rows get their "I
 don't want this".
+
+## Mixtapes: a sealed one's name on its cassette, and no edit or copy (2026-11-23)
+
+Curtis, of a mixtape sealed to "trusted and onward": "the only words I can see
+on the cassette are '4 tracks' and the 'HORSE STEREO'". A sealed post's public
+header carries no title - it travels with the words - and the card was handed
+the header's. It takes the title the card itself shows now, which knows both.
+And a mixtape's card has no "edit this note in hrseWriter" and no "copy this
+into your private notes" (Curtis: "safe not to include"): its draft is a note
+the node keeps of a mixtape, and hrseAmp is where it changes. Seen on a scratch
+node, on a mixtape published sealed and onward.
+
+## Mixtapes: a sealed one, proved across nodes (2026-11-23)
+
+Asked whether a trusted reader on another node can play a sealed mixtape's
+songs: yes, and nothing had to change for it. `mixtape_publish.cjs` gains "a
+mixtape, sealed" - the publish with the seal asked for; a stranger refused the
+tracklist and each song; a follower on a second node refused until the author
+trusts her, and then handed the tracklist and both songs, opened, by her own
+node. What is still missing is in hrseAmp: its library leaves sealed posts out
+(as it always has, for every sound), so a sealed mixtape plays from its card and
+is in no "friends' mixtapes" row.

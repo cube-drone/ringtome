@@ -15,7 +15,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { makeUserFetch } = require('./helpers.cjs');
-const { pullAndFold, shareArrives } = require('./beat.cjs');
+const { beat, pullAndFold, shareArrives } = require('./beat.cjs');
 const { HOST_B, HOST_C, makeFetch } = require('./fetch.cjs');
 
 const j = (who, p, body, method = 'POST') => who(p, { method, body: JSON.stringify(body) });
@@ -319,5 +319,160 @@ const base58 = async (who) => {
         assert.equal(down.status, 200, await down.text());
         assert.ok(!(await stands(post)), 'the mixtape is gone');
         assert.ok(!(await stands(only.doc)), 'and so is its song');
+    });
+});
+
+/*
+    Sealed (plans/MIXTAPES.md, slice 5): the same publish with the seal asked for. The tracklist
+    and every song are sealed under the post's key, so a stranger gets neither, a follower on
+    another node gets neither until the author trusts her - and then her own node hands her the
+    tracklist and plays her the songs.
+*/
+(HOST_B ? describe : describe.skip)('a mixtape, sealed', function () {
+    this.timeout(600000);
+
+    const stranger = makeFetch();
+    let ada, adaRoot, dee, deeRoot, post, tracks;
+
+    const persona = async (prefix, host) => {
+        const who = await makeUserFetch(host ? { prefix, host } : { prefix });
+        const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await j(who, `api/identity/${root}/serve`, {});
+        return [who, root];
+    };
+
+    before(async () => {
+        [ada, adaRoot] = await persona('sealtapeada');
+        [dee, deeRoot] = await persona('sealtapedee', HOST_B);
+        const tape = (
+            await (
+                await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: 'mixtape:Quiet Songs' })
+            ).json()
+        ).taxonomy_id;
+        for (const [title, file] of [
+            ['First Song', 'buck-audio.ogg'],
+            ['Second Song', 'buck-cover.opus'],
+        ]) {
+            const made = await (
+                await ada(`api/identity/${adaRoot}/docs/binary?title=${title}`, {
+                    method: 'POST',
+                    body: sample(file),
+                    file: true,
+                })
+            ).json();
+            for (let i = 0; i < 240; i++) {
+                if ((await ada(`api/identity/${adaRoot}/docs/${made.doc_id}/body`)).status === 200)
+                    break;
+                await wait(500);
+            }
+            const put = await j(
+                ada,
+                `api/identity/${adaRoot}/taxonomies/${tape}/members/${made.doc_id}`,
+                { member_root: adaRoot },
+                'PUT',
+            );
+            assert.equal(put.status, 200, await put.text());
+        }
+        const drafted = await ada(`api/identity/${adaRoot}/amp/tapes/${tape}/draft`, {
+            method: 'PUT',
+        });
+        assert.equal(drafted.status, 200, await drafted.clone().text());
+        const draft = (await drafted.json()).doc_id;
+        for (let i = 0; i < 200 && !post; i++) {
+            const r = await j(ada, `api/identity/${adaRoot}/docs/${draft}/publish`, {
+                trusted_only: true,
+            });
+            const said = await r.text();
+            if (r.status === 200) post = JSON.parse(said).post_id;
+            else {
+                assert.ok(
+                    r.status === 202 || said.includes('this-notes-words-havent-arrived'),
+                    `${r.status} ${said}`,
+                );
+                await wait(500);
+            }
+        }
+        assert.ok(post, 'published');
+    });
+
+    it('is a sealed post of the mixtape kind, whose author reads its tracklist', async () => {
+        const head = await (await stranger(`api/id/${adaRoot}/posts/${post}`)).json();
+        assert.equal(head.format, 'mixtape', JSON.stringify(head).slice(0, 300));
+        assert.equal(head.trusted_only, true);
+        const own = await ada(`id/${adaRoot}/docs/${post}/body`);
+        assert.equal(own.status, 200, await own.clone().text());
+        tracks = (await own.json()).tracks;
+        assert.equal(tracks.length, 2);
+        assert.ok(
+            tracks.every((t) => t.title && t.ms > 0),
+            `each line says its song: ${JSON.stringify(tracks)}`,
+        );
+    });
+
+    it('a stranger gets neither the tracklist nor a song', async () => {
+        assert.notEqual((await stranger(`id/${adaRoot}/docs/${post}/body`)).status, 200);
+        for (const t of tracks)
+            assert.notEqual(
+                (await stranger(`id/${adaRoot}/docs/${t.doc}/body`)).status,
+                200,
+                `${t.title} is sealed`,
+            );
+    });
+
+    it('a follower on another node is refused until she is trusted, and then plays every song', async function () {
+        if ((await dee(`api/id/${adaRoot}/profile?via=${await base58(ada)}`)).status !== 200)
+            this.skip();
+        await j(
+            dee,
+            `api/identity/${deeRoot}/private/kv/contact:${adaRoot}/interest`,
+            { value: 'max' },
+            'PUT',
+        );
+        await pullAndFold(HOST_B, adaRoot);
+        assert.notEqual(
+            (await dee(`id/${adaRoot}/docs/${tracks[0].doc}/body`)).status,
+            200,
+            'no song for the untrusted, on any node',
+        );
+        await j(
+            ada,
+            `api/identity/${adaRoot}/private/kv/contact:${deeRoot}/trust`,
+            { value: 'high' },
+            'PUT',
+        );
+        await beat(undefined, 'mint', adaRoot);
+        await ada(`api/id/${deeRoot}/profile?via=${await base58(dee)}`);
+        await pullAndFold(undefined, deeRoot);
+        let list = null;
+        let played = [];
+        for (let i = 0; i < 60; i++) {
+            await pullAndFold(HOST_B, adaRoot);
+            const r = await dee(`id/${adaRoot}/docs/${post}/body`);
+            if (r.status === 200) list = (await r.json()).tracks;
+            played = [];
+            for (const t of tracks) {
+                const song = await dee(`id/${adaRoot}/docs/${t.doc}/body`);
+                played.push(
+                    song.status === 200
+                        ? Buffer.from(await song.arrayBuffer())
+                              .subarray(0, 4)
+                              .toString('latin1')
+                        : song.status,
+                );
+            }
+            if (list && played.every((p) => p === 'OggS')) break;
+            await wait(500);
+        }
+        assert.deepEqual(
+            (list || []).map((t) => t.doc),
+            tracks.map((t) => t.doc),
+            'her node hands her the tracklist',
+        );
+        assert.deepEqual(played, ['OggS', 'OggS'], 'and each song, opened: an Ogg stream');
+        const items = (await (await dee(`api/identity/${deeRoot}/feed`)).json()).items || [];
+        assert.ok(
+            items.some((it) => it.doc_id === post && it.format === 'mixtape'),
+            `and it is in her feed: ${JSON.stringify(items.map((i) => [i.doc_id, i.format]))}`,
+        );
     });
 });

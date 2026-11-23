@@ -1573,23 +1573,30 @@ const PostEntryBody = ({
     };
     // Edit, on any post of yours whose draft is found (a group post's too, 2026-10-18): in Writer or
     // Drawing where the draft lives in a notebook, in place where it was written in the feed.
-    const editChip =
-        ownsEditing && editing && !open && (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
-            ? editing.row.format === 'drawing'
-                ? html`<a
+    // A mixtape has neither edit nor copy (Curtis, 2026-11-23): its draft is a note the node keeps
+    // of a mixtape in hrseAmp, which is where it changes, and its words are a tracklist.
+    const tapePost = item.format === 'mixtape';
+    const editChip = tapePost
+        ? null
+        : ownsEditing &&
+            editing &&
+            !open &&
+            (editing.row.buckets || []).some((b) => b !== FEED_STYLE)
+          ? editing.row.format === 'drawing'
+              ? html`<a
                                   class="chip chip-button chip-worded"
                                   href=${docHref(current.root, editing.row.doc_id)}
                                   title=${t('postentry.edit-this-drawing-in-drawing', 'edit this drawing in hrseDrawing™')}
                               ><${Icons.drawing} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
-                : html`<a
+              : html`<a
                                   class="chip chip-button chip-worded"
                                   href=${docHref(current.root, editing.row.doc_id)}
                                   title=${t('postentry.edit-this-note-in-writer', 'edit this note in hrseWriter™')}
                               ><${Icons.notes} /><span class="chip-word">${t('chips.edit', 'edit')}</span></a>`
-            : ownsEditing &&
-              editing &&
-              !open &&
-              html`<button
+          : ownsEditing &&
+            editing &&
+            !open &&
+            html`<button
                               class="chip chip-button chip-worded"
                               title=${t('postentry.open-this-for-editing', 'open this for editing')}
                               aria-label=${t('postentry.open-this-for-editing', 'open this for editing')}
@@ -1629,7 +1636,7 @@ const PostEntryBody = ({
     const feedDeck = html`
         ${ownsSharing && !!current && !!current.root && !open && html`<${FeedShareButton} item=${item} current=${current} />`}
         ${!open && html`<${CopyLinkChip} path=${href} title=${t('postentry.copy-the-originals-address', "copy the original's address")} />`}
-        ${!!current && !!current.root && !open && html`<${CopyButton} item=${item} current=${current} />`}
+        ${!!current && !!current.root && !open && !tapePost && html`<${CopyButton} item=${item} current=${current} />`}
     `;
     const cardDeck = feed
         ? feedDeck
@@ -1701,7 +1708,7 @@ const PostEntryBody = ({
                         /* A room is a conversation, not a note (Curtis, 2026-09-18): it does
                         not copy, and it takes no replies (the page hides the thread). */ ''
                     }
-                    ${!!current && !!current.root && !open && item.kind !== 'share' && item.format !== 'room' && html`<${CopyButton} item=${item} current=${current} />`}
+                    ${!!current && !!current.root && !open && item.kind !== 'share' && item.format !== 'room' && !tapePost && html`<${CopyButton} item=${item} current=${current} />`}
     `;
     // Off screen the card is held at the height it was last drawn at (`contain-intrinsic-size:
     // auto` remembers it), or, never yet drawn, at a guess from what it will show.
@@ -2265,7 +2272,7 @@ const PostEntryBody = ({
                                           tape=${parseTape(shown)}
                                           author=${item.author}
                                           post=${item.doc_id}
-                                          title=${item.title}
+                                          title=${title}
                                           viewer=${current && current.root}
                                       />`
                                     : item.format === 'room'

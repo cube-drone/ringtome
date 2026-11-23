@@ -256,7 +256,13 @@ In the order that lets each be seen working before the next.
    two differ - with "published with N tracks - the mixtape holds M now". _Not
    built_: the two lists side by side, track by track; and a song's own fields
    changing (a new title) does not offer the update.
-5. **Sealed.**
+5. **Sealed.** _Works as built, proved 2026-11-23_ (`mixtape_publish.cjs`, "a
+   mixtape, sealed"): the tracklist and each song sealed under the post's key; a
+   stranger and an untrusted follower refused; a trusted follower on another
+   node handed the tracklist and every song. _Not built_: hrseAmp's library
+   leaves sealed posts out, so a sealed mixtape is in nobody's "friends'
+   mixtapes" - it plays from its card - and a sealed mixtape holding somebody
+   else's song is still refused.
 6. **Groups.**
 7. **"`<name>`'s Tracks".** _Built 2026-11-23_, in the "friends' mixtapes"
    section, one row per person. The library marks each sound a mixtape in the
