@@ -661,6 +661,7 @@ const Playlists = ({
     onOpenStation,
     onForgetStation,
     onNewStation,
+    onNewTape,
     pins,
     onPin,
 }) => {
@@ -744,7 +745,14 @@ const Playlists = ({
         </div>
         ${filters.filter((f) => !isPinned('filter', f)).map((f) => filterRow(f, false))}
         ${/* Mixtapes (section 5): each a name and an order, opened into the table in that order. */ ''}
-        ${restTapes.length > 0 && html`<p class="amp-playlists-group">${t('amp.mixtapes', 'mixtapes')}</p>`}
+        ${
+            /* Always there, with a way to start one (Curtis, 2026-11-22: with no mixtapes there was
+            no section, and nowhere to make the first but from a song). */ ''
+        }
+        <p class="amp-playlists-group amp-playlists-group-new">
+            ${t('amp.mixtapes', 'mixtapes')}
+            <button class="amp-playlists-new" title=${t('amp.new-mixtape-title', 'a new mixtape')} aria-label=${t('amp.new-mixtape-title', 'a new mixtape')} onClick=${onNewTape}><${Icons.plus} /></button>
+        </p>
         ${restTapes.map((x) => tapeRow(x, false))}
         ${
             /* Radio stations (section 6): each a pie of filters, mixtapes and stations, opened to edit
@@ -1416,6 +1424,36 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         }
         reloadTapes();
     };
+    // A mixtape with nothing in it yet, from the Playlists column's "+": named, made, and opened,
+    // as a new station is.
+    const newTape = async () => {
+        const name = await askText({
+            title: t('amp.new-mixtape-title', 'a new mixtape'),
+            label: t('amp.new-mixtape-name', 'A name for the new mixtape:'),
+            ok: t('amp.make-it', 'make it'),
+        });
+        if (!name) return;
+        try {
+            const id = (
+                await api(`/api/identity/${root}/taxonomies`, {
+                    method: 'POST',
+                    body: JSON.stringify({ title: mixtapeTitle(name) }),
+                })
+            ).taxonomy_id;
+            // Listed at once; the roster's own word of it follows (`tapeIds`).
+            setTapes((have) =>
+                have.some((x) => x.id === id)
+                    ? have
+                    : [...have, { id, name, members: [] }].sort((a, b) =>
+                          a.name.localeCompare(b.name),
+                      ),
+            );
+            notePlaylist('mixtape', id, name);
+            openMixtape({ id });
+        } catch (e) {
+            failed(e);
+        }
+    };
     // Out of the open mixtape: off the list only - the songs stay in the library.
     const removeFromTape = async (songs) => {
         if (!tape) return;
@@ -2049,6 +2087,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           onOpenStation=${openStationView}
                           onForgetStation=${forgetStation}
                           onNewStation=${newStation}
+                          onNewTape=${newTape}
                           pins=${pins}
                           onPin=${togglePin}
                       />${resizer('playlists')}`

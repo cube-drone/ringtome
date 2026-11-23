@@ -28662,3 +28662,43 @@ column's download is its icon alone now (`DownloadButton` took an `iconOnly`;
 the word stays as its label for a screen reader, and its hover still says what
 it does), and a narrow window doesn't draw it. Seen at 1280px - the three on one
 row, the download 33px wide - and at 390px, where there are two.
+
+## hrseAmp: an empty mixtape, from the Playlists column (2026-11-22)
+
+Curtis: "if I have no mixtapes, there's no mixtape section. Let's create an
+empty mixtape section, with a '+' button like the one for radio stations, which
+creates an empty mixtape." The "mixtapes" heading is always there now, wearing
+the stations' "+": it asks a name, makes the mixtape with nothing in it, lists
+it at once and opens it, as a new station is opened. Until then a mixtape could
+only be born holding a song, from the file panel. Seen on a scratch node: the
+section on a persona with none, "road songs" made and opened, and still there
+after a reload.
+
+## The read-only socket claim took the wrong frame (2026-11-22)
+
+CI went red on the "chat bug buggin" push: `livecache.cjs`, "the socket is
+read-only", failed once and none of five reruns - "the POST landed, the chatter
+did not". The claim opens a brand-new persona's stream, shouts into it, POSTs a
+name and reads the NEXT frame for that name. A new persona's own first beat
+writes a profile field as well, and when its update lands between the snapshot
+and the POST's, the next frame has a profile with no name in it. The claim now
+reads up to five frames for the one that names the persona; "EVIL" still fails
+it. Read from the assertion and the claim's shape, not reproduced - the same
+race the heartbeat claim had on 2026-11-20.
+
+## iOS: it runs in a simulator, three times too wide (2026-11-22)
+
+The `sim` job went green with SystemConfiguration linked: thirty-nine minutes,
+an archive whose app Tauri leaves at `gen/apple/build/arm64-sim/`, installed and
+launched in a simulated iPhone 17 on iOS 26.5. The node inside it answered the
+runner's `/health` (`{"status":"ok","version":"0.7.3"}`), and the three
+screenshots show the device's sign-in page - the header, the taglines scrolling,
+the name and PIN - in the right fonts and colours. `http://127.0.0.1` loaded
+with no App Transport Security exception, so none was written.
+
+And laid out 1280 points wide on a screen of 402: the left third of a desktop
+page. The shell asks its window for `inner_size(1280, 860)`, which Android
+ignores and iOS takes literally. `desktop/src/lib.rs` asks only on a desktop
+now. `cargo check` passes for the desktop crate on this Mac; the next simulator
+run is the test. The app's own stdout and stderr came back empty from
+`simctl launch`, the system's log did not - unchased.

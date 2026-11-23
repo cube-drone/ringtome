@@ -255,8 +255,13 @@ describe('the live cache stream', function () {
             method: 'POST',
             body: JSON.stringify({ field: 'name', value: 'Still Mine' }),
         });
-        const update = await stream.next();
-        assert.equal(profileName(update), 'Still Mine', 'the POST landed, the chatter did not');
+        // The next frame that names the persona. Not simply the next frame: a new persona's own
+        // first beat writes a profile field too, and its update can land between the snapshot
+        // and this POST's - a frame with a profile and no name in it (CI, 2026-11-22: red once,
+        // none of five reruns).
+        let named;
+        for (let i = 0; i < 5 && named === undefined; i++) named = profileName(await stream.next());
+        assert.equal(named, 'Still Mine', 'the POST landed, the chatter did not');
         stream.ws.close();
     });
 

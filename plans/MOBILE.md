@@ -273,7 +273,13 @@ The order, each step answering a question before the next is built on it:
    (forty-four minutes, cold) and the link failed - fifty undefined symbols, all
    SystemConfiguration's, which iroh's network watcher reads. The framework is
    now named in `project.yml` and the `.xcodeproj`: the first edit to the
-   generated project._
+   generated project._ _Second run, same day: green in thirty-nine minutes. The
+   app launches, the node inside it answers `/health` to the runner, and the
+   screenshots show the sign-in page - laid out 1280 points wide, because the
+   shell asked for a desktop window's size and iOS obliged; the size is the
+   desktop's alone now. The loopback page loaded with no App Transport Security
+   exception. The app's own output came back empty (the system's log did not),
+   which is still to chase._
 4. **Signing and TestFlight** from CI, which is the only road onto a real phone:
    iOS has no sideloading.
 

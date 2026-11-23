@@ -122,7 +122,7 @@ pub fn run() {
             let origin: tauri::Url = url.parse()?;
             let (nav_app, nav_origin) = (app.handle().clone(), origin.clone());
             let (win_app, win_origin) = (app.handle().clone(), origin.clone());
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
                 .on_navigation(move |target| links::navigation(&nav_app, &nav_origin, target))
                 .on_new_window(move |target, _features| {
                     links::new_window(&win_app, &win_origin, target);
@@ -144,8 +144,14 @@ pub fn run() {
                 // this process regardless, and the page's pollers already rest while it is hidden
                 // (`whileVisible`), so staying awake costs little. macOS 14 and later; ignored
                 // before that, and on Windows and Linux.
-                .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
-                .inner_size(1280.0, 860.0)
+                .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled);
+            // A size is a desktop window's. A phone's window is its screen, and iOS took the
+            // number at its word (2026-11-22, the first simulator screenshots): a web view 1280
+            // points wide on a screen of 402, the sign-in page laid out for a desktop and its left
+            // third showing. Android ignores it.
+            #[cfg(desktop)]
+            let window = window.inner_size(1280.0, 860.0);
+            window
                 .visible(!hidden)
                 .initialization_script(format!(
                     "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};\n{}",
