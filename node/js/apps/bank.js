@@ -366,6 +366,10 @@ const UnlockCard = ({ root, unlock, balance, owned, onBought }) => {
             /* Another persona of this account owns it here (bank.rs `owned_elsewhere`, 2026-10-07):
             5% of the price, and the badge says why on hover. */ ''
         }${
+            /* A seasonal sale (bank.rs `SALES`): the list price struck, and how much is off. */
+            !!unlock.sale &&
+            html` <span class="bank-unlock-discount" title=${t('apps.bank.on-sale-title', 'on sale this month - {full} the rest of the year', { full: formatHorseBucks(unlock.full_pennies) })}>${t('apps.bank.on-sale', '{percent}% off this month', { percent: unlock.sale })}</span>`
+        }${
             unlock.elsewhere &&
             html` <span class="bank-unlock-discount" title=${t('apps.bank.owned-elsewhere', 'you already own this somewhere else')}>${t('apps.bank.discount-95', '95% discount')}</span>`
         }</span>

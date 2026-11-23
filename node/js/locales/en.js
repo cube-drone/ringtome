@@ -300,6 +300,8 @@ export default {
     'apps.bank.counting': 'counting…',
     'apps.bank.destroy-the-bank': 'destroy the bank',
     'apps.bank.unlock-first': 'first: {unlocks}',
+    'apps.bank.on-sale-title': 'on sale this month - {full} the rest of the year',
+    'apps.bank.on-sale': '{percent}% off this month',
     'apps.bank.owned-elsewhere': 'you already own this somewhere else',
     'apps.bank.discount-95': '95% discount',
     'apps.bank.unlock': 'unlock',

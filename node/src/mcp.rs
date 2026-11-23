@@ -300,7 +300,7 @@ fn locked(unlock: &str, owned: &[String], everything: bool) -> Option<String> {
     let Some(wanted) = price(unlock) else {
         return Some(format!("that needs the unlock \"{unlock}\", which this node doesn't sell"));
     };
-    let whole = (wanted.pennies / crate::bank::HORSEBUCK).to_string();
+    let whole = (crate::bank::listed_now(wanted).0 / crate::bank::HORSEBUCK).to_string();
     let mut words = format!(
         "This persona hasn't unlocked {} yet. It's for sale in the Market for H$ {}",
         wanted.name,

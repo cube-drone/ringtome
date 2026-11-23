@@ -29179,3 +29179,34 @@ anyone's.
 claims, each proving the bytes leave the node, stay gone through the lane that
 would fetch them, and return on undelete; and that a mixtape taken down in a
 group leaves the other member's disk.
+
+## Colourways: a price gradient, and two seasonal sales (2026-11-23)
+
+Curtis: "A user complains that 25,000 for all colorways is exorbitant, and it
+would probably make more sense to have a cost gradient. Can we pick two and make
+them H$ 5000 and two more for H$ 10000? Also: can we make our holiday and pride
+colors 75% off if the month is December or July?"
+
+Picked: terminal and micross at H$ 5,000, bosc and doors-xp at H$ 10,000 - the
+four plainest, and none of the ones the sales are about. They lead the Market's
+colourway section now, cheapest first. The four joined `LISTED_BEFORE` at H$
+25,000: colourways went on sale 2026-10-05 and purchases recorded their price
+only from the 31st, so without that a colourway bought in between would have
+been re-read as costing today's price, and its buyer's balance would have moved.
+
+The sales are a table, `SALES`, read by `listed_now`: holidaymas and jack-frost
+75% off in December, pride, trans, bi and ace in July - read as each set in its
+own month, not both sets in both. The month is the node's, in UTC. The buy door
+charges the listing, the Market's row carries `sale` and `full_pennies` and
+wears "75% off this month", and what the MCP says a locked thing costs is the
+listing too. The 95% for an unlock another of your personas owns comes off
+after.
+
+A unit test holds the months, the four prices and the old price for an
+unrecorded purchase. Not seen on screen: it is November, and nothing is on sale.
+
+## Colourways: the holiday ones in July too (2026-11-23)
+
+Curtis: "Add holidaymas and jack-frost to July, too: darn Australians". A third
+line of `SALES`: the holiday colourways are 75% off in July as in December, so
+July has all six on sale. The unit test says so.

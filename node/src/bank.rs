@@ -253,14 +253,54 @@ async fn owned_elsewhere(
     Ok(out)
 }
 
+/// The seasonal sales (Curtis, 2026-11-23): the holiday colourways are 75% off in December, and
+/// the pride ones in July - and the holiday ones in July too, where July is the winter ("darn
+/// Australians"). By the node's clock, in UTC - the month turns for everyone at once.
+const SALES: [(&[&str], u8, i64); 3] = [
+    (&["colorway-holidaymas", "colorway-jack-frost"], 12, 75),
+    (&["colorway-holidaymas", "colorway-jack-frost"], 7, 75),
+    (&["colorway-pride", "colorway-trans", "colorway-bi", "colorway-ace"], 7, 75),
+];
+
+/// How many hundredths are off `id` in `month` (1 to 12): 0 for nothing on sale.
+fn sale_percent(id: &str, month: u8) -> i64 {
+    SALES
+        .iter()
+        .find(|(ids, in_month, _)| *in_month == month && ids.contains(&id))
+        .map_or(0, |(_, _, off)| *off)
+}
+
+/// The month it is now, 1 to 12, in UTC.
+fn month_now() -> u8 {
+    time::OffsetDateTime::from_unix_timestamp(crate::clock::now_ms() / 1000)
+        .map(|t| u8::from(t.month()))
+        .unwrap_or(0)
+}
+
+/// What an unlock lists for today, and how many hundredths are off it: its price, less a
+/// seasonal sale. What a persona pays may be less again (`elsewhere_price`).
+pub fn listed_now(u: &Unlock) -> (i64, i64) {
+    let off = sale_percent(u.id, month_now());
+    (u.pennies * (100 - off) / 100, off)
+}
+
 /// The prices unlocks were listed at before they changed (Curtis, 2026-10-31: Trusted only posts
 /// from H$ 10,000, Public post editing from H$ 5,000, both to H$ 2,000): what a purchase that
 /// recorded no price paid. Until that day only a discounted purchase recorded what it paid, so
 /// every other purchase made before it was charged the list price of its day - this one. Since
 /// then every purchase records its price (`unlock_handler`), so a price changed later needs no
 /// entry here: a purchase is never charged today's price for yesterday's.
-const LISTED_BEFORE: [(&str, i64); 2] =
-    [("sealing", 10_000 * HORSEBUCK), ("post-editing", 5_000 * HORSEBUCK)];
+///
+/// The four colourways repriced 2026-11-23 are here for the same reason: they went on sale
+/// 2026-10-05, so one bought before the 31st recorded nothing, and paid H$ 25,000.
+const LISTED_BEFORE: [(&str, i64); 6] = [
+    ("sealing", 10_000 * HORSEBUCK),
+    ("post-editing", 5_000 * HORSEBUCK),
+    ("colorway-terminal", 25_000 * HORSEBUCK),
+    ("colorway-micross", 25_000 * HORSEBUCK),
+    ("colorway-bosc", 25_000 * HORSEBUCK),
+    ("colorway-doors-xp", 25_000 * HORSEBUCK),
+];
 
 /// What a purchase of this unlock that recorded no price was charged.
 fn unrecorded_price(u: &Unlock) -> i64 {
@@ -333,10 +373,12 @@ pub const UNLOCKS: [Unlock; 32] = [
     // The colourways (Curtis, 2026-10-05): cosmetic, each sold alone - horse-relax and witchlight
     // stay free - and not meant to be reachable on contract money: something to keep playing for.
     // The Market shows them in a section of their own (`colorway-` is the client's word for it).
-    unlock("colorway-doors-xp", "doors-xp", 25_000, &[]),
-    unlock("colorway-bosc", "bosc", 25_000, &[]),
-    unlock("colorway-micross", "micross", 25_000, &[]),
-    unlock("colorway-terminal", "terminal", 25_000, &[]),
+    // A gradient since 2026-11-23 (Curtis, on a user's word that H$ 25,000 for every one was
+    // exorbitant): two at H$ 5,000, two at H$ 10,000, the rest as they were.
+    unlock("colorway-terminal", "terminal", 5_000, &[]),
+    unlock("colorway-micross", "micross", 5_000, &[]),
+    unlock("colorway-bosc", "bosc", 10_000, &[]),
+    unlock("colorway-doors-xp", "doors-xp", 10_000, &[]),
     unlock("colorway-terminal-white", "terminal-white", 25_000, &[]),
     unlock("colorway-terminal-cyan", "terminal-cyan", 25_000, &[]),
     unlock("colorway-terminal-orange", "terminal-orange", 25_000, &[]),
@@ -2086,11 +2128,13 @@ pub async fn unlock_handler(
             "that one needs another unlock first"
         )));
     }
-    // Owned by another persona of this account here: 5% of the price (`ELSEWHERE_PERCENT`).
+    // Today's listing, a seasonal sale taken off; and owned by another persona of this account
+    // here, 5% of that (`ELSEWHERE_PERCENT`).
+    let (listed, _) = listed_now(u);
     let price = if owned_elsewhere(&state, &session.account.id, &root).await?.contains(u.id) {
-        elsewhere_price(u.pennies)
+        elsewhere_price(listed)
     } else {
-        u.pennies
+        listed
     };
     catch_up(&state, &data, &root).await.map_err(AppError::Internal)?;
     if balance(&data).await.map_err(AppError::Internal)? < BigInt::from(price) {
@@ -2413,11 +2457,18 @@ pub async fn bank_handler(
     let elsewhere = owned_elsewhere(&state, &session.account.id, &root).await?;
     unlocks.extend(UNLOCKS.iter().map(|u| {
         let discounted = !owned.contains_key(u.id) && elsewhere.contains(u.id);
-        let price = if discounted { elsewhere_price(u.pennies) } else { u.pennies };
+        let (listed, off) = listed_now(u);
+        let price = if discounted { elsewhere_price(listed) } else { listed };
         let mut row = json!({ "id": u.id, "name": u.name, "pennies": price.to_string(), "requires": u.requires, "bought_ms": owned.get(u.id) });
-        if discounted {
+        if discounted || off > 0 {
             row["full_pennies"] = json!(u.pennies.to_string());
+        }
+        if discounted {
             row["elsewhere"] = json!(true);
+        }
+        // A seasonal sale (`SALES`): how much is off, for the Market's badge.
+        if off > 0 {
+            row["sale"] = json!(off);
         }
         row
     }));
@@ -2437,6 +2488,41 @@ pub async fn bank_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The seasonal sales (2026-11-23): the holiday colourways in December and July, the pride
+    /// ones in July, 75% off, and nothing else in any month - and the four on the gradient.
+    #[test]
+    fn colourways_are_on_sale_in_their_season() {
+        for id in ["colorway-holidaymas", "colorway-jack-frost"] {
+            assert_eq!(sale_percent(id, 12), 75, "{id} in December");
+            assert_eq!(sale_percent(id, 7), 75, "{id} in July, the southern winter");
+            assert_eq!(sale_percent(id, 11), 0, "{id} in November");
+        }
+        for id in ["colorway-pride", "colorway-trans", "colorway-bi", "colorway-ace"] {
+            assert_eq!(sale_percent(id, 7), 75, "{id} in July");
+            assert_eq!(sale_percent(id, 12), 0, "{id} in December");
+            assert_eq!(sale_percent(id, 6), 0, "{id} in June");
+        }
+        for month in 1..=12 {
+            assert_eq!(sale_percent("colorway-terminal", month), 0);
+            assert_eq!(sale_percent("music", month), 0);
+        }
+        // Every id a sale names is sold.
+        for (ids, _, _) in SALES {
+            for id in ids {
+                assert!(UNLOCKS.iter().any(|u| u.id == *id), "{id} is an unlock");
+            }
+        }
+        let price = |id: &str| UNLOCKS.iter().find(|u| u.id == id).map(|u| u.pennies / HORSEBUCK);
+        assert_eq!(price("colorway-terminal"), Some(5_000));
+        assert_eq!(price("colorway-micross"), Some(5_000));
+        assert_eq!(price("colorway-bosc"), Some(10_000));
+        assert_eq!(price("colorway-doors-xp"), Some(10_000));
+        assert_eq!(price("colorway-pride"), Some(25_000));
+        // One bought before purchases recorded their price paid what it listed for then.
+        let u = UNLOCKS.iter().find(|u| u.id == "colorway-terminal").expect("sold");
+        assert_eq!(unrecorded_price(u), 25_000 * HORSEBUCK);
+    }
 
     #[test]
     fn a_shared_wordaga_score_is_not_tagged_by_hand() {

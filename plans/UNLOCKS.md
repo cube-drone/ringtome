@@ -78,6 +78,17 @@ good. The Market shows them in a section of their own after the hrseBond (unlock
 ids `colorway-<name>`); the profile's picker offers the free ones, the owned
 ones, and the one worn - a colourway chosen before it was for sale stays on.
 
+**A gradient, and two sales** (Curtis, 2026-11-23, on a user's word that H$
+25,000 for every colourway was exorbitant): terminal and micross are H$ 5,000,
+bosc and doors-xp H$ 10,000, and the rest as they were. One of those four bought
+before purchases recorded their price paid H$ 25,000, and its ledger still says
+so (`LISTED_BEFORE`). The holiday colourways - holidaymas, jack-frost - are 75%
+off in December and, for the southern winter, in July ("darn Australians"); the
+pride ones - pride, trans, bi, ace - in July (`bank.rs` `SALES`), by the node's
+clock in UTC; the Market strikes nothing and says "75% off this month" beside
+the price. A sale comes off before the 95% for an unlock another of your
+personas owns.
+
 ## Rulings (Curtis, 2026-10-05)
 
 1. **Everyone starts locked** - existing personas included, Curtis's own. He's
