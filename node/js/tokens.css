@@ -242,6 +242,10 @@
     --swatch-jack-frost-1: #1f78c8;
     --swatch-jack-frost-2: #c7d3de;
     --swatch-jack-frost-3: #e3b23c;
+    /* Wordaga's daily specials (apps/games.css): a blue of their own, for the card and its flag. */
+    --wordaga-special: #2f6fd6;
+    --wordaga-special-wash: #dbe8fb;
+    --wordaga-special-ink: #ffffff;
     /* The santa hat the persona tile wears under a holiday colourway (quickbar.css). */
     --santa-hat-red: #c8202c;
     --santa-hat-shade: #8d1620;

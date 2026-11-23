@@ -2,7 +2,7 @@
 // lists its pages (persona.js `SettingsList`), and each game is a page of its own beneath it:
 // `/ringtome/games/<game>`. One game so far, Wordaga, whose rules are pure/wordagagame.js.
 import { h } from 'preact';
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { Icons } from '../icons.js';
@@ -28,14 +28,19 @@ import {
     untilNextWord,
 } from '../pure/wordaga.js';
 import {
-    ABILITIES,
+    abilitiesOf,
+    dailySpecials,
+    passPays,
+    GAMBLE_PAYS,
+    MOST_HAND,
+    FEWEST_DICE,
+    VOWEL_TOTAL,
     LETTERS,
     UNLIKELY,
     can,
     guess,
     guessing,
     pass,
-    PASS_PAYS,
     SKIPPED,
     standing,
     newGame,
@@ -145,7 +150,92 @@ const ABILITY_WORDS = {
         t('games.ability-test-vowel', 'test a vowel'),
         t('games.needs-paid-only', 'no dice'),
     ],
+    // The daily specials (pure/wordagagame.js `SPECIALS`).
+    'run-die': () => [
+        t('games.ability-run-die', 'add a die'),
+        t('games.needs-run-four', 'a run of four'),
+    ],
+    'temp-dice': () => [
+        t('games.ability-temp-dice', 'two more dice, for this round'),
+        t('games.needs-two-temp', 'a 2: up to {most} dice in a round', { most: MOST_HAND }),
+    ],
+    'pass-bonus': () => [
+        t('games.ability-pass-bonus', 'skipping pays one more'),
+        t('games.needs-three-die', 'a 3: for the rest of the game'),
+    ],
+    gamble: () => [
+        t('games.ability-gamble', 'win {n}, or nothing', { n: GAMBLE_PAYS }),
+        t('games.needs-three', 'three of a kind'),
+    ],
+    'name-one': () => [
+        t('games.ability-name', 'test {letters}', { letters: 'O, N or E' }),
+        t('games.needs-snake-eyes', 'snake eyes'),
+    ],
+    'name-two': () => [
+        t('games.ability-name', 'test {letters}', { letters: 'T, W or O' }),
+        t('games.needs-pair-of-twos', 'a pair of twos'),
+    ],
+    'name-three': () => [
+        t('games.ability-name', 'test {letters}', { letters: 'T, H, R or E' }),
+        t('games.needs-pair-of-threes', 'a pair of threes'),
+    ],
+    'name-four': () => [
+        t('games.ability-name', 'test {letters}', { letters: 'F, O, U or R' }),
+        t('games.needs-pair-of-fours', 'a pair of fours'),
+    ],
+    'name-five': () => [
+        t('games.ability-name', 'test {letters}', { letters: 'F, I, V or E' }),
+        t('games.needs-pair-of-fives', 'a pair of fives'),
+    ],
+    'name-six': () => [
+        t('games.ability-name', 'test {letters}', { letters: 'S, I or X' }),
+        t('games.needs-boxcars', 'boxcars'),
+    ],
+    'consonant-ten': () => [
+        t('games.ability-consonant', 'test a consonant'),
+        t('games.needs-ten', 'dice that total exactly 10'),
+    ],
+    'vowel-total': () => [
+        t('games.ability-test-vowel', 'test a vowel'),
+        t('games.needs-total', 'dice that total {n} or more', { n: VOWEL_TOTAL }),
+    ],
+    'all-sixes': () => [
+        t('games.ability-all-sixes', 'turn every other die to a six'),
+        t('games.needs-pair-of-twos', 'a pair of twos'),
+    ],
+    'count-vowels': () => [
+        t('games.ability-count-vowels', 'learn how many vowels the word has'),
+        t('games.needs-five-die', 'a 5'),
+    ],
+    'has-repeats': () => [
+        t('games.ability-has-repeats', 'learn whether any letter repeats'),
+        t('games.needs-four-die', 'a 4'),
+    ],
+    nudge: () => [
+        t('games.ability-nudge', 'nudge another die up or down by one'),
+        t('games.needs-two-die', 'a 2'),
+    ],
+    split: () => [
+        t('games.ability-split', 'split it into two 3s'),
+        t('games.needs-six-split', 'a 6: the second 3 is for this round only'),
+    ],
+    'destroy-die': () => [
+        t('games.ability-destroy-rule-out', 'destroy this die to rule out a vowel'),
+        t('games.needs-destroy', 'any die of your own, gone for good: you keep at least {n}', {
+            n: FEWEST_DICE,
+        }),
+    ],
 };
+
+/// What a special told of the word as a whole (pure/wordagagame.js `facts`), in a sentence each.
+const vowelsWords = (n) =>
+    n === 1
+        ? t('games.one-vowel', 'the word has 1 vowel.')
+        : t('games.n-vowels', 'the word has {n} vowels.', { n });
+const repeatsWords = (repeats) =>
+    repeats
+        ? t('games.a-letter-repeats', 'a letter is in the word more than once.')
+        : t('games.no-letter-repeats', 'no letter is in the word twice.');
 
 /// What the last move did, in a sentence.
 const lastWords = (last) => {
@@ -157,6 +247,18 @@ const lastWords = (last) => {
     const letter = last.letter?.toUpperCase();
     // A reveal bought and not yet spent: the board says what to do, with how many are owed.
     if (last.ability === 'reveal-one' || last.ability === 'reveal-three') return '';
+    if (last.ability === 'gamble')
+        return last.gained
+            ? t('games.gamble-won', 'it came up: money taken, {n}.', { n: last.gained })
+            : t('games.gamble-lost', 'it came up nothing.');
+    if (last.ability === 'temp-dice') return t('games.lent-dice', 'more dice, for this round.');
+    if (last.ability === 'count-vowels') return vowelsWords(last.count);
+    if (last.ability === 'has-repeats') return repeatsWords(last.repeats);
+    if (last.ability === 'nudge') return t('games.nudged', 'nudged.');
+    if (last.ability === 'split') return t('games.split', 'a 6, split into two 3s.');
+    if (last.ability === 'pass-bonus') return t('games.pass-raised', 'skipping pays one more now.');
+    if (last.ability === 'all-sixes') return t('games.turned-to-sixes', 'sixes, all of them.');
+    if (last.ability === 'run-die') return t('games.bought-die', 'a new die, yours to keep.');
     // Only a wrong guess is spoken of: a won game shows its own page, and not this line.
     if (last.ability === 'guess')
         return t('games.guess-wrong', '"{said}" is not the word.', { said: last.said });
@@ -211,6 +313,25 @@ const WANTS = {
     'reveal-one': same(4),
     'reveal-three': same(5),
     win: same(6),
+    // The daily specials: a pair of one number shows its pips; the run's are one example.
+    'run-die': [1, 2, 3, 4],
+    'temp-dice': [2],
+    'pass-bonus': [3],
+    gamble: same(3),
+    'name-one': [1, '=', 1],
+    'name-two': [2, '=', 2],
+    'name-three': [3, '=', 3],
+    'name-four': [4, '=', 4],
+    'name-five': [5, '=', 5],
+    'name-six': [6, '=', 6],
+    'consonant-ten': [0, '+', 0, '= 10'],
+    'vowel-total': [0, '+', 0, `≥ ${VOWEL_TOTAL}`],
+    'all-sixes': [2, '=', 2],
+    'destroy-die': [0],
+    'count-vowels': [5],
+    'has-repeats': [4],
+    nudge: [2],
+    split: [6],
 };
 
 /// Whether an ability's dice are too many to draw at full size on half the board's width: more
@@ -253,7 +374,7 @@ const outcomeSounds = (game, next) => {
     const last = next.last ?? {};
     if (next.won && !game.won) return WON_SOUNDS;
     if (last.ability === 'guess') return last.hit ? null : WRONG_WORD_SOUNDS;
-    if (!last.letter || last.ability === 'rule-out') return null;
+    if (!last.letter || last.ability === 'rule-out' || last.ability === 'destroy-die') return null;
     return last.hit ? FOUND_SOUNDS : WRONG_LETTER_SOUNDS;
 };
 /// Money changing hands.
@@ -622,13 +743,28 @@ const Won = ({ word, misses, score, paid, date, streak = 0, share }) => {
 /// none and lives for the page. `onWon(day, game)` hears of the day's game being won - at the
 /// winning move, and again whenever a won game is drawn, so a record that failed to be written
 /// gets another go.
-const Board = ({ word, seed, day, onWon, streak, root }) => {
-    // A game picked up from storage lies as it was left: only throws after `quiet` tumble.
+const Board = ({ word, seed, day, specials = [], onWon, streak, root }) => {
+    // A game picked up from storage lies as it was left: only throws after `quiet` tumble. One
+    // kept from before the daily specials is dealt today's as it is picked up.
     const [start] = useState(() => {
         const kept = day !== undefined && keptGame(day, word);
-        return { game: kept || newGame(word, seed), quiet: kept ? (kept.throws ?? 0) : 0 };
+        return {
+            game: kept ? { specials, ...kept } : newGame(word, seed, specials),
+            quiet: kept ? (kept.throws ?? 0) : 0,
+        };
     });
     const [game, setGame] = useState(start.game);
+    // The specials can arrive after the deal - whether this persona has played before is read off
+    // their private chain - and a game without any takes them up then. They only add cards.
+    const dealt = specials.join(',');
+    useEffect(() => {
+        if (!dealt || (game.specials ?? []).length > 0 || game.won) return;
+        const next = { ...game, specials: dealt.split(',') };
+        setGame(next);
+        if (day !== undefined) keepGame(day, next);
+        // Only when the day's specials are learned: the game is read as it stands then.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dealt]);
     // The dice picked to spend, and the ability waiting to be pointed at something.
     const [picked, setPicked] = useState([]);
     const [pending, setPending] = useState(null);
@@ -680,12 +816,16 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
         setMarked([]);
         setPending(null);
     };
+    // A card waiting to be pointed at dice, not at a letter: the reroll, and the nudge.
+    const marking = pending === 'reroll' || pending === 'nudge';
     const onDie = (i) => {
         // A die taken up is heard; one put back is not.
-        if (!(pending === 'reroll' ? marked : picked).includes(i)) playSound(GRAB_SOUNDS);
+        if (!(marking ? marked : picked).includes(i)) playSound(GRAB_SOUNDS);
         // While a die is paying for a reroll, a tap marks another to be rolled again.
         if (pending === 'reroll')
             return setMarked((now) => (now.includes(i) ? now.filter((m) => m !== i) : [...now, i]));
+        // While a 2 is paying for a nudge, a tap marks the one die to be nudged.
+        if (pending === 'nudge') return setMarked((now) => (now.includes(i) ? [] : [i]));
         setPending(null);
         setPicked((now) => (now.includes(i) ? now.filter((p) => p !== i) : [...now, i]));
     };
@@ -704,7 +844,10 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
         move(next);
     };
 
-    const open = pending && pending !== 'reroll' ? targets(game, pending) : [];
+    const open = pending && !marking ? targets(game, pending) : [];
+    // The die a nudge is pointed at, and which ways it may go.
+    const nudged = pending === 'nudge' && marked.length === 1 ? game.hand[marked[0]] : null;
+    const told = game.facts ?? {};
     const atGuess = guessing(game);
     if (game.won)
         return html`<${Won}
@@ -722,13 +865,15 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
     const todo =
         pending === 'reroll'
             ? t('games.pick-dice', 'now pick the dice to roll again.')
-            : pending
-              ? t('games.pick-a-letter', 'now pick a letter.')
-              : owed > 0
-                ? t('games.reveals-owed', 'pick a blank in the word to reveal ({n} to pick).', {
-                      n: owed,
-                  })
-                : '';
+            : pending === 'nudge'
+              ? t('games.pick-a-die', 'now pick a die, and which way to nudge it.')
+              : pending
+                ? t('games.pick-a-letter', 'now pick a letter.')
+                : owed > 0
+                  ? t('games.reveals-owed', 'pick a blank in the word to reveal ({n} to pick).', {
+                        n: owed,
+                    })
+                  : '';
     const telling = pending ? todo : [lastWords(game.last), todo].filter(Boolean).join(' ');
     return html`<div class="wordaga">
         <p class="wordaga-stats">
@@ -763,6 +908,14 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
                     : html`<span key=${i} class="wordaga-slot">${letter ?? ''}</span>`,
             )}
         </p>
+        ${
+            /* What a special told of the word as a whole, kept in view once it is known. */
+            (told.vowels !== undefined || told.repeats !== undefined) &&
+            html`<p class="wordaga-facts">
+                ${told.vowels !== undefined && html`<span>${vowelsWords(told.vowels)}</span>`}
+                ${told.repeats !== undefined && html`<span>${repeatsWords(told.repeats)}</span>`}
+            </p>`
+        }
         <div class="wordaga-letters">
             ${[...LETTERS].map(
                 (letter) =>
@@ -789,6 +942,27 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
                     ${t('games.roll-them', 'roll')}
                 </button>`
             }
+            ${
+                pending === 'nudge' &&
+                html`<button
+                        class="wordaga-go"
+                        type="button"
+                        aria-label=${t('games.nudge-down', 'one lower')}
+                        disabled=${!nudged || nudged.pips <= 1}
+                        onClick=${() => move(play(game, 'nudge', picked, { die: marked[0], by: -1 }))}
+                    >
+                        −1
+                    </button>
+                    <button
+                        class="wordaga-go"
+                        type="button"
+                        aria-label=${t('games.nudge-up', 'one higher')}
+                        disabled=${!nudged || nudged.pips >= 6}
+                        onClick=${() => move(play(game, 'nudge', picked, { die: marked[0], by: 1 }))}
+                    >
+                        +1
+                    </button>`
+            }
         <//>
         <div class="wordaga-dice">
                           ${game.hand.map(
@@ -800,7 +974,7 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
                                       lone=${game.hand.some((other) => other.thrown !== die.thrown)}
                                       quiet=${start.quiet}
                                       state=${picked.includes(i) ? 'picked' : marked.includes(i) ? 'marked' : ''}
-                                      disabled=${die.spent || (pending === 'reroll' && picked.includes(i))}
+                                      disabled=${die.spent || (marking && picked.includes(i))}
                                       pressed=${picked.includes(i) || marked.includes(i)}
                                       onClick=${() => onDie(i)}
                                   />`,
@@ -830,25 +1004,27 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
                               <button
                                   class="wordaga-pass"
                                   type="button"
-                                  title=${t('games.pass-title', 'give up this guess and earn {n} money instead - it still counts as an attempt', { n: PASS_PAYS })}
+                                  title=${t('games.pass-title', 'give up this guess and earn {n} money instead - it still counts as an attempt', { n: passPays(game) })}
                                   onClick=${() => {
                                       setSaid('');
                                       move(pass(game));
                                   }}
                               >
-                                  ${t('games.pass', 'skip to earn')} <${Icons.money} /> +${PASS_PAYS}
+                                  ${t('games.pass', 'skip to earn')} <${Icons.money} /> +${passPays(game)}
                               </button>
                           </form>`
                       }
                       <div class="wordaga-abilities">
-                          ${ABILITIES.map((a) => {
+                          ${abilitiesOf(game).map((a) => {
                               const [name, needs] = ABILITY_WORDS[a.id]();
                               const price = priceOf(game, a.id);
+                              const daily = (game.specials ?? []).includes(a.id);
                               return html`<button
                                   key=${a.id}
                                   type="button"
                                   class=${[
                                       'wordaga-ability',
+                                      daily && 'special',
                                       isWide(a.id) && 'wide',
                                       pending === a.id && 'picked',
                                   ]
@@ -871,6 +1047,7 @@ const Board = ({ word, seed, day, onWon, streak, root }) => {
                                           <${Icons.money} /> ${price}
                                       </span>`
                                   }
+                                  ${daily && html`<span class="wordaga-special-flag">${t('games.daily-special', 'daily special')}</span>`}
                                   <${Wants} id=${a.id} />
                                   <strong>${name}</strong>
                                   <small>${needs}</small>
@@ -948,6 +1125,11 @@ export const Wordaga = ({ current }) => {
     };
 
     const word = wordOfDay(Date.now());
+    // The day's two specials (Curtis, 2026-11-23): dealt into every game today, a pick-up game too -
+    // but only for a persona who has played before: a first game is the plain game, with nothing
+    // extra to learn. "Played" is a game finished, which is what the chain records.
+    const played = !!records && records.length > 0;
+    const specials = useMemo(() => (played ? dailySpecials(day) : []), [played, day]);
     const today = records && records.find((r) => r.day === day);
     // Won elsewhere, and not on the table here: shown as it went, not dealt again.
     const elsewhere = today && !keptGame(day, word) ? today : null;
@@ -968,7 +1150,7 @@ export const Wordaga = ({ current }) => {
         </div>
         ${
             pickup
-                ? html`<${Board} key=${`pickup-${pickup.seed}`} word=${pickup.word} seed=${pickup.seed} />`
+                ? html`<${Board} key=${`pickup-${pickup.seed}`} word=${pickup.word} seed=${pickup.seed} specials=${specials} />`
                 : elsewhere
                   ? html`<${Finished}
                         record=${elsewhere}
@@ -980,6 +1162,7 @@ export const Wordaga = ({ current }) => {
                         word=${word}
                         seed=${day}
                         day=${day}
+                        specials=${specials}
                         onWon=${onWon}
                         streak=${streak}
                         root=${root}
@@ -992,7 +1175,13 @@ export const Wordaga = ({ current }) => {
                     : t('games.changes-at-0', 'a new word every day at @000')
             }
         </p>
-        <p class="wordaga-more">
+        ${
+            /* A pick-up game is there once today's game is done (Curtis, 2026-11-23), and not
+            before: the day's game comes first. */ ''
+        }
+        ${
+            (done || pickup) &&
+            html`<p class="wordaga-more">
             <button class="wordaga-go" type="button" onClick=${deal}>
                 ${
                     pickup
@@ -1006,7 +1195,8 @@ export const Wordaga = ({ current }) => {
                     ${t('games.back-to-today', "back to today's game")}
                 </button>`
             }
-        </p>
+        </p>`
+        }
         ${
             past.length > 0 &&
             html`<hr class="wordaga-rule" />

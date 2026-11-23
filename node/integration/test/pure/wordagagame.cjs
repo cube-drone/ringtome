@@ -298,3 +298,256 @@ describe("Wordaga's rules", () => {
         assert.equal(g.hand.length, 3);
     });
 });
+
+/*
+    The daily specials (Curtis, 2026-11-23): two of eighteen dealt into every game of a day, a
+    pick-up game too. A game plays only the ones it was dealt.
+*/
+describe("Wordaga's daily specials", () => {
+    const withSpecial = (id, word, hand, more = {}) =>
+        dealt(word, hand, { specials: [id], ...more });
+
+    it('deals the same two to everyone for a day, out of eighteen, and plays no other', () => {
+        assert.equal(G.SPECIALS.length, 18);
+        const today = G.dailySpecials(20780);
+        assert.equal(today.length, 2);
+        assert.notEqual(today[0], today[1]);
+        assert.deepEqual(G.dailySpecials(20780), today, 'the same day, the same two');
+        assert.ok(today.every((id) => G.SPECIALS.some((a) => a.id === id)));
+        // Over a year of days every one comes up.
+        const seen = new Set();
+        for (let day = 20780; day < 21145; day++)
+            for (const id of G.dailySpecials(day)) seen.add(id);
+        assert.equal(seen.size, 18);
+
+        const without = dealt('neon', [3, 3, 3]);
+        assert.equal(G.can(without, 'gamble', [0, 1, 2]), false, 'not dealt, not played');
+        assert.equal(G.play(without, 'gamble', [0, 1, 2]), null);
+        const dealtIt = G.newGame('neon', 5, ['gamble']);
+        assert.deepEqual(G.abilitiesOf(dealtIt)[0].id, 'gamble', 'the specials lead the list');
+        assert.equal(G.abilitiesOf(dealtIt).length, G.ABILITIES.length + 1);
+        assert.equal(G.abilitiesOf(G.newGame('neon', 5)).length, G.ABILITIES.length);
+    });
+
+    it('a run of four is a die, free and kept, up to seven', () => {
+        let g = withSpecial('run-die', 'neon', [3, 5, 4, 6]);
+        assert.equal(
+            G.can(withSpecial('run-die', 'neon', [1, 2, 3, 5]), 'run-die', [0, 1, 2, 3]),
+            false,
+        );
+        g = G.play(g, 'run-die', [0, 1, 2, 3]);
+        assert.equal(g.count, 5);
+        assert.equal(g.hand.length, 5);
+        assert.equal(g.apostrophes, 0);
+        const full = withSpecial('run-die', 'neon', [1, 2, 3, 4, 6, 6, 6]);
+        assert.equal(G.can(full, 'run-die', [0, 1, 2, 3]), false, 'seven is the most');
+    });
+
+    it('a 2 lends two dice for the cycle, to nine in a hand, and they are gone the next', () => {
+        let g = withSpecial('temp-dice', 'neon', [2, 5, 5, 5]);
+        assert.equal(G.can(g, 'temp-dice', [1]), false, 'a 2 and nothing else');
+        g = G.play(g, 'temp-dice', [0]);
+        assert.equal(g.hand.length, 6);
+        assert.equal(g.count, 4, 'not owned');
+        assert.deepEqual(
+            g.hand.map((d) => !!d.temp),
+            [false, false, false, false, true, true],
+        );
+        const next = G.pass(G.play(g, 'earn', [1, 2, 3, 4, 5]));
+        assert.equal(next.hand.length, 4, 'the next cycle throws only the dice owned');
+        const crowded = withSpecial('temp-dice', 'neon', [2, 1, 1, 1, 1, 1, 1, 1], { count: 7 });
+        assert.equal(
+            G.play(crowded, 'temp-dice', [0]).hand.length,
+            9,
+            'one, where two will not fit',
+        );
+        const full = withSpecial('temp-dice', 'neon', [2, 1, 1, 1, 1, 1, 1, 1, 1], { count: 7 });
+        assert.equal(G.can(full, 'temp-dice', [0]), false);
+        // A lent die thrown again is still lent.
+        const again = G.play(g, 'reroll', [1], [4]);
+        assert.equal(again.hand[4].temp, true);
+    });
+
+    it('a 3 makes every skip from then on pay one more', () => {
+        let g = withSpecial('pass-bonus', 'neon', [3, 3, 1]);
+        g = G.play(g, 'pass-bonus', [0]);
+        g = G.play(g, 'pass-bonus', [1]);
+        assert.equal(G.passPays(g), G.PASS_PAYS + 2);
+        g = G.play(g, 'earn', [2]);
+        const first = G.pass(g);
+        assert.equal(first.apostrophes, 1 + 4);
+        const second = G.pass(G.play(first, 'earn', [0, 1, 2]));
+        assert.equal(second.last.gained, 4, 'and the cycle after');
+    });
+
+    it('three of a kind wins twenty or nothing, and never moves a die', () => {
+        const outcomes = new Set();
+        for (let seed = 1; seed <= 40; seed++) {
+            const g = {
+                ...G.newGame('neon', seed, ['gamble']),
+                hand: [4, 4, 4].map((p) => ({ pips: p, spent: false })),
+            };
+            const after = G.play(g, 'gamble', [0, 1, 2]);
+            assert.ok([0, G.GAMBLE_PAYS].includes(after.apostrophes));
+            assert.equal(after.last.gained, after.apostrophes);
+            assert.equal(after.dice, g.dice, 'the coin is off the letters, not the dice');
+            outcomes.add(after.apostrophes);
+        }
+        assert.deepEqual(
+            [...outcomes].sort((a, b) => a - b),
+            [0, 20],
+            'both come up',
+        );
+    });
+
+    it("a pair that spells its number tests a letter of the number's name", () => {
+        const names = {
+            one: 'one',
+            two: 'two',
+            three: 'thre',
+            four: 'four',
+            five: 'five',
+            six: 'six',
+        };
+        [...Object.entries(names)].forEach(([name, letters], i) => {
+            const n = i + 1;
+            const id = `name-${name}`;
+            const g = withSpecial(id, 'quiz', [n, n, (n % 6) + 1]);
+            assert.deepEqual(G.targets(g, id), [...letters], id);
+            assert.equal(G.can(g, id, [0, 1]), true);
+            assert.equal(G.can(g, id, [0, 2]), false, 'that pair and no other');
+            assert.equal(G.play(g, id, [0, 1], 'q'), null, 'only a letter of the name');
+            const after = G.play(g, id, [0, 1], letters[0]);
+            assert.ok(after.known[letters[0]]);
+            assert.equal(after.apostrophes, 0, 'for nothing');
+        });
+        // Once every letter of the name is known, the pair has nothing left to test.
+        const spent = withSpecial('name-six', 'quiz', [6, 6], {
+            known: { s: 'out', i: 'in', x: 'out' },
+        });
+        assert.equal(G.can(spent, 'name-six', [0, 1]), false);
+    });
+
+    it('dice that total exactly ten test a consonant for two', () => {
+        const g = withSpecial('consonant-ten', 'neon', [4, 6, 1, 2, 3], { apostrophes: 2 });
+        assert.equal(G.can(g, 'consonant-ten', [0, 1]), true);
+        assert.equal(G.can(g, 'consonant-ten', [0, 2, 3, 4]), true, 'any number of dice');
+        assert.equal(G.can(g, 'consonant-ten', [1, 4]), false, 'nine is not ten');
+        assert.equal(G.can({ ...g, apostrophes: 1 }, 'consonant-ten', [0, 1]), false);
+        const after = G.play(g, 'consonant-ten', [0, 1], 'n');
+        assert.equal(after.known.n, 'in');
+        assert.equal(after.apostrophes, 0);
+        assert.equal(G.play(g, 'consonant-ten', [0, 1], 'e'), null, 'a consonant');
+    });
+
+    it('dice that total twelve or more test a vowel', () => {
+        assert.equal(G.VOWEL_TOTAL, 12);
+        const g = withSpecial('vowel-total', 'neon', [6, 6, 5, 4, 2, 1]);
+        assert.equal(G.can(g, 'vowel-total', [0, 1]), true, 'boxcars will do');
+        assert.equal(G.can(g, 'vowel-total', [2, 3, 4, 5]), true, 'or any dice that reach it');
+        assert.equal(G.can(g, 'vowel-total', [0, 2]), false, 'eleven is not enough');
+        assert.equal(G.play(g, 'vowel-total', [0, 1], 'e').known.e, 'in');
+        assert.equal(G.play(g, 'vowel-total', [0, 1], 'n'), null, 'a vowel');
+    });
+
+    it('a pair of twos turns every other die to a six', () => {
+        const g = withSpecial('all-sixes', 'neon', [2, 1, 2, 3, 5], {
+            hand: [2, 1, 2, 3, 5].map((p, i) => ({ pips: p, spent: i === 4 })),
+        });
+        const after = G.play(g, 'all-sixes', [0, 2]);
+        assert.deepEqual(pips(after), [2, 6, 2, 6, 5], 'the others still to be spent');
+        assert.deepEqual(
+            after.hand.map((d) => d.spent),
+            [true, false, true, false, true],
+        );
+        assert.equal(
+            G.can(withSpecial('all-sixes', 'neon', [2, 2]), 'all-sixes', [0, 1]),
+            false,
+            'nothing to turn',
+        );
+    });
+
+    it('a die destroyed rules out a vowel, and is gone for good - but never below three', () => {
+        let g = withSpecial('destroy-die', 'neon', [5, 1, 1, 1]);
+        g = G.play(g, 'destroy-die', [0]);
+        assert.equal(g.count, 3);
+        assert.equal(g.reveals, 0, 'no blank is turned over');
+        assert.ok('aiu'.includes(g.last.letter), `a vowel the word lacks: ${g.last.letter}`);
+        assert.equal(g.known[g.last.letter], 'out');
+        assert.equal(g.last.hit, false);
+        assert.equal(G.can(g, 'destroy-die', [1]), false, 'three are kept');
+        const next = G.pass(G.play(g, 'earn', [1, 2, 3]));
+        assert.equal(next.hand.length, 3, 'and the next cycle throws three');
+        // With every vowel the word lacks already known, there is nothing to rule out.
+        const told = withSpecial('destroy-die', 'neon', [5, 1, 1, 1], {
+            known: { a: 'out', i: 'out', u: 'out' },
+        });
+        assert.equal(G.can(told, 'destroy-die', [0]), false);
+        // A die lent for the cycle is not the player's to destroy.
+        const lent = withSpecial('destroy-die', 'neon', [5, 1, 1, 1], {
+            hand: [5, 1, 1, 1, 4].map((p, i) => ({ pips: p, spent: false, temp: i === 4 })),
+            count: 4,
+        });
+        assert.equal(G.can(lent, 'destroy-die', [4]), false);
+        assert.equal(G.can(lent, 'destroy-die', [0]), true);
+    });
+
+    it('a 5 says how many vowels the word has, and a 4 whether a letter repeats - once each', () => {
+        let g = withSpecial('count-vowels', 'queue', [5, 5]);
+        g = G.play(g, 'count-vowels', [0]);
+        assert.equal(g.facts.vowels, 4);
+        assert.equal(g.last.count, 4);
+        assert.deepEqual(g.known, {}, 'no letter is named');
+        assert.equal(G.can(g, 'count-vowels', [1]), false, 'known already');
+
+        const twice = G.play(withSpecial('has-repeats', 'neon', [4]), 'has-repeats', [0]);
+        assert.equal(twice.facts.repeats, true);
+        const once = G.play(withSpecial('has-repeats', 'quiz', [4, 4]), 'has-repeats', [0]);
+        assert.equal(once.facts.repeats, false);
+        assert.equal(once.last.repeats, false);
+        assert.equal(G.can(once, 'has-repeats', [1]), false);
+        // A game kept from before the facts were kept still plays them.
+        const old = { ...withSpecial('has-repeats', 'neon', [4]), facts: undefined };
+        assert.equal(G.play(old, 'has-repeats', [0]).facts.repeats, true);
+    });
+
+    it('a 2 nudges another die up or down by one, and never past its faces', () => {
+        const g = withSpecial('nudge', 'neon', [2, 4, 6, 1]);
+        assert.deepEqual(pips(G.play(g, 'nudge', [0], { die: 1, by: 1 })), [2, 5, 6, 1]);
+        assert.deepEqual(pips(G.play(g, 'nudge', [0], { die: 1, by: -1 })), [2, 3, 6, 1]);
+        const after = G.play(g, 'nudge', [0], { die: 1, by: 1 });
+        assert.deepEqual(
+            after.hand.map((d) => d.spent),
+            [true, false, false, false],
+            'the 2 is spent, the nudged die is not',
+        );
+        assert.equal(G.play(g, 'nudge', [0], { die: 2, by: 1 }), null, 'no seven');
+        assert.equal(G.play(g, 'nudge', [0], { die: 3, by: -1 }), null, 'no nought');
+        assert.equal(G.play(g, 'nudge', [0], { die: 0, by: 1 }), null, 'not itself');
+        assert.equal(G.play(g, 'nudge', [0], { die: 1, by: 2 }), null, 'one pip');
+        assert.equal(G.play(g, 'nudge', [0]), null, 'pointed at something');
+        assert.equal(G.can(withSpecial('nudge', 'neon', [2]), 'nudge', [0]), false, 'another die');
+    });
+
+    it('a 6 splits into two 3s, the second for this cycle only', () => {
+        let g = withSpecial('split', 'neon', [6, 1, 1, 1]);
+        g = G.play(g, 'split', [0]);
+        assert.deepEqual(pips(g), [3, 1, 1, 1, 3]);
+        assert.deepEqual(
+            g.hand.map((d) => [d.spent, !!d.temp]),
+            [
+                [false, false],
+                [false, false],
+                [false, false],
+                [false, false],
+                [false, true],
+            ],
+            'neither is spent, and the new one is lent',
+        );
+        assert.equal(g.count, 4, 'not owned');
+        const next = G.pass(G.play(g, 'earn', [0, 1, 2, 3, 4]));
+        assert.equal(next.hand.length, 4, 'gone the next cycle');
+        const full = withSpecial('split', 'neon', [6, 1, 1, 1, 1, 1, 1, 1, 1], { count: 7 });
+        assert.equal(G.can(full, 'split', [0]), false, 'no room in the hand');
+    });
+});

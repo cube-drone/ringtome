@@ -29233,3 +29233,90 @@ brim should remain white but the hat itself should move from red to blue". Under
 tokens; the brim and pom stay white, and holidaymas is as it was. The
 colourway's own blue was "barely noticeable against the rest of the blue", so
 the hat's leans to aquamarine.
+
+## Wordaga: two daily specials (2026-11-23)
+
+Curtis: "I'd like to add two daily 'wildcard' abilities to the set of abilities
+available to the player, highlighted in blue with the 'daily special' flag on
+their top right. These daily special ability cards are available for every game
+today, including pickup games" - with fourteen proposed, and a request to say
+which looked broken, useless or gamebreaking.
+
+All fourteen are in `pure/wordagagame.js` `SPECIALS`, shaped as the standing
+abilities are; `dailySpecials(day)` deals two by the day's number, the same for
+everyone, and a game plays only the ones it was dealt (`state.specials`). The
+page deals today's two into the day's game and every pick-up game, lists them
+first, in blue, flagged. A day's game kept from before them is dealt today's as
+it is picked up.
+
+What each needed beyond a dice test: a hand may hold nine dice in a cycle
+(`MOST_HAND`), a lent die marked `temp` and gone at the next cycle; `passBonus`,
+which a skip's pay reads (`passPays`); a coin off the letters' counter, so the
+gamble never moves a die; and a die destroyed lowering `count`, never below
+three, and never a lent one.
+
+Built as written, with three readings of my own: a 3 raises the skip's pay for
+the rest of the game (for one skip it would lose to simply taking the money);
+"destroy a die" turns over a blank of the player's choosing, as four of a kind
+does; and a lent die can't be destroyed. Said to Curtis as looking wrong, and
+left for him to rule: "sum to 18 or higher" buys nothing the same dice don't
+already buy as money; "destroy a die" and "buy another die" make a loop that
+turns a pair and two money into a revealed letter every cycle; and a pair of
+twos turning the rest to sixes wins outright from a nine-dice hand, which only
+the lending special can make.
+
+Ten unit claims, one or more to a special. Seen on a scratch node: the two blue
+cards, flagged, in the day's game and in a pick-up game.
+
+## Wordaga's daily specials, ruled on (2026-11-23)
+
+Curtis, on the three flagged:
+
+- The winning combination stays: "whoever plays that day and figures it out will
+  feel brilliant, and that's a good feeling."
+- "Sum to 18 or higher: test a vowel: let's make that 12, then?" `VOWEL_TOTAL`
+  is 12, and the special is `vowel-total`.
+- Destroying a die "feels too powerful ... maybe it should do something a lot
+  less impressive like 'rule out a vowel' or 'rule out two consonants'". It
+  rules out a vowel now: one the word lacks, picked off the letters' counter as
+  "rule out" picks its letter, and unplayable once none is left. Chosen over two
+  consonants because a 1 already rules a letter out for nothing, and a die is
+  for good.
+- The 3 "was intended to stack", as built.
+
+## Wordaga: the daily special's flag, on the left (2026-11-23)
+
+Curtis: "can we move 'DAILY SPECIAL' to the top left of the card rather than the
+top right? I'm worried it'll fight with price display". The flag hangs on the
+card's top left corner now, and a special's price is back on the right with
+every other card's.
+
+## Wordaga: no daily specials in a first game (2026-11-23)
+
+Curtis: "The Daily Bonus Actions should only appear if a persona has already
+played at least one game of Wordaga". The page deals the day's specials only
+when the persona's private chain holds a record - a game finished, which is all
+it records - so a first game is the plain game, and the specials are there from
+the next one: a pick-up game after it, or tomorrow's. The records are read after
+the board is dealt, so a board without specials takes them up when they are
+learned (they only add cards).
+
+## Wordaga: four more specials, and the pick-up game after the day's (2026-11-23)
+
+Asked for specials he hadn't thought of, Curtis took four: "the 5 (vowels), the
+4 (repeats), the 6 (nudge) but make it a 2 (nudge), a 6 (split it into 2 3s: do
+you keep the extra dice, too? anyways, neat)". Eighteen in the pool now.
+
+- A 5 says how many of the word's letters are vowels, and a 4 whether any letter
+  is in it twice: the first things the game tells of the word as a whole. They
+  are kept on the state (`facts`), said once each, and stay written under the
+  word.
+- A 2 nudges another die one pip up or down, never past a die's faces. It is the
+  second card pointed at dice (`target: 'die'`): the page marks one die and
+  offers -1 and +1, as the reroll offers "roll".
+- A 6 splits into two 3s. The extra die is NOT kept: the 6 lies as a 3 and the
+  second 3 is lent for the cycle, as the temporary dice are - kept, it would be
+  a die for nothing, where the standing card asks a pair and money.
+
+And: "Hide the pick-up game until today's game is done, I think." Its button is
+drawn once today's game is done, so a persona's first game is the day's.

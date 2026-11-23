@@ -50,6 +50,17 @@
     line-height: 1.3;
 }
 
+/* What a special told of the word as a whole: a quiet line under it, kept in view. */
+.wordaga-facts {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.8rem;
+    margin: 0.3rem 0 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
 .wordaga-word {
     display: flex;
     justify-content: center;
@@ -316,6 +327,30 @@
     color: var(--muted);
     font-size: 0.72rem;
 }
+
+/* A daily special (Curtis, 2026-11-23): one of the day's two, in blue, with a flag on its top
+   left corner saying so - the left, so it never fights the price, which hangs on the right. */
+.wordaga-ability.special {
+    border-color: var(--wordaga-special);
+    box-shadow: inset 0 0 0 1px var(--wordaga-special);
+    background: color-mix(in srgb, var(--surface) 82%, var(--wordaga-special) 18%);
+}
+
+.wordaga-special-flag {
+    position: absolute;
+    top: -0.55rem;
+    left: -0.3rem;
+    z-index: 1;
+    padding: 0.05rem 0.4rem;
+    background: var(--wordaga-special);
+    color: var(--wordaga-special-ink);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
 
 /* A card being weighed: a touch of teal behind it and a slightly heavier edge (a shadow, so the
    card does not move). Only where a pointer can hover - a tap would leave it stuck on. */

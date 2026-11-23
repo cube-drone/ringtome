@@ -14,6 +14,17 @@
 
 export const START_DICE = 4;
 export const MOST_DICE = 7;
+/// The most dice a hand holds in one cycle, with the temporary ones a daily special lends.
+export const MOST_HAND = 9;
+/// The fewest dice a player may be left owning: a die is destroyed only above this.
+export const FEWEST_DICE = 3;
+/// What three of a kind may win at the day's gamble: this, or nothing.
+export const GAMBLE_PAYS = 20;
+/// What dice that total ten ask for on top, to test a consonant.
+export const TEN_PRICE = 2;
+/// What dice must total, at least, to test a vowel for nothing (Curtis, 2026-11-23: at 18 the
+/// same dice bought a vowel as money, so "let's make that 12").
+export const VOWEL_TOTAL = 12;
 /// What a pair asks for on top of its dice to test a consonant, in apostrophes.
 export const PRICE = 6;
 /// What a pair asks for on top of its dice to buy the first extra die. Each die after costs one
@@ -47,6 +58,7 @@ const isVowel = (letter) => VOWELS.includes(letter);
 
 const SALT_DICE = 0x64696365; // "dice"
 const SALT_LETTERS = 0x6c657474; // "lett"
+const SALT_SPECIALS = 0x73706563; // "spec"
 
 /// One step of mulberry32 with its state held outside: the next state, and a number in [0, 1).
 /// Written out here: this copy is part of what makes one day's dice the same for everyone.
@@ -72,11 +84,15 @@ function roll(counter, n) {
 /// A die in the hand: its pips, whether it is spent, and which throw put it there - the throws of a
 /// game are numbered from 1, so the page can tell the dice just thrown from the ones that lay still.
 const thrownDie = (thrown) => (pips) => ({ pips, spent: false, thrown });
+/// A die thrown again where it lies: one lent for the cycle (`temp`) is still lent.
+const rethrown = (die, thrown, pips) =>
+    die.temp ? { ...thrownDie(thrown)(pips), temp: true } : thrownDie(thrown)(pips);
 /// The number the next throw takes.
 const nextThrow = (state) => (state.throws ?? 0) + 1;
 
-/// A new game of `word`. Two games with one seed and one word roll the same dice.
-export function newGame(word, seed) {
+/// A new game of `word`. Two games with one seed and one word roll the same dice. `specials` are
+/// the daily specials it may play (`dailySpecials`): none, unless the page deals them in.
+export function newGame(word, seed, specials = []) {
     const [dice, pips] = roll((Math.imul(seed, 0x9e3779b1) ^ SALT_DICE) >>> 0, START_DICE);
     return {
         word: word.toLowerCase(),
@@ -93,6 +109,11 @@ export function newGame(word, seed) {
         reveals: 0,
         misses: [],
         won: false,
+        // The daily specials in play (`SPECIALS`), and what one of them has added to a skip's pay.
+        specials: [...specials],
+        passBonus: 0,
+        // What a special has told of the word as a whole: `{ vowels?, repeats? }`.
+        facts: {},
         // What the last move did, for the page to say: `{ ability, letter?, hit?, gained? }`.
         last: null,
     };
@@ -114,6 +135,14 @@ const run = (pips) => {
     return s.length === 3 && s[1] === s[0] + 1 && s[2] === s[1] + 1;
 };
 const CONSONANTS = [...LETTERS].filter((l) => !isVowel(l)).join('');
+/// A run of four: four dice, each one more than the last.
+const runOfFour = (pips) => {
+    const s = [...pips].sort((a, b) => a - b);
+    return s.length === 4 && s.every((p, i) => i === 0 || p === s[i - 1] + 1);
+};
+/// One die showing `n`, and a pair of them.
+const one = (n) => (pips) => pips.length === 1 && pips[0] === n;
+const pairOf = (n) => (pips) => pips.length === 2 && pips[0] === n && pips[1] === n;
 
 /// The abilities, in the order the page lists them: by how rare the dice they ask for are - any
 /// dice, a 1, a total of 7, a pair, a run of three, then three, four, five and six of a kind - with
@@ -146,7 +175,78 @@ export const ABILITIES = [
         among: VOWELS,
     },
 ];
-const ability = (id) => ABILITIES.find((a) => a.id === id);
+
+/// The daily specials (Curtis, 2026-11-23: "two daily 'wildcard' abilities ... available for every
+/// game today, including pickup games"): abilities shaped as the ones above are, of which a day
+/// deals two (`dailySpecials`). A game plays only the ones it was dealt (`state.specials`).
+///
+/// A pair that spells its own number tests a letter of that number's name - `among` is the name's
+/// letters, each once.
+export const SPECIALS = [
+    // A run of four is a die, free: thrown into this cycle and kept, as a bought one is.
+    { id: 'run-die', dice: runOfFour },
+    // A 2 lends two dice for this cycle only, while the hand has room (`MOST_HAND`).
+    { id: 'temp-dice', dice: one(2) },
+    // A 3 makes every skip from here on pay one more.
+    { id: 'pass-bonus', dice: one(3) },
+    // Three of a kind, staked: `GAMBLE_PAYS` or nothing, on the turn of a coin.
+    { id: 'gamble', dice: kind(3) },
+    { id: 'name-one', dice: pairOf(1), target: 'letter', among: 'one' },
+    { id: 'name-two', dice: pairOf(2), target: 'letter', among: 'two' },
+    { id: 'name-three', dice: pairOf(3), target: 'letter', among: 'thre' },
+    { id: 'name-four', dice: pairOf(4), target: 'letter', among: 'four' },
+    { id: 'name-five', dice: pairOf(5), target: 'letter', among: 'five' },
+    { id: 'name-six', dice: pairOf(6), target: 'letter', among: 'six' },
+    {
+        id: 'consonant-ten',
+        dice: (p) => p.length > 1 && sum(p) === 10,
+        price: TEN_PRICE,
+        target: 'letter',
+        among: CONSONANTS,
+    },
+    { id: 'vowel-total', dice: (p) => sum(p) >= VOWEL_TOTAL, target: 'letter', among: VOWELS },
+    // A pair of twos turns every other die in the hand to a six.
+    { id: 'all-sixes', dice: pairOf(2) },
+    // A 5 says how many of the word's letters are vowels; a 4, whether any letter is in it twice.
+    { id: 'count-vowels', dice: one(5) },
+    { id: 'has-repeats', dice: one(4) },
+    // A 2 nudges another die up or down by one; `target` is `{ die, by }`.
+    { id: 'nudge', dice: one(2), target: 'die' },
+    // A 6 is split into two 3s: itself and one more, lent for the cycle as `temp-dice` lends.
+    { id: 'split', dice: one(6), keeps: true },
+    // A die given up for good rules out a vowel, while more than `FEWEST_DICE` are owned (Curtis,
+    // 2026-11-23: turning over a blank was "too powerful" - with a die bought to be destroyed it
+    // was a pair and a little money for a letter, every cycle).
+    { id: 'destroy-die', dice: (p) => p.length === 1 },
+];
+
+/// The day's specials: two of `SPECIALS`, the same for everyone, by the day's number
+/// (pure/wordaga.js `wordagaDay`).
+export function dailySpecials(day, n = 2) {
+    let counter = (Math.imul(day, 0x9e3779b1) ^ SALT_SPECIALS) >>> 0;
+    const left = SPECIALS.map((a) => a.id);
+    const out = [];
+    while (out.length < n && left.length > 0) {
+        let r;
+        [counter, r] = step(counter);
+        out.push(left.splice(Math.floor(r * left.length), 1)[0]);
+    }
+    return out;
+}
+
+const special = (id) => SPECIALS.find((a) => a.id === id);
+const ability = (id) => ABILITIES.find((a) => a.id === id) ?? special(id);
+
+/// The abilities a game may play, in the order the page lists them: the day's specials it was
+/// dealt, then the rest.
+export const abilitiesOf = (state) => [
+    ...SPECIALS.filter((a) => (state.specials ?? []).includes(a.id)),
+    ...ABILITIES,
+];
+
+/// What giving up a cycle's guess pays as the game stands: `PASS_PAYS`, and one more for each 3
+/// spent on it.
+export const passPays = (state) => PASS_PAYS + (state.passBonus ?? 0);
 
 /// What `id` costs as the game stands, in apostrophes: 0 for an ability that is free. Only a die's
 /// price moves.
@@ -170,6 +270,8 @@ const absent = (state) => [...LETTERS].filter((l) => !state.word.includes(l) && 
 export function can(state, id, picked) {
     const a = ability(id);
     if (!a || state.won) return false;
+    // A special is played only by a game that was dealt it.
+    if (special(id) && !(state.specials ?? []).includes(id)) return false;
     if (new Set(picked).size !== picked.length) return false;
     if (picked.some((i) => !state.hand[i] || state.hand[i].spent)) return false;
     if (!a.dice(picked.map((i) => state.hand[i].pips))) return false;
@@ -181,7 +283,28 @@ export function can(state, id, picked) {
         case 'rule-out':
             return absent(state).length > 0;
         case 'buy-die':
+        case 'run-die':
             return state.count < MOST_DICE;
+        case 'temp-dice':
+        case 'split':
+            return state.hand.length < MOST_HAND;
+        case 'count-vowels':
+            return (state.facts ?? {}).vowels === undefined;
+        case 'has-repeats':
+            return (state.facts ?? {}).repeats === undefined;
+        case 'nudge':
+            // Another die to nudge.
+            return state.hand.some((d, i) => !d.spent && i !== picked[0]);
+        case 'all-sixes':
+            return state.hand.some((d, i) => !d.spent && !picked.includes(i));
+        case 'destroy-die':
+            // One of the player's own, and never the last few: a die lent for the cycle is not
+            // theirs to give up. And only while a vowel is left to rule out.
+            return (
+                state.count > FEWEST_DICE &&
+                !state.hand[picked[0]].temp &&
+                absent(state).some(isVowel)
+            );
         default:
             return true;
     }
@@ -229,7 +352,7 @@ export function play(state, id, picked, target) {
             const [counter, pips] = roll(state.dice, again.length);
             next.dice = counter;
             next.throws = nextThrow(state);
-            again.forEach((i, n) => (next.hand[i] = thrownDie(next.throws)(pips[n])));
+            again.forEach((i, n) => (next.hand[i] = rethrown(state.hand[i], next.throws, pips[n])));
             break;
         }
         case 'reveal-one':
@@ -247,7 +370,9 @@ export function play(state, id, picked, target) {
             const [counter, pips] = roll(state.dice, picked.length);
             next.dice = counter;
             next.throws = nextThrow(state);
-            picked.forEach((i, n) => (next.hand[i] = thrownDie(next.throws)(pips[n])));
+            picked.forEach(
+                (i, n) => (next.hand[i] = rethrown(state.hand[i], next.throws, pips[n])),
+            );
             break;
         }
         case 'rule-out': {
@@ -257,6 +382,76 @@ export function play(state, id, picked, target) {
             learn(pool[Math.floor(r * pool.length)]);
             break;
         }
+        case 'temp-dice': {
+            // Two more dice for this cycle, or as many as the hand has room for: the next cycle
+            // throws only the dice owned.
+            const lent = Math.min(2, MOST_HAND - state.hand.length);
+            const [counter, pips] = roll(state.dice, lent);
+            next.dice = counter;
+            next.throws = nextThrow(state);
+            for (const p of pips) next.hand.push({ ...thrownDie(next.throws)(p), temp: true });
+            break;
+        }
+        case 'pass-bonus':
+            next.passBonus = (state.passBonus ?? 0) + 1;
+            break;
+        case 'count-vowels': {
+            const vowels = [...state.word].filter(isVowel).length;
+            next.facts = { ...(state.facts ?? {}), vowels };
+            next.last.count = vowels;
+            break;
+        }
+        case 'has-repeats': {
+            const repeats = new Set(state.word).size < state.word.length;
+            next.facts = { ...(state.facts ?? {}), repeats };
+            next.last.repeats = repeats;
+            break;
+        }
+        case 'nudge': {
+            // One other die, one pip up or down, and never past a die's faces.
+            const { die, by } = target ?? {};
+            const at = state.hand[die];
+            if (!at || at.spent || die === picked[0] || (by !== 1 && by !== -1)) return null;
+            if (at.pips + by < 1 || at.pips + by > 6) return null;
+            next.throws = nextThrow(state);
+            next.hand[die] = rethrown(at, next.throws, at.pips + by);
+            break;
+        }
+        case 'split': {
+            // The 6 lies as a 3, and a second 3 beside it for this cycle only: the next cycle
+            // throws the dice owned, which a split does not add to.
+            next.throws = nextThrow(state);
+            next.hand[picked[0]] = rethrown(state.hand[picked[0]], next.throws, 3);
+            next.hand.push({ ...thrownDie(next.throws)(3), temp: true });
+            break;
+        }
+        case 'gamble': {
+            // A coin off the letters' counter, so it never moves a die.
+            const [counter, r] = step(state.letters);
+            next.letters = counter;
+            const gained = r < 0.5 ? GAMBLE_PAYS : 0;
+            next.apostrophes += gained;
+            next.last.gained = gained;
+            break;
+        }
+        case 'all-sixes':
+            // Every other die still to be spent shows a six, as if thrown that way.
+            next.throws = nextThrow(state);
+            next.hand = next.hand.map((d, i) =>
+                d.spent || picked.includes(i) ? d : rethrown(d, next.throws, 6),
+            );
+            break;
+        case 'destroy-die': {
+            // The die is gone from every cycle after this one, and a vowel the word lacks is
+            // ruled out: picked off the letters' counter, as "rule out" picks its letter.
+            next.count = state.count - 1;
+            const pool = absent(state).filter(isVowel);
+            const [counter, r] = step(state.letters);
+            next.letters = counter;
+            learn(pool[Math.floor(r * pool.length)]);
+            break;
+        }
+        case 'run-die':
         case 'buy-die': {
             // The new die is rolled into this cycle's hand, and into every cycle after.
             const [counter, [pips]] = roll(state.dice, 1);
@@ -331,7 +526,7 @@ export function pass(state) {
     return nextCycle({
         ...state,
         misses: [...state.misses, SKIPPED],
-        apostrophes: state.apostrophes + PASS_PAYS,
-        last: { ability: 'pass', gained: PASS_PAYS },
+        apostrophes: state.apostrophes + passPays(state),
+        last: { ability: 'pass', gained: passPays(state) },
     });
 }
