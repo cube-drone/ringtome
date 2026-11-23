@@ -754,6 +754,11 @@ const Playlists = ({
             ${t('amp.mixtapes', 'mixtapes')}
             <button class="amp-playlists-new" title=${t('amp.new-mixtape-title', 'a new mixtape')} aria-label=${t('amp.new-mixtape-title', 'a new mixtape')} onClick=${onNewTape}><${Icons.plus} /></button>
         </p>
+        ${
+            /* What each is, while there is none of it (Curtis, 2026-11-22). */
+            tapes.length === 0 &&
+            html`<p class="amp-playlists-none">${t('amp.mixtapes-none', 'an orderable list of songs')}</p>`
+        }
         ${restTapes.map((x) => tapeRow(x, false))}
         ${
             /* Radio stations (section 6): each a pie of filters, mixtapes and stations, opened to edit
@@ -763,6 +768,10 @@ const Playlists = ({
             ${t('amp.radio-stations', 'radio stations')}
             <button class="amp-playlists-new" title=${t('amp.new-station', 'a new radio station')} aria-label=${t('amp.new-station', 'a new radio station')} onClick=${onNewStation}><${Icons.plus} /></button>
         </p>
+        ${
+            stations.length === 0 &&
+            html`<p class="amp-playlists-none">${t('amp.stations-none', 'combine mixtapes into a bigger mix')}</p>`
+        }
         ${stations.filter((st) => !isPinned('station', st)).map((st) => stationRow(st, false))}
     </aside>`;
 };

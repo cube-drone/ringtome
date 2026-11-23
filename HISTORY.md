@@ -28804,3 +28804,11 @@ localhost:49968" box. Curtis: "hide the Local Server Mode box on phones". It is
 drawn in the desktop app alone now (`auth.js`, `isDesktopApp` where it asked
 `isDevice`), which takes it off the Android app too. Not seen on a phone: the
 change is one condition, and the next simulator run shows it.
+
+## hrseAmp: what a mixtape and a station are, while there are none (2026-11-22)
+
+Curtis: "A null-state under mix-tapes and radio stations, each small and in
+italics: under mixtapes: 'an orderable list of songs' - under radio stations:
+'combine mixtapes into a bigger mix'". Each line stands under its heading in the
+Playlists column while the persona has none of that kind, and goes when the
+first is made. Not seen in a browser.
