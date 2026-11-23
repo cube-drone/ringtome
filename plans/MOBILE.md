@@ -279,7 +279,10 @@ The order, each step answering a question before the next is built on it:
    shell asked for a desktop window's size and iOS obliged; the size is the
    desktop's alone now. The loopback page loaded with no App Transport Security
    exception. The app's own output came back empty (the system's log did not),
-   which is still to chase._
+   which is still to chase._ _Third run: the size gone, the page fits - title,
+   taglines, the sign-in, the counter, on a simulated iPhone 17. The step is
+   done. The desktop's "Running in Local Server Mode" box showed there too and
+   is the desktop's alone now._
 4. **Signing and TestFlight** from CI, which is the only road onto a real phone:
    iOS has no sideloading.
 

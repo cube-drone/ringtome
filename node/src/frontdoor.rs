@@ -91,8 +91,7 @@ pub async fn load(state: &AppState) -> anyhow::Result<()> {
         .fetch_optional("SELECT colorway, crt, snow FROM front_door WHERE id = 1", ())
         .await
         .context("reading the front door's look")?;
-    *state.front_look.lock().expect("front look poisoned") =
-        row.map(look_of).unwrap_or_default();
+    *state.front_look.lock().expect("front look poisoned") = row.map(look_of).unwrap_or_default();
     Ok(())
 }
 
@@ -147,16 +146,14 @@ pub async fn front_handler(
         }
     }
     let pins = crate::nodeface::feed_items(&state, rows).await?;
-    Ok(Json(
-        serde_json::json!({
-            "name": choices.name,
-            "taglines": choices.taglines,
-            "colorway": choices.look.colorway,
-            "crt": choices.look.crt,
-            "snow": choices.look.snow,
-            "pins": pins,
-        }),
-    ))
+    Ok(Json(serde_json::json!({
+        "name": choices.name,
+        "taglines": choices.taglines,
+        "colorway": choices.look.colorway,
+        "crt": choices.look.crt,
+        "snow": choices.look.snow,
+        "pins": pins,
+    })))
 }
 
 #[derive(Deserialize)]

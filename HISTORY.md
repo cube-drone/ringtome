@@ -28768,3 +28768,39 @@ Seen on a scratch node: both switches with their icons, the snow on horse-relax
 and witchlight, the layers moving, the choice still on after a reload, each
 switch flipping without the other, and `off`/`off` kept in the register at the
 end.
+
+## The server's effects, for everyone not signed in (2026-11-22)
+
+Curtis, of the CRT and the snow: "In the same way that the site operator can set
+the site's external-facing colorway, can the site operator set the outward
+facing CRT and snowflake settings?" Server Customization has a tick for each
+under the colourway - the CRT screen, ticked until unticked; snowflakes,
+unticked until ticked - saved with the rest and forgotten with it by "back to
+the app's own". They are two columns on `front_door` (rung 0126; 1, 0, or NULL
+for the app's own), and the three choices are one `Look` in memory now
+(`AppState::front_look`), said in every page's head: `node-colorway`,
+`node-crt`, `node-snow`, each only where something was chosen.
+
+As with the colourway, it is the signed-out who see them, and the same change
+made that hold: a signed-in persona's own answers are kept in this browser both
+ways now - "on" as well as "off" - so that nothing kept means nobody is in, and
+index.html's first script can put the server's on before anything draws without
+flashing them at a member who chose otherwise. `frontdoor.cjs` gained the claim
+(refused to a non-administrator; both said in the head once set; each on its
+own; nothing said once taken back). Seen on a scratch node with the screen off
+and the snow on: a stranger wears both before the bundle runs and after, and a
+signed-in persona who never chose keeps the app's own, at once on a reload.
+
+## iOS: the page fits (2026-11-22)
+
+The `sim` job's third run, with the window's size asked for on a desktop only:
+the sign-in page at the phone's own width on a simulated iPhone 17 - title,
+taglines, the three tabs, name and PIN, the counter - and the node answering
+`/health` again. A simulator build that boots is done; what remains needs an
+Apple account: signing, and TestFlight.
+
+The screenshot also showed the desktop app's "Running in Local Server Mode:
+localhost:49968" box. Curtis: "hide the Local Server Mode box on phones". It is
+drawn in the desktop app alone now (`auth.js`, `isDesktopApp` where it asked
+`isDevice`), which takes it off the Android app too. Not seen on a phone: the
+change is one condition, and the next simulator run shows it.

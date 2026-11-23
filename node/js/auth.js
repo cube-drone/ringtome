@@ -8,7 +8,7 @@ import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import htm from 'htm';
 
-import { api, isDevice, isLinuxApp } from './net.js';
+import { api, isDesktopApp, isDevice, isLinuxApp } from './net.js';
 import { t, tNodes } from './i18n.js';
 import { Icons } from './icons.js';
 import { readQr } from './qrread.js';
@@ -182,9 +182,11 @@ function extractSecret(pasted) {
 /// the app to open this node in the system's own browser (shell.rs).
 /// Above the sign-in tabs, in the desktop app (Curtis, 2026-09-28): this is a server on this
 /// computer, at an address any browser here can open - and the link opens the system's own.
+/// Not on a phone (Curtis, 2026-11-22, from the first simulator screenshot that fit): the app
+/// there is its own window, and a localhost address is nothing anyone can use.
 const LocalServerNotice = () => {
     const [error, setError] = useState(null);
-    if (!isDevice()) return null;
+    if (!isDesktopApp()) return null;
     const open = (e) => {
         e.preventDefault();
         setError(null);
