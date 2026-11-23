@@ -28652,3 +28652,13 @@ among the project's (`project.yml`, and the `.xcodeproj` by hand, since that is
 what the build reads): the first edit to the generated project. Tauri archives
 even for a simulator, so whether an archive holds a runnable `.app` where the
 job looks for one is still the next thing the run says.
+
+## Writer's tree toolbar fits its row (2026-11-22)
+
+Curtis: under the tree tab, "+ note", "+ section" and "download" "are too wide
+and they overflow, creating a new row - can we remove the text from 'download'
+to make it just the icon? and hide that button entirely on mobile?" The list
+column's download is its icon alone now (`DownloadButton` took an `iconOnly`;
+the word stays as its label for a screen reader, and its hover still says what
+it does), and a narrow window doesn't draw it. Seen at 1280px - the three on one
+row, the download 33px wide - and at 390px, where there are two.

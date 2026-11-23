@@ -1176,8 +1176,8 @@ export default {
     'doc.download.html-hint': 'web pages, to open in any browser',
     'doc.download.marquee-hint': 'every page as it is written',
     'doc.download.title': 'download it as a book, or as files',
-    'doc.download.making-it': 'making it…',
     'doc.download.download': 'download',
+    'doc.download.making-it': 'making it…',
     'doc.download.percent': '{percent}%',
 
     // --- node/js/doc/drawing.js ---

@@ -112,7 +112,13 @@ const useDownload = (base, query, stem) => {
     return { busy, error, made, go };
 };
 
-export const DownloadButton = ({ base, query = '', stem, className = 'tree-tool jag-line' }) => {
+export const DownloadButton = ({
+    base,
+    query = '',
+    stem,
+    className = 'tree-tool jag-line',
+    iconOnly = false,
+}) => {
     const [open, setOpen] = useState(false);
     const anchor = useRef(null);
     const { busy, error, made, go } = useDownload(base, query, stem);
@@ -124,9 +130,10 @@ export const DownloadButton = ({ base, query = '', stem, className = 'tree-tool 
                 aria-haspopup="menu"
                 aria-expanded=${open}
                 title=${t('doc.download.title', 'download it as a book, or as files')}
+                aria-label=${t('doc.download.download', 'download')}
                 onClick=${() => setOpen((o) => !o)}
             >
-                <${Icons.download} /> ${busy ? t('doc.download.making-it', 'making it…') : t('doc.download.download', 'download')}
+                <${Icons.download} />${iconOnly ? '' : ' '}${iconOnly ? '' : busy ? t('doc.download.making-it', 'making it…') : t('doc.download.download', 'download')}
             </button>
             ${
                 open &&

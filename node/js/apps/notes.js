@@ -886,8 +886,15 @@ export const DocsApp = ({
                         </button>`
                         }
                         ${
+                            /* The download is its icon alone, and away in a narrow window
+                            (Curtis, 2026-11-22: with "+ section" beside it the three ran onto a
+                            second row). Its progress still shows beneath while it is made. */ ''
+                        }
+                        ${
                             feat.tree &&
+                            !narrow &&
                             html`<${DownloadButton}
+                            iconOnly=${true}
                             className="notes-tool jag-line"
                             base=${`/api/identity/${root}/buckets/${encodeURIComponent(bucket)}/download`}
                             query=${`?${treeTab ? '' : 'order=chronological&'}tz=${new Date().getTimezoneOffset()}`}
