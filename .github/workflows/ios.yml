@@ -39,9 +39,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
-  # The oldest iOS the C builds aim at. Tauri's own floor for an iOS app; the Xcode project, when
-  # there is one, says the same number.
-  IPHONEOS_DEPLOYMENT_TARGET: "14.0"
+  # The oldest iOS the C builds aim at: the number the Xcode project carries (desktop/gen/apple,
+  # project.yml's `deploymentTarget`), as Tauri's template set it.
+  IPHONEOS_DEPLOYMENT_TARGET: "15.0"
 
 jobs:
   node:

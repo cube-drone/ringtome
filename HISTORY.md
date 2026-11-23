@@ -28549,3 +28549,16 @@ checked against the app's own list (`bank::is_colorway`, which the MCP colourway
 tool now shares). `frontdoor.cjs` gained the claim: refused to a
 non-administrator, refused for a name that isn't a colourway, named in the head
 of the app's page and of `/feed` once set, and gone from it once taken back.
+
+## iOS: the Xcode project, as generated (2026-11-22)
+
+The `project` job ran by hand, green in a minute, and what it uploaded is
+committed as `desktop/gen/apple`, untouched: thirty-three files - `project.yml`
+(what XcodeGen reads), the `.xcodeproj` made from it, the `Info.plist`, an empty
+entitlements file, the app icons, a launch screen and the two-line `main.mm`
+that calls into the Rust library. `tauri ios init` asked for no Apple
+development team; that question waits for signing. The template's floor is iOS
+15.0, so `ios.yml`'s `IPHONEOS_DEPLOYMENT_TARGET` moved from a guessed 14.0 to
+match. Nothing in the project is edited yet - not even the loopback allowance,
+which the first simulator build should show to be needed or not before it is
+written. Next: that build, booted, with screenshots sent back.

@@ -257,10 +257,13 @@ The order, each step answering a question before the next is built on it:
    does. The build stopped there, so turso and aws-lc are still unanswered._
    _Second run, same day: both targets compile, in about twenty minutes each.
    turso and aws-lc needed nothing._
-2. **The iOS project**, generated in CI by `tauri ios init` and committed as
-   `desktop/gen/apple`, as `desktop/gen/android` was - with the exception that
-   lets the window load `http://127.0.0.1` (App Transport Security's
-   local-networking allowance).
+2. **The iOS project** - _done 2026-11-22_: generated in CI by `tauri ios init`
+   (`ios.yml`'s `project` job, by hand) and committed as `desktop/gen/apple`,
+   exactly as it came, to be edited as ordinary source from here - Android's
+   precedent. It asked for no development team. Its floor is iOS 15.0, which the
+   `node` job's C builds now aim at too (they had guessed 14.0). Whether the
+   window may load `http://127.0.0.1` without an App Transport Security
+   exception is left for step 3 to show, rather than edited in on a guess.
 3. **A simulator build that boots**, with screenshots sent back as artifacts,
    since nobody here can look at it.
 4. **Signing and TestFlight** from CI, which is the only road onto a real phone:

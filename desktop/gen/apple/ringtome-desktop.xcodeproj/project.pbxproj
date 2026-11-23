@@ -1,0 +1,474 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		07B8407856A0C4603DAA8E72 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F976005E7B3CB645B8A8541A /* libapp.a */; };
+		118DD43237992DBBB3B6BD4D /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2E98AF6E4F03C80063AA1D61 /* Security.framework */; };
+		232C88A543302165564E3335 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9CFA31BDC0110D176461F5FD /* QuartzCore.framework */; };
+		3B1C4208045C39E62398C40D /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF4A2A39E8DB37C2DE0B5BCB /* UIKit.framework */; };
+		441EEC5B19C65E039FCFE7B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1297B6157E7002D166BC71C5 /* Assets.xcassets */; };
+		545E421384AF65CC016C6DCD /* assets in Resources */ = {isa = PBXBuildFile; fileRef = BCCE8BCF85ABD5BE4B06D44A /* assets */; };
+		753A42E9A90AC5D12AE679B2 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 3D7B8AA915C1C242555D0378 /* LaunchScreen.storyboard */; };
+		A77B3F163A3C2AF3F5E59870 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B7C06BBAF2A307E8F3E6826 /* WebKit.framework */; };
+		ACB1525A71364A8F9A97E609 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 6BC7A75464C073DAA94E5812 /* main.mm */; };
+		AEED5BCEDC466E8BC59FF6B9 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 94E26E0DBAB92C2D728A5D59 /* MetalKit.framework */; };
+		CC147FDAEA6A2BA6D7421D3F /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8CD0C43441E32843D649C3F7 /* CoreGraphics.framework */; };
+		D17FAC6A458E26A0FE7AAB6F /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 29AFD8188369AA60AE70378D /* Metal.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		002CC2964F3FFF5C6AD76A28 /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		01353BABB55E41C51B194266 /* update.rs */ = {isa = PBXFileReference; path = update.rs; sourceTree = "<group>"; };
+		1297B6157E7002D166BC71C5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2848B4D51543D84B20B6B2F6 /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		29AFD8188369AA60AE70378D /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		2ABBB5488256C068678D8A97 /* requests.rs */ = {isa = PBXFileReference; path = requests.rs; sourceTree = "<group>"; };
+		2C5B6E46258274784595AFF5 /* ringtome-desktop_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "ringtome-desktop_iOS.entitlements"; sourceTree = "<group>"; };
+		2E98AF6E4F03C80063AA1D61 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		3534F4B16A514600C72E4EA0 /* links.rs */ = {isa = PBXFileReference; path = links.rs; sourceTree = "<group>"; };
+		3D7B8AA915C1C242555D0378 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		4B7C06BBAF2A307E8F3E6826 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		5B0EA76E3B5E8CD6B3B90D36 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		637E83661171BB25E5B19E89 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		651997293CD0B29DE8695C58 /* ringtome-desktop_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "ringtome-desktop_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6BC7A75464C073DAA94E5812 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		77ECDD8443B21E792D5D7832 /* alerts.rs */ = {isa = PBXFileReference; path = alerts.rs; sourceTree = "<group>"; };
+		8CD0C43441E32843D649C3F7 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		94E26E0DBAB92C2D728A5D59 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		9C08C703FFC6A9DCDDCB0C73 /* tray.rs */ = {isa = PBXFileReference; path = tray.rs; sourceTree = "<group>"; };
+		9CFA31BDC0110D176461F5FD /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		AF4A2A39E8DB37C2DE0B5BCB /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		BCCE8BCF85ABD5BE4B06D44A /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		D5FA1C7549DF4A7086C008ED /* port.rs */ = {isa = PBXFileReference; path = port.rs; sourceTree = "<group>"; };
+		D6EC9C12ABB7EEAE7B613EB0 /* android_tls.rs */ = {isa = PBXFileReference; path = android_tls.rs; sourceTree = "<group>"; };
+		F976005E7B3CB645B8A8541A /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D5B6C692C9815C8C0FFDCAB9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				07B8407856A0C4603DAA8E72 /* libapp.a in Frameworks */,
+				CC147FDAEA6A2BA6D7421D3F /* CoreGraphics.framework in Frameworks */,
+				D17FAC6A458E26A0FE7AAB6F /* Metal.framework in Frameworks */,
+				AEED5BCEDC466E8BC59FF6B9 /* MetalKit.framework in Frameworks */,
+				232C88A543302165564E3335 /* QuartzCore.framework in Frameworks */,
+				118DD43237992DBBB3B6BD4D /* Security.framework in Frameworks */,
+				3B1C4208045C39E62398C40D /* UIKit.framework in Frameworks */,
+				A77B3F163A3C2AF3F5E59870 /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		020D3DA89A4540D24507C840 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		043927E262A206AD8572A895 /* ringtome-desktop */ = {
+			isa = PBXGroup;
+			children = (
+				6BC7A75464C073DAA94E5812 /* main.mm */,
+				A1ABA5F94EE809DE966EC87F /* bindings */,
+			);
+			path = "ringtome-desktop";
+			sourceTree = "<group>";
+		};
+		1B3612E01917110B0DB56FFD /* src */ = {
+			isa = PBXGroup;
+			children = (
+				77ECDD8443B21E792D5D7832 /* alerts.rs */,
+				D6EC9C12ABB7EEAE7B613EB0 /* android_tls.rs */,
+				2848B4D51543D84B20B6B2F6 /* lib.rs */,
+				3534F4B16A514600C72E4EA0 /* links.rs */,
+				002CC2964F3FFF5C6AD76A28 /* main.rs */,
+				D5FA1C7549DF4A7086C008ED /* port.rs */,
+				2ABBB5488256C068678D8A97 /* requests.rs */,
+				9C08C703FFC6A9DCDDCB0C73 /* tray.rs */,
+				01353BABB55E41C51B194266 /* update.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		4C74D182CE67030D4F98C6E9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8CD0C43441E32843D649C3F7 /* CoreGraphics.framework */,
+				F976005E7B3CB645B8A8541A /* libapp.a */,
+				29AFD8188369AA60AE70378D /* Metal.framework */,
+				94E26E0DBAB92C2D728A5D59 /* MetalKit.framework */,
+				9CFA31BDC0110D176461F5FD /* QuartzCore.framework */,
+				2E98AF6E4F03C80063AA1D61 /* Security.framework */,
+				AF4A2A39E8DB37C2DE0B5BCB /* UIKit.framework */,
+				4B7C06BBAF2A307E8F3E6826 /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		6FE7F30B1F0CCBCC4FCBE80D = {
+			isa = PBXGroup;
+			children = (
+				BCCE8BCF85ABD5BE4B06D44A /* assets */,
+				1297B6157E7002D166BC71C5 /* Assets.xcassets */,
+				3D7B8AA915C1C242555D0378 /* LaunchScreen.storyboard */,
+				020D3DA89A4540D24507C840 /* Externals */,
+				9254B6980CFBB4CA4CEAE866 /* ringtome-desktop_iOS */,
+				8E45C307868F7C750FA344E9 /* Sources */,
+				1B3612E01917110B0DB56FFD /* src */,
+				4C74D182CE67030D4F98C6E9 /* Frameworks */,
+				F5BACD0719EFE11F819497E6 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8E45C307868F7C750FA344E9 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				043927E262A206AD8572A895 /* ringtome-desktop */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		9254B6980CFBB4CA4CEAE866 /* ringtome-desktop_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				637E83661171BB25E5B19E89 /* Info.plist */,
+				2C5B6E46258274784595AFF5 /* ringtome-desktop_iOS.entitlements */,
+			);
+			path = "ringtome-desktop_iOS";
+			sourceTree = "<group>";
+		};
+		A1ABA5F94EE809DE966EC87F /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				5B0EA76E3B5E8CD6B3B90D36 /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		F5BACD0719EFE11F819497E6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				651997293CD0B29DE8695C58 /* ringtome-desktop_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A68F2CBE6709A66E8EED310A /* ringtome-desktop_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 210A3710272FCBDF2885DB73 /* Build configuration list for PBXNativeTarget "ringtome-desktop_iOS" */;
+			buildPhases = (
+				468EE98E4589CA0484FFEEA0 /* Build Rust Code */,
+				A202C63AA3628E55EA2A6538 /* Sources */,
+				DADE85E6916942C1F96DFE8B /* Resources */,
+				D5B6C692C9815C8C0FFDCAB9 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "ringtome-desktop_iOS";
+			packageProductDependencies = (
+			);
+			productName = "ringtome-desktop_iOS";
+			productReference = 651997293CD0B29DE8695C58 /* ringtome-desktop_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2ADFF425E8CC85C55514ACEC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = B2CB4DCDC3739E6DDFE4D669 /* Build configuration list for PBXProject "ringtome-desktop" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6FE7F30B1F0CCBCC4FCBE80D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F5BACD0719EFE11F819497E6 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A68F2CBE6709A66E8EED310A /* ringtome-desktop_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		DADE85E6916942C1F96DFE8B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				441EEC5B19C65E039FCFE7B4 /* Assets.xcassets in Resources */,
+				753A42E9A90AC5D12AE679B2 /* LaunchScreen.storyboard in Resources */,
+				545E421384AF65CC016C6DCD /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		468EE98E4589CA0484FFEEA0 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "npm run -- tauri ios xcode-script -v --platform \"${PLATFORM_DISPLAY_NAME:?}\" --sdk-root \"${SDKROOT:?}\" --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration \"${CONFIGURATION:?}\" ${FORCE_COLOR} ${ARCHS:?}\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A202C63AA3628E55EA2A6538 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ACB1525A71364A8F9A97E609 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		09760E1FEBD8E48036DB1E80 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		811F16769D27AB441A15911A /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+		A30AE4F89439ED488AF1D4F1 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "ringtome-desktop_iOS/ringtome-desktop_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "ringtome-desktop_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = net.lassam.ringtome;
+				PRODUCT_NAME = "Horse Drawing Tycoon 2";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+		AD91513558D99C1447347EFE /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "ringtome-desktop_iOS/ringtome-desktop_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "ringtome-desktop_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = net.lassam.ringtome;
+				PRODUCT_NAME = "Horse Drawing Tycoon 2";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		210A3710272FCBDF2885DB73 /* Build configuration list for PBXNativeTarget "ringtome-desktop_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A30AE4F89439ED488AF1D4F1 /* debug */,
+				AD91513558D99C1447347EFE /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		B2CB4DCDC3739E6DDFE4D669 /* Build configuration list for PBXProject "ringtome-desktop" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				811F16769D27AB441A15911A /* debug */,
+				09760E1FEBD8E48036DB1E80 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2ADFF425E8CC85C55514ACEC /* Project object */;
+}
