@@ -29004,3 +29004,27 @@ follower's library is empty, and once trusted it names the mixtape, sealed, with
 both songs and their lengths. Seen on a scratch node as a trusted reader: the
 row under "friends' mixtapes" by its name, the songs named in the table, and
 "play now" from the card opening the mixtape with its first song playing.
+
+## Mixtapes: somebody else's song on a sealed one (2026-11-23)
+
+A sealed mixtape holding somebody else's song was refused at publish, by the
+check every sealed post takes ("a trusted-only post can't bake media from the
+open web yet") - words written for web pictures, said about a song. Curtis:
+"rather than copying it sealed under the post's key and keeping the key, doesn't
+it make more sense to unseal it and copy it into our own lane unencumbered?"
+
+It does: the song is public already, so a public copy hides nothing its author
+hadn't shown, and needs no sealed-copy path. `bake.rs` lets a mixtape's copied
+songs past that check - a mixtape's only; every other sealed post is refused as
+before - and says the copy's fields in the open rather than under the post's
+key. The tracklist, the mixtape's name and the author's own songs stay sealed.
+
+What the untrusted can now see: that one song, by its name, in the author's
+lane, since a sealed post's header names its media in the open. A song that
+reached the author sealed still can't go on their mixtape; the copy reads only
+what is public.
+
+`mixtape_publish.cjs` gains "a mixtape, sealed, holding somebody else's song":
+it publishes with both songs on its tracklist, the borrowed one a copy in the
+author's lane; a stranger is handed that copy and refused the tracklist and the
+author's own song.

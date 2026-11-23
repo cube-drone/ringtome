@@ -265,8 +265,14 @@ In the order that lets each be seen working before the next.
    its open header. Its name and its songs' names are under the key, so hrseAmp
    asks the body door for each sealed mixtape's words once per version and names
    the row and the songs from them. Every other sealed sound stays out of the
-   library, as before. _Not built_: a sealed mixtape holding somebody else's
-   song is still refused.
+   library, as before. _Somebody else's song on a sealed mixtape, built the same
+   day_ (Curtis: "unseal it and copy it into our own lane unencumbered"): that
+   song is public already, so its copy in the author's lane is public too, and
+   so is what it says of itself. The tracklist, the mixtape's name and the
+   author's own songs stay under the key. What this shows the untrusted: that
+   song, by its name, in the author's lane, named by the sealed post's open
+   header. A song that reached the author sealed still cannot go on a mixtape of
+   theirs - the copy reads only what is public.
 6. **Groups.**
 7. **"`<name>`'s Tracks".** _Built 2026-11-23_, in the "friends' mixtapes"
    section, one row per person. The library marks each sound a mixtape in the

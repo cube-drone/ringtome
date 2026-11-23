@@ -812,9 +812,17 @@ pub async fn publish_reporting(
     // image would be the leak this whole design exists to close - refuse with words.
     // Once sealed, always sealed: a draft that already holds a key seals again whether or
     // not this request says trusted-only (the edit flow never does).
+    // A sealed mixtape's song that is somebody else's is the exception (Curtis, 2026-11-23:
+    // "unseal it and copy it into our own lane unencumbered"): that song is public already, so
+    // its copy here is public too and hides nothing its author hadn't shown. The mixtape's
+    // name, its order and the author's own songs stay under the key.
     let post_key = docs.post_key_if(doc_id, trusted_only).await?;
     if post_key.is_some()
-        && refs.iter().any(|r| matches!(r, MediaRef::External { .. } | MediaRef::Foreign { .. }))
+        && refs.iter().any(|r| match r {
+            MediaRef::External { .. } => true,
+            MediaRef::Foreign { .. } => !flags.mixtape,
+            MediaRef::PrivateDoc { .. } => false,
+        })
     {
         return Err(AppError::BadRequest(crate::msg!(
             "record.bake.trusted-cant-bake-external",
@@ -1165,7 +1173,9 @@ async fn sound_fields_on_twin(
             desired.insert((field.to_string(), value.to_string()));
         }
     }
-    crate::identity::restate_labels(data, &self_root, twin, &desired, post_key).await?;
+    // A copy of somebody else's song is public even in a sealed mixtape, and so is what it says.
+    let key = post_key.filter(|_| matches!(source, SoundSource::Own(_)));
+    crate::identity::restate_labels(data, &self_root, twin, &desired, key).await?;
     Ok(())
 }
 

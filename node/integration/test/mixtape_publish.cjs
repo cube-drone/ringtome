@@ -498,3 +498,126 @@ const base58 = async (who) => {
         );
     });
 });
+
+/*
+    A sealed mixtape with somebody else's song on it (Curtis, 2026-11-23: "unseal it and copy it
+    into our own lane unencumbered"). That song is public already, so its copy in the mixtape's
+    author's lane is public too; the tracklist and the author's own song stay under the key.
+*/
+describe("a mixtape, sealed, holding somebody else's song", function () {
+    this.timeout(600000);
+
+    const stranger = makeFetch();
+    let ada, adaRoot, bea, beaRoot, theirs, post, tracks;
+
+    const persona = async (prefix) => {
+        const who = await makeUserFetch({ prefix });
+        const root = (await (await who('api/identity', { method: 'POST' })).json()).root_pubkey;
+        await j(who, `api/identity/${root}/serve`, {});
+        return [who, root];
+    };
+    const uploaded = async (who, root, title, file) => {
+        const made = await (
+            await who(`api/identity/${root}/docs/binary?title=${title}`, {
+                method: 'POST',
+                body: sample(file),
+                file: true,
+            })
+        ).json();
+        for (let i = 0; i < 240; i++) {
+            if ((await who(`api/identity/${root}/docs/${made.doc_id}/body`)).status === 200)
+                return made.doc_id;
+            await wait(500);
+        }
+        throw new Error(`${title} never finished ingesting`);
+    };
+    const published = async (who, root, doc, body) => {
+        for (let i = 0; i < 200; i++) {
+            const r = await j(who, `api/identity/${root}/docs/${doc}/publish`, body);
+            const said = await r.text();
+            if (r.status === 200) return JSON.parse(said).post_id;
+            assert.ok(
+                r.status === 202 || said.includes('this-notes-words-havent-arrived'),
+                `${r.status} ${said}`,
+            );
+            await wait(500);
+        }
+        throw new Error('never published');
+    };
+
+    before(async () => {
+        [ada, adaRoot] = await persona('lenttapeada');
+        [bea, beaRoot] = await persona('lenttapebea');
+        // Bea's song, public: a post of hers that embeds it.
+        const hers = await uploaded(bea, beaRoot, 'Borrowed', 'buck-cover.opus');
+        const note = (
+            await (
+                await j(bea, `api/identity/${beaRoot}/docs`, {
+                    title: 'a song',
+                    body: `![song](/api/identity/${beaRoot}/docs/${hers}/body/track.ogg)\n`,
+                    format: 'marquee',
+                })
+            ).json()
+        ).doc_id;
+        const said = await published(bea, beaRoot, note, {});
+        const words = await (await stranger(`id/${beaRoot}/docs/${said}/body`)).text();
+        theirs = (words.match(/\/doc\/([0-9a-f]{32})\//) || [])[1];
+        assert.ok(theirs, `bea's post embeds her public song: ${words}`);
+
+        const tape = (
+            await (
+                await j(ada, `api/identity/${adaRoot}/taxonomies`, { title: 'mixtape:Lent Songs' })
+            ).json()
+        ).taxonomy_id;
+        const own = await uploaded(ada, adaRoot, 'Mine', 'buck-audio.ogg');
+        for (const [doc, member_root] of [
+            [own, adaRoot],
+            [theirs, beaRoot],
+        ]) {
+            const put = await j(
+                ada,
+                `api/identity/${adaRoot}/taxonomies/${tape}/members/${doc}`,
+                { member_root },
+                'PUT',
+            );
+            assert.equal(put.status, 200, await put.text());
+        }
+        const drafted = await ada(`api/identity/${adaRoot}/amp/tapes/${tape}/draft`, {
+            method: 'PUT',
+        });
+        assert.equal(drafted.status, 200, await drafted.clone().text());
+        post = await published(ada, adaRoot, (await drafted.json()).doc_id, {
+            trusted_only: true,
+        });
+    });
+
+    it('publishes, sealed, with both songs on its tracklist', async () => {
+        const head = await (await stranger(`api/id/${adaRoot}/posts/${post}`)).json();
+        assert.equal(head.format, 'mixtape', JSON.stringify(head).slice(0, 300));
+        assert.equal(head.trusted_only, true);
+        const own = await ada(`id/${adaRoot}/docs/${post}/body`);
+        assert.equal(own.status, 200, await own.clone().text());
+        tracks = (await own.json()).tracks;
+        assert.equal(tracks.length, 2, JSON.stringify(tracks));
+        assert.ok(
+            tracks.every((t) => t.doc !== theirs),
+            "the borrowed song is a copy in ada's lane, not bea's own",
+        );
+    });
+
+    it("the borrowed song's copy is public; the tracklist and ada's own song are not", async () => {
+        assert.notEqual((await stranger(`id/${adaRoot}/docs/${post}/body`)).status, 200);
+        const got = [];
+        for (const t of tracks) {
+            const r = await stranger(`id/${adaRoot}/docs/${t.doc}/body`);
+            got.push(
+                r.status === 200
+                    ? Buffer.from(await r.arrayBuffer())
+                          .subarray(0, 4)
+                          .toString('latin1')
+                    : 'refused',
+            );
+        }
+        assert.deepEqual(got, ['refused', 'OggS'], JSON.stringify(tracks));
+    });
+});
