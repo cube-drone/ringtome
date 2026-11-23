@@ -28585,3 +28585,27 @@ it and it still counted as a failed guess attempt." Curtis: "It's gaining $2
 from a skip! ... i need to mark that better". The button now reads "skip to
 earn" and the amount wears a plus sign; its hover says the guess is given up for
 money earned, and that it still counts as an attempt.
+
+## Who people are, already in hand (2026-11-22)
+
+Curtis: "every time I open a chat, it takes a moment for the browser to remember
+who 'squad-drama' or 'fend-shore' is and load their icon - these details change,
+but rarely". The browser was already keeping them - a stranger's profile in the
+mirror's `strangers` table for an hour (2026-10-07), a contact's name and
+picture in the ledger - but every Person widget asked the database for its own
+person as it mounted, and drew the key's words and pattern until the answer
+came. Opening a chat mounts a widget per voice, so every opening flashed.
+
+`person.js` now holds them in memory for the life of the page. `seen` is every
+stranger's profile the page has read, and a widget starts from it instead of
+from nothing; the contact row's live query is named (`useLive`'s `remember`), so
+a widget mounted afresh starts from the last answer. And `warm` reads both
+tables whole, once per persona per page, the first time anything asks about
+anyone - the shell's own tile, in practice - seeding both (`mirror.js`
+`rememberLive`), so the people in a chat are in hand before it opens. A kept
+profile fresh in memory skips the database read as well. The kept profile also
+stands six hours unasked now, where it stood one (`pure/keep.js`): the cost is a
+stranger's "active today" lagging by that much.
+
+Not seen in a browser: `just ui-check` passes, and the flash it removes was not
+measured before or after.

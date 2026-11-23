@@ -25,7 +25,7 @@ import { useLocation } from 'preact-iso';
 
 import { api } from './net.js';
 import { openIm } from './ims.js';
-import { openMirror, useLive } from './mirror.js';
+import { openMirror, rememberLive, useLive } from './mirror.js';
 import { keptStranger, keepStranger } from './mirror/keep.js';
 import { profileFresh } from './pure/keep.js';
 import { speakable, toBase58 } from './speakable.js';
@@ -89,10 +89,46 @@ function strangerProfile(root, myRoot) {
     const asked = api(`/api/id/${root}/profile`);
     strangerProfiles.set(root, { at: Date.now(), asked });
     asked.then(
-        (profile) => myRoot && keepStranger(myRoot, root, profile),
+        (profile) => {
+            if (!myRoot) return;
+            seen.set(seenKey(myRoot, root), { profile, at: Date.now() });
+            keepStranger(myRoot, root, profile);
+        },
         () => strangerProfiles.delete(root), // a failure is asked again, not remembered
     );
     return asked;
+}
+
+// Who people are, already in hand (Curtis, 2026-11-22: "every time I open a chat, it takes a
+// moment for the browser to remember who 'squad-drama' or 'fend-shore' is and load their icon").
+// The kept profiles and the ledger were always in this browser, but every widget asked the
+// database for its own person on mounting, and drew their key's words and pattern until it
+// answered. So the page holds them in memory too: `seen` is every stranger's profile this page has
+// read, and a widget starts from it; `warm` reads both tables whole, once per persona per page, as
+// soon as anything asks about anyone - so by the time a chat opens, the people in it are here.
+const seen = new Map(); // `${myRoot}/${root}` -> { profile, at }
+const seenKey = (myRoot, root) => `${myRoot}/${root}`;
+const contactName = (myRoot, root) => `contact:${myRoot}:${root}`;
+const warmed = new Set(); // myRoot
+function warm(myRoot) {
+    if (warmed.has(myRoot)) return;
+    warmed.add(myRoot);
+    const mirror = openMirror(myRoot);
+    mirror.strangers
+        .toArray()
+        .then((rows) => {
+            for (const row of rows) {
+                const key = seenKey(myRoot, row.root);
+                if (!seen.has(key)) seen.set(key, { profile: row.profile, at: row.at });
+            }
+        })
+        .catch(() => {}); // not warmed: each widget reads its own, as before
+    mirror.contacts
+        .toArray()
+        .then((rows) => {
+            for (const row of rows) rememberLive(contactName(myRoot, row.root), row);
+        })
+        .catch(() => {});
 }
 
 /// Your own domain, when this node has found that it names you back (domains.rs): asked once per
@@ -128,10 +164,16 @@ export function usePerson(root, { current, profile: given } = {}) {
     const isYou = !!(myRoot && myRoot === root);
     const myDomain = useOwnDomain(isYou ? myRoot : null);
 
-    // Your ledger's facts about them (nickname, trust, interest, blocked) - live.
+    useEffect(() => {
+        if (myRoot) warm(myRoot);
+    }, [myRoot]);
+
+    // Your ledger's facts about them (nickname, trust, interest, blocked) - live, and from what
+    // the page already read of them until the query answers.
     const contactRow = useLive(
         () => (myRoot && root && !isYou ? openMirror(myRoot).contacts.get(root) : null),
         [myRoot, root, isYou],
+        myRoot && root && !isYou ? contactName(myRoot, root) : null,
     );
     // Your own self-claims, when the person IS you - live off your profile table. The name and
     // picture answer `null` when the mirror holds none, so `undefined` means only "not read yet":
@@ -171,20 +213,26 @@ export function usePerson(root, { current, profile: given } = {}) {
     // The last resort: a stranger, no ledger row, no profile handed down. What this browser kept
     // last time is shown at once (mirror/keep.js); the node is asked only when that is over an
     // hour old, or there is none - and a failed ask leaves the kept one standing.
-    const [fetched, setFetched] = useState(null);
+    // ...and what the page has already read of them is shown before either (`seen`, above).
+    const [answered, setAnswered] = useState(null); // { root, profile }
+    const inHand = myRoot && root ? seen.get(seenKey(myRoot, root)) : null;
+    const fetched =
+        answered && answered.root === root ? answered.profile : (inHand && inHand.profile) || null;
     const needsFetch = !!root && !isYou && !given && !contactRow;
     useEffect(() => {
         if (!needsFetch) return;
         let live = true;
         (async () => {
-            const kept = myRoot ? await keptStranger(myRoot, root) : null;
-            if (kept && live) setFetched(kept.profile);
+            const held = myRoot ? seen.get(seenKey(myRoot, root)) : null;
+            const kept = held || (myRoot ? await keptStranger(myRoot, root) : null);
+            if (kept && !held) seen.set(seenKey(myRoot, root), kept);
+            if (kept && live) setAnswered({ root, profile: kept.profile });
             if (profileFresh(kept, Date.now())) return;
             try {
                 const p = await strangerProfile(root, myRoot);
-                if (live) setFetched(p);
+                if (live) setAnswered({ root, profile: p });
             } catch {
-                if (live && !kept) setFetched(null);
+                if (live && !kept) setAnswered(null);
             }
         })();
         return () => {

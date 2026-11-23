@@ -265,6 +265,12 @@ export function startLiveCache(root) {
 // takes over a moment later. For what lays a page out (prefs: widths, tucks), where "not read
 // yet" draws as the default and then jumps. Per tab.
 const remembered = new Map();
+/// Say ahead of time what a named query will answer, where nothing has been read under that name
+/// yet: for a table read whole in one go (person.js warms the contacts), so the first component to
+/// ask for a row starts from it.
+export const rememberLive = (name, value) => {
+    if (!remembered.has(name)) remembered.set(name, value);
+};
 export function useLive(queryFn, deps, remember = null) {
     const [value, setValue] = useState(() => (remember ? remembered.get(remember) : undefined));
     useEffect(() => {
