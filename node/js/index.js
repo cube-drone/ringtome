@@ -579,6 +579,19 @@ const Inside = ({ session }) => {
                                 : html`<${iconFor(app, isDevice())} />`
                         }</span></button>
                         ${
+                            /* A santa hat on your own tile while a holiday colourway is on the
+                            page (Curtis, 2026-11-23) - drawn always, shown by the colourway
+                            (quickbar.css), so it needs no word from here. */
+                            lead &&
+                            html`<span class="quickbar-hat" aria-hidden="true">
+                                <svg viewBox="0 0 32 24">
+                                    <path class="quickbar-hat-cone" d="M5 18 Q8 3 20 4 Q27 5 28 13 L24 12.5 Q22 8.5 18.5 8.5 Q22 12 23 18 Z" />
+                                    <rect class="quickbar-hat-fur" x="2.5" y="15.5" width="23" height="6.5" rx="3.25" />
+                                    <circle class="quickbar-hat-fur" cx="27.5" cy="14" r="3" />
+                                </svg>
+                            </span>`
+                        }
+                        ${
                             /* Outside the heptagon, not inside it: the hex is clip-pathed,
                             and a badge within it would be cut to the shape. */ ''
                         }

@@ -244,6 +244,50 @@ a.quickbar-version:focus-visible {
     display: inline-flex;
 }
 
+/* A santa hat on your own tile (Curtis, 2026-11-23), there whenever a holiday colourway is on the
+   page - holidaymas or jack-frost - and nowhere else. A sibling of the hex, as the badge is, since
+   the hex is clip-pathed; kept inside the tile's width, because the dock clips sideways. */
+.quickbar-hat {
+    display: none;
+    position: absolute;
+    top: -15px;
+    left: 9px;
+    width: 34px;
+    transform: rotate(-10deg);
+    pointer-events: none;
+    z-index: 1;
+}
+
+:root[data-colorway='holidaymas'] .quickbar-hat,
+:root[data-colorway='jack-frost'] .quickbar-hat {
+    display: block;
+}
+
+.quickbar-hat svg {
+    display: block;
+    width: 100%;
+    overflow: visible;
+}
+
+.quickbar-hat-cone {
+    fill: var(--santa-hat-red);
+    stroke: var(--santa-hat-shade);
+    stroke-width: 0.8;
+    stroke-linejoin: round;
+}
+
+.quickbar-hat-fur {
+    fill: var(--santa-hat-fur);
+    stroke: var(--santa-hat-fur-edge);
+    stroke-width: 0.6;
+}
+
+/* Under jack-frost the hat itself is blue (Curtis, 2026-11-23); its brim and pom stay white. */
+:root[data-colorway='jack-frost'] .quickbar-hat-cone {
+    fill: var(--santa-hat-frost);
+    stroke: var(--santa-hat-frost-edge);
+}
+
 .quickbar-badge {
     position: absolute;
     top: -4px;

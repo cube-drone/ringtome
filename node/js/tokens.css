@@ -242,6 +242,15 @@
     --swatch-jack-frost-1: #1f78c8;
     --swatch-jack-frost-2: #c7d3de;
     --swatch-jack-frost-3: #e3b23c;
+    /* The santa hat the persona tile wears under a holiday colourway (quickbar.css). */
+    --santa-hat-red: #c8202c;
+    --santa-hat-shade: #8d1620;
+    --santa-hat-fur: #ffffff;
+    --santa-hat-fur-edge: #b9c2cc;
+    /* Under jack-frost the hat itself is blue (Curtis, 2026-11-23) - towards aquamarine, since the
+       colourway's own blue was "barely noticeable against the rest of the blue". */
+    --santa-hat-frost: #35cfc4;
+    --santa-hat-frost-edge: #17857f;
 }
 
 :root[data-colorway='witchlight'] {

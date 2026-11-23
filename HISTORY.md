@@ -29210,3 +29210,26 @@ unrecorded purchase. Not seen on screen: it is November, and nothing is on sale.
 Curtis: "Add holidaymas and jack-frost to July, too: darn Australians". A third
 line of `SALES`: the holiday colourways are 75% off in July as in December, so
 July has all six on sale. The unit test says so.
+
+## A santa hat on the persona tile (2026-11-23)
+
+Curtis: "if a holiday colorway is loaded, can we display a little santa hat
+overtop the user's profile septagon in the bottom left corner of the screen?"
+
+The dock's persona tile carries a small drawn hat - a red cone, a fur brim and a
+pom - as a sibling of the heptagon, since the heptagon is clip-pathed and would
+cut it (the badge's reason). It is always in the page and shown by CSS alone,
+`:root[data-colorway='holidaymas']` or `'jack-frost'`, so it follows whatever
+colourway the page is wearing with no word from the script. Its four colours are
+tokens. Kept inside the tile's width: the dock clips sideways. Seen on a scratch
+node under both colourways, and gone under the others. The phone's narrow bar
+has no persona tile, and so no hat.
+
+## The santa hat, blue under jack-frost (2026-11-23)
+
+Curtis asked for a blue brim under jack-frost, then put it right: "the hat's
+brim should remain white but the hat itself should move from red to blue". Under
+`:root[data-colorway='jack-frost']` the cone takes a blue of its own, two more
+tokens; the brim and pom stay white, and holidaymas is as it was. The
+colourway's own blue was "barely noticeable against the rest of the blue", so
+the hat's leans to aquamarine.
