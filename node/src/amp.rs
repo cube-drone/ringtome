@@ -36,7 +36,8 @@ pub struct LibraryQuery {
 /// GET `/api/identity/{root}/amp/library[?stop=]` - the sound in the reader's feed: one row per
 /// sound, with the post it arrived in, who it came through, its author's fields and tags, the
 /// notebook its author filed it in, how long it plays, and the post's score for this reader. And
-/// `tapes`: the published mixtapes among those posts, by author and post.
+/// `tapes`: the published mixtapes among those posts, by author and post, and the mixtapes posted
+/// in the reader's groups, each naming its `group`.
 pub async fn library_handler(
     session: Session,
     State(state): State<AppState>,
@@ -59,6 +60,10 @@ pub async fn library_handler(
     let with_sound =
         crate::annotations::sound_posts(&state.node_db).await.map_err(AppError::Internal)?;
 
+    // A group's posts apart: their media is the group's, read through its door, and nothing of an
+    // author's public chain. The mixtapes among them are listed below, each under its group.
+    let (group_rows, journal): (Vec<_>, Vec<_>) =
+        journal.into_iter().partition(|r| r.group.is_some());
     // One row per post, the newest arrival kept; sealed posts left out - their sound is for the
     // author's trusted readers, and the reading copy of it here would need their key. But a sealed
     // mixtape this reader is admitted to stays (plans/MIXTAPES.md, slice 5): its header names its
@@ -277,6 +282,69 @@ pub async fn library_handler(
                 !tagged_of[&author].contains(&sound_hex)
             },
         }));
+    }
+    // The mixtapes posted in the reader's groups (plans/MIXTAPES.md, slice 6): each named with its
+    // group, for a section of the Playlists column per group, and its songs as rows read off its
+    // tracklist - the group's media documents, which the player asks the group's door for.
+    let mut tapes = tapes;
+    let mut group_tapes: Vec<&crate::fanout::FeedRow> =
+        group_rows.iter().filter(|r| r.format.as_deref() == Some("mixtape")).collect();
+    group_tapes.sort_by_key(|r| std::cmp::Reverse(r.arrived_ms));
+    let ids: std::collections::BTreeSet<String> =
+        group_tapes.iter().filter_map(|r| r.group.as_ref().map(|g| g.id.clone())).collect();
+    let group_names = crate::roster::group_names(&state, &ids).await.unwrap_or_default();
+    let mut listed: std::collections::HashSet<(String, String)> = Default::default();
+    for row in group_tapes {
+        let Some(group) = row.group.as_ref().filter(|g| !g.hidden) else { continue };
+        if !listed.insert((row.author_root.clone(), row.doc_id.clone())) {
+            continue;
+        }
+        tapes.push(json!({
+            "author": row.author_root,
+            "post": row.doc_id,
+            "title": row.title,
+            "arrived_ms": row.arrived_ms,
+            "updated_ms": row.updated_ms,
+            "sealed": false,
+            "group": {
+                "id": group.id,
+                "name": group_names.get(&group.id).cloned().unwrap_or_else(|| group.name.clone()),
+            },
+        }));
+        let Some(body) = crate::roster::tape_body(&state, &group.id, &row.doc_id).await else {
+            continue;
+        };
+        for track in body.tracks {
+            if !listed.insert((row.author_root.clone(), track.doc.clone())) {
+                continue;
+            }
+            let mut fields: BTreeMap<&str, String> = BTreeMap::new();
+            for (key, value) in [("artist", &track.artist), ("album", &track.album)] {
+                if !value.is_empty() {
+                    fields.insert(key, value.clone());
+                }
+            }
+            sounds.push(json!({
+                "author": row.author_root,
+                "doc": track.doc,
+                "post": row.doc_id,
+                "group": group.id,
+                "title": track.title,
+                "fields": fields,
+                "tags": [],
+                "our_tags": [],
+                "tag_counts": {},
+                "notebook": null,
+                "duration_ms": track.ms,
+                "thumb": false,
+                "arrived_ms": row.arrived_ms,
+                "published_ms": row.dated_ms.unwrap_or(row.published_ms),
+                "score": 0,
+                "kept": false,
+                "taped": true,
+                "carried": true,
+            }));
+        }
     }
     // Who made them and who they came through, by name, for the By and From columns.
     let roots: Vec<String> = sounds

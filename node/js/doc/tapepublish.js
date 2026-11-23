@@ -10,6 +10,9 @@
 // version it published (`published_head`, as a drawing's publish does). Then it says how many
 // tracks are out beside how many the mixtape holds now.
 //
+// "Post to" offers your groups too (slice 6): a mixtape posted in one is the group's, its songs the
+// group's media, and the bar updates it and takes it down there as it does a note.
+//
 // Thirty tracks is the most a mixtape publishes (ruling 3: "all the songs that will fit on a real
 // cassette tape"): past it the row is greyed and says so, and with none it says that.
 import { h } from 'preact';
@@ -31,7 +34,7 @@ export const TAPE_MAX = 30;
 /// Where the node keeps each mixtape's draft, by its taxonomy (amp.rs `TAPE_DRAFTS_KV`).
 const DRAFTS = 'mixtape_drafts';
 
-export const TapePublish = ({ root, tape, onDraft = () => {} }) => {
+export const TapePublish = ({ root, tape, onDraft = () => {}, onPublished = () => {} }) => {
     const [draft, setDraft] = useState(undefined); // the note's id, null for none yet
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
@@ -114,8 +117,7 @@ export const TapePublish = ({ root, tape, onDraft = () => {} }) => {
                     return { words: true };
                 }}
                 differs=${differs}
-                onPublished=${() => {}}
-                groupable=${false}
+                onPublished=${onPublished}
             />
             ${
                 post &&

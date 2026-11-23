@@ -137,4 +137,23 @@ describe("hrseAmp's mixtapes (plans/AUDIO.md)", () => {
         assert.equal(named[2], sounds[2], "another person's song of the same id is left alone");
         assert.equal(m.namedBySealedTapes(sounds, {}), sounds);
     });
+
+    it("sorts the groups' mixtapes into a section per group that has any", () => {
+        const tapes = [
+            { author: 'a', post: 'p1', title: 'Public' },
+            { author: 'a', post: 'p2', title: 'Two', group: { id: 'g2', name: 'Zebra Club' } },
+            { author: 'b', post: 'p3', title: 'Three', group: { id: 'g1', name: 'Aardvarks' } },
+            { author: 'b', post: 'p4', title: 'Four', group: { id: 'g2', name: 'Zebra Club' } },
+        ];
+        const sections = m.groupSections(tapes);
+        assert.deepEqual(
+            sections.map((g) => [g.id, g.name, g.tapes.map((x) => x.post)]),
+            [
+                ['g1', 'Aardvarks', ['p3']],
+                ['g2', 'Zebra Club', ['p2', 'p4']],
+            ],
+            "by the group's name, each mixtape in the order it came; the public one in none",
+        );
+        assert.deepEqual(m.groupSections([tapes[0]]), []);
+    });
 });

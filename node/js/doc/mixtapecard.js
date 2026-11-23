@@ -29,11 +29,13 @@ export const parseTape = (words) => {
     }
 };
 
-/// A track as the player takes a song (apps/amp.js's rows): somebody's public sound.
-const song = (author, track) => ({
+/// A track as the player takes a song (apps/amp.js's rows): somebody's public sound, or - for a
+/// mixtape posted in a group - one of the group's media documents, read through the group's door.
+const song = (author, track, group) => ({
     key: rowKey(author, track.doc),
     own: false,
     author,
+    group: group || undefined,
     doc: track.doc,
     title: track.title || '',
     artist: track.artist || '',
@@ -42,13 +44,13 @@ const song = (author, track) => ({
     thumb: false,
 });
 
-export const MixtapeCard = ({ tape, author, post, title, viewer = null }) => {
+export const MixtapeCard = ({ tape, author, post, title, viewer = null, group = null }) => {
     const player = usePlayer();
     const loc = useLocation();
     const hasAmp = useUnlocked(viewer, 'music');
     if (!tape)
         return html`<p class="null-sub">${t('mixtape.cannot-read', 'a mixtape this computer cannot read yet')}</p>`;
-    const songs = tape.tracks.map((track) => song(author, track));
+    const songs = tape.tracks.map((track) => song(author, track, group));
     const playing = !!player && !!player.current && songs.some((s) => s.key === player.current.key);
     const play = () => {
         if (!player || !songs.length) return;

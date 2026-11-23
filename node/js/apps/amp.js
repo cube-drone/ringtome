@@ -34,7 +34,7 @@ import { BulkPanel } from '../doc/bulk.js';
 import { usePlayer, PlayerBar, Cassette, Thumbs, SHUFFLE, songForPhone } from '../player.js';
 import { spreadOrder } from '../pure/shuffle.js';
 import { AMP_PINS, readPins, pinKey, pinnedLists, pinnedFirst } from '../pure/amppins.js';
-import { postHref, appHref } from '../links.js';
+import { postHref, groupPostHref, appHref } from '../links.js';
 import { noteThing, forgetThing, playlistThing } from '../mirror/recents.js';
 import { useLocation } from 'preact-iso';
 import { Icons } from '../icons.js';
@@ -60,6 +60,7 @@ import {
     notYetIn,
     readMixtape,
     lentKey,
+    groupSections,
     looseTracks,
     namedBySealedTapes,
     sharedTapes,
@@ -356,7 +357,7 @@ const FilePanel = ({ root, rows, docRows, layer, onLayer, onClear, onDeleted, mi
                 !r.own &&
                 html`<p class="null-sub">
                     ${t('amp.theirs-yours-beside', 'Their fields, and yours beside them: yours are only yours, and win in your table.')}
-                    ${r.post && html` <a href=${postHref(r.author, r.post)}>${t('amp.the-post', 'the post it came in')}</a>`}
+                    ${r.post && html` <a href=${r.group ? groupPostHref(r.group, r.post) : postHref(r.author, r.post)}>${t('amp.the-post', 'the post it came in')}</a>`}
                 </p>
                 <${LayerFields} root=${root} rows=${[r]} layer=${layer} onLayer=${onLayer} />`
             }
@@ -678,6 +679,7 @@ const Playlists = ({
     shared = [],
     friends = [],
     loose = [],
+    groups = [],
     lent = null,
     onOpenLent,
 }) => {
@@ -816,6 +818,22 @@ const Playlists = ({
             ),
         )}
         ${
+            /* A section per group that has mixtapes posted in it, under the group's name. */
+            groups.map(
+                (g) => html`<p key=${`group:${g.id}`} class="amp-playlists-group">${g.name}</p>
+                    ${g.tapes.map((x) =>
+                        lentRow(`group:${x.id}`, x.name, x.by, !!lent && lent.id === x.id, () =>
+                            onOpenLent({
+                                kind: 'friend',
+                                author: x.author,
+                                post: x.post,
+                                group: x.group,
+                            }),
+                        ),
+                    )}`,
+            )
+        }
+        ${
             /* Radio stations (section 6): each a pie of filters, mixtapes and stations, opened to edit
             and play. */ ''
         }
@@ -838,6 +856,7 @@ const sharedWith = (to) => {
         return t('audience.people-i-trust-and-onward', 'people I trust, and onward');
     if (to === 'trusted') return t('audience.people-i-trust', 'people I trust');
     if (to === 'mentioned') return t('audience.the-people-mentioned', 'the people mentioned');
+    if (to.startsWith('group:')) return to.slice(6);
     return to.startsWith('tag:') ? to.slice(4) : to;
 };
 
@@ -1413,20 +1432,64 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
     );
     // The Playlists column's other rows: your published mixtapes, the mixtapes in your feed, and
     // each person's songs that no mixtape brought.
-    const shared = useMemo(() => sharedTapes(tapes, drafts, docRows), [tapes, drafts, docRows]);
+    // Those posted in a group are the group's, not a public post's: the draft's groups door says
+    // which (the publish bar reads the same), asked for each draft that isn't out in public.
+    const [inGroups, setInGroups] = useState({});
+    const [groupTurn, setGroupTurn] = useState(0);
+    const unposted = tapes
+        .map((x) => drafts[x.id])
+        .filter((d) => d && !((docRows.get(d) || {}).fields || {}).published_as)
+        .join(',');
+    useEffect(() => {
+        let live = true;
+        Promise.all(
+            (unposted ? unposted.split(',') : []).map((d) =>
+                api(`/api/identity/${root}/docs/${d}/groups`)
+                    .then((list) => [d, (list || [])[0] || null])
+                    .catch(() => [d, null]),
+            ),
+        ).then((list) => live && setInGroups(Object.fromEntries(list.filter(([, g]) => g))));
+        return () => {
+            live = false;
+        };
+    }, [root, unposted, groupTurn]);
+    const shared = useMemo(
+        () => [
+            ...sharedTapes(tapes, drafts, docRows),
+            ...tapes
+                .filter((x) => inGroups[drafts[x.id]])
+                .map((x) => {
+                    const g = inGroups[drafts[x.id]];
+                    return { tape: x, draft: drafts[x.id], post: g.post, to: `group:${g.name}` };
+                }),
+        ],
+        [tapes, drafts, docRows, inGroups],
+    );
+    const lentOf = (x) => ({
+        id: lentKey(x.author, x.post),
+        author: x.author,
+        post: x.post,
+        group: x.group ? x.group.id : '',
+        name:
+            x.title ||
+            (sealedOpen[lentKey(x.author, x.post)] || {}).name ||
+            t('amp.untitled-mixtape', 'a mixtape'),
+        by: nameOf(names, x.author),
+    });
     const friends = useMemo(
-        () =>
-            feed.tapes.map((x) => ({
-                id: lentKey(x.author, x.post),
-                author: x.author,
-                post: x.post,
-                name:
-                    x.title ||
-                    (sealedOpen[lentKey(x.author, x.post)] || {}).name ||
-                    t('amp.untitled-mixtape', 'a mixtape'),
-                by: nameOf(names, x.author),
-            })),
+        () => feed.tapes.filter((x) => !x.group).map(lentOf),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [feed.tapes, names, sealedOpen],
+    );
+    // The mixtapes posted in your groups, a section per group that has any.
+    const groups = useMemo(
+        () => groupSections(feed.tapes).map((g) => ({ ...g, tapes: g.tapes.map(lentOf) })),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [feed.tapes, names],
+    );
+    const lentTapes = useMemo(
+        () => [...friends, ...groups.flatMap((g) => g.tapes)],
+        [friends, groups],
     );
     const loose = useMemo(
         () =>
@@ -1446,9 +1509,9 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                 : null;
         }
         const id = lentKey(lentOpen.author, lentOpen.post);
-        const friend = friends.find((x) => x.id === id);
+        const friend = lentTapes.find((x) => x.id === id);
         return { id, name: friend ? friend.name : '', members: lentOpen.members || [] };
-    }, [lentOpen, loose, friends]);
+    }, [lentOpen, loose, lentTapes]);
     const order = tape || lent;
     const shown = useMemo(() => {
         const narrowed = searched(narrowedSongs(rows, picks, scope), searchQuery);
@@ -1567,7 +1630,12 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         let next = x;
         if (x.kind === 'friend') {
             try {
-                const words = await apiText(`/id/${x.author}/docs/${x.post}/body`);
+                // A group's mixtape is read through the group's door.
+                const words = await apiText(
+                    x.group
+                        ? `/api/groups/${x.group}/docs/${x.post}/body`
+                        : `/id/${x.author}/docs/${x.post}/body`,
+                );
                 next = { ...x, members: tapeMembers(x.author, JSON.parse(words)) };
             } catch (e) {
                 toast(
@@ -1943,13 +2011,18 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         const filterAsked = asked.filter && filters.find((x) => x.id === asked.filter);
         // `?tape=<author>/<post>`: a published mixtape, from its card's "play now" - a friend's,
         // or your own (which opens as the mixtape it was published from).
-        const lentAsked = asked.tape && friends.find((x) => x.id === asked.tape);
+        const lentAsked = asked.tape && lentTapes.find((x) => x.id === asked.tape);
         const ownAsked = asked.tape && shared.find((x) => lentKey(root, x.post) === asked.tape);
         if (tapeAsked) openMixtape(tapeAsked);
         else if (stationAsked) openStationView(stationAsked);
         else if (filterAsked) applyFilter(filterAsked);
         else if (lentAsked)
-            openLent({ kind: 'friend', author: lentAsked.author, post: lentAsked.post });
+            openLent({
+                kind: 'friend',
+                author: lentAsked.author,
+                post: lentAsked.post,
+                group: lentAsked.group,
+            });
         else if (ownAsked) openMixtape(ownAsked.tape);
         // One that isn't here (not in this feed, or not read yet) waits while the library loads.
         else if (!asked.tape || loading) return;
@@ -1963,7 +2036,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
         tapes,
         stations,
         filters,
-        friends,
+        lentTapes,
         shared,
         loading,
     ]);
@@ -2322,6 +2395,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                           onPin=${togglePin}
                           shared=${shared}
                           friends=${friends}
+                          groups=${groups}
                           loose=${loose}
                           lent=${lent}
                           onOpenLent=${openLent}
@@ -2369,6 +2443,7 @@ export const AmpApp = ({ current, searchQuery, onSearch }) => {
                     /* An open mixtape of your own wears the publish row (plans/MIXTAPES.md). */
                     tape &&
                     html`<${TapePublish}
+                        onPublished=${() => setGroupTurn((n) => n + 1)}
                         root=${root}
                         tape=${tape}
                         onDraft=${(doc) => setDrafts((have) => ({ ...have, [tape.id]: doc }))}

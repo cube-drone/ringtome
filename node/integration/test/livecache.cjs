@@ -16,6 +16,7 @@ const WebSocket = require('ws');
 
 const { HOST, HOST_B } = require('./fetch.cjs');
 const { uniqueUsername } = require('./helpers.cjs');
+const { beat } = require('./beat.cjs');
 
 const PW = 'test-password-123';
 
@@ -347,6 +348,10 @@ describe("a contact's new name reaches the reader's open stream", function () {
             method: 'POST',
             body: JSON.stringify({ field: 'name', value: 'Ada Before' }),
         });
+        // Her name reaches the node's byline cache when her chain is folded, which the node does
+        // on its own lane: driven here (beat.cjs), or the frame this claim waits ten seconds for
+        // is the fold's to keep - and on a busy runner it didn't (CI, 2026-11-23).
+        await beat(HOST, 'fold', adaRoot);
         await bea.authed(`api/identity/${beaRoot}/private/kv/contact:${adaRoot}/interest`, {
             method: 'PUT',
             body: JSON.stringify({ value: 'high' }),
@@ -370,6 +375,7 @@ describe("a contact's new name reaches the reader's open stream", function () {
                 method: 'POST',
                 body: JSON.stringify({ field: 'name', value: 'Ada After' }),
             });
+            await beat(HOST, 'fold', adaRoot);
             let after = null;
             for (let i = 0; i < 20 && !(after && after.name === 'Ada After'); i++)
                 after = rowOf(await stream.next()) || after;

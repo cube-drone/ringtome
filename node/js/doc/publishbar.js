@@ -209,6 +209,7 @@ export const PublishBar = ({
             );
             setPublishNote({ kind: 'unpublished' });
             setGroupTurn((n) => n + 1);
+            if (onPublished) onPublished();
         } catch (e) {
             setPublishError(e.message);
         } finally {

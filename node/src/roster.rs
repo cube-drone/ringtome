@@ -4026,6 +4026,11 @@ pub async fn publish(
             "a group post is words, with pictures in them"
         )));
     }
+    // A mixtape's draft (plans/MIXTAPES.md, slice 6): the post is a mixtape, its songs the group's
+    // media documents and its words their list, as the public road makes one (record::bake).
+    let tape = crate::amp::is_tape_draft(data, draft).await?;
+    let mut tracks: BTreeMap<String, crate::amp::TapeTrack> = BTreeMap::new();
+    let was = if tape { tape_refs(state, me, group, draft).await? } else { Vec::new() };
     let title = head.header.title.clone();
     let words = docs.body(head).await?.ok_or_else(|| {
         AppError::BadRequest(crate::msg!(
@@ -4048,11 +4053,37 @@ pub async fn publish(
         // picture is minted, a picture that names nothing left out.
         let crate::record::bake::Embeds { body, refs: found, missing } =
             crate::record::bake::embeds(state, data, me, &words).await?;
+        if tape && found.is_empty() {
+            return Err(AppError::BadRequest(crate::msg!(
+                "amp.an-empty-mixtape",
+                "a mixtape with no songs on it has nothing to publish"
+            )));
+        }
+        let not_a_song = || {
+            AppError::BadRequest(crate::msg!(
+                "amp.a-mixtape-holds-songs",
+                "a mixtape holds songs, and one of these isn't a sound"
+            ))
+        };
         // First what each picture is, with every refusal said before one is minted: a picture
         // still being made, one from the web still being saved, and the bytes over the post's
         // budget. Each is listed for the publish's modal as the public road lists them.
         let mut own: Vec<(String, [u8; 16])> = Vec::new();
         let mut copies: Vec<(String, [u8; 32], [u8; 16])> = Vec::new();
+        let line = |fields: &BTreeMap<String, String>, title: &str, ms: Option<u64>| {
+            let said =
+                |key: &str| fields.get(key).map(|v| v.trim().to_string()).unwrap_or_default();
+            crate::amp::TapeTrack {
+                doc: String::new(),
+                title: match said("track") {
+                    t if !t.is_empty() => t,
+                    _ => title.to_string(),
+                },
+                artist: said("artist"),
+                album: said("album"),
+                ms: ms.map(|ms| ms as i64),
+            }
+        };
         let mut blobs: Vec<[u8; 32]> = Vec::new();
         let mut items: Vec<BakeItem> = Vec::new();
         let mut blocked = false;
@@ -4126,11 +4157,19 @@ pub async fn publish(
         if blocked {
             return Ok(Outcome::Baking(items));
         }
-        for (_, doc_id) in &own {
-            if let Some(hash) =
-                docs.one(doc_id).await?.and_then(|d| d.display_head().map(|h| h.header.file_hash))
-            {
-                blobs.push(hash);
+        for (target, doc_id) in &own {
+            let Some(doc) = docs.one(doc_id).await? else { continue };
+            let Some(head) = doc.display_head() else { continue };
+            blobs.push(head.header.file_hash);
+            if tape {
+                if Format::from_wire(head.header.format) != Format::OggOpus {
+                    return Err(not_a_song());
+                }
+                let fields = data.annotations().fields(doc_id).await?;
+                tracks.insert(
+                    target.clone(),
+                    line(&fields, &head.header.title, head.header.duration_ms),
+                );
             }
         }
         // The copies' bytes, read once (they're local), for the budget and then the minting.
@@ -4145,15 +4184,38 @@ pub async fn publish(
                     ))
                 })?;
             blobs.push(*iroh_blobs::Hash::new(&copy.body).as_bytes());
+            if tape {
+                if copy.format != Format::OggOpus {
+                    return Err(not_a_song());
+                }
+                // What its author says of it, as the public road reads a copied song's fields.
+                let fields = crate::record::bake::sound_fields(
+                    state,
+                    data,
+                    &crate::record::bake::SoundSource::Copied(
+                        hex::encode(author),
+                        hex::encode(twin),
+                    ),
+                )
+                .await?;
+                tracks.insert(target.clone(), line(&fields, "", copy.duration_ms));
+            }
             fetched.push((target, copy_key(&author, &twin), copy));
         }
         // The bytes the post asks every member's node to carry, as the public road prices them.
-        crate::record::bake::media_budget_of(state, &blobs).await?;
+        // A mixtape is the one post over it, here as in public (Curtis, 2026-11-23: "relax the cap
+        // for mixtapes"): it is capped by its count, and every member is meant to hold its songs.
+        if !tape {
+            crate::record::bake::media_budget_of(state, &blobs).await?;
+        }
         // Then each, as the group's media document: minted once per picture per group.
         let mut swaps: Vec<(String, String)> = Vec::new();
         for (target, doc_id) in own {
             let (media, fmt, animation) = group_media(state, data, me, group, &doc_id).await?;
             carried.push((fmt.to_wire(), animation));
+            if let Some(track) = tracks.get_mut(&target) {
+                track.doc = hex::encode(media);
+            }
             swaps.push((target, media_target(group, &media, fmt, animation)));
             if !refs.contains(&media) {
                 refs.push(media);
@@ -4163,6 +4225,9 @@ pub async fn publish(
             let (media, fmt, animation) =
                 copy_media(state, data, me, group, &target, &remembered, copy).await?;
             carried.push((fmt.to_wire(), animation));
+            if let Some(track) = tracks.get_mut(&target) {
+                track.doc = hex::encode(media);
+            }
             swaps.push((target, media_target(group, &media, fmt, animation)));
             if !refs.contains(&media) {
                 refs.push(media);
@@ -4172,8 +4237,30 @@ pub async fn publish(
             &crate::record::bake::rewrite(&body, &swaps),
             &missing,
         );
+        if tape {
+            // The tracklist, in the order the draft embedded its songs: a song named twice is one.
+            let mut list: Vec<crate::amp::TapeTrack> = Vec::new();
+            for r in &found {
+                if let Some(track) = tracks.get(r.target()) {
+                    if !track.doc.is_empty() && !list.iter().any(|t| t.doc == track.doc) {
+                        list.push(track.clone());
+                    }
+                }
+            }
+            if list.len() > crate::amp::TAPE_MAX {
+                return Err(AppError::BadRequest(crate::msg!(
+                    "amp.mixtape-too-large",
+                    "this playlist is too large to publish (>{max} tracks)",
+                    max = crate::amp::TAPE_MAX
+                )));
+            }
+            words = serde_json::to_string(&crate::amp::TapeBody { tracks: list })
+                .map_err(|e| AppError::Internal(anyhow!("a mixtape's tracklist: {e}")))?;
+        }
     }
-    post_version(
+    let format = if tape { Format::Mixtape } else { format };
+    let named = refs.clone();
+    let post = post_version(
         state,
         data,
         me,
@@ -4182,8 +4269,105 @@ pub async fn publish(
         Body { title, format, words, refs, carried },
         wishes,
     )
-    .await
-    .map(Outcome::Posted)
+    .await?;
+    // A track taken off is taken down (ruling 6: "removal should cascade"), unless something
+    // standing in the group still names it. Best-effort: it must not unsay the mixtape.
+    let dropped: Vec<[u8; 16]> = was.into_iter().filter(|t| !named.contains(t)).collect();
+    if let Err(e) = retract_unnamed(state, data, me, group, &dropped).await {
+        tracing::warn!(error = ?e, "a mixtape's dropped track stayed up; the mixtape stands");
+    }
+    Ok(Outcome::Posted(post))
+}
+
+/// A mixtape posted in a group, as hrseAmp's library reads it (amp.rs): its tracklist, from the
+/// words this node holds. `None` for a post that isn't standing here, or whose words haven't
+/// arrived. The caller has already been shown the post by the feed's journal.
+pub async fn tape_body(state: &AppState, group: &str, post: &str) -> Option<crate::amp::TapeBody> {
+    let group = group_of(group).ok()?;
+    let post = doc_of(post).ok()?;
+    let (roster, _) = folded(state, &group).await.ok()??;
+    let (versions, gone) = documents_of(state, &group, &roster).await.ok()?;
+    if gone.contains(&post) {
+        return None;
+    }
+    let shown = display(versions.get(&post)?)?;
+    let words = crate::idface::public_blob(state, shown.header.file_hash).await.ok()??;
+    serde_json::from_slice(&words).ok()
+}
+
+/// The songs the mixtape `draft` became in the group names now: its standing post's media.
+async fn tape_refs(
+    state: &AppState,
+    me: &str,
+    group: &GroupId,
+    draft: &[u8; 16],
+) -> Result<Vec<[u8; 16]>, AppError> {
+    let Some(post) = published_as(state, me, draft, group).await else { return Ok(Vec::new()) };
+    let Some((roster, _)) = folded(state, group).await.map_err(AppError::Internal)? else {
+        return Ok(Vec::new());
+    };
+    let (versions, gone) = documents_of(state, group, &roster).await?;
+    if gone.contains(&post) {
+        return Ok(Vec::new());
+    }
+    Ok(versions
+        .get(&post)
+        .and_then(|list| display(list))
+        .map(|v| v.header.refs.clone())
+        .unwrap_or_default())
+}
+
+/// Take down each of `media` that is `me`'s and that nothing standing in the group names any more:
+/// a mixtape's songs go when it drops them, and when it goes.
+async fn retract_unnamed(
+    state: &AppState,
+    data: &Store,
+    me: &str,
+    group: &GroupId,
+    media: &[[u8; 16]],
+) -> Result<(), AppError> {
+    if media.is_empty() {
+        return Ok(());
+    }
+    let me_root = root_of(me).unwrap_or_default();
+    let Some((roster, _)) = refold(state, group).await.map_err(AppError::Internal)? else {
+        return Ok(());
+    };
+    let (versions, gone) = documents_of(state, group, &roster).await?;
+    let named: BTreeSet<[u8; 16]> = versions
+        .iter()
+        .filter(|(doc, _)| !gone.contains(*doc))
+        .filter_map(|(_, list)| display(list))
+        .flat_map(|v| v.header.refs.iter().copied())
+        .collect();
+    for doc in media {
+        let mine = versions
+            .get(doc)
+            .and_then(|list| first_version(list))
+            .is_some_and(|v| v.persona == me_root);
+        if !mine || gone.contains(doc) || named.contains(doc) {
+            continue;
+        }
+        append_document(
+            state,
+            data,
+            me,
+            group,
+            entry_type::POST_RETRACT,
+            PostRetraction { doc_id: *doc }.encode(),
+        )
+        .await?;
+        state
+            .node_db
+            .execute(
+                "DELETE FROM group_drafts WHERE root = ?1 AND group_id = ?2 AND post = ?3",
+                (me, group.to_vec(), doc.to_vec()),
+            )
+            .await
+            .context("forgetting a taken-down song")
+            .map_err(AppError::Internal)?;
+    }
+    Ok(())
 }
 
 /// What somebody else's picture, copied into a group, is remembered by: the picture itself, apart
@@ -4808,8 +4992,15 @@ pub async fn retract_doc(
 ) -> Result<(), AppError> {
     let me_root = root_of(me).unwrap_or_default();
     let mut gone_with: Vec<[u8; 16]> = Vec::new();
+    // A mixtape's songs go with it (plans/MIXTAPES.md, ruling 6).
+    let mut songs: Vec<[u8; 16]> = Vec::new();
     if let Ok(Some((roster, _))) = folded(state, group).await {
         let (versions, gone) = documents_of(state, group, &roster).await?;
+        if let Some(shown) = versions.get(doc).and_then(|list| display(list)) {
+            if shown.header.format == crate::record::documents::Format::Mixtape.to_wire() {
+                songs = shown.header.refs.clone();
+            }
+        }
         for (d, list) in &versions {
             if gone.contains(d) || d == doc {
                 continue;
@@ -4842,6 +5033,7 @@ pub async fn retract_doc(
             .context("forgetting a taken-down post's draft")
             .map_err(AppError::Internal)?;
     }
+    retract_unnamed(state, data, me, group, &songs).await?;
     Ok(())
 }
 

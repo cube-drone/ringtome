@@ -51,13 +51,20 @@ const kept = (key) => {
     }
 };
 
-/// A song's address: your own through your private door, anyone else's through their public one.
+/// A song's address: your own through your private door, a group's through the group's (a mixtape
+/// posted in one, plans/MIXTAPES.md), anyone else's through their public one.
 export const soundSrc = (row, me) =>
-    row.own ? `/api/identity/${me}/docs/${row.doc}/body` : `/id/${row.author}/docs/${row.doc}/body`;
+    row.own
+        ? `/api/identity/${me}/docs/${row.doc}/body`
+        : row.group
+          ? `/api/groups/${row.group}/docs/${row.doc}/body`
+          : `/id/${row.author}/docs/${row.doc}/body`;
 export const soundThumb = (row, me) =>
     row.own
         ? `/api/identity/${me}/docs/${row.doc}/thumb`
-        : `/id/${row.author}/docs/${row.doc}/thumb`;
+        : row.group
+          ? `/api/groups/${row.group}/docs/${row.doc}/thumb`
+          : `/id/${row.author}/docs/${row.doc}/thumb`;
 
 const readVolume = () => {
     try {

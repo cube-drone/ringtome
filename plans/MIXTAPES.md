@@ -233,7 +233,7 @@ In the order that lets each be seen working before the next.
    2026-11-23_ (`doc/tapepublish.js`): the bar Writer and Drawing wear, over an
    open mixtape of your own - "publish…" makes the draft, the bar publishes it,
    and every publish brings the draft up to the mixtape first. Greyed past
-   thirty tracks, with ruling 3's words. Groups are not offered yet, and a
+   thirty tracks, with ruling 3's words. Groups are offered since slice 6, and a
    sealed mixtape is offered and untested.
 2. **The card.** _Built 2026-11-23_ (`doc/mixtapecard.js`): the cassette
    (`player.js` `CassetteArt`, pulled out of the player's own), the tracklist,
@@ -273,7 +273,31 @@ In the order that lets each be seen working before the next.
    song, by its name, in the author's lane, named by the sealed post's open
    header. A song that reached the author sealed still cannot go on a mixtape of
    theirs - the copy reads only what is public.
-6. **Groups.**
+6. **Groups.** _Built 2026-11-23_, in two passes.
+   - _The door and the card._ A mixtape's draft goes through the group's own
+     publish door (`roster::publish`), which knows it for one
+     (`amp::is_tape_draft`) and makes a post of the `mixtape` format on the
+     poster's lane: each song one of the group's media documents (your own, or a
+     copy of somebody else's public one), the words their list in the draft's
+     order, songs only, thirty at most. It is the one group post over the media
+     budget (Curtis: "relax the cap for mixtapes"). A song taken off is taken
+     down in the group at the next publish, and taking the mixtape down takes
+     its songs - unless something else standing in the group names them. The
+     card is the same card; its songs play through the group's door (`player.js`
+     `soundSrc`, a row's `group`). The publish row offers your groups.
+   - _hrseAmp._ The library door lists each mixtape posted in the reader's
+     groups with its `group`, and its songs as rows read off its tracklist. The
+     Playlists column has a section per group that has any (Curtis: "a section
+     per group-that-has-mixtapes"), under the group's name; your own, posted in
+     a group, is under "shared playlists" saying which.
+   - `mixtape_group.cjs`, across two members' nodes: the post on the group's
+     page as a mixtape, its songs playing at the other member's node, her feed
+     and her hrseAmp, nothing public, a dropped song gone, the takedown taking
+     the rest.
+   - _Not built_: a group's song on a mixtape of your own (it plays there, and
+     cannot be published - it is the group's, not public); tags and thumbs on a
+     group's song from hrseAmp; the storage it costs a phone, which waits on
+     "member, but don't keep the media" (GROUPS.md).
 7. **"`<name>`'s Tracks".** _Built 2026-11-23_, in the "friends' mixtapes"
    section, one row per person. The library marks each sound a mixtape in the
    feed names (`taped`), so a song posted on its own _and_ put on a mixtape is

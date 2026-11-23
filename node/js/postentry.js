@@ -2274,6 +2274,7 @@ const PostEntryBody = ({
                                           post=${item.doc_id}
                                           title=${title}
                                           viewer=${current && current.root}
+                                          group=${groupId || null}
                                       />`
                                     : item.format === 'room'
                                       ? html`${

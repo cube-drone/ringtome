@@ -176,6 +176,8 @@ export function feedRow(sound, layer = {}) {
         thumb: !!sound.thumb,
         // Named by a published mixtape in this feed (amp.rs): not one of its author's loose songs.
         taped: !!sound.taped,
+        // A song of a mixtape posted in a group (slice 6): the group, whose door plays it.
+        group: sound.group || '',
     });
 }
 

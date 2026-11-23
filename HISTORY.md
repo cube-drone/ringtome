@@ -29028,3 +29028,57 @@ what is public.
 it publishes with both songs on its tracklist, the borrowed one a copy in the
 author's lane; a stranger is handed that copy and refused the tracklist and the
 author's own song.
+
+## Mixtapes: to a group (2026-11-23)
+
+Curtis: "Next, Groups: how do we send a mixtape to a group?" Most of the road
+was there: the group's publish door already took a note with sounds in it, a
+mixtape's draft is such a note, and the publish bar already offered groups - the
+mixtape's row had them switched off. His rulings: "relax the cap for mixtapes",
+and in hrseAmp "a section per group-that-has-mixtapes". Built in two passes.
+
+**The door and the card.** `roster::publish` learns the kind
+(`amp::is_tape_draft`): the post's format is `mixtape`, its words the tracklist
+naming the group's media documents in the draft's order, with each song's title,
+artist, album and length (a copied song's from what its author says of it, as
+the public road reads them). Songs only; thirty at most; no media budget. What
+the draft's standing post named and the new version doesn't is taken down in the
+group, and `retract_doc` takes a mixtape's songs with it - both through
+`retract_unnamed`, which leaves a song something else standing in the group
+still names. The card takes the post's group and its songs carry it, so the
+player asks the group's door for them (`soundSrc`, `soundThumb`). The mixtape's
+publish row no longer says `groupable=${false}`.
+
+**hrseAmp.** The library door sets group posts apart - their media is the
+group's, nothing of an author's public chain - and lists the mixtapes among them
+with `group: { id, name }`, each song a row with its `group`, read off the
+tracklist (`roster::tape_body`). `pure/mixtapes.js` `groupSections` sorts them
+into a section per group; opening one reads its words through the group's door.
+A mixtape of your own posted in a group is under "shared playlists", saying the
+group: its draft's groups door is asked, as the publish bar asks it, and again
+after a publish or a takedown (the bar now tells `onPublished` after a takedown
+from a group too).
+
+`mixtape_group.cjs`, across two members' nodes, six claims. Seen on a scratch
+node: the maker choosing the group in "post to" and the bar turning to "posted
+in Tape Swap"; "shared playlists" naming the group; the other member's column
+with a "Tape Swap" section, the mixtape opening in order with nothing to drag;
+"play now" from the feed's card opening it with its first song playing. The
+rights sign is asked first, as for any song published.
+
+Not built: a group's song on a mixtape of your own can't be published from
+there; tags and thumbs on a group's song from hrseAmp; and a phone holds every
+song of every mixtape in its groups until "member, but don't keep the media"
+exists.
+
+## A flake: a contact's new name on an open stream (2026-11-23)
+
+CI went red on "sealed mixtapes with other sealed songs in it": `livecache.cjs`,
+"a contact's new name reaches the reader's open stream",
+`no frame within 10000ms` - and 0 of 5 on the reruns, so a flake. The claim
+renamed ada and waited ten seconds for bea's stream to say so, but ada's name
+reaches the node's byline cache when her chain is folded, which the node does on
+its own lane, in its own time; on a busy runner that was longer than the wait.
+The claim now drives the fold after each of ada's profile writes
+(`beat(HOST, 'fold', ada)`), as beat.cjs asks of every wait that isn't a test of
+the clock. Read from the code, not reproduced: the failure never came back here.

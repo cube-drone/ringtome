@@ -1138,7 +1138,7 @@ pub async fn publish_reporting(
 
 /// Where a sound's fields come from when its twin is said: the author's own private sound, or
 /// someone else's public one copied into the post (`author`, `twin`, in hex).
-enum SoundSource {
+pub(crate) enum SoundSource {
     Own([u8; 16]),
     Copied(String, String),
 }
@@ -1181,7 +1181,7 @@ async fn sound_fields_on_twin(
 
 /// A sound's fields at their source: the private sound's own, or - for a copy - what its author
 /// said on theirs.
-async fn sound_fields(
+pub(crate) async fn sound_fields(
     state: &AppState,
     data: &crate::record::store::Store,
     source: &SoundSource,

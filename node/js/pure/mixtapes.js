@@ -90,6 +90,22 @@ export function looseTracks(rows) {
     return [...by].map(([author, members]) => ({ author, members }));
 }
 
+/// The mixtapes posted in the reader's groups, a section per group that has any (Curtis,
+/// 2026-11-23: "a section per group-that-has-mixtapes"): `tapes` are the library's, those with a
+/// `group` kept, in the order they came; the sections by the groups' names.
+export function groupSections(tapes) {
+    const by = new Map();
+    for (const x of tapes || []) {
+        if (!x.group || !x.group.id) continue;
+        if (!by.has(x.group.id))
+            by.set(x.group.id, { id: x.group.id, name: x.group.name || '', tapes: [] });
+        by.get(x.group.id).tapes.push(x);
+    }
+    return [...by.values()].sort(
+        (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    );
+}
+
 /// The reader's own published mixtapes ("shared playlists"): each mixtape whose draft (`drafts`,
 /// taxonomy id -> note id, the node's `mixtape_drafts`) is a note that stands published, with the
 /// post it is and where it went (pure/audience.js's choice: '' is everyone).
