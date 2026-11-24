@@ -29385,3 +29385,24 @@ made anew once that is deleted; and refused into this persona, for a note, and
 across accounts either way. Seen on a scratch node: two songs selected in
 hrseFiles, "copy to persona" offering Curtis, "copied 2 to Curtis", and both in
 Curtis's files.
+
+## Dependabot's alerts, triaged (2026-11-23)
+
+GitHub listed 24 open alerts on `main` on the copy-to-persona push. The one in
+code the node runs was the `zip` crate (4.6.1; three advisories, one critical:
+"zip cloaking", a local header and the central directory disagreeing about a
+name). Import already wrote every entry itself as a plain file under its
+`enclosed_name`, never extracting symlinks or trusting a local header's path, so
+none of the three reached it - but the bump was free: `node/Cargo.toml` to
+9.8.2, no source change, 763 unit tests, lint, and the export, import, ePub,
+book and backup acceptance areas (49 claims) green.
+
+Left standing, with reasons: the desktop build still carries zip 4.6.1 through
+`tauri-plugin-updater` 2.x (the only newer release is a 3.0 alpha; it unpacks
+only updates already signature-checked); `glib` on the desktop's Linux build and
+in `spike-tauri` comes with Tauri's GTK stack; the integration rig's
+`serialize-javascript`, `minimatch` and `diff` are mocha 11's own pins (mocha 12
+is a major bump of the rig, for advisories about input the rig never feeds it).
+`video-ingest`, a spike, took `npm audit fix` (`ip-address` 10.2.0 -> 10.7.6,
+six alerts); its `extract-zip`, `basic-ftp` and `zod` need puppeteer-core moved
+a major version, which nothing has asked for.
