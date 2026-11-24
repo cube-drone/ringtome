@@ -1170,6 +1170,8 @@ export default {
     'doc.bulk.dating': 'dating',
     'doc.bulk.dated': 'dated {n}',
     'doc.bulk.undated': 'cleared the date on {n}',
+    'doc.bulk.copying': 'copying',
+    'doc.bulk.copied-to': 'copied {n} to {name}',
     'doc.bulk.setting': 'setting',
     'doc.bulk.set-field': 'set {field} on {n} sounds',
     'doc.soundtags.drawing-not-here-yet': 'that drawing has not reached this computer yet - try again in a moment',
@@ -1184,6 +1186,8 @@ export default {
     'doc.bulk.move-all': 'move all to',
     'doc.bulk.a-new-notebook': '+ a new notebook',
     'doc.bulk.move': 'move',
+    'doc.bulk.copy-to-persona': 'copy to persona',
+    'doc.bulk.copy-only-files': 'only pictures, sounds and videos copy - {n} of these will',
     'doc.bulk.tag-all': 'tag all',
     'doc.bulk.a-tag': 'a tag',
     'doc.bulk.tag': 'tag',
@@ -3384,6 +3388,15 @@ export default {
 
     // --- node/src/oauth/routes.rs ---
     'oauth.this-assistant-cant-connect': "this assistant can't connect: {why}",
+
+    // --- node/src/personacopy.rs ---
+    'personacopy.not-a-document': "that isn't a document",
+    'personacopy.same-persona': "that's this persona - choose another",
+    'personacopy.came-with-the-app': 'that one came with the app - every persona has it already',
+    'personacopy.no-such-file': 'no such file',
+    'personacopy.unreadable': "that file can't be read on this computer",
+    'personacopy.only-files': 'only pictures, sounds and videos copy to another persona, for now',
+    'personacopy.not-here-yet': "that file hasn't reached this computer yet - try again once it has",
 
     // --- node/src/pubkey.rs ---
     'pubkey.bad-what': 'bad {what}',

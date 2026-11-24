@@ -7,7 +7,7 @@
 // decisions - what each action touches, what a move leaves - are values in pure/bulk.js; this module
 // is the writes and the drawing.
 import { h } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import htm from 'htm';
 
 import { api } from '../net.js';
@@ -36,6 +36,8 @@ import {
 import { Icons } from '../icons.js';
 import { t } from '../i18n.js';
 import { askYes } from '../modal.js';
+import { usePerson } from '../person.js';
+import { fileKind } from '../pure/filebrowse.js';
 
 const html = htm.bind(h);
 
@@ -74,6 +76,17 @@ async function runEach(docs, write, onStep) {
     return failed;
 }
 
+/// What copies to another persona (personacopy.rs): a picture, sound or video of your own.
+const copiable = (d) => ['image', 'video', 'audio'].includes(fileKind(d));
+
+/// One of the account's other personas, as a button to copy into: its name, as the dock says it.
+const PersonaTarget = ({ root, disabled, onPick }) => {
+    const person = usePerson(root);
+    return html`<button class="copy-bucket" disabled=${disabled} onClick=${() => onPick(root, person.primary)}>
+        ${person.primary}
+    </button>`;
+};
+
 const fieldUrl = (root, docId, field) =>
     `/api/identity/${root}/docs/${docId}/annotations/fields/${encodeURIComponent(field)}`;
 /// An empty value clears the field: an absent value is how LWW says "no longer set".
@@ -108,6 +121,7 @@ export const BulkPanel = ({
     deletes = true,
     head = true,
     ruled = false,
+    copies = false,
 }) => {
     const roster = useLive(() => openMirror(root).buckets.toArray(), [root]);
     const tagging = useUnlocked(root, 'tags');
@@ -122,6 +136,28 @@ export const BulkPanel = ({
     const [choosingCover, setChoosingCover] = useState(false);
 
     const mine = actionable(docs);
+    // Copy to persona (Curtis, 2026-11-23): offered where `copies` says, when the account has
+    // another persona to copy into.
+    const [others, setOthers] = useState([]);
+    useEffect(() => {
+        if (!copies || !root) return undefined;
+        let live = true;
+        api('/api/identity')
+            .then(
+                (list) =>
+                    live &&
+                    setOthers(
+                        (list || [])
+                            .filter((p) => p.standing === 'active' && p.root_pubkey !== root)
+                            .map((p) => p.root_pubkey),
+                    ),
+            )
+            .catch(() => {});
+        return () => {
+            live = false;
+        };
+    }, [copies, root]);
+    const files = mine.filter(copiable);
     const sounds = soundsAmong(docs);
     const leftAlone = docs.length - mine.length;
     const words = wordsAmong(docs);
@@ -308,6 +344,17 @@ export const BulkPanel = ({
                     : t('doc.bulk.undated', 'cleared the date on {n}', { n }),
         );
 
+    // --- copy to persona ------------------------------------------------------------------------
+    // One request a file, as every action here is; the other persona remembers what each became,
+    // so a run that stopped is run again and goes on where it was (personacopy.rs).
+    const copyTo = (to, name) =>
+        run(
+            t('doc.bulk.copying', 'copying'),
+            files,
+            (d) => api(`/api/identity/${root}/docs/${d.doc_id}/copy-to/${to}`, { method: 'POST' }),
+            (n) => t('doc.bulk.copied-to', 'copied {n} to {name}', { n, name }),
+        );
+
     // --- sounds --------------------------------------------------------------------------------
     const setSoundField = (field) => {
         const value = (soundDrafts[field] || '').trim();
@@ -416,6 +463,20 @@ export const BulkPanel = ({
         </div>`
         }
 
+        ${
+            copies &&
+            others.length > 0 &&
+            html`<div class="bulk-group">
+            <h3 class="bulk-heading">${t('doc.bulk.copy-to-persona', 'copy to persona')}</h3>
+            ${
+                files.length < mine.length &&
+                html`<p class="bulk-note">${t('doc.bulk.copy-only-files', 'only pictures, sounds and videos copy - {n} of these will', { n: files.length })}</p>`
+            }
+            <div class="copy-buckets">
+                ${others.map((r) => html`<${PersonaTarget} key=${r} root=${r} disabled=${busy || !files.length} onPick=${copyTo} />`)}
+            </div>
+        </div>`
+        }
         ${
             tagging &&
             html`<div class="bulk-group">

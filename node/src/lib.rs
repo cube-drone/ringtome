@@ -83,6 +83,7 @@ pub mod nodeshelf;
 pub mod notifications;
 pub mod oauth;
 pub mod outbox;
+pub mod personacopy;
 pub mod postkeys;
 pub mod prints;
 pub mod profiles;
@@ -1127,6 +1128,12 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .route(
             "/api/identity/{root}/amp/trash/restore",
             axum::routing::post(trash::restore_handler),
+        )
+        // Copy to another persona of the same account (personacopy.rs): a picture, sound or video,
+        // its fields, tags and notebooks with it.
+        .route(
+            "/api/identity/{root}/docs/{doc}/copy-to/{to}",
+            axum::routing::post(personacopy::copy_handler),
         )
         // The tagged songs a draft carries, for the app's rights warning (section 8 - the sign).
         .route("/api/identity/{root}/tagged-songs", axum::routing::post(rights::tagged_handler))

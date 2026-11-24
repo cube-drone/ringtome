@@ -1013,6 +1013,7 @@ export const DocsApp = ({
                         bumpTree();
                     }}
                     onMoved=${bumpTree}
+                    copies=${!!app.everything}
                 />`
                         : html`<${RightColumn}
                     root=${root}

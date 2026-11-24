@@ -29350,3 +29350,38 @@ names being in the zip; pictures alone, and everything by default; and the audio
 zip imported into another persona, bringing the song with its fields and the
 mixtape with the song on it. The rig's nodes are servers, so the lifted limit
 itself is read from the code and not run.
+
+## Copy to another persona, from hrseFiles (2026-11-23)
+
+Curtis, after the shower: "if two personas share a node on the same device, we
+could offer cross-persona transfer - right from hrseFiles, in single or in bulk.
+'copy to persona', only available if there is another persona to transfer to,
+carrying file metadata along the way." Asked whether it should be local only:
+"Yeah, anywhere." A mixtape copy in hrseAmp wasn't wanted - his music is in
+filters and stations, which he'll rebuild from the tags and fields.
+
+`personacopy.rs`, `POST .../docs/{doc}/copy-to/{to}`: both personas are opened
+through the session, so only the account's own may give or take. The file is
+read under the one's epoch key and written under the other's by the ingest's own
+`Writer`, as the bytes they were - never decoded, re-encoded or queued - with
+its thumbnail and a film's preview. Every field comes along but the publishing
+machinery's own (`published_as` and the like), every tag, and every notebook,
+made in the other persona with the app it has here when it has none of the name.
+The receiver remembers what each document became (`copied_in`), so a copy asked
+for again names the one already made, and a long run that stopped is run again
+and goes on; a copy deleted since is made again. Pictures, sounds and videos
+only, for now: a note's embeds name its own persona's pictures.
+
+In hrseFiles, selecting files offers "copy to persona" with a button per other
+persona of the account, named as the dock names it; one request a file, four at
+a time, as every bulk action is. I had told Curtis it would be a background job
+with its own progress; it is the bulk panel's own counting instead, which keeps
+going only while the page is open - the remembering is what makes running it
+again cheap.
+
+`personacopy.cjs`, three claims: a sound copied with the same bytes, its fields,
+tag and notebook (made with its app); copied again naming the first copy, and
+made anew once that is deleted; and refused into this persona, for a note, and
+across accounts either way. Seen on a scratch node: two songs selected in
+hrseFiles, "copy to persona" offering Curtis, "copied 2 to Curtis", and both in
+Curtis's files.
