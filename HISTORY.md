@@ -29487,3 +29487,45 @@ The resolver splits rather than fails (a libc 0.1.12 appears for the iOS
 ceiling), so the symptom would be a broken iOS build, not a lock error. Its only
 compile break in our code was one test, where tag listings now yield `Result`s.
 Take it once netdev stops naming the struct and the ceiling comes out.
+
+## A reply shown under itself, and a reply link to the page it is on (2026-11-24)
+
+Curtis: on Post A's page the top reply was Reply B; clicking B, B's page listed
+B as its own top reply - "recursively its own reply to itself" - and the card at
+the top of a post's page still wore a "reply" link that went nowhere.
+
+The first was the page's overlay of replies said from it (`said`, which shows a
+fresh reply before the fold lane's next pass lists it). It was a plain list on
+the page, and the page stays mounted when a click moves it to another post: the
+reply said under A rode along to B's own page and was shown under B. Each one is
+now kept with the post it answered (`useSaidUnder`, postpage.js), and a thread
+shows only those said under it - on the public post page and a group post's
+alike (`GroupThread` held the same list).
+
+The second: the card's foot link ("reply", "N replies", or "link" to a reader
+who can't answer) points at the post's own page. On that page (`standalone`, the
+post page and the group post page) the thread and its reply box are right below,
+so the card leaves it off.
+
+Seen on a scratch node, and proved by taking the fix away: post A, a reply typed
+into A's reply box, a click into it. Without the fix, B's page listed B, and
+both cards wore "reply"; with it, B's page has "none known here yet" and neither
+card has the link. `just strings-check` and `just ui-check` green.
+
+## iOS: the link wants the resolver now (2026-11-24)
+
+The iOS job went red on the gossip push and again on the blobs push - the first
+two iOS runs to finish since iroh 1.5 (the two before were cancelled by newer
+pushes). Not gossip, not blobs: iroh 1.5 brought netwatch 0.20 and with it
+netdev 0.47, whose iOS interface reader asks the system resolver for its DNS
+servers, and the link stopped with `_res_9_ninit`, `_res_9_getservers` and
+`_res_9_ndestroy` undefined. They live in `libresolv`, which the project never
+linked. It is added beside SystemConfiguration, the same way and for the same
+kind of reason (`project.yml`, and the `.xcodeproj` by hand since that is what
+the build reads; `plutil -lint` passes). The library exports all three (checked
+in the macOS SDK's copy; this machine has no iOS SDK) - the iOS job is the
+proof.
+
+Lesson for the next iroh bump: the desktop and node gates cannot see the phone's
+link. Wait for the iOS job, which runs twenty-five to forty minutes and is
+cancelled by any newer push.

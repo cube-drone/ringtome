@@ -87,6 +87,9 @@ targets:
       # state from it, and the first simulator build stopped at the link with fifty of its
       # symbols undefined. Named in the .xcodeproj too, which is what the build reads.
       - sdk: SystemConfiguration.framework
+      # And the resolver library (2026-11-24): netdev 0.47, which came with iroh 1.5, reads the
+      # DNS servers through `res_9_ninit`/`res_9_getservers`, and the link stopped on all three.
+      - sdk: libresolv.tbd
       - sdk: UIKit.framework
       - sdk: WebKit.framework
     preBuildScripts:

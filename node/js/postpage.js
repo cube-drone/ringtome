@@ -163,12 +163,26 @@ const groupRoad = (root, group) => ({
     unlocked: true,
 });
 
+/// The replies said from a page, each kept with the post it answered: `said(author, doc)` reads
+/// the ones under that post, `say(author, doc, mint)` adds one. A page stays mounted when a click
+/// moves it to another post (a reply's own page, most often), so a plain list would carry a reply
+/// said under its parent onto its own page and show it there under itself.
+const useSaidUnder = () => {
+    const [said, setSaid] = useState([]);
+    const under = (author, doc) => `${author}:${doc}`;
+    const read = (author, doc) =>
+        said.filter((s) => s.under === under(author, doc)).map((s) => s.mint);
+    const say = (author, doc, mint) =>
+        setSaid((have) => [...have, { under: under(author, doc), mint }]);
+    return [read, say];
+};
+
 /// A group post's conversation, under its card on the group post page (groups.js): the public
 /// post page's thread section over the group's road - its order, its thread, its reply box. No
 /// held replies and nothing to ask again: every member's node holds every reply.
 export const GroupThread = ({ group, item, current }) => {
     const root = current && current.root;
-    const [said, setSaid] = useState([]);
+    const [said, setSaid] = useSaidUnder();
     const [replyOrder, moveReplyOrder] = useReplyOrder(root);
     const road = useMemo(() => groupRoad(root, group), [root, group]);
     if (!root || !item) return null;
@@ -188,7 +202,7 @@ export const GroupThread = ({ group, item, current }) => {
             doc=${item.doc_id}
             current=${current}
             depth=${0}
-            extra=${said}
+            extra=${said(item.author, item.doc_id)}
             refreshKey=${0}
             order=${replyOrder}
             road=${road}
@@ -196,7 +210,7 @@ export const GroupThread = ({ group, item, current }) => {
         <${ReplyBox}
             current=${current}
             parent=${{ author: item.author, doc_id: item.doc_id }}
-            onReplied=${(mint) => setSaid((have) => [...have, mint])}
+            onReplied=${(mint) => setSaid(item.author, item.doc_id, mint)}
             road=${road}
         />
     </section>`;
@@ -216,8 +230,10 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
     const [authorProfile, setAuthorProfile] = useState(null);
     // Replies said from THIS page, ahead of the fold: the memo notes a fresh reply on the
     // fold lane's next pass, so the thread read may not list it yet - the view runs ahead
-    // of the stream without disagreeing with it (the feed's own overlay idiom).
-    const [said, setSaid] = useState([]);
+    // of the stream without disagreeing with it (the feed's own overlay idiom). Each is kept
+    // with the post it answered: the page outlives a click to another post, and a reply
+    // carried over is shown under itself (Curtis, 2026-11-24: "recursively its own reply").
+    const [said, setSaid] = useSaidUnder();
     // The refresh affordance's counter: bumping it re-mounts the thread's read with
     // refresh=1, the deliberate re-ask past the door's cooldown.
     const [refreshKey, setRefreshKey] = useState(0);
@@ -422,7 +438,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     doc=${threadDoc}
                     current=${current}
                     depth=${0}
-                    extra=${said}
+                    extra=${said(root, threadDoc)}
                     refreshKey=${refreshKey}
                     order=${replyOrder}
                 />
@@ -437,7 +453,7 @@ export const PostPage = ({ seg, doc, page, current, onTitle }) => {
                     html`<${ReplyBox}
                     current=${current}
                     parent=${{ author: root, doc_id: threadDoc }}
-                    onReplied=${(mint) => setSaid((have) => [...have, mint])}
+                    onReplied=${(mint) => setSaid(root, threadDoc, mint)}
                     sealed=${!!item.trusted_only}
                 />`
                 }

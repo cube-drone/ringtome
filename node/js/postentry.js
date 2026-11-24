@@ -1330,17 +1330,20 @@ const PostEntryBody = ({
     // wish), and not signed out - the front page's visitors. Where they cannot, the foot is just the
     // post's own link rather than an offer that goes nowhere.
     const canReply = !!(current && current.root) && !item.settled;
-    const replyWords = feed
-        ? null
-        : item.replies
-          ? item.replies === 1
-              ? t('postentry.1-reply', '1 reply')
-              : t('postentry.n-replies', '{n} replies', { n: item.replies })
-          : !seeMore && item.format !== 'room'
-            ? canReply
-                ? t('postentry.reply', 'reply')
-                : t('postentry.link', 'link')
-            : null;
+    // A post on its own page has its thread and reply box right below it: a link back to the
+    // page it is already on does nothing at all (Curtis, 2026-11-24).
+    const replyWords =
+        feed || standalone
+            ? null
+            : item.replies
+              ? item.replies === 1
+                  ? t('postentry.1-reply', '1 reply')
+                  : t('postentry.n-replies', '{n} replies', { n: item.replies })
+              : !seeMore && item.format !== 'room'
+                ? canReply
+                    ? t('postentry.reply', 'reply')
+                    : t('postentry.link', 'link')
+                : null;
     const [saidLabels, setSaidLabels] = useState([]);
     const [retractedLabels, setRetractedLabels] = useState([]);
     const [tagging, setTagging] = useState(false);
