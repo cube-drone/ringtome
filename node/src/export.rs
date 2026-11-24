@@ -44,6 +44,45 @@ const BOOKKEEPING: &[&str] = &[
 /// How many chat lines a page of history asks for, walking a room back to its start.
 const CHAT_PAGE: i64 = crate::chat::HISTORY_PAGE;
 
+/// What an export takes (Curtis, 2026-11-23: "select, while configuring the export, if they want
+/// 'public posts', 'private documents', 'audio', 'images'"). Everything, unless a part is left out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct Choice {
+    /// The posts, opened, and the profile.
+    #[serde(default = "yes")]
+    pub public: bool,
+    /// Notes and drawings, and the persona's own books: contacts, chats, the ledger.
+    #[serde(default = "yes")]
+    pub private: bool,
+    /// Sounds, and each mixtape as a playlist.
+    #[serde(default = "yes")]
+    pub audio: bool,
+    /// Pictures and video.
+    #[serde(default = "yes")]
+    pub images: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Default for Choice {
+    fn default() -> Self {
+        Self { public: true, private: true, audio: true, images: true }
+    }
+}
+
+impl Choice {
+    /// Whether a private document of this format is taken.
+    fn takes(&self, format: Format) -> bool {
+        match format {
+            Format::OggOpus => self.audio,
+            Format::Avif | Format::Apng | Format::WebmAv1 => self.images,
+            _ => self.private,
+        }
+    }
+}
+
 /// One persona's export, as its page asks after it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Report {
@@ -192,7 +231,7 @@ fn zip_path(state: &AppState, root: &str) -> PathBuf {
 
 /// Start a persona's export, replacing whatever it had: the queued or running one is cancelled and
 /// the last zip deleted, so there is only ever the one on its way.
-pub fn start(state: &AppState, root: &str) -> Report {
+pub fn start(state: &AppState, root: &str, choice: Choice) -> Report {
     let generation =
         state.exports.generations.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     let mut jobs = state.exports.jobs.lock().expect("exports poisoned");
@@ -211,7 +250,7 @@ pub fn start(state: &AppState, root: &str) -> Report {
             let gathering = Status::Running { phase: "gathering", done: 0, total: 0 };
             state.exports.set(&state, &root, generation, gathering);
             tracing::info!(root = %root, "an export began");
-            let outcome = run(&state, &root, generation).await;
+            let outcome = run(&state, &root, generation, choice).await;
             match &outcome {
                 Ok(()) => tracing::info!(root = %root, "an export finished"),
                 Err(e) => tracing::warn!(root = %root, error = ?e, "an export failed"),
@@ -366,7 +405,7 @@ fn writer(
 
 /// Build one persona's export. Everything is read through the agented store, the way background
 /// passes read (the person who asked was checked at the door).
-async fn run(state: &AppState, root: &str, generation: u64) -> Result<()> {
+async fn run(state: &AppState, root: &str, generation: u64, choice: Choice) -> Result<()> {
     std::fs::create_dir_all(exports_dir(state)).context("making the exports directory")?;
     let final_path = zip_path(state, root);
     let partial = exports_dir(state).join(format!("{root}.{generation}.partial"));
@@ -377,7 +416,7 @@ async fn run(state: &AppState, root: &str, generation: u64) -> Result<()> {
     let thread =
         tokio::task::spawn_blocking(move || writer(partial, final_path, entries, finished));
 
-    let built = build(state, root, generation, &send).await;
+    let built = build(state, root, generation, choice, &send).await;
     drop(send);
     let _ = say_finished.send(built.is_ok());
     let written = thread.await.context("the zip's thread")?;
@@ -441,6 +480,7 @@ async fn build(
     state: &AppState,
     root: &str,
     generation: u64,
+    choice: Choice,
     send: &tokio::sync::mpsc::Sender<Entry>,
 ) -> Result<()> {
     let data = crate::record::store::open_agented(state, root)
@@ -454,7 +494,10 @@ async fn build(
     };
     let mut missing: Vec<String> = Vec::new();
 
-    let (heads, _) = data.documents().summaries().await.map_err(ae)?;
+    let (all_heads, _) = data.documents().summaries().await.map_err(ae)?;
+    // Only the kinds asked for (`Choice`): a part left out is not read at all.
+    let heads: Vec<_> =
+        all_heads.iter().filter(|h| choice.takes(Format::from_wire(h.format))).collect();
     let buckets = data.buckets().all().await.map_err(ae)?;
     let annotations: HashMap<String, (BTreeMap<String, String>, Vec<String>)> = data
         .annotations()
@@ -466,7 +509,7 @@ async fn build(
         .collect();
     let (sections, others) = notebook_sections(&data, root).await?;
     let claimed = data.annotations().notes_claiming().await.map_err(ae)?;
-    let posts = public_posts(&data).await?;
+    let posts = if choice.public { public_posts(&data).await? } else { Vec::new() };
     // Each published book's notebook, by the book's id: a page says which book it is a page of,
     // so an import can publish the notebook as a book again rather than every page on its own.
     let (book_facts, _) = data.private_registers(crate::books::BOOKS_KV).all().await.map_err(ae)?;
@@ -486,6 +529,8 @@ async fn build(
 
     // The private side: every note, in each of its notebooks, at its place in the notebook's tree.
     let mut paths_of: HashMap<[u8; 16], String> = HashMap::new();
+    // Each sound written, for the playlists: where it is, what it says it is, how long it plays.
+    let mut songs: HashMap<[u8; 16], Song> = HashMap::new();
     for (done, head) in heads.iter().enumerate() {
         let format = Format::from_wire(head.format);
         let id = hex::encode(head.doc_id);
@@ -545,6 +590,20 @@ async fn build(
                 out.put_doc(format!("{at}.{ext}"), bytes, &meta).await?;
                 out.put_doc(format!("{at}.{ext}.yml"), front_matter(&meta).into_bytes(), &meta)
                     .await?;
+                if format == Format::OggOpus {
+                    let said = |key: &str| {
+                        meta.fields.get(key).map(|v| v.trim().to_string()).unwrap_or_default()
+                    };
+                    songs.entry(head.doc_id).or_insert_with(|| Song {
+                        path: format!("{at}.{ext}"),
+                        title: match said("track") {
+                            t if !t.is_empty() => t,
+                            _ => display_title(&head.title),
+                        },
+                        artist: said("artist"),
+                        seconds: head.duration_ms.map(|ms| ms.div_ceil(1000)),
+                    });
+                }
             }
             state.exports.set(state, root, generation, step(done + 1));
             continue;
@@ -566,7 +625,7 @@ async fn build(
     for (i, post) in posts.iter().enumerate() {
         let id = hex::encode(post.doc_id);
         let note = claimed.get(&post.doc_id);
-        let note_head = note.and_then(|n| heads.iter().find(|h| &h.doc_id == n));
+        let note_head = note.and_then(|n| all_heads.iter().find(|h| &h.doc_id == n));
         let title = note_head.map(|h| h.title.clone()).unwrap_or_else(|| post.title.clone());
         let Some((post_head, body)) = post_body(state, root, &data, post).await? else {
             missing.push(format!("{} (post {id})", display_title(&title)));
@@ -615,17 +674,32 @@ async fn build(
     }
 
     let base = heads.len() + posts.len();
-    profile(state, &data, &mut out).await?;
+    if choice.public {
+        profile(state, &data, &mut out).await?;
+    }
     state.exports.set(state, root, generation, step(base + 1));
-    taxonomies_file(&others, &paths_of, &mut out).await?;
+    // The lists name files, so they go wherever any private file does; a mixtape is also written
+    // as a playlist any player reads, beside the sounds it names.
+    if choice.private || choice.audio || choice.images {
+        taxonomies_file(&others, &paths_of, &mut out).await?;
+    }
+    if choice.audio {
+        playlists(&others, &songs, &mut out).await?;
+    }
     state.exports.set(state, root, generation, step(base + 2));
-    contacts_file(state, &data, &mut out).await?;
+    if choice.private {
+        contacts_file(state, &data, &mut out).await?;
+    }
     state.exports.set(state, root, generation, step(base + 3));
-    bank_file(&data, &mut out).await?;
+    if choice.private {
+        bank_file(&data, &mut out).await?;
+    }
     state.exports.set(state, root, generation, step(base + 4));
-    chat_files(state, &data, root, &mut out).await?;
+    if choice.private {
+        chat_files(state, &data, root, &mut out).await?;
+    }
     state.exports.set(state, root, generation, step(base + 5));
-    readme(state, root, &missing, &mut out).await?;
+    readme(state, root, &missing, choice, &mut out).await?;
     state.exports.set(state, root, generation, step(base + AFTER));
     manifest(root, out).await
 }
@@ -1052,6 +1126,66 @@ async fn taxonomies_file(
     out.put("private/taxonomies.yml".to_string(), yaml.into_bytes()).await
 }
 
+/// A sound in the export, as a playlist names it.
+struct Song {
+    /// Its path in the zip, from the top.
+    path: String,
+    title: String,
+    artist: String,
+    seconds: Option<u64>,
+}
+
+/// One line of a playlist may not break it: a title is a single line.
+fn one_line(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Each mixtape as a playlist any player reads (Curtis, 2026-11-23: "While mixtapes live as
+/// taxonomies, also export them as playlists that any reader could read"): `playlists/<name>.m3u8`,
+/// extended M3U in UTF-8 - a line of length, artist and title, then the file, by its path from the
+/// playlist. A song that isn't in this export - somebody else's, or one not on this computer - is a
+/// comment, so the list still says what stood where. The app's own import reads the lists file
+/// (`taxonomies_file`), not these.
+async fn playlists(
+    others: &[crate::record::store::TaxonomyNode],
+    songs: &HashMap<[u8; 16], Song>,
+    out: &mut Out<'_>,
+) -> Result<()> {
+    let mut used: std::collections::HashSet<String> = Default::default();
+    for tax in others {
+        let Some(name) = tax.title.strip_prefix(crate::amp::MIXTAPE) else { continue };
+        let name = display_title(name);
+        let mut text = format!("#EXTM3U\n#PLAYLIST:{}\n", one_line(&name));
+        for m in tax.members.iter().flatten().filter(|m| m.taxonomy.is_none()) {
+            match songs.get(&m.doc_id) {
+                Some(song) => {
+                    let secs = song.seconds.map_or("-1".to_string(), |s| s.to_string());
+                    let said = if song.artist.is_empty() {
+                        one_line(&song.title)
+                    } else {
+                        format!("{} - {}", one_line(&song.artist), one_line(&song.title))
+                    };
+                    text.push_str(&format!("#EXTINF:{secs},{said}\n../{}\n", song.path));
+                }
+                None => text.push_str(&format!(
+                    "# not in this export: {}/{}\n",
+                    hex::encode(m.root),
+                    hex::encode(m.doc_id)
+                )),
+            }
+        }
+        // Two mixtapes of one name are two files.
+        let mut file = file_name(&name);
+        let mut n = 2;
+        while !used.insert(file.to_lowercase()) {
+            file = format!("{} ({n})", file_name(&name));
+            n += 1;
+        }
+        out.put(format!("playlists/{file}.m3u8"), text.into_bytes()).await?;
+    }
+    Ok(())
+}
+
 /// Who the persona knows: each contact by name where this computer knows it, and every fact the
 /// persona keeps about them (trust, interest, tags, notes).
 async fn contacts_file(
@@ -1164,7 +1298,13 @@ async fn chat_files(
     Ok(())
 }
 
-async fn readme(state: &AppState, root: &str, missing: &[String], out: &mut Out<'_>) -> Result<()> {
+async fn readme(
+    state: &AppState,
+    root: &str,
+    missing: &[String],
+    choice: Choice,
+    out: &mut Out<'_>,
+) -> Result<()> {
     let name = crate::profiles::bylines(&state.node_db, &[root.to_string()])
         .await?
         .get(root)
@@ -1181,9 +1321,18 @@ async fn readme(state: &AppState, root: &str, missing: &[String], out: &mut Out<
          \x20with a .horsedrawing.png of the picture beside each.\n\
          Pictures, video and sound are as they were stored, each with a .yml of its details beside it.\n\n\
          manifest.json lists every file with its SHA-256, and each note's id and the version exported.\n\n\
+         playlists/ holds each mixtape as an .m3u8 playlist, for any music player.\n\n\
          No keys are in this file: it is your words and pictures, not the means to be you.\n",
         iso(crate::clock::now_ms()),
     );
+    if choice != Choice::default() {
+        let part = |on: bool, name: &str| format!("  [{}] {name}\n", if on { "x" } else { " " });
+        text.push_str("\nThis export was asked for in part:\n");
+        text.push_str(&part(choice.public, "public posts"));
+        text.push_str(&part(choice.private, "private documents"));
+        text.push_str(&part(choice.audio, "audio"));
+        text.push_str(&part(choice.images, "images and video"));
+    }
     if !missing.is_empty() {
         text.push_str(
             "\nNot on this computer yet, so not in this export (try again once it has synced):\n",
@@ -1204,13 +1353,33 @@ async fn owner(state: &AppState, session: &Session, root: &str) -> Result<(), Ap
 }
 
 /// POST `/api/identity/{root}/export` - start an export, replacing any before it.
+///
+/// The body, when there is one, says what to take (`Choice`); none is everything, and nothing at
+/// all is refused.
 pub async fn start_handler(
     session: Session,
     State(state): State<AppState>,
     UrlPath(root): UrlPath<String>,
+    body: axum::body::Bytes,
 ) -> Result<Json<Report>, AppError> {
     owner(&state, &session, &root).await?;
-    Ok(Json(start(&state, &root)))
+    let choice = if body.iter().all(u8::is_ascii_whitespace) {
+        Choice::default()
+    } else {
+        serde_json::from_slice::<Choice>(&body).map_err(|_| {
+            AppError::BadRequest(crate::msg!(
+                "export.bad-choice",
+                "that isn't a choice of what to export"
+            ))
+        })?
+    };
+    if !(choice.public || choice.private || choice.audio || choice.images) {
+        return Err(AppError::BadRequest(crate::msg!(
+            "export.nothing-chosen",
+            "choose something to export"
+        )));
+    }
+    Ok(Json(start(&state, &root, choice)))
 }
 
 /// GET `/api/identity/{root}/export` - where the export stands.

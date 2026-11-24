@@ -231,7 +231,10 @@ pub fn unclaimed(paths: &[String]) -> Vec<&str> {
         .filter(|p| {
             let lowered = p.to_lowercase();
             let name = lowered.rsplit('/').next().unwrap_or("");
+            // A playlist is the export's own account of a mixtape for other players
+            // (export.rs `playlists`): the mixtape itself comes from the lists file.
             !(lowered.ends_with(".yml")
+                || lowered.ends_with(".m3u8")
                 || lowered.split('/').any(|part| part == "chat")
                 || name == "manifest.json")
         })
@@ -915,7 +918,9 @@ pub async fn start_handler(
     Ok(Json(state.imports.report(&root)))
 }
 
-/// The request's body onto disk, held to the node's upload cap.
+/// The request's body onto disk, held to the node's upload cap - except on a personal device
+/// (Curtis, 2026-11-23: "Remove the import size limit entirely on local devices"), where the zip
+/// is the owner's own file on the owner's own disk, and a music library is many gigabytes.
 async fn receive(state: &AppState, body: axum::body::Body, to: &Path) -> Result<(), AppError> {
     use n0_future::StreamExt;
     use tokio::io::AsyncReadExt;
@@ -923,7 +928,11 @@ async fn receive(state: &AppState, body: axum::body::Body, to: &Path) -> Result<
         .await
         .context("making the imports directory")
         .map_err(AppError::Internal)?;
-    let cap = state.config.max_upload_bytes as u64;
+    let cap = if crate::registration::is_device(state) {
+        u64::MAX - 1
+    } else {
+        state.config.max_upload_bytes as u64
+    };
     let stream = body.into_data_stream().map(|r| r.map_err(std::io::Error::other));
     let mut reader = tokio_util::io::StreamReader::new(stream).take(cap + 1);
     let mut file =
@@ -1017,7 +1026,13 @@ async fn run(state: &AppState, root: &str, account: &str, zip: &Path) -> Result<
     let dir = imports_dir(state).join(root);
     let _ = tokio::fs::remove_dir_all(&dir).await;
     let (zip_owned, dir_owned) = (zip.to_path_buf(), dir.clone());
-    let limit = unpack_limit(state.config.max_upload_bytes as u64);
+    // On a personal device nothing limits what a zip unpacks to but the disk's own room, which
+    // `unpack` always leaves a gigabyte of. Each file is still held to what the app's doors take.
+    let limit = if crate::registration::is_device(state) {
+        u64::MAX
+    } else {
+        unpack_limit(state.config.max_upload_bytes as u64)
+    };
     let paths = tokio::task::spawn_blocking(move || unpack(&zip_owned, &dir_owned, limit))
         .await
         .context("the unpacking thread")??;

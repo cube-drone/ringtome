@@ -90,6 +90,34 @@
     gap: 1rem;
 }
 
+/* What an export takes (Curtis, 2026-11-23): four ticks, each saying what it covers. */
+.export-parts {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0.8rem 0;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--border);
+}
+
+.export-parts legend {
+    padding: 0 0.3rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.export-part {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.export-part small {
+    color: var(--muted);
+}
+
+
 /* What the import said, line by line: scrolls on its own once it's long. */
 .import-log {
     margin: 0;

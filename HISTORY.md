@@ -29320,3 +29320,33 @@ you keep the extra dice, too? anyways, neat)". Eighteen in the pool now.
 
 And: "Hide the pick-up game until today's game is done, I think." Its button is
 drawn once today's game is done, so a persona's first game is the day's.
+
+## Export in parts, mixtapes as playlists, and local imports of any size (2026-11-23)
+
+Curtis wants his music - 9 GB of it, on Cube Drone, on his own computer - on
+another persona, and first thought of a music exporter. Reading what there was
+changed the plan: the export already writes each sound as its stored `.opus`
+with a `.yml` of its fields beside it, the import reads both back, and mixtapes
+already ride `private/taxonomies.yml` (an import adds the members a list lacks,
+and names somebody else's song by its id - both of which I had told him it
+didn't). What stood in the way was the import's size cap. So, his three asks:
+
+- **"Allow the user to select ... 'public posts', 'private documents', 'audio',
+  'images'"**: `export.rs` `Choice`, four ticks on the export page, sent as the
+  start request's body. A part left out is never read. Images take video with
+  them, and the tick says so.
+- **"also export them as playlists that any reader could read"**:
+  `playlists/<name>.m3u8` for each mixtape, with each song's length, artist and
+  title and its path from the playlist; a song not in the zip is a comment. The
+  import passes them over quietly.
+- **"Remove the import size limit entirely on local devices"**: on a
+  single-tenant node the zip's size and what it unpacks to are unbounded but for
+  the disk's own room. Per-file caps and the file count stand; a server is as it
+  was.
+
+`export_parts.cjs`, five claims: nothing ticked refused; audio alone holding
+songs, details and lists and nothing else; the playlist's lines, and the file it
+names being in the zip; pictures alone, and everything by default; and the audio
+zip imported into another persona, bringing the song with its fields and the
+mixtape with the song on it. The rig's nodes are servers, so the lifted limit
+itself is read from the code and not run.

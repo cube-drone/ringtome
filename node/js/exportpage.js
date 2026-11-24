@@ -57,10 +57,30 @@ export const ExportPage = ({ current, tab }) => {
     </div>`;
 };
 
+/// What an export may take (export.rs `Choice`), in the order the page offers it: everything,
+/// until a part is unticked.
+const PARTS = ['public', 'private', 'audio', 'images'];
+const PART_WORDS = {
+    public: () => t('exportpage.part-public', 'public posts'),
+    private: () => t('exportpage.part-private', 'private documents'),
+    audio: () => t('exportpage.part-audio', 'audio'),
+    images: () => t('exportpage.part-images', 'images and video'),
+};
+const PART_ABOUT = {
+    public: () => t('exportpage.about-public', 'your posts, opened, and your profile'),
+    private: () =>
+        t('exportpage.about-private', 'notes and drawings, your contacts, chats and bank'),
+    audio: () => t('exportpage.about-audio', 'your sounds, and each mixtape as a playlist'),
+    images: () => t('exportpage.about-images', 'your pictures and videos'),
+};
+
 /// Making an export, following it, and handing it over.
 const ExportSection = ({ root }) => {
     const [report, setReport] = useState(null);
     const [error, setError] = useState(null);
+    // What the next export takes: everything, until a part is unticked.
+    const [parts, setParts] = useState({ public: true, private: true, audio: true, images: true });
+    const anyPart = PARTS.some((p) => parts[p]);
 
     const look = useCallback(
         () =>
@@ -90,7 +110,12 @@ const ExportSection = ({ root }) => {
     const start = async () => {
         setError(null);
         try {
-            setReport(await api(`/api/identity/${root}/export`, { method: 'POST' }));
+            setReport(
+                await api(`/api/identity/${root}/export`, {
+                    method: 'POST',
+                    body: JSON.stringify(parts),
+                }),
+            );
         } catch (e) {
             setError(e.message);
         }
@@ -154,7 +179,24 @@ const ExportSection = ({ root }) => {
         ${
             report &&
             !working &&
-            html`<button class=${ready ? 'sync-act export-again' : 'welcome-go export-go'} type="button" onClick=${start}>
+            html`<fieldset class="export-parts">
+                <legend>${t('exportpage.parts', 'what to export')}</legend>
+                ${PARTS.map(
+                    (p) => html`<label key=${p} class="export-part">
+                        <input
+                            type="checkbox"
+                            checked=${parts[p]}
+                            onChange=${(e) => setParts((now) => ({ ...now, [p]: e.currentTarget.checked }))}
+                        />
+                        <span><strong>${PART_WORDS[p]()}</strong> <small>${PART_ABOUT[p]()}</small></span>
+                    </label>`,
+                )}
+            </fieldset>`
+        }
+        ${
+            report &&
+            !working &&
+            html`<button class=${ready ? 'sync-act export-again' : 'welcome-go export-go'} type="button" disabled=${!anyPart} onClick=${start}>
                 ${ready ? t('exportpage.make-another', 'make a new one (it replaces this one)') : t('exportpage.make', 'make an export')}
             </button>`
         }

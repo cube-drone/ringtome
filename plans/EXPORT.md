@@ -239,11 +239,40 @@ skipped: It already exists!'"
   - a post is said again only from a note this import made, so a zip can never
     publish a note the persona already had.
 
+## In parts, playlists, and a local import of any size (2026-11-23)
+
+Curtis, wanting a 9 GB music library moved from one persona to another on his
+own computer: polish the tools there are.
+
+- **What to export** is four ticks on the page, all on to begin with
+  (`export.rs` `Choice`, the body of the start request): _public posts_ (the
+  posts, opened, and the profile), _private documents_ (notes and drawings, and
+  contacts, chats and the ledger), _audio_ (sounds), _images and video_. A part
+  left out is not read at all. The lists file is written whenever any private
+  file is, since it names them; the README says what was asked for when it
+  wasn't everything.
+- **A mixtape is also a playlist**: `playlists/<name>.m3u8`, extended M3U in
+  UTF-8 - `#EXTINF:<seconds>,<artist> - <title>`, then the file by its path from
+  the playlist - so any player opens the mixtape beside the sounds it names. A
+  song that isn't in the zip (somebody else's, or not on this computer) is a
+  comment line. The app's own import still reads `private/taxonomies.yml`, and
+  passes a playlist over without a word.
+- **No size limit on a personal device**: where the node is a single-tenant
+  device (`registration::is_device`), the zip may be any size and unpacks to
+  whatever the disk has room for, less the gigabyte an unpacking always leaves.
+  Each file inside is still held to what the app's doors take, and the 250,000
+  file count stands. A server's limits are as they were.
+
 ## Not yet
 
-- **Imports larger than the upload cap**: a desktop app's cap is 1 GiB, less
-  than a persona with years of pictures; and a server that allows imports holds
-  them to its own (128 MiB by default).
+- **Imports larger than the upload cap, on a server**: one that allows imports
+  holds them to its own (128 MiB by default). A personal device has no limit
+  since 2026-11-23.
+- **An import without three copies**: the zip is saved, unpacked beside itself,
+  then ingested, so a 9 GB library wants some 27 GB free while it runs.
+- **Tags inside the sound files**: a sound's details are in the `.yml` beside
+  it, which only this app reads; another player sees the file's name and the
+  playlist's line.
 - **Foreign imports, supported** (Obsidian and the like) - not yet a goal; the
   item below is what it would start with.
 - **A vault zipped as it sits**: a zip laid out as an export is
