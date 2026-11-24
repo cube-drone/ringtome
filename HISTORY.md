@@ -29406,3 +29406,33 @@ is a major bump of the rig, for advisories about input the rig never feeds it).
 `video-ingest`, a spike, took `npm audit fix` (`ip-address` 10.2.0 -> 10.7.6,
 six alerts); its `extract-zip`, `basic-ftp` and `zod` need puppeteer-core moved
 a major version, which nothing has asked for.
+
+## iroh 1.5, Tauri 2.12.7, turso 0.8.4 (2026-11-23)
+
+From a dependency audit of the three fast-moving core crates (Curtis asked what
+was new in Tauri, Iroh and Turso). The same-major updates, taken together:
+
+- **iroh 1.4.1 -> 1.5.0** (relay, base, dns with it; noq 1.5). 1.4.2 was a
+  security release on the endpoint side: a relay that ignores a WebSocket close
+  could block every relayed send (GHSA-9cgq-f6jg-g7w6), a ping flood could run
+  an endpoint out of memory (GHSA-rqw2-29g8-jwxw), and tokio for
+  RUSTSEC-2026-0386. 1.5.0 adds relay handshake timeouts, a handshake leak fix
+  and stream affinity. `cargo update` stopped at 1.4.2 on its own; 1.5.0 needed
+  `--precise`.
+- **Tauri 2.12.5 -> 2.12.7** with wry 0.57.3, tao 0.37.3, and the updater,
+  dialog, opener and single-instance plugins: crash and leak fixes on every
+  platform, and **tauri-plugin-updater 2.14.1 moved to zip 9** - the last zip 4
+  in the tree (in the desktop lockfile, and only ever compiled for Windows) is
+  gone.
+- **turso =0.8.3 -> =0.8.4**: four SQL correctness fixes (UPSERT DO UPDATE
+  reading the old row, rowid-changing UPDATEs, DELETE under foreign-key actions,
+  autocommit rollback order); nothing in encryption or the file format. Still an
+  exact pin.
+
+No source changed. The desktop builds, and full `just ci` was green (2245
+passing). Weighed and left for later: iroh-gossip 0.102+ (per-peer send queues,
+rejoin after losing every neighbour; wire-compatible with 0.101) and iroh-blobs
+0.104 (GC no longer deletes a live hash-seq's children, bounded hash-seq reads)
+are the next worth taking, each with small API breaks; pkarr 9 (iroh doesn't use
+it); turso 0.9 (no release notes, encryption still experimental) and Tauri 3
+(alpha, no date) wait.
