@@ -109,7 +109,7 @@ pub struct RoomLive {
     /// The hosted persona whose entering joined the topic - whose door the receive path
     /// pulls missing speakers through.
     viewer_root: String,
-    sender: tokio::sync::Mutex<iroh_gossip::api::GossipSender>,
+    sender: tokio::sync::Mutex<iroh_gossip::GossipSender>,
     events: tokio::sync::broadcast::Sender<LiveEvent>,
     presence: Mutex<HashMap<String, Presence>>,
     /// The personas on THIS node beaconing into the room, and when each last did - who to
@@ -293,13 +293,13 @@ pub fn leave_live(state: &AppState, doc: &[u8; 16]) {
 async fn run_topic(
     state: AppState,
     doc: [u8; 16],
-    mut receiver: iroh_gossip::api::GossipReceiver,
+    mut receiver: iroh_gossip::GossipReceiver,
     live: Arc<RoomLive>,
 ) {
     use n0_future::StreamExt;
     while let Some(event) = receiver.next().await {
         match event {
-            Ok(iroh_gossip::api::Event::Received(msg)) => {
+            Ok(iroh_gossip::Event::Received(msg)) => {
                 on_frame(&state, &doc, &msg.content, &live).await
             }
             // A new neighbor heard nothing said before it arrived - including the "here" each
@@ -307,7 +307,7 @@ async fn run_topic(
             // it. Say it again for everyone here who is still beaconing (a socket does every
             // ten seconds), or the other side learns of them only at the next heartbeat: ten
             // seconds of an empty room with somebody in it (2026-10-02).
-            Ok(iroh_gossip::api::Event::NeighborUp(_)) => {
+            Ok(iroh_gossip::Event::NeighborUp(_)) => {
                 let now = crate::clock::now_ms();
                 let here: Vec<String> = live
                     .local
@@ -324,7 +324,7 @@ async fn run_topic(
                     }
                 });
             }
-            Ok(iroh_gossip::api::Event::Lagged) => {
+            Ok(iroh_gossip::Event::Lagged) => {
                 // Dropped frames are the sync lane's to heal: pull the room now.
                 heal(&state, &doc, &live);
             }

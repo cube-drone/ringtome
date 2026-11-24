@@ -207,7 +207,7 @@ pub struct AppState {
     pub peeked: net::admission::Behind,
     /// The rooms' live lane (CHAT.md, ruling 5): iroh-gossip on the node's endpoint, one
     /// topic per room a hosted persona has open.
-    pub gossip: iroh_gossip::net::Gossip,
+    pub gossip: iroh_gossip::Gossip,
     /// The topics this node is in right now, with their presence: in memory, since a live
     /// space is exactly what a boot loses.
     pub live: chat::Live,
@@ -582,8 +582,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let admission = net::admission::Admission::from_config(&config);
     // A gossip frame is one signed message (16KB at most) or a presence beacon; the cap
     // leaves headroom and refuses the rest at the door.
-    let gossip =
-        iroh_gossip::net::Gossip::builder().max_message_size(32 * 1024).spawn(endpoint.clone());
+    let gossip = iroh_gossip::Gossip::builder().max_message_size(32 * 1024).spawn(endpoint.clone());
     // Read before `config` moves into the state: the recorder is a local-test fixture, and so is
     // a push endpoint over plain http (the rig's fake push service).
     let record_attention = config.local_test;

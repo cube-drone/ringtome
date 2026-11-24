@@ -227,7 +227,7 @@ tiny-skia = "0.11"
 ab_glyph = "0.2.32"
 woff2-patched = "0.4"
 blake3 = "1.8.5"
-iroh-gossip = "0.101"
+iroh-gossip = "0.103"
 bytes = "1.12.1"
 # The Model Context Protocol, served at /mcp (mcp.rs, plans/MCP.md): the official SDK, because
 # the protocol is still moving - 2026-07-28 replaced the initialize handshake - and the SDK

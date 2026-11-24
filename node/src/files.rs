@@ -845,7 +845,7 @@ mod tests {
             admission: crate::net::admission::Admission::new(Default::default()),
             behind: Default::default(),
             peeked: Default::default(),
-            gossip: iroh_gossip::net::Gossip::builder().spawn(ep_a.clone()),
+            gossip: iroh_gossip::Gossip::builder().spawn(ep_a.clone()),
             live: Default::default(),
             attention: crate::attention::Attention::new(false),
             webpush: crate::webpush::WebPush::load(

@@ -29436,3 +29436,29 @@ rejoin after losing every neighbour; wire-compatible with 0.101) and iroh-blobs
 are the next worth taking, each with small API breaks; pkarr 9 (iroh doesn't use
 it); turso 0.9 (no release notes, encryption still experimental) and Tauri 3
 (alpha, no date) wait.
+
+## iroh-gossip 0.101 -> 0.103 (2026-11-23)
+
+The live lane under chat rooms (`chat.rs`: presence, typing, entries and group
+bells) moved two gossip releases. What 0.102 brings it: a bounded send queue per
+peer, so one slow neighbour no longer stalls every room; a node that loses all
+its neighbours rejoins on its own; a lost Join is retried; idle connections
+close; an oversized message is refused at `broadcast` with an error (already
+logged at debug - the chain lane carries the entry regardless). 0.103 made `api`
+and `net` private and re-exports what they held at the crate root, so the change
+is paths only: `iroh_gossip::api::Event` -> `iroh_gossip::Event`,
+`iroh_gossip::net::Gossip` -> `iroh_gossip::Gossip`.
+
+Nodes on 0.101 are out in the world, so the wire was proved rather than taken
+from the changelog: a scratch program ran a 0.101 and a 0.103 gossip node on one
+topic (same ALPN, `/iroh-gossip/1`), each saw the other as a neighbour, and each
+received all three of the other's messages. Unit tests (763), lint, the desktop
+build, and the live-room acceptance areas - the topic carrying the chains, the
+room lane, rooms as posts, group rooms, group gossip, housemates' private chat
+(30 claims) - green.
+
+A limit worth knowing, unchanged in kind: each topic shared with a peer holds
+one stream each way, capped by the endpoint's `max_concurrent_uni_streams` (100
+by default; keep under seven eighths of it). A topic is a room someone has open,
+so two nodes would need ~87 rooms live between them at once to reach it;
+`Builder::max_peer_streams` raises it, on both sides, if that ever comes.
