@@ -29462,3 +29462,28 @@ one stream each way, capped by the endpoint's `max_concurrent_uni_streams` (100
 by default; keep under seven eighths of it). A topic is a room someone has open,
 so two nodes would need ~87 rooms live between them at once to reach it;
 `Builder::max_peer_streams` raises it, on both sides, if that ever comes.
+
+## iroh-blobs 0.103 -> 0.104.1, and why not 0.105 (2026-11-23)
+
+No source change: 0.104 compiled against everything the node asks of the store.
+What it brings: garbage collection no longer deletes the children of a live
+hash-seq root (the node runs the store's GC, `files.rs`), hash sequences are
+read lazily so a request can't exhaust memory, the fs-store's deadlock and
+poisoned-entry fixes, failed imports no longer leave temp files, and a truncated
+range or bao export is an error rather than a short stream.
+
+Nodes on 0.103 are out in the world, so the wire was proved as gossip's was: a
+scratch program ran a 0.103 and a 0.104 store, each fetching a ~1.5 MB blob from
+the other the way `files.rs` does (`remote().fetch(conn, hash).stream()`), both
+complete and byte-identical. Full `just ci` green (2245 passing), the desktop
+lockfile moved with it.
+
+0.105 (crash-consistent imports, synced to disk before recorded complete) is the
+one worth having and is blocked on the phone: it asks for libc >= 0.2.190 on
+iOS, and the iOS ceiling in `node/Cargo.toml` holds libc below 0.2.190 because
+netdev (iroh's, through netwatch) still names `libc::in6_ifreq`, which 0.2.190
+took away on every Apple system but macOS - still so in netdev 0.47 and 0.48.
+The resolver splits rather than fails (a libc 0.1.12 appears for the iOS
+ceiling), so the symptom would be a broken iOS build, not a lock error. Its only
+compile break in our code was one test, where tag listings now yield `Result`s.
+Take it once netdev stops naming the struct and the ceiling comes out.

@@ -131,7 +131,7 @@ hkdf = "0.13"
 sha2 = "0.11"
 aes-gcm = "0.11"
 dryoc = "0.8.0"
-iroh-blobs = "0.103.0"
+iroh-blobs = "0.104.1"
 # StreamExt for consuming iroh-blobs' fetch-progress stream (same crate iroh-blobs uses), so a
 # download can be aborted mid-stream once it crosses the blob-size cap.
 n0-future = "0.3"
