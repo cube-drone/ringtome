@@ -29554,3 +29554,20 @@ the buttons in column bars and saved-filter rows.
 
 Rolling back is listed in `bevel.css`'s header. Seen on a scratch node;
 `just strings-check` and `just ui-check` green.
+
+## Verdana, and the 2004 web's density (2026-11-25)
+
+The next retro step after the bevels (Curtis: "body text ... verdana and
+11px?"). The body's face is Verdana, falling back through DejaVu Sans, Tahoma
+and Geneva to the system's own (Android has none of them and keeps Roboto;
+Verdana's licence forbids shipping it as a webfont). On a wide window the root's
+size is 81.25%, 13px of the browser's 16, so the chrome's common `0.85rem` lands
+at 11px and a post's `1rem` at 13px - the sizes Verdana was set at then. A
+percentage rather than px, so a raised browser text size still counts. The
+stylesheets size in rem, so padding tightens with the type; lengths in px (the
+post measure, the dock, the frame) stay put. A phone keeps its 90%: its thumb
+floor is in rem and would shrink with the root.
+
+Seen on a scratch node: the feed, settings and a post's page. The smallest
+labels (`0.72rem`, "history & popularity") come out near 9px.
+`just strings-check` and `just ui-check` green.

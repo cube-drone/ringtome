@@ -27,11 +27,27 @@
     }
 }
 
+/* A wide window, the 2004 web's density (Curtis, 2026-11-25, after the bevels: "body text ...
+   verdana and 11px?"): the root at 13px of the browser's 16, so the chrome's common 0.85rem lands
+   at 11px and a post's 1rem at 13px - the sizes Verdana was set at then. A percentage, not px, so a
+   reader who raised their browser's text size still has it. Not on a phone: its thumb floor
+   (tokens.css) is written in rem and would shrink with it. */
+@media (min-width: 901px) {
+    html {
+        font-size: 81.25%;
+    }
+}
+
+/* Verdana, the 2000s web's face: wide, open, and drawn for small sizes on a screen. Macs, Windows
+   and iPhones have it; elsewhere DejaVu Sans (Linux), grown from Bitstream Vera, which was drawn
+   in the same spirit, then Tahoma and Geneva, then the system's own. Android has none of these
+   and keeps Roboto. Verdana's licence forbids shipping it, so there is no webfont to fall back
+   on. */
 body {
     margin: 0;
     padding: 0;
     background-color: var(--bg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: Verdana, "DejaVu Sans", "Bitstream Vera Sans", Tahoma, Geneva, sans-serif;
     color: var(--ink);
 }
 
