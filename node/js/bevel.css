@@ -1,0 +1,59 @@
+/* Bevels on buttons (Curtis, 2026-11-25) - the desktop of 1995 to 2001, where a button was lit
+   from the top left: raised by default, and sunk while it is pressed or while it is the choice made.
+   It began as bevels on EVERYTHING - every ring, field, card and the app's frame - and was pulled
+   back the same day ("a bit too much, although I like the bevel effect ... just buttons").
+
+   Two ways of drawing the same edge, because the house draws lines two ways (tokens.css, the jagged
+   line). A button with a RING - the `jag-line` classes and the ring lists - has its ring painted
+   `var(--bevel-face, none), var(--line)`: the light and the shade laid over its own line colour, so a
+   teal or coral line stays teal or coral, only lit. Every button also wears the bevel as inset
+   shadows inside its border - the whole bevel on a plain button, a second step of it just inside
+   the ring on a ringed one. All of it is `:where`, weighing nothing: a button whose own rule chose a
+   `box-shadow` (a hole punched in the header) still has it.
+
+   Raised or sunk is two custom properties, `--bevel-face` (a ring's paint) and `--bevel-inset` (the
+   shadows), so a state flips both at once by naming them. They are reset to `none` on EVERY element
+   rather than inherited, so a ring inside a button (or a box that is not a button) stays plain.
+
+   To roll back: drop this file's import from index.css, `var(--bevel-face, none), ` from the three
+   ring rules in tokens.css, and the `--bevel-*` tokens with the dark colourways' rule for them. */
+:where(*) {
+    --bevel-face: none;
+    --bevel-inset: none;
+}
+
+/* Not the buttons clipped to a heptagon or a pixel circle - the dock's tiles, the console's, the
+   header's round back button: an inset shadow follows the box, not the clip, and showed as stubs of
+   line poking out from under the shape's slanted sides. */
+:where(
+        button:not(.quickbar-hex, .app-tile, .app-header-btn),
+        input[type='button'],
+        input[type='submit'],
+        input[type='reset']
+    ) {
+    --bevel-face: var(--bevel-raised);
+    --bevel-inset: var(--bevel-raised-inset);
+    box-shadow: var(--bevel-inset);
+}
+
+:where(
+        button:not(.quickbar-hex, .app-tile, .app-header-btn):not(:disabled):active,
+        button:not(.quickbar-hex, .app-tile, .app-header-btn)[aria-pressed='true']
+    ) {
+    --bevel-face: var(--bevel-sunk);
+    --bevel-inset: var(--bevel-sunk-inset);
+}
+
+/* Flat, still (Curtis, 2026-11-25: "column bars, lists of filters/mixtapes/shared playlists" looked
+   wrong bevelled): a column's bar and a list's rows are furniture, and the buttons in them sit
+   flush. Last, so a pressed one stays flat too. */
+:where(
+        .pane-head *,
+        .pane-rail,
+        .pane-rail *,
+        .feed-saved-row *,
+        .amp-playlists-new
+    ) {
+    --bevel-face: none;
+    --bevel-inset: none;
+}

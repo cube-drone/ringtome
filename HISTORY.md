@@ -29529,3 +29529,28 @@ proof.
 Lesson for the next iroh bump: the desktop and node gates cannot see the phone's
 link. Wait for the iOS job, which runs twenty-five to forty minutes and is
 cancelled by any newer push.
+
+## Bevels on buttons (2026-11-25)
+
+Every button is lit from the top left now, as on the desktop of 1995-2001:
+raised by default, and sunk while pressed or while `aria-pressed`. It began as
+bevels on EVERYTHING (Curtis: "try doing the bevels for EVERYTHING: we can roll
+it back if it turns out to be unpleasant"): every ring, every field sunk, the
+app frame and the modal as raised windows, and `--lw` at 2px. Cards, column
+bars, the saved-filter and mixtape lists and the titles were taken back out
+first. Then everything but the buttons ("a bit too much, although I like the
+bevel effect ... just buttons"); `--lw` is 1px again.
+
+How a button is lit, in `js/bevel.css`: a ring is now painted
+`var(--bevel-face, none), var(--line)` - a translucent light and shade over the
+button's own line colour, split on the diagonal that `to bottom right` draws
+through the top-right and bottom-left corners, so a teal or coral line stays
+teal or coral. Every button also wears the pair as inset shadows: the whole
+bevel on a plain button, a second step inside the ring on a ringed one. The two
+custom properties are reset to `none` on every element, so nothing that is not a
+button is lit, and a pressed button sinks alone. The heptagon and pixel-circle
+buttons are left out (an inset shadow follows the box, not the clip), and so are
+the buttons in column bars and saved-filter rows.
+
+Rolling back is listed in `bevel.css`'s header. Seen on a scratch node;
+`just strings-check` and `just ui-check` green.

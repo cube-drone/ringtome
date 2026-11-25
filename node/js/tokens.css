@@ -145,6 +145,21 @@
        casts, and the hairline of light its bottom edge catches. */
     --sunk-shadow: rgba(0, 0, 0, 0.45);
     --sunk-light: rgba(255, 255, 255, 0.12);
+    /* The bevels on buttons (bevel.css, 2026-11-25): the light that catches a raised edge's top
+       and left, and the shade along its bottom and right - both translucent, laid over whatever
+       line or face they sit on, so one pair serves every colour of button. The dark colourways
+       turn them down (the rule after the last colourway). */
+    --bevel-hi: rgba(255, 255, 255, 0.35);  /* not more: on the cream, a whiter edge was no edge at all */
+    --bevel-lo: rgba(0, 0, 0, 0.45);
+    /* A ring's paint (laid over its `--line`): a hard diagonal from the top-right corner to the
+       bottom-left - `to bottom right` puts its 50% line through exactly those two corners - so the
+       top and left edges take one, the bottom and right the other. Sunk is the same, swapped. */
+    --bevel-raised: linear-gradient(to bottom right, var(--bevel-hi) 50%, var(--bevel-lo) 50%);
+    --bevel-sunk: linear-gradient(to bottom right, var(--bevel-lo) 50%, var(--bevel-hi) 50%);
+    /* The same two edges for a button with no ring, as inset shadows inside its border - and,
+       on a button with one, a second step of bevel just inside the ring. */
+    --bevel-raised-inset: inset 2px 2px 0 var(--bevel-hi), inset -2px -2px 0 var(--bevel-lo);
+    --bevel-sunk-inset: inset 2px 2px 0 var(--bevel-lo), inset -2px -2px 0 var(--bevel-hi);
     --row-veil: rgba(246, 239, 224, 0.55); /* the cream surface, thinned: a People row's fade over its banner */
     --banner-veil: rgba(231, 219, 195, 0.5); /* the page's sand at half, over the tiled identicon of a
                                                  banner nobody chose: the pattern at half strength */
@@ -1028,6 +1043,26 @@
     --shadow-punch: rgba(10, 30, 60, 0.28);
 }
 
+/* The bevels on a dark colourway: white at two thirds glared off black and charcoal, so the light
+   comes down and the shade goes up - a raised edge on black is mostly its shadow. Jack-frost and the
+   light colourways keep the defaults. */
+:root:is(
+        [data-colorway='witchlight'],
+        [data-colorway='terminal'],
+        [data-colorway='terminal-white'],
+        [data-colorway='terminal-cyan'],
+        [data-colorway='terminal-orange'],
+        [data-colorway='terminal-gold'],
+        [data-colorway='pride'],
+        [data-colorway='trans'],
+        [data-colorway='bi'],
+        [data-colorway='ace'],
+        [data-colorway='holidaymas']
+    ) {
+    --bevel-hi: rgba(255, 255, 255, 0.28);
+    --bevel-lo: rgba(0, 0, 0, 0.6);
+}
+
 /* The jagged line, as a class (Curtis, 2026-09-30: "this has proven to be kind of a reliable pain").
    One class is the whole pattern - the transparent border that keeps the box's size, the clip,
    the ring on `::after` - so a box wears `jag-line` in its markup and its stylesheet says only
@@ -1061,7 +1096,7 @@
     position: absolute;
     inset: 0; /* the padding box, as the ring lists below: a box that hides its overflow keeps it */
     pointer-events: none;
-    background: var(--line);
+    background: var(--bevel-face, none), var(--line); /* bevel.css: a button's, lit from the top left */
 }
 
 .jag-line::after {
@@ -1156,7 +1191,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: var(--line);
+    background: var(--bevel-face, none), var(--line); /* bevel.css */
     clip-path: var(--ring-1);
 }
 
@@ -1174,7 +1209,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: var(--line);
+    background: var(--bevel-face, none), var(--line); /* bevel.css */
     clip-path: var(--ring);
 }
 
