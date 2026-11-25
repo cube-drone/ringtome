@@ -41,7 +41,7 @@
     background: none;
     border: none;
     white-space: nowrap;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .quickbar-bank:hover,
@@ -61,7 +61,7 @@
     font-size: 0.9rem;
     letter-spacing: 0.03em;
     opacity: 0.9;
-    cursor: default;
+    cursor: var(--cursor-default);
     user-select: none;
     /* Sunk into the bar (Curtis, 2026-09-17): a shade darker than the dock, an inner shadow
        along the top edge, and a hairline of light along the bottom, the way a recessed panel
@@ -89,7 +89,7 @@
     background: none;
     border: none;
     opacity: 0.85;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .quickbar-sync:hover,
@@ -206,7 +206,7 @@ a.quickbar-version:focus-visible {
     --qh-rim: var(--teal-deep);
     background: var(--qh-rim);
     clip-path: var(--face-clip);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     transition: opacity 0.12s ease, transform 0.12s ease;
 }
 

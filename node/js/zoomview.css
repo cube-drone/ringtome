@@ -8,11 +8,11 @@
     /* The fingers are the viewer's: no page scroll, no browser zoom under it. */
     touch-action: none;
     user-select: none;
-    cursor: grab;
+    cursor: var(--cursor-grab);
 }
 
 .zoomview:active {
-    cursor: grabbing;
+    cursor: var(--cursor-grabbing);
 }
 
 .zoomview-picture {
@@ -38,10 +38,10 @@
     background: var(--picture-dark);
     color: var(--picture-ink);
     font-size: 1.4rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* A picture the page shows smaller than it is says it opens. */
 .zoomview-opens {
-    cursor: zoom-in;
+    cursor: var(--cursor-zoom-in);
 }

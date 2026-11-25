@@ -217,7 +217,7 @@
 }
 
 .chip-button {
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
     font-size: 1rem;
     color: var(--sea);
@@ -237,7 +237,7 @@ a.chip-button {
 /* An end-of-the-book nav arrow: still present (the pair keeps its shape), just quiet. */
 .chip-button:disabled {
     opacity: 0.35;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .chip-button:disabled:hover {
@@ -418,7 +418,7 @@ a.chip-button {
     background: none;
     color: var(--ink);
     font: inherit;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     text-align: left;
 }
 
@@ -489,7 +489,7 @@ a.chip-button {
     aspect-ratio: 1;
     border: 1px solid var(--border);
     background: var(--swatch);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .texthelp-address {

@@ -33,7 +33,7 @@
     --line: var(--border);
     --j: 4px;
     padding: 0.2rem 0.6rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .notif-bar .push-button:hover {
@@ -55,7 +55,7 @@
     --line: var(--border);
     --j: 4px;
     padding: 0.2rem 0.6rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .notif-mark-read:hover {

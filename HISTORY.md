@@ -29571,3 +29571,48 @@ floor is in rem and would shrink with the root.
 Seen on a scratch node: the feed, settings and a post's page. The smallest
 labels (`0.72rem`, "history & popularity") come out near 9px.
 `just strings-check` and `just ui-check` green.
+
+Your settings' list read as two kinds of row once the bevels came in: "log out"
+and "delete me" are buttons among links, so those two stood raised. The menu's
+rows (`.persona-menu-item`) joined `bevel.css`'s flat list, and all of them are
+drawn alike again.
+
+## Pixel cursors (2026-11-25)
+
+The next retro step (Curtis: "replacing the smooth, modern cursor with something
+chunky and pixelated - for all of the varying cursor states. Maybe the Kenney
+Cursor Pixel Pack?"). Every cursor the app draws is now one of Kenney's 16px
+tiles (CC0; the eighteen chosen live in `js/cursors/` beside the licence), shown
+at 16 CSS px, one CSS pixel per tile pixel. (First at 32, each pixel doubled:
+"the suddenly much smaller verdana website and gigantic pixel icons are kinda
+funny together, but I think these pixel icons need to be 1x size".)
+
+`node/tools/cursors.mjs` writes `js/cursor-tokens.css`: one `--cursor-*` token
+per keyword, the picture inlined as a data URI. No new route or Rust, and it
+rides the stylesheet's cache. The tile is scaled 2x with nearest-neighbour and
+declared `2x` in an `image-set`, so a retina screen draws it pixel for pixel and
+a 1x screen halves it exactly; an `@supports` block gives the tile itself at 1x
+where `image-set` isn't understood as a cursor. The table in the tool holds each
+tile's number, hotspot and system-cursor fallback, and `--show` prints the tiles
+as text with the hotspot marked. Zero dependencies: a paletted-PNG reader and an
+RGBA writer over `zlib`.
+
+Every `cursor: <keyword>` in the stylesheets became `cursor: var(--cursor-...)`
+(208 rules in 31 files, counted before and after). `js/cursor.css` says what the
+browser would have chosen itself: the arrow on the page, the hand on a link, the
+I-beam in a field, and the marquee renderer's spoilers, expanders and table
+rows. The drawing's transform frame sets its resize, move and rotate cursors
+from script by token; the rotate cursor is the pack's circling arrow instead of
+the Phosphor SVG. The browser's own stylesheet gives buttons, selects,
+checkboxes, radios and the other picker inputs `cursor: default`, a keyword, so
+they drew the system arrow until `cursor.css` named them too (Curtis: "When I
+roll the cursor over a select, or a checkbox, it turns back into the UI default
+cursor"). One loss: `auto` drew an I-beam over any selectable words, and a
+picture can't tell words from the space between them, so read-only text shows
+the arrow.
+
+Checked in Chrome on a scratch node: all eighteen pictures decode, the
+`image-set` branch is the one taken, and the page, a field and a button compute
+to their pixel cursors with the right hotspots. Seeing them under a real mouse,
+and Safari's (and the desktop app's WebKit's) choice between the two branches,
+is still to do. `just strings-check` and `just ui-check` green.

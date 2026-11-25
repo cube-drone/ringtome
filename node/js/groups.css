@@ -52,13 +52,13 @@
     --line: var(--teal);
     --j: 0.25em;
     padding: 0.3rem 0.9rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .groups-found-go:disabled {
     color: var(--muted);
     --line: var(--border);
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .groups-error {
@@ -119,7 +119,7 @@
     --line: var(--border);
     --j: 3px;
     padding: 0.3rem 0.8rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .group-decline:hover {
@@ -274,7 +274,7 @@
     --line: var(--border);
     --j: 0.25em;
     padding: 0.15rem 0.6rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .group-members-head .group-leave {
@@ -290,7 +290,7 @@
 /* A group's own feed in the feed's Feeds column (apps/feed.js): its mark sits where a saved feed's
    trash does, since it isn't one to forget. */
 .feed-saved-group {
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 /* A group post's band (Curtis, 2026-10-16): the card's full width across its top, in the frame's
@@ -382,7 +382,7 @@
     --line: var(--border);
     --j: 0.25em;
     padding: 0.2rem 0.7rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* An owner's editor for the face, in place under it. */
@@ -479,7 +479,7 @@
     color: var(--ink);
     background: var(--surface);
     border: var(--lw) solid var(--border-strong);
-    cursor: help;
+    cursor: var(--cursor-help);
 }
 
 /* Opening downward and rightward, as a chip's in a post does (person.css): the box sits at the

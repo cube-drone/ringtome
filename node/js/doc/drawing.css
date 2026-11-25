@@ -30,7 +30,7 @@
     color: var(--ink);
     background: var(--surface);
     border: 1px solid var(--border);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* The tool in hand, said, atop its options (doc/drawing.js `TOOL_ABOUT`): its name, and a smaller
@@ -81,7 +81,7 @@
    press shakes again; none at all under reduced motion. */
 .drawing-tool-icon[aria-disabled='true'] {
     opacity: 0.35;
-    cursor: not-allowed;
+    cursor: var(--cursor-not-allowed);
 }
 
 .drawing-tool-shake-a {
@@ -141,7 +141,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     padding: 0.4rem 0.6rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     text-align: left;
 }
 
@@ -167,7 +167,7 @@
 
 .drawing-tool:disabled {
     color: var(--faint);
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .drawing-size {
@@ -209,7 +209,7 @@
 .drawing-swatch {
     aspect-ratio: 1;
     border: 1px solid var(--border-strong);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     padding: 0;
 }
 
@@ -305,24 +305,24 @@
 /* The paint bucket and the shapes aim at a point: a crosshair, not a size. */
 .drawing-paper.aim,
 .drawing-paper.aim .drawing-canvas {
-    cursor: crosshair;
+    cursor: var(--cursor-crosshair);
 }
 
 /* The text tool places words where it is clicked. */
 .drawing-paper.type,
 .drawing-paper.type .drawing-canvas {
-    cursor: text;
+    cursor: var(--cursor-text);
 }
 
 /* The grab tool's hand: open while it hovers, closed while it holds the layer. */
 .drawing-paper.grab,
 .drawing-paper.grab .drawing-canvas {
-    cursor: grab;
+    cursor: var(--cursor-grab);
 }
 
 .drawing-paper.grabbing,
 .drawing-paper.grabbing .drawing-canvas {
-    cursor: grabbing;
+    cursor: var(--cursor-grabbing);
 }
 
 .drawing-canvas {
@@ -443,7 +443,7 @@
     position: relative;
     --j: 3px;
     clip-path: var(--jag-1);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .drawing-sticker.active {
@@ -498,7 +498,7 @@
 
 .colour-picker-wheel {
     display: block;
-    cursor: crosshair;
+    cursor: var(--cursor-crosshair);
     touch-action: none;
 }
 
@@ -563,7 +563,7 @@
     padding: 0.25rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    cursor: grab;
+    cursor: var(--cursor-grab);
 }
 
 /* Where a dragged row will land: a line in the gap above or below the row under the pointer
@@ -612,7 +612,7 @@
     background: var(--field);
     border: 1px solid var(--teal);
     padding: 0.05rem 0.25rem;
-    cursor: text;
+    cursor: var(--cursor-text);
 }
 
 /* The row's options, under its name. */
@@ -634,12 +634,12 @@
     background: none;
     border: none;
     padding: 0.2rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .drawing-layer-eye:disabled {
     color: var(--faint);
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .drawing-layer-eye:hover:not(:disabled) {
@@ -673,11 +673,11 @@
     border: none;
     padding: 0;
     margin-top: -0.3rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .drawing-nav-fit:disabled {
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .drawing-nav-fit:hover:not(:disabled) {
@@ -689,7 +689,7 @@
     width: 100%;
     border: 1px solid var(--border);
     overflow: hidden;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     touch-action: none;
     --floor-square: 5px;
 }
@@ -741,12 +741,12 @@
     border: none;
     --j: 3px;
     clip-path: var(--jag-1);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .imagepick-upload:disabled {
     opacity: 0.6;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .imagepick-search {
@@ -772,7 +772,7 @@
     background: var(--field);
     border: 1px solid var(--border-strong);
     padding: 0.15rem 0.55rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .imagepick-bucket.active {
@@ -794,7 +794,7 @@
     background: var(--paper);
     border: 1px solid var(--border);
     padding: 0.1rem 0.45rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .imagepick-tag.active {
@@ -826,7 +826,7 @@
     background: none;
     border: 1px solid transparent;
     padding: 0.25rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     text-align: left;
 }
 
@@ -892,7 +892,7 @@
 
 .drawing-tool-icon:disabled {
     opacity: 0.35;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 /* A thumb's tags (Curtis, 2026-10-08: on a phone "everywhere we see a tag, the tag is too small to

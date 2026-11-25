@@ -63,7 +63,7 @@
     font: inherit;
     font-size: 0.75rem;
     padding: 0.15rem 0.6rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 /* A value whose meaning is fixed wears its icon before its word (pure/tagicons.js). */
 .facet-chip svg {

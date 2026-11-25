@@ -76,7 +76,7 @@
 }
 
 .annot-tag-active {
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     background: var(--pink);
     color: var(--surface);
     border-color: var(--pink);
@@ -88,7 +88,7 @@
     background: none;
     border: none;
     color: inherit;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
     font-size: 0.85rem;
     line-height: 1;
@@ -181,7 +181,7 @@
     background: none;
     border: none;
     color: var(--muted);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
     font-size: 0.72rem;
     padding: 0.1rem 0.2rem;

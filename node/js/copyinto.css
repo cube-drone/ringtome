@@ -16,7 +16,7 @@
     font: inherit;
     font-size: 0.9rem;
     padding: 0.25rem 0.8rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 .copy-bucket:hover {
     --line: var(--border-strong);

@@ -27,7 +27,7 @@
     --line: var(--border);
     --j: 4px;
     padding: 0.3rem 0.8rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .developer-button:hover,

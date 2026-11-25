@@ -717,25 +717,31 @@ const GRIP_PX = 8;
 const HANDLE_PX = 9;
 
 /// The rotate cursor (Curtis, 2026-09-27: the crosshair "doesn't feel too representative"): CSS has
-/// no rotate cursor, so it is Phosphor's ArrowClockwise - the same icon set as everything else - bold
-/// weight, black with a white rim so it reads on any paint, as a 24-pixel image with its hot spot in
-/// the middle. A browser that cannot draw it falls back to the crosshair.
-const ARROW_CLOCKWISE =
-    'M244,56v48a12,12,0,0,1-12,12H184a12,12,0,1,1,0-24H201.1l-19-17.38c-.13-.12-.26-.24-.38-.37A76,76,0,1,0,127,204h1a75.53,75.53,0,0,0,52.15-20.72,12,12,0,0,1,16.49,17.45A99.45,99.45,0,0,1,128,228h-1.37A100,100,0,1,1,198.51,57.06L220,76.72V56a12,12,0,0,1,24,0Z';
-const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-20 -20 296 296"><path d="${ARROW_CLOCKWISE}" fill="black" stroke="white" stroke-width="28" stroke-linejoin="round" paint-order="stroke"/></svg>`,
-)}") 12 12, crosshair`;
+/// no rotate cursor, so it is a picture - since 2026-11-25 the pixel cursors' circling arrow, like
+/// every other cursor here a token from cursor-tokens.css (node/tools/cursors.mjs), falling back to
+/// the crosshair. An inline style can name a custom property as well as a stylesheet can.
+const ROTATE_CURSOR = 'var(--cursor-rotate)';
 
 /// The pointer over the transform frame, by what a press there would take hold of.
 const GRIP_CURSORS = {
-    corner: ['nwse-resize', 'nesw-resize', 'nwse-resize', 'nesw-resize'],
-    edge: ['ns-resize', 'ew-resize', 'ns-resize', 'ew-resize'],
+    corner: [
+        'var(--cursor-nwse-resize)',
+        'var(--cursor-nesw-resize)',
+        'var(--cursor-nwse-resize)',
+        'var(--cursor-nesw-resize)',
+    ],
+    edge: [
+        'var(--cursor-ns-resize)',
+        'var(--cursor-ew-resize)',
+        'var(--cursor-ns-resize)',
+        'var(--cursor-ew-resize)',
+    ],
 };
 const gripCursor = (grip) =>
     grip.kind === 'corner' || grip.kind === 'edge'
         ? GRIP_CURSORS[grip.kind][grip.i]
         : grip.kind === 'inside'
-          ? 'move'
+          ? 'var(--cursor-move)'
           : ROTATE_CURSOR;
 
 /// The room left around the drawing when it fits the stage, in CSS pixels: its shadow shows.
@@ -1818,7 +1824,7 @@ export const DrawingSurface = ({ root, docId, nav, onDeleted }) => {
         if (!l && boxTool && cropBox) {
             const reach = (GRIP_PX * W) / canvasRef.current.getBoundingClientRect().width;
             const grip = gripAt(frameOf(cropBox), toDrawing(e), reach);
-            setGripCursor(grip.kind === 'outside' ? 'crosshair' : gripCursor(grip));
+            setGripCursor(grip.kind === 'outside' ? 'var(--cursor-crosshair)' : gripCursor(grip));
         }
         if (!l || l.pour) return; // a pour stays where it was dropped
         if (l.crop) {

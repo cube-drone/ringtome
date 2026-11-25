@@ -96,7 +96,7 @@
     background: none;
     border: none;
     color: var(--muted);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
 }
 

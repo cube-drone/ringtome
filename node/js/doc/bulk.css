@@ -33,7 +33,7 @@
     font: inherit;
     font-size: 0.8rem;
     color: var(--muted);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .bulk-clear:hover {
@@ -96,7 +96,7 @@
     --line: var(--border);
     --j: 4px;
     padding: 0.2rem 0.7rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .bulk-button:hover {

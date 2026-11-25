@@ -72,7 +72,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 .publish-bar-publish:hover,
 .publish-bar-update:hover,
@@ -152,7 +152,7 @@
 /* The update button, greyed while a publish is under way. */
 .publish-bar-update:disabled {
     opacity: 0.55;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 .publish-bar-update:disabled:hover {
     background: transparent;

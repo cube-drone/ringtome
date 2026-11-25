@@ -144,7 +144,7 @@
     color: var(--muted);
     padding: 0.3rem 0.6rem;
     font-size: 1.2rem; /* icon-only tabs; the name is in the tooltip */
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     line-height: 1;
 }
 
@@ -223,12 +223,12 @@
     padding: 0.6rem;
     font: inherit;
     font-weight: 600;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .welcome-go:disabled {
     opacity: 0.6;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 /* --- the hit counter (census.js, 2026-09-29): "Now with [0 0 0 0 0 0 3] active users!" --- */
@@ -250,7 +250,7 @@
     background: none;
     border: none;
     padding: 0.2rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .hit-counter-wheels {
@@ -313,7 +313,7 @@
 /* An invisible, wider target around each day's dot, so a hover or a tap lands. */
 .hit-counter-hit {
     fill: transparent;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .hit-counter-dot {

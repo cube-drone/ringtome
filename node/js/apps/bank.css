@@ -90,14 +90,14 @@
     align-self: flex-start;
     font-size: 0.68rem;
     color: var(--muted);
-    cursor: help;
+    cursor: var(--cursor-help);
 }
 .bank-contract-fine-text {
     display: none;
 }
 @media (max-width: 900px) {
     .bank-contract-fine {
-        cursor: pointer;
+        cursor: var(--cursor-pointer);
     }
     .bank-contract-fine-label {
         display: none;
@@ -231,7 +231,7 @@
     color: var(--ink);
     background: var(--surface-2);
     border: none;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     text-align: left;
 }
 
@@ -268,7 +268,7 @@
     padding: 1rem;
     background: var(--surface);
     border: 4px solid var(--ink);
-    cursor: help;
+    cursor: var(--cursor-help);
 }
 
 /* More than the balance holds (2026-09-30): the whole square greys back. */
@@ -319,12 +319,12 @@
     border: none;
     --j: 3px;
     clip-path: var(--jag-1);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .bank-buy:disabled {
     opacity: 0.6;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .bank-holdings {
@@ -382,12 +382,12 @@
     color: var(--ink);
     background: var(--surface-2);
     border: 1px solid var(--border);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .bank-sell:disabled {
     opacity: 0.6;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .bank-holding-bar span {
@@ -460,7 +460,7 @@
     font-size: 0.75em;
     color: var(--surface);
     background: var(--ink);
-    cursor: help;
+    cursor: var(--cursor-help);
 }
 
 /* An app's address while the app isn't owned (unlocks.js LockedApp): the Market's card, centred. */

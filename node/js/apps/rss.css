@@ -50,7 +50,7 @@
     clip-path: var(--jag-1);
     color: var(--sea);
     padding: 0.45rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
     font-size: 0.9rem;
 }
@@ -60,7 +60,7 @@
 }
 
 .rss-follow-btn:disabled {
-    cursor: default;
+    cursor: var(--cursor-default);
     opacity: 0.6;
 }
 
@@ -78,7 +78,7 @@
     gap: 0.5rem;
     padding: 0.45rem 0.4rem;
     border-bottom: 1px solid var(--border);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     color: var(--muted);
 }
 
@@ -170,7 +170,7 @@
     font: inherit;
     font-size: 0.85rem;
     padding: 0.3rem 0.55rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .rss-head-status {

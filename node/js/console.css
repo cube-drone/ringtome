@@ -66,7 +66,7 @@
     background: var(--hex-border-light);   /* outer ring: lighter, 2px */
     padding: 2px;
     border: 0;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
     display: block;
     transition: transform 0.12s ease, filter 0.12s ease;
@@ -157,7 +157,7 @@
 }
 
 .app-tile.blank {
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .app-tile.blank .hex-face {
@@ -242,7 +242,7 @@
     padding: 0.45rem 1rem;
     font: inherit;
     font-weight: 600;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 .oauth-consent-yes,
 .upload-link-go {
@@ -259,5 +259,5 @@
 .oauth-consent-no:disabled,
 .upload-link-go:disabled {
     opacity: 0.6;
-    cursor: default;
+    cursor: var(--cursor-default);
 }

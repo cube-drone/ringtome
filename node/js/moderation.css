@@ -362,7 +362,7 @@ label.moderation-overrule {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     list-style: none;
     color: var(--muted);
 }
@@ -401,7 +401,7 @@ label.moderation-overrule {
     gap: 0.5rem;
     padding: 0.5rem 0.6rem;
     border: 1px solid var(--border);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 .block-choice input {
     margin-top: 0.2rem;

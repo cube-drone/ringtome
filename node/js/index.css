@@ -21,6 +21,7 @@
 
 @import "./fonts.css";        /* @font-face for all 30 faces + optical-size normalization */
 @import "./tokens.css";       /* the palette: every colour in the app, and the panel clip */
+@import "./cursor-tokens.css"; /* the pixel cursors' pictures, generated (node/tools/cursors.mjs) */
 @import "./shell.css";        /* the reset, the app frame, the unified header, the switcher */
 @import "./auth.css";         /* the front door: sign in, register, recover */
 @import "./quickbar.css";     /* the bottom dock: app heptagons and the corner clock */
@@ -56,7 +57,8 @@
 @import "./qr.css";           /* QR codes of a person or a post (plans/QR.md) */
 @import "./doc/upload.css";   /* the upload flow inside it */
 @import "./toasts.css";       /* toasts: short messages that fade, above the quickbar */
-@import "./bevel.css";        /* bevels on everything: raised, sunk, pressed - an experiment (2026-11-25) */
+@import "./cursor.css";       /* which element wears which pixel cursor (2026-11-25) */
+@import "./bevel.css";        /* bevels on buttons: raised, and sunk while pressed (2026-11-25) */
 @import "./crt.css";          /* the CRT screen over everything: an experiment (2026-10-06) */
 @import "./snow.css";         /* snow falling over everything, when asked for (2026-11-22) */
 
@@ -139,7 +141,7 @@
     color: var(--ink-soft);
     font: inherit;
     font-size: 0.78rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 .book-reader-tag-on {
     border-style: solid;

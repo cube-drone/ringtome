@@ -28,7 +28,7 @@
     background: none;
     color: inherit;
     font-size: 1.1rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .wordaga-sound[aria-pressed='true'] {
@@ -87,7 +87,7 @@
 .wordaga-slot.open {
     padding: 0;
     border: 2px solid var(--teal);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* A game that is over: a panel in a thick jagged line, confetti bouncing at its top, its heading,
@@ -237,7 +237,7 @@
     background: none;
     border: none;
     perspective: 11rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* Sets the cube back by half its depth, so the face in front lies in the page and is its true size. */
@@ -297,7 +297,7 @@
 
 .wordaga-die:disabled {
     opacity: 0.35;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .wordaga-abilities {
@@ -319,7 +319,7 @@
     color: var(--ink);
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     position: relative;
 }
 
@@ -371,7 +371,7 @@
    its own whether the money is there. */
 .wordaga-ability:disabled {
     border-color: var(--border);
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .wordaga-ability:disabled strong,
@@ -578,13 +578,13 @@
     color: var(--ink);
     background: var(--paper);
     border: 1px solid var(--teal);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .wordaga-letter:disabled {
     background: var(--surface-2);
     border-color: var(--border);
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .wordaga-letter.in {
@@ -629,7 +629,7 @@
     border: none;
     --j: 3px;
     clip-path: var(--jag-1);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* Beside the guess: giving it up for money. Quieter than the guess itself. */
@@ -642,7 +642,7 @@
     color: var(--ink);
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .wordaga-pass:hover {
@@ -651,7 +651,7 @@
 
 .wordaga-go:disabled {
     opacity: 0.6;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 /* The history under a finished day: a rule, a heading, and each earlier day's panel with its date

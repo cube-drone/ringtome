@@ -279,7 +279,7 @@
 .person-reach-n {
     font-weight: 600;
     color: var(--ink);
-    cursor: help;
+    cursor: var(--cursor-help);
 }
 
 /* Who you know that trusts them, then who follows without trusting: small chips after a word. */
@@ -322,7 +322,7 @@
     --j: 4px;
     clip-path: var(--jag-1);
     padding: 0.2rem 0.6rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .person-card-chat:hover:not(:disabled) {
@@ -330,7 +330,7 @@
 }
 
 .person-card-chat:disabled {
-    cursor: progress;
+    cursor: var(--cursor-progress);
 }
 
 .person-card-chat-bad {

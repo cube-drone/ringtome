@@ -76,7 +76,7 @@
     text-align: left;
     font: inherit;
     color: var(--ink);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .download-menu-item:hover,
@@ -116,7 +116,7 @@
     font: inherit;
     font-size: 0.85rem;
     color: var(--ink);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .tree-tool:hover {
@@ -130,7 +130,7 @@
     gap: 0.35rem;
     padding: 0.25rem 0.4rem;
     --j: 2.5px;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     min-width: 0;
 }
 
@@ -203,7 +203,7 @@
     border: 0;
     padding: 0.1rem;
     color: var(--muted);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font-size: 0.95em;
 }
 
@@ -289,7 +289,7 @@
 .tree-stub {
     color: var(--muted);
     font-style: italic;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .tree-empty {

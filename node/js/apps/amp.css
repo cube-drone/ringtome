@@ -139,7 +139,7 @@
 }
 
 .amp-th-sorts {
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .amp-th-sorts:hover {
@@ -158,7 +158,7 @@
     right: 0;
     width: 6px;
     height: 100%;
-    cursor: col-resize;
+    cursor: var(--cursor-col-resize);
 }
 
 .amp-th-edge:hover {
@@ -176,7 +176,7 @@
     background: none;
     border: 0;
     color: var(--ink-soft);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
 }
 
@@ -213,7 +213,7 @@
     min-width: 100%;
     font-size: 0.85rem;
     color: var(--ink);
-    cursor: default;
+    cursor: var(--cursor-default);
     border-bottom: 1px solid var(--border);
     user-select: none;
 }
@@ -371,7 +371,7 @@
     color: var(--ink);
     font-size: 1.15rem;
     padding: 0.2rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     display: inline-flex;
 }
 
@@ -381,7 +381,7 @@
 
 .player-button:disabled {
     opacity: 0.35;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 /* The shuffle, on (Curtis, 2026-10-12: "more prominent"): a solid accent tile, its glyph in the
@@ -478,7 +478,7 @@
     padding: 0;
     border: 0;
     background: none;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     display: inline-flex;
     flex-shrink: 0;
 }
@@ -571,7 +571,7 @@
     border: 0;
     font: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* Expanded: a cassette over the song's cover, blurred. */
@@ -635,7 +635,7 @@
 
 /* A press on it pauses and plays (Curtis, 2026-10-18), without selecting the label's words. */
 .cassette[role='button'] {
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     user-select: none;
     -webkit-tap-highlight-color: transparent;
 }
@@ -878,7 +878,7 @@
 .amp-drag-handle {
     display: inline-flex;
     color: var(--muted);
-    cursor: grab;
+    cursor: var(--cursor-grab);
 }
 
 .amp-row-drop-before {
@@ -910,7 +910,7 @@
     background: none;
     border: 0;
     color: var(--muted);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     display: inline-flex;
     padding: 0.1rem 0.3rem;
 }
@@ -1024,7 +1024,7 @@
 
 /* Lately on the air: each song pressed shows its file, and says the slice that picked it. */
 .amp-station-lately li {
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .amp-station-source {
@@ -1068,7 +1068,7 @@
     display: flex;
     flex-direction: column;
     padding: 0.3rem 0.4rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     user-select: none;
     border-bottom: 1px solid var(--border);
 }
@@ -1331,7 +1331,7 @@
 .amp-pin {
     background: none;
     border: 0;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     display: inline-flex;
     padding: 0.28rem 0.3rem;
     color: var(--muted);
@@ -1422,12 +1422,12 @@
     background: var(--teal);
     --line: var(--teal);
     --j: 3px;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .mixtape-card-play:disabled {
     opacity: 0.5;
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 /* The Playlists column's read-only rows (plans/MIXTAPES.md): the quiet word after a name - whose

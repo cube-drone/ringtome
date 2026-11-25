@@ -45,7 +45,7 @@
     font: inherit;
     color: var(--accent-ink);
     text-decoration: underline;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 /* The list column's two orders, as tabs (2026-10-22): chronological, or the notebook's tree. Tabs
@@ -95,7 +95,7 @@
     font: inherit;
     font-size: 0.85rem;
     color: var(--ink);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .notes-tool:hover {
@@ -143,7 +143,7 @@
 
 /* The whole header is the tuck target: it says so under the pointer. */
 .pane-head {
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .pane-head:hover {
@@ -152,7 +152,7 @@
 
 /* A narrow window's header is its tab's title, and closes nothing (panes.js). */
 .pane-head-tab {
-    cursor: default;
+    cursor: var(--cursor-default);
 }
 
 .pane-head-tab:hover {
@@ -178,7 +178,7 @@
     border: 0;
     padding: 0.15rem;
     color: var(--muted);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font-size: 0.9rem;
 }
 
@@ -201,7 +201,7 @@
     --line: var(--border);
     --j: 3px;
     color: var(--muted);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font-size: 1rem;
 }
 
@@ -549,7 +549,7 @@
     border: 0;
     padding: 0.1rem 0.2rem;
     color: var(--ink);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     border-left: 3px solid var(--peach);
 }
 .book-page-new {
@@ -592,7 +592,7 @@
     /* Eat most of the flex gap on either side, so a gutter with a resizer in it reads about as
        wide as one without. */
     margin: 0 -0.5rem;
-    cursor: col-resize;
+    cursor: var(--cursor-col-resize);
     --j: 3px;
     clip-path: var(--jag-1);
     touch-action: none;
@@ -617,7 +617,7 @@
     font: inherit;
     font-size: 0.85rem;
     padding: 0.28rem 0.5rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     text-align: left;
 }
 
@@ -678,7 +678,7 @@
     --line: var(--border);
     --j: 3px;
     padding: 0.45rem 0.6rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
     text-align: left;
     display: flex;
@@ -777,7 +777,7 @@
     background: none;
     border: 1px solid transparent;
     padding: 0.25rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     text-align: left;
 }
 
@@ -849,7 +849,7 @@
     color: var(--ink-soft);
     background: var(--paper);
     border: 1px solid var(--border);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .files-tile-slot:hover .files-tile-home,

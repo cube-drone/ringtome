@@ -236,7 +236,7 @@ body {
     font-family: "JetBrains Mono", monospace;
     font-variant-ligatures: none;
     font-size: 0.85rem;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     flex: 1;
     min-width: 0;
     text-align: left;
@@ -288,7 +288,7 @@ body {
     text-align: left;
     font: inherit;
     color: var(--ink);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .bucket-menu-item:hover {
@@ -401,7 +401,7 @@ body {
     padding: 0;
     font-size: 1.05rem;
     color: var(--faint);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .search-opts-btn:hover {
@@ -446,7 +446,7 @@ body {
     font: inherit;
     font-size: 0.85rem;
     color: var(--ink);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
 }
 
 .search-opts-kind:hover {
@@ -514,7 +514,7 @@ body {
     border: 0;
     clip-path: var(--dot-clip);
     color: var(--ink);
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
     font: inherit;
     font-size: 1.45rem; /* Phosphor icons are 1em - this is the "big" */
     box-shadow: inset 0 1px 2px var(--shadow-punch);
