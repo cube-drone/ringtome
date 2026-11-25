@@ -29672,3 +29672,46 @@ dock, are what you made.
 Seen on a scratch node: three notes made, the first reopened, and the tab reads
 note-1, note-3, note-2 - the same after a reload, the tab still chosen.
 `just strings-check` and `just ui-check` green.
+
+## The editor's tags chip beside "file" and "edit" (2026-11-25)
+
+Curtis: "in the feed's text editor, there's 'file' and 'edit', with 'tags'
+hidden under 'file' - I think tags deserves to be a top-level thing, here."
+Where the editor's chips fold (the feed's composer at every width, any editor on
+a narrow window), the tags chip now sits in the header row after "file" and
+"edit" instead of inside "file"'s menu; on a wide window it stays in the deck
+where it was. The "file" chip's tooltip drops "tags" to match.
+
+Seen on a scratch node: the feed's composer reads file | edit | tags, and tags
+opens the date, tags and description panel. `just strings-check` and
+`just ui-check` green.
+
+## The emoji picker's faces flat (2026-11-25)
+
+Curtis: "Please remove the bevelled edges from the emoji in the emoji picker."
+The picker's faces are buttons, so the buttons-only bevel caught them;
+bevel.css's flat list now takes `.label-emoji-strip *`, which covers both the
+feed's tag picker and chat's reaction picker (chat's wears the same strip). A
+grid of glyphs, not a grid of buttons.
+
+Checked on the dev node's bundle: a picker face computes no bevel inset beside a
+plain button's. `just ui-check` green.
+
+## The santa hat inside the dock's row (2026-11-25)
+
+Curtis: "In tauri specifically (and only in tauri, AFAICT), the top half of my
+christmas santa hat keeps disappearing." The hat stood 15px above the top of
+`.quickbar-apps`, the row that clips sideways (`overflow-x: clip`,
+`overflow-y: visible`) so that too many apps are cut at the clock; it was the
+only thing in that row poking past its top edge. The working theory is that the
+desktop app's WebKit, on some repaints, clips that one-axis clip upward too. A
+WKWebView snapshot of a stripped-down row drew the hat whole, so the theory is
+unproven - it fits "keeps disappearing" (sometimes, not always) and "the top
+half" (the part over the row's edge). Rather than lean on the clip, the row now
+has 24px of headroom, so the hat sits inside it; the headroom lets clicks
+through to the app (`pointer-events: none`, the row's slots take them back).
+
+Seen on a scratch node under holidaymas: the hat's top is inside the row, and a
+point in the headroom hits the app frame. `just ui-check` green. The persona
+switcher's stack still rises out of the row on hover; if that flickers in the
+desktop app too, it is the same cause.

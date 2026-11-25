@@ -150,7 +150,7 @@ export const Editor = ({
     const opens = (which) => (on) => setFolded((now) => (on ? which : now === which ? null : now));
     const menu = useChipMenu({
         word: t('chips.file', 'file'),
-        title: t('doc.editor.file-title', 'this document: delete, copy, its link, tags and pins'),
+        title: t('doc.editor.file-title', 'this document: delete, copy, its link and pins'),
         icon: Icons.page,
         open: folded === 'file',
         setOpen: opens('file'),
@@ -671,6 +671,18 @@ export const Editor = ({
               `;
     const showTabs = available.length > 1 && !narrow;
 
+    // Tags, date & description. In the deck on a wide window; folded, a chip of its own beside
+    // "file" and "edit" rather than inside "file" (Curtis, 2026-11-25: "I think tags deserves to be
+    // a top-level thing, here").
+    const tagsChip = html`<span class="editor-meta-anchor" ref=${metaChipRef}>
+        <${Chip}
+            icon=${Icons.tag} word=${t('chips.tags', 'tags')}
+            on=${showMeta}
+            title="tags, date & description"
+            onClick=${() => setShowMeta((v) => !v)}
+        />
+    </span>`;
+
     // The chips, the whole deck (Curtis, 2026-10-08): a row on a wide window, and behind one
     // menu chip on a narrow one, where the row never fit (below).
     const deck = html`
@@ -723,14 +735,7 @@ export const Editor = ({
                                   : html`<span class="status-spin"><${Icons.spinner} /></span>`
                         }
                     </${Chip}>
-                    <span class="editor-meta-anchor" ref=${metaChipRef}>
-                        <${Chip}
-                            icon=${Icons.tag} word=${t('chips.tags', 'tags')}
-                            on=${showMeta}
-                            title="tags, date & description"
-                            onClick=${() => setShowMeta((v) => !v)}
-                        />
-                    </span>
+                    ${fold ? null : tagsChip}
 
                     ${
                         feat.pin &&
@@ -788,6 +793,7 @@ export const Editor = ({
                     }
                     ${fold ? menu.chip : deck}
                     ${fold && tools && editMenu.chip}
+                    ${fold && tagsChip}
                 </span>
                 ${
                     /* Open, the deck is a full-width line of the header, under the title: within the

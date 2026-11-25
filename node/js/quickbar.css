@@ -173,6 +173,18 @@ a.quickbar-version:focus-visible {
     overflow-x: clip;
     overflow-y: visible;
     position: relative;
+    /* Headroom for the santa hat, so it sits inside the row rather than over its top edge: the
+       desktop app's WebKit, on some repaints, clipped a sideways-only clip upward too, and took the
+       hat's top half with it (Curtis, 2026-11-25: "In tauri specifically ... the top half of my
+       christmas santa hat keeps disappearing"). The row is bottom-aligned in the bar, so the room
+       grows upward over the app; the room itself lets clicks through to it, and the row's slots
+       take them back. */
+    padding-top: 24px;
+    pointer-events: none;
+}
+
+.quickbar-apps > * {
+    pointer-events: auto;
 }
 
 /* ...and the cut end fades into the bar: a strip of the bar's own teal, the height of the bar

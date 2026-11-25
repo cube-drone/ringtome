@@ -1361,7 +1361,7 @@ export default {
 
     // --- node/js/doc/editor.js ---
     'chips.file': 'file',
-    'doc.editor.file-title': 'this document: delete, copy, its link, tags and pins',
+    'doc.editor.file-title': 'this document: delete, copy, its link and pins',
     'doc.editor.edit-title': 'writing tools: upload, pictures, the format, help',
     'chips.to-plain': 'plain',
     'chips.to-marquee': 'marquee',
