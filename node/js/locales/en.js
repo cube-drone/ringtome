@@ -644,11 +644,13 @@ export default {
     'apps.notes.storage-foot': '{size} in all',
     'apps.notes.view-chronological': 'chronological',
     'apps.notes.view-tree': 'tree',
+    'apps.notes.view-recent': 'recently opened',
     'apps.notes.new-thing': '+ {thing}',
     'apps.notes.new-section': '+ section',
     'apps.notes.count': '{n} {things}',
     'apps.notes.count-of': '{shown} of {n} {things}',
     'apps.notes.remove-filter': 'remove filter',
+    'apps.notes.nothing-opened-yet': 'nothing opened here yet.',
 
     // --- node/js/apps/notifications.js ---
     'apps.notifications.a-room': 'a room',

@@ -29637,3 +29637,38 @@ of its route, the only user of `bucketHref` in `index.js`, went with it.
 Seen on a scratch node: a new note in hrseWriter shows only the close button,
 the notes list beside it; Wordaga still shows "back to the list".
 `just ui-check` and `just strings-check` green.
+
+## hrseWriter's list orders as icons (2026-11-25)
+
+The list column's two tabs, chronological and tree, are their icons alone, a
+size up (`1.15rem`, which Phosphor's `1em` follows) - Curtis: "the icons are
+evocative enough here, and the UI is already very wordy around there". The words
+are still there as each tab's tooltip and `aria-label`, so hover and a screen
+reader say them; the catalog's two phrases are unchanged. Seen on a scratch
+node; `just strings-check` and `just ui-check` green.
+
+## A notebook's recently opened, as a third list tab (2026-11-25)
+
+Curtis: "a third tab, next to 'chronological' and 'tree' - 'recent', containing
+recently opened documents in this notebook, with the most recently opened
+document at the top - just saved in browser memory, not synced anywhere". It
+wears Phosphor's ClockCounterClockwise (`Icons.recent`), its words, "recently
+opened", in the tooltip and `aria-label` like its two neighbours.
+
+Every opening in a notebook is noted in a pref (`recentOpensKey`,
+`opened:<app>: <notebook>`): the documents' ids, newest first, at most fifty. A
+pref because that table is exactly this weight - per browser, live across its
+tabs, never synced, forgotten with the browser at logout. The rule is
+`js/pure/recentopens.js`, unit-tested: an opening moves a document to the front
+rather than listing it twice, and the tab shows only what the notebook holds
+now, so a deleted or moved note, or one a search or tag narrows away, drops out.
+The noting reads the stored list before it writes, since the live value is empty
+until its first read answers and a write from that would wipe the list.
+Prev/next still walk the time order on this tab: the recent order changes with
+every opening, and walking it would hand the arrows back the note just left.
+These are what you opened, in one notebook; plans/RECENTS.md's recents, on the
+dock, are what you made.
+
+Seen on a scratch node: three notes made, the first reopened, and the tab reads
+note-1, note-3, note-2 - the same after a reload, the tab still chosen.
+`just strings-check` and `just ui-check` green.

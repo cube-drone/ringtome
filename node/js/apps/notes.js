@@ -28,7 +28,7 @@ import { api } from '../net.js';
 import { RightColumn } from '../doc/reader.js';
 import { Snippet } from '../doc/snippet.js';
 import { DownloadButton } from '../doc/download.js';
-import { listViewKey, usePref } from '../mirror/prefs.js';
+import { listViewKey, recentOpensKey, readPref, setPref, usePref } from '../mirror/prefs.js';
 import { useDocApp, useDocNav } from '../doc/docapp.js';
 import { useSearch } from '../search.js';
 import { hasClaimedDate, formatClaimed, DISPLAY_DATE_FIELD } from '../pure/docdate.js';
@@ -36,6 +36,7 @@ import { featuresOf, itemNoun, itemPlural, bucketHolds, FILES_BUCKET } from '../
 import { noteByTitle } from '../pure/bytitle.js';
 import { browseFiles, UNFILED } from '../pure/filebrowse.js';
 import { filesHides, orderDocs, shownTags, tagCounts } from '../pure/doclist.js';
+import { noteOpened, recentlyOpened } from '../pure/recentopens.js';
 import { WikiTree, fileNewIntoTree } from '../doc/tree.js';
 import { useColWidths, useColTucks, useNarrow, PaneHead, Rail, TagColumn } from '../panes.js';
 import { LinksColumn } from '../doc/linkcol.js';
@@ -687,6 +688,21 @@ export const DocsApp = ({
     // unlocked; everywhere else the column is the plain list it always was.
     const [listView, setListView] = usePref(root, listViewKey(app.id, bucket), 'list');
     const treeTab = !!feat.tree && !app.everything && listView === 'tree';
+    // The third order (2026-11-25): what you opened here, newest first, kept in this browser alone
+    // (pure/recentopens.js). Every opening in a notebook is noted, whichever tab is showing - and
+    // whether or not this notebook has the tabs yet, since its features arrive a beat after it does.
+    // Read, then written, rather than taken from the live value: before the first read answers that
+    // is empty, and a write from it would wipe the list.
+    const recentTab = !!feat.tree && !app.everything && listView === 'recent';
+    const opensKey = recentOpensKey(app.id, bucket);
+    const [opened] = usePref(root, opensKey, '');
+    useEffect(() => {
+        if (!selected || app.everything) return;
+        readPref(root, opensKey).then((stored) =>
+            setPref(root, opensKey, noteOpened(stored, selected)),
+        );
+    }, [root, opensKey, selected, app.everything]);
+    const recentRows = recentTab ? recentlyOpened(opened, list) : [];
     // The tree's own new-section (and new-page) actions, reached from the column's toolbar.
     const treeTools = useRef(null);
     const publishTucked = tucked.has('publish');
@@ -710,7 +726,9 @@ export const DocsApp = ({
     // Which order prev/next walks depends on what's showing: with the tree column open they read
     // it as a book (depth-first, and the tree wins when both columns are open); with it tucked or
     // absent they walk the list's time order, where NEXT goes back in time (the list reads
-    // newest-first, so next is simply "down the list" - a tucked tree always walks this way). A document
+    // newest-first, so next is simply "down the list" - a tucked tree always walks this way, and so
+    // does the recent tab, whose order every opening rewrites: walked, it would hand the arrows the
+    // document they just left). A document
     // missing from the tree (unfiled) falls back to the list rather than stranding the arrows.
     const listOrder = list.map((d) => d.doc_id);
     const treeShowing = treeTab;
@@ -853,20 +871,37 @@ export const DocsApp = ({
                         in their own apps, where they land in a real notebook. */ ''
                     }
                     ${
+                        /* Icons alone (Curtis, 2026-11-25: "the icons are evocative enough here, and
+                        the UI is already very wordy around there"): the words are the tooltip and
+                        what a screen reader says. */ ''
+                    }
+                    ${
                         feat.tree &&
                         html`<div class="notes-views" role="tablist">
                         <button
                             role="tab"
-                            aria-selected=${!treeTab}
-                            class=${treeTab ? 'tab jag-line-top' : 'tab jag-line-top active'}
+                            aria-selected=${!treeTab && !recentTab}
+                            class=${treeTab || recentTab ? 'tab jag-line-top' : 'tab jag-line-top active'}
+                            title=${t('apps.notes.view-chronological', 'chronological')}
+                            aria-label=${t('apps.notes.view-chronological', 'chronological')}
                             onClick=${() => setListView('list')}
-                        ><${Icons.list} /> ${t('apps.notes.view-chronological', 'chronological')}</button>
+                        ><${Icons.list} /></button>
                         <button
                             role="tab"
                             aria-selected=${treeTab}
                             class=${treeTab ? 'tab jag-line-top active' : 'tab jag-line-top'}
+                            title=${t('apps.notes.view-tree', 'tree')}
+                            aria-label=${t('apps.notes.view-tree', 'tree')}
                             onClick=${() => setListView('tree')}
-                        ><${Icons.tree} /> ${t('apps.notes.view-tree', 'tree')}</button>
+                        ><${Icons.tree} /></button>
+                        <button
+                            role="tab"
+                            aria-selected=${recentTab}
+                            class=${recentTab ? 'tab jag-line-top active' : 'tab jag-line-top'}
+                            title=${t('apps.notes.view-recent', 'recently opened')}
+                            aria-label=${t('apps.notes.view-recent', 'recently opened')}
+                            onClick=${() => setListView('recent')}
+                        ><${Icons.recent} /></button>
                     </div>`
                     }
                     ${
@@ -970,7 +1005,7 @@ export const DocsApp = ({
                             itemNoun=${noun}
                         />`
                     }
-                    ${(treeTab ? [] : list).map(
+                    ${(treeTab ? [] : recentTab ? recentRows : list).map(
                         (d) => html`<${NoteRow}
                                   book=${book}
                             titlePage=${d.doc_id === titlePage}
@@ -989,6 +1024,15 @@ export const DocsApp = ({
                             bulk=${picked.length > 0}
                         />`,
                     )}
+                    ${
+                        recentTab &&
+                        docs &&
+                        list.length > 0 &&
+                        recentRows.length === 0 &&
+                        html`<p class="null-sub notes-empty">
+                        ${hits === null ? t('apps.notes.nothing-opened-yet', 'nothing opened here yet.') : t('apps.notes.nothing-matches', 'nothing matches.')}
+                    </p>`
+                    }
                     ${
                         !treeTab &&
                         docs &&

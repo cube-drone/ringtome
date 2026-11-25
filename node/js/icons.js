@@ -6,6 +6,7 @@
 // (Phosphor's default size is 1em - the reason the old emoji's font-size rules still size these).
 import {
     Archive,
+    ClockCounterClockwise,
     Joystick,
     Books,
     Scroll,
@@ -322,6 +323,8 @@ export const Icons = {
     // A narrow window's menu of a document's chips (doc/editor.js `deck`).
     menu: List,
     tree: TreeStructure,
+    // A notebook's list by when you last opened each (apps/notes.js's "recent" tab).
+    recent: ClockCounterClockwise,
     // document prev/next (the book-walk arrows in the doc menu)
     navPrev: ArrowLeft,
     navNext: ArrowRight,
