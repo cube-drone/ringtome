@@ -29616,3 +29616,24 @@ Checked in Chrome on a scratch node: all eighteen pictures decode, the
 to their pixel cursors with the right hotspots. Seeing them under a real mouse,
 and Safari's (and the desktop app's WebKit's) choice between the two branches,
 is still to do. `just strings-check` and `just ui-check` green.
+
+## No back button over a document (2026-11-25)
+
+Curtis: "I'm not sure if the 'back' button makes sense to include in hrseWriter
+at all." It didn't. Over an open document the header's back went to the
+notebook's list, which in the documents app is a column beside the document, or
+a tab in a narrow window, so it only closed the document. And it did that under
+a name that sounded like the browser's own back, which follows real history and
+so often went somewhere else (a note opened from the feed: the header's back
+went to its notebook, the browser's to the feed).
+
+Every app that opens documents in that layout (`DocsApp`: hrseWriter,
+hrseDrawing, Lost & Found, the feed's drafts) has the same layout, so the button
+is gone from all of them, not just hrseWriter. It stays where a page stands in
+for its app's list (a group and a group post under People, Wordaga under
+hrseGames, a new room or IM), and there it goes to the list. The notebook branch
+of its route, the only user of `bucketHref` in `index.js`, went with it.
+
+Seen on a scratch node: a new note in hrseWriter shows only the close button,
+the notes list beside it; Wordaga still shows "back to the list".
+`just ui-check` and `just strings-check` green.

@@ -9,7 +9,14 @@
    The page wears the arrow; a link the pointing hand, as the browser gives it; a field you type in
    the I-beam. The one loss: `auto` drew an I-beam over ANY selectable words, and a picture can't
    tell words from the space between them - so read-only text gets the arrow, as the desktop's own
-   windows did. All `:where`, so every rule that chose a cursor keeps it. */
+   windows did. All `:where`, so every rule that chose a cursor keeps it.
+
+   The other loss, kept on purpose: while a native drag is held (`draggable` - mixtape rows, layers,
+   notes rows, the tree), the operating system draws the cursor and CSS has no say, so the pixel
+   open hand gives way to the system's drag cursor mid-drag rather than closing. Moving the in-list
+   reorders to pointer tracking would keep the hand, but costs native drag-and-drop - its ghost row,
+   and drops anywhere else - which those lists may yet want (Curtis, 2026-11-25: "if native
+   drag-and-drop is more powerful we might find ourselves needing it later"). */
 :where(html) {
     cursor: var(--cursor-default);
 }

@@ -89,7 +89,7 @@ import {
 } from './links.js';
 import { parseSpeakable } from './speakable.js';
 import { api } from './net.js';
-import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement, bucketHref } from './pure/naming.js';
+import { slugify, HEX_ID, BUCKET_PREFIX, docPlacement } from './pure/naming.js';
 import { Icons, IconContext, iconFor } from './icons.js';
 import { OAuthConsent } from './oauthconsent.js';
 import { UploadLink } from './uploadlink.js';
@@ -700,7 +700,17 @@ const Inside = ({ session }) => {
             }
             <span class="app-header-actions">
                 ${
+                    /* Back, where a page stands in for its app's list: a group, a game, a new
+                    room. Not over a document in the documents app (Writer, Drawing, Lost & Found,
+                    the feed's drafts; Curtis, 2026-11-25: "I'm not sure if the 'back' button makes
+                    sense to include in hrseWriter at all"): there the list is a column beside the
+                    document - or a tab, in a narrow window - so "back to the list" went somewhere
+                    already on screen, and only closed the document, under a name that sounded
+                    like the browser's own back. */ ''
+                }
+                ${
                     inDoc &&
+                    !(appHere.style || appHere.everything) &&
                     html`<button
                     class="app-header-btn"
                     title=${
@@ -710,13 +720,7 @@ const Inside = ({ session }) => {
                                 : t('index.back-to-your-groups', 'back to your groups')
                             : t('index.back-to-the-list', 'back to the list')
                     }
-                    onClick=${() =>
-                        loc.route(
-                            groupBack ||
-                                (bucket && appHere.style
-                                    ? bucketHref(bucket, roster)
-                                    : appHref(appHere.id)),
-                        )}
+                    onClick=${() => loc.route(groupBack || appHref(appHere.id))}
                 ><${Icons.back} /></button>`
                 }
                 <button
