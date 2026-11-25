@@ -24,8 +24,11 @@
 /* The controls the browser's own stylesheet gives `cursor: default` - a keyword, so they drew the
    system's smooth arrow instead of inheriting the page's (Curtis, the same day: "When I roll the
    cursor over a select, or a checkbox, it turns back into the UI default cursor"). Any rule of ours
-   outranks the browser's, `:where` or not. A button whose own rule chose the hand keeps the hand. */
+   outranks the browser's, `:where` or not. A button whose own rule chose the hand keeps the hand.
+   A label too (Curtis, the same day: "the label of a checkbox"): the browser gives `label` the
+   keyword as well, so a checkbox's words drew the smooth arrow beside its pixel box. */
 :where(
+        label,
         button,
         select,
         input[type='checkbox'],

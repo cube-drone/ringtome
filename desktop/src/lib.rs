@@ -151,7 +151,7 @@ pub fn run() {
             // third showing. Android ignores it.
             #[cfg(desktop)]
             let window = window.inner_size(1280.0, 860.0);
-            window
+            let _window = window
                 .visible(!hidden)
                 .initialization_script(format!(
                     "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};\n{}",
@@ -160,6 +160,21 @@ pub fn run() {
                     links::BLANK_CLICKS
                 ))
                 .build()?;
+            // The page owns the cursor (Curtis, 2026-11-25: in the Mac app the pixel cursors
+            // "stick" - a zoom, a grab or a pointing hand held until something else changed it,
+            // links and buttons ignored; Safari, the same WebKit, fine). tao's view, under the web
+            // view, keeps an AppKit cursor rect over the whole window wearing the plain arrow, and
+            // WebKit's own cursor fights it for the NSCursor. Cursor rects off for this window,
+            // so WebKit's is the only word; nothing here asks tao for a cursor. (Unseen yet: that
+            // the window's edges still show their resize arrows - they belong to the frame, not to
+            // a cursor rect of ours, but say so here once it's been looked at.)
+            #[cfg(target_os = "macos")]
+            if let Ok(ns_window) = _window.ns_window() {
+                // SAFETY: `ns_window` is this live window's NSWindow, and `setup` runs on the
+                // main thread, where AppKit wants it called.
+                let ns_window = unsafe { &*(ns_window as *const objc2_app_kit::NSWindow) };
+                ns_window.disableCursorRects();
+            }
             #[cfg(desktop)]
             {
                 update::start(app.handle().clone());

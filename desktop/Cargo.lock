@@ -7497,6 +7497,7 @@ dependencies = [
  "anyhow",
  "jni 0.22.4",
  "notify-rust",
+ "objc2-app-kit",
  "ringtome-node",
  "rustls-platform-verifier",
  "serde_json",

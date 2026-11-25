@@ -29715,3 +29715,48 @@ Seen on a scratch node under holidaymas: the hat's top is inside the row, and a
 point in the headroom hits the app frame. `just ui-check` green. The persona
 switcher's stack still rises out of the row on hover; if that flickers in the
 desktop app too, it is the same cause.
+
+## Tabs flat (2026-11-25)
+
+Curtis: "We should stop bevelling tabs, as well: they're not really buttons."
+bevel.css's flat list now takes `.tab` (the shared class every tab strip wears:
+notes' list orders, the editor's modes, groups, the welcome and moderation
+strips, settings' machines) and `[role='tab']`. The narrow window's column tabs
+are `.pane-rail`, flat already. Last in the file, so a chosen or pressed tab
+stays flat too.
+
+Checked on the dev node's bundle: a tab, a chosen jag-line-top tab and a pressed
+`role="tab"` compute no bevel inset or face, beside a plain button that keeps
+its own. `just ui-check` green.
+
+## The Mac app's cursor handed to the page (2026-11-25)
+
+Curtis: "Specifically in mac os tauri, the cursor 'sticks' - nothing converts it
+to the standard cursor, so if you hover over a 'zoom' or a 'grab' or a 'point'
+it'll hold on to that cursor until something else changes it. It doesn't seem to
+respect links or buttons at all." Safari, the same WebKit, was fine, so the
+difference is the shell. wry's web view touches no cursor; tao's view, under it,
+answers `resetCursorRects` with an AppKit cursor rect over the whole window
+wearing the plain arrow, and the theory is that it fights WebKit's cursor.
+(WebKit bug 315425, "WebView on macOS fights with other views for NSCursor
+control", is a different case: a late cursor from the web view overriding a
+native view beside it, fixed by a hit test in `PageClientImpl::setCursor`. It is
+no evidence for this theory.) The window now has its cursor rects switched off
+(`disableCursorRects`, desktop/src/lib.rs, right after the window is built), so
+WebKit's cursor is the only one. objc2-app-kit joins the Mac's dependencies at
+the version tao already builds.
+
+Not reproduced here: a WKWebView harness can't move the real pointer without the
+Accessibility permission, and synthetic events never reach WebKit's cursor.
+`cargo build` and `cargo clippy` for the desktop clean. To look at in the app:
+the cursor following links, buttons, zoom and grab; and the window's edges still
+showing their resize arrows.
+
+## A checkbox's label wears the pixel arrow (2026-11-25)
+
+Curtis, after the controls' fix: "The only place where the cursor seems to break
+now is, afaict, the label of a checkbox." The browser's own stylesheet gives
+`label` `cursor: default` too, a keyword, so its words drew the system's smooth
+arrow beside a pixel checkbox. cursor.css's list of such controls now starts
+with `label`; a rule of ours that chose a label's cursor still wins.
+`npm run css`, `just ui-check` green.

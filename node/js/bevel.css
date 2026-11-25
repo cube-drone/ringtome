@@ -49,8 +49,9 @@
    flush. So are a menu's rows: your settings list links and buttons alike - log out and delete me
    are buttons among links - and they read as one list only if they are drawn alike. And an emoji
    picker's faces, the feed's and chat's alike (Curtis, the same day: "remove the bevelled edges
-   from the emoji in the emoji picker"): a grid of glyphs, not a grid of buttons. Last, so a pressed
-   one stays flat too. */
+   from the emoji in the emoji picker"): a grid of glyphs, not a grid of buttons. And tabs (Curtis,
+   the same day: "they're not really buttons"): a tab is a place you are or could be, drawn as the
+   divider's top edge, not a thing to press. Last, so a pressed one stays flat too. */
 :where(
         .pane-head *,
         .pane-rail,
@@ -58,7 +59,9 @@
         .feed-saved-row *,
         .amp-playlists-new,
         .persona-menu-item,
-        .label-emoji-strip *
+        .label-emoji-strip *,
+        .tab,
+        [role='tab']
     ) {
     --bevel-face: none;
     --bevel-inset: none;
