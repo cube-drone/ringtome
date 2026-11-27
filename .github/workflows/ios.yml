@@ -174,7 +174,10 @@ jobs:
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl install "$udid" "$app"
-          xcrun simctl launch --stdout="$PWD/out/app-stdout.log" --stderr="$PWD/out/app-stderr.log" "$udid" "$BUNDLE_ID"
+          # With the test reclaim on (node/src/wake.rs): leaving the screen drops the node's listener
+          # as iOS may, which the simulator's shared network never does - `away and back` below.
+          SIMCTL_CHILD_RINGTOME_TEST_RECLAIM_ON_SUSPEND=1 \
+            xcrun simctl launch --stdout="$PWD/out/app-stdout.log" --stderr="$PWD/out/app-stderr.log" "$udid" "$BUNDLE_ID"
           # A second in: the window, not the launch screen - the shell's starting page while the node
           # boots on a thread of its own (desktop/src/lib.rs, 2026-11-26), or the app already.
           sleep 1
@@ -202,10 +205,49 @@ jobs:
             echo "no desktop-port file: the node never chose a port"
             find "$data" -maxdepth 4 2>/dev/null | head -50
           fi
+
+      # Suspension (plans/MOBILE.md, the iOS section): another app to the front sends ours to the
+      # background - Tauri's `Suspended`, and the test reclaim drops the node's listener - and
+      # launching ours again brings the same process back - `Resumed`, and the node binds its
+      # listener again on the same port. The return is the verdict: the node must answer. Then
+      # the other way an app goes on a phone: killed while away, as iOS does for memory, and
+      # opened again onto the same data.
+      - name: Away and back
+        if: ${{ env.UDID != '' }}
+        run: |
+          data=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
+          port=$(cat "$(find "$data" -name desktop-port | head -1)")
+          health() { curl -sS -m 5 "http://127.0.0.1:$port/health" >/dev/null 2>&1 && echo up || echo down; }
+          pid() { xcrun simctl spawn "$UDID" launchctl list | grep -i "$BUNDLE_ID" | awk '{print $1}' || true; }
+          before=$(pid)
+          echo "before: $(health), pid $before"
+          xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null
+          sleep 15
+          echo "away: $(health) (the test reclaim dropped the listener, so down is the expectation)"
+          xcrun simctl io "$UDID" screenshot out/away.png || true
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" > /dev/null
+          sleep 5
+          back=$(health)
+          echo "back: $back, pid $(pid)"
+          xcrun simctl io "$UDID" screenshot out/back.png || true
+          [ "$(pid)" = "$before" ] || echo "::warning::the app came back as another process ($before, now $(pid)): a relaunch, not a resume"
+          xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null
+          sleep 3
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID"
+          sleep 2
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" > /dev/null
+          sleep 20
+          echo "killed and opened again: $(health), pid $(pid)"
+          xcrun simctl io "$UDID" screenshot out/relaunched.png || true
+          [ "$back" = up ] || { echo "::error::the node did not answer once the app came back"; exit 1; }
+
+      - name: The logs
+        if: ${{ always() && env.UDID != '' }}
+        run: |
           echo "--- the app's own output"
           tail -n 200 out/app-stderr.log out/app-stdout.log 2>/dev/null || true
           # What the system said of it, a crash above all.
-          xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "Horse Drawing Tycoon 2"' > out/system.log 2>&1 || true
+          xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate 'process == "Horse Drawing Tycoon 2"' > out/system.log 2>&1 || true
           tail -n 60 out/system.log || true
           # The node's own log, which on iOS goes to the unified log under the bundle identifier
           # (init_tracing_with, node/src/lib.rs) - not to stdout, which Tauri forwards in a debug

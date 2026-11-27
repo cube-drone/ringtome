@@ -296,7 +296,18 @@ Known ahead of time, and not yet met:
 - **Suspension.** iOS stops an app seconds after it leaves the screen. The node
   stops with it, and its listening socket may be dead on return: the node has to
   notice and recover on resume. hrseAmp's background playing is native work of
-  its own, as its media service was on Android.
+  its own, as its media service was on Android. _2026-11-27: the shell tells the
+  node of Tauri's `Suspended` and `Resumed` (`node/src/wake.rs`); the node's
+  listener binds itself again on the same port when it is found dead - on an
+  `accept` that fails for more than one connection's reason, and on every
+  return - and iroh is told the network may have changed. The simulator reclaims
+  nothing, so a debug build with `RINGTOME_TEST_RECLAIM_ON_SUSPEND=1` drops its
+  listener on suspension as iOS may; the `sim` job's "Away and back" sends the
+  app behind Settings and back and fails if the node doesn't answer, then kills
+  it while away and opens it again. Still unseen: whether a real phone keeps a
+  reclaimed port taken (the bind would fail as if the listener lived - the
+  answer is another port and the window moved to it), and what a real suspension
+  does to iroh's connections._
 - **Launch time.** The node booted in `setup` on the main thread; iOS kills an
   app that takes too long to launch. _2026-11-26: a phone's window opens first
   on the shell's starting page (`desktop/dist`, "Starting…"), the node boots on

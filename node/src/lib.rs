@@ -128,6 +128,7 @@ pub mod test_endpoints;
 pub mod trash;
 pub mod ui;
 pub mod uploadlink;
+pub mod wake;
 pub mod webpath;
 pub mod webpush;
 
@@ -443,6 +444,7 @@ pub struct Bound {
     addr: SocketAddr,
     attention: attention::Attention,
     shell: shell::Shell,
+    waking: wake::Waking,
 }
 
 impl Bound {
@@ -463,6 +465,12 @@ impl Bound {
     pub fn shell_requests(&self) -> tokio::sync::broadcast::Receiver<shell::ShellRequest> {
         self.shell.subscribe()
     }
+
+    /// The handle a phone's shell tells of suspension and return (wake.rs). Take it before
+    /// [`serve`]; it outlives the `Bound`.
+    pub fn waking(&self) -> wake::Waking {
+        self.waking.clone()
+    }
 }
 
 /// Build this node and serve it: the one boot sequence, called by both entry points - the
@@ -477,7 +485,16 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 /// that had to know the address first.
 pub async fn serve(bound: Bound) -> anyhow::Result<()> {
     tracing::info!("listening on http://{}", bound.addr);
-    axum::serve(bound.listener, bound.service).await?;
+    // A listener that can be bound again on its own address (wake.rs): a phone's system may take
+    // it back while the app is suspended.
+    // The tap does nothing to a connection: it is what has axum hand the peer's `SocketAddr` to
+    // `ConnectInfo` for a listener of ours - axum implements that for its own TcpListener and for
+    // any listener under `tap_io`, and the orphan rule keeps us from implementing it here.
+    let listener = axum::serve::ListenerExt::tap_io(
+        wake::WakingListener::new(bound.listener, &bound.waking)?,
+        |_: &mut tokio::net::TcpStream| {},
+    );
+    axum::serve(listener, bound.service).await?;
     Ok(())
 }
 
@@ -556,6 +573,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let rate_limiter = rate_limit::RateLimiter::new(!local_test, config.proxy_hops);
     let endpoint = net::p2p::build_endpoint(&keystore, &config.discovery, config.p2p_port).await?;
     let directory = net::discovery::Directory::build(&config.discovery)?;
+    let waking = wake::Waking::new(endpoint.clone());
     lap("p2p endpoint");
     // The blob-layer size invariant tracks the document cap (plus a little AEAD/framing headroom),
     // so "nothing over ~10MB moves on the network" is enforced where bytes actually cross between
@@ -1314,7 +1332,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         .into_make_service_with_connect_info::<SocketAddr>();
 
     lap("bound");
-    Ok(Bound { listener, service: app, addr, attention, shell })
+    Ok(Bound { listener, service: app, addr, attention, shell, waking })
 }
 
 /// The tracing subscriber, built HERE rather than in the binary (DESKTOP.md's quiet Stage 1

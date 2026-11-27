@@ -46,6 +46,26 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
+    // A phone's comings and goings, told to its node (node/src/wake.rs): iOS may take back the
+    // node's sockets while the app is suspended, and on its return the node tests its listener
+    // and tells iroh the network may have changed. Tauri's `Suspended` is iOS's "will resign
+    // active" (Android's onPause) and `Resumed` its "will enter foreground" (onResume) - so a
+    // glance at Control Center is a suspension with no return, which is harmless: suspending
+    // only says so. Before the node is up there is nothing to tell.
+    #[cfg(mobile)]
+    let builder = builder.on_window_event(|_window, event| match event {
+        tauri::WindowEvent::Suspended => {
+            if let Some(waking) = WAKING.get() {
+                waking.suspended();
+            }
+        }
+        tauri::WindowEvent::Resumed => {
+            if let Some(waking) = WAKING.get().cloned() {
+                tauri::async_runtime::spawn(async move { waking.resumed().await });
+            }
+        }
+        _ => {}
+    });
     // A store build has no updater at all (update.rs): the store updates the app.
     #[cfg(desktop)]
     let builder = if update::store_updates() {
@@ -280,6 +300,11 @@ fn starting_page() -> tauri::Url {
 #[cfg(mobile)]
 static BOOTED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// The phone's node's lifecycle handle (node/src/wake.rs), set once it is up - by whichever boot
+/// came first - and told of suspension and return by the window's events (`run`).
+#[cfg(mobile)]
+static WAKING: std::sync::OnceLock<ringtome_node::wake::Waking> = std::sync::OnceLock::new();
+
 #[cfg(mobile)]
 fn boot_once(data_dir: &Path, token: String) -> anyhow::Result<String> {
     let mut booted = BOOTED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -399,6 +424,8 @@ fn start_node(
     let url = format!("http://{}/", bound.addr());
     let attention = bound.attention();
     let requests = bound.shell_requests();
+    #[cfg(mobile)]
+    let _ = WAKING.set(bound.waking());
     tracing::info!(%url, data_dir = %data_dir.display(), "ringtome desktop: node up");
     tauri::async_runtime::spawn(async move {
         if let Err(e) = ringtome_node::serve(bound).await {

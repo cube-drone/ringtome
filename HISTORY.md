@@ -29831,3 +29831,46 @@ pipe. But it forwards only in a debug build (its `Logger` is on under
 rather than lines, every level as one. So on iOS the node now logs to the
 unified log alone - the stdout layer is left out there - and the panic hook
 stays, since a release build drops stderr too.
+
+## A phone's node, back from suspension (2026-11-27)
+
+The third simulator-reachable piece of iOS work. iOS freezes an app seconds
+after it leaves the screen and may take back its sockets while it is frozen -
+the HTTP listener the window talks to, iroh's UDP sockets - and tells the
+process nothing. New `node/src/wake.rs`: the node serves through a
+`WakingListener`, which binds itself again on its own address (the window's
+origin is that port) when it is found dead. The test is a bind: `AddrInUse`
+means the port is still held and the old listener lives (the too-many-open-files
+case axum's one-second pause was for); success means it was dead, and the new
+one takes over. It runs when `accept` fails for anything but one connection's
+reason, and whenever the app comes back - a reclaimed listener may never fail at
+all. `Waking`, from `Bound::waking()`, is the shell's handle: `resumed()` wakes
+the test and calls iroh's `network_change()`; `suspended()` says so. The shell
+passes Tauri's mobile `Suspended`/`Resumed` window events to it. (Tauri's
+`Suspended` is iOS's will-resign-active and `Resumed` its will-enter-foreground,
+so a glance at Control Center is a suspension with no return - harmless, since
+suspending only logs.) axum gives `ConnectInfo<SocketAddr>` to its own listener
+and to anything under `tap_io`, and the orphan rule keeps us from implementing
+it for ours, so the listener wears a tap that does nothing.
+
+The simulator shares the Mac's network and reclaims nothing, so a debug build
+with `RINGTOME_TEST_RECLAIM_ON_SUSPEND=1` drops its listener on suspension, its
+port freed, and only a return binds it again. A unit test runs the whole round
+(answers; reclaimed, nothing answers; resumed, the same port answers), beside
+one for the assumption the test rests on, that a live listener keeps its port.
+The `sim` job launches with the reclaim on and has a new step, "Away and back":
+Settings to the front for fifteen seconds (the node should be down), the app
+back (the node must answer - the step's verdict - and the same pid, or a warning
+that it was a relaunch), then killed while away and opened again on its data,
+with screenshots of each. The logs moved to a step of their own, last.
+
+Not handled: a phone that keeps a reclaimed port taken, which would look exactly
+like a live listener; the answer would be another port and the window sent to
+it. Left until a real phone shows it. `cargo test -p ringtome-node`,
+`just lint`, desktop clippy and tests, and full `just ci` (2254) green.
+
+The startup push's iOS run, read back: `node.log` without the doubled stdout
+lines; the boot's stages on the runner were keystore 0, node database 443, p2p
+endpoint 1478, blob store 1640, bound 1768 ms (the earlier run went from first
+line to listening in about 300 - the runners vary that much); and the one-second
+screenshot was already the node's own "Loading…" page, never a launch screen.
