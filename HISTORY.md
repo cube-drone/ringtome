@@ -29760,3 +29760,24 @@ now is, afaict, the label of a checkbox." The browser's own stylesheet gives
 arrow beside a pixel checkbox. cursor.css's list of such controls now starts
 with `label`; a rule of ours that chose a label's cursor still wins.
 `npm run css`, `just ui-check` green.
+
+## iOS: the node's log goes to the unified log (2026-11-26)
+
+The first of the three simulator-reachable pieces of iOS work (launch time,
+suspension, app output): the `sim` job's `app-stdout.log` and `app-stderr.log`
+came back empty while the system's log of the app did not, and on a real iPhone
+an app's stdout reaches nobody at all. So on iOS `init_tracing_with` adds
+`tracing-oslog`'s layer beside the usual one: the same lines, behind the same
+filter, in Apple's unified log under subsystem `net.lassam.ringtome`, category
+`node` - where `log show`, Console.app and a TestFlight diagnostic all read. A
+panic's message, which Rust writes to stderr, is logged first by a hook on iOS
+too. The crate compiles a small C shim against the SDK (`os_log` is a macro), so
+it is an iOS-only dependency and builds only in CI; the `sim` job saves
+`log show --info --debug` for the subsystem as `node.log` in the artifact.
+
+Checked on the Mac (the same layer, which works on macOS): a scratch crate
+logging an event inside a span and then panicking, both lines read back by
+`log show --predicate 'subsystem == "net.lassam.ringtome"'`. The iOS build is
+CI's to prove. Note for later: the shim logs with `%{public}s`, so a device's
+log shows the lines unredacted; nothing the node logs today is a secret, and
+that stays a reason to keep it so.

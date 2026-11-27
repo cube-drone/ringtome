@@ -1324,7 +1324,7 @@ pub fn init_tracing_with(config: &Config, also: &[&str]) {
     for target in also {
         default.push_str(&format!(",{target}=debug"));
     }
-    tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| default.into()),
@@ -1333,6 +1333,21 @@ pub fn init_tracing_with(config: &Config, also: &[&str]) {
             tracing_subscriber::fmt::layer()
                 .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
                 .with_ansi(config.is_dev()),
-        )
-        .init();
+        );
+    // On an iPhone, stdout reaches nobody: the same lines go to Apple's unified log too, under
+    // the bundle identifier as subsystem, where `log show`, Console.app and a TestFlight
+    // diagnostic find them (2026-11-26). Behind the same filter as the lines above.
+    #[cfg(target_os = "ios")]
+    let subscriber = subscriber.with(tracing_oslog::OsLogger::new("net.lassam.ringtome", "node"));
+    subscriber.init();
+    // And a panic's message, which Rust writes to stderr - nowhere, again: logged first, so the
+    // reason a phone's app died is in the same log as everything before it.
+    #[cfg(target_os = "ios")]
+    {
+        let then = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            tracing::error!("panic: {info}");
+            then(info);
+        }));
+    }
 }

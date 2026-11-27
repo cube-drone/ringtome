@@ -24,8 +24,8 @@
 # for the simulator on an Apple-silicon Mac (`aarch64-apple-ios-sim`, its own target with its own
 # SDK), then installed in a simulated iPhone, launched and photographed: with no iPhone to hand and
 # no Xcode on the laptop, the screenshots in the `ios-simulator` artifact are the only way anyone
-# sees it. The app's own output and the node's `/health` ride along. Unsigned - a simulator asks
-# for no signature.
+# sees it. The app's own output, the node's log (`node.log`, from the unified log) and the node's
+# `/health` ride along. Unsigned - a simulator asks for no signature.
 
 name: iOS
 
@@ -203,6 +203,14 @@ jobs:
           # What the system said of it, a crash above all.
           xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "Horse Drawing Tycoon 2"' > out/system.log 2>&1 || true
           tail -n 60 out/system.log || true
+          # The node's own log: stdout reaches nobody on iOS, so its lines go to the unified log
+          # under the bundle identifier (init_tracing_with, node/src/lib.rs). Info and debug are
+          # asked for by name - `log show` leaves them out otherwise - and the window reaches back
+          # past the launch, minutes ago now.
+          echo "--- the node's log"
+          xcrun simctl spawn "$UDID" log show --last 15m --info --debug --style compact --predicate 'subsystem == "net.lassam.ringtome"' > out/node.log 2>&1 || true
+          echo "$(wc -l < out/node.log) lines"
+          head -n 80 out/node.log || true
 
       - uses: actions/upload-artifact@v6
         if: ${{ always() }}

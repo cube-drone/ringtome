@@ -282,7 +282,10 @@ The order, each step answering a question before the next is built on it:
    which is still to chase._ _Third run: the size gone, the page fits - title,
    taglines, the sign-in, the counter, on a simulated iPhone 17. The step is
    done. The desktop's "Running in Local Server Mode" box showed there too and
-   is the desktop's alone now._
+   is the desktop's alone now._ _The empty output, 2026-11-26: on iOS the node's
+   log goes to Apple's unified log as well (`tracing-oslog`, subsystem
+   `net.lassam.ringtome`), since a phone's stdout reaches nobody; the job keeps
+   it as `node.log` in the artifact._
 4. **Signing and TestFlight** from CI, which is the only road onto a real phone:
    iOS has no sideloading.
 
