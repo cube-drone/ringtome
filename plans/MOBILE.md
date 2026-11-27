@@ -230,9 +230,11 @@ release, all or nothing like the other platforms. Its `node` job cross-compiles
 the node alone, the fast answer to the turso and aws-lc question below. The
 laptop keeps `adb` only, to install the APK and read `adb logcat`.
 
-Not done, and known: the node boots in `setup` on Android's main thread, which
-risks a "not responding" kill on a slow first boot; and the battery and cellular
-policy of open question 3 still doesn't exist.
+Not done, and known: the battery and cellular policy of open question 3 still
+doesn't exist. (The node used to boot in `setup` on the main thread, which
+risked a "not responding" kill on a slow first boot; since 2026-11-26 a phone's
+window opens first, on the shell's starting page, and the node boots on a thread
+of its own - the iOS section's launch time.)
 
 ## The iOS build (2026-11-22)
 
@@ -295,9 +297,15 @@ Known ahead of time, and not yet met:
   stops with it, and its listening socket may be dead on return: the node has to
   notice and recover on resume. hrseAmp's background playing is native work of
   its own, as its media service was on Android.
-- **Launch time.** The node boots in `setup` on the main thread (the Android
-  section's "not done, and known"); iOS kills an app that takes too long to
-  launch.
+- **Launch time.** The node booted in `setup` on the main thread; iOS kills an
+  app that takes too long to launch. _2026-11-26: a phone's window opens first
+  on the shell's starting page (`desktop/dist`, "Starting…"), the node boots on
+  a thread of its own and the window moves to it when it is up - or the page
+  says why it won't start. The node logs each boot stage's milliseconds (`boot`,
+  `stage=`), and the `sim` job takes a screenshot a second in. The simulator
+  never enforces the watchdog and runs on a Mac's CPU, so its numbers are a
+  floor; with nothing on the main thread waiting, the watchdog has nothing to
+  catch._
 - **Review** - open question 2 below, unchanged, and now with a date coming.
 
 ## The mirror question

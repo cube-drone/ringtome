@@ -524,11 +524,19 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
 
     std::fs::create_dir_all(&config.data_directory)?;
 
+    // Where a boot's time goes, stage by stage (2026-11-26, for the phone: iOS kills an app
+    // slow to show its first frame, and the simulator is a Mac's CPU and disk, so its numbers
+    // are a floor - but the split between stages carries over). Milliseconds since `bind` began.
+    let boot = std::time::Instant::now();
+    let lap = |stage: &str| tracing::info!(stage, ms = boot.elapsed().as_millis() as u64, "boot");
+
     // The keystore comes first: the databases need it for their at-rest encryption keys.
     let keystore = keystore::Keystore::load(&config.data_directory)?;
+    lap("keystore");
 
     let node_db = db::open_node_db(&config.data_directory, &keystore).await?;
     db::record_boot(&node_db, &config.app_version).await?;
+    lap("node database");
     tracing::info!(data_dir = %config.data_directory.display(), "opened node database");
 
     // Bound on simultaneously-open per-user DB handles. A placeholder default for now; will move to
@@ -548,6 +556,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
     let rate_limiter = rate_limit::RateLimiter::new(!local_test, config.proxy_hops);
     let endpoint = net::p2p::build_endpoint(&keystore, &config.discovery, config.p2p_port).await?;
     let directory = net::discovery::Directory::build(&config.discovery)?;
+    lap("p2p endpoint");
     // The blob-layer size invariant tracks the document cap (plus a little AEAD/framing headroom),
     // so "nothing over ~10MB moves on the network" is enforced where bytes actually cross between
     // nodes - not just at our own HTTP door.
@@ -574,6 +583,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
             .with_max_blob_bytes(max_blob_bytes)
             .with_unplugged(unplugged.clone()),
     );
+    lap("blob store");
     let ingest = ingest::Ingest::new(config.quarantine_directory.clone());
     ingest.ensure_dir()?;
     // Reconcile any jobs left in flight by a previous run before the worker starts claiming.
@@ -1303,6 +1313,7 @@ pub async fn bind(config: Config) -> anyhow::Result<Bound> {
         )
         .into_make_service_with_connect_info::<SocketAddr>();
 
+    lap("bound");
     Ok(Bound { listener, service: app, addr, attention, shell })
 }
 
@@ -1324,24 +1335,31 @@ pub fn init_tracing_with(config: &Config, also: &[&str]) {
     for target in also {
         default.push_str(&format!(",{target}=debug"));
     }
-    let subscriber = tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| default.into()),
-        )
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
-                .with_ansi(config.is_dev()),
-        );
-    // On an iPhone, stdout reaches nobody: the same lines go to Apple's unified log too, under
-    // the bundle identifier as subsystem, where `log show`, Console.app and a TestFlight
-    // diagnostic find them (2026-11-26). Behind the same filter as the lines above.
+    let subscriber = tracing_subscriber::registry().with(
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| default.into()),
+    );
+    #[cfg(not(target_os = "ios"))]
+    let subscriber = subscriber.with(
+        tracing_subscriber::fmt::layer()
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+            .with_ansi(config.is_dev()),
+    );
+    // On an iPhone the node logs to Apple's unified log instead, under the bundle identifier as
+    // subsystem, where `log show`, Console.app and a TestFlight diagnostic find it (2026-11-26).
+    // Instead, not as well: Tauri pipes an iOS app's stdout into the same log (`log_stdout`, from
+    // `mobile_entry_point`), category `app` - but only in a debug build, whose `Logger` is on;
+    // a release build reads the pipe and drops it. And what it does forward is 4 KB reads, not
+    // lines, every level as one, colour codes kept: the first simulator run had each line twice,
+    // once that way and once this.
     #[cfg(target_os = "ios")]
-    let subscriber = subscriber.with(tracing_oslog::OsLogger::new("net.lassam.ringtome", "node"));
+    let subscriber = {
+        let _ = config;
+        subscriber.with(tracing_oslog::OsLogger::new("net.lassam.ringtome", "node"))
+    };
     subscriber.init();
-    // And a panic's message, which Rust writes to stderr - nowhere, again: logged first, so the
-    // reason a phone's app died is in the same log as everything before it.
+    // And a panic's message, which Rust writes to stderr - dropped in a release build, the same
+    // pipe: logged first, so the reason a phone's app died is in the same log as everything
+    // before it.
     #[cfg(target_os = "ios")]
     {
         let then = std::panic::take_hook();

@@ -107,11 +107,10 @@ pub fn run() {
                     return Ok(());
                 }
             };
-            // On a phone the node may already be up: hrseAmp's media service boots it when the car
-            // or a headphone button wakes the app with no window (plans/AUDIO.md, section 10's cold
-            // start) - one node per process, whichever came first.
-            #[cfg(mobile)]
-            let url = boot_once(&data_dir, token.clone())?;
+            // A phone's node boots AFTER its window, off the main thread (below, once the window
+            // is built): iOS kills an app whose main thread shows nothing for too long, and the
+            // boot - databases, migrations, iroh - is seconds on a phone. A desktop keeps its
+            // order, with its dialog for a node that won't start.
             // A phone has no tray, no login items and no hidden launch: the app is its window.
             #[cfg(desktop)]
             let hidden = tray::launched_hidden();
@@ -119,13 +118,23 @@ pub fn run() {
             let hidden = false;
             // Links that leave the app go to the system browser (links.rs): judged against the
             // node's own origin, for navigations and for new-window requests alike.
-            let origin: tauri::Url = url.parse()?;
+            // The node's origin is known here on a desktop; on a phone it is filled in once the
+            // node is up, and until then the window is on the shell's starting page (desktop/dist).
+            let origin = std::sync::Arc::new(std::sync::OnceLock::<tauri::Url>::new());
+            #[cfg(desktop)]
+            let first = {
+                let node: tauri::Url = url.parse()?;
+                let _ = origin.set(node.clone());
+                WebviewUrl::External(node)
+            };
+            #[cfg(mobile)]
+            let first = WebviewUrl::App("index.html".into());
             let (nav_app, nav_origin) = (app.handle().clone(), origin.clone());
             let (win_app, win_origin) = (app.handle().clone(), origin.clone());
-            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
-                .on_navigation(move |target| links::navigation(&nav_app, &nav_origin, target))
+            let window = WebviewWindowBuilder::new(app, "main", first)
+                .on_navigation(move |target| links::navigation(&nav_app, nav_origin.get(), target))
                 .on_new_window(move |target, _features| {
-                    links::new_window(&win_app, &win_origin, target);
+                    links::new_window(&win_app, win_origin.get(), target);
                     tauri::webview::NewWindowResponse::Deny
                 })
                 .title("Horse Drawing Tycoon 2")
@@ -174,6 +183,34 @@ pub fn run() {
                 // main thread, where AppKit wants it called.
                 let ns_window = unsafe { &*(ns_window as *const objc2_app_kit::NSWindow) };
                 ns_window.disableCursorRects();
+            }
+            // The phone's boot (above): on a thread of its own while the main thread draws the
+            // starting page, which then becomes the node's page - or, if the node won't start,
+            // says why (the page reads it from its fragment). The node may already be up:
+            // hrseAmp's media service boots it when the car or a headphone button wakes the app
+            // with no window (plans/AUDIO.md, section 10's cold start) - one node per process,
+            // whichever came first.
+            #[cfg(mobile)]
+            {
+                let (window, data_dir, token) = (_window.clone(), data_dir.clone(), token.clone());
+                std::thread::Builder::new().name("node boot".into()).spawn(move || {
+                    let up = boot_once(&data_dir, token).and_then(|url| Ok(url.parse::<tauri::Url>()?));
+                    let page = match up {
+                        Ok(node) => {
+                            let _ = origin.set(node.clone());
+                            node
+                        }
+                        Err(e) => {
+                            tracing::error!(error = format!("{e:#}"), "the node could not start");
+                            let mut page = starting_page();
+                            page.set_fragment(Some(&why_it_wont_start(&e)));
+                            page
+                        }
+                    };
+                    if let Err(e) = window.navigate(page) {
+                        tracing::error!(error = %e, "could not leave the starting page");
+                    }
+                })?;
             }
             #[cfg(desktop)]
             {
@@ -228,6 +265,18 @@ fn data_directory(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
 /// the app ([`Java_net_lassam_ringtome_NodeBoot_boot`]). Whichever comes second finds it up and
 /// shares it. Its URL is said in the process's environment too (`RINGTOME_NODE_URL`), for the
 /// service to point the car's saved songs at, should the port have moved.
+/// The shell's starting page (desktop/dist/index.html) where Tauri serves it - which is the
+/// address a phone's window opened on, and where a failed boot sends it back to say why.
+#[cfg(mobile)]
+fn starting_page() -> tauri::Url {
+    let at = if cfg!(target_os = "android") {
+        "http://tauri.localhost/index.html"
+    } else {
+        "tauri://localhost/index.html"
+    };
+    at.parse().expect("a fixed URL parses")
+}
+
 #[cfg(mobile)]
 static BOOTED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
@@ -370,7 +419,8 @@ fn port_taken(e: &anyhow::Error) -> bool {
 
 /// What the dialog says when the node won't start: the one cause a person can act on said plainly
 /// - data a newer version has opened - and anything else as the error itself, every cause of it.
-#[cfg(desktop)]
+///
+/// A phone's starting page says the same.
 fn why_it_wont_start(e: &anyhow::Error) -> String {
     let all = format!("{e:#}");
     if all.contains("newer Ringtome") {

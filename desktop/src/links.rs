@@ -69,10 +69,27 @@ pub fn is_embed(url: &Url) -> bool {
         && EMBEDS.iter().any(|(host, path)| url.host_str() == Some(*host) && url.path().starts_with(path))
 }
 
+/// Is `url` the shell's own starting page (desktop/dist, which a phone's window opens on while its
+/// node boots - lib.rs)? Tauri serves it as `tauri://localhost` on Apple's systems and as
+/// `http://tauri.localhost` on Android's.
+pub fn is_shell_page(url: &Url) -> bool {
+    match url.scheme() {
+        "tauri" => url.host_str() == Some("localhost"),
+        "http" | "https" => url.host_str() == Some("tauri.localhost"),
+        _ => false,
+    }
+}
+
 /// A navigation inside the window: allow ours (and the blank page a webview uses internally), and
-/// an embedded player loading in its frame; hand everything else out.
-pub fn navigation(app: &AppHandle, origin: &Url, url: &Url) -> bool {
-    if is_ours(url, origin) || url.scheme() == "about" || is_embed(url) {
+/// an embedded player loading in its frame; hand everything else out. `origin` is `None` while a
+/// phone's node boots (lib.rs), and then the starting page is the one place the window may be -
+/// only then, so no page of the node's can send the window to it to say something there.
+pub fn navigation(app: &AppHandle, origin: Option<&Url>, url: &Url) -> bool {
+    let ours = match origin {
+        Some(origin) => is_ours(url, origin),
+        None => is_shell_page(url),
+    };
+    if ours || url.scheme() == "about" || is_embed(url) {
         return true;
     }
     hand_out(app, url);
@@ -80,9 +97,10 @@ pub fn navigation(app: &AppHandle, origin: &Url, url: &Url) -> bool {
 }
 
 /// A request for a new window (`target="_blank"`, `window.open`): ours lands in the app's own
-/// window; everything else is handed out. Never a second webview.
-pub fn new_window(app: &AppHandle, origin: &Url, url: Url) {
-    if is_ours(&url, origin) {
+/// window; everything else is handed out. Never a second webview. Before a phone's node is up
+/// there is no "ours" to land.
+pub fn new_window(app: &AppHandle, origin: Option<&Url>, url: Url) {
+    if origin.is_some_and(|origin| is_ours(&url, origin)) {
         if let Some(window) = app.get_webview_window("main") {
             if let Err(e) = window.navigate(url) {
                 tracing::warn!(error = %e, "could not follow an in-app link");
@@ -126,6 +144,16 @@ mod tests {
         assert!(!is_ours(&Url::parse("http://127.0.0.1:6306/home").unwrap(), &origin), "another port is another node");
         assert!(!is_ours(&Url::parse("http://localhost:6305/home").unwrap(), &origin), "another host spelling is another origin");
         assert!(!is_ours(&Url::parse("https://github.com/cube-drone/ringtome").unwrap(), &origin));
+    }
+
+    #[test]
+    fn the_shell_page_is_tauris_exactly() {
+        let yes = |u: &str| is_shell_page(&Url::parse(u).unwrap());
+        assert!(yes("tauri://localhost/index.html"), "Apple's systems");
+        assert!(yes("http://tauri.localhost/index.html#why"), "Android's");
+        assert!(!yes("tauri://elsewhere/index.html"));
+        assert!(!yes("http://127.0.0.1:6305/"), "the node is not the starting page");
+        assert!(!yes("http://tauri.localhost.evil.example/"));
     }
 
     #[test]

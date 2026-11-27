@@ -153,8 +153,8 @@ jobs:
           find gen/apple -name '*.app' -maxdepth 8 -not -path '*/Externals/*'
 
       # The newest iPhone the runner's simulators offer, booted; the app put in it and started,
-      # its own output kept; then three looks at it - the node boots inside `setup`, so the first
-      # may be a launch screen and the last should be the app.
+      # its own output kept; then four looks at it - the first a second in, which should be the
+      # shell's starting page (the node boots after the window), the last the app.
       - name: Run it in a simulator
         run: |
           mkdir -p out
@@ -175,6 +175,10 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl install "$udid" "$app"
           xcrun simctl launch --stdout="$PWD/out/app-stdout.log" --stderr="$PWD/out/app-stderr.log" "$udid" "$BUNDLE_ID"
+          # A second in: the window, not the launch screen - the shell's starting page while the node
+          # boots on a thread of its own (desktop/src/lib.rs, 2026-11-26), or the app already.
+          sleep 1
+          xcrun simctl io "$udid" screenshot "out/after-1s.png" || true
           for wait in 10 30 60; do
             sleep "$wait"
             xcrun simctl io "$udid" screenshot "out/after-${wait}s.png" || true
@@ -203,8 +207,9 @@ jobs:
           # What the system said of it, a crash above all.
           xcrun simctl spawn "$UDID" log show --last 3m --style compact --predicate 'process == "Horse Drawing Tycoon 2"' > out/system.log 2>&1 || true
           tail -n 60 out/system.log || true
-          # The node's own log: stdout reaches nobody on iOS, so its lines go to the unified log
-          # under the bundle identifier (init_tracing_with, node/src/lib.rs). Info and debug are
+          # The node's own log, which on iOS goes to the unified log under the bundle identifier
+          # (init_tracing_with, node/src/lib.rs) - not to stdout, which Tauri forwards in a debug
+          # build only, and is why app-stdout.log is empty: Tauri has the pipe. Info and debug are
           # asked for by name - `log show` leaves them out otherwise - and the window reaches back
           # past the launch, minutes ago now.
           echo "--- the node's log"

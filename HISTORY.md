@@ -29781,3 +29781,53 @@ logging an event inside a span and then panicking, both lines read back by
 CI's to prove. Note for later: the shim logs with `%{public}s`, so a device's
 log shows the lines unredacted; nothing the node logs today is a secret, and
 that stays a reason to keep it so.
+
+## A phone's window before its node (2026-11-26)
+
+The second simulator-reachable piece of iOS work. `setup` runs on the main
+thread, and on a phone it booted the node there (`boot_once`: databases,
+migrations, iroh, the HTTP bind) before the window existed - and iOS kills an
+app whose main thread shows nothing for too long; Android's "not responding" was
+the same risk. Now a phone's window opens first, on the shell's own page
+(`desktop/dist/index.html`, which until now was a fallback nobody saw:
+"Starting…", light and dark, the safe areas kept), and the node boots on a
+thread of its own. When it is up the window moves to it; if it won't start, the
+window is sent back to the starting page with the reason as its fragment -
+`why_it_wont_start`, the desktop dialog's words, now shared - and the page shows
+it.
+
+The link policy needed the node's origin before the window was built; it is a
+`OnceLock` now, filled in as the node comes up (on a desktop, at once).
+`links::navigation` and `new_window` take it as an `Option`: with no node yet,
+the starting page (`tauri://localhost` on Apple's systems,
+`http://tauri.localhost` on Android's - `links::is_shell_page`, tested) is the
+one place the window may be, and only then, so no page of the node's can send
+the window there to show words of its choosing. A desktop is unchanged: it boots
+first and keeps its dialog.
+
+And where the time goes: `bind` logs a `boot` line at each stage - keystore,
+node database (its migrations inside), p2p endpoint, blob store, bound - with
+milliseconds since it began, which `node.log` in the `ios-simulator` artifact
+will carry. The `sim` job takes a screenshot a second after launch too, which
+should be the starting page. The simulator enforces no watchdog and runs on a
+Mac's CPU, so its numbers are a floor; with nothing on the main thread waiting
+on the node, the watchdog has nothing to catch.
+
+The phone's half compiles only for a phone (`cfg(mobile)`), which here means
+only in CI: the next iOS run is its first build.
+
+## iOS's log, read back: the first run, and why stdout was empty (2026-11-26)
+
+The `sim` run on the unified-log push came back with a `node.log` of forty lines
+from the node's first boot: keys made, the node database open, iroh online,
+`node up` at `127.0.0.1:49443`, the page's first requests - about three hundred
+milliseconds from the first line to listening, on the runner's Mac. And every
+line twice: once from our layer (category `node`), once as `[app] [stdout] …`
+with its colour codes. That second copy is Tauri's: `mobile_entry_point` calls
+`log_stdout()`, which pipes an iOS app's stdout and stderr into the unified
+log - which is why `simctl launch --stdout` caught nothing, Tauri holds the
+pipe. But it forwards only in a debug build (its `Logger` is on under
+`#if DEBUG`, off otherwise, and the pipe is read and dropped), in 4 KB reads
+rather than lines, every level as one. So on iOS the node now logs to the
+unified log alone - the stdout layer is left out there - and the panic hook
+stays, since a release build drops stderr too.

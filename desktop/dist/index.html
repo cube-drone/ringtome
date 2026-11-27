@@ -1,9 +1,53 @@
 <!doctype html>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Horse Drawing Tycoon 2</title>
-<!-- Tauri wants a frontend directory; this app's frontend is served by the node it embeds, over
-     loopback, so nothing here is ever shown in the ordinary case. It is the page the window
-     falls back to if the node did not start, which is why it says something rather than nothing. -->
-<body style="font: 15px system-ui; padding: 3rem; color: #333">
-  <p>The node did not start, so there is nothing to show yet. Its reason is in the log.</p>
+<!-- The shell's own page: the app itself is served by the node it embeds, over loopback. A
+     phone's window opens HERE (desktop/src/lib.rs, 2026-11-26) and shows it for the seconds the
+     node takes to boot - iOS kills an app whose first frame is slow, so the window cannot wait for
+     the node - then moves to the node's page. If the node won't start, the shell sends the window
+     back here with the reason as the fragment, and this says it. A desktop opens on the node and
+     never shows this page. -->
+<style>
+  :root {
+    --page: #fdfaf4;
+    --ink: #333;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #1c1b19;
+      --ink: #ddd;
+    }
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: var(--page);
+    color: var(--ink);
+    font: 17px system-ui;
+    text-align: center;
+    padding: env(safe-area-inset-top) 1.5rem env(safe-area-inset-bottom);
+  }
+  #said {
+    max-width: 32rem;
+    white-space: pre-wrap;
+  }
+</style>
+<body>
+  <main>
+    <p><strong>Horse Drawing Tycoon 2</strong></p>
+    <p id="said">Starting…</p>
+  </main>
+  <script>
+    const said = document.getElementById('said');
+    const show = () => {
+      const why = decodeURIComponent(location.hash.slice(1));
+      if (why) said.textContent = why;
+    };
+    show();
+    addEventListener('hashchange', show);
+  </script>
 </body>
