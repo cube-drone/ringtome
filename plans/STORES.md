@@ -150,6 +150,31 @@ horsedrawingtycoon.com's node like any other.
 - **Revisit when:** iOS gains Apple's push (a device identifier), or anything
   starts reporting crashes or usage.
 
+### Apple's other answers (2026-11-28)
+
+- **Export compliance:** non-exempt encryption, standard algorithms, answered in
+  App Store Connect for each build: `ITSAppUsesNonExemptEncryption = YES`
+  without a declaration's code was refused at upload (ITMS-90592); no documents,
+  since the French declaration is only for France. Since 2021 a mass-market app
+  files no annual US report.
+- **Countries:** everywhere but France (its encryption declaration), China
+  mainland (its licensing), Australia (accounts for under-16s, which the 13+ age
+  screen doesn't stop), the United Kingdom (the Online Safety Act's assessments
+  and age assurance around adult content) and Russia (messenger registration).
+  Each comes back with the work it names.
+- **EU:** declared a non-trader; the app is in the EU, with no contact details
+  on its page.
+- **Age rating:** Infrequent for profanity, cartoon violence, mature or
+  suggestive themes, sexual content or nudity, simulated gambling (Wordaga's
+  dice for HorseBucks) and contests; None for the rest; no dating, gambling or
+  loot boxes. "Social media disabled under 13": no, until the app asks Apple's
+  Declared Age Range API (open).
+- **No iPhone to test on** (Curtis: "we're just gonna ship it"): review is the
+  first real device. A launch failure there is the signal to get one.
+- **Open:** the Declared Age Range API; Apple 1.2's "hidden by default, turned
+  on via your website" for explicit tags (today they're blurred, and a tap shows
+  them); reporting a person's profile.
+
 ## 3. Store builds
 
 - **The update notice.** Google Play forbids an app to update itself, or to send

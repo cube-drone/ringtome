@@ -20,7 +20,7 @@ app="$3"
 bundle="net.lassam.ringtome"
 # A fixed seed, so a run's screenshots show the same network as the last run's.
 seed="20261128"
-pages=(/feed /ringtome/chat /ringtome/people /ringtome/games /ringtome/bank)
+pages=(/ringtome/feed /ringtome/chat /ringtome/people /ringtome/games /ringtome/bank)
 
 udid=$(xcrun simctl list devices available -j | NAME="$name" python3 -c "
 import json, os, sys
