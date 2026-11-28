@@ -165,26 +165,18 @@ a.quickbar-version:focus-visible {
     align-items: flex-end;
     gap: 0.4rem;
     /* Too many to fit before the clock (Curtis, 2026-10-31): the row gives way and what's past its
-       end is cut off. `clip` across only - `hidden` would clip upward too, and the tiles poke above
-       the bar, and the persona switcher stands over it. */
+       end is cut off. Cut across only: the tiles poke above the bar, the santa hat above them, and
+       the persona switcher stands over it all. A clip-path reaching far above and below, not
+       `overflow-x: clip` - the desktop app's WebKit, on some repaints, clipped that one upward
+       too: first the hat's top half (Curtis, 2026-11-25: "In tauri specifically ... the top half
+       of my christmas santa hat keeps disappearing"), then, given headroom for the hat, the
+       switcher's stack at the headroom's edge (2026-11-27: "displays the full list of personas...
+       for a moment, then cuts the list off a little bit above the christmas hat"). */
     flex: 0 1 auto;
     min-width: 0;
     margin-right: 1rem;
-    overflow-x: clip;
-    overflow-y: visible;
+    clip-path: inset(-100vh 0 -100vh 0);
     position: relative;
-    /* Headroom for the santa hat, so it sits inside the row rather than over its top edge: the
-       desktop app's WebKit, on some repaints, clipped a sideways-only clip upward too, and took the
-       hat's top half with it (Curtis, 2026-11-25: "In tauri specifically ... the top half of my
-       christmas santa hat keeps disappearing"). The row is bottom-aligned in the bar, so the room
-       grows upward over the app; the room itself lets clicks through to it, and the row's slots
-       take them back. */
-    padding-top: 24px;
-    pointer-events: none;
-}
-
-.quickbar-apps > * {
-    pointer-events: auto;
 }
 
 /* ...and the cut end fades into the bar: a strip of the bar's own teal, the height of the bar

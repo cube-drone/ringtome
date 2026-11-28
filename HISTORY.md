@@ -29874,3 +29874,21 @@ lines; the boot's stages on the runner were keystore 0, node database 443, p2p
 endpoint 1478, blob store 1640, bound 1768 ms (the earlier run went from first
 line to listening in about 300 - the runners vary that much); and the one-second
 screenshot was already the node's own "Loading…" page, never a launch screen.
+
+## The dock's row cut by a clip-path, not a sideways overflow clip (2026-11-27)
+
+Curtis, after the hat's headroom: "when I mouse over the profile septagon, it
+displays the full list of personas... for a moment, then cuts the list off a
+little bit above the christmas hat." That confirms the hat's theory: the desktop
+app's WebKit, on a repaint, clips `overflow-x: clip` upward too - at the row's
+top, which the headroom had moved to just above the hat. Headroom can't hold a
+stack whose height is the number of personas, so `.quickbar-apps` no longer
+clips by overflow at all: `clip-path: inset(-100vh 0 -100vh 0)` cuts its sides
+and reaches a window's height above and below. The headroom (and its
+pointer-events passthrough) is gone with it. The row's overflow test
+(`useOverflowing`) measures edges, not scrolling, so it is unchanged.
+
+Seen in Chrome on a scratch node under holidaymas: the hat whole; a 300px
+stand-in for the stack above the persona tile drawn and clickable top to bottom;
+the row squeezed to 300px cut at its end with the fade, a tile past it neither
+drawn nor clickable. Not seen in the desktop app. `just ui-check` green.
