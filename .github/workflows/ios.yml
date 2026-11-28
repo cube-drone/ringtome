@@ -274,6 +274,29 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      # The App Store's screenshots (2026-11-28): Apple takes simulator ones, and asks for the
+      # 6.9-inch iPhone and - while the app runs on iPads - the 13-inch iPad. Each device is
+      # filled by the test data generator and photographed signed in, page by page
+      # (desktop/tools/ios-store-shots.sh). The iPad's run is also the first look at the app on
+      # one. The first device steps aside first: two booted simulators and a node apiece is a lot
+      # for a runner.
+      - name: Store screenshots
+        if: ${{ env.UDID != '' }}
+        run: |
+          xcrun simctl shutdown "$UDID" || true
+          app=$(find desktop/gen/apple -name '*.app' -maxdepth 8 -not -path '*/Externals/*' | head -1)
+          desktop/tools/ios-store-shots.sh "iPhone 17 Pro Max" store/iphone-6.9 "$app"
+          desktop/tools/ios-store-shots.sh "iPad Pro 13-inch (M5)" store/ipad-13 "$app"
+          for f in store/*/*.png; do echo "$f: $(sips -g pixelWidth -g pixelHeight "$f" | awk '/pixel/ {printf "%s ", $2}')"; done
+
+      - uses: actions/upload-artifact@v6
+        if: ${{ always() }}
+        with:
+          name: ios-store-screenshots
+          path: store
+          retention-days: 30
+          if-no-files-found: warn
+
   # The iOS project as Tauri generates it, and nothing else - as Android's was (android.yml,
   # `project`): generating it needs Xcode, which lives only here; the result is committed as
   # desktop/gen/apple, and every change after that is an ordinary edit to it. No Rust is built.

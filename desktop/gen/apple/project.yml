@@ -58,6 +58,10 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         CFBundleShortVersionString: 0.7.3
         CFBundleVersion: "0.7.3"
+        # Export compliance (Curtis, 2026-11-28): the app's own encryption - sealed posts and chats,
+        # its TLS/QUIC - is standard, published algorithms beyond Apple's, so "non-exempt"; the
+        # App Store answer is "standard algorithms", and France is left out of its countries.
+        ITSAppUsesNonExemptEncryption: true
     entitlements:
       path: ringtome-desktop_iOS/ringtome-desktop_iOS.entitlements
     scheme:

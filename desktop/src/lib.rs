@@ -183,10 +183,11 @@ pub fn run() {
             let _window = window
                 .visible(!hidden)
                 .initialization_script(format!(
-                    "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};\n{}",
+                    "window.__ringtome_launch_token = {}; window.__ringtome_platform = {};\n{}\n{}",
                     serde_json::to_string(&token).expect("a hex string is JSON"),
                     serde_json::to_string(std::env::consts::OS).expect("an OS name is JSON"),
-                    links::BLANK_CLICKS
+                    links::BLANK_CLICKS,
+                    test_sign_in()
                 ))
                 .build()?;
             // The page owns the cursor (Curtis, 2026-11-25: in the Mac app the pixel cursors
@@ -348,6 +349,47 @@ pub extern "system" fn Java_net_lassam_ringtome_NodeBoot_boot(
             0
         }
     }
+}
+
+/// A screenshot run's sign-in (ios.yml's store screenshots, 2026-11-28): in a debug build, with
+/// `RINGTOME_TEST_SIGN_IN=username:password`, the window signs itself in once per launch on the
+/// node's page - the ordinary login, as the sign-in form would - then goes to
+/// `RINGTOME_TEST_PAGE` (or the front page). The simulator has no keyboard for a runner to type
+/// on, and the screenshots the App Store wants are of an account's app, not of its sign-in. A
+/// release build never reads either variable.
+fn test_sign_in() -> String {
+    if !cfg!(debug_assertions) {
+        return String::new();
+    }
+    let Some((user, pass)) = std::env::var("RINGTOME_TEST_SIGN_IN")
+        .ok()
+        .and_then(|v| v.split_once(':').map(|(u, p)| (u.to_string(), p.to_string())))
+    else {
+        return String::new();
+    };
+    let page = std::env::var("RINGTOME_TEST_PAGE").unwrap_or_else(|_| "/".into());
+    let json = |s: &str| serde_json::to_string(s).expect("a string is JSON");
+    format!(
+        r#"(function () {{
+  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(location.origin)) return;
+  var key = 'ringtome-test-sign-in', state;
+  try {{ state = sessionStorage.getItem(key); }} catch (e) {{ return; }}
+  if (state) return;
+  sessionStorage.setItem(key, 'signing-in');
+  fetch('/api/auth/login', {{
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {{ 'Content-Type': 'application/json' }},
+    body: JSON.stringify({{ username: {user}, password: {pass} }})
+  }}).then(function () {{
+    sessionStorage.setItem(key, 'signed-in');
+    location.replace({page});
+  }});
+}})();"#,
+        user = json(&user),
+        pass = json(&pass),
+        page = json(&page),
+    )
 }
 
 /// Build the node, bind it, and hand back the URL the window should open - having started the

@@ -44,18 +44,18 @@ it.
 
 ## The checklist
 
-| need                          | asked by                    | have                                              | to build                                   |
-| ----------------------------- | --------------------------- | ------------------------------------------------- | ------------------------------------------ |
-| an age screen                 | COPPA, both stores' forms   | built 2026-11-12: a birth year, store builds only | the web's sign-up, if wanted (section 1)   |
-| terms agreed before posting   | Google Play UGC             | built 2026-11-01: agreed at sign-up               | asking again when the terms change         |
-| privacy policy, terms         | both stores                 | built 2026-11-01: `/tos`, `/privacy`, `/eula`     | legal review                               |
-| no updating outside the store | Play, Mac App Store         | the update notice links to GitHub                 | a store-build flag (section 3)             |
-| account deletion in the app   | both stores (Play: web too) | built 2026-11-01: "delete me" in hrseSettings     | -                                          |
-| block abusive users           | both stores' UGC rules      | blocking (a contact's `blocked` fact), room mutes | reachable from any post or line            |
-| report objectionable content  | both stores' UGC rules      | nothing                                           | report = hide + block + send (section 5)   |
-| filter objectionable content  | Apple 1.2                   | content warnings by tag, trust-gated posts        | moderation lists (section 5)               |
-| published contact information | Apple 1.2                   | nothing                                           | in the terms, per node                     |
-| store paperwork               | both                        | -                                                 | Data Safety, age rating, encryption export |
+| need                          | asked by                    | have                                                                                                  | to build                                                                         |
+| ----------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| an age screen                 | COPPA, both stores' forms   | built 2026-11-12: a birth year, store builds only                                                     | the web's sign-up, if wanted (section 1)                                         |
+| terms agreed before posting   | Google Play UGC             | built 2026-11-01: agreed at sign-up                                                                   | asking again when the terms change                                               |
+| privacy policy, terms         | both stores                 | built 2026-11-01: `/tos`, `/privacy`, `/eula`                                                         | legal review                                                                     |
+| no updating outside the store | Play, Mac App Store         | built 2026-11-12: `RINGTOME_STORE`, no self-updater                                                   | -                                                                                |
+| account deletion in the app   | both stores (Play: web too) | built 2026-11-01: "delete me" in hrseSettings                                                         | -                                                                                |
+| block abusive users           | both stores' UGC rules      | a person's page; a private chat; "block them too" on every post's and chat line's report (2026-11-27) | -                                                                                |
+| report objectionable content  | both stores' UGC rules      | posts and their pictures (2026-11-02), servers, chat lines with the lines around them (2026-11-27)    | a person's profile; shared notebooks, mixtapes and the market unchecked          |
+| filter objectionable content  | Apple 1.2                   | content warnings by tag, trust-gated posts, moderation lists and the official one (2026-11-02)        | -                                                                                |
+| published contact information | Apple 1.2                   | the terms' section 13, an email address                                                               | -                                                                                |
+| store paperwork               | both                        | Play's testing tracks; Apple: App ID, App Store Connect record, a TestFlight build (2026-11-27)       | Apple: encryption answer, App Privacy, age rating, screenshots, EU trader status |
 
 ## 1. The registration gate: age and terms
 
