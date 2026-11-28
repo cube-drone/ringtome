@@ -132,6 +132,24 @@ architecture makes ours unusual in content, not in kind:
 - The terms carry a version; agreeing records it, and a new version asks again
   at the next sign-in.
 
+### Apple's App Privacy answers
+
+What the App Store's privacy label declares (2026-11-28), erring toward
+declaring. "Collected" is Apple's word for data that leaves the phone where the
+developer can reach it - and what people publish reaches
+horsedrawingtycoon.com's node like any other.
+
+- **Privacy policy:** `https://horsedrawingtycoon.com/privacy`.
+- **Collected, linked to the user, for App Functionality only, never for
+  tracking:** User Content (photos or videos - published pictures and drawings;
+  other user content - posts, open rooms' chat, profiles, reports), Identifiers
+  (user ID - the persona's key and username), Contact Info (name - a display
+  name can be one).
+- **Not collected:** everything else. Sealed posts and private chats reach a
+  server only as ciphertext it can't read.
+- **Revisit when:** iOS gains Apple's push (a device identifier), or anything
+  starts reporting crashes or usage.
+
 ## 3. Store builds
 
 - **The update notice.** Google Play forbids an app to update itself, or to send

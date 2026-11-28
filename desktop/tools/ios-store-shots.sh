@@ -59,7 +59,19 @@ rm -f "$state"
 (cd node/harness && RINGTOME_TESTDATA_PORTS="$port" node testdata.mjs 6 12 "$seed")
 user=$(python3 -c "import json; print(json.load(open('$state'))['personas'][0]['username'])")
 pass=$(python3 -c "import json; print(json.load(open('$state'))['password'])")
+root=$(python3 -c "import json; print(json.load(open('$state'))['personas'][0]['root'])")
 echo "$name: signed in as $user"
+
+# The apps a new persona buys with HorseBucks (the hrseBank market) - chat, people, the feed - are
+# what the screenshots are of. The generator's first persona is the node's administrator, and an
+# administrator may unlock everything at once (bank.rs `unlock_everything`).
+jar=$(mktemp)
+curl -sf -c "$jar" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"$user\",\"password\":\"$pass\"}" "http://127.0.0.1:$port/api/auth/login" >/dev/null
+curl -sf -b "$jar" -H 'Content-Type: application/json' -d '{"id":"everything"}' \
+    "http://127.0.0.1:$port/api/identity/$root/bank/unlocks" >/dev/null \
+    || echo "::warning::$name: couldn't unlock everything for $user"
+rm -f "$jar"
 
 mkdir -p "$out"
 n=0
