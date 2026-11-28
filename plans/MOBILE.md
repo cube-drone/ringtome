@@ -289,7 +289,14 @@ The order, each step answering a question before the next is built on it:
    `net.lassam.ringtome`), since a phone's stdout reaches nobody; the job keeps
    it as `node.log` in the artifact._
 4. **Signing and TestFlight** from CI, which is the only road onto a real phone:
-   iOS has no sideloading.
+   iOS has no sideloading. _2026-11-27: the App ID is registered, the app's
+   record is in App Store Connect, and an Admin team key is in the repository's
+   secrets (`APPLE_IOS_API_*` - the notarizing key's Developer role can upload
+   but cannot make certificates or profiles). `ios.yml`'s `testflight` job, by
+   hand: a release build signed the automatic way, its build number the run's,
+   uploaded with `altool`. The export-compliance question (the app encrypts,
+   with standard algorithms) is answered in App Store Connect, by Curtis, not
+   pre-answered in `Info.plist`._
 
 Known ahead of time, and not yet met:
 
