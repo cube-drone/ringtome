@@ -1995,6 +1995,13 @@ fs.writeFileSync(
                 root: p.root,
                 nodes: p.bases,
             })),
+            // The chat rooms the run opened (2026-11-28): the App Store screenshots open one
+            // (desktop/tools/ios-store-shots.sh), and a hand can find one to look at.
+            rooms: rooms.map((r) => ({
+                author: r.author,
+                doc: r.doc,
+                trusted_only: r.trusted_only,
+            })),
         },
         null,
         2,

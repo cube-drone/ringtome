@@ -73,6 +73,20 @@ curl -sf -b "$jar" -H 'Content-Type: application/json' -d '{"id":"everything"}' 
     || echo "::warning::$name: couldn't unlock everything for $user"
 rm -f "$jar"
 
+# The chat screenshot is a room with talk in it: the first open room the generator opened, which
+# the persona signed in can read, rather than its own empty list of chats.
+room=$(cd node && node --input-type=module -e "
+import fs from 'node:fs';
+import { toBase58 } from './js/speakable.js';
+const state = JSON.parse(fs.readFileSync('harness/testdata-state.json', 'utf8'));
+const room = (state.rooms || []).find((r) => !r.trusted_only);
+if (room) console.log('/ringtome/user/' + toBase58(room.author) + '/room/' + room.doc);
+")
+if [ -n "$room" ]; then
+    pages=("${pages[@]/\/ringtome\/chat/$room}")
+    echo "$name: the chat screenshot is $room"
+fi
+
 mkdir -p "$out"
 n=0
 for page in "${pages[@]}"; do
@@ -82,7 +96,7 @@ for page in "${pages[@]}"; do
         xcrun simctl launch "$udid" "$bundle" >/dev/null
     # The node's boot, the sign-in, the page and its pictures.
     sleep 25
-    shot="$out/$n$(echo "$page" | tr '/' '-').png"
+    shot="$out/$n$(echo "$page" | cut -d/ -f1-4 | tr '/' '-').png"
     xcrun simctl io "$udid" screenshot "$shot"
     echo "$name: $shot"
 done
