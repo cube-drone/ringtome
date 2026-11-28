@@ -301,7 +301,15 @@ The order, each step answering a question before the next is built on it:
    the iOS 26.5 SDK, and from April 2027 uploads need the iOS 27 SDK
    (Xcode 27) - not on GitHub's runners yet, which have Xcode 27 as a preview
    only. That build was not yet a store build; the job sets
-   `RINGTOME_STORE=app-store` from the next._
+   `RINGTOME_STORE=app-store` from the next._ _2026-11-28: export compliance -
+   Curtis: "non-exempt", France left out of the countries - declared in the
+   project (`ITSAppUsesNonExemptEncryption`); since 2021 a mass-market app files
+   no annual report. Store screenshots from the simulators:
+   `desktop/tools/ios-store-shots.sh` fills an iPhone 17 Pro Max's node and an
+   iPad Pro 13-inch's with the test data generator and photographs five pages
+   signed in (the shell's debug-only `RINGTOME_TEST_SIGN_IN`), the
+   `ios-store-screenshots` artifact. The iPad's run is the first look at the app
+   on one, which decides whether the first version keeps iPad._
 
 Known ahead of time, and not yet met:
 
