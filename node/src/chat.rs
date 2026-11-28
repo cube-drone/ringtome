@@ -1565,8 +1565,9 @@ async fn cover_message(
 
 /// The room's key for this reader, through the onward hop when one brought it here (Contact
 /// tags, ruling 7): the sharer's node holds the key and releases it to the people they
-/// trust, so a room somebody passed along opens for its reader.
-async fn room_key(
+/// trust, so a room somebody passed along opens for its reader. A chat line's report carries it
+/// (reports.rs).
+pub(crate) async fn room_key(
     state: &AppState,
     author_hex: &str,
     doc: &[u8; 16],
@@ -1706,8 +1707,61 @@ async fn labels_by(
         .unwrap_or_default()
 }
 
+/// A line and the lines around it, for its report (reports.rs `transcript_of`): who said it, and -
+/// in the order they were said - up to `before` lines before it, the line, and up to `after`
+/// after, none deleted, each `(speaker, entry hash, newest edit's hash)`. `None` when this node
+/// holds no such line.
+#[allow(clippy::type_complexity)]
+pub(crate) async fn lines_around(
+    state: &AppState,
+    author_hex: &str,
+    doc_hex: &str,
+    hash: &[u8; 32],
+    before: i64,
+    after: i64,
+) -> Result<Option<(String, Vec<(String, Vec<u8>, Option<Vec<u8>>)>)>> {
+    type Line = (String, Vec<u8>, Option<Vec<u8>>);
+    let line: Option<(String, i64, Option<Vec<u8>>)> = state
+        .node_db
+        .fetch_optional(
+            "SELECT speaker_root, said_ms, edit_hash FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND entry_hash = ?3 AND deleted = 0",
+            (author_hex, doc_hex, hash.to_vec()),
+        )
+        .await
+        .context("reading a reported line")?;
+    let Some((speaker, said_ms, edit)) = line else { return Ok(None) };
+    let mut earlier: Vec<Line> = state
+        .node_db
+        .fetch_all(
+            "SELECT speaker_root, entry_hash, edit_hash FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND entry_hash != ?3 AND said_ms <= ?4
+                 AND deleted = 0
+             ORDER BY said_ms DESC, seq DESC LIMIT ?5",
+            (author_hex, doc_hex, hash.to_vec(), said_ms, before),
+        )
+        .await
+        .context("reading a reported line's room")?;
+    earlier.reverse();
+    let later: Vec<Line> = state
+        .node_db
+        .fetch_all(
+            "SELECT speaker_root, entry_hash, edit_hash FROM room_messages
+             WHERE room_author = ?1 AND room_doc = ?2 AND entry_hash != ?3 AND said_ms >= ?4
+                 AND deleted = 0
+             ORDER BY said_ms ASC, seq ASC LIMIT ?5",
+            (author_hex, doc_hex, hash.to_vec(), said_ms, after),
+        )
+        .await
+        .context("reading a reported line's room")?;
+    let mut rows = earlier;
+    rows.push((speaker.clone(), hash.to_vec(), edit));
+    rows.extend(later);
+    Ok(Some((speaker, rows)))
+}
+
 /// Whether the room is sealed: its reactions are sealed too, and stacking them wants the key.
-async fn head_sealed(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
+pub(crate) async fn head_sealed(state: &AppState, author_hex: &str, doc: &[u8; 16]) -> bool {
     room_head(state, author_hex, doc).await.is_some_and(|(h, _)| h.trusted_only)
 }
 

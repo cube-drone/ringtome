@@ -35,6 +35,13 @@
 //! from its own copy ([`files_named`]). A picture past the room that this node doesn't hold is
 //! out of reach: it can't be shown to the moderator, or sealed before it arrives.
 //!
+//! **A chat line** (plans/MODERATION.md, _A chat line_; 2026-11-27) carries its room instead of a
+//! post: the envelope names the line and the hash of a transcript - the line and the forty before
+//! it and nine after, each its speaker's own signed entry - that follows over the upload address
+//! as pictures do ([`take_transcript`]). A sealed room's key rides in the envelope, never over
+//! HTTPS, which passes whatever sits in front of this node; it is held only until the transcript
+//! arrives, at most the upload window ([`drop_stale_keys`]), and what stays is the opened words.
+//!
 //! **A child being abused** is a separate choice that carries the reference and nothing else: no
 //! upload address is ever handed back for it. It is taken only from someone the moderator's trust
 //! reaches, whose word they already count; when the moderator administers this node it seals the
@@ -63,7 +70,9 @@ use ringtome_proto::deliver::{
     notice_kind, refusal, DeliverMessage, SignedEnvelope, MAX_ENVELOPE_BYTES,
 };
 use ringtome_proto::registry::DocHeaderPlain;
-use ringtome_proto::report::{Report, ReportedItem, ReportedPart, VerifiedReport};
+use ringtome_proto::report::{
+    Report, ReportedItem, ReportedPart, ReportedRoom, Transcript, TranscriptLine, VerifiedReport,
+};
 use ringtome_proto::{ModerationLevel, ModerationTarget};
 use serde::{Deserialize, Serialize};
 
@@ -73,8 +82,12 @@ use crate::identity::routes::hex_fixed;
 use crate::record::store;
 use crate::AppState;
 
-/// How long a report's upload address takes its pictures.
+/// How long a report's upload address takes its pictures, and a chat line's transcript - and so how
+/// long a sealed room's key is held for it.
 const UPLOAD_WINDOW_MS: i64 = 60 * 60 * 1000;
+/// A chat line's transcript: lines before the reported one, and after it.
+const LINES_BEFORE: i64 = 40;
+const LINES_AFTER: i64 = 9;
 /// The defaults an operator starts from when they first allow reports.
 const DEFAULT_STRANGER_POOL: i64 = 500;
 const DEFAULT_KEEP_DAYS: i64 = 90;
@@ -201,6 +214,7 @@ pub async fn judge(state: &AppState, signed: &SignedEnvelope, from: &str) -> Del
 }
 
 async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<DeliverMessage> {
+    drop_stale_keys(state).await?;
     let moderator = hex::encode(v.moderator_root);
     let reporter = hex::encode(v.reporter_root);
     let policy = policy(state).await;
@@ -254,13 +268,16 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
     let item = v.item.as_ref();
     let item_hashes = files_named(state, v).await?;
     // Pictures are asked for only over HTTPS, only for an open post, never for a child-abuse
-    // report, and only where this node can be reached by address.
+    // report, and only where this node can be reached by address. A chat line's transcript the
+    // same way - and with no address to take it, its room's key isn't kept either.
+    let room = report.room.as_ref();
     let wants_upload = !report.child_abuse
-        && item.is_some_and(|f| !f.header.trusted_only)
-        && !item_hashes.is_empty()
+        && ((item.is_some_and(|f| !f.header.trusted_only) && !item_hashes.is_empty())
+            || room.is_some())
         && public_base(state).is_some();
     let token = wants_upload.then(new_token);
     let now = crate::clock::now_ms();
+    let room_key = room.and_then(|r| r.key).filter(|_| token.is_some());
     let params: Vec<turso::Value> = vec![
         id.clone().into(),
         moderator.clone().into(),
@@ -284,6 +301,12 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
         token.clone().into(),
         token.as_ref().map(|_| now + UPLOAD_WINDOW_MS).into(),
         now.into(),
+        room.map(|r| hex::encode(r.author)).into(),
+        room.map(|r| hex::encode(r.doc)).into(),
+        room.map(|r| hex::encode(r.line)).into(),
+        i64::from(room.is_some_and(|r| r.key.is_some())).into(),
+        room_key.map(|k| k.to_vec()).into(),
+        room.map(|r| hex::encode(r.transcript)).into(),
     ];
     state
         .node_db
@@ -291,13 +314,26 @@ async fn take(state: &AppState, v: &VerifiedReport, from: &str) -> Result<Delive
             "INSERT INTO reports (id, moderator, reporter, reporter_name, standing, from_node,
                  target_kind, target, reason, child_abuse, item_author, item_doc, item_version,
                  item_title, item_format, item_trusted_only, item_signed_ms, item_hashes,
-                 upload_token, upload_until_ms, received_ms)
+                 upload_token, upload_until_ms, received_ms, room_author, room_doc, room_line,
+                 room_sealed, room_key, transcript_hash)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                 ?18, ?19, ?20, ?21)",
+                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
             params,
         )
         .await
         .context("keeping a report")?;
+    // The key goes when the window closes, whatever arrives: a node that stays up drops it on
+    // time, and one that restarts drops it at its next report or look at the queue.
+    if room_key.is_some() {
+        let state = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(UPLOAD_WINDOW_MS as u64 + 1000))
+                .await;
+            if let Err(e) = drop_stale_keys(&state).await {
+                tracing::warn!(error = ?e, "a reported room's key wasn't dropped");
+            }
+        });
+    }
     // The moderator hears of it (notifications.rs `KIND_REPORT`): a row in their bell, which
     // alerts like any other. What it is about, never what it says.
     let about = match (report.kind.word(), item.is_some()) {
@@ -391,6 +427,20 @@ async fn trim(state: &AppState, moderator: &str, policy: &Policy) -> Result<()> 
     Ok(())
 }
 
+/// A sealed room's key, held for a transcript that hasn't come and now can't: dropped.
+async fn drop_stale_keys(state: &AppState) -> Result<()> {
+    state
+        .node_db
+        .execute(
+            "UPDATE reports SET room_key = NULL
+             WHERE room_key IS NOT NULL AND (upload_until_ms IS NULL OR upload_until_ms < ?1)",
+            (crate::clock::now_ms(),),
+        )
+        .await
+        .context("dropping reported rooms' keys")?;
+    Ok(())
+}
+
 async fn forget(state: &AppState, moderator: &str, id: &str) -> Result<()> {
     crate::notifications::forget_report(&state.node_db, moderator, id).await?;
     state
@@ -462,21 +512,26 @@ async fn upload_handler(
     if token.len() != 48 || !token.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(not_here());
     }
-    let row: Option<(String, String, i64)> = state
+    let row: Option<(String, String, i64, Option<String>)> = state
         .node_db
         .fetch_optional(
-            "SELECT id, item_hashes, upload_until_ms FROM reports WHERE upload_token = ?1",
+            "SELECT id, item_hashes, upload_until_ms, transcript_hash FROM reports
+             WHERE upload_token = ?1",
             (token.as_str(),),
         )
         .await
         .context("reading an upload address")
         .map_err(AppError::Internal)?;
-    let Some((id, hashes, until)) = row else { return Err(not_here()) };
+    let Some((id, hashes, until, transcript_hash)) = row else { return Err(not_here()) };
     if crate::clock::now_ms() > until {
         return Err(not_here());
     }
     let named: Vec<String> = serde_json::from_str(&hashes).unwrap_or_default();
     let hash = hex::encode(iroh_blobs::Hash::new(&body).as_bytes());
+    if transcript_hash.as_deref() == Some(hash.as_str()) {
+        take_transcript(&state, &id, &body).await?;
+        return Ok(Json(serde_json::json!({ "ok": true })));
+    }
     if !named.contains(&hash) {
         return Err(AppError::BadRequest(crate::msg!(
             "reports.not-what-was-signed",
@@ -497,6 +552,82 @@ async fn upload_handler(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// A chat line's transcript, arrived: checked against the report that named it (every line its
+/// speaker's own, in that room, the reported line theirs - `verify_transcript`), its sealed lines
+/// opened with the key the envelope carried, and kept as words. The key goes in the same write.
+async fn take_transcript(state: &AppState, id: &str, body: &[u8]) -> Result<(), AppError> {
+    type Row = (String, String, String, String, String, Option<Vec<u8>>, Option<String>);
+    let row: Option<Row> = state
+        .node_db
+        .fetch_optional(
+            "SELECT target, room_author, room_doc, room_line, transcript_hash, room_key, transcript
+             FROM reports WHERE id = ?1 AND room_doc IS NOT NULL",
+            (id,),
+        )
+        .await
+        .context("reading a reported room")
+        .map_err(AppError::Internal)?;
+    let Some((target, author, doc, line, hash, key, held)) = row else {
+        return Err(AppError::NotFound(crate::msg!(
+            "reports.no-such-upload",
+            "this address takes no more pictures"
+        )));
+    };
+    if held.is_some() {
+        return Ok(());
+    }
+    let key = key.and_then(|k| <[u8; 32]>::try_from(k.as_slice()).ok());
+    let room = ReportedRoom {
+        author: hex_fixed::<32>(&author, "author")?,
+        doc: hex_fixed::<16>(&doc, "doc")?,
+        line: hex_fixed::<32>(&line, "line")?,
+        transcript: hex_fixed::<32>(&hash, "transcript")?,
+        key,
+    };
+    let reported = hex_fixed::<32>(&target, "target")?;
+    let mut lines =
+        ringtome_proto::report::verify_transcript(&room, reported, body).map_err(|e| {
+            tracing::debug!(error = ?e, "a report's transcript did not verify");
+            AppError::BadRequest(crate::msg!(
+                "reports.transcript-doesnt-check",
+                "that transcript doesn't match what was reported"
+            ))
+        })?;
+    lines.sort_by_key(|l| (l.timestamp_ms, l.seq));
+    let opened: Vec<serde_json::Value> = lines
+        .iter()
+        .filter(|l| l.message.reacts_to.is_none() && l.message.retracts.is_none())
+        .map(|l| {
+            let words = if l.message.sealed {
+                key.and_then(|k| crate::record::private::open_post_body(&l.message.body, &k))
+            } else {
+                Some(l.message.body.clone())
+            };
+            serde_json::json!({
+                "speaker": hex::encode(l.speaker),
+                "hash": hex::encode(l.hash),
+                "said_ms": l.timestamp_ms,
+                "words": words.map(|w| String::from_utf8_lossy(&w).into_owned()),
+                "edits": l.message.edits.map(hex::encode),
+                "reported": l.hash == room.line,
+            })
+        })
+        .collect();
+    let opened = serde_json::to_string(&opened)
+        .context("writing a transcript")
+        .map_err(AppError::Internal)?;
+    state
+        .node_db
+        .execute(
+            "UPDATE reports SET transcript = ?2, room_key = NULL WHERE id = ?1",
+            (id, opened.as_str()),
+        )
+        .await
+        .context("keeping a report's transcript")
+        .map_err(AppError::Internal)?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------------------------
 // The reporter's side
 
@@ -504,6 +635,14 @@ async fn upload_handler(
 struct SendItem {
     author: String,
     doc_id: String,
+}
+
+/// A chat line, by its room and its entry hash.
+#[derive(Deserialize)]
+struct SendRoom {
+    author: String,
+    doc: String,
+    line: String,
 }
 
 #[derive(Deserialize)]
@@ -517,6 +656,8 @@ struct SendRequest {
     child_abuse: bool,
     #[serde(default)]
     item: Option<SendItem>,
+    #[serde(default)]
+    room: Option<SendRoom>,
 }
 
 #[derive(Serialize)]
@@ -525,6 +666,8 @@ struct Sent {
     /// `sent`, `not-taking`, `unreachable` or `refused`.
     outcome: &'static str,
     pictures: usize,
+    /// A chat line's transcript arrived there.
+    transcript: bool,
 }
 
 /// POST `/api/identity/{root}/reports` - send a report to every moderator this persona trusts. The
@@ -577,8 +720,22 @@ async fn send_handler(
         }
         None => None,
     };
-    let mut report =
-        Report { kind, target, reason, child_abuse: req.child_abuse, item, parts: Vec::new() };
+    let (room, transcript) = match &req.room {
+        Some(line) => {
+            let (room, bytes) = transcript_of(&state, &root, &req.target, line).await?;
+            (Some(room), Some(bytes))
+        }
+        None => (None, None),
+    };
+    let mut report = Report {
+        kind,
+        target,
+        reason,
+        child_abuse: req.child_abuse,
+        item,
+        parts: Vec::new(),
+        room,
+    };
     let malformed = |e: ringtome_proto::ProtoError| {
         AppError::BadRequest(crate::msg!(
             "reports.malformed",
@@ -629,24 +786,29 @@ async fn send_handler(
     // Every moderator hears, at once: a person waits on the form.
     let report = &report;
     let (state, data, root_bytes, bytes, files) = (&state, &data, &root_bytes, &bytes, &files);
+    let transcript = &transcript;
     let sent: Vec<Sent> = n0_future::join_all(moderators.into_iter().map(|moderator| async move {
         let Ok(recipient) = hex_fixed::<32>(&moderator, "moderator") else {
-            return Sent { moderator, outcome: "refused", pictures: 0 };
+            return Sent { moderator, outcome: "refused", pictures: 0, transcript: false };
         };
         let outcome = deliver_one(state, data, root_bytes, &recipient, bytes).await;
-        let (word, pictures) = match outcome {
+        let (word, pictures, said) = match outcome {
             Ok(Delivered::Taken(upload)) => {
                 let pictures = match &upload {
                     Some(url) if !report.child_abuse => send_pictures(state, url, files).await,
                     _ => 0,
                 };
-                ("sent", pictures)
+                let said = match (&upload, transcript) {
+                    (Some(url), Some(t)) => send_transcript(state, url, t).await,
+                    _ => false,
+                };
+                ("sent", pictures, said)
             }
-            Ok(Delivered::NotTaking) => ("not-taking", 0),
-            Ok(Delivered::Refused) => ("refused", 0),
-            Ok(Delivered::Unreachable) | Err(_) => ("unreachable", 0),
+            Ok(Delivered::NotTaking) => ("not-taking", 0, false),
+            Ok(Delivered::Refused) => ("refused", 0, false),
+            Ok(Delivered::Unreachable) | Err(_) => ("unreachable", 0, false),
         };
-        Sent { moderator, outcome: word, pictures }
+        Sent { moderator, outcome: word, pictures, transcript: said }
     }))
     .await;
     Ok(Json(serde_json::json!({ "sent": sent })))
@@ -766,6 +928,110 @@ async fn send_pictures(state: &AppState, url: &str, files: &[[u8; 32]]) -> usize
     sent
 }
 
+/// A chat line's transcript to the moderator's upload address, over HTTPS like a picture. Signed
+/// lines only: a sealed room's key went in the envelope.
+async fn send_transcript(state: &AppState, url: &str, transcript: &[u8]) -> bool {
+    match crate::net::unfurl::guarded_post(
+        url,
+        transcript.to_vec(),
+        std::time::Duration::from_secs(30),
+        on_loopback(state),
+    )
+    .await
+    {
+        Ok(status) if status.is_success() => true,
+        Ok(status) => {
+            tracing::debug!(%status, "a report's transcript was refused");
+            false
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "a report's transcript did not arrive");
+            false
+        }
+    }
+}
+
+/// The lines around a reported one, from this node's own copy of the room (plans/MODERATION.md,
+/// _A chat line_; `chat::lines_around`), each its speaker's signed entry with the path from their
+/// root to the key that signed it, and an edited line's newest edit beside it. Only for a persona
+/// this room opens for: a sealed room's lines and key go only from someone holding its key, never
+/// from a neighbour on the same node.
+/// user-db open 1 of 1 (tests/conventions.rs): one per speaker in the transcript.
+async fn transcript_of(
+    state: &AppState,
+    root: &str,
+    target: &str,
+    line: &SendRoom,
+) -> Result<(ReportedRoom, Vec<u8>), AppError> {
+    let author = hex_fixed::<32>(&line.author, "author")?;
+    let doc = hex_fixed::<16>(&line.doc, "doc")?;
+    let hash = hex_fixed::<32>(&line.line, "line")?;
+    let (author_hex, doc_hex) = (hex::encode(author), hex::encode(doc));
+    let not_held = || {
+        AppError::NotFound(crate::msg!(
+            "reports.no-such-line",
+            "this computer doesn't hold that line"
+        ))
+    };
+    let key = if crate::chat::head_sealed(state, &author_hex, &doc).await {
+        Some(crate::chat::room_key(state, &author_hex, &doc, root).await.ok_or_else(not_held)?)
+    } else {
+        None
+    };
+    let (speaker, rows) =
+        crate::chat::lines_around(state, &author_hex, &doc_hex, &hash, LINES_BEFORE, LINES_AFTER)
+            .await
+            .map_err(AppError::Internal)?
+            .ok_or_else(not_held)?;
+    if speaker != target {
+        return Err(AppError::BadRequest(crate::msg!(
+            "reports.not-their-line",
+            "that line isn't theirs"
+        )));
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut dbs: std::collections::HashMap<String, crate::db::Db> = Default::default();
+    let mut transcript = Transcript::default();
+    for (speaker, entry_hash, edit_hash) in rows {
+        if !seen.insert(entry_hash.clone()) {
+            continue;
+        }
+        let Some(speaker_root) = crate::pubkey::decode(&speaker) else { continue };
+        if !dbs.contains_key(&speaker) {
+            match state.user_dbs.get(&speaker).await {
+                Ok(Some(db)) => {
+                    dbs.insert(speaker.clone(), db);
+                }
+                _ => continue,
+            }
+        }
+        let Some(db) = dbs.get(&speaker) else { continue };
+        for wanted in std::iter::once(entry_hash).chain(edit_hash) {
+            let Ok(wanted) = <[u8; 32]>::try_from(wanted.as_slice()) else { continue };
+            let Some(entry) = crate::record::imaol::entry_by_hash(db, &wanted).await? else {
+                continue;
+            };
+            let auth_path = crate::record::documents::auth_path_for(db, &speaker, &entry).await?;
+            transcript.lines.push(TranscriptLine {
+                root: speaker_root,
+                entry: entry.bytes().to_vec(),
+                auth_path,
+            });
+        }
+    }
+    let bytes = transcript
+        .encode()
+        .map_err(|e| AppError::Internal(anyhow!("encoding a report's transcript: {e}")))?;
+    let room = ReportedRoom {
+        author,
+        doc,
+        line: hash,
+        transcript: *iroh_blobs::Hash::new(&bytes).as_bytes(),
+        key,
+    };
+    Ok((room, bytes))
+}
+
 // ---------------------------------------------------------------------------------------------
 // Settings
 
@@ -878,7 +1144,7 @@ pub struct Queued {
     pub target: String,
     /// What the report is about, for its card's header: `node` (a whole server, with or without a
     /// post), `user` (a person, with no post), `image` (a picture, or a post with pictures in it)
-    /// or `post` (Curtis, 2026-11-05).
+    /// or `post` (Curtis, 2026-11-05); `chat`, a line in a room (2026-11-27).
     pub kind: &'static str,
     pub reason: String,
     pub child_abuse: bool,
@@ -892,6 +1158,12 @@ pub struct Queued {
     pub words: Option<String>,
     /// The pictures that arrived, by hash: each at `.../picture/{hash}`.
     pub pictures: Vec<String>,
+    /// A chat line's room (`kind` `chat`): the room's post, whether it was sealed, and the lines
+    /// around the reported one once they've arrived, opened - each `{speaker, hash, said_ms, words,
+    /// edits, reported}`.
+    pub room_doc: Option<String>,
+    pub room_sealed: bool,
+    pub transcript: Option<serde_json::Value>,
     pub received_ms: i64,
     pub status: String,
     pub proposal: Option<serde_json::Value>,
@@ -927,6 +1199,7 @@ type QueueRow = (
 
 /// A moderator's queue, newest first. Shared with the assistant's tools (mcp/).
 pub async fn queue_of(state: &AppState, moderator: &str, all: bool) -> Result<Vec<Queued>> {
+    drop_stale_keys(state).await?;
     let rows: Vec<QueueRow> = state
         .node_db
         .fetch_all(
@@ -996,8 +1269,20 @@ pub async fn queue_of(state: &AppState, moderator: &str, all: bool) -> Result<Ve
                 pictures.push(hash.clone());
             }
         }
-        let kind =
-            report_kind(&target_kind, item_doc.is_some(), is_words, named.len(), &item_format);
+        let room: Option<(Option<String>, i64, Option<String>)> = state
+            .node_db
+            .fetch_optional(
+                "SELECT room_doc, room_sealed, transcript FROM reports WHERE id = ?1",
+                (id.as_str(),),
+            )
+            .await
+            .context("reading a report's room")?;
+        let (room_doc, room_sealed, transcript) = room.unwrap_or((None, 0, None));
+        let kind = if room_doc.is_some() {
+            "chat"
+        } else {
+            report_kind(&target_kind, item_doc.is_some(), is_words, named.len(), &item_format)
+        };
         out.push(Queued {
             id,
             reporter,
@@ -1016,6 +1301,9 @@ pub async fn queue_of(state: &AppState, moderator: &str, all: bool) -> Result<Ve
             item_signed_ms,
             words,
             pictures,
+            room_doc,
+            room_sealed: room_sealed != 0,
+            transcript: transcript.and_then(|t| serde_json::from_str(&t).ok()),
             received_ms,
             status,
             proposal: proposal.and_then(|p| serde_json::from_str(&p).ok()),

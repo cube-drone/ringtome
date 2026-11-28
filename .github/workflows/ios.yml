@@ -346,9 +346,13 @@ jobs:
           head -1 "$key" | grep -q 'BEGIN PRIVATE KEY' || { echo "::error::APPLE_IOS_API_KEY_BASE64 does not decode to a .p8"; exit 1; }
           echo "APPLE_API_KEY_PATH=$key" >> "$GITHUB_ENV"
 
-      # The build number as CFBundleVersion, alone: Apple wants it new for every upload.
+      # The build number as CFBundleVersion, alone: Apple wants it new for every upload. A store
+      # build (node/src/store.rs, plans/STORES.md section 3): the age screen at sign-up, and no
+      # update notice pointing past the store.
       - name: Build
         working-directory: desktop
+        env:
+          RINGTOME_STORE: app-store
         run: |
           npm run tauri -- ios build --ci --target aarch64 --export-method app-store-connect \
             --config '{"bundle":{"iOS":{"bundleVersion":"${{ github.run_number }}"}}}'

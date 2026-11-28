@@ -9,6 +9,12 @@
 // 3. **Say what happened**, moderator by moderator: sent, doesn't take reports, couldn't be
 //    reached. A bounce is the whole answer.
 //
+// A chat line (plans/MODERATION.md, _A chat line_; Curtis, 2026-11-27) is reported with the lines
+// around it, signed by their speakers - context, since half a sentence can read as its opposite.
+// In a sealed room that means handing the moderators the room's key, and the form says so before
+// anything is sent. There's no child-abuse choice on a line: its rule is that the thing itself is
+// never sent, and a transcript is the thing itself.
+//
 // "A child is being sexually abused or exploited" is its own choice, because sending the picture
 // would be distributing it: it sends only where the post is, and says where to report it. Only
 // moderators who trust the reporter take it (reports.rs): to everyone else it bounces, so the
@@ -180,6 +186,105 @@ export const ReportModal = ({ item, current, onClose }) => {
                   </div>`
         }
     </${Modal}>`;
+};
+
+/// Block a line's speaker if asked: a line has no hiding of its own, and a block hides all of theirs.
+async function protectFromSpeaker(root, speaker, block) {
+    if (block) {
+        await api(`/api/identity/${root}/private/kv/contact:${speaker}/blocked`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: 'yes' }),
+        });
+        moderationMoved(root);
+    }
+}
+
+/// What reporting a line hands over, said before it's sent: in a sealed room, the key.
+const LineWarning = ({ room }) =>
+    room.trusted_only
+        ? html`<p class="report-warning">
+              ${t('report.what-a-line-report-hands-over', "Your moderators will see this line and the 50 or so around it. To read them, their computers are given this chat's key - a moderator who wanted to misuse it could read the rest of this chat, including what's said later. Only report to moderators you trust.")}
+              ${!room.im && html` ${t('report.other-peoples-words-too', 'The lines around it include what other people here said.')}`}
+          </p>`
+        : html`<p class="null-sub">
+              ${t('report.what-a-line-report-sends', 'Your moderators will see this line and the 50 or so around it, exactly as the people here signed them.')}
+          </p>`;
+
+/// Report a chat line: the person who said it, with the room's lines around it as evidence.
+export const LineReportModal = ({ line, room, current, onClose }) => {
+    const root = current && current.root;
+    const moderators = useModeration(root).moderators || [];
+    const [reason, setReason] = useState('');
+    const [block, setBlock] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [sent, setSent] = useState(null);
+    const [error, setError] = useState('');
+    const send = async () => {
+        setError('');
+        setBusy(true);
+        try {
+            await protectFromSpeaker(root, line.speaker, block);
+            const r = await api(`/api/identity/${root}/reports`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    kind: 'persona',
+                    target: line.speaker,
+                    reason: reason.trim(),
+                    room: { author: room.author, doc: room.doc, line: line.hash },
+                }),
+            });
+            setSent(r.sent || []);
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setBusy(false);
+        }
+    };
+    return html`<${Modal} title=${t('report.report-this-line', 'Report this line')} onClose=${onClose}>
+        ${
+            sent
+                ? html`<${Results} sent=${sent} current=${current} />
+                      <button class="removal-go" onClick=${onClose}>${t('report.done', 'done')}</button>`
+                : html`<div class="report-form">
+                      <${LineWarning} room=${room} />
+                      ${
+                          moderators.length
+                              ? html`<ul class="report-moderators">
+                                    ${moderators.map((m) => html`<li key=${m}><${PersonInline} root=${m} current=${current} /></li>`)}
+                                </ul>`
+                              : html`<p class="null-sub">${t('report.you-trust-nobody-so-nowhere-line', "You don't trust anyone to moderate for you, so this has nowhere to go - but you can still block them.")}</p>`
+                      }
+                      <${ReasonInput}
+                          wide
+                          value=${reason}
+                          placeholder=${t('report.reason-placeholder', 'why - your moderators see this')}
+                          onInput=${setReason}
+                      />
+                      <label class="profile-setting">
+                          <input type="checkbox" checked=${block} onChange=${(e) => setBlock(e.currentTarget.checked)} />
+                          ${t('report.block-them-too', 'block them too')}
+                      </label>
+                      ${error && html`<p class="form-error">${error}</p>`}
+                      <button
+                          class="removal-go"
+                          disabled=${busy || reasonBytes(reason) > MAX_REASON_BYTES}
+                          onClick=${send}
+                      >${busy ? t('report.sending', 'sending…') : t('report.report-it', 'report it')}</button>
+                  </div>`
+        }
+    </${Modal}>`;
+};
+
+/// The report button on someone else's chat line, beside mute.
+export const LineReportButton = ({ line, room, current }) => {
+    const [open, setOpen] = useState(false);
+    return html`<button
+            class="chat-line-act chat-line-act-danger"
+            type="button"
+            title=${t('report.report-this-line', 'Report this line')}
+            onClick=${() => setOpen(true)}
+        ><${Icons.report} /></button>
+        ${open && html`<${LineReportModal} line=${line} room=${room} current=${current} onClose=${() => setOpen(false)} />`}`;
 };
 
 /// Report a whole server to the moderators you trust (plans/NODE_PAGE.md): from its page, with a

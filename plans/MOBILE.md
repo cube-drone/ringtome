@@ -296,7 +296,12 @@ The order, each step answering a question before the next is built on it:
    hand: a release build signed the automatic way, its build number the run's,
    uploaded with `altool`. The export-compliance question (the app encrypts,
    with standard algorithms) is answered in App Store Connect, by Curtis, not
-   pre-answered in `Info.plist`._
+   pre-answered in `Info.plist`._ _First run, same day: signed, uploaded and
+   accepted as 0.7.6 build 42 in fifty-two minutes. Apple's one note: built with
+   the iOS 26.5 SDK, and from April 2027 uploads need the iOS 27 SDK
+   (Xcode 27) - not on GitHub's runners yet, which have Xcode 27 as a preview
+   only. That build was not yet a store build; the job sets
+   `RINGTOME_STORE=app-store` from the next._
 
 Known ahead of time, and not yet met:
 

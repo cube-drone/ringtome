@@ -18,12 +18,18 @@
 //! **A post's pictures are documents of their own**, named in its signed header's `refs`, so a
 //! report carries their signed headers too ([`Report::parts`]): as many as the envelope has room
 //! for. Each must be one its post names. A node that holds the rest can read them for itself.
+//!
+//! **A chat line's report carries the room instead** ([`ReportedRoom`]; plans/MODERATION.md, _A
+//! chat line_, 2026-11-27): the line, and the hash of a [`Transcript`] of the lines around it -
+//! each its speaker's own signed entry - that follows over HTTPS, as pictures do, checked by
+//! [`verify_transcript`]. A sealed room's key rides in the envelope, never on the HTTPS road.
 
 use crate::cbor::{Reader, Writer};
 use crate::deliver::{notice_kind, walk_auth_path, SignedEnvelope, MAX_AUTH_PATH};
+use crate::entry::{Payload, SignedEntry};
 use crate::error::ProtoError;
 use crate::fragment::{verify_fragment, VerifiedFragment};
-use crate::registry::{DocHeaderPlain, ModerationTarget};
+use crate::registry::{entry_type, service, ChatMessage, DocHeaderPlain, ModerationTarget};
 use crate::HASH_LEN;
 
 /// The reason's ceiling, in UTF-8 bytes: an entry's, since a report asks for one.
@@ -49,6 +55,20 @@ pub struct ReportedPart {
     pub auth_path: Vec<Vec<u8>>,
 }
 
+/// A chat line's report (plans/MODERATION.md, _A chat line_): the room by its post, the reported
+/// line by its entry hash, and the BLAKE3 hash of the [`Transcript`] that follows over HTTPS - so
+/// the reporter's signature on the envelope covers exactly that transcript. A sealed room's key
+/// rides here, inside the envelope, node to node: the moderator's node opens the lines with it and
+/// drops it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReportedRoom {
+    pub author: [u8; 32],
+    pub doc: [u8; 16],
+    pub line: [u8; HASH_LEN],
+    pub transcript: [u8; HASH_LEN],
+    pub key: Option<[u8; 32]>,
+}
+
 /// What a report says.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Report {
@@ -63,6 +83,9 @@ pub struct Report {
     pub item: Option<ReportedItem>,
     /// What the item embeds, as far as the envelope has room: older nodes skip the key.
     pub parts: Vec<ReportedPart>,
+    /// A chat line's room, in place of an item: older nodes skip the key, and take a report about
+    /// the person with nothing to show.
+    pub room: Option<ReportedRoom>,
 }
 
 impl Report {
@@ -88,6 +111,13 @@ impl Report {
         if !self.parts.is_empty() && self.item.is_none() {
             return Err(ProtoError::BadEntry("report parts with no item"));
         }
+        // A line is somebody's words, so the report is about them; it carries no post, and never
+        // the child-abuse choice, whose rule is that the thing itself is never sent.
+        if self.room.is_some()
+            && (self.kind != ModerationTarget::Persona || self.item.is_some() || self.child_abuse)
+        {
+            return Err(ProtoError::BadEntry("a room report is about a person, alone"));
+        }
         if self.parts.len() > DocHeaderPlain::MAX_REFS
             || self.parts.iter().any(|p| p.auth_path.len() > MAX_AUTH_PATH)
         {
@@ -102,7 +132,8 @@ impl Report {
         w.map(
             4 + u64::from(self.child_abuse)
                 + u64::from(self.item.is_some())
-                + u64::from(!self.parts.is_empty()),
+                + u64::from(!self.parts.is_empty())
+                + u64::from(self.room.is_some()),
         );
         w.uint(0);
         w.uint(self.kind.code());
@@ -140,6 +171,17 @@ impl Report {
                 }
             }
         }
+        if let Some(room) = &self.room {
+            w.uint(7);
+            w.array(4 + u64::from(room.key.is_some()));
+            w.bytes(&room.author);
+            w.bytes(&room.doc);
+            w.bytes(&room.line);
+            w.bytes(&room.transcript);
+            if let Some(key) = &room.key {
+                w.bytes(key);
+            }
+        }
         Ok(w.into_bytes())
     }
 
@@ -152,6 +194,7 @@ impl Report {
         let mut child_abuse = false;
         let mut item = None;
         let mut parts = Vec::new();
+        let mut room = None;
         while let Some(k) = map.next_key()? {
             match k {
                 0 => {
@@ -202,6 +245,19 @@ impl Report {
                         parts.push(ReportedPart { doc_id, entry, auth_path });
                     }
                 }
+                7 => {
+                    let len = map.array()?;
+                    if len != 4 && len != 5 {
+                        return Err(ProtoError::BadEntry("report room shape"));
+                    }
+                    room = Some(ReportedRoom {
+                        author: map.bytes_fixed::<32>()?,
+                        doc: map.bytes_fixed::<16>()?,
+                        line: map.bytes_fixed::<HASH_LEN>()?,
+                        transcript: map.bytes_fixed::<HASH_LEN>()?,
+                        key: if len == 5 { Some(map.bytes_fixed::<32>()?) } else { None },
+                    });
+                }
                 _ => map.skip_value()?,
             }
         }
@@ -213,10 +269,137 @@ impl Report {
             child_abuse,
             item,
             parts,
+            room,
         };
         out.well_formed()?;
         Ok(out)
     }
+}
+
+/// The most lines a transcript carries: the reported one, forty before it and nine after, with
+/// room for the edits that ride beside edited lines.
+pub const MAX_TRANSCRIPT_LINES: usize = 100;
+
+/// One line of a transcript: its speaker's root, the entry as they signed it, and the path from
+/// that root to the key that signed it - the moderator's node holds none of their key trees.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TranscriptLine {
+    pub root: [u8; 32],
+    pub entry: Vec<u8>,
+    pub auth_path: Vec<Vec<u8>>,
+}
+
+/// The lines around a reported one (plans/MODERATION.md, _A chat line_), uploaded after the
+/// envelope. Encoding: an array of `[root, entry, [rung...]]`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Transcript {
+    pub lines: Vec<TranscriptLine>,
+}
+
+impl Transcript {
+    pub fn encode(&self) -> Result<Vec<u8>, ProtoError> {
+        if self.lines.len() > MAX_TRANSCRIPT_LINES
+            || self.lines.iter().any(|l| l.auth_path.len() > MAX_AUTH_PATH)
+        {
+            return Err(ProtoError::BadEntry("transcript too long or too deep"));
+        }
+        let mut w = Writer::new();
+        w.array(self.lines.len() as u64);
+        for line in &self.lines {
+            w.array(3);
+            w.bytes(&line.root);
+            w.bytes(&line.entry);
+            w.array(line.auth_path.len() as u64);
+            for rung in &line.auth_path {
+                w.bytes(rung);
+            }
+        }
+        Ok(w.into_bytes())
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, ProtoError> {
+        let mut r = Reader::new(bytes);
+        let count = r.array()?;
+        if count > MAX_TRANSCRIPT_LINES as u64 {
+            return Err(ProtoError::BadEntry("transcript too long or too deep"));
+        }
+        let mut lines = Vec::new();
+        for _ in 0..count {
+            if r.array()? != 3 {
+                return Err(ProtoError::BadEntry("transcript line shape"));
+            }
+            let root = r.bytes_fixed::<32>()?;
+            let entry = r.bytes()?.to_vec();
+            let len = r.array()?;
+            if len > MAX_AUTH_PATH as u64 {
+                return Err(ProtoError::BadEntry("transcript too long or too deep"));
+            }
+            let mut auth_path = Vec::new();
+            for _ in 0..len {
+                auth_path.push(r.bytes()?.to_vec());
+            }
+            lines.push(TranscriptLine { root, entry, auth_path });
+        }
+        r.finish()?;
+        Ok(Self { lines })
+    }
+}
+
+/// A transcript's line, checked: whose, which entry, when they said they said it, and what.
+#[derive(Clone, Debug)]
+pub struct VerifiedLine {
+    pub speaker: [u8; 32],
+    pub hash: [u8; HASH_LEN],
+    pub seq: u64,
+    pub timestamp_ms: i64,
+    pub message: ChatMessage,
+}
+
+/// Check a transcript against the report that named it, offline: the bytes are the ones the
+/// reporter signed for; every line is its speaker's own, signed by a key their root authorizes,
+/// on this room's lane and naming this room; and the reported line is among them, spoken by the
+/// person reported. A sealed line's words stay sealed here - opening them is the node's, with the
+/// key the envelope carried.
+pub fn verify_transcript(
+    room: &ReportedRoom,
+    reported: [u8; 32],
+    bytes: &[u8],
+) -> Result<Vec<VerifiedLine>, ProtoError> {
+    if blake3::hash(bytes).as_bytes() != &room.transcript {
+        return Err(ProtoError::BadEntry("not the transcript the report named"));
+    }
+    let transcript = Transcript::decode(bytes)?;
+    let mut out = Vec::with_capacity(transcript.lines.len());
+    for line in &transcript.lines {
+        let signed = SignedEntry::decode(&line.entry)?;
+        signed.verify()?;
+        let entry = signed.entry();
+        if entry.entry_type != entry_type::CHAT_MESSAGE
+            || entry.chain.service != service::CHAT
+            || entry.chain.instance != Some(room.doc)
+        {
+            return Err(ProtoError::ChainViolation("a transcript line from another room"));
+        }
+        walk_auth_path(line.root, &line.auth_path, entry.chain.author)?;
+        let Payload::Inline(payload) = &entry.payload else {
+            return Err(ProtoError::BadEntry("a transcript line without its words"));
+        };
+        let message = ChatMessage::decode(payload)?;
+        if message.room_author != room.author {
+            return Err(ProtoError::ChainViolation("a transcript line from another room"));
+        }
+        out.push(VerifiedLine {
+            speaker: line.root,
+            hash: *signed.hash(),
+            seq: entry.seq,
+            timestamp_ms: entry.timestamp_ms,
+            message,
+        });
+    }
+    if !out.iter().any(|l| l.hash == room.line && l.speaker == reported) {
+        return Err(ProtoError::ChainViolation("the reported line isn't theirs, or isn't there"));
+    }
+    Ok(out)
 }
 
 /// A report whose envelope, delegation and evidence all check out.
@@ -293,6 +476,7 @@ mod tests {
             child_abuse: false,
             item: None,
             parts: Vec::new(),
+            room: None,
         }
     }
 
@@ -408,6 +592,7 @@ mod tests {
                     entry: signed_doc(&author, doc_id, Vec::new()),
                     auth_path: Vec::new(),
                 }],
+                room: None,
             };
             let root = reporter.verifying_key().to_bytes();
             let envelope = Envelope {
@@ -426,6 +611,144 @@ mod tests {
         let verified = with(embedded).expect("the post names it, and its author signed it");
         assert_eq!(verified.parts[0].header.file_hash, [20; 32]);
         assert!(with(other).is_err(), "signed by the author, but not in this post");
+    }
+
+    fn room(transcript: [u8; 32]) -> ReportedRoom {
+        ReportedRoom { author: [5; 32], doc: [6; 16], line: [8; 32], transcript, key: None }
+    }
+
+    #[test]
+    fn a_room_report_round_trips_and_is_about_a_person_alone() {
+        let mut r = report("said in a room");
+        r.room = Some(room([1; 32]));
+        assert_eq!(Report::decode(&r.encode().unwrap()).unwrap(), r);
+        r.room.as_mut().unwrap().key = Some([3; 32]);
+        assert_eq!(Report::decode(&r.encode().unwrap()).unwrap(), r, "with a sealed room's key");
+        let mut child = r.clone();
+        child.child_abuse = true;
+        assert!(child.encode().is_err(), "a transcript is the thing itself");
+        let mut node = r.clone();
+        node.kind = ModerationTarget::Node;
+        assert!(node.encode().is_err());
+        r.item = Some(ReportedItem {
+            author: [7; 32],
+            doc_id: [3; 16],
+            entry: vec![],
+            auth_path: vec![],
+        });
+        assert!(r.encode().is_err(), "a room or a post, not both");
+    }
+
+    /// A line of `speaker`'s in room `[6; 16]` of `[5; 32]`'s, signed by `speaker` itself.
+    fn line(speaker: &ed25519_dalek::SigningKey, seq: u64, words: &str, doc: [u8; 16]) -> Vec<u8> {
+        use crate::entry::{ChainId, Entry, ENTRY_VERSION, ZERO_HASH};
+        let payload = ChatMessage {
+            room_author: [5; 32],
+            body: words.as_bytes().to_vec(),
+            sealed: false,
+            refs: Vec::new(),
+            mentions: Vec::new(),
+            reacts_to: None,
+            retracts: None,
+            edits: None,
+            notice: None,
+            made_with: None,
+        }
+        .encode()
+        .unwrap();
+        SignedEntry::create(
+            &Entry {
+                v: ENTRY_VERSION,
+                entry_type: entry_type::CHAT_MESSAGE,
+                chain: ChainId {
+                    author: speaker.verifying_key().to_bytes(),
+                    service: service::CHAT,
+                    instance: Some(doc),
+                },
+                seq,
+                prev_hash: ZERO_HASH,
+                timestamp_ms: 1_700_000_000_000 + seq as i64,
+                payload: Payload::Inline(payload),
+            },
+            speaker,
+        )
+        .unwrap()
+        .bytes()
+        .to_vec()
+    }
+
+    #[test]
+    fn a_transcript_holds_only_what_its_speakers_signed_in_that_room() {
+        let them = ed25519_dalek::SigningKey::from_bytes(&[1; 32]);
+        let reporter = ed25519_dalek::SigningKey::from_bytes(&[2; 32]);
+        let (them_root, reporter_root) =
+            (them.verifying_key().to_bytes(), reporter.verifying_key().to_bytes());
+        let first = line(
+            &them,
+            0,
+            "one of the things I don't like about them is that they believe",
+            [6; 16],
+        );
+        let second = line(&them, 1, "the thing they believe", [6; 16]);
+        let answer = line(&reporter, 0, "what?", [6; 16]);
+        let reported = *SignedEntry::decode(&second).unwrap().hash();
+        let transcript = |lines: Vec<(&[u8; 32], &Vec<u8>)>| {
+            Transcript {
+                lines: lines
+                    .into_iter()
+                    .map(|(root, entry)| TranscriptLine {
+                        root: *root,
+                        entry: entry.clone(),
+                        auth_path: Vec::new(),
+                    })
+                    .collect(),
+            }
+            .encode()
+            .unwrap()
+        };
+        let named = |bytes: &[u8]| ReportedRoom {
+            line: reported,
+            transcript: *blake3::hash(bytes).as_bytes(),
+            ..room([0; 32])
+        };
+        let good = transcript(vec![
+            (&them_root, &first),
+            (&them_root, &second),
+            (&reporter_root, &answer),
+        ]);
+        let lines = verify_transcript(&named(&good), them_root, &good).expect("their own lines");
+        assert_eq!(lines.len(), 3);
+        assert_eq!(
+            lines[0].message.body,
+            b"one of the things I don't like about them is that they believe"
+        );
+
+        let mut other = named(&good);
+        other.transcript = [9; 32];
+        assert!(
+            verify_transcript(&other, them_root, &good).is_err(),
+            "not the bytes the report named"
+        );
+        assert!(
+            verify_transcript(&named(&good), reporter_root, &good).is_err(),
+            "the reported line is theirs, not the reporter's"
+        );
+        let put_in_their_mouth = transcript(vec![(&them_root, &answer), (&them_root, &second)]);
+        assert!(
+            verify_transcript(&named(&put_in_their_mouth), them_root, &put_in_their_mouth).is_err(),
+            "a line signed by someone else, attributed to them"
+        );
+        let elsewhere = line(&them, 2, "said in another room", [7; 16]);
+        let mixed = transcript(vec![(&them_root, &second), (&them_root, &elsewhere)]);
+        assert!(
+            verify_transcript(&named(&mixed), them_root, &mixed).is_err(),
+            "another room's line"
+        );
+        let without = transcript(vec![(&them_root, &first)]);
+        assert!(
+            verify_transcript(&named(&without), them_root, &without).is_err(),
+            "the line itself left out"
+        );
     }
 
     #[test]

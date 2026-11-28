@@ -41,6 +41,7 @@ const Who = ({ root, current }) =>
 
 /// The four things a report can be about, as its card's header says (Curtis, 2026-11-05).
 const KINDS = () => ({
+    chat: [Icons.chat, t('reports.kind-chat', 'Chat')],
     image: [Icons.mediaImage, t('reports.kind-image', 'Image')],
     node: [Icons.server, t('reports.kind-node', 'Node')],
     post: [Icons.kindPost, t('reports.kind-post', 'Post')],
@@ -49,6 +50,37 @@ const KINDS = () => ({
 
 /// The strip across a report's top: what it is about, and on the right, when it arrived. A
 /// blocklist entry wears the same strip (moderationpage.js).
+/// A reported chat line with the lines around it, as their speakers signed them and the moderator's
+/// node checked them (reports.rs `take_transcript`) - the reported one ringed. Words as plain text:
+/// whoever wrote them may be the one attacking the moderator.
+const Transcript = ({ report, current }) =>
+    html`<div class="report-item">
+        <p class="report-item-head">
+            ${report.room_sealed ? t('reports.a-private-chat', 'in a private chat, opened with its key') : t('reports.a-chat-room', 'in a chat room')}
+        </p>
+        ${
+            report.transcript
+                ? html`<ol class="report-transcript">
+                      ${report.transcript.map(
+                          (
+                              line,
+                          ) => html`<li key=${line.hash} class=${line.reported ? 'report-line report-line-reported' : 'report-line'}>
+                              <${Who} root=${line.speaker} current=${current} />
+                              <span class="null-sub">
+                                  ${formatWhen(line.said_ms)}${line.edits ? ` · ${t('reports.an-edit', 'an edit')}` : ''}
+                              </span>
+                              <div class="report-line-words">
+                                  ${line.words == null ? t('reports.a-line-still-sealed', 'sealed - its key never arrived') : line.words}
+                              </div>
+                          </li>`,
+                      )}
+                  </ol>`
+                : html`<p class="null-sub">
+                      ${t('reports.no-transcript-yet', "The lines around it haven't arrived. A server with no public address can't take them.")}
+                  </p>`
+        }
+    </div>`;
+
 export const KindHead = ({ kind, when }) => {
     const [Icon, word] = KINDS()[kind] || KINDS().post;
     return html`<p class="report-kind">
@@ -205,6 +237,7 @@ const ReportRow = ({ root, current, report, administers, onMoved, sought }) => {
                 }
             </div>`
         }
+        ${report.room_doc && html`<${Transcript} report=${report} current=${current} />`}
         ${
             report.item_doc &&
             html`<div class="report-item">

@@ -29892,3 +29892,69 @@ Seen in Chrome on a scratch node under holidaymas: the hat whole; a 300px
 stand-in for the stack above the persona tile drawn and clickable top to bottom;
 the row squeezed to 300px cut at its end with the fade, a tile past it neither
 drawn nor clickable. Not seen in the desktop app. `just ui-check` green.
+
+## A build in TestFlight (2026-11-27)
+
+The plan's iOS step 4, begun. Curtis registered the App ID and made the app's
+record in App Store Connect; the notarizing key's Developer role can upload but
+not make certificates or profiles, so an Admin team key went into the
+repository's secrets as `APPLE_IOS_API_KEY_BASE64`, `APPLE_IOS_API_KEY` and
+`APPLE_IOS_API_ISSUER`. `ios.yml` gained a `testflight` job, by hand only: a
+release build for `aarch64-apple-ios`, signed the automatic way (Tauri hands the
+key to xcodebuild, which asks Apple for the certificate and the profile), its
+CFBundleVersion the workflow's run number, uploaded with `altool`. The team,
+`TKX92WMGSW`, was read off the 0.7.6 Mac release's signature.
+
+The first run was green in fifty-two minutes: 0.7.6 build 42, delivered. Apple
+named one issue, not blocking - built with the iOS 26.5 SDK, and from April 2027
+uploads need Xcode 27, which GitHub's runners carry only as a preview so far. No
+privacy-manifest complaint came back. That build was the download flavour (no
+age screen); the job now builds it with `RINGTOME_STORE=app-store`. Installing
+it still needs an iPhone.
+
+## A chat line can be reported, with the lines around it (2026-11-27)
+
+STORES.md's check for Apple's rule 1.2 found that posts could be reported
+everywhere, but chat lines, private chats included, had block and mute and no
+report. Curtis settled what a line's report carries: "both 'a warning about the
+decryption primitive' _and_ the last 50 lines of history: it warns the user,
+provides a glut of context, and doesn't force us to write ratcheting chat
+encryption". His example of why context matters: a sentence broken over two
+lines whose second half, alone, reads as the thing it argues against. The design
+is plans/MODERATION.md's new _A chat line_.
+
+- **Every line of someone else's** has a report button beside mute, in every
+  room. The form has the reason and "block them too", and no child-abuse choice:
+  a transcript is the thing itself.
+- **The protocol's report** (`proto/src/report.rs`) carries a `ReportedRoom` in
+  place of a post: the room, the line's entry hash, the hash of a `Transcript`,
+  and a sealed room's key. Older nodes skip the field and take a plain report
+  about the person.
+- **The transcript** is the line, up to 40 before and 9 after, and the newest
+  edit of any edited line, each the speaker's own signed entry with its
+  authorization path (`chat::lines_around`, `reports::transcript_of`). It
+  follows the envelope over the upload address, as a post's pictures do. The
+  moderator's node checks it with `verify_transcript`:
+  - the bytes are the ones the report named;
+  - every line is signed by a key its speaker's root authorizes, on that room's
+    lane;
+  - the reported line is there and is the reported person's.
+- **The key travels in the envelope**, node to node, never over HTTPS, which
+  passes the CDN and its proxy. The moderator's node holds it only until the
+  transcript arrives, at most the hour's upload window. It then keeps the opened
+  words as JSON and sets the key to NULL. Without a public address there is no
+  transcript, and the key isn't kept at all. Node rung 129 adds the columns.
+- **The warning** says the moderators see this line and about 50 around it, and
+  that their computers get the chat's key, which a moderator who wanted to
+  misuse it could use to read the rest of the chat, including what's said later.
+  In a sealed group room it also says the lines include other people's words.
+- **The moderator's card** has a new kind, Chat: the lines as plain text, each
+  with its speaker and time, the reported one ringed.
+
+The reporter's node only builds a sealed room's transcript for a persona the
+room's key opens for, never for a neighbour on the same node. Gates:
+`cargo test -p ringtome-node` and the proto tests green (the user-db
+convention's count gained reports.rs, one open per speaker); `just lint` clean;
+`just ui-check` green; `RINGTOME_TEST_GREP='reports' just integration`, 20
+passing, with a new claim for a private chat: the wrong person's line refused,
+three lines in order with the right one ringed, and the key NULL afterwards.

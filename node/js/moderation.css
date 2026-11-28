@@ -218,6 +218,36 @@ label.moderation-overrule {
     padding-left: 0.75rem;
     margin: 0.5rem 0;
 }
+/* Before a sealed chat's line is reported: what handing over its key means (report.js). */
+.report-warning {
+    margin: 0;
+    border-left: 3px solid var(--coral);
+    padding-left: 0.75rem;
+}
+/* A reported chat line among the lines around it, as their speakers signed them (reportqueue.js):
+   inset like a post's words, scrolling past a screenful. */
+.report-transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.5rem 0.7rem;
+    list-style: none;
+    background: var(--field);
+    border: 1px solid var(--border);
+    max-height: 24rem;
+    overflow-y: auto;
+    font-size: 0.85rem;
+}
+.report-line-words {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--ink-soft);
+}
+.report-line-reported {
+    outline: 2px solid var(--coral);
+    outline-offset: 2px;
+}
 /* One report: a card of its own, so where one ends and the next begins is plain. */
 .report-row {
     display: flex;

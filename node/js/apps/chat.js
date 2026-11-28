@@ -30,6 +30,7 @@ import { speakable } from '../speakable.js';
 import { useColWidths, useColTucks, PaneHead, Rail } from '../panes.js';
 import { useUnlocked } from '../unlocks.js';
 import { Modal } from '../modal.js';
+import { LineReportButton } from '../report.js';
 import {
     usePref,
     usePrefMap,
@@ -969,6 +970,10 @@ const LineBody = ({
                 onClick=${() => onMute(m.speaker)}
             ><${Icons.mute} /></button>`
             }
+            ${
+                /* Report the line (plans/MODERATION.md, _A chat line_): anyone else's, in every room. */ ''
+            }
+            ${!mine && !m.pending && !!room && !!current && html`<${LineReportButton} line=${m} room=${room} current=${current} />`}
             ${
                 stickering &&
                 html`<${StickerPicker}

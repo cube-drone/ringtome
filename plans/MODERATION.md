@@ -188,9 +188,10 @@ uploads the reporter made up. Nearly everything there is signed by its author:
   entry targets that root, and the victim is never touched. The queue shows
   "signed by <root>" beside each item, with the target's handle and age.
 - **Private things** (a sealed room line, a trusted-only post): the reporter
-  passes on the signed entry and the key for that one item, the moderator's node
-  checks the author's signature over the ciphertext, then decrypts. The form
-  says plainly that reporting a private thing shares it with the moderator.
+  passes on the signed entry and the key, the moderator's node checks the
+  author's signature over the ciphertext, then decrypts. The form says plainly
+  that reporting a private thing shares it with the moderator. A chat line is _A
+  chat line_, below; a trusted-only post is still to do.
 
 What signatures can't settle, and the queue doesn't pretend to: context (a real
 quote cherry-picked, or a joke between friends - "show me the thread" is one
@@ -203,6 +204,52 @@ checking when this is built.
 
 And what moderation can't see, by design: people talking to each other in a
 sealed room. It surfaces only when someone in the room reports it.
+
+### A chat line
+
+Curtis, 2026-11-27, after STORES.md's check found chat lines had block and mute
+but no report: "a chat report should carry both 'a warning about the decryption
+primitive' _and_ the last 50 lines of history: it warns the user, provides a
+glut of context, and doesn't force us to write ratcheting chat encryption." A
+line alone can't be judged - "one of the things I don't like about white
+supremacists is that they believe..." broken over two lines reads, in its second
+half alone, as the thing it argues against.
+
+- **The report is about the speaker**, like a post's: a persona report whose
+  evidence is the room instead of a post. A report button on every line of
+  someone else's, in every room, private chats too, with "block them too".
+- **The transcript**: the reported line with up to 40 lines before it and 9
+  after, as the reporter's node holds them - each the speaker's own signed entry
+  with the path from their root to the key that signed it, and an edited line's
+  newest edit beside it. Reactions and deleted lines stay out. Every line is
+  checked at the moderator's node: signed by a key its speaker's root
+  authorizes, on that room's lane, the reported line among them and spoken by
+  the reported persona. The reporter chooses the run and can't change a word of
+  it or put words in anyone's mouth.
+- **It travels as a report's pictures do**: the envelope (4 KB at most) names
+  the room, the line and the transcript's hash; the transcript follows over the
+  upload address the door hands back, and only bytes hashing to that are taken.
+  A moderator whose node has no public address gets the report without it.
+- **The key never takes the HTTPS road.** A sealed room's key rides inside the
+  envelope, node to node, because the upload passes whatever sits in front of
+  the moderator's node (a CDN, a proxy). The door keeps it only until the
+  transcript arrives - an hour at most - opens the lines, keeps the words and
+  drops the key. An honest moderator's node never holds the capability after
+  that; a database taken from them later doesn't contain it.
+- **The warning says what the key is.** In a sealed room: the moderators see
+  these 50 lines, and the key would let one who wanted to misuse it read the
+  rest of the chat, including what's said later - "only report to moderators you
+  trust". Curtis: a capability of a modified client, so a malicious operator's,
+  not an honest one's. In a sealed group room the lines are other members' words
+  too, and the warning says so. An open room's lines need no key.
+- **Not offered: the child-abuse choice.** Its rule is that the thing itself is
+  never sent, and a transcript is the thing itself. Left for when it's asked
+  for.
+
+Open: a private chat could change its key once reported, so what's said after is
+sealed under a key the moderator never had - worth building only once a
+moderator misusing a key has been seen. And the plaintext-hash binding (above)
+still isn't in what a line's author signs.
 
 ### A child being abused
 

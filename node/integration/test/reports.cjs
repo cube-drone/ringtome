@@ -12,6 +12,9 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { HOST, HOST_B, sql, makeFetch } = require('./fetch.cjs');
 const { makeUserFetch, makePng, settleWith } = require('./helpers.cjs');
+const { beat } = require('./beat.cjs');
+
+const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 
 const j = (who, path, body, method = 'POST') => who(path, { method, body: JSON.stringify(body) });
 const settle = settleWith(40);
@@ -497,6 +500,97 @@ const fact = (who, root, about, key, value) =>
             'their other reports still come in',
         );
         await taking({});
+    });
+
+    // A chat line (plans/MODERATION.md, _A chat line_; Curtis, 2026-11-27): reported with the lines
+    // around it, each signed by its speaker, since half a sentence can read as its opposite. In a
+    // private chat the room's key rides in the envelope - never the HTTPS road - and the
+    // moderator's node keeps the opened words and drops the key.
+    it("carries a private chat's line with the lines around it, and keeps the words, not the key", async function () {
+        const { speakable } = await import('../../js/speakable.js');
+        await fact(rep, repRoot, authorRoot, 'trust', 'high');
+        await fact(author, authorRoot, repRoot, 'trust', 'high');
+        const d = await (
+            await j(author, `api/identity/${authorRoot}/docs`, {
+                title: 'a chat',
+                body: `[user id=/id/${speakable(repRoot)}]rep[/user]`,
+                format: 'marquee',
+            })
+        ).json();
+        await author(`api/identity/${authorRoot}/docs/${d.doc_id}/buckets/chat`, { method: 'PUT' });
+        const pub = await j(author, `api/identity/${authorRoot}/docs/${d.doc_id}/publish`, {
+            room: true,
+            im: true,
+            trusted_only: true,
+            audience: '@mentioned',
+        });
+        assert.equal(pub.status, 200, await pub.clone().text());
+        const chat = (await pub.json()).post_id;
+        const room = `rooms/${authorRoot}/${chat}/messages`;
+        for (const words of [
+            "one of the things I don't like about them is that they believe",
+            'that horses are only for riding',
+        ]) {
+            const said = await j(author, `api/identity/${authorRoot}/${room}`, { words });
+            assert.equal(said.status, 200, await said.text());
+        }
+        // Rep's node is the same node: what rep needs is the chat's key, which comes by the outbox.
+        let lines = [];
+        for (let i = 0; i < 30 && lines.filter((m) => m.words).length < 2; i++) {
+            await beat(HOST_B, 'outbox');
+            await beat(HOST_B, 'fold', repRoot);
+            const r = await rep(`api/identity/${repRoot}/${room}`);
+            lines = r.status === 200 ? (await r.json()).items || [] : [];
+            if (lines.filter((m) => m.words).length < 2) await wait(300);
+        }
+        const reported = lines.find((m) => m.words === 'that horses are only for riding');
+        assert.ok(reported, `rep reads the chat: ${JSON.stringify(lines)}`);
+        const answer = await j(rep, `api/identity/${repRoot}/${room}`, { words: 'what?' });
+        assert.equal(answer.status, 200, await answer.text());
+        const mine = (await (await rep(`api/identity/${repRoot}/${room}`)).json()).items.find(
+            (m) => m.words === 'what?',
+        );
+
+        const notTheirs = await j(rep, `api/identity/${repRoot}/reports`, {
+            kind: 'persona',
+            target: authorRoot,
+            reason: '',
+            room: { author: authorRoot, doc: chat, line: mine.hash },
+        });
+        assert.equal(notTheirs.status, 400, "rep's own line, reported as the author's");
+
+        const sent = await report(rep, repRoot, {
+            item: undefined,
+            reason: 'out of context?',
+            room: { author: authorRoot, doc: chat, line: reported.hash },
+        });
+        assert.deepEqual(
+            sent.map((s) => [s.outcome, s.transcript]),
+            [['sent', true]],
+            'the lines followed the envelope',
+        );
+        const card = (await queue()).reports.find((r) => r.reason === 'out of context?');
+        assert.ok(card, 'in the queue');
+        assert.equal(card.kind, 'chat');
+        assert.equal(card.target, authorRoot);
+        assert.equal(card.room_doc, chat);
+        assert.equal(card.room_sealed, true);
+        assert.deepEqual(
+            card.transcript.map((l) => [l.speaker, l.words, l.reported]),
+            [
+                [
+                    authorRoot,
+                    "one of the things I don't like about them is that they believe",
+                    false,
+                ],
+                [authorRoot, 'that horses are only for riding', true],
+                [repRoot, 'what?', false],
+            ],
+            'opened with the key, in order, the reported line ringed',
+        );
+        const held = (await sql(`SELECT room_key FROM reports WHERE id = '${card.id}'`, HOST))
+            .rows[0];
+        assert.equal(held.room_key, null, 'the key is gone once the words are kept');
     });
 
     it('a report about yourself, or past 512 bytes, is never sent', async function () {
